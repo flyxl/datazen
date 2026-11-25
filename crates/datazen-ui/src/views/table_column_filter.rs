@@ -35,65 +35,65 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 use crate::ui::toggle::Checkbox;
 
-pub(crate) const TOGGLE_KEY: &str = "table-column-filter-toggle";
-pub(crate) const BADGE_KEY: &str = "column-filter-count-badge";
-pub(crate) const POPOVER_KEY: &str = "table-column-filter-popover";
-pub(crate) const SELECT_ALL_KEY: &str = "table-column-filter-select-all";
-pub(crate) const CLEAR_ALL_KEY: &str = "table-column-filter-clear-all";
-pub(crate) const RESET_KEY: &str = "table-column-filter-reset";
-pub(crate) const SEARCH_KEY: &str = "table-column-filter-search";
+pub const TOGGLE_KEY: &str = "table-column-filter-toggle";
+pub const BADGE_KEY: &str = "column-filter-count-badge";
+pub const POPOVER_KEY: &str = "table-column-filter-popover";
+pub const SELECT_ALL_KEY: &str = "table-column-filter-select-all";
+pub const CLEAR_ALL_KEY: &str = "table-column-filter-clear-all";
+pub const RESET_KEY: &str = "table-column-filter-reset";
+pub const SEARCH_KEY: &str = "table-column-filter-search";
 
 /// React `ColumnSchema` fields the filter reads.
 #[allow(dead_code)] // VM mirror; remove when the host owns the columns.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FilterColumn {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
-    pub(crate) is_primary_key: bool,
+pub struct FilterColumn {
+    pub name: String,
+    pub data_type: String,
+    pub is_primary_key: bool,
 }
 
 /// Props plus the two local `useState` values.
 #[allow(dead_code)] // VM surface; remove when the host wires the filter.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TableColumnFilterVm {
-    pub(crate) columns: Vec<FilterColumn>,
+pub struct TableColumnFilterVm {
+    pub columns: Vec<FilterColumn>,
     /// `null` means "all visible" (React's `visibleColumns`).
-    pub(crate) visible_columns: Option<Vec<String>>,
-    pub(crate) disabled: bool,
-    pub(crate) open: bool,
-    pub(crate) search_query: TextEdit,
+    pub visible_columns: Option<Vec<String>>,
+    pub disabled: bool,
+    pub open: bool,
+    pub search_query: TextEdit,
     /// Stand-in: a host-driven busy state (React renders no such state).
-    pub(crate) loading: bool,
+    pub loading: bool,
 }
 
 #[allow(dead_code)] // pure helpers; remove when the host wires the filter.
 impl TableColumnFilterVm {
-    pub(crate) fn all_column_names(&self) -> Vec<String> {
+    pub fn all_column_names(&self) -> Vec<String> {
         self.columns.iter().map(|column| column.name.clone()).collect()
     }
 
     /// React `activeVisible = visibleColumns ?? allColumnNames`.
-    pub(crate) fn active_visible(&self) -> Vec<String> {
+    pub fn active_visible(&self) -> Vec<String> {
         self.visible_columns.clone().unwrap_or_else(|| self.all_column_names())
     }
 
     /// React `visibleColumns !== null && visibleColumns.length < columns.length`.
-    pub(crate) fn is_filtered(&self) -> bool {
+    pub fn is_filtered(&self) -> bool {
         self.visible_columns
             .as_ref()
             .is_some_and(|visible| visible.len() < self.columns.len())
     }
 
-    pub(crate) fn visible_count(&self) -> usize {
+    pub fn visible_count(&self) -> usize {
         self.active_visible().len()
     }
 
-    pub(crate) fn count_text(&self) -> String {
+    pub fn count_text(&self) -> String {
         format!("{}/{}", self.visible_count(), self.columns.len())
     }
 
     /// React `columns.filter(name/dataType includes the trimmed, lowered query)`.
-    pub(crate) fn filtered_columns(&self) -> Vec<&FilterColumn> {
+    pub fn filtered_columns(&self) -> Vec<&FilterColumn> {
         let query = self.search_query.text.trim().to_ascii_lowercase();
         self.columns
             .iter()
@@ -107,7 +107,7 @@ impl TableColumnFilterVm {
 
     /// React `handleToggleColumn`: remove a visible column; add a hidden one,
     /// collapsing to `None` (all) when the last hidden column is re-added.
-    pub(crate) fn toggle_column(&self, name: &str) -> Option<Vec<String>> {
+    pub fn toggle_column(&self, name: &str) -> Option<Vec<String>> {
         let active = self.active_visible();
         if active.iter().any(|column| column == name) {
             Some(active.into_iter().filter(|column| column != name).collect())
@@ -123,12 +123,12 @@ impl TableColumnFilterVm {
     }
 
     /// React's select-all / reset both pass `null`.
-    pub(crate) fn select_all(&self) -> Option<Vec<String>> {
+    pub fn select_all(&self) -> Option<Vec<String>> {
         None
     }
 
     /// React's clear-all passes `[]`.
-    pub(crate) fn clear_all(&self) -> Option<Vec<String>> {
+    pub fn clear_all(&self) -> Option<Vec<String>> {
         Some(Vec::new())
     }
 }
@@ -137,7 +137,7 @@ impl TableColumnFilterVm {
 /// contract as React's `onChange`: `None` = all columns, empty = none.
 #[allow(dead_code)] // host port; remove when the toolbar host wires the filter.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TableColumnFilterAction {
+pub enum TableColumnFilterAction {
     ToggleOpen,
     ToggleColumn { name: String, next: Option<Vec<String>> },
     SelectAll,
@@ -148,9 +148,9 @@ pub(crate) enum TableColumnFilterAction {
 }
 
 #[allow(dead_code)] // host port; remove when the toolbar host wires the filter.
-pub(crate) type TableColumnFilterActionFn<S> = Rc<dyn Fn(&mut S, TableColumnFilterAction) + 'static>;
+pub type TableColumnFilterActionFn<S> = Rc<dyn Fn(&mut S, TableColumnFilterAction) + 'static>;
 #[allow(dead_code)] // text accessor; remove when the host owns the search field.
-pub(crate) type SearchEditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
+pub type SearchEditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 
 fn emit<S: 'static>(
     on_action: &Option<TableColumnFilterActionFn<S>>,
@@ -166,7 +166,7 @@ fn emit<S: 'static>(
 
 /// Build the filter into `layer`.
 #[allow(dead_code)] // view entry; remove when the host wires the filter.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableColumnFilterVm,
     on_action: &Option<TableColumnFilterActionFn<S>>,
     search_edit: Option<SearchEditFn<S>>,

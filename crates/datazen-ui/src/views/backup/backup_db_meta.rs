@@ -15,7 +15,7 @@
 /// One dialect backup option (`sqlDialects`: `{ id, label }`, e.g.
 /// `{ id: 'routines', label: '--routines' }`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct BackupOption {
+pub struct BackupOption {
     pub id: &'static str,
     pub label: &'static str,
 }
@@ -337,7 +337,7 @@ fn db_type_meta(db_type: &str) -> Option<DbTypeMeta> {
 }
 
 /// React `getDbLabel`: `DB_REGISTRY[dbType]?.label ?? dbType`.
-pub(crate) fn db_label(db_type: &str) -> String {
+pub fn db_label(db_type: &str) -> String {
     match db_type_meta(db_type) {
         Some(meta) => meta.label.to_owned(),
         None => db_type.to_owned(),
@@ -345,14 +345,14 @@ pub(crate) fn db_label(db_type: &str) -> String {
 }
 
 /// React `DB_REGISTRY[dbType]?.supportsBackup` (falsy when absent).
-pub(crate) fn db_supports_backup(db_type: &str) -> bool {
+pub fn db_supports_backup(db_type: &str) -> bool {
     db_type_meta(db_type).is_some_and(|meta| meta.supports_backup)
 }
 
 /// React `backupOptions`: `[]` without a selected connection, without
 /// `supportsBackup`, or without a dialect; otherwise the dialect's
 /// `backupOptions` table, in dialect order.
-pub(crate) fn backup_options_for(db_type: &str) -> &'static [BackupOption] {
+pub fn backup_options_for(db_type: &str) -> &'static [BackupOption] {
     let Some(meta) = db_type_meta(db_type) else {
         return &[];
     };

@@ -11,7 +11,7 @@ use super::{ConnectionView, DatabaseTypeMeta};
 /// Port of `canOpenStructureEditor(meta)`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn can_open_structure_editor(meta: Option<&DatabaseTypeMeta>) -> bool {
+pub fn can_open_structure_editor(meta: Option<&DatabaseTypeMeta>) -> bool {
     let Some(meta) = meta else {
         return false;
     };

@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 /// React `SchemaTreeNodeKind`.
 #[allow(dead_code)] // VM mirror; supplied by the tree host.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum MenuKind {
+pub enum MenuKind {
     Table,
     View,
     Database,
@@ -25,7 +25,7 @@ pub(crate) enum MenuKind {
 /// One rendered menu entry (React `NativeMenuItemDef`, reduced to observable data).
 #[allow(dead_code)] // VM mirror; consumed by the host menu renderer and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum MenuEntry {
+pub enum MenuEntry {
     Item { id: &'static str, label: String },
     Separator,
     Submenu { id: &'static str, label: String, items: Vec<MenuEntry> },
@@ -34,7 +34,7 @@ pub(crate) enum MenuEntry {
 /// Product feature flags gating the migration-tool items.
 #[allow(dead_code)] // VM mirror; supplied by the host.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FeatureFlags {
+pub struct FeatureFlags {
     pub data_transfer: bool,
     pub schema_diff: bool,
     pub data_sync: bool,
@@ -43,7 +43,7 @@ pub(crate) struct FeatureFlags {
 /// React `BuildSchemaTreeContextMenuArgs`, reduced to pure inputs.
 #[allow(dead_code)] // VM surface; supplied by the hook.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct MenuArgs {
+pub struct MenuArgs {
     pub kind: MenuKind,
     pub labels: std::collections::BTreeMap<&'static str, String>,
     /// Handler ids that are actually wired; an unwired handler omits its item.
@@ -148,7 +148,7 @@ fn migration_items(args: &MenuArgs) -> Vec<MenuEntry> {
 
 /// React `buildSchemaTreeContextMenuItems` — the full decision.
 #[allow(dead_code)] // pure rule; remove with the host menu wiring.
-pub(crate) fn build_menu(args: &MenuArgs) -> Vec<MenuEntry> {
+pub fn build_menu(args: &MenuArgs) -> Vec<MenuEntry> {
     match args.kind {
         MenuKind::Table => {
             let danger = if args.read_only {
@@ -275,7 +275,7 @@ pub(crate) fn build_menu(args: &MenuArgs) -> Vec<MenuEntry> {
 /// Project the rendered menu to its observable id sequence (a `separator` for
 /// each [`MenuEntry::Separator`]) — the shape the React tests assert.
 #[allow(dead_code)] // pure helper; consumed by tests.
-pub(crate) fn entry_ids(entries: &[MenuEntry]) -> Vec<&str> {
+pub fn entry_ids(entries: &[MenuEntry]) -> Vec<&str> {
     entries
         .iter()
         .map(|entry| match entry {

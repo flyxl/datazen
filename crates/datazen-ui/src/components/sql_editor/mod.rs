@@ -16,16 +16,16 @@
 //! wired, like `components/history`.
 
 #[allow(unused_imports)] // consumers will be added by the workspace view wiring
-pub(crate) use sql_editor::{
+pub use sql_editor::{
     on_ime, on_key, CompletionQuotePolicy, EditorEvent, ExecutionMark, ExecutionStatus,
     SqlEditorComponent, SqlEditorProps, SqlEditorState,
 };
 
 /// `contracts.ts` (T105): the S6-D contract vocabulary — props enums,
 /// the drop payload, the navigation targets, the CM dialect mapping.
-pub(crate) mod contracts;
+pub mod contracts;
 #[allow(unused_imports)] // the handle/extension tasks build on these
-pub(crate) use contracts::{
+pub use contracts::{
     CmSqlDialect, DdlNavTarget, DroppedTablePayload, DroppedTableRef, SqlSchema,
     StructureNavTarget, TableNavTarget, resolve_cm_dialect,
 };
@@ -34,25 +34,25 @@ pub(crate) use contracts::{
 /// theme config, the document-version rule, the execute dispatch, the
 /// large-document windowing, the path dedup, the contextmenu SQL, the
 /// completion anchors and admission classes.
-pub(crate) mod editor_extensions;
+pub mod editor_extensions;
 
-pub(crate) mod lib_helpers;
+pub mod lib_helpers;
 #[allow(unused_imports)] // re-exports keep the module boundary flat for callers
-pub(crate) use lib_helpers::parse_qualified_path_parents;
+pub use lib_helpers::parse_qualified_path_parents;
 
 /// `lib/sqlEditorContextMenu.ts` (T155): the SQL editor's context-menu
 /// builder (OS edit block, run/format/comment/favorite items) plus the
 /// driver-sdk menu item contract and the carried `Platform` /
 /// `formatModKey` seams.
-pub(crate) mod sql_editor_context_menu;
+pub mod sql_editor_context_menu;
 #[allow(unused_imports)] // `toggle_sql_line_comments` keeps its pre-T155 path stable
-pub(crate) use sql_editor_context_menu::toggle_sql_line_comments;
+pub use sql_editor_context_menu::toggle_sql_line_comments;
 
 /// `components/sql-editor/extensions/{executionState,types}.ts` (T170):
 /// the execution-state field machine (start/cancel/finish, the running-
 /// target match), the frame-degrade rules and the statement/execution
 /// target contracts the frame and gutter extensions share.
-pub(crate) mod extensions;
+pub mod extensions;
 
 /// `components/sql-editor/fold/foldCompartment.ts` (T196, split): the
 /// `fold` Pro compartment's host gate (the `codeFolding` key on the
@@ -60,56 +60,56 @@ pub(crate) mod extensions;
 /// [`pro_compartments`] (T335), which also absorbed this module's
 /// `ProSettingsBag`/`pro_setting_flag` carries (re-exported below at
 /// their pre-T335 path).
-pub(crate) mod fold;
+pub mod fold;
 
 /// `components/sql-editor/paste/createPasteExtensions.ts` (T263, split):
 /// the paste/drop/multiple-selection compartment's host factory (the
 /// always-mounted multi-selection base plus the enhanced EP's half).
 /// multipleSelections.ts is T320, the registry T335.
-pub(crate) mod create_paste_extensions;
+pub mod create_paste_extensions;
 
 /// `components/sql-editor/paste/multiCursorEscape.ts` (T283, split): the
 /// dedicated Escape leaving the multi-cursor state (S1's collapse to a
 /// bare main-head cursor, S0's refusal).
-pub(crate) mod multi_cursor_escape;
+pub mod multi_cursor_escape;
 /// T320: the multiple-selections compartment's binding inventory
 /// (the chords, the precedence tiers, the Mod-D guard, the
 /// rectangular-drag filter).
-pub(crate) mod multiple_selections;
+pub mod multiple_selections;
 /// `components/sql-editor/proCompartments.ts` (T335, split): the Pro
 /// compartment registry, the atomic batch reconfigure, the generic
 /// settings bag (G3) and the three generic EP hooks. Absorbed
 /// `ProSettingsBag`/`pro_setting_flag` from `fold` (re-exported there).
-pub(crate) mod pro_compartments;
+pub mod pro_compartments;
 /// T302: the multi-cursor POINTER predicate (the platform chord
 /// CodeMirror's `clickAddsSelectionRange` override had dropped).
-pub(crate) mod multi_cursor_pointer;
+pub mod multi_cursor_pointer;
 
 /// `components/sql-editor/format/formatEditorDocument.ts` (T220, split):
 /// the selection-aware beautifier command (the formatter stays
 /// injected — T615's sqlFormat).
-pub(crate) mod format_editor_document;
+pub mod format_editor_document;
 
 /// `components/sql-editor/snippets/` (T370+): the SQL snippet
 /// template system — the `SqlSnippetItem` contract first; the builtin
 /// library (T347) and the completion source (T359) follow.
-pub(crate) mod snippets;
+pub mod snippets;
 
-pub(crate) mod completion;
+pub mod completion;
 #[allow(unused_imports)] // consumers land with the S2/S3 slices
-pub(crate) use completion::{
+pub use completion::{
     RelatedTableBoost, SHORT_PREFIX_COLUMN_CAP, SHORT_PREFIX_LEN, SchemaCompletionItem,
     SchemaCompletionKind, SqlCompletionDialect, SqlToken, SqlTokenKind,
 };
 
-pub(crate) mod sql_editor;
+pub mod sql_editor;
 
 /// `lib/sqlNamespace.ts`'s tree shape, carried (T617 absorbs).
-pub(crate) mod sql_namespace;
+pub mod sql_namespace;
 #[allow(unused_imports)] // consumers: metadata/find_relation + completion S2/S3
-pub(crate) use sql_namespace::{is_leaf, SqlNamespace};
+pub use sql_namespace::{is_leaf, SqlNamespace};
 
 /// `components/sql-editor/metadata/` (T242): findRelation + re-export shims.
-pub(crate) mod metadata;
+pub mod metadata;
 #[allow(unused_imports)] // consumers: the completion entry points (T062 S2/S3)
-pub(crate) use metadata::{extract_columns_from_schema, find_relation_metadata};
+pub use metadata::{extract_columns_from_schema, find_relation_metadata};

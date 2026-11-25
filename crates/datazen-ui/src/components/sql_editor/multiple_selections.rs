@@ -74,7 +74,7 @@
 /// The commands the inventory registers (CodeMirror imports; the
 /// native editor implements the behaviours).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MultiCursorCommand {
+pub enum MultiCursorCommand {
     /// `selectNextOccurrence` (`@codemirror/search`): an empty cursor
     /// expands to the word, the next press adds the next occurrence.
     SelectNextOccurrence,
@@ -93,7 +93,7 @@ pub(crate) enum MultiCursorCommand {
 
 /// The precedence tier a binding mounts at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum BindingPrecedence {
+pub enum BindingPrecedence {
     /// `Prec.high`: lifted above `defaultKeymap` only — never above
     /// the editor's own custom shortcuts or the autocomplete
     /// dismissals.
@@ -107,24 +107,24 @@ pub(crate) enum BindingPrecedence {
 /// One keymap binding: the chord, its macOS variant, the command, the
 /// precedence tier and the preventDefault decision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct KeyBinding {
+pub struct KeyBinding {
     /// The `key:` spelling (`Mod-` is Cmd on macOS, Ctrl elsewhere).
-    pub(crate) key: &'static str,
+    pub key: &'static str,
     /// The `mac:` variant, when the chord differs.
-    pub(crate) mac: Option<&'static str>,
-    pub(crate) command: MultiCursorCommand,
-    pub(crate) precedence: BindingPrecedence,
+    pub mac: Option<&'static str>,
+    pub command: MultiCursorCommand,
+    pub precedence: BindingPrecedence,
     /// Whether the binding declares `preventDefault`.
-    pub(crate) prevent_default: bool,
+    pub prevent_default: bool,
 }
 
 /// `EditorState.allowMultipleSelections.of(true)` — the feature flag
 /// the compartment exists to hold (never false).
-pub(crate) const ALLOW_MULTIPLE_SELECTIONS: bool = true;
+pub const ALLOW_MULTIPLE_SELECTIONS: bool = true;
 
 /// The engine facets the extension wires (beyond the keymaps).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Facet {
+pub enum Facet {
     /// `drawSelection()`: the cursor/selection decoration layer — a
     /// second cursor must be *visible* (one `.cm-cursor-secondary`
     /// per extra range), or the multi-cursor state is an invisible
@@ -140,7 +140,7 @@ pub(crate) enum Facet {
 }
 
 /// The facet list the extension holds, in mount order.
-pub(crate) const MULTIPLE_SELECTIONS_FACETS: [Facet; 3] = [
+pub const MULTIPLE_SELECTIONS_FACETS: [Facet; 3] = [
     Facet::DrawSelection,
     Facet::RectangularSelection,
     Facet::ClickAddsSelectionRange,
@@ -149,7 +149,7 @@ pub(crate) const MULTIPLE_SELECTIONS_FACETS: [Facet; 3] = [
 /// The full binding inventory: the plain keymap (default precedence)
 /// followed by the `Prec.high` trio. The order inside one tier is the
 /// registration order the engine's conflict resolution uses.
-pub(crate) fn multiple_selections_bindings() -> Vec<KeyBinding> {
+pub fn multiple_selections_bindings() -> Vec<KeyBinding> {
     let default_tier = [
         // The Mod-d family: `runHandlers` tries the shift-less name
         // first for character keys, so `Mod-d` answers the unshifted
@@ -227,7 +227,7 @@ pub(crate) fn multiple_selections_bindings() -> Vec<KeyBinding> {
 /// handler for Mod+D / Cmd+D across macOS WKWebView and web. The
 /// event's `key`/`code` spellings arrive verbatim (`d` or `D`, or the
 /// physical `KeyD` for layouts that report another character).
-pub(crate) fn mod_d_direct_handler(
+pub fn mod_d_direct_handler(
     meta_key: bool,
     ctrl_key: bool,
     alt_key: bool,
@@ -243,7 +243,7 @@ pub(crate) fn mod_d_direct_handler(
 /// first disjunct subsumes the second (`e.altKey || (e.altKey &&
 /// e.shiftKey)`), kept as written so the table stays readable; the
 /// tests pin the *semantics* (Alt is the deciding modifier).
-pub(crate) fn rectangular_drag_predicate(
+pub fn rectangular_drag_predicate(
     alt_key: bool,
     shift_key: bool,
     meta_key: bool,

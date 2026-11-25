@@ -79,7 +79,7 @@ use crate::views::settings::settings_ui::{section_title, setting_row};
 
 /// `SCENARIO_VARIABLES`, verbatim (the `{{var}}` names each scenario's
 /// template may reference; the hint lists them).
-pub(crate) fn scenario_variables(scenario: PromptScenario) -> &'static [&'static str] {
+pub fn scenario_variables(scenario: PromptScenario) -> &'static [&'static str] {
     use PromptScenario as P;
     match scenario {
         P::Nl2sql => &["db_type", "version", "schema", "recent"],
@@ -96,15 +96,15 @@ pub(crate) fn scenario_variables(scenario: PromptScenario) -> &'static [&'static
 }
 
 /// The preview's cut (`p.system.slice(0, 260)` plus the ellipsis).
-pub(crate) const PROMPT_PREVIEW_CUT: usize = 260;
+pub const PROMPT_PREVIEW_CUT: usize = 260;
 /// The feedback window (`setTimeout(…, 2000)`), in seconds.
-pub(crate) const PROMPT_FEEDBACK_WINDOW: f64 = 2.0;
+pub const PROMPT_FEEDBACK_WINDOW: f64 = 2.0;
 /// The all-drivers sentinel (the select's `*` value).
-pub(crate) const PROMPT_ALL_DRIVERS: &str = "*";
+pub const PROMPT_ALL_DRIVERS: &str = "*";
 
 /// The section's state.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct PromptSettingsSectionState {
+pub struct PromptSettingsSectionState {
     /// `driverType` (the `*` sentinel reads as "all").
     pub driver_type: String,
     /// `prompts` (the loaded list).
@@ -129,32 +129,32 @@ pub(crate) struct PromptSettingsSectionState {
 
 impl PromptSettingsSectionState {
     /// React's start: the all-drivers sentinel.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { driver_type: PROMPT_ALL_DRIVERS.to_owned(), ..Default::default() }
     }
 
     /// `loadPrompts`'s request: `promptList(dt)` with the `*` sentinel
     /// as `None`.
-    pub(crate) fn list_request(&self) -> crate::commands::ai::AiRequest {
+    pub fn list_request(&self) -> crate::commands::ai::AiRequest {
         let dt = if self.driver_type == PROMPT_ALL_DRIVERS { None } else { Some(self.driver_type.as_str()) };
         prompt_list_request(dt)
     }
 
     /// The load's answer: the list replaces and any open edit closes
     /// (`setEditingIdx(null)`).
-    pub(crate) fn deliver_prompts(&mut self, prompts: Vec<PromptInfo>) {
+    pub fn deliver_prompts(&mut self, prompts: Vec<PromptInfo>) {
         self.prompts = prompts;
         self.editing_idx = None;
     }
 
     /// The driver filter changed (`setDriverType`): the reload's
     /// trigger is the host's (React's `useEffect [loadPrompts]`).
-    pub(crate) fn set_driver_type(&mut self, value: &str) {
+    pub fn set_driver_type(&mut self, value: &str) {
         self.driver_type = value.to_owned();
     }
 
     /// `handleEdit(idx)`: open the form seeded with the row's system.
-    pub(crate) fn begin_edit(&mut self, idx: usize) {
+    pub fn begin_edit(&mut self, idx: usize) {
         if let Some(prompt) = self.prompts.get(idx) {
             self.editing_idx = Some(idx);
             self.edit_system = TextEdit::new(prompt.system.clone());
@@ -162,14 +162,14 @@ impl PromptSettingsSectionState {
     }
 
     /// The edit's cancel.
-    pub(crate) fn cancel_edit(&mut self) {
+    pub fn cancel_edit(&mut self) {
         self.editing_idx = None;
     }
 
     /// `handleSave`'s entry build (`{ driverType, scenario, system }`)
     /// — the CURRENT driver filter rides (the `*` sentinel verbatim,
     /// React sends it as-is) — plus the 2s feedback window.
-    pub(crate) fn begin_save(&mut self, now: f64) -> Option<(PromptOverrideEntry, crate::commands::ai::AiRequest)> {
+    pub fn begin_save(&mut self, now: f64) -> Option<(PromptOverrideEntry, crate::commands::ai::AiRequest)> {
         let idx = self.editing_idx?;
         let prompt = self.prompts.get(idx)?;
         let entry = PromptOverrideEntry {
@@ -186,7 +186,7 @@ impl PromptSettingsSectionState {
 
     /// `handleReset(p)`: the warning confirm's gate — `None` refuses
     /// (the dialog opened), `Some(request)` proceeds.
-    pub(crate) fn begin_reset(&mut self, idx: usize) -> Option<crate::commands::ai::AiRequest> {
+    pub fn begin_reset(&mut self, idx: usize) -> Option<crate::commands::ai::AiRequest> {
         let prompt = self.prompts.get(idx)?;
         // Only a user source may reset (the button's own rule; the
         // guard here keeps the plan total).
@@ -211,7 +211,7 @@ impl PromptSettingsSectionState {
     /// The confirm answered: `true` proceeds with the removal (the
     /// resetDone feedback arms), `false` cancels. Either way the
     /// dialog closes (the `handleClose` both buttons run).
-    pub(crate) fn resolve_reset(&mut self, ok: bool, now: f64) -> Option<crate::commands::ai::AiRequest> {
+    pub fn resolve_reset(&mut self, ok: bool, now: f64) -> Option<crate::commands::ai::AiRequest> {
         let answered = self.confirm.answer_pending(ok);
         if answered != Some(ok) {
             // A stale answer (a superseded request): nothing.
@@ -228,7 +228,7 @@ impl PromptSettingsSectionState {
     }
 
     /// Whether the feedback line shows.
-    pub(crate) fn feedback(&self, now: f64) -> Option<&'static str> {
+    pub fn feedback(&self, now: f64) -> Option<&'static str> {
         if self.feedback_until.is_some_and(|until| now < until) {
             self.feedback_key
         } else {
@@ -239,7 +239,7 @@ impl PromptSettingsSectionState {
 
 /// `PromptSettingsSection()`: the section over the state, the host's
 /// driver registry, and the action slots.
-pub(crate) struct PromptSettingsSection<'a, S: 'static> {
+pub struct PromptSettingsSection<'a, S: 'static> {
     state: &'a PromptSettingsSectionState,
     dark: bool,
     now: f64,
@@ -261,7 +261,7 @@ pub(crate) struct PromptSettingsSection<'a, S: 'static> {
 impl<'a, S: 'static> PromptSettingsSection<'a, S> {
     /// The section over the state, the clock, the driver options and
     /// the edit lens.
-    pub(crate) fn new(
+    pub fn new(
         state: &'a PromptSettingsSectionState,
         dark: bool,
         now: f64,
@@ -285,43 +285,43 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
     }
 
     /// The driver filter's choose (`setDriverType`).
-    pub(crate) fn on_set_driver_type(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_set_driver_type(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_set_driver_type = Some(Rc::new(f));
         self
     }
     /// The driver select's open toggle.
-    pub(crate) fn on_toggle_driver_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_driver_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_driver_select = Some(Rc::new(f));
         self
     }
     /// The driver select's close.
-    pub(crate) fn on_close_driver_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_driver_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_driver_select = Some(Rc::new(f));
         self
     }
     /// One card's edit button.
-    pub(crate) fn on_begin_edit(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_begin_edit(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_begin_edit = Some(Rc::new(f));
         self
     }
     /// The edit form's save.
-    pub(crate) fn on_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save = Some(Rc::new(f));
         self
     }
     /// One card's reset button (opens the confirm).
-    pub(crate) fn on_begin_reset(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_begin_reset(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_begin_reset = Some(Rc::new(f));
         self
     }
     /// The confirm dialog's answer.
-    pub(crate) fn on_reset_resolved(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_reset_resolved(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_reset_resolved = Some(Rc::new(f));
         self
     }
 
     /// The section body (the confirm dialog lands in `layer`).
-    pub(crate) fn build(self, layer: &mut Vec<El>) -> El {
+    pub fn build(self, layer: &mut Vec<El>) -> El {
         let dark = self.dark;
         let k = kit(dark);
         let state = self.state;

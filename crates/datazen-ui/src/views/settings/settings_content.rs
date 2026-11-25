@@ -122,14 +122,14 @@ const BODY_MAX_WIDTH: f32 = 672.0;
 
 /// `renderSectionContributions`'s target sections.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ContributionTarget {
+pub enum ContributionTarget {
     General,
     Editor,
     Appearance,
 }
 
 /// One contribution item's control (the React `item.type` arms).
-pub(crate) enum ContributionControl {
+pub enum ContributionControl {
     /// `type: 'boolean'` — a `ToggleRow`.
     Boolean(bool),
     /// `type: 'select'` — the options and the current value.
@@ -143,30 +143,30 @@ pub(crate) enum ContributionControl {
     Custom(El),
 }
 
-pub(crate) struct ContributionItem {
-    pub(crate) key: String,
-    pub(crate) label: String,
-    pub(crate) hint: Option<String>,
-    pub(crate) control: ContributionControl,
+pub struct ContributionItem {
+    pub key: String,
+    pub label: String,
+    pub hint: Option<String>,
+    pub control: ContributionControl,
 }
 
 /// One extension's settings contribution (the
 /// `enhanced.settingsContributions` entry).
-pub(crate) struct SettingsContribution {
-    pub(crate) extension_id: String,
-    pub(crate) target: ContributionTarget,
-    pub(crate) group_title: Option<String>,
-    pub(crate) group_description: Option<String>,
+pub struct SettingsContribution {
+    pub extension_id: String,
+    pub target: ContributionTarget,
+    pub group_title: Option<String>,
+    pub group_description: Option<String>,
     /// `renderGroup` — the host's prebuilt group element; when set
     /// the shell renders it alone inside the keyed group div.
-    pub(crate) group: Option<El>,
-    pub(crate) items: Vec<ContributionItem>,
+    pub group: Option<El>,
+    pub items: Vec<ContributionItem>,
 }
 
 /// `SettingsContent({ initialSection, onBack })` — the shell over the
 /// state, the capabilities, the view-model inputs and the host's
 /// action slots.
-pub(crate) struct SettingsContent<'a, S: 'static> {
+pub struct SettingsContent<'a, S: 'static> {
     state: &'a SettingsContentState,
     dark: bool,
     /// `formatShortcutForDisplay`'s `isMac` branch (the host's
@@ -218,7 +218,7 @@ pub(crate) struct SettingsContent<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> SettingsContent<'a, S> {
-    pub(crate) fn new(state: &'a SettingsContentState, dark: bool, is_mac: bool) -> Self {
+    pub fn new(state: &'a SettingsContentState, dark: bool, is_mac: bool) -> Self {
         Self {
             state,
             dark,
@@ -264,7 +264,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
 
     // ---- view-model inputs ----
 
-    pub(crate) fn capabilities(mut self, caps: &'a PlatformCapabilities) -> Self {
+    pub fn capabilities(mut self, caps: &'a PlatformCapabilities) -> Self {
         self.capabilities = Some(caps);
         self
     }
@@ -272,7 +272,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
     /// The language select's options: the built-ins plus the
     /// installed packs and the extension locales (deduped by value —
     /// the state module's `languageOptions` memo).
-    pub(crate) fn language_options(
+    pub fn language_options(
         mut self,
         installed_packs: &[(String, String)],
         extension_locales: &[(String, String)],
@@ -285,80 +285,80 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         self
     }
 
-    pub(crate) fn syntax_presets(mut self, presets: Vec<(String, String)>) -> Self {
+    pub fn syntax_presets(mut self, presets: Vec<(String, String)>) -> Self {
         self.syntax_presets = presets;
         self
     }
 
-    pub(crate) fn contributions(mut self, contributions: Vec<SettingsContribution>) -> Self {
+    pub fn contributions(mut self, contributions: Vec<SettingsContribution>) -> Self {
         self.contributions = contributions;
         self
     }
 
     // ---- the child section slots ----
 
-    pub(crate) fn language_packs_card(mut self, section: Option<El>) -> Self {
+    pub fn language_packs_card(mut self, section: Option<El>) -> Self {
         self.language_packs_card = section;
         self
     }
-    pub(crate) fn update_section(mut self, section: Option<El>) -> Self {
+    pub fn update_section(mut self, section: Option<El>) -> Self {
         self.update_section = section;
         self
     }
-    pub(crate) fn table_data_section(mut self, section: Option<El>) -> Self {
+    pub fn table_data_section(mut self, section: Option<El>) -> Self {
         self.table_data_section = section;
         self
     }
-    pub(crate) fn sql_snippets_card(mut self, section: Option<El>) -> Self {
+    pub fn sql_snippets_card(mut self, section: Option<El>) -> Self {
         self.sql_snippets_card = section;
         self
     }
-    pub(crate) fn appearance_section(mut self, section: Option<El>) -> Self {
+    pub fn appearance_section(mut self, section: Option<El>) -> Self {
         self.appearance_section = section;
         self
     }
-    pub(crate) fn ai_section(mut self, section: Option<El>) -> Self {
+    pub fn ai_section(mut self, section: Option<El>) -> Self {
         self.ai_section = section;
         self
     }
-    pub(crate) fn prompts_section(mut self, section: Option<El>) -> Self {
+    pub fn prompts_section(mut self, section: Option<El>) -> Self {
         self.prompts_section = section;
         self
     }
-    pub(crate) fn mcp_server_section(mut self, section: Option<El>) -> Self {
+    pub fn mcp_server_section(mut self, section: Option<El>) -> Self {
         self.mcp_server_section = section;
         self
     }
-    pub(crate) fn mcp_client_section(mut self, section: Option<El>) -> Self {
+    pub fn mcp_client_section(mut self, section: Option<El>) -> Self {
         self.mcp_client_section = section;
         self
     }
-    pub(crate) fn tunnel_section(mut self, section: Option<El>) -> Self {
+    pub fn tunnel_section(mut self, section: Option<El>) -> Self {
         self.tunnel_section = section;
         self
     }
-    pub(crate) fn extensions_section(mut self, section: Option<El>) -> Self {
+    pub fn extensions_section(mut self, section: Option<El>) -> Self {
         self.extensions_section = section;
         self
     }
-    pub(crate) fn data_cleanup_section(mut self, section: Option<El>) -> Self {
+    pub fn data_cleanup_section(mut self, section: Option<El>) -> Self {
         self.data_cleanup_section = section;
         self
     }
-    pub(crate) fn sql_syntax_preview(mut self, preview: Option<El>) -> Self {
+    pub fn sql_syntax_preview(mut self, preview: Option<El>) -> Self {
         self.sql_syntax_preview = preview;
         self
     }
 
     // ---- the host action slots ----
 
-    pub(crate) fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_back = Some(Rc::new(f));
         self
     }
 
     /// The nav item press (`setActiveSection(sec.id)`).
-    pub(crate) fn on_select_section(
+    pub fn on_select_section(
         mut self,
         f: impl Fn(&mut S, &'static str) + 'static,
     ) -> Self {
@@ -369,7 +369,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
     /// `updateField(key, value)` — the store write half (the host
     /// also applies the optimistic mirror via
     /// [`SettingsContentState::apply_field`]).
-    pub(crate) fn on_update_field(
+    pub fn on_update_field(
         mut self,
         f: impl Fn(&mut S, SettingsField) + 'static,
     ) -> Self {
@@ -379,7 +379,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
 
     /// `updateExtensionSetting(extensionId, key, value)` — the
     /// contribution write.
-    pub(crate) fn on_extension_setting(
+    pub fn on_extension_setting(
         mut self,
         f: impl Fn(&mut S, String, String, String) + 'static,
     ) -> Self {
@@ -387,7 +387,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         self
     }
 
-    pub(crate) fn on_select_toggle(
+    pub fn on_select_toggle(
         mut self,
         f: impl Fn(&mut S, SettingsSelect) + 'static,
     ) -> Self {
@@ -395,7 +395,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         self
     }
 
-    pub(crate) fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_close = Some(Rc::new(f));
         self
     }
@@ -403,7 +403,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
     /// The contribution selects' toggle — the id is
     /// `"{extensionId}/{key}"` (the state's
     /// `open_contribution_select` slot).
-    pub(crate) fn on_contribution_toggle(
+    pub fn on_contribution_toggle(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -411,26 +411,26 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         self
     }
 
-    pub(crate) fn on_contribution_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_contribution_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_contribution_close = Some(Rc::new(f));
         self
     }
 
     /// `settingsCommands.openLogDir()` — the View Logs button.
-    pub(crate) fn on_open_log_dir(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_log_dir(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_log_dir = Some(Rc::new(f));
         self
     }
 
     /// `pickPath` — the log path input's browse button.
-    pub(crate) fn on_browse_log_path(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_browse_log_path(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_browse_log_path = Some(Rc::new(f));
         self
     }
 
     // ---- the text input lenses ----
 
-    pub(crate) fn pool_size_edit(
+    pub fn pool_size_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -438,7 +438,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         self
     }
 
-    pub(crate) fn font_family_edit(
+    pub fn font_family_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -446,7 +446,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         self
     }
 
-    pub(crate) fn log_path_edit(
+    pub fn log_path_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -455,7 +455,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
     }
 
     /// One lens for all six keymap inputs, keyed by action id.
-    pub(crate) fn keymap_edit(
+    pub fn keymap_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S, &'static str) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -466,7 +466,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
     /// One lens for every contribution text/number input, keyed
     /// `(extensionId, item key)`. The key borrows are free (only the
     /// returned edit ties to the state borrow).
-    pub(crate) fn contribution_edit(
+    pub fn contribution_edit(
         mut self,
         f: impl for<'b, 'd> Fn(&'b mut S, &'d str, &'d str) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -477,7 +477,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
     // ---- build ----
 
     /// The page: the nav rail and the content pane in one row.
-    pub(crate) fn build(self) -> El {
+    pub fn build(self) -> El {
         let k = kit(self.dark);
         let active = self.state.active_section;
         let sections = available_sections(self.capabilities);

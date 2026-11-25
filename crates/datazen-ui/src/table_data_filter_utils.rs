@@ -30,7 +30,7 @@ use crate::components::filter::{FilterCondition, FilterConnector, FilterValue};
 /// (`lib/filterOperators.ts:30`): none, one literal, a pair
 /// (`between`), or a token list (`in`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FilterValueInputKind {
+pub enum FilterValueInputKind {
     None,
     Single,
     Pair,
@@ -41,7 +41,7 @@ pub(crate) enum FilterValueInputKind {
 /// that the completeness predicate reads: which operators carry no value,
 /// which take a pair, and which take a token list. Everything else is a
 /// single literal.
-pub(crate) fn value_input_for(operator: &str) -> FilterValueInputKind {
+pub fn value_input_for(operator: &str) -> FilterValueInputKind {
     match operator {
         "isNull" | "isNotNull" | "isEmpty" | "isNotEmpty" => FilterValueInputKind::None,
         "between" | "notBetween" => FilterValueInputKind::Pair,
@@ -54,7 +54,7 @@ pub(crate) fn value_input_for(operator: &str) -> FilterValueInputKind {
 
 /// `isCompleteFilter` (`filterUtils.ts:22`): whether a condition carries
 /// everything it needs to be sent to the database.
-pub(crate) fn is_complete_filter(filter: &FilterCondition) -> bool {
+pub fn is_complete_filter(filter: &FilterCondition) -> bool {
     if filter.column.is_empty() {
         return false;
     }
@@ -113,7 +113,7 @@ fn is_filled(value: &str) -> bool {
 /// and the seed path clones the state-side mirror
 /// (`connection_state::FilterCondition`). `to_vec` is the deep clone for
 /// either family; the chip-side call sites are unchanged.
-pub(crate) fn clone_filters<T: Clone>(filters: &[T]) -> Vec<T> {
+pub fn clone_filters<T: Clone>(filters: &[T]) -> Vec<T> {
     filters.to_vec()
 }
 
@@ -121,7 +121,7 @@ pub(crate) fn clone_filters<T: Clone>(filters: &[T]) -> Vec<T> {
 /// applied list — same wide logic and the same conditions in the same
 /// order (React's `JSON.stringify` comparison is order-sensitive; the
 /// typed conditions compare field by field with the same meaning).
-pub(crate) fn filter_draft_equals_applied(
+pub fn filter_draft_equals_applied(
     draft_filters: &[FilterCondition],
     draft_logic: FilterConnector,
     applied_filters: &[FilterCondition],

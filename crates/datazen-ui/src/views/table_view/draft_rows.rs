@@ -25,57 +25,57 @@ use serde_json::Value;
 /// One insert draft: a stable id and its written columns.
 #[allow(dead_code)] // VM mirror; remove when the host owns drafts.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DraftRowVm {
-    pub(crate) id: String,
+pub struct DraftRowVm {
+    pub id: String,
     /// Column -> value. `Null` writes SQL NULL; an absent key writes nothing.
-    pub(crate) values: BTreeMap<String, Value>,
+    pub values: BTreeMap<String, Value>,
 }
 
 /// The host-owned draft snapshot plus the hook's two UI-state fields.
 #[allow(dead_code)] // VM surface; remove when the host wires draft rows.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DraftRowsVm {
+pub struct DraftRowsVm {
     /// Drafts in creation order (never derived from a row index).
-    pub(crate) rows: Vec<DraftRowVm>,
-    pub(crate) active_draft_id: Option<String>,
+    pub rows: Vec<DraftRowVm>,
+    pub active_draft_id: Option<String>,
     /// The cell being edited: (draft id, column).
-    pub(crate) editing_draft: Option<(String, String)>,
+    pub editing_draft: Option<(String, String)>,
     /// React's `enabled`: a read-only panel has no insert entry point at all.
-    pub(crate) enabled: bool,
+    pub enabled: bool,
     /// A mutating draft operation invalidates the previously previewed plan.
-    pub(crate) preview_stale: bool,
+    pub preview_stale: bool,
 }
 
 #[allow(dead_code)] // pure helpers; remove with the host.
 impl DraftRowsVm {
     /// React `draftInsertCount` / `orderedDrafts` (rows are already in order).
-    pub(crate) fn draft_insert_count(&self) -> usize {
+    pub fn draft_insert_count(&self) -> usize {
         self.rows.len()
     }
 
-    pub(crate) fn ordered_drafts(&self) -> &[DraftRowVm] {
+    pub fn ordered_drafts(&self) -> &[DraftRowVm] {
         &self.rows
     }
 
     /// React `enabled` guard: a read-only panel cannot append a draft.
-    pub(crate) fn can_add(&self) -> bool {
+    pub fn can_add(&self) -> bool {
         self.enabled
     }
 
     /// React `hasPendingWork` over drafts only.
-    pub(crate) fn has_draft_work(&self) -> bool {
+    pub fn has_draft_work(&self) -> bool {
         !self.rows.is_empty()
     }
 
     /// React's three-state distinction: a draft is empty when it writes no
     /// column at all ("all defaults"), not when its columns are all NULL.
-    pub(crate) fn is_empty_draft(draft: &DraftRowVm) -> bool {
+    pub fn is_empty_draft(draft: &DraftRowVm) -> bool {
         draft.values.is_empty()
     }
 
     /// Append an empty draft with a host-supplied id. Returns the id, or
     /// `None` when the panel is read-only (React returns `null`).
-    pub(crate) fn add_draft_row(&mut self, draft_id: String) -> Option<String> {
+    pub fn add_draft_row(&mut self, draft_id: String) -> Option<String> {
         if !self.enabled {
             return None;
         }
@@ -91,7 +91,7 @@ impl DraftRowsVm {
     /// Write one cell. `Some(value)` writes (including `Value::Null`);
     /// `None` removes the column key entirely. React clears `editingDraft`
     /// after every write, successful or not.
-    pub(crate) fn set_draft_value(
+    pub fn set_draft_value(
         &mut self,
         draft_id: &str,
         column: &str,
@@ -115,19 +115,19 @@ impl DraftRowsVm {
     }
 
     /// React `startDraftEdit`: focus the row and open the named cell editor.
-    pub(crate) fn start_draft_edit(&mut self, draft_id: String, column: String) {
+    pub fn start_draft_edit(&mut self, draft_id: String, column: String) {
         self.active_draft_id = Some(draft_id.clone());
         self.editing_draft = Some((draft_id, column));
     }
 
     /// React `cancelDraftEdit`: leave the editor without writing anything.
-    pub(crate) fn cancel_draft_edit(&mut self) {
+    pub fn cancel_draft_edit(&mut self) {
         self.editing_draft = None;
     }
 
     /// React `removeDraftRow`: drop the row and clear the interaction fields
     /// that pointed at it, leaving unrelated active/editing drafts untouched.
-    pub(crate) fn remove_draft_row(&mut self, draft_id: &str) -> bool {
+    pub fn remove_draft_row(&mut self, draft_id: &str) -> bool {
         // React applies the clearing setters regardless of whether the store
         // row existed: a stale active/editing id must not survive a removal.
         if self.active_draft_id.as_deref() == Some(draft_id) {
@@ -151,7 +151,7 @@ impl DraftRowsVm {
 
     /// React `duplicateDraftRow`: deep-copy the cells into a new draft appended
     /// at the end of the creation order. A read-only panel cannot duplicate.
-    pub(crate) fn duplicate_draft_row(&mut self, draft_id: &str, new_id: String) -> bool {
+    pub fn duplicate_draft_row(&mut self, draft_id: &str, new_id: String) -> bool {
         if !self.enabled {
             return false;
         }
@@ -168,13 +168,13 @@ impl DraftRowsVm {
     }
 
     /// React `activateDraftRow` (pointer / keyboard focus).
-    pub(crate) fn activate_draft_row(&mut self, draft_id: String) {
+    pub fn activate_draft_row(&mut self, draft_id: String) {
         self.active_draft_id = Some(draft_id);
     }
 
     /// React `removeEmptyDraftRows` (Escape): drop only drafts that write no
     /// column. Filled drafts are never discarded by a key press.
-    pub(crate) fn remove_empty_draft_rows(&mut self) -> usize {
+    pub fn remove_empty_draft_rows(&mut self) -> usize {
         let empty_ids: Vec<String> = self
             .rows
             .iter()
@@ -202,7 +202,7 @@ impl DraftRowsVm {
 
     /// React `withDraftRowsFromCopy` (DBR-02): append prefilled drafts in copy
     /// order. `Null` is explicit NULL, an absent key writes nothing.
-    pub(crate) fn add_draft_rows_from_copy(&mut self, rows: &[(String, BTreeMap<String, Value>)]) -> Vec<String> {
+    pub fn add_draft_rows_from_copy(&mut self, rows: &[(String, BTreeMap<String, Value>)]) -> Vec<String> {
         // React `withDraftRowsFromCopy` guards only on rows.length === 0: a
         // read-only panel may still paste prefilled rows as drafts.
         if rows.is_empty() {
@@ -225,17 +225,17 @@ impl DraftRowsVm {
 /// an empty identity, sorted changed columns and the written values.
 #[allow(dead_code)] // pure result; remove when the host builds change requests.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DraftWire {
-    pub(crate) insert_marked: bool,
-    pub(crate) changed_columns: Vec<String>,
-    pub(crate) current_values: BTreeMap<String, Value>,
-    pub(crate) delete_marked: bool,
+pub struct DraftWire {
+    pub insert_marked: bool,
+    pub changed_columns: Vec<String>,
+    pub current_values: BTreeMap<String, Value>,
+    pub delete_marked: bool,
 }
 
 /// React `draftsForWire` entry: changed columns are sorted; explicit NULL stays
 /// in `current_values` and a missing key never becomes a NULL entry.
 #[allow(dead_code)] // pure helper; remove when the wire port lands.
-pub(crate) fn draft_wire(draft: &DraftRowVm) -> DraftWire {
+pub fn draft_wire(draft: &DraftRowVm) -> DraftWire {
     DraftWire {
         insert_marked: true,
         changed_columns: draft.values.keys().cloned().collect(),

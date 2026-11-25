@@ -62,7 +62,7 @@ type ToggleFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 type NameFn<S> = Rc<dyn Fn(&mut S, String) + 'static>;
 
 /// The objects step builder, generic over the owning state `S`.
-pub(crate) struct SchemaDiffObjectsStep<'a, S: 'static> {
+pub struct SchemaDiffObjectsStep<'a, S: 'static> {
     loading: bool,
     tables: &'a [SchemaDiffTablePickVm],
     on_toggle: Option<NameFn<S>>,
@@ -72,7 +72,7 @@ pub(crate) struct SchemaDiffObjectsStep<'a, S: 'static> {
 
 impl<'a, S: 'static> SchemaDiffObjectsStep<'a, S> {
     /// React's `loading` / `tables` props.
-    pub(crate) fn new(loading: bool, tables: &'a [SchemaDiffTablePickVm]) -> Self {
+    pub fn new(loading: bool, tables: &'a [SchemaDiffTablePickVm]) -> Self {
         Self {
             loading,
             tables,
@@ -83,25 +83,25 @@ impl<'a, S: 'static> SchemaDiffObjectsStep<'a, S> {
     }
 
     /// React's `onToggle(name)`.
-    pub(crate) fn on_toggle(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle = Some(Rc::new(f));
         self
     }
 
     /// React's `onSelectAll`.
-    pub(crate) fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_all = Some(Rc::new(f));
         self
     }
 
     /// React's `onSelectNone`.
-    pub(crate) fn on_select_none(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_none(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_none = Some(Rc::new(f));
         self
     }
 
     /// Paint the step (React's three branches).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
 
         // --- The loading branch: a centered 2xl accent spinner. ---

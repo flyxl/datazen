@@ -9,7 +9,7 @@ use rune::TextEdit;
 /// React `ValueSearchMode` + its i18n label key.
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ValueSearchMode {
+pub enum ValueSearchMode {
     Contains,
     NotContains,
     Exact,
@@ -18,7 +18,7 @@ pub(crate) enum ValueSearchMode {
 }
 
 impl ValueSearchMode {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Contains => "contains",
             Self::NotContains => "notContains",
@@ -28,7 +28,7 @@ impl ValueSearchMode {
         }
     }
 
-    pub(crate) fn label_key(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
             Self::Contains => "valueSearch.mode.contains",
             Self::NotContains => "valueSearch.mode.notContains",
@@ -39,7 +39,7 @@ impl ValueSearchMode {
     }
 }
 
-pub(crate) fn mode_from_str(value: &str) -> ValueSearchMode {
+pub fn mode_from_str(value: &str) -> ValueSearchMode {
     match value {
         "notContains" => ValueSearchMode::NotContains,
         "exact" => ValueSearchMode::Exact,
@@ -49,7 +49,7 @@ pub(crate) fn mode_from_str(value: &str) -> ValueSearchMode {
     }
 }
 
-pub(crate) const MODES: [ValueSearchMode; 5] = [
+pub const MODES: [ValueSearchMode; 5] = [
     ValueSearchMode::Contains,
     ValueSearchMode::NotContains,
     ValueSearchMode::Exact,
@@ -60,7 +60,7 @@ pub(crate) const MODES: [ValueSearchMode; 5] = [
 /// React `ValueSearchTypeScope`.
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TypeScope {
+pub enum TypeScope {
     Text,
     TextNumber,
     TextDatetime,
@@ -68,7 +68,7 @@ pub(crate) enum TypeScope {
 }
 
 impl TypeScope {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Text => "text",
             Self::TextNumber => "text+number",
@@ -77,7 +77,7 @@ impl TypeScope {
         }
     }
 
-    pub(crate) fn label_key(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
             Self::Text => "valueSearch.types.text",
             Self::TextNumber => "valueSearch.types.textNumber",
@@ -87,7 +87,7 @@ impl TypeScope {
     }
 }
 
-pub(crate) fn type_scope_from_str(value: &str) -> TypeScope {
+pub fn type_scope_from_str(value: &str) -> TypeScope {
     match value {
         "text+number" => TypeScope::TextNumber,
         "text+datetime" => TypeScope::TextDatetime,
@@ -96,7 +96,7 @@ pub(crate) fn type_scope_from_str(value: &str) -> TypeScope {
     }
 }
 
-pub(crate) fn type_scopes_for_driver(driver: Option<&str>) -> Vec<TypeScope> {
+pub fn type_scopes_for_driver(driver: Option<&str>) -> Vec<TypeScope> {
     // React's DB_REGISTRY declaration: MySQL/MariaDB/SQLite can text-match
     // numbers and datetimes; PostgreSQL (and unknown drivers) declare nothing.
     let extra = matches!(driver, Some("mysql") | Some("mariadb") | Some("sqlite"));
@@ -109,7 +109,7 @@ pub(crate) fn type_scopes_for_driver(driver: Option<&str>) -> Vec<TypeScope> {
     scopes
 }
 
-pub(crate) fn cell_types_for_scope(scope: TypeScope) -> BTreeSet<&'static str> {
+pub fn cell_types_for_scope(scope: TypeScope) -> BTreeSet<&'static str> {
     let mut types = BTreeSet::from(["string", "enum", "text", "char", "varchar"]);
     match scope {
         TypeScope::TextNumber | TypeScope::TextNumberDatetime => {
@@ -131,7 +131,7 @@ pub(crate) fn cell_types_for_scope(scope: TypeScope) -> BTreeSet<&'static str> {
 /// React `Scope`.
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SearchScope {
+pub enum SearchScope {
     All,
     Selected,
 }
@@ -139,7 +139,7 @@ pub(crate) enum SearchScope {
 /// React `ValueSearchStatus`.
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum SearchStatus {
+pub enum SearchStatus {
     #[default]
     Idle,
     Running,
@@ -149,7 +149,7 @@ pub(crate) enum SearchStatus {
 }
 
 impl SearchStatus {
-    pub(crate) fn status_key(self) -> &'static str {
+    pub fn status_key(self) -> &'static str {
         match self {
             Self::Idle => "valueSearch.status.idle",
             Self::Running => "valueSearch.status.running",
@@ -162,14 +162,14 @@ impl SearchStatus {
 
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SearchTarget {
+pub struct SearchTarget {
     pub table: String,
     pub schema: Option<String>,
 }
 
 /// React `targetKey` — the schema-qualified identity.
 #[allow(dead_code)] // pure rule; pinned by the dialog tests.
-pub(crate) fn target_key(target: &SearchTarget) -> String {
+pub fn target_key(target: &SearchTarget) -> String {
     match target.schema.as_deref() {
         Some(schema) if !schema.is_empty() => format!("{schema}.{}", target.table),
         _ => target.table.clone(),
@@ -178,13 +178,13 @@ pub(crate) fn target_key(target: &SearchTarget) -> String {
 
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Debug)]
-pub(crate) struct TableVm {
+pub struct TableVm {
     pub name: String,
     pub schema: Option<String>,
     pub table_type: String,
 }
 
-pub(crate) fn value_search_targets(tables: &[TableVm]) -> Vec<SearchTarget> {
+pub fn value_search_targets(tables: &[TableVm]) -> Vec<SearchTarget> {
     tables
         .iter()
         .filter(|table| table.table_type == "table")
@@ -197,7 +197,7 @@ pub(crate) fn value_search_targets(tables: &[TableVm]) -> Vec<SearchTarget> {
 
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SearchResult {
+pub struct SearchResult {
     pub table: String,
     pub schema: Option<String>,
     /// `None` means the table could not be searched.
@@ -208,7 +208,7 @@ pub(crate) struct SearchResult {
 
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SearchProgress {
+pub struct SearchProgress {
     pub status: SearchStatus,
     pub completed: usize,
     pub total: usize,
@@ -217,7 +217,7 @@ pub(crate) struct SearchProgress {
     pub elapsed_ms: Option<u64>,
 }
 
-pub(crate) fn with_hits(results: &[SearchResult]) -> Vec<SearchResult> {
+pub fn with_hits(results: &[SearchResult]) -> Vec<SearchResult> {
     let mut hits: Vec<SearchResult> = results
         .iter()
         .filter(|result| result.matches.is_some_and(|count| count > 0))
@@ -229,14 +229,14 @@ pub(crate) fn with_hits(results: &[SearchResult]) -> Vec<SearchResult> {
 
 /// React `rankTables` — the three highest hit counts first.
 #[allow(dead_code)] // pure rule; pinned by the dialog tests.
-pub(crate) fn rank_tables(results: &[SearchResult], limit: usize) -> Vec<SearchResult> {
+pub fn rank_tables(results: &[SearchResult], limit: usize) -> Vec<SearchResult> {
     with_hits(results).into_iter().take(limit).collect()
 }
 
 /// What a locate click asks the host for: the scan's own question.
 #[allow(dead_code)] // host port; consumer: the navigator host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct LocateIntent {
+pub struct LocateIntent {
     pub table: String,
     pub schema: Option<String>,
     pub database: String,
@@ -248,7 +248,7 @@ pub(crate) struct LocateIntent {
 /// A host-executed scan request (the driver + IPC live in the host).
 #[allow(dead_code)] // host port; consumer: the navigator host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StartRequest {
+pub struct StartRequest {
     pub db_session_id: String,
     pub database: String,
     pub targets: Vec<SearchTarget>,
@@ -258,7 +258,7 @@ pub(crate) struct StartRequest {
 }
 
 #[allow(dead_code)] // host port; consumer: the navigator host (not wired).
-pub(crate) struct ValueSearchHostPort<S> {
+pub struct ValueSearchHostPort<S> {
     pub on_close: Option<Rc<dyn Fn(&mut S) + 'static>>,
     pub on_start: Option<Rc<dyn Fn(&mut S, StartRequest) + 'static>>,
     pub on_pause: Option<Rc<dyn Fn(&mut S) + 'static>>,
@@ -297,7 +297,7 @@ impl<S> Default for ValueSearchHostPort<S> {
 /// The dialog's observable state (React's `useState` values).
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Debug)]
-pub(crate) struct ValueSearchVm {
+pub struct ValueSearchVm {
     pub open: bool,
     pub db_session_id: String,
     pub database: String,
@@ -336,7 +336,7 @@ impl Default for ValueSearchVm {
     }
 }
 
-pub(crate) fn is_busy(progress: Option<&SearchProgress>) -> bool {
+pub fn is_busy(progress: Option<&SearchProgress>) -> bool {
     matches!(
         progress.map(|p| p.status),
         Some(SearchStatus::Running) | Some(SearchStatus::Paused)

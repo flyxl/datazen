@@ -44,7 +44,7 @@ use crate::ui::toggle::Checkbox;
 /// Action emitted by a history entry card control.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) enum HistoryEntryAction {
+pub enum HistoryEntryAction {
     Copy,
     Open,
     Delete,
@@ -53,7 +53,7 @@ pub(crate) enum HistoryEntryAction {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl HistoryEntryAction {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Copy => "copy",
             Self::Open => "open",
@@ -66,7 +66,7 @@ impl HistoryEntryAction {
 /// Minimal view model for one history entry row.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct HistoryEntryVm {
+pub struct HistoryEntryVm {
     pub id: String,
     pub success: bool,
     pub database: Option<String>,
@@ -85,7 +85,7 @@ type CopyFn<S> = Box<dyn Fn(&mut S, String, &mut Tx) + 'static>;
 
 /// Builder for a history entry card.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct HistoryEntryCard<S: 'static> {
+pub struct HistoryEntryCard<S: 'static> {
     entry: HistoryEntryVm,
     connection_name: String,
     selected: bool,
@@ -99,7 +99,7 @@ pub(crate) struct HistoryEntryCard<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl<S: 'static> HistoryEntryCard<S> {
-    pub(crate) fn new(entry: HistoryEntryVm, connection_name: impl Into<String>) -> Self {
+    pub fn new(entry: HistoryEntryVm, connection_name: impl Into<String>) -> Self {
         Self {
             entry,
             connection_name: connection_name.into(),
@@ -112,28 +112,28 @@ impl<S: 'static> HistoryEntryCard<S> {
         }
     }
 
-    pub(crate) fn selected(mut self, selected: bool) -> Self {
+    pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
         self
     }
 
     /// Whether copy feedback (`common.copied`) is active for this entry.
-    pub(crate) fn copied(mut self, copied: bool) -> Self {
+    pub fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
     }
 
-    pub(crate) fn can_open(mut self, can_open: bool) -> Self {
+    pub fn can_open(mut self, can_open: bool) -> Self {
         self.can_open = can_open;
         self
     }
 
-    pub(crate) fn on_toggle_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_select = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn on_action(
+    pub fn on_action(
         mut self,
         f: impl Fn(&mut S, HistoryEntryAction, String) + 'static,
     ) -> Self {
@@ -142,12 +142,12 @@ impl<S: 'static> HistoryEntryCard<S> {
     }
 
     /// Hook invoked after SQL is copied and feedback wake scheduled; use to record copied-until.
-    pub(crate) fn on_copy(mut self, f: impl Fn(&mut S, String, &mut Tx) + 'static) -> Self {
+    pub fn on_copy(mut self, f: impl Fn(&mut S, String, &mut Tx) + 'static) -> Self {
         self.on_copy = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let HistoryEntryCard {
             entry,

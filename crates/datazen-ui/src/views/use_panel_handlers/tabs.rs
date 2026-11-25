@@ -7,13 +7,13 @@ use super::model::{
 
 /// React `handleClosePanel`: remove one id.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn close_panel(panel_id: &str) -> PanelEffect {
+pub fn close_panel(panel_id: &str) -> PanelEffect {
     PanelEffect::Close { panel_ids: vec![panel_id.to_owned()] }
 }
 
 /// React `closeOtherPanels`: keep exactly `keep_id`.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn close_other_panels(panels: &[PanelVm], keep_id: &str) -> PanelEffect {
+pub fn close_other_panels(panels: &[PanelVm], keep_id: &str) -> PanelEffect {
     PanelEffect::Close {
         panel_ids: panels.iter().filter(|panel| panel.id != keep_id).map(|panel| panel.id.clone()).collect(),
     }
@@ -21,14 +21,14 @@ pub(crate) fn close_other_panels(panels: &[PanelVm], keep_id: &str) -> PanelEffe
 
 /// React `closeAllPanels`: remove every id.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn close_all_panels(panels: &[PanelVm]) -> PanelEffect {
+pub fn close_all_panels(panels: &[PanelVm]) -> PanelEffect {
     PanelEffect::Close { panel_ids: panels.iter().map(|panel| panel.id.clone()).collect() }
 }
 
 /// React `closePanelsToTheRight` / `closePanelsToTheLeft`: strip by position in
 /// the store's panel order. A missing target id is a no-op.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn close_panels_side(panels: &[PanelVm], panel_id: &str, to_right: bool) -> PanelEffect {
+pub fn close_panels_side(panels: &[PanelVm], panel_id: &str, to_right: bool) -> PanelEffect {
     let Some(index) = panels.iter().position(|panel| panel.id == panel_id) else {
         return PanelEffect::None;
     };
@@ -46,7 +46,7 @@ pub(crate) fn close_panels_side(panels: &[PanelVm], panel_id: &str, to_right: bo
 /// `hasTabsToLeft`. The menu shows every entry but disables/hides those that do
 /// not apply; here we return only the applicable items in React's order.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn tab_context_menu_items(panels: &[PanelVm], panel_id: &str) -> Vec<TabMenuItem> {
+pub fn tab_context_menu_items(panels: &[PanelVm], panel_id: &str) -> Vec<TabMenuItem> {
     let idx = panels.iter().position(|panel| panel.id == panel_id);
     let mut items = vec![TabMenuItem::Close, TabMenuItem::CloseOthers];
     if idx.is_some_and(|index| index < panels.len().saturating_sub(1)) {
@@ -64,7 +64,7 @@ pub(crate) fn tab_context_menu_items(panels: &[PanelVm], panel_id: &str) -> Vec<
 /// `structureEditing` is kept when moving to structure and cleared otherwise;
 /// a view only changes `subTab`.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn set_sub_tab(panel: Option<&PanelVm>, sub_tab: SubTab) -> PanelEffect {
+pub fn set_sub_tab(panel: Option<&PanelVm>, sub_tab: SubTab) -> PanelEffect {
     let Some(panel) = panel else {
         return PanelEffect::None;
     };
@@ -89,7 +89,7 @@ pub(crate) fn set_sub_tab(panel: Option<&PanelVm>, sub_tab: SubTab) -> PanelEffe
 /// database it reloads just that database's tables, otherwise the whole
 /// connection.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn refresh(
+pub fn refresh(
     ctx: Option<&ConnectionContextVm>,
     current_database: Option<&str>,
 ) -> PanelEffect {

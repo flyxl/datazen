@@ -73,19 +73,19 @@ const BODY_MAX_HEIGHT: f32 = 400.0;
 /// The name / schema inputs (React's default `Input` height).
 const FIELD_HEIGHT: f32 = 36.0;
 
-pub(crate) struct AdminCreateDialog<'a, S: 'static> {
+pub struct AdminCreateDialog<'a, S: 'static> {
     state: &'a AdminCreateDialogState,
     host: Option<Rc<dyn Fn(&mut S) -> &mut AdminCreateDialogState>>,
 }
 
 impl<'a, S: 'static> AdminCreateDialog<'a, S> {
-    pub(crate) fn new(state: &'a AdminCreateDialogState) -> Self {
+    pub fn new(state: &'a AdminCreateDialogState) -> Self {
         Self { state, host: None }
     }
 
     /// The state accessor every button and field drives, e.g.
     /// `|state| &mut state.admin_create_dialog`.
-    pub(crate) fn host_mut(
+    pub fn host_mut(
         mut self,
         f: impl Fn(&mut S) -> &mut AdminCreateDialogState + 'static,
     ) -> Self {
@@ -97,7 +97,7 @@ impl<'a, S: 'static> AdminCreateDialog<'a, S> {
     /// `modal_layer` does for dialogs). Nothing is pushed when the dialog
     /// is closed — React's `Dialog open={open}` — or when no host
     /// accessor was given (see the module docs).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         let state = self.state;
         if !state.is_open() {
             return;

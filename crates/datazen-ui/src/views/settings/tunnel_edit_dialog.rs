@@ -82,19 +82,19 @@ const TEXT_XS_MEDIUM: TextStyle = TextStyle::new(12.0, 500.0);
 
 /// The dialog's state.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TunnelEditDialogState {
-    pub(crate) open: bool,
+pub struct TunnelEditDialogState {
+    pub open: bool,
     /// The entity being edited (`None` = a blank create form).
-    pub(crate) tunnel_id: Option<String>,
+    pub tunnel_id: Option<String>,
     /// The draft (the string-field model the carried module owns).
-    pub(crate) draft: TunnelDraft,
+    pub draft: TunnelDraft,
     /// The entity read in flight.
-    pub(crate) loading: bool,
+    pub loading: bool,
     /// The save in flight.
-    pub(crate) saving: bool,
+    pub saving: bool,
     /// Any edit landed since the open.
-    pub(crate) dirty: bool,
-    pub(crate) error: Option<DialogError>,
+    pub dirty: bool,
+    pub error: Option<DialogError>,
 }
 
 impl Default for TunnelEditDialogState {
@@ -116,7 +116,7 @@ impl TunnelEditDialogState {
     /// from a clean form — blank when creating (no read), the
     /// stored entity when editing (the host fetches `getTunnel`).
     /// Answers whether the read should run.
-    pub(crate) fn open_changed(&mut self, open: bool, tunnel_id: Option<&str>) -> bool {
+    pub fn open_changed(&mut self, open: bool, tunnel_id: Option<&str>) -> bool {
         self.open = open;
         self.tunnel_id = tunnel_id.map(str::to_owned);
         self.error = None;
@@ -143,7 +143,7 @@ impl TunnelEditDialogState {
     /// The entity read's answer (the `cancelled` guard: a closed or
     /// retargeted dialog's late answer never lands; the `finally`
     /// clears the loading either way for the live one).
-    pub(crate) fn note_entity(&mut self, draft: TunnelDraft) -> bool {
+    pub fn note_entity(&mut self, draft: TunnelDraft) -> bool {
         if !self.open || self.tunnel_id.is_none() {
             return false;
         }
@@ -153,7 +153,7 @@ impl TunnelEditDialogState {
     }
 
     /// The read answered `null` (the entity is gone).
-    pub(crate) fn note_entity_missing(&mut self) -> bool {
+    pub fn note_entity_missing(&mut self) -> bool {
         if !self.open || self.tunnel_id.is_none() {
             return false;
         }
@@ -164,7 +164,7 @@ impl TunnelEditDialogState {
     }
 
     /// The read's failure.
-    pub(crate) fn note_entity_error(&mut self, error: &str) -> bool {
+    pub fn note_entity_error(&mut self, error: &str) -> bool {
         if !self.open || self.tunnel_id.is_none() {
             return false;
         }
@@ -174,19 +174,19 @@ impl TunnelEditDialogState {
     }
 
     /// `setDraft((d) => ({ ...d, name }))` + dirty.
-    pub(crate) fn set_name(&mut self, name: String) {
+    pub fn set_name(&mut self, name: String) {
         self.dirty = true;
         self.draft.name = name;
     }
 
     /// `setDraft((d) => ({ ...d, kind }))` + dirty.
-    pub(crate) fn set_kind(&mut self, kind: SavedTunnelKind) {
+    pub fn set_kind(&mut self, kind: SavedTunnelKind) {
         self.dirty = true;
         self.draft.kind = kind;
     }
 
     /// `patchSsh` (a field-level patch + dirty).
-    pub(crate) fn patch_ssh(&mut self, patch: TunnelSshPatch) {
+    pub fn patch_ssh(&mut self, patch: TunnelSshPatch) {
         self.dirty = true;
         match patch {
             TunnelSshPatch::Host(v) => self.draft.ssh.host = v,
@@ -199,7 +199,7 @@ impl TunnelEditDialogState {
     }
 
     /// `patchJump`.
-    pub(crate) fn patch_jump(&mut self, patch: TunnelJumpPatch) {
+    pub fn patch_jump(&mut self, patch: TunnelJumpPatch) {
         self.dirty = true;
         match patch {
             TunnelJumpPatch::Enabled(v) => self.draft.ssh.jump.enabled = v,
@@ -213,7 +213,7 @@ impl TunnelEditDialogState {
     }
 
     /// `patchHttpProxy`.
-    pub(crate) fn patch_http_proxy(&mut self, patch: TunnelHttpProxyPatch) {
+    pub fn patch_http_proxy(&mut self, patch: TunnelHttpProxyPatch) {
         self.dirty = true;
         match patch {
             TunnelHttpProxyPatch::Host(v) => self.draft.http_proxy.host = v,
@@ -225,7 +225,7 @@ impl TunnelEditDialogState {
     }
 
     /// `patchWebSocket`.
-    pub(crate) fn patch_web_socket(&mut self, patch: TunnelWebSocketPatch) {
+    pub fn patch_web_socket(&mut self, patch: TunnelWebSocketPatch) {
         self.dirty = true;
         match patch {
             TunnelWebSocketPatch::Url(v) => self.draft.websocket.url = v,
@@ -235,17 +235,17 @@ impl TunnelEditDialogState {
     }
 
     /// `problem` — the draft's first unmet requirement.
-    pub(crate) fn problem(&self) -> Option<TunnelDraftProblem> {
+    pub fn problem(&self) -> Option<TunnelDraftProblem> {
         tunnel_draft_problem(&self.draft)
     }
 
     /// `pending` — `loading || saving`.
-    pub(crate) fn pending(&self) -> bool {
+    pub fn pending(&self) -> bool {
         self.loading || self.saving
     }
 
     /// `hint` — the problem's message, only once dirty.
-    pub(crate) fn hint(&self) -> Option<&'static str> {
+    pub fn hint(&self) -> Option<&'static str> {
         if !self.dirty {
             return None;
         }
@@ -253,26 +253,26 @@ impl TunnelEditDialogState {
     }
 
     /// `handleSave`'s gate: `if (problem || pending) return`.
-    pub(crate) fn save_gate(&self) -> bool {
+    pub fn save_gate(&self) -> bool {
         self.problem().is_none() && !self.pending()
     }
 
     /// The save's head: `setSaving(true); setError(null);` — the
     /// entity build happens in the host (it owns `newTunnelId`).
-    pub(crate) fn begin_save(&mut self) {
+    pub fn begin_save(&mut self) {
         self.saving = true;
         self.error = None;
     }
 
     /// The save's answer: `onSaved(); onClose();` (the host fires
     /// both slots; busy clears in the finally either way).
-    pub(crate) fn note_save_ok(&mut self) {
+    pub fn note_save_ok(&mut self) {
         self.saving = false;
         self.open = false;
     }
 
     /// The save's failure.
-    pub(crate) fn note_save_error(&mut self, error: &str) {
+    pub fn note_save_error(&mut self, error: &str) {
         self.error = Some(DialogError::classify(error, "settings.tunnels.editor.saveFailed"));
         self.saving = false;
     }
@@ -280,7 +280,7 @@ impl TunnelEditDialogState {
 
 /// `patchSsh`'s payload (the field-level patch).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TunnelSshPatch {
+pub enum TunnelSshPatch {
     Host(String),
     Port(String),
     Username(String),
@@ -291,7 +291,7 @@ pub(crate) enum TunnelSshPatch {
 
 /// `patchJump`'s payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TunnelJumpPatch {
+pub enum TunnelJumpPatch {
     Enabled(bool),
     Host(String),
     Port(String),
@@ -303,7 +303,7 @@ pub(crate) enum TunnelJumpPatch {
 
 /// `patchHttpProxy`'s payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TunnelHttpProxyPatch {
+pub enum TunnelHttpProxyPatch {
     Host(String),
     Port(String),
     Username(String),
@@ -313,7 +313,7 @@ pub(crate) enum TunnelHttpProxyPatch {
 
 /// `patchWebSocket`'s payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TunnelWebSocketPatch {
+pub enum TunnelWebSocketPatch {
     Url(String),
     AuthToken(String),
     Timeout(String),
@@ -322,7 +322,7 @@ pub(crate) enum TunnelWebSocketPatch {
 /// `TunnelEditDialog({ open, tunnelId, onClose, onSaved })`: the
 /// dialog over the state, the name draft's lens, the open-select
 /// machine and the host's action slots.
-pub(crate) struct TunnelEditDialog<'a, S: 'static> {
+pub struct TunnelEditDialog<'a, S: 'static> {
     state: &'a TunnelEditDialogState,
     dark: bool,
     dialog_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TunnelEditDialogState>,
@@ -345,7 +345,7 @@ pub(crate) struct TunnelEditDialog<'a, S: 'static> {
 
 impl<'a, S: 'static> TunnelEditDialog<'a, S> {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         state: &'a TunnelEditDialogState,
         dark: bool,
         dialog_edit: impl for<'b> Fn(&'b mut S) -> &'b mut TunnelEditDialogState + 'static,
@@ -366,45 +366,45 @@ impl<'a, S: 'static> TunnelEditDialog<'a, S> {
     }
 
     /// `onClose`.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// `onSaved`.
-    pub(crate) fn on_saved(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_saved(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_saved = Some(Rc::new(f));
         self
     }
 
     /// The Save button's `handleSave` (the host builds and persists
     /// the entity, then answers).
-    pub(crate) fn on_save_pressed(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save_pressed(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save_pressed = Some(Rc::new(f));
         self
     }
 
     /// The delegated SSH field body (T281's slot; `None` renders the
     /// structural marker).
-    pub(crate) fn ssh_fields(mut self, fields: Option<El>) -> Self {
+    pub fn ssh_fields(mut self, fields: Option<El>) -> Self {
         self.ssh_fields = fields;
         self
     }
 
     /// The delegated HTTP-proxy field body (T217's slot).
-    pub(crate) fn http_proxy_fields(mut self, fields: Option<El>) -> Self {
+    pub fn http_proxy_fields(mut self, fields: Option<El>) -> Self {
         self.http_proxy_fields = fields;
         self
     }
 
     /// The delegated WebSocket field body (T300's slot).
-    pub(crate) fn websocket_fields(mut self, fields: Option<El>) -> Self {
+    pub fn websocket_fields(mut self, fields: Option<El>) -> Self {
         self.websocket_fields = fields;
         self
     }
 
     /// The dialog (nothing when closed).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) {
         let state = self.state;
         if !state.open {
             return;

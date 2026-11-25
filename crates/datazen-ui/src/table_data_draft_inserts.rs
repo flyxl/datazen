@@ -85,20 +85,20 @@ fn base36(counter: u64) -> String {
 /// `createDraftId`: `draft-<counter.toString(36)>-<random>`. The caller
 /// supplies the random suffix (six base-36 characters in practice); the
 /// counter comes from the same global sequence the React module kept.
-pub(crate) fn create_draft_id(counter: u64, random_suffix: &str) -> String {
+pub fn create_draft_id(counter: u64, random_suffix: &str) -> String {
     format!("draft-{}-{}", base36(counter), random_suffix)
 }
 
 /// The whole `createDraftId` call: bumps the global counter and pairs it
 /// with the caller-supplied random suffix. Unique for the process, never
 /// derived from a row index, so it survives paging, sorting and filtering.
-pub(crate) fn next_draft_id(random_suffix: &str) -> String {
+pub fn next_draft_id(random_suffix: &str) -> String {
     let counter = DRAFT_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
     create_draft_id(counter, random_suffix)
 }
 
 /// Number of staged new rows (`draftInsertCount`).
-pub(crate) fn draft_insert_count(ts: &TableState) -> usize {
+pub fn draft_insert_count(ts: &TableState) -> usize {
     ts.draft_inserts.len()
 }
 
@@ -109,7 +109,7 @@ pub(crate) fn draft_insert_count(ts: &TableState) -> usize {
 /// receives which auto-increment value, and the back end deliberately does
 /// not sort the insert statements. An order entry with no draft in the map
 /// is skipped (the React `if (draft)` guard).
-pub(crate) fn ordered_drafts(ts: &TableState) -> Vec<&PendingInsert> {
+pub fn ordered_drafts(ts: &TableState) -> Vec<&PendingInsert> {
     ts.draft_insert_order
         .iter()
         .filter_map(|draft_id| ts.draft_inserts.get(draft_id))
@@ -118,7 +118,7 @@ pub(crate) fn ordered_drafts(ts: &TableState) -> Vec<&PendingInsert> {
 
 /// Deep copy of a draft's values (`cloneDraftValues`): duplicating a row
 /// must not share mutable cells.
-pub(crate) fn clone_draft_values(values: &HashMap<String, Value>) -> HashMap<String, Value> {
+pub fn clone_draft_values(values: &HashMap<String, Value>) -> HashMap<String, Value> {
     values.clone()
 }
 
@@ -127,7 +127,7 @@ pub(crate) fn clone_draft_values(values: &HashMap<String, Value>) -> HashMap<Str
 /// An empty draft is legal: "write no column at all" is a valid insert (the
 /// database fills every default), and the preview rejects it only when a
 /// NOT NULL column has no default.
-pub(crate) fn with_new_draft(ts: &mut TableState, draft_id: &str) -> bool {
+pub fn with_new_draft(ts: &mut TableState, draft_id: &str) -> bool {
     ts.draft_inserts.insert(
         draft_id.to_owned(),
         PendingInsert {
@@ -146,7 +146,7 @@ pub(crate) fn with_new_draft(ts: &mut TableState, draft_id: &str) -> bool {
 /// written" is expressed by the absence of the key, never by a `null`
 /// value. A JSON `null` writes SQL `NULL`. A missing draft is a no-op
 /// (`false`), exactly as the React `{}` early return.
-pub(crate) fn with_draft_value(
+pub fn with_draft_value(
     ts: &mut TableState,
     draft_id: &str,
     column: &str,
@@ -174,7 +174,7 @@ pub(crate) fn with_draft_value(
 }
 
 /// Drop a draft row (`withoutDraft`). A missing draft is a no-op (`false`).
-pub(crate) fn without_draft(ts: &mut TableState, draft_id: &str) -> bool {
+pub fn without_draft(ts: &mut TableState, draft_id: &str) -> bool {
     if ts.draft_inserts.remove(draft_id).is_none() {
         return false;
     }
@@ -187,7 +187,7 @@ pub(crate) fn without_draft(ts: &mut TableState, draft_id: &str) -> bool {
 /// caller (which already stripped primary-key / auto-increment columns)
 /// decides what is written; the model stays the single truth.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DraftRowCopy {
+pub struct DraftRowCopy {
     pub draft_id: String,
     /// A `null` value is an explicit SQL NULL, an absent key is "don't
     /// write this column".
@@ -201,7 +201,7 @@ pub(crate) struct DraftRowCopy {
 /// (the draft order decides auto-increment assignment, and copies land in
 /// the same order they were copied in). An empty row list is a no-op
 /// (`false`).
-pub(crate) fn with_draft_rows_from_copy(ts: &mut TableState, rows: &[DraftRowCopy]) -> bool {
+pub fn with_draft_rows_from_copy(ts: &mut TableState, rows: &[DraftRowCopy]) -> bool {
     if rows.is_empty() {
         return false;
     }
@@ -221,7 +221,7 @@ pub(crate) fn with_draft_rows_from_copy(ts: &mut TableState, rows: &[DraftRowCop
 
 /// Copy a draft into a new one (`withDuplicatedDraft`); the copy is appended
 /// at the end of the order. A missing source draft is a no-op (`false`).
-pub(crate) fn with_duplicated_draft(
+pub fn with_duplicated_draft(
     ts: &mut TableState,
     draft_id: &str,
     new_draft_id: &str,

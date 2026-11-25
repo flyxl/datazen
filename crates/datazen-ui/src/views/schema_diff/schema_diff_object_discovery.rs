@@ -87,7 +87,7 @@ use super::schema_diff_table_names::{
 /// fixed boundaries a target command reports, in call order. Callbacks
 /// never receive request or error content — only these markers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TargetCommandPhaseVm {
+pub enum TargetCommandPhaseVm {
     Profiles,
     SubmissionToken,
     TargetAdmission,
@@ -98,7 +98,7 @@ pub(crate) enum TargetCommandPhaseVm {
 
 impl TargetCommandPhaseVm {
     /// The wire spelling (the diagnostic's middle slot).
-    pub(crate) fn wire_str(self) -> &'static str {
+    pub fn wire_str(self) -> &'static str {
         match self {
             Self::Profiles => "profiles",
             Self::SubmissionToken => "submission-token",
@@ -114,7 +114,7 @@ impl TargetCommandPhaseVm {
 /// stages of a discovery run. `EnsureSource`/`EnsureTarget` are reported by
 /// the endpoints hook (T384); the rest are wrapped by the run itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DiscoveryStageVm {
+pub enum DiscoveryStageVm {
     EnsureSource,
     EnsureTarget,
     ListSourceTables,
@@ -124,7 +124,7 @@ pub(crate) enum DiscoveryStageVm {
 
 impl DiscoveryStageVm {
     /// The wire spelling (the diagnostic's first slot).
-    pub(crate) fn wire_str(self) -> &'static str {
+    pub fn wire_str(self) -> &'static str {
         match self {
             Self::EnsureSource => "ensure-source",
             Self::EnsureTarget => "ensure-target",
@@ -138,7 +138,7 @@ impl DiscoveryStageVm {
 /// React `API_ERROR_CODES` (`backend-client/src/errors.ts:61`): the §13
 /// code table, in document order. Declared as a runtime array because the
 /// categorizer validates a string code against it (`includes`).
-pub(crate) const API_ERROR_CODES: [&str; 31] = [
+pub const API_ERROR_CODES: [&str; 31] = [
     "InvalidArgument",
     "TargetRequired",
     "TargetConflict",
@@ -195,7 +195,7 @@ const PLAIN_ERROR_NAMES: [&str; 4] = ["Error", "TypeError", "RangeError", "Timeo
 /// The `error` argument of React `discoveryFailure` — the JS error taxonomy
 /// the categorizer walks, as the host seam delivers it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum DiscoveryErrorVm {
+pub enum DiscoveryErrorVm {
     /// `error instanceof ApiError` — the §13 code plus the message.
     Api { code: String, message: String },
     /// Any other `instanceof Error` — the JS class name plus the message.
@@ -260,7 +260,7 @@ fn receipt_category(message: &str) -> Option<&'static str> {
 /// discovery banner key. Only fixed stages and explicitly allowed
 /// categories enter the string; the `:<phase>` slot is omitted entirely
 /// (no trailing colon) when the phase is absent.
-pub(crate) fn discovery_failure(
+pub fn discovery_failure(
     stage: DiscoveryStageVm,
     error: &DiscoveryErrorVm,
     phase: Option<TargetCommandPhaseVm>,
@@ -277,15 +277,15 @@ pub(crate) fn discovery_failure(
 /// React `SchemaObjectDiscoveryError` (`schemaDiffObjectDiscovery.ts:22`):
 /// the message the window shows plus the diagnostic it reports.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SchemaObjectDiscoveryError {
+pub struct SchemaObjectDiscoveryError {
     /// `error instanceof Error ? error.message : String(error)`.
-    pub(crate) message: String,
+    pub message: String,
     /// `discoveryFailure(stage, error, phase)`.
-    pub(crate) diagnostic: String,
+    pub diagnostic: String,
 }
 
 impl SchemaObjectDiscoveryError {
-    pub(crate) fn new(
+    pub fn new(
         stage: DiscoveryStageVm,
         error: &DiscoveryErrorVm,
         phase: Option<TargetCommandPhaseVm>,
@@ -301,7 +301,7 @@ impl SchemaObjectDiscoveryError {
 
 /// The side of a schema diff (`'source' | 'target'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DiscoverySide {
+pub enum DiscoverySide {
     Source,
     Target,
 }
@@ -311,30 +311,30 @@ pub(crate) enum DiscoverySide {
 /// spelling: `''` is "no schema" and the run folds it with `||` (JS
 /// truthiness — only the empty string folds, whitespace does not).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct SchemaDiffDiscoveryEndpoints {
+pub struct SchemaDiffDiscoveryEndpoints {
     /// `endpoints.sourceId` / `targetId` — the connection ids (the
     /// `connectionId` IPC arguments).
-    pub(crate) source_id: String,
-    pub(crate) target_id: String,
-    pub(crate) source_database: String,
-    pub(crate) target_database: String,
-    pub(crate) source_schema: String,
-    pub(crate) target_schema: String,
+    pub source_id: String,
+    pub target_id: String,
+    pub source_database: String,
+    pub target_database: String,
+    pub source_schema: String,
+    pub target_schema: String,
 }
 
 /// React `SchemaDiffObjectCatalog` (`useSchemaDiffUnifiedObjects.ts:8`) —
 /// the unified-object half of a discovery run (the T420 seam's shape).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct SchemaDiffObjectCatalogVm {
-    pub(crate) source_objects: Vec<SchemaDiffObjectIdentityVm>,
-    pub(crate) target_objects: Vec<SchemaDiffObjectIdentityVm>,
+pub struct SchemaDiffObjectCatalogVm {
+    pub source_objects: Vec<SchemaDiffObjectIdentityVm>,
+    pub target_objects: Vec<SchemaDiffObjectIdentityVm>,
 }
 
 /// The host wiring for one discovery run — the three objects React's
 /// `discoverSchemaDiffObjects(endpoints, objects)` closes over, reduced to
 /// the calls it makes. The owning window state implements it (the
 /// schema-diff wizard track); this port's tests implement it with a script.
-pub(crate) trait SchemaDiffDiscoveryHost {
+pub trait SchemaDiffDiscoveryHost {
     /// `endpoints.ensureConnected(side)` — the db session id, or `None`
     /// when the hook already reported the failure itself.
     fn ensure_connected(&mut self, side: DiscoverySide) -> Option<String>;
@@ -390,7 +390,7 @@ fn non_empty(schema: &str) -> Option<&str> {
 /// `Ok(None)` is React's `null` — the quiet stop, not a failure. `Err` is
 /// the `SchemaObjectDiscoveryError` the window catches to show the message
 /// and report the diagnostic.
-pub(crate) fn discover_schema_diff_objects<H: SchemaDiffDiscoveryHost>(
+pub fn discover_schema_diff_objects<H: SchemaDiffDiscoveryHost>(
     host: &mut H,
     endpoints: &SchemaDiffDiscoveryEndpoints,
 ) -> Result<Option<Vec<SchemaDiffTablePickVm>>, SchemaObjectDiscoveryError> {
@@ -461,8 +461,8 @@ pub(crate) fn discover_schema_diff_objects<H: SchemaDiffDiscoveryHost>(
     )))
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[doc(hidden)]  // exposed for integration tests
+pub mod tests {
     use super::*;
     use super::super::schema_diff_object_identity::SchemaDiffObjectKindVm;
     use super::super::schema_diff_table_names::{TablePickOriginVm, TableTypeVm};

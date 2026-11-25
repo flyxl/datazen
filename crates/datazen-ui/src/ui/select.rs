@@ -26,7 +26,7 @@ type Bind = Box<dyn FnOnce(KitSelect) -> KitSelect>;
 type Choose = Box<dyn FnOnce(KitSelect, Option<Vec<(String, String)>>) -> KitSelect>;
 
 /// A field that opens a listbox of options.
-pub(crate) struct Select {
+pub struct Select {
     key: String,
     options: Vec<String>,
     values: Option<Vec<String>>,
@@ -43,7 +43,7 @@ pub(crate) struct Select {
 
 impl Select {
     /// `Select::new("engine", &["sqlite", "postgres"])`.
-    pub(crate) fn new<S: AsRef<str>>(key: impl Into<String>, options: &[S]) -> Select {
+    pub fn new<S: AsRef<str>>(key: impl Into<String>, options: &[S]) -> Select {
         Select {
             key: key.into(),
             options: options.iter().map(|o| o.as_ref().to_owned()).collect(),
@@ -63,62 +63,62 @@ impl Select {
     /// The value behind each label, in the same order as the options: a listbox shows the
     /// label but `on_choose` hands back the value (`{value: "558:presto", label: "presto"}`).
     /// Labels must be unique, since the kit answers with the label.
-    pub(crate) fn values<S: AsRef<str>>(mut self, values: &[S]) -> Select {
+    pub fn values<S: AsRef<str>>(mut self, values: &[S]) -> Select {
         self.values = Some(values.iter().map(|v| v.as_ref().to_owned()).collect());
         self
     }
 
     /// The chosen option, or `None` for the placeholder.
-    pub(crate) fn current(mut self, current: Option<&str>) -> Select {
+    pub fn current(mut self, current: Option<&str>) -> Select {
         self.current = current.map(str::to_owned);
         self
     }
 
     /// Shown while nothing is chosen.
-    pub(crate) fn placeholder(mut self, placeholder: impl Into<String>) -> Select {
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Select {
         self.placeholder = Some(placeholder.into());
         self
     }
 
     /// The accessible name ("Model"). The chosen option is the a11y value.
-    pub(crate) fn label(mut self, label: impl Into<String>) -> Select {
+    pub fn label(mut self, label: impl Into<String>) -> Select {
         self.label = Some(label.into());
         self
     }
 
     /// A fixed width; without it the field fills its parent.
-    pub(crate) fn width(mut self, width: f32) -> Select {
+    pub fn width(mut self, width: f32) -> Select {
         self.width = Some(width);
         self
     }
 
     /// Whether the app's state has the listbox open.
-    pub(crate) fn open(mut self, open: bool) -> Select {
+    pub fn open(mut self, open: bool) -> Select {
         self.open = open;
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Select {
+    pub fn disabled(mut self, disabled: bool) -> Select {
         self.disabled = disabled;
         self
     }
 
     /// The trigger's press: open or close the listbox.
-    pub(crate) fn on_toggle<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Select {
+    pub fn on_toggle<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Select {
         self.toggled = true;
         self.binds.push(Box::new(move |s| s.on_toggle(f)));
         self
     }
 
     /// Presses outside and Escape close the listbox.
-    pub(crate) fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Select {
+    pub fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Select {
         self.binds.push(Box::new(move |s| s.on_close(f)));
         self
     }
 
     /// A choice, from the keyboard (Enter) or the pointer (a press on the row): both arrive
     /// here. `f(state, option, tx)`; closing the listbox is the app's call.
-    pub(crate) fn on_choose<S: 'static>(
+    pub fn on_choose<S: 'static>(
         mut self,
         f: impl Fn(&mut S, &str, &mut Tx) + Clone + 'static,
     ) -> Select {
@@ -139,7 +139,7 @@ impl Select {
     }
 
     /// Builds the trigger, pushing the listbox into `layer` while `open`.
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         // An enabled field with no toggle is a dead control: focusable, pressable, and inert.
         // A disabled one never opens, so it needs none.
         debug_assert!(

@@ -22,15 +22,15 @@ use crate::structure_editor::draft_ids::{new_column_id, new_index_id};
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SchemaToDraft {
-    pub(crate) columns: Vec<StructureColumnDraft>,
-    pub(crate) indexes: Vec<StructureIndexDraft>,
+pub struct SchemaToDraft {
+    pub columns: Vec<StructureColumnDraft>,
+    pub indexes: Vec<StructureIndexDraft>,
 }
 
 /// Port of `schemaToDraft(schema)`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn schema_to_draft(schema: &TableSchema) -> SchemaToDraft {
+pub fn schema_to_draft(schema: &TableSchema) -> SchemaToDraft {
     let columns: Vec<StructureColumnDraft> = schema
         .columns
         .iter()

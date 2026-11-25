@@ -38,7 +38,7 @@ use crate::ui::kit::kit;
 
 /// React `importFileDisplayName`: the last `/` or `\` segment of a path.
 #[allow(dead_code)] // reusable pure helper; consumed by build and the tests
-pub(crate) fn import_file_display_name(path: &str) -> &str {
+pub fn import_file_display_name(path: &str) -> &str {
     for (i, c) in path.char_indices().rev() {
         if c == '/' || c == '\\' {
             return &path[i + 1..];
@@ -51,14 +51,14 @@ pub(crate) fn import_file_display_name(path: &str) -> &str {
 /// password, everything else leaves it optional.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable VM surface; consumed by the tests
-pub(crate) enum PasswordPolicy {
+pub enum PasswordPolicy {
     Required,
     Optional,
 }
 
 #[allow(dead_code)] // reusable pure helper; consumed by build and the tests
 impl PasswordPolicy {
-    pub(crate) fn from_path(path: &str) -> Self {
+    pub fn from_path(path: &str) -> Self {
         let base = import_file_display_name(path);
         let ext = match base.rfind('.') {
             Some(i) => base[i + 1..].to_ascii_lowercase(),
@@ -78,7 +78,7 @@ impl PasswordPolicy {
 /// Which browse button was pressed (React `browsePath('folder' | 'file')`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; wired by later callers/tests
-pub(crate) enum BrowseKind {
+pub enum BrowseKind {
     Folder,
     File,
 }
@@ -87,7 +87,7 @@ pub(crate) enum BrowseKind {
 /// `variant` prop. The owner keeps the real values in its `S`.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable VM surface; wired by later callers/tests
-pub(crate) struct ImportVm {
+pub struct ImportVm {
     pub password: TextEdit,
     pub data_path: TextEdit,
     pub path_found: bool,
@@ -127,7 +127,7 @@ impl Default for ImportVm {
 /// is routed through the [`ConnectionImportFields::on_vm`] accessor.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; wired by later callers/tests
-pub(crate) enum ImportAction {
+pub enum ImportAction {
     BrowsePath(BrowseKind),
     PickImportFile,
 }
@@ -177,7 +177,7 @@ fn secondary_button<S: 'static>(
 
 /// Builder for the ported component.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct ConnectionImportFields<S: 'static> {
+pub struct ConnectionImportFields<S: 'static> {
     vm: ImportVm,
     on_vm: Option<VmFn<S>>,
     on_action: Option<ActionFn<S>>,
@@ -185,7 +185,7 @@ pub(crate) struct ConnectionImportFields<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl<S: 'static> ConnectionImportFields<S> {
-    pub(crate) fn new(vm: ImportVm) -> Self {
+    pub fn new(vm: ImportVm) -> Self {
         ConnectionImportFields {
             vm,
             on_vm: None,
@@ -195,7 +195,7 @@ impl<S: 'static> ConnectionImportFields<S> {
 
     /// Accessor for the mutable VM in `S`. Without it the two password/path
     /// fields are inert (honest stand-ins, never focusable dead controls).
-    pub(crate) fn on_vm(
+    pub fn on_vm(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut ImportVm + 'static,
     ) -> Self {
@@ -203,13 +203,13 @@ impl<S: 'static> ConnectionImportFields<S> {
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, ImportAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, ImportAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
     /// Renders the import body. `dark` selects the kit palette.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let ConnectionImportFields { vm, on_vm, on_action } = self;
         let k = kit(dark);
         // React: `inline ? 'space-y-2.5' : 'space-y-2'` and a 12.5px/12px label.

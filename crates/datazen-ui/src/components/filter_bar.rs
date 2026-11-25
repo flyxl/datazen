@@ -79,7 +79,7 @@ use crate::ui::kit::kit;
 /// an absent value (`FilterValue::None`, React `undefined`) drops the
 /// suffix. `FilterValue::Single` already carries the `format_cell` output
 /// for its value (a null value arrives as `"NULL"`, as React renders it).
-pub(crate) fn filter_bar_label(filter: &FilterCondition) -> String {
+pub fn filter_bar_label(filter: &FilterCondition) -> String {
     let base = format!("{} {}", filter.column, filter.operator);
     match &filter.value {
         FilterValue::None => base,
@@ -102,7 +102,7 @@ pub(crate) fn filter_bar_label(filter: &FilterCondition) -> String {
 
 /// The bar. Build it with the conditions the view already owns, then hand
 /// it the remove / clear callbacks — the same shape as `Pagination<S>`.
-pub(crate) struct FilterBar<'a, S: 'static> {
+pub struct FilterBar<'a, S: 'static> {
     key: String,
     filters: &'a [FilterCondition],
     loading: bool,
@@ -111,7 +111,7 @@ pub(crate) struct FilterBar<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> FilterBar<'a, S> {
-    pub(crate) fn new(key: impl Into<String>, filters: &'a [FilterCondition]) -> Self {
+    pub fn new(key: impl Into<String>, filters: &'a [FilterCondition]) -> Self {
         Self {
             key: key.into(),
             filters,
@@ -123,19 +123,19 @@ impl<'a, S: 'static> FilterBar<'a, S> {
 
     /// Prevents filter mutations while the next page is loading
     /// (`FilterBar.tsx:11`).
-    pub(crate) fn loading(mut self, loading: bool) -> Self {
+    pub fn loading(mut self, loading: bool) -> Self {
         self.loading = loading;
         self
     }
 
     /// React's `onRemove(index)`.
-    pub(crate) fn on_remove(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_remove(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_remove = Some(Rc::new(f));
         self
     }
 
     /// React's `onClear()`.
-    pub(crate) fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear = Some(Rc::new(f));
         self
     }
@@ -218,7 +218,7 @@ impl<'a, S: 'static> FilterBar<'a, S> {
 
     /// `None` when there is nothing to show (`filters.length === 0`
     /// returns `null` in React, `FilterBar.tsx:18`).
-    pub(crate) fn build(self, dark: bool) -> Option<El> {
+    pub fn build(self, dark: bool) -> Option<El> {
         if self.filters.is_empty() {
             return None;
         }

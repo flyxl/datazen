@@ -18,7 +18,7 @@ use crate::i18n::t;
 /// React `CountStrategy` — the footer never turns "unknown" into a zero.
 #[allow(dead_code)] // VM surface; built by chrome::content_status_bar and the tests
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum CountStrategy {
+pub enum CountStrategy {
     #[default]
     Exact,
     Estimated,
@@ -28,7 +28,7 @@ pub(crate) enum CountStrategy {
 /// React `formatRowCount`: grouping below a million, then one decimal with an
 /// `M`/`B` suffix. The tilde belongs to the i18n text, never to this number.
 #[allow(dead_code)] // pure helper; consumed by row_count_text and the tests
-pub(crate) fn format_row_count(value: u64) -> String {
+pub fn format_row_count(value: u64) -> String {
     if value < 1_000_000 {
         let digits = value.to_string();
         let mut out = String::with_capacity(digits.len() + digits.len() / 3);
@@ -49,35 +49,35 @@ pub(crate) fn format_row_count(value: u64) -> String {
 /// React `ContentStatusBarProps` as a cloneable value.
 #[allow(dead_code)] // VM surface; built by chrome::content_status_bar and the tests
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct StatusBarVm {
-    pub(crate) connected: bool,
+pub struct StatusBarVm {
+    pub connected: bool,
     /// `getDbLabel(databaseType)`, when a driver type is known.
-    pub(crate) database_label: Option<String>,
-    pub(crate) connection_name: Option<String>,
-    pub(crate) current_database: Option<String>,
-    pub(crate) table_name: Option<String>,
-    pub(crate) column_count: u64,
-    pub(crate) total_rows: u64,
-    pub(crate) total_rows_kind: CountStrategy,
+    pub database_label: Option<String>,
+    pub connection_name: Option<String>,
+    pub current_database: Option<String>,
+    pub table_name: Option<String>,
+    pub column_count: u64,
+    pub total_rows: u64,
+    pub total_rows_kind: CountStrategy,
     /// A driver contributed a KV status-bar slot.
-    pub(crate) has_kv_slot: bool,
+    pub has_kv_slot: bool,
     /// `formatModKey(platform)` — `⌘` on macOS, `Ctrl` elsewhere.
-    pub(crate) mod_key: String,
+    pub mod_key: String,
     /// `keySep` in React: `''` on macOS, `'+'` elsewhere.
-    pub(crate) key_sep: String,
+    pub key_sep: String,
     /// Resolved connected text. The T0-03 sweep pins `t("conn.connected")` in
     /// `views/chrome.rs`, so the host supplies it (React uses `connWin.connected`;
     /// both resolve to the same zh-CN text).
-    pub(crate) connected_label: String,
+    pub connected_label: String,
     /// Legacy English shortcut copy pinned by `tests/chrome_metrics.rs`. The
     /// controlled builder uses localized React text when this is `None`.
-    pub(crate) shortcuts_override: Option<String>,
+    pub shortcuts_override: Option<String>,
 }
 
 impl StatusBarVm {
     /// React's footer row-count sentence, kept in its own words.
     #[allow(dead_code)] // pure helper; consumed by build and the tests
-    pub(crate) fn row_count_text(&self) -> Option<String> {
+    pub fn row_count_text(&self) -> Option<String> {
         match self.total_rows_kind {
             CountStrategy::Unsupported => Some(t("pagination.rowsUnknown").to_owned()),
             CountStrategy::Estimated => Some(format!(
@@ -97,7 +97,7 @@ impl StatusBarVm {
 
     /// React's `.filter(Boolean).join(' · ')` centre cluster.
     #[allow(dead_code)] // pure helper; consumed by build and the tests
-    pub(crate) fn context_text(&self) -> String {
+    pub fn context_text(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
         for part in [
             self.database_label.clone(),
@@ -122,7 +122,7 @@ impl StatusBarVm {
 
     /// React's shortcut cluster: `mod{sep}N … · mod{sep}W … · Space …`.
     #[allow(dead_code)] // pure helper; consumed by build and the tests
-    pub(crate) fn shortcuts_text(&self) -> String {
+    pub fn shortcuts_text(&self) -> String {
         format!(
             "{m}{s}N {nq} · {m}{s}W {close} · Space {detail}",
             m = self.mod_key,
@@ -136,7 +136,7 @@ impl StatusBarVm {
 
 /// Build the footer as a `role="status"` 40pt row.
 #[allow(dead_code)] // reusable component; mounted by chrome::content_status_bar
-pub(crate) fn build(vm: &StatusBarVm, theme: tok::Theme) -> El {
+pub fn build(vm: &StatusBarVm, theme: tok::Theme) -> El {
     let dot = if vm.connected {
         tok::accent(2, true)
     } else {

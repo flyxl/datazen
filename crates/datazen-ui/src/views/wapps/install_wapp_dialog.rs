@@ -71,7 +71,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize};
 
 /// React's `InstallStep`: `'select' | 'review'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum InstallWappStep {
+pub enum InstallWappStep {
     #[default]
     Select,
     Review,
@@ -80,7 +80,7 @@ pub(crate) enum InstallWappStep {
 /// React's `WappPackageKind`: `'zip' | 'folder'` — which native picker the
 /// select step's buttons open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WappPackageKind {
+pub enum WappPackageKind {
     Zip,
     Folder,
 }
@@ -90,14 +90,14 @@ pub(crate) enum WappPackageKind {
 /// the host contract, not this view's). The inspect seam (T073) fills it.
 #[allow(dead_code)] // projection type; fields are read by host wiring/tests
 #[derive(Clone, Debug)]
-pub(crate) struct WappManifestVm {
-    pub(crate) name: String,
-    pub(crate) version: String,
+pub struct WappManifestVm {
+    pub name: String,
+    pub version: String,
     /// React renders the author only when it is a non-empty string.
-    pub(crate) author: Option<String>,
-    pub(crate) description: Option<String>,
+    pub author: Option<String>,
+    pub description: Option<String>,
     /// The requested permission strings, one badge each.
-    pub(crate) permissions: Vec<String>,
+    pub permissions: Vec<String>,
 }
 
 /// The preview the inspect answers with — the projection of the host's
@@ -107,17 +107,17 @@ pub(crate) struct WappManifestVm {
 /// one), so they are one `Option` here.
 #[allow(dead_code)] // projection type; fields are read by host wiring/tests
 #[derive(Clone, Debug)]
-pub(crate) struct WappPackagePreview {
-    pub(crate) pick_token: String,
-    pub(crate) package_label: String,
-    pub(crate) manifest: WappManifestVm,
+pub struct WappPackagePreview {
+    pub pick_token: String,
+    pub package_label: String,
+    pub manifest: WappManifestVm,
 }
 
 /// The install dialog over the window, branch by branch. The root modal
 /// layer (`views/modals.rs::modal_layer`) mounts it while
 /// [`AppState::install_wapp_open`] is set, the way React's portal hosts it
 /// for the management page.
-pub(crate) fn install_wapp_dialog(state: &AppState, dark: bool) -> Dialog {
+pub fn install_wapp_dialog(state: &AppState, dark: bool) -> Dialog {
     let k = kit(dark);
     // React: `step === 'review' && manifest` — a review without a preview
     // falls back to the select body, exactly as the JSX condition does.

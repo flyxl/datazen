@@ -155,13 +155,13 @@ mod state;
 // The re-exports below serve the audit and the dashboard host track;
 // the lib target alone reaches only some of them.
 #[allow(unused_imports)]
-pub(crate) use refresh::{
+pub use refresh::{
     IntervalUnit, RefreshPreset, MIN_REFRESH_SEC, REFRESH_WARN_BELOW_SEC, clamp_refresh_sec,
     normalize_refresh_policy, refresh_policy_to_preset, sec_to_unit_and_value,
     should_warn_refresh_sec,
 };
 #[allow(unused_imports)]
-pub(crate) use state::{
+pub use state::{
     AlertMetricVm, AlertOperatorVm, AlertRuleVm, ConnectionOptionVm, WidgetDraftVm,
     WidgetEditorDrawerState, WidgetEditorSelect, WidgetSaveVm, default_alert,
     default_hidden_sql, empty_draft,
@@ -204,14 +204,14 @@ const SAVE_KEY: &str = "widget-editor-save";
 /// The `S` → drawer-state projection (the T112 `PanelStateFn` convention):
 /// every field-level transition flows through it, so the host wires one
 /// closure instead of one per control.
-pub(crate) type DrawerStateFn<S> = Rc<dyn Fn(&mut S) -> &mut WidgetEditorDrawerState>;
+pub type DrawerStateFn<S> = Rc<dyn Fn(&mut S) -> &mut WidgetEditorDrawerState>;
 type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 type SaveFn<S> = Rc<dyn Fn(&mut S, WidgetSaveVm) + 'static>;
 
 /// Builder for the drawer, generic over the app state `S` that owns the
 /// state slice (the ported-dialog pattern of T018/T112/T175).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) struct WidgetEditorDrawer<'a, S: 'static> {
+pub struct WidgetEditorDrawer<'a, S: 'static> {
     state: &'a WidgetEditorDrawerState,
     /// React's `userWorkflows` prop.
     user_workflows: &'a [WorkflowListItemVm],
@@ -231,7 +231,7 @@ pub(crate) struct WidgetEditorDrawer<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl<'a, S: 'static> WidgetEditorDrawer<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a WidgetEditorDrawerState,
         user_workflows: &'a [WorkflowListItemVm],
         now_ms: i64,
@@ -253,45 +253,45 @@ impl<'a, S: 'static> WidgetEditorDrawer<'a, S> {
     /// The SQL editor seam: the host-built editing surface (the drawer
     /// paints it inside React's `h-40` border box; without a slot nothing
     /// paints there yet).
-    pub(crate) fn sql_editor(mut self, editor: El) -> Self {
+    pub fn sql_editor(mut self, editor: El) -> Self {
         self.sql_editor = Some(editor);
         self
     }
 
     /// The state projection every field-level transition flows through.
-    pub(crate) fn state_fn(mut self, f: DrawerStateFn<S>) -> Self {
+    pub fn state_fn(mut self, f: DrawerStateFn<S>) -> Self {
         self.state_fn = Some(f);
         self
     }
 
     /// React `onClose` (the header button and the footer cancel; React's
     /// scrim has no handler).
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// React `onOpenWorkflowEditor` (the open-workflow-editor link).
-    pub(crate) fn on_open_workflow_editor(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_workflow_editor(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_workflow_editor = Some(Rc::new(f));
         self
     }
 
     /// React `onSave` — fires only with a valid payload (a blocked save
     /// carries no action, React's early `return`).
-    pub(crate) fn on_save(mut self, f: impl Fn(&mut S, WidgetSaveVm) + 'static) -> Self {
+    pub fn on_save(mut self, f: impl Fn(&mut S, WidgetSaveVm) + 'static) -> Self {
         self.on_save = Some(Rc::new(f));
         self
     }
 
     /// The T146 card's authorize press (`change(false)`'s dispatch).
-    pub(crate) fn on_monitor_authorize(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_monitor_authorize(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_monitor_authorize = Some(Rc::new(f));
         self
     }
 
     /// The T146 card's revoke press (`change(true)`'s dispatch).
-    pub(crate) fn on_monitor_revoke(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_monitor_revoke(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_monitor_revoke = Some(Rc::new(f));
         self
     }
@@ -301,7 +301,7 @@ impl<'a, S: 'static> WidgetEditorDrawer<'a, S> {
     /// listboxes into the layer as they build; anchored elements draw above
     /// later siblings, so the scrim and the root pushed after them still sit
     /// under the listboxes (the `ui/dialog.rs` order).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         if !self.state.open {
             return;
         }

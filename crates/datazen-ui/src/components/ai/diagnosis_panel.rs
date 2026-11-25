@@ -91,14 +91,14 @@ use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 
 /// React's `max-h-[200px]` on the body (`DiagnosisPanel.tsx:112`): the
 /// scrolling window the four states mount inside.
-pub(crate) const BODY_MAX_HEIGHT: f32 = 200.0;
+pub const BODY_MAX_HEIGHT: f32 = 200.0;
 
 /// React `handleDiagnose`'s spread object: `QueryDiagnosisParams` with
 /// `sql` / `errorMessage` overwritten by the redacted copies
 /// (`{ ...diagnosisParams, sql: safeSql, errorMessage: safeErrorMessage }`).
 /// This is the `diagnoseError` request the host receives.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DiagnoseRequest {
+pub struct DiagnoseRequest {
     pub db_session_id: String,
     pub database: String,
     /// `safeSql` — the redacted copy, not the editor's `sql`.
@@ -112,7 +112,7 @@ pub(crate) struct DiagnoseRequest {
 /// both go through here, so an invalid context diagnoses nothing —
 /// React's "does not diagnose when the context is missing or invalid"
 /// contract.
-pub(crate) fn diagnose_request(
+pub fn diagnose_request(
     context: &QueryActionBuildResult<QueryDiagnosisContext>,
 ) -> Option<DiagnoseRequest> {
     let inner = match context {
@@ -130,7 +130,7 @@ pub(crate) fn diagnose_request(
 /// The `aiStore` slice the component reads (React's five selectors minus
 /// the two actions, which arrive as callbacks): the diagnosis result, the
 /// in-flight flag, the failure text and the configured gate.
-pub(crate) struct DiagnosisPanelState {
+pub struct DiagnosisPanelState {
     pub diagnosis: Option<DiagnosisResult>,
     pub is_diagnosing: bool,
     pub diagnosis_error: Option<String>,
@@ -163,7 +163,7 @@ impl Default for DiagnosisPanelState {
 
 /// The panel. Build it with the caller's `aiStore` slice and the built
 /// diagnosis context, then attach the five host callbacks.
-pub(crate) struct DiagnosisPanel<'a, S: 'static> {
+pub struct DiagnosisPanel<'a, S: 'static> {
     state: &'a DiagnosisPanelState,
     context: &'a QueryActionBuildResult<QueryDiagnosisContext>,
     on_diagnose: Option<Rc<dyn Fn(&mut S, DiagnoseRequest)>>,
@@ -174,7 +174,7 @@ pub(crate) struct DiagnosisPanel<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> DiagnosisPanel<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a DiagnosisPanelState,
         context: &'a QueryActionBuildResult<QueryDiagnosisContext>,
     ) -> Self {
@@ -191,7 +191,7 @@ impl<'a, S: 'static> DiagnosisPanel<'a, S> {
 
     /// React's `diagnoseError` — the host action behind the manual button
     /// and the mount effect.
-    pub(crate) fn on_diagnose(
+    pub fn on_diagnose(
         mut self,
         f: impl Fn(&mut S, DiagnoseRequest) + 'static,
     ) -> Self {
@@ -200,20 +200,20 @@ impl<'a, S: 'static> DiagnosisPanel<'a, S> {
     }
 
     /// React's `onApplySql` prop.
-    pub(crate) fn on_apply_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_apply_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_apply_sql = Some(Rc::new(f));
         self
     }
 
     /// React's `clearDiagnosis` store action — `handleApply` and
     /// `handleClose` both invoke it before closing.
-    pub(crate) fn clear_diagnosis(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn clear_diagnosis(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.clear_diagnosis = Some(Rc::new(f));
         self
     }
 
     /// React's `onClose` prop.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
@@ -222,7 +222,7 @@ impl<'a, S: 'static> DiagnosisPanel<'a, S> {
     /// button. A window open is the host's job, so the wiring task passes
     /// the opener exactly as the AiChatPanel shell does for its own
     /// unconfigured button.
-    pub(crate) fn on_open_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_settings = Some(Rc::new(f));
         self
     }
@@ -230,7 +230,7 @@ impl<'a, S: 'static> DiagnosisPanel<'a, S> {
     /// The panel. React's early return picks the branch: the unconfigured
     /// notice (`DiagnosisPanel.tsx:54–81`) or the configured panel
     /// (83–176).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         if !self.state.is_configured {
             return self.unconfigured(dark);
         }

@@ -47,14 +47,14 @@ use crate::support::value_presentation::presentation_plan::{
 /// A read-only view of the session state (React
 /// `ColumnPresentationSessionState`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ColumnPresentationSessionState {
-    pub(crate) overrides: BTreeMap<String, ColumnPresentationOverride>,
-    pub(crate) revision: u64,
+pub struct ColumnPresentationSessionState {
+    pub overrides: BTreeMap<String, ColumnPresentationOverride>,
+    pub revision: u64,
 }
 
 /// A subscription release handle (single-ownership, like the registry's).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SessionSubscription {
+pub struct SessionSubscription {
     token: u64,
 }
 
@@ -66,7 +66,7 @@ struct Listener {
 /// The in-process session override store (React's module singleton,
 /// owned).
 #[derive(Default)]
-pub(crate) struct ColumnPresentationSession {
+pub struct ColumnPresentationSession {
     overrides: BTreeMap<String, ColumnPresentationOverride>,
     revision_counter: u64,
     listeners: Vec<Listener>,
@@ -74,13 +74,13 @@ pub(crate) struct ColumnPresentationSession {
 }
 
 impl ColumnPresentationSession {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The current state (a snapshot; callers cannot mutate the store
     /// through it).
-    pub(crate) fn state(&self) -> ColumnPresentationSessionState {
+    pub fn state(&self) -> ColumnPresentationSessionState {
         ColumnPresentationSessionState {
             overrides: self.overrides.clone(),
             revision: self.revision_counter,
@@ -92,26 +92,26 @@ impl ColumnPresentationSession {
     /// read; every mutation bumps the revision, so "revision moved" is
     /// exactly "the state object changed" (React's `useSyncExternalStore`
     /// re-render condition).
-    pub(crate) fn revision(&self) -> u64 {
+    pub fn revision(&self) -> u64 {
         self.revision_counter
     }
 
     /// Subscribe to change notifications; the handle unsubscribes.
-    pub(crate) fn subscribe(&mut self, callback: Box<dyn Fn()>) -> SessionSubscription {
+    pub fn subscribe(&mut self, callback: Box<dyn Fn()>) -> SessionSubscription {
         self.next_token += 1;
         let token = self.next_token;
         self.listeners.push(Listener { token, callback });
         SessionSubscription { token }
     }
 
-    pub(crate) fn unsubscribe(&mut self, handle: SessionSubscription) {
+    pub fn unsubscribe(&mut self, handle: SessionSubscription) {
         self.listeners.retain(|listener| listener.token != handle.token);
     }
 
     /// Save one column's session override. `inherit` deletes the entry
     /// (a no-op without one: no bump, no notify); `raw`/`custom` store by
     /// source key. Callers have already validated the override.
-    pub(crate) fn set_column_override(
+    pub fn set_column_override(
         &mut self,
         source: ColumnSourceBase<'_>,
         column_name: &str,
@@ -131,7 +131,7 @@ impl ColumnPresentationSession {
     }
 
     /// Clear one column's session override (saving `inherit`).
-    pub(crate) fn clear_column_override(
+    pub fn clear_column_override(
         &mut self,
         source: ColumnSourceBase<'_>,
         column_name: &str,
@@ -143,7 +143,7 @@ impl ColumnPresentationSession {
     /// session values winning; the merged revision is the sum (both parts
     /// only grow, so the sum grows monotonically). An empty session
     /// returns the snapshot with its revision untouched.
-    pub(crate) fn apply_session_column_overrides(
+    pub fn apply_session_column_overrides(
         &self,
         snapshot: &ValuePresentationSnapshot,
     ) -> ValuePresentationSnapshot {

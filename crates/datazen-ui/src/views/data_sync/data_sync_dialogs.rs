@@ -119,7 +119,7 @@ fn footer_button<S: 'static>(
 /// [`Dialog::open_epoch`] generations the Data Sync window (T270) bumps
 /// every time it opens a dialog, so a reopened dialog restarts at the top.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncDialogsVm {
+pub struct DataSyncDialogsVm {
     pub error_open: bool,
     pub error_msg: String,
     pub error_epoch: u64,
@@ -135,7 +135,7 @@ pub(crate) struct DataSyncDialogsVm {
 
 /// Builder for the Data Sync dialogs. `S` is the host state that owns the
 /// close / confirm actions.
-pub(crate) struct DataSyncDialogs<S: 'static> {
+pub struct DataSyncDialogs<S: 'static> {
     vm: DataSyncDialogsVm,
     dark: bool,
     on_close_error: Option<Rc<dyn Fn(&mut S)>>,
@@ -147,7 +147,7 @@ pub(crate) struct DataSyncDialogs<S: 'static> {
 }
 
 impl<S: 'static> DataSyncDialogs<S> {
-    pub(crate) fn new(vm: DataSyncDialogsVm) -> Self {
+    pub fn new(vm: DataSyncDialogsVm) -> Self {
         Self {
             vm,
             dark: true,
@@ -162,47 +162,47 @@ impl<S: 'static> DataSyncDialogs<S> {
 
     /// React `onCloseError`: the error dialog's OK button, header close,
     /// and Escape.
-    pub(crate) fn on_close_error(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_error(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_error = Some(Rc::new(f));
         self
     }
 
     /// React `onCloseDeleteConfirm`: the delete-confirm dialog's cancel
     /// button, header close, and Escape.
-    pub(crate) fn on_close_delete_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_delete_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_delete_confirm = Some(Rc::new(f));
         self
     }
 
     /// React `onConfirmEnableDelete`: the delete-confirm dialog's danger
     /// button.
-    pub(crate) fn on_confirm_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_enable_delete = Some(Rc::new(f));
         self
     }
 
     /// React `onCloseExplain`: the explain dialog's close button, header
     /// close, and Escape.
-    pub(crate) fn on_close_explain(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_explain(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_explain = Some(Rc::new(f));
         self
     }
 
     /// React `onCloseExecuteConfirm`: the execute-confirm dialog's cancel
     /// button, header close, and Escape.
-    pub(crate) fn on_close_execute_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_execute_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_execute_confirm = Some(Rc::new(f));
         self
     }
 
     /// React `onConfirmExecute`: the execute-confirm dialog's run button.
-    pub(crate) fn on_confirm_execute(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_execute(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_execute = Some(Rc::new(f));
         self
     }
 
     /// The dialogs on their own, exactly as the probes mount them.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let (root, layer) = self.build_inner(dark);
         rune_kit::root(root, layer)
     }
@@ -210,7 +210,7 @@ impl<S: 'static> DataSyncDialogs<S> {
     /// The same dialogs without their kit root: the fragment root plus the
     /// overlay layer holding the four dialogs. The Data Sync window (T270)
     /// calls this once and roots the whole wizard once.
-    pub(crate) fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
+    pub fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
         self.dark = dark;
         let k = kit(dark);
         // React root: a fragment of four dialogs, so the root mounts

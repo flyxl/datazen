@@ -34,18 +34,18 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 
 const ROOT: &str = "table-filter-toolbar";
-pub(crate) const TOGGLE_KEY: &str = "table-filter-toggle";
-pub(crate) const QUICK_KEY: &str = "table-quick-filter";
-pub(crate) const ERROR_KEY: &str = "table-filter-error";
-pub(crate) const CHILDREN_KEY: &str = "table-filter-children";
-pub(crate) const NAMED_VIEW_KEY: &str = "table-filter-named-view";
-pub(crate) const NL_INPUT_KEY: &str = "table-filter-nl-input";
-pub(crate) const TRAILING_KEY: &str = "table-filter-trailing";
+pub const TOGGLE_KEY: &str = "table-filter-toggle";
+pub const QUICK_KEY: &str = "table-quick-filter";
+pub const ERROR_KEY: &str = "table-filter-error";
+pub const CHILDREN_KEY: &str = "table-filter-children";
+pub const NAMED_VIEW_KEY: &str = "table-filter-named-view";
+pub const NL_INPUT_KEY: &str = "table-filter-nl-input";
+pub const TRAILING_KEY: &str = "table-filter-trailing";
 
 /// Host-owned projection of the props + the two local input states.
 #[allow(dead_code)] // VM surface; owned by the table-panel host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TableFilterToolbarVm {
+pub struct TableFilterToolbarVm {
     pub loading: bool,
     pub pending_busy: bool,
     pub filter_panel_open: bool,
@@ -63,20 +63,20 @@ impl TableFilterToolbarVm {
     /// React `filterActive`: the toggle lights up for an open panel or any
     /// applied/draft filter.
     #[allow(dead_code)] // pure helper; consumed by the toggle and tests.
-    pub(crate) fn filter_active(&self) -> bool {
+    pub fn filter_active(&self) -> bool {
         self.filter_panel_open || self.applied_filter_count > 0 || self.draft_filter_count > 0
     }
 
     /// React `openManualFilter`: opening seeds a default filter only when no
     /// draft exists; closing never seeds.
     #[allow(dead_code)] // pure helper; consumed by the toggle action and tests.
-    pub(crate) fn should_seed_default_filter(&self) -> bool {
+    pub fn should_seed_default_filter(&self) -> bool {
         !self.filter_panel_open && self.draft_filter_count == 0
     }
 
     /// React `<input disabled={loading || pendingBusy}>`.
     #[allow(dead_code)] // pure helper; consumed by the quick field and tests.
-    pub(crate) fn quick_disabled(&self) -> bool {
+    pub fn quick_disabled(&self) -> bool {
         self.loading || self.pending_busy
     }
 }
@@ -84,7 +84,7 @@ impl TableFilterToolbarVm {
 /// Every host intent the toolbar can emit.
 #[allow(dead_code)] // host port; remove when the table-panel host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TableFilterAction {
+pub enum TableFilterAction {
     ToggleFilterPanel { open: bool },
     AddDefaultFilter { column: String },
     ClearFilters,
@@ -108,7 +108,7 @@ fn emit<S: 'static>(on_action: &Option<ActionFn<S>>, action: TableFilterAction) 
 /// NL-filter, leading and trailing nodes are optional keyed slots supplied by
 /// the host.
 #[allow(dead_code)] // view entry; remove when the table-panel host lands.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableFilterToolbarVm,
     quick_filter: &TextEdit,
     quick_edit: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>>,

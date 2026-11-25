@@ -29,7 +29,7 @@
 //! mirror as `Option<&str>`, `None` being the default pane.
 
 /// Id of the pane a query panel owns before any split happens.
-pub(crate) const DEFAULT_PANE_ID: &str = "main";
+pub const DEFAULT_PANE_ID: &str = "main";
 
 /// Separator between a panel id and a secondary pane id. Panel ids
 /// are built by `nextPanelId` as `panel-<prefix>-<n>`, so they can
@@ -39,7 +39,7 @@ const PANE_SEPARATOR: &str = "::";
 /// `paneKey(panelId, paneId = DEFAULT_PANE_ID)`: the `queryExec` key
 /// of `paneId` inside `panelId`; the default pane (`None` or
 /// `"main"`) keeps the bare panel id.
-pub(crate) fn pane_key(panel_id: &str, pane_id: Option<&str>) -> String {
+pub fn pane_key(panel_id: &str, pane_id: Option<&str>) -> String {
     match pane_id {
         None | Some(DEFAULT_PANE_ID) => panel_id.to_owned(),
         Some(pane_id) => format!("{panel_id}{PANE_SEPARATOR}{pane_id}"),
@@ -48,7 +48,7 @@ pub(crate) fn pane_key(panel_id: &str, pane_id: Option<&str>) -> String {
 
 /// `panelIdOfPaneKey(key)`: the panel that owns `key` — a bare panel
 /// id names itself.
-pub(crate) fn panel_id_of_pane_key(key: &str) -> &str {
+pub fn panel_id_of_pane_key(key: &str) -> &str {
     match key.find(PANE_SEPARATOR) {
         None => key,
         Some(at) => &key[..at],
@@ -57,7 +57,7 @@ pub(crate) fn panel_id_of_pane_key(key: &str) -> &str {
 
 /// `paneIdOfPaneKey(key)`: the pane `key` names inside its panel; a
 /// bare panel id is the default pane.
-pub(crate) fn pane_id_of_pane_key(key: &str) -> &str {
+pub fn pane_id_of_pane_key(key: &str) -> &str {
     match key.find(PANE_SEPARATOR) {
         None => DEFAULT_PANE_ID,
         Some(at) => &key[at + PANE_SEPARATOR.len()..],
@@ -66,7 +66,7 @@ pub(crate) fn pane_id_of_pane_key(key: &str) -> &str {
 
 /// `isPaneKeyOfPanel(key, panelId)`: whether `key` is an exec-map
 /// entry owned by `panelId` — any of its panes.
-pub(crate) fn is_pane_key_of_panel(key: &str, panel_id: &str) -> bool {
+pub fn is_pane_key_of_panel(key: &str, panel_id: &str) -> bool {
     panel_id_of_pane_key(key) == panel_id
 }
 
@@ -74,7 +74,7 @@ pub(crate) fn is_pane_key_of_panel(key: &str, panel_id: &str) -> bool {
 /// belonging to `panelId`, in the order the caller's map iterates
 /// (a JS `Map`'s insertion order — the Rust mirror's owner decides,
 /// and hands the keys over in it).
-pub(crate) fn pane_keys_of_panel<'a>(
+pub fn pane_keys_of_panel<'a>(
     keys: impl IntoIterator<Item = &'a str>,
     panel_id: &str,
 ) -> Vec<String> {
@@ -92,7 +92,7 @@ pub(crate) fn pane_keys_of_panel<'a>(
 /// widen the call, and the pre-split contract is what callers and
 /// their tests pin). `None`, `undefined`, and the default pane all
 /// append nothing.
-pub(crate) fn pane_args<'a>(pane_id: Option<&'a str>) -> Vec<&'a str> {
+pub fn pane_args<'a>(pane_id: Option<&'a str>) -> Vec<&'a str> {
     match pane_id {
         Some(pane_id) if pane_id != DEFAULT_PANE_ID => vec![pane_id],
         _ => Vec::new(),
@@ -104,6 +104,6 @@ pub(crate) fn pane_args<'a>(pane_id: Option<&'a str>) -> Vec<&'a str> {
 /// the panel's default pane — that single rule is what makes the
 /// single-pane path indistinguishable from the pre-pane behavior.
 /// (Nullish, not truthy: an empty string stays an empty string.)
-pub(crate) fn resolve_focused_pane_id(focused_pane_id: Option<&str>) -> &str {
+pub fn resolve_focused_pane_id(focused_pane_id: Option<&str>) -> &str {
     focused_pane_id.unwrap_or(DEFAULT_PANE_ID)
 }

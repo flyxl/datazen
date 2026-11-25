@@ -17,7 +17,7 @@
 /// `PERMISSION_LABELS[permission]` — `None` for anything but the
 /// closed five (the call sites fall back to the permission string
 /// itself, React's `?? perm`).
-pub(crate) fn wapp_permission_label(permission: &str) -> Option<&'static str> {
+pub fn wapp_permission_label(permission: &str) -> Option<&'static str> {
     match permission {
         "context:connections" => Some(
             "Read the connection list (names and types only, never credentials)",

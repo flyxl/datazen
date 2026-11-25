@@ -18,7 +18,7 @@ use super::{
 
 /// Build the panel root and its layout regions into `layer`.
 #[allow(dead_code)] // region builder; remove when the workspace wires the panel host.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &QueryPanelVm,
     on_action: &Option<QueryPanelActionFn<S>>,
     dark: bool,

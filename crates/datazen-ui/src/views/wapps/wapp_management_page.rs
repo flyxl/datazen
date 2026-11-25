@@ -87,11 +87,11 @@ const CONTENT_MAX_WIDTH: f32 = 1024.0;
 /// title and kind are constants the dialog builds from; the message names the
 /// wapp, so it is resolved once here, exactly as React's closure does.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct WappRemoveRequest {
+pub struct WappRemoveRequest {
     /// The wapp the uninstall targets (React: the closure's `wapp.id`).
-    pub(crate) wapp_id: String,
+    pub wapp_id: String,
     /// The confirm message, `{name}` resolved at ask time.
-    pub(crate) message: String,
+    pub message: String,
 }
 
 /// The wapps management page — React's `WappManagementPage` body, branch by
@@ -99,7 +99,7 @@ pub(crate) struct WappRemoveRequest {
 /// the search row (input + three chips), the error row, then the empty state,
 /// the "all" view's two groups or the flat grid. The dialogs float from the
 /// root modal layer (`views/modals.rs`).
-pub(crate) fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let _ = theme; // the kit tokens carry the page's paint; tok::Theme stays in the shell's type
     let k = kit(dark);
     let filtered = filtered_wapps(state);
@@ -380,7 +380,7 @@ fn wapp_grid(items: &[&WappSummaryVm], dark: bool) -> El {
 /// confirm (danger) and cancel (ghost). The header close and Escape are the
 /// cancel answer, as React's `onClose={onCancel}` is. Mounted by the root
 /// modal layer while a request is pending.
-pub(crate) fn wapp_remove_confirm_dialog(state: &AppState, dark: bool) -> Dialog {
+pub fn wapp_remove_confirm_dialog(state: &AppState, dark: bool) -> Dialog {
     // The ask is always present while the dialog is mounted (the modal layer
     // checks); a missing ask keeps an empty message out of the tree anyway.
     let message = state

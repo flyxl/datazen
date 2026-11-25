@@ -7,7 +7,7 @@ use super::{StatusValue, TrendPointVm};
 
 /// React `serverStatus.autoRefresh` options `(ms, i18n key)` in order.
 #[allow(dead_code)] // contract mirror; consumed by the refresh select and tests.
-pub(crate) const AUTO_REFRESH_OPTIONS: [(u64, &str); 4] = [
+pub const AUTO_REFRESH_OPTIONS: [(u64, &str); 4] = [
     (0, "serverStatus.refreshOff"),
     (5000, "serverStatus.refresh5s"),
     (10000, "serverStatus.refresh10s"),
@@ -17,7 +17,7 @@ pub(crate) const AUTO_REFRESH_OPTIONS: [(u64, &str); 4] = [
 /// React `METRIC_LABELS`: status field → i18n key (only the mapped fields get a
 /// localized label; the rest fall back to the raw key).
 #[allow(dead_code)] // pure mapping; consumed by cards/details and tests.
-pub(crate) fn metric_label_key(key: &str) -> Option<&'static str> {
+pub fn metric_label_key(key: &str) -> Option<&'static str> {
     match key {
         "version" => Some("serverStatus.version"),
         "database" => Some("serverStatus.database"),
@@ -43,13 +43,13 @@ pub(crate) fn metric_label_key(key: &str) -> Option<&'static str> {
 
 /// React `labelForKey`: the localized label or the raw key.
 #[allow(dead_code)] // pure helper; consumed by details and tests.
-pub(crate) fn label_for_key(key: &str) -> String {
+pub fn label_for_key(key: &str) -> String {
     metric_label_key(key).map(t).unwrap_or(key).to_owned()
 }
 
 /// React `numberFrom`: a number, or a finite numeric string, else null.
 #[allow(dead_code)] // pure helper; consumed by cards and tests.
-pub(crate) fn number_from(value: &StatusValue) -> Option<f64> {
+pub fn number_from(value: &StatusValue) -> Option<f64> {
     match value {
         StatusValue::Num(n) => Some(*n),
         StatusValue::Str(s) if !s.trim().is_empty() => {
@@ -62,7 +62,7 @@ pub(crate) fn number_from(value: &StatusValue) -> Option<f64> {
 
 /// React `formatUptime`: the `{days}` or `{hours}/{minutes}/{seconds}` form.
 #[allow(dead_code)] // pure helper; consumed by cards/details and tests.
-pub(crate) fn format_uptime(seconds: f64) -> String {
+pub fn format_uptime(seconds: f64) -> String {
     let total = seconds.max(0.0) as i64;
     let days = total / 86400;
     let hours = (total % 86400) / 3600;
@@ -82,7 +82,7 @@ pub(crate) fn format_uptime(seconds: f64) -> String {
 
 /// React `formatValue`: null/empty → em dash, uptime → formatted, else string.
 #[allow(dead_code)] // pure helper; consumed by details and tests.
-pub(crate) fn format_value(key: &str, value: &StatusValue) -> String {
+pub fn format_value(key: &str, value: &StatusValue) -> String {
     if value.is_absent() {
         return "—".to_owned();
     }
@@ -99,7 +99,7 @@ pub(crate) fn format_value(key: &str, value: &StatusValue) -> String {
 /// React `formatClock(ts)`: `HH:mm:ss` from wall-clock ms (UTC, the port's
 /// deterministic stand-in for the browser's local timezone).
 #[allow(dead_code)] // pure helper; consumed by the header and tests.
-pub(crate) fn format_clock(ts: i64) -> String {
+pub fn format_clock(ts: i64) -> String {
     let secs = ts.max(0) / 1000;
     let hour = (secs / 3600) % 24;
     let minute = (secs / 60) % 60;
@@ -109,13 +109,13 @@ pub(crate) fn format_clock(ts: i64) -> String {
 
 /// React `latestSeriesValue`: last point of a series, or null.
 #[allow(dead_code)] // pure helper; consumed by cards and tests.
-pub(crate) fn latest_series_value(series: Option<&[TrendPointVm]>) -> Option<f64> {
+pub fn latest_series_value(series: Option<&[TrendPointVm]>) -> Option<f64> {
     series.and_then(|points| points.last()).map(|point| point.v)
 }
 
 /// React `formatRate`: compact per-second number.
 #[allow(dead_code)] // pure helper; consumed by cards and tests.
-pub(crate) fn format_rate(value: f64) -> String {
+pub fn format_rate(value: f64) -> String {
     if value < 10.0 {
         format!("{value:.2}")
     } else if value < 1000.0 {
@@ -129,7 +129,7 @@ pub(crate) fn format_rate(value: f64) -> String {
 
 /// React `cardRateFromHistory`: latest trend point formatted, else the fallback.
 #[allow(dead_code)] // pure helper; consumed by cards and tests.
-pub(crate) fn card_rate_from_history(
+pub fn card_rate_from_history(
     history: &std::collections::BTreeMap<String, Vec<TrendPointVm>>,
     chart_key: &str,
     fallback: &StatusValue,
@@ -146,7 +146,7 @@ pub(crate) fn card_rate_from_history(
 
 /// React `formatBytes`: bytes with a binary unit.
 #[allow(dead_code)] // pure helper; consumed by cards and tests.
-pub(crate) fn format_bytes(value: f64) -> String {
+pub fn format_bytes(value: f64) -> String {
     if value < 1024.0 {
         format!("{value:.1} B")
     } else if value < 1024.0 * 1024.0 {
@@ -160,14 +160,14 @@ pub(crate) fn format_bytes(value: f64) -> String {
 
 /// React `formatByteRate`: bytes with a `/s` suffix.
 #[allow(dead_code)] // pure helper; consumed by cards and tests.
-pub(crate) fn format_byte_rate(value: f64) -> String {
+pub fn format_byte_rate(value: f64) -> String {
     format!("{}/s", format_bytes(value))
 }
 
 /// React `detailRows`' internal keys: cumulative counters and trend-only series
 /// are hidden from the details table (they belong to cards/charts).
 #[allow(dead_code)] // pure rule; consumed by details and tests.
-pub(crate) fn is_internal_detail_key(key: &str) -> bool {
+pub fn is_internal_detail_key(key: &str) -> bool {
     matches!(
         key,
         "questionsCounter"
@@ -196,7 +196,7 @@ pub(crate) fn is_internal_detail_key(key: &str) -> bool {
 
 /// React `detailRows`' preferred key order; unlisted keys follow sorted.
 #[allow(dead_code)] // pure rule; consumed by details and tests.
-pub(crate) const DETAIL_ORDER: [&str; 16] = [
+pub const DETAIL_ORDER: [&str; 16] = [
     "version",
     "database",
     "uptimeSeconds",
@@ -217,7 +217,7 @@ pub(crate) const DETAIL_ORDER: [&str; 16] = [
 
 /// React `detailRows` key order: ordered fields first, then the rest sorted.
 #[allow(dead_code)] // pure rule; consumed by details and tests.
-pub(crate) fn detail_keys(status: &std::collections::BTreeMap<String, StatusValue>) -> Vec<String> {
+pub fn detail_keys(status: &std::collections::BTreeMap<String, StatusValue>) -> Vec<String> {
     let mut keys: Vec<String> = DETAIL_ORDER
         .iter()
         .filter(|key| status.contains_key(**key) && !is_internal_detail_key(key))

@@ -25,16 +25,16 @@ use crate::ui::kit::kit;
 /// Host-owned projection of the banner props.
 #[allow(dead_code)] // VM surface; owned by the table host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TableStatusBannersVm {
-    pub(crate) error: Option<String>,
-    pub(crate) has_work: bool,
-    pub(crate) insert_notice: Option<String>,
+pub struct TableStatusBannersVm {
+    pub error: Option<String>,
+    pub has_work: bool,
+    pub insert_notice: Option<String>,
 }
 
 /// The only host intent in the React source.
 #[allow(dead_code)] // host port; removed with the table wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TableStatusBannersAction {
+pub enum TableStatusBannersAction {
     Retry,
 }
 
@@ -54,7 +54,7 @@ fn emit<S: 'static>(
 
 /// Build the three conditional banners into one column (React's fragment).
 #[allow(dead_code)] // consumer: the table host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableStatusBannersVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

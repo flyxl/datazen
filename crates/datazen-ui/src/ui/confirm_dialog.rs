@@ -42,7 +42,7 @@ use crate::ui::dialog::Dialog;
 /// React `kind?: 'warning' | 'info'` (default `warning`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[allow(dead_code)] // ui base; the hooks/ and view tracks reach it
-pub(crate) enum ConfirmKind {
+pub enum ConfirmKind {
     #[default]
     Warning,
     Info,
@@ -50,15 +50,15 @@ pub(crate) enum ConfirmKind {
 
 /// React `CODE_PREVIEW_MAX_LINES`.
 #[allow(dead_code)] // ui base; the hooks/ and view tracks reach it
-pub(crate) const CODE_PREVIEW_MAX_LINES: usize = 12;
+pub const CODE_PREVIEW_MAX_LINES: usize = 12;
 /// React `CODE_PREVIEW_MAX_CHARS`.
 #[allow(dead_code)] // ui base; the hooks/ and view tracks reach it
-pub(crate) const CODE_PREVIEW_MAX_CHARS: usize = 2000;
+pub const CODE_PREVIEW_MAX_CHARS: usize = 2000;
 
 /// React `truncateCodePreview`: within both limits verbatim; otherwise the
 /// first 12 lines and the truncated flag (the caller appends the ellipsis).
 #[allow(dead_code)] // ui base; the hooks/ and view tracks reach it
-pub(crate) fn truncate_code_preview(raw: &str) -> (String, bool) {
+pub fn truncate_code_preview(raw: &str) -> (String, bool) {
     let lines = raw.split('\n').count();
     if lines <= CODE_PREVIEW_MAX_LINES && raw.len() <= CODE_PREVIEW_MAX_CHARS {
         return (raw.to_owned(), false);
@@ -72,7 +72,7 @@ type ConfirmFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 /// The confirm dialog builder, generic over the owning state `S` (the
 /// `ui/dialog.rs` composition pattern).
 #[allow(dead_code)] // ui base; the hooks/ and view tracks reach it
-pub(crate) struct ConfirmDialog<'a, S: 'static> {
+pub struct ConfirmDialog<'a, S: 'static> {
     key: &'a str,
     title: &'a str,
     message: &'a str,
@@ -91,7 +91,7 @@ pub(crate) struct ConfirmDialog<'a, S: 'static> {
 impl<'a, S: 'static> ConfirmDialog<'a, S> {
     /// React's required props (`open` is the caller's: nothing paints while
     /// the host has no pending request).
-    pub(crate) fn new(key: &'a str, title: &'a str, message: &'a str) -> Self {
+    pub fn new(key: &'a str, title: &'a str, message: &'a str) -> Self {
         Self {
             key,
             title,
@@ -109,61 +109,61 @@ impl<'a, S: 'static> ConfirmDialog<'a, S> {
     }
 
     /// React `kind` (default warning).
-    pub(crate) fn kind(mut self, kind: ConfirmKind) -> Self {
+    pub fn kind(mut self, kind: ConfirmKind) -> Self {
         self.kind = kind;
         self
     }
 
     /// React `badge`.
-    pub(crate) fn badge(mut self, badge: &'a str) -> Self {
+    pub fn badge(mut self, badge: &'a str) -> Self {
         self.badge = Some(badge);
         self
     }
 
     /// React `codePreview`.
-    pub(crate) fn code_preview(mut self, preview: &'a str) -> Self {
+    pub fn code_preview(mut self, preview: &'a str) -> Self {
         self.code_preview = Some(preview);
         self
     }
 
     /// React `description`.
-    pub(crate) fn description(mut self, description: &'a str) -> Self {
+    pub fn description(mut self, description: &'a str) -> Self {
         self.description = Some(description);
         self
     }
 
     /// React `confirmLabel` (defaults to `t('common.confirm')`).
-    pub(crate) fn confirm_label(mut self, label: &'a str) -> Self {
+    pub fn confirm_label(mut self, label: &'a str) -> Self {
         self.confirm_label = Some(label);
         self
     }
 
     /// React `cancelLabel` (defaults to `t('common.cancel')`).
-    pub(crate) fn cancel_label(mut self, label: &'a str) -> Self {
+    pub fn cancel_label(mut self, label: &'a str) -> Self {
         self.cancel_label = Some(label);
         self
     }
 
     /// The copied-flag projection (React `useCopyFeedback`).
-    pub(crate) fn copied(mut self, copied: bool) -> Self {
+    pub fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
     }
 
     /// The confirm action (footer OK).
-    pub(crate) fn on_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm = Some(Rc::new(f));
         self
     }
 
     /// The cancel action (footer, header close, Esc, scrim).
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
 
     /// Paint the modal into `layer` (React `max-w-lg` = 512px = 384pt).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         let k = crate::ui::kit::kit(dark);
         let mut dialog = Dialog::new(self.key, self.title)
             .open(true)

@@ -11,21 +11,21 @@ use crate::settings_state::SETTINGS_SECTIONS;
 
 /// `PlatformCapabilities.versionSource`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum VersionSource {
+pub enum VersionSource {
     HostApp,
     BuildConstant,
     Http,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct PlatformCapabilities {
+pub struct PlatformCapabilities {
     pub settings_sections: &'static [&'static str],
     pub updater: bool,
     pub version_source: VersionSource,
 }
 
 /// `WEB_SETTINGS_SECTIONS`, in the order React inserts them.
-pub(crate) const WEB_SETTINGS_SECTIONS: &[&str] = &[
+pub const WEB_SETTINGS_SECTIONS: &[&str] = &[
     "general",
     "appearance",
     "dataBrowsing",
@@ -34,14 +34,14 @@ pub(crate) const WEB_SETTINGS_SECTIONS: &[&str] = &[
 ];
 
 /// `DESKTOP_CAPABILITIES`.
-pub(crate) const DESKTOP_CAPABILITIES: PlatformCapabilities = PlatformCapabilities {
+pub const DESKTOP_CAPABILITIES: PlatformCapabilities = PlatformCapabilities {
     settings_sections: DESKTOP_SETTINGS_SECTIONS,
     updater: true,
     version_source: VersionSource::HostApp,
 };
 
 /// `WEB_CAPABILITIES`.
-pub(crate) const WEB_CAPABILITIES: PlatformCapabilities = PlatformCapabilities {
+pub const WEB_CAPABILITIES: PlatformCapabilities = PlatformCapabilities {
     settings_sections: WEB_SETTINGS_SECTIONS,
     updater: false,
     version_source: VersionSource::BuildConstant,
@@ -65,7 +65,7 @@ const DESKTOP_SETTINGS_SECTIONS: &[&str] = &[
 ];
 
 /// True when the desktop table still lists every settings section, in order.
-pub(crate) fn desktop_sections_match_settings() -> bool {
+pub fn desktop_sections_match_settings() -> bool {
     SETTINGS_SECTIONS.len() == DESKTOP_SETTINGS_SECTIONS.len()
         && SETTINGS_SECTIONS
             .iter()

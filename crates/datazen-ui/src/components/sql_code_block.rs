@@ -90,7 +90,7 @@ use crate::sql_editor::{
 /// registry's `sqlDialect`, and anything outside the four renders with
 /// the standard grammar in React too (contrast [`resolve_cm_dialect`],
 /// whose map carries `sqlserver`).
-pub(crate) fn resolve_dialect(dialect: &str) -> CmSqlDialect {
+pub fn resolve_dialect(dialect: &str) -> CmSqlDialect {
     match dialect {
         "postgresql" => CmSqlDialect::PostgreSql,
         "mysql" => CmSqlDialect::MySql,
@@ -121,7 +121,7 @@ fn gutter_rule(dark: bool) -> Color {
 /// The state the host owns for one block: the document model, the
 /// resolved dialect, and the syntax-preset seam.
 #[derive(Debug)]
-pub(crate) struct SqlCodeBlockState {
+pub struct SqlCodeBlockState {
     editor: SqlEditor,
     dialect: CmSqlDialect,
     /// React's `sqlSyntaxTheme` setting (the reconfigure seam; the
@@ -131,7 +131,7 @@ pub(crate) struct SqlCodeBlockState {
 
 impl SqlCodeBlockState {
     /// One block: the initial `code` and the dialect key.
-    pub(crate) fn new(code: impl Into<String>, dialect: &str) -> Self {
+    pub fn new(code: impl Into<String>, dialect: &str) -> Self {
         Self {
             editor: SqlEditor::from_doc(code),
             dialect: resolve_dialect(dialect),
@@ -140,17 +140,17 @@ impl SqlCodeBlockState {
     }
 
     /// The document (React's `view.state.doc`).
-    pub(crate) fn doc(&self) -> &str {
+    pub fn doc(&self) -> &str {
         self.editor.doc()
     }
 
     /// The resolved dialect.
-    pub(crate) fn dialect(&self) -> CmSqlDialect {
+    pub fn dialect(&self) -> CmSqlDialect {
         self.dialect
     }
 
     /// The engine model, for the host's own routing.
-    pub(crate) fn editor(&self) -> &SqlEditor {
+    pub fn editor(&self) -> &SqlEditor {
         &self.editor
     }
 
@@ -159,7 +159,7 @@ impl SqlCodeBlockState {
     /// `onDocChange` (the caller never fires the change callback for
     /// this write). The focus survives the replace, as React's dispatch
     /// keeps the view's focus.
-    pub(crate) fn set_code(&mut self, code: &str) {
+    pub fn set_code(&mut self, code: &str) {
         if self.editor.doc() != code {
             let focused = self.editor.focused();
             self.editor = SqlEditor::from_doc(code);
@@ -173,23 +173,23 @@ impl SqlCodeBlockState {
     /// theme compartment when the setting changes; the port records the
     /// preset here (the highlighter swap itself lands with the
     /// themeEditorColors lib task).
-    pub(crate) fn set_syntax_preset(&mut self, preset: Option<&str>) {
+    pub fn set_syntax_preset(&mut self, preset: Option<&str>) {
         self.syntax_preset = preset.map(str::to_owned);
     }
 
     /// The recorded preset (the seam's read end).
-    pub(crate) fn syntax_preset(&self) -> Option<&str> {
+    pub fn syntax_preset(&self) -> Option<&str> {
         self.syntax_preset.as_deref()
     }
 
     /// Whether the surface shows the caret (the engine's focus flag).
-    pub(crate) fn focused(&self) -> bool {
+    pub fn focused(&self) -> bool {
         self.editor.focused()
     }
 
     /// Focus the surface (React's editable view takes focus on press;
     /// the read-only view never does).
-    pub(crate) fn focus(&mut self) {
+    pub fn focus(&mut self) {
         self.editor.focus();
     }
 
@@ -197,7 +197,7 @@ impl SqlCodeBlockState {
     /// consumes the key; the changed document — a local edit, never a
     /// remote one — comes back so the host fires its `onChange`). A
     /// consumed caret move answers `(true, None)`.
-    pub(crate) fn handle_key(&mut self, event: &KeyEvent, tx: &mut Tx) -> (bool, Option<String>) {
+    pub fn handle_key(&mut self, event: &KeyEvent, tx: &mut Tx) -> (bool, Option<String>) {
         let before = self.editor.doc().to_owned();
         let consumed = editor_on_key(&mut self.editor, event, tx);
         let after = self.editor.doc();
@@ -206,7 +206,7 @@ impl SqlCodeBlockState {
     }
 
     /// The IME path (the app-level router forwards; see the deviations).
-    pub(crate) fn handle_ime(&mut self, event: &rune::Ime) -> (bool, Option<String>) {
+    pub fn handle_ime(&mut self, event: &rune::Ime) -> (bool, Option<String>) {
         let before = self.editor.doc().to_owned();
         let consumed = editor_on_ime(&mut self.editor, event);
         let after = self.editor.doc();
@@ -218,26 +218,26 @@ impl SqlCodeBlockState {
 /// The SQL code block. Without [`SqlCodeBlock::on_change`] the block is
 /// read-only (selectable text, no caret, no key handling); with it the
 /// block is editable and streams document changes through the callback.
-pub(crate) struct SqlCodeBlock<'a, S: 'static> {
+pub struct SqlCodeBlock<'a, S: 'static> {
     state: &'a SqlCodeBlockState,
     state_access: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut SqlCodeBlockState>>,
     on_change: Option<Rc<dyn Fn(&mut S, String) + 'static>>,
 }
 
 impl<'a, S: 'static> SqlCodeBlock<'a, S> {
-    pub(crate) fn new(state: &'a SqlCodeBlockState) -> Self {
+    pub fn new(state: &'a SqlCodeBlockState) -> Self {
         Self { state, state_access: None, on_change: None }
     }
 
     /// React's `onChange` prop: presence makes the block editable.
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
     /// The wire that binds the editable surface to the host's state
     /// (the focus press and the key routing mutate through it).
-    pub(crate) fn state_access(
+    pub fn state_access(
         mut self,
         access: impl for<'b> Fn(&'b mut S) -> &'b mut SqlCodeBlockState + Clone + 'static,
     ) -> Self {
@@ -248,7 +248,7 @@ impl<'a, S: 'static> SqlCodeBlock<'a, S> {
     /// The block, mounted: the gutter beside the code column. Only an
     /// editable block (an `on_change` + the state wire) takes focus and
     /// keys.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let editable = self.on_change.is_some() && self.state_access.is_some();
         let editor = &self.state.editor;
         let spans = highlight_sql(editor.doc(), dark);

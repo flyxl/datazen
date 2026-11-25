@@ -42,19 +42,19 @@ const MAX_FAILED_READS: u32 = 20;
 /// insertion order so the emitted input envelope is deterministic.
 #[allow(dead_code)] // consumer: the explain view; remove when it lands.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ExplainRequest {
-    pub(crate) key: String,
-    pub(crate) connection_id: String,
-    pub(crate) sql: String,
-    pub(crate) database: Option<String>,
-    pub(crate) schema: Option<String>,
-    pub(crate) params: Vec<(String, serde_json::Value)>,
+pub struct ExplainRequest {
+    pub key: String,
+    pub connection_id: String,
+    pub sql: String,
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub params: Vec<(String, serde_json::Value)>,
 }
 
 /// Work the host performs to drive an explain run.
 #[allow(dead_code)] // emitted work; remove with the explain view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ExplainEffect {
+pub enum ExplainEffect {
     /// `registry.get(key, target, ownerForPane(key))`.
     GetController {
         key: String,
@@ -79,7 +79,7 @@ pub(crate) enum ExplainEffect {
 /// Host answers fed back into [`ExplainRun::step`].
 #[allow(dead_code)] // result feed; remove with the explain view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ExplainInput {
+pub enum ExplainInput {
     ControllerReady,
     Executed(Result<ExecutionReceipt, SessionError>),
     Projected,
@@ -94,7 +94,7 @@ pub(crate) enum ExplainInput {
 /// React's thrown failure, kept as a typed value (no panics).
 #[allow(dead_code)] // failure mirror; remove with the explain view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ExplainFailure {
+pub enum ExplainFailure {
     Session(SessionError),
     RecoverExhausted,
     Execution { message: String },
@@ -104,22 +104,22 @@ pub(crate) enum ExplainFailure {
 /// The successful React return is an `ExplainResult` with `planText`.
 #[allow(dead_code)] // result mirror; remove with the explain view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ExplainPlan {
-    pub(crate) plan_text: String,
+pub struct ExplainPlan {
+    pub plan_text: String,
 }
 
 #[allow(dead_code)] // result mirror; remove with the explain view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ExplainOutcome {
+pub enum ExplainOutcome {
     Plan(ExplainPlan),
     Failed(ExplainFailure),
 }
 
 #[allow(dead_code)] // step result; remove with the explain view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ExplainStep {
-    pub(crate) effects: Vec<ExplainEffect>,
-    pub(crate) outcome: Option<ExplainOutcome>,
+pub struct ExplainStep {
+    pub effects: Vec<ExplainEffect>,
+    pub outcome: Option<ExplainOutcome>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -134,7 +134,7 @@ enum ExplainPhase {
 
 /// The explain flow as an explicit machine.
 #[allow(dead_code)] // consumer: the explain view; remove when it lands.
-pub(crate) struct ExplainRun {
+pub struct ExplainRun {
     request: ExplainRequest,
     phase: ExplainPhase,
     failed_reads: u32,
@@ -144,7 +144,7 @@ pub(crate) struct ExplainRun {
 
 /// Start an explain run: the first effect resolves the pane controller.
 #[allow(dead_code)] // consumer: the explain view; remove when it lands.
-pub(crate) fn start(request: ExplainRequest) -> (ExplainRun, ExplainStep) {
+pub fn start(request: ExplainRequest) -> (ExplainRun, ExplainStep) {
     let target = ExecutionTarget {
         connection_id: request.connection_id.clone(),
         namespace: NamespaceTarget {
@@ -181,7 +181,7 @@ pub(crate) fn start(request: ExplainRequest) -> (ExplainRun, ExplainStep) {
 
 #[allow(dead_code)] // consumer: the explain view; remove when it lands.
 impl ExplainRun {
-    pub(crate) fn phase(&self) -> &'static str {
+    pub fn phase(&self) -> &'static str {
         match self.phase {
             ExplainPhase::AwaitController => "awaitController",
             ExplainPhase::AwaitExecute => "awaitExecute",
@@ -193,7 +193,7 @@ impl ExplainRun {
     }
 
     /// Advance with one host answer. Out-of-phase inputs cannot move the run.
-    pub(crate) fn step(&mut self, input: ExplainInput) -> ExplainStep {
+    pub fn step(&mut self, input: ExplainInput) -> ExplainStep {
         match (self.phase, input) {
             (ExplainPhase::AwaitController, ExplainInput::ControllerReady) => {
                 self.phase = ExplainPhase::AwaitExecute;
@@ -315,7 +315,7 @@ impl ExplainRun {
 /// React's `explain` envelope: bind params only when non-empty, database/schema
 /// only when truthy. Keys are emitted in React's literal order.
 #[allow(dead_code)] // envelope helper; remove with the explain view.
-pub(crate) fn explain_command_call(
+pub fn explain_command_call(
     sql: &str,
     params: &[(String, serde_json::Value)],
     database: Option<&str>,
@@ -347,7 +347,7 @@ fn json_string(value: &str) -> String {
 
 /// Scan chunks for a `commandResult` output carrying a string `planText`.
 #[allow(dead_code)] // plan helper; remove with the explain view.
-pub(crate) fn explain_plan_text(chunks: &[PublishedResultChunk]) -> Option<String> {
+pub fn explain_plan_text(chunks: &[PublishedResultChunk]) -> Option<String> {
     for chunk in chunks {
         let Some(output) = chunk.payload.get("output") else {
             continue;
@@ -368,7 +368,7 @@ pub(crate) fn explain_plan_text(chunks: &[PublishedResultChunk]) -> Option<Strin
 
 /// React's `${state}: ${errorCode}; effect: ${effectOutcome}`.
 #[allow(dead_code)] // error helper; remove with the explain view.
-pub(crate) fn explain_failure_message(view: &ExecutionView) -> String {
+pub fn explain_failure_message(view: &ExecutionView) -> String {
     format!(
         "{}: {}; effect: {}",
         execution_state_str(view.state),

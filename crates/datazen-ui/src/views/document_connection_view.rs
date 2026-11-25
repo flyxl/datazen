@@ -32,12 +32,12 @@ use rune::El;
 #[path = "document_connection_view_body.rs"]
 mod body;
 
-pub(crate) use body::build_body;
+pub use body::build_body;
 
 /// React `ActiveTab`.
 #[allow(dead_code)] // VM surface; consumed by the body and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum DocTab {
+pub enum DocTab {
     #[default]
     Documents,
     Queries,
@@ -46,7 +46,7 @@ pub(crate) enum DocTab {
 /// One loaded statement result, reduced to what the table shows.
 #[allow(dead_code)] // VM surface; supplied by the host result feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DocResult {
+pub struct DocResult {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
     /// The `_id` of each row, when present; used to keep selection across reloads.
@@ -56,7 +56,7 @@ pub(crate) struct DocResult {
 /// The embedded query panel's VM (React `useQueryExec`).
 #[allow(dead_code)] // VM surface; supplied by the host result feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct QueryVm {
+pub struct QueryVm {
     pub sql: String,
     pub running: bool,
     pub error: String,
@@ -68,7 +68,7 @@ pub(crate) struct QueryVm {
 /// The full view snapshot the host fills each frame.
 #[allow(dead_code)] // VM surface; owned by the host until the panel store lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DocumentViewVm {
+pub struct DocumentViewVm {
     pub connection_name: String,
     pub db_session_id: String,
     pub connection_id: String,
@@ -101,7 +101,7 @@ pub(crate) struct DocumentViewVm {
 
 impl DocumentViewVm {
     /// React `filteredCollections`: soft, case-insensitive substring filter.
-    pub(crate) fn filtered_collections(&self) -> Vec<&String> {
+    pub fn filtered_collections(&self) -> Vec<&String> {
         let needle = self.collection_filter.trim().to_ascii_lowercase();
         if needle.is_empty() {
             return self.collections.iter().collect();
@@ -113,23 +113,23 @@ impl DocumentViewVm {
     }
 
     /// React `showEditor = selectedDoc !== null || insertMode`.
-    pub(crate) fn show_editor(&self) -> bool {
+    pub fn show_editor(&self) -> bool {
         self.insert_mode || self.selected_row_idx.is_some()
     }
 
     /// React `canSave = hasDocumentId && !insertMode`.
-    pub(crate) fn has_document_id(&self) -> bool {
+    pub fn has_document_id(&self) -> bool {
         document_id(&self.edit_text).is_some()
     }
 
     /// React `docCount` display value.
-    pub(crate) fn doc_count(&self) -> usize {
+    pub fn doc_count(&self) -> usize {
         self.result.as_ref().map_or(0, |result| result.rows.len())
     }
 
     /// React `initialDatabase ?? databases[0]` when a database must be picked.
     #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
-    pub(crate) fn initial_database_choice(&self) -> Option<&str> {
+    pub fn initial_database_choice(&self) -> Option<&str> {
         self.initial_database
             .as_deref()
             .filter(|db| self.databases.iter().any(|item| item == db))
@@ -139,7 +139,7 @@ impl DocumentViewVm {
 
 /// Extract `_id` from a JSON document. A missing/null id is `None`. The whole
 /// string value is returned — commas are part of the id, not a separator.
-pub(crate) fn document_id(json: &str) -> Option<String> {
+pub fn document_id(json: &str) -> Option<String> {
     let trimmed = json.trim();
     let rest = trimmed.strip_prefix('{')?.trim();
     let after_key = rest.strip_prefix("\"_id\"")?.trim_start().strip_prefix(':')?.trim_start();
@@ -162,7 +162,7 @@ pub(crate) fn document_id(json: &str) -> Option<String> {
 /// Host calls the view emits. No SQL is built here.
 #[allow(dead_code)] // host port; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DocAction {
+pub enum DocAction {
     Refresh,
     SelectTab(DocTab),
     SelectDb(String),
@@ -182,7 +182,7 @@ pub(crate) enum DocAction {
 /// Host answers fed back into the VM.
 #[allow(dead_code)] // host port; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DocEvent {
+pub enum DocEvent {
     SchemaLoaded(Result<Vec<String>, String>),
     CollectionsLoaded(Result<Vec<String>, String>),
     DocumentsLoaded(Result<Option<DocResult>, String>),
@@ -193,7 +193,7 @@ pub(crate) enum DocEvent {
 impl DocumentViewVm {
     /// React `handleSelectDb` + `handleSelectCollection` reset rules.
     #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
-    pub(crate) fn select_db(&mut self, db: String) {
+    pub fn select_db(&mut self, db: String) {
         self.selected_db = Some(db);
         self.selected_collection = None;
         self.result = None;
@@ -205,7 +205,7 @@ impl DocumentViewVm {
     }
 
     #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
-    pub(crate) fn select_collection(&mut self, name: String) {
+    pub fn select_collection(&mut self, name: String) {
         self.selected_collection = Some(name);
         self.insert_mode = false;
         self.edit_text.clear();
@@ -213,7 +213,7 @@ impl DocumentViewVm {
     }
 
     #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
-    pub(crate) fn open_insert(&mut self) {
+    pub fn open_insert(&mut self) {
         self.selected_row_idx = None;
         self.insert_mode = true;
         self.edit_text = "{}".to_owned();
@@ -221,7 +221,7 @@ impl DocumentViewVm {
     }
 
     #[allow(dead_code)] // consumer: the document-view host wiring (not landed); remove when wired.
-    pub(crate) fn close_editor(&mut self) {
+    pub fn close_editor(&mut self) {
         self.selected_row_idx = None;
         self.insert_mode = false;
         self.edit_text.clear();
@@ -230,7 +230,7 @@ impl DocumentViewVm {
 
     /// A load answer. React classifies filter-JSON failures separately.
     #[allow(dead_code)] // consumer: the document-view host result feed (not landed); remove when wired.
-    pub(crate) fn apply_documents(&mut self, answer: Result<Option<DocResult>, String>) {
+    pub fn apply_documents(&mut self, answer: Result<Option<DocResult>, String>) {
         self.docs_loading = false;
         self.filter_error.clear();
         self.docs_error.clear();
@@ -255,7 +255,7 @@ impl DocumentViewVm {
 
     /// Resolve any host event into the next VM state.
     #[allow(dead_code)] // consumer: the document-view host result feed (not landed); remove when wired.
-    pub(crate) fn apply_event(&mut self, event: DocEvent) {
+    pub fn apply_event(&mut self, event: DocEvent) {
         match event {
             DocEvent::SchemaLoaded(Ok(databases)) => {
                 self.loading_databases = false;
@@ -295,7 +295,7 @@ impl DocumentViewVm {
 
 /// Render the composed document view into `layer`.
 #[allow(dead_code)] // consumer: connection_page composition (wired by T337).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &DocumentViewVm,
     on_action: Option<Rc<dyn Fn(&mut S, DocAction) + 'static>>,
     dark: bool,

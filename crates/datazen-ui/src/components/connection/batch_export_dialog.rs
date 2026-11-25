@@ -56,7 +56,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone, SpinnerVariant};
 /// React's `status` union: form / exporting / success / aborted.
 #[allow(dead_code)] // VM surface; wired by the host/view track that owns export jobs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum BatchExportStatus {
+pub enum BatchExportStatus {
     #[default]
     Form,
     Exporting,
@@ -67,7 +67,7 @@ pub(crate) enum BatchExportStatus {
 /// React's `BatchExportMode` union.
 #[allow(dead_code)] // VM surface
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum BatchExportMode {
+pub enum BatchExportMode {
     StructureOnly,
     DataOnly,
     #[default]
@@ -77,7 +77,7 @@ pub(crate) enum BatchExportMode {
 #[allow(dead_code)] // VM surface
 impl BatchExportMode {
     /// The i18n key React uses for this mode's radio label.
-    pub(crate) fn label_key(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
             Self::StructureOnly => "common.structureOnly",
             Self::DataOnly => "common.dataOnly",
@@ -89,7 +89,7 @@ impl BatchExportMode {
 /// React's `BatchExportDataFormat` union, in the order of `DATA_FORMAT_OPTIONS`.
 #[allow(dead_code)] // VM surface
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum DataFormat {
+pub enum DataFormat {
     #[default]
     Csv,
     Tsv,
@@ -104,7 +104,7 @@ pub(crate) enum DataFormat {
 #[allow(dead_code)] // VM surface
 impl DataFormat {
     /// The stored value behind the option (React's `option.value`).
-    pub(crate) fn value(self) -> &'static str {
+    pub fn value(self) -> &'static str {
         match self {
             Self::Csv => "csv",
             Self::Tsv => "tsv",
@@ -118,7 +118,7 @@ impl DataFormat {
     }
 
     /// The visible label behind the option (React's `option.label`).
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Csv => "CSV",
             Self::Tsv => "TSV",
@@ -131,7 +131,7 @@ impl DataFormat {
         }
     }
 
-    pub(crate) fn from_value(value: &str) -> Self {
+    pub fn from_value(value: &str) -> Self {
         match value {
             "tsv" => Self::Tsv,
             "json" => Self::Json,
@@ -148,7 +148,7 @@ impl DataFormat {
 /// React's `BatchExportOutputMode` union.
 #[allow(dead_code)] // VM surface
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum OutputMode {
+pub enum OutputMode {
     #[default]
     Single,
     Zip,
@@ -157,7 +157,7 @@ pub(crate) enum OutputMode {
 /// React's `DataExportCapability`: batch export is only allowed for `full_table`.
 #[allow(dead_code)] // VM surface
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum DataExportCapability {
+pub enum DataExportCapability {
     None,
     LoadedOnly,
     #[default]
@@ -167,7 +167,7 @@ pub(crate) enum DataExportCapability {
 #[allow(dead_code)] // VM surface
 impl DataExportCapability {
     /// React's `supportsFullTableExport(capability)`.
-    pub(crate) fn supports_full_table(self) -> bool {
+    pub fn supports_full_table(self) -> bool {
         matches!(self, Self::FullTable)
     }
 }
@@ -175,58 +175,58 @@ impl DataExportCapability {
 /// React's `progress` state: a writer-progress snapshot from the bound exporter.
 #[allow(dead_code)] // VM surface
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ExportProgress {
-    pub(crate) current: usize,
-    pub(crate) total: usize,
-    pub(crate) table_name: Option<String>,
-    pub(crate) rows_written: Option<u64>,
+pub struct ExportProgress {
+    pub current: usize,
+    pub total: usize,
+    pub table_name: Option<String>,
+    pub rows_written: Option<u64>,
 }
 
 /// The complete argument React's `onExport` override receives.
 #[allow(dead_code)] // VM surface; handed to the host by `on_export`
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExportRequest {
-    pub(crate) selected_tables: Vec<String>,
-    pub(crate) mode: BatchExportMode,
-    pub(crate) data_format: DataFormat,
-    pub(crate) output_mode: OutputMode,
+pub struct ExportRequest {
+    pub selected_tables: Vec<String>,
+    pub mode: BatchExportMode,
+    pub data_format: DataFormat,
+    pub output_mode: OutputMode,
 }
 
 /// Everything the dialog renders. The host keeps this in the app state `S` and
 /// projects it here; every interaction is a callback that mutates `S`.
 #[allow(dead_code)] // VM surface
 #[derive(Clone, Debug)]
-pub(crate) struct BatchExportVm {
-    pub(crate) open: bool,
+pub struct BatchExportVm {
+    pub open: bool,
     /// Bumped on each open so the body's scroll viewport resets (from [`Dialog`]).
-    pub(crate) open_epoch: u64,
-    pub(crate) db_session_id: String,
-    pub(crate) database_type: Option<String>,
-    pub(crate) database: Option<String>,
+    pub open_epoch: u64,
+    pub db_session_id: String,
+    pub database_type: Option<String>,
+    pub database: Option<String>,
     /// Fallback schema for the exported tables (PostgreSQL family).
-    pub(crate) schema: Option<String>,
+    pub schema: Option<String>,
     /// Available table names (from the schema store).
-    pub(crate) tables: Vec<String>,
+    pub tables: Vec<String>,
     /// Optional pre-selected table names; the host applies this on open (React's effect).
-    pub(crate) initial_selected: Vec<String>,
-    pub(crate) selected: Vec<String>,
-    pub(crate) mode: BatchExportMode,
-    pub(crate) data_format: DataFormat,
-    pub(crate) output_mode: OutputMode,
-    pub(crate) status: BatchExportStatus,
+    pub initial_selected: Vec<String>,
+    pub selected: Vec<String>,
+    pub mode: BatchExportMode,
+    pub data_format: DataFormat,
+    pub output_mode: OutputMode,
+    pub status: BatchExportStatus,
     /// The cancel was asked for and the run is winding down (DBR-06).
-    pub(crate) cancelling: bool,
+    pub cancelling: bool,
     /// Whether the aborted run's partial file was deleted (reported honestly).
-    pub(crate) partial_deleted: bool,
-    pub(crate) progress: Option<ExportProgress>,
-    pub(crate) error: Option<String>,
-    pub(crate) capability: DataExportCapability,
+    pub partial_deleted: bool,
+    pub progress: Option<ExportProgress>,
+    pub error: Option<String>,
+    pub capability: DataExportCapability,
     /// React's `IS_DESKTOP_BUILD`: controls zip output and the cancel-export button.
-    pub(crate) is_desktop: bool,
+    pub is_desktop: bool,
     /// React's `onExport` override: when present the cancel-export button is hidden.
-    pub(crate) has_export_override: bool,
+    pub has_export_override: bool,
     /// Whether the kit format listbox is open (React's `Select` owns this internally).
-    pub(crate) format_open: bool,
+    pub format_open: bool,
 }
 
 #[allow(dead_code)] // VM surface
@@ -263,7 +263,7 @@ impl Default for BatchExportVm {
 impl BatchExportVm {
     /// React's `useEffect` on open: restore the pre-selection and clear all run state.
     /// The host calls this when it flips `open` back on.
-    pub(crate) fn reset_on_open(&mut self) {
+    pub fn reset_on_open(&mut self) {
         self.selected = self.initial_selected.clone();
         self.mode = BatchExportMode::DataAndStructure;
         self.data_format = DataFormat::Csv;
@@ -284,7 +284,7 @@ impl BatchExportVm {
     /// The VM holds `selected` as a `Vec`, so a length compare would report a
     /// duplicate (e.g. `["users","users"]`) as "all selected" — check membership
     /// per table instead.
-    pub(crate) fn all_selected(&self) -> bool {
+    pub fn all_selected(&self) -> bool {
         !self.tables.is_empty()
             && self
                 .tables
@@ -293,27 +293,27 @@ impl BatchExportVm {
     }
 
     /// React's `formatDisabled`: structure-only exports have no data format.
-    pub(crate) fn format_disabled(&self) -> bool {
+    pub fn format_disabled(&self) -> bool {
         self.mode == BatchExportMode::StructureOnly
     }
 
     /// React's `batchExportLocked`: the driver cannot export whole tables.
-    pub(crate) fn locked(&self) -> bool {
+    pub fn locked(&self) -> bool {
         !self.capability.supports_full_table()
     }
 }
 
-pub(crate) type CloseFn<S> = Rc<dyn Fn(&mut S) + 'static>;
-pub(crate) type TableFn<S> = Rc<dyn Fn(&mut S, String) + 'static>;
-pub(crate) type ModeFn<S> = Rc<dyn Fn(&mut S, BatchExportMode) + 'static>;
-pub(crate) type FormatFn<S> = Rc<dyn Fn(&mut S, DataFormat) + 'static>;
-pub(crate) type OutputFn<S> = Rc<dyn Fn(&mut S, OutputMode) + 'static>;
-pub(crate) type ExportFn<S> = Rc<dyn Fn(&mut S, ExportRequest) + 'static>;
-pub(crate) type CopyFn<S> = Rc<dyn Fn(&mut S, &mut Tx) + 'static>;
+pub type CloseFn<S> = Rc<dyn Fn(&mut S) + 'static>;
+pub type TableFn<S> = Rc<dyn Fn(&mut S, String) + 'static>;
+pub type ModeFn<S> = Rc<dyn Fn(&mut S, BatchExportMode) + 'static>;
+pub type FormatFn<S> = Rc<dyn Fn(&mut S, DataFormat) + 'static>;
+pub type OutputFn<S> = Rc<dyn Fn(&mut S, OutputMode) + 'static>;
+pub type ExportFn<S> = Rc<dyn Fn(&mut S, ExportRequest) + 'static>;
+pub type CopyFn<S> = Rc<dyn Fn(&mut S, &mut Tx) + 'static>;
 
 /// Builder for the dialog, generic over the app state `S` that owns the VM.
 #[allow(dead_code)] // reusable component; wired by the export host/view track
-pub(crate) struct BatchExportDialog<'a, S: 'static> {
+pub struct BatchExportDialog<'a, S: 'static> {
     key: &'a str,
     vm: &'a BatchExportVm,
     close: Option<CloseFn<S>>,
@@ -332,7 +332,7 @@ pub(crate) struct BatchExportDialog<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by the export host/view track
 impl<'a, S: 'static> BatchExportDialog<'a, S> {
-    pub(crate) fn new(key: &'a str, vm: &'a BatchExportVm) -> Self {
+    pub fn new(key: &'a str, vm: &'a BatchExportVm) -> Self {
         Self {
             key,
             vm,
@@ -353,74 +353,74 @@ impl<'a, S: 'static> BatchExportDialog<'a, S> {
 
     /// Header close / Escape / footer cancel. Suppressed while exporting, like
     /// React's `onClose={exporting ? () => undefined : onClose}`.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.close = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_toggle_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.toggle_table = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.select_all = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_clear_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.clear_all = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_mode(mut self, f: impl Fn(&mut S, BatchExportMode) + 'static) -> Self {
+    pub fn on_mode(mut self, f: impl Fn(&mut S, BatchExportMode) + 'static) -> Self {
         self.mode = Some(Rc::new(f));
         self
     }
 
     /// A chosen data format, as the stored value (React casts to `BatchExportDataFormat`).
-    pub(crate) fn on_data_format(mut self, f: impl Fn(&mut S, DataFormat) + 'static) -> Self {
+    pub fn on_data_format(mut self, f: impl Fn(&mut S, DataFormat) + 'static) -> Self {
         self.format = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_format_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_format_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.format_open = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_format_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_format_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.format_close = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_output_mode(mut self, f: impl Fn(&mut S, OutputMode) + 'static) -> Self {
+    pub fn on_output_mode(mut self, f: impl Fn(&mut S, OutputMode) + 'static) -> Self {
         self.output = Some(Rc::new(f));
         self
     }
 
     /// The export action. This is the only place a batch export is requested;
     /// the host runs the job and writes `status`/`progress`/`error` back to the VM.
-    pub(crate) fn on_export(mut self, f: impl Fn(&mut S, ExportRequest) + 'static) -> Self {
+    pub fn on_export(mut self, f: impl Fn(&mut S, ExportRequest) + 'static) -> Self {
         self.export = Some(Rc::new(f));
         self
     }
 
     /// The cancel-export action (desktop, no override path only).
-    pub(crate) fn on_cancel_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.cancel = Some(Rc::new(f));
         self
     }
 
     /// Recorded after [`CopyableError`] has copied the error text.
-    pub(crate) fn on_copy(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_copy(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.copy = Some(Rc::new(f));
         self
     }
 
     /// Paints the modal into `layer`. Format listbox overlays are appended by
     /// [`FormatSelector`] so they sit above the scrim and panel.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         if !self.vm.open {
             return;
         }

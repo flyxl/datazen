@@ -27,7 +27,7 @@ use crate::commands::ai::wire::AiRequest;
 use crate::commands::ai::wire::{memory_confirm_request, memory_delete_request, memory_export_request, memory_list_request, memory_reject_request, memory_search_request, memory_stats_request, memory_update_request, org_memory_list_request};
 
 /// `KINDS` — the kind filter's closed list (the enum's table order).
-pub(crate) const MEMORY_KINDS: [AiMemoryKind; 8] = [
+pub const MEMORY_KINDS: [AiMemoryKind; 8] = [
     AiMemoryKind::Preference,
     AiMemoryKind::Glossary,
     AiMemoryKind::Relationship,
@@ -39,7 +39,7 @@ pub(crate) const MEMORY_KINDS: [AiMemoryKind; 8] = [
 ];
 
 /// `STATUSES` — the status filter's closed list.
-pub(crate) const MEMORY_STATUSES: [AiMemoryStatus; 5] = [
+pub const MEMORY_STATUSES: [AiMemoryStatus; 5] = [
     AiMemoryStatus::Candidate,
     AiMemoryStatus::Active,
     AiMemoryStatus::Rejected,
@@ -48,29 +48,29 @@ pub(crate) const MEMORY_STATUSES: [AiMemoryStatus; 5] = [
 ];
 
 /// `CLOUD_POLICIES` — the select's closed list.
-pub(crate) const MEMORY_CLOUD_POLICIES: [AiMemoryCloudPolicy; 3] = [
+pub const MEMORY_CLOUD_POLICIES: [AiMemoryCloudPolicy; 3] = [
     AiMemoryCloudPolicy::NormalOnly,
     AiMemoryCloudPolicy::AllowInternal,
     AiMemoryCloudPolicy::DisableCloud,
 ];
 
 /// `EMPTY_STATS`.
-pub(crate) fn empty_memory_stats() -> AiMemoryStats {
+pub fn empty_memory_stats() -> AiMemoryStats {
     AiMemoryStats { total: 0, by_status: Default::default(), by_kind: Default::default(), by_scope: Default::default() }
 }
 
 /// `MEMORY_EXTRACTION_TOKEN_ESTIMATE`: conservative pre-flight
 /// estimate for one automatic extraction pass.
-pub(crate) const MEMORY_EXTRACTION_TOKEN_ESTIMATE: u64 = 320;
+pub const MEMORY_EXTRACTION_TOKEN_ESTIMATE: u64 = 320;
 
 /// The load effect's debounce (`setTimeout(…, 200)`), in seconds.
-pub(crate) const MEMORY_LOAD_DEBOUNCE: f64 = 0.2;
+pub const MEMORY_LOAD_DEBOUNCE: f64 = 0.2;
 /// The load effect's fixed page (`limit: 200`).
-pub(crate) const MEMORY_PAGE_LIMIT: u64 = 200;
+pub const MEMORY_PAGE_LIMIT: u64 = 200;
 
 /// The in-flight edit (`{ id, subject, content }`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct MemoryRowEdit {
+pub struct MemoryRowEdit {
     pub id: String,
     pub subject: TextEdit,
     pub content: TextEdit,
@@ -80,7 +80,7 @@ pub(crate) struct MemoryRowEdit {
 /// kit's select takes the open flag from state; one at a time, the
 /// widget-editor-drawer convention).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MemorySelect {
+pub enum MemorySelect {
     CloudPolicy,
     Connection,
     Kind,
@@ -89,14 +89,14 @@ pub(crate) enum MemorySelect {
 
 /// The export format.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MemoryExportFormat {
+pub enum MemoryExportFormat {
     Json,
     Markdown,
 }
 
 impl MemoryExportFormat {
     /// The wire spelling (`'json' | 'markdown'`).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Json => "json",
             Self::Markdown => "markdown",
@@ -104,7 +104,7 @@ impl MemoryExportFormat {
     }
 
     /// The download's file extension.
-    pub(crate) fn extension(self) -> &'static str {
+    pub fn extension(self) -> &'static str {
         match self {
             Self::Json => "json",
             Self::Markdown => "md",
@@ -115,7 +115,7 @@ impl MemoryExportFormat {
 /// What the load walk asks the host for (the debounce's answer): the
 /// search-vs-list face, both with the status filter and the limit.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum MemoryLoadPlan {
+pub enum MemoryLoadPlan {
     /// `search.trim()` non-empty: `memorySearch({ status?, limit, query })`
     /// — the T12 search IPC predates the connection/kind filters, they
     /// apply client-side after the page lands (see
@@ -130,7 +130,7 @@ pub(crate) enum MemoryLoadPlan {
 /// The section's state: the settings draft plus React's `useState`
 /// fields and the `deletedIds` ref.
 #[derive(Clone, Default, PartialEq)]
-pub(crate) struct MemorySectionState {
+pub struct MemorySectionState {
     /// `memory` (the normalized settings draft; the host delivers
     /// `config.memory` and the resync replaces).
     pub memory: AiMemorySettings,
@@ -178,31 +178,31 @@ pub(crate) struct MemorySectionState {
 impl MemorySectionState {
     /// React's `useState(() => normalizeMemorySettings(config.memory))`
     /// — the delivered value (the host normalized; see the header).
-    pub(crate) fn new(memory: AiMemorySettings) -> Self {
+    pub fn new(memory: AiMemorySettings) -> Self {
         Self { memory, ..Default::default() }
     }
 
     /// The `[config.memory]` resync effect: a changed delivered config
     /// replaces the draft (the host calls it on every delivery).
-    pub(crate) fn resync_memory(&mut self, memory: &AiMemorySettings) {
+    pub fn resync_memory(&mut self, memory: &AiMemorySettings) {
         self.memory = memory.clone();
     }
 
     // ---- the load walk ----
 
     /// `refresh()`: bump the token and arm the debounce.
-    pub(crate) fn refresh(&mut self, now: f64) {
+    pub fn refresh(&mut self, now: f64) {
         self.refresh_token += 1;
         self.load_deadline = Some(now + MEMORY_LOAD_DEBOUNCE);
     }
 
     /// A filter changed: the effect re-runs (the 200ms debounce).
-    pub(crate) fn note_filters_changed(&mut self, now: f64) {
+    pub fn note_filters_changed(&mut self, now: f64) {
         self.load_deadline = Some(now + MEMORY_LOAD_DEBOUNCE);
     }
 
     /// Whether the debounced load is due.
-    pub(crate) fn load_due(&self, now: f64) -> bool {
+    pub fn load_due(&self, now: f64) -> bool {
         self.load_deadline.is_some_and(|at| now >= at)
     }
 
@@ -213,7 +213,7 @@ impl MemorySectionState {
     /// [`Self::begin_load`] → [`Self::apply_loaded`] /
     /// [`Self::deliver_org`] / [`Self::deliver_stats`] /
     /// [`Self::deliver_load_error`].
-    pub(crate) fn load_plan(&mut self) -> Vec<MemoryLoadPlan> {
+    pub fn load_plan(&mut self) -> Vec<MemoryLoadPlan> {
         self.load_deadline = None;
         let status = if self.status_filter.is_empty() {
             None
@@ -243,7 +243,7 @@ impl MemorySectionState {
     }
 
     /// The load begins (`setLoading(true); setError(null)`).
-    pub(crate) fn begin_load(&mut self) {
+    pub fn begin_load(&mut self) {
         self.loading = true;
         self.error = None;
     }
@@ -252,7 +252,7 @@ impl MemorySectionState {
     /// client-side connection/kind filters (T12's search predates
     /// them), the entries replace, and `selected` prunes to the
     /// visible rows.
-    pub(crate) fn apply_loaded(&mut self, page_entries: Vec<AiMemoryEntry>, search_mode: bool) {
+    pub fn apply_loaded(&mut self, page_entries: Vec<AiMemoryEntry>, search_mode: bool) {
         let mut next: Vec<AiMemoryEntry> = page_entries
             .into_iter()
             .filter(|entry| !self.deleted_ids.contains(&entry.id))
@@ -271,24 +271,24 @@ impl MemorySectionState {
 
     /// The stats answer (a failed stats read is the empty stats —
     /// `(await aiCommands.memoryStats()) ?? EMPTY_STATS`).
-    pub(crate) fn deliver_stats(&mut self, stats: Option<AiMemoryStats>) {
+    pub fn deliver_stats(&mut self, stats: Option<AiMemoryStats>) {
         self.stats = stats.unwrap_or_else(empty_memory_stats);
     }
 
     /// The load's `finally`.
-    pub(crate) fn load_finished(&mut self) {
+    pub fn load_finished(&mut self) {
         self.loading = false;
     }
 
     /// The load threw.
-    pub(crate) fn deliver_load_error(&mut self, message: String) {
+    pub fn deliver_load_error(&mut self, message: String) {
         self.error = Some(message);
         self.loading = false;
     }
 
     /// The org list's answer (a local-only host shows the empty
     /// read-only list — the catch's `[]`).
-    pub(crate) fn deliver_org(&mut self, entries: Vec<AiMemoryEntry>) {
+    pub fn deliver_org(&mut self, entries: Vec<AiMemoryEntry>) {
         self.organization_entries = entries;
     }
 
@@ -297,7 +297,7 @@ impl MemorySectionState {
     /// `persist`: the optimistic write with the revert on failure —
     /// the HOST runs `saveSettingsConfig({...config, memory: next})`
     /// and answers; `false` restores the previous draft.
-    pub(crate) fn note_persist_result(&mut self, next: &AiMemorySettings, ok: bool) {
+    pub fn note_persist_result(&mut self, next: &AiMemorySettings, ok: bool) {
         if ok {
             self.memory = next.clone();
         }
@@ -307,7 +307,7 @@ impl MemorySectionState {
 
     /// `toggleEnabled`: enabling without the privacy acknowledgement
     /// opens the first-use card instead of writing.
-    pub(crate) fn toggle_enabled(&mut self, enabled: bool) -> bool {
+    pub fn toggle_enabled(&mut self, enabled: bool) -> bool {
         if enabled && !self.memory.privacy_acknowledged {
             self.pending_enable = true;
             return false;
@@ -317,36 +317,36 @@ impl MemorySectionState {
 
     /// `confirmEnable`: the card closes and the write lands with the
     /// acknowledgement set.
-    pub(crate) fn confirm_enable(&mut self) -> AiMemorySettings {
+    pub fn confirm_enable(&mut self) -> AiMemorySettings {
         self.pending_enable = false;
         AiMemorySettings { enabled: true, privacy_acknowledged: true, ..self.memory }
     }
 
     /// The card's cancel.
-    pub(crate) fn cancel_enable(&mut self) {
+    pub fn cancel_enable(&mut self) {
         self.pending_enable = false;
     }
 
     /// `setCloudPolicy`: only a member of the closed list writes (the
     /// typed enum makes the guard total; the shape stays).
-    pub(crate) fn set_cloud_policy(&mut self, policy: AiMemoryCloudPolicy) -> AiMemorySettings {
+    pub fn set_cloud_policy(&mut self, policy: AiMemoryCloudPolicy) -> AiMemorySettings {
         AiMemorySettings { cloud_policy: policy, ..self.memory }
     }
 
     // ---- the projections ----
 
     /// `candidateEntries`.
-    pub(crate) fn candidate_entries(&self) -> Vec<&AiMemoryEntry> {
+    pub fn candidate_entries(&self) -> Vec<&AiMemoryEntry> {
         self.entries.iter().filter(|entry| entry.status == AiMemoryStatus::Candidate).collect()
     }
 
     /// `candidateCount` (`stats.byStatus.candidate ?? 0`).
-    pub(crate) fn candidate_count(&self) -> u64 {
+    pub fn candidate_count(&self) -> u64 {
         self.stats.by_status.get("candidate").copied().unwrap_or(0)
     }
 
     /// `selectedCandidates`.
-    pub(crate) fn selected_candidates(&self) -> Vec<&AiMemoryEntry> {
+    pub fn selected_candidates(&self) -> Vec<&AiMemoryEntry> {
         self.candidate_entries()
             .into_iter()
             .filter(|entry| self.selected.contains(&entry.id))
@@ -354,19 +354,19 @@ impl MemorySectionState {
     }
 
     /// `allSelected`.
-    pub(crate) fn all_selected(&self) -> bool {
+    pub fn all_selected(&self) -> bool {
         !self.entries.is_empty() && self.entries.iter().all(|entry| self.selected.contains(&entry.id))
     }
 
     /// `toggleSelected`.
-    pub(crate) fn toggle_selected(&mut self, id: &str) {
+    pub fn toggle_selected(&mut self, id: &str) {
         if !self.selected.remove(id) {
             self.selected.insert(id.to_owned());
         }
     }
 
     /// `toggleAll`.
-    pub(crate) fn toggle_all(&mut self) {
+    pub fn toggle_all(&mut self) {
         if self.all_selected() {
             self.selected.clear();
         } else {
@@ -377,7 +377,7 @@ impl MemorySectionState {
     /// `connectionOptions`: the known connections, plus any
     /// connectionId the entries carry that the store does not know
     /// (the id doubles as the label).
-    pub(crate) fn connection_options(
+    pub fn connection_options(
         &self,
         connections: &[(String, String)],
     ) -> Vec<(String, String)> {
@@ -396,7 +396,7 @@ impl MemorySectionState {
 
     /// `updateRow`'s request: `memoryUpdate(id, patch)` — the editing
     /// row's subject/content.
-    pub(crate) fn update_row_request(&self, id: &str, subject: &str, content: &str) -> AiRequest {
+    pub fn update_row_request(&self, id: &str, subject: &str, content: &str) -> AiRequest {
         memory_update_request(
             id,
             &serde_json::json!({ "subject": subject, "content": content }),
@@ -404,33 +404,33 @@ impl MemorySectionState {
     }
 
     /// The edit saved: the form closes and the list refreshes.
-    pub(crate) fn note_row_updated(&mut self, now: f64) {
+    pub fn note_row_updated(&mut self, now: f64) {
         self.editing = None;
         self.refresh(now);
     }
 
     /// `confirmAll`: every candidate's confirm request (the host runs
     /// them; `selected` clears and the list refreshes).
-    pub(crate) fn confirm_all_requests(&self) -> Vec<AiRequest> {
+    pub fn confirm_all_requests(&self) -> Vec<AiRequest> {
         self.candidate_entries()
             .iter()
             .map(|entry| memory_confirm_request(&entry.id))
             .collect()
     }
 
-    pub(crate) fn note_confirmed_all(&mut self, now: f64) {
+    pub fn note_confirmed_all(&mut self, now: f64) {
         self.selected.clear();
         self.refresh(now);
     }
 
     /// `deleteOne`.
-    pub(crate) fn delete_one_request(&self, id: &str) -> AiRequest {
+    pub fn delete_one_request(&self, id: &str) -> AiRequest {
         memory_delete_request(id)
     }
 
     /// The delete landed: the tombstone guards the refresh race, the
     /// row and its selection drop, the list refreshes.
-    pub(crate) fn note_deleted(&mut self, ids: &[String], now: f64) {
+    pub fn note_deleted(&mut self, ids: &[String], now: f64) {
         for id in ids {
             self.deleted_ids.insert(id.clone());
             self.selected.remove(id);
@@ -440,7 +440,7 @@ impl MemorySectionState {
     }
 
     /// `deleteSelected`.
-    pub(crate) fn delete_selected_requests(&self) -> Vec<AiRequest> {
+    pub fn delete_selected_requests(&self) -> Vec<AiRequest> {
         self.selected.iter().map(|id| memory_delete_request(id)).collect()
     }
 
@@ -449,7 +449,7 @@ impl MemorySectionState {
     /// (first-seen order) joined by a blank line, the first row keeps
     /// its subject and takes `max(confidence)` + `status: active`, the
     /// rest delete.
-    pub(crate) fn merge_selected_plan(&self) -> MemoryMergePlan {
+    pub fn merge_selected_plan(&self) -> MemoryMergePlan {
         let chosen = self.selected_candidates();
         if chosen.len() < 2 {
             return MemoryMergePlan::NeedTwo;
@@ -481,7 +481,7 @@ impl MemorySectionState {
 
     /// The merge landed: the merged-away rows tombstone, the selection
     /// clears, the list refreshes.
-    pub(crate) fn note_merged(&mut self, merged_ids: &[String], now: f64) {
+    pub fn note_merged(&mut self, merged_ids: &[String], now: f64) {
         for id in &merged_ids[1..] {
             self.deleted_ids.insert(id.clone());
         }
@@ -490,16 +490,16 @@ impl MemorySectionState {
     }
 
     /// One candidate's confirm / reject buttons.
-    pub(crate) fn confirm_request(&self, id: &str) -> AiRequest {
+    pub fn confirm_request(&self, id: &str) -> AiRequest {
         memory_confirm_request(id)
     }
 
-    pub(crate) fn reject_request(&self, id: &str) -> AiRequest {
+    pub fn reject_request(&self, id: &str) -> AiRequest {
         memory_reject_request(id)
     }
 
     /// The stale row's "mark reviewed" write.
-    pub(crate) fn mark_reviewed_request(&self, id: &str) -> AiRequest {
+    pub fn mark_reviewed_request(&self, id: &str) -> AiRequest {
         memory_update_request(id, &serde_json::json!({ "status": "active" }))
     }
 
@@ -507,7 +507,7 @@ impl MemorySectionState {
     /// with the CURRENT status filter; the host downloads the file
     /// (`datazen-memory.{json|md}`) — the browser download is the
     /// host's, the `jsdom` guard with it.
-    pub(crate) fn begin_export(
+    pub fn begin_export(
         &mut self,
         format: MemoryExportFormat,
     ) -> AiRequest {
@@ -521,14 +521,14 @@ impl MemorySectionState {
 
     /// The org list's mount request (`orgMemoryList({ limit: 200 })`,
     /// re-run with every refresh token).
-    pub(crate) fn org_load_request(&self) -> AiRequest {
+    pub fn org_load_request(&self) -> AiRequest {
         org_memory_list_request(&serde_json::json!({ "limit": MEMORY_PAGE_LIMIT }))
     }
 
     // ---- the edit form ----
 
     /// The pencil press: seed the edit from the row.
-    pub(crate) fn begin_edit(&mut self, entry: &AiMemoryEntry) {
+    pub fn begin_edit(&mut self, entry: &AiMemoryEntry) {
         self.editing = Some(MemoryRowEdit {
             id: entry.id.clone(),
             subject: TextEdit::new(entry.subject.clone()),
@@ -537,24 +537,24 @@ impl MemorySectionState {
     }
 
     /// The form's cancel.
-    pub(crate) fn cancel_edit(&mut self) {
+    pub fn cancel_edit(&mut self) {
         self.editing = None;
     }
 
     /// One select's trigger press: open it (closing any other).
-    pub(crate) fn toggle_select(&mut self, which: MemorySelect) {
+    pub fn toggle_select(&mut self, which: MemorySelect) {
         self.open_select = if self.open_select == Some(which) { None } else { Some(which) };
     }
 
     /// Close the open listbox (an outside press / Escape).
-    pub(crate) fn close_select(&mut self) {
+    pub fn close_select(&mut self) {
         self.open_select = None;
     }
 }
 
 /// `mergeSelected`'s plan.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum MemoryMergePlan {
+pub enum MemoryMergePlan {
     /// `chosen.length < 2`: nothing happens.
     NeedTwo,
     /// The first row's update (subject kept, merged content, max

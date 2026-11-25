@@ -32,29 +32,29 @@ use crate::ui::kit::kit;
 
 // ── TablePendingChangesBar ──────────────────────────────────────────────────
 
-pub(crate) const PENDING_ROOT: &str = "pending-changes-bar";
-pub(crate) const PENDING_TITLE_KEY: &str = "pending-changes-title";
-pub(crate) const PENDING_INSERTS_KEY: &str = "pending-changes-inserts";
-pub(crate) const PENDING_UPDATES_KEY: &str = "pending-changes-updates";
-pub(crate) const PENDING_DELETES_KEY: &str = "pending-changes-deletes";
-pub(crate) const PENDING_CELLS_KEY: &str = "pending-cells-count";
-pub(crate) const PENDING_OFFPAGE_KEY: &str = "pending-changes-offpage";
-pub(crate) const PENDING_PREVIEW_KEY: &str = "pending-preview";
-pub(crate) const PENDING_COMMIT_KEY: &str = "pending-commit";
-pub(crate) const PENDING_ROLLBACK_KEY: &str = "pending-rollback";
+pub const PENDING_ROOT: &str = "pending-changes-bar";
+pub const PENDING_TITLE_KEY: &str = "pending-changes-title";
+pub const PENDING_INSERTS_KEY: &str = "pending-changes-inserts";
+pub const PENDING_UPDATES_KEY: &str = "pending-changes-updates";
+pub const PENDING_DELETES_KEY: &str = "pending-changes-deletes";
+pub const PENDING_CELLS_KEY: &str = "pending-cells-count";
+pub const PENDING_OFFPAGE_KEY: &str = "pending-changes-offpage";
+pub const PENDING_PREVIEW_KEY: &str = "pending-preview";
+pub const PENDING_COMMIT_KEY: &str = "pending-commit";
+pub const PENDING_ROLLBACK_KEY: &str = "pending-rollback";
 
 /// React `DirtyCounts` fields the bar reads.
 #[allow(dead_code)] // VM mirror; supplied by the host dirty index.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DirtyCountsVm {
-    pub(crate) total_cells: usize,
-    pub(crate) cells_on_page: usize,
+pub struct DirtyCountsVm {
+    pub total_cells: usize,
+    pub cells_on_page: usize,
 }
 
 impl DirtyCountsVm {
     /// React `totalCells - cellsOnPage`, clamped at zero.
     #[allow(dead_code)] // pure helper; consumed by the off-page segment and tests.
-    pub(crate) fn cells_off_page(&self) -> usize {
+    pub fn cells_off_page(&self) -> usize {
         self.total_cells.saturating_sub(self.cells_on_page)
     }
 }
@@ -62,50 +62,50 @@ impl DirtyCountsVm {
 /// React `TablePendingChangesBarProps` as a cloneable VM.
 #[allow(dead_code)] // VM surface; owned by the table-panel host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PendingChangesVm {
-    pub(crate) pending_count: usize,
-    pub(crate) update_count: usize,
-    pub(crate) delete_count: usize,
-    pub(crate) insert_count: usize,
-    pub(crate) counts: Option<DirtyCountsVm>,
-    pub(crate) busy: bool,
+pub struct PendingChangesVm {
+    pub pending_count: usize,
+    pub update_count: usize,
+    pub delete_count: usize,
+    pub insert_count: usize,
+    pub counts: Option<DirtyCountsVm>,
+    pub busy: bool,
 }
 
 impl PendingChangesVm {
     /// React `t('tableData.pendingChanges', { count })`.
     #[allow(dead_code)] // pure helper; consumed by the summary and tests.
-    pub(crate) fn summary_text(&self) -> String {
+    pub fn summary_text(&self) -> String {
         t("tableData.pendingChanges").replace("{count}", &self.pending_count.to_string())
     }
 
     /// React `t('tableData.pendingInserts', { count })`.
     #[allow(dead_code)] // pure helper; consumed by the summary and tests.
-    pub(crate) fn inserts_text(&self) -> String {
+    pub fn inserts_text(&self) -> String {
         t("tableData.pendingInserts").replace("{count}", &self.insert_count.to_string())
     }
 
     /// React `t('tableData.pendingUpdates', { count })`.
     #[allow(dead_code)] // pure helper; consumed by the summary and tests.
-    pub(crate) fn updates_text(&self) -> String {
+    pub fn updates_text(&self) -> String {
         t("tableData.pendingUpdates").replace("{count}", &self.update_count.to_string())
     }
 
     /// React `t('tableData.pendingDeletes', { count })`.
     #[allow(dead_code)] // pure helper; consumed by the summary and tests.
-    pub(crate) fn deletes_text(&self) -> String {
+    pub fn deletes_text(&self) -> String {
         t("tableData.pendingDeletes").replace("{count}", &self.delete_count.to_string())
     }
 
     /// React `t('tableData.pendingCells', { count })`, or None when absent/0.
     #[allow(dead_code)] // pure helper; consumed by the summary and tests.
-    pub(crate) fn cells_text(&self) -> Option<String> {
+    pub fn cells_text(&self) -> Option<String> {
         let total = self.counts.as_ref()?.total_cells;
         (total > 0).then(|| t("tableData.pendingCells").replace("{count}", &total.to_string()))
     }
 
     /// React `t('tableData.pendingOffPage', { count })`, or None when absent/0.
     #[allow(dead_code)] // pure helper; consumed by the summary and tests.
-    pub(crate) fn offpage_text(&self) -> Option<String> {
+    pub fn offpage_text(&self) -> Option<String> {
         let off = self.counts.as_ref()?.cells_off_page();
         (off > 0).then(|| t("tableData.pendingOffPage").replace("{count}", &off.to_string()))
     }
@@ -113,30 +113,30 @@ impl PendingChangesVm {
 
 // ── TableTransactionControls ────────────────────────────────────────────────
 
-pub(crate) const TX_ERROR_KEY: &str = "table-transaction-error";
-pub(crate) const TX_OPEN_NEW_KEY: &str = "table-session-open-new";
-pub(crate) const TX_CONTROLS_KEY: &str = "table-tx-controls";
-pub(crate) const TX_BEGIN_KEY: &str = "table-tx-begin";
-pub(crate) const TX_COMMIT_KEY: &str = "table-tx-commit";
-pub(crate) const TX_ROLLBACK_KEY: &str = "table-tx-rollback";
+pub const TX_ERROR_KEY: &str = "table-transaction-error";
+pub const TX_OPEN_NEW_KEY: &str = "table-session-open-new";
+pub const TX_CONTROLS_KEY: &str = "table-tx-controls";
+pub const TX_BEGIN_KEY: &str = "table-tx-begin";
+pub const TX_COMMIT_KEY: &str = "table-tx-commit";
+pub const TX_ROLLBACK_KEY: &str = "table-tx-rollback";
 
 /// React `TableTransactionControls` snapshot (session/controller state).
 #[allow(dead_code)] // VM surface; owned by the table-panel host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TransactionControlsVm {
-    pub(crate) is_editable: bool,
-    pub(crate) loading: bool,
-    pub(crate) in_tx: bool,
-    pub(crate) tx_busy: bool,
-    pub(crate) tx_lost: bool,
-    pub(crate) tx_error: String,
+pub struct TransactionControlsVm {
+    pub is_editable: bool,
+    pub loading: bool,
+    pub in_tx: bool,
+    pub tx_busy: bool,
+    pub tx_lost: bool,
+    pub tx_error: String,
 }
 
 // ── Host actions ────────────────────────────────────────────────────────────
 
 #[allow(dead_code)] // host port; remove when the table-panel host lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PendingAction {
+pub enum PendingAction {
     Preview,
     Commit,
     Rollback,
@@ -179,7 +179,7 @@ fn action_button<S: 'static>(
 
 /// Build the staged-change bar. React renders nothing when `pendingCount === 0`.
 #[allow(dead_code)] // view entry; remove when the table-panel host lands.
-pub(crate) fn build_pending<S: 'static>(
+pub fn build_pending<S: 'static>(
     vm: &PendingChangesVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,
@@ -255,7 +255,7 @@ pub(crate) fn build_pending<S: 'static>(
 /// open-new-session recovery) sits above the controls, which are mounted only
 /// for an editable panel.
 #[allow(dead_code)] // view entry; remove when the table-panel host lands.
-pub(crate) fn build_tx<S: 'static>(
+pub fn build_tx<S: 'static>(
     vm: &TransactionControlsVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

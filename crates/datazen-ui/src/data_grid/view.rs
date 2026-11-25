@@ -28,7 +28,7 @@ impl GridSlot {
     }
 }
 
-pub(crate) fn grid_of<'a>(state: &'a crate::AppState, slot: GridSlot) -> &'a DataGrid {
+pub fn grid_of<'a>(state: &'a crate::AppState, slot: GridSlot) -> &'a DataGrid {
     match slot {
         GridSlot::Table => &state.grid,
         GridSlot::Result => state.result_grid.as_ref().expect("the result grid is mounted"),
@@ -330,7 +330,7 @@ pub fn result_panel(
 }
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.
-pub(crate) fn status_line(grid: &DataGrid) -> String {
+pub fn status_line(grid: &DataGrid) -> String {
     let (r0, r1, c0, c1) = grid.rect();
     format!(
         "{}×{} · window at column {} · selection r{r0}c{c0}..r{r1}c{c1} · {} dirty",

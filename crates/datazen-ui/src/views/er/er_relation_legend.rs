@@ -26,20 +26,20 @@ use crate::icons::ICON_SPARKLES;
 use crate::ui::kit::kit;
 use rune_kit::{Button, ButtonVariant, ControlSize};
 
-pub(crate) const ROOT_KEY: &str = "er-diagram-legend";
-pub(crate) const DECLARED_KEY: &str = "er-legend-declared";
-pub(crate) const PREDICTED_KEY: &str = "er-legend-predicted";
-pub(crate) const PREDICTED_COUNT_KEY: &str = "er-predicted-count";
-pub(crate) const TOGGLE_KEY: &str = "er-diagram-toggle-prediction";
+pub const ROOT_KEY: &str = "er-diagram-legend";
+pub const DECLARED_KEY: &str = "er-legend-declared";
+pub const PREDICTED_KEY: &str = "er-legend-predicted";
+pub const PREDICTED_COUNT_KEY: &str = "er-predicted-count";
+pub const TOGGLE_KEY: &str = "er-diagram-toggle-prediction";
 
 /// React panel width `w-56` (14rem) and the 26×8 SVG swatch with a 2pt stroke.
-pub(crate) const PANEL_WIDTH: f32 = 224.0;
+pub const PANEL_WIDTH: f32 = 224.0;
 const SWATCH_WIDTH: f32 = 24.0;
 const SWATCH_HEIGHT: f32 = 2.0;
 /// `ER_PREDICTED_DASH = '4 3'` as `(on, off)` points, derived from the
 /// relation-style constant the canvas edges are painted with (T568): the
 /// legend must not keep a second copy that can drift.
-pub(crate) const PREDICTED_DASH: (f32, f32) = dash_points(super::relation_style::ER_PREDICTED_DASH);
+pub const PREDICTED_DASH: (f32, f32) = dash_points(super::relation_style::ER_PREDICTED_DASH);
 
 /// Parse a `'on off'` dash pattern into points. A malformed pattern falls
 /// back to the canvas default rather than collapsing the swatch to nothing.
@@ -82,7 +82,7 @@ const fn dash_points(pattern: &str) -> (f32, f32) {
 /// React `ErRelationLegendProps` minus the host callback.
 #[allow(dead_code)] // view VM; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ErRelationLegendVm {
+pub struct ErRelationLegendVm {
     pub declared_count: usize,
     pub predicted_count: usize,
     pub prediction_enabled: bool,
@@ -132,7 +132,7 @@ fn predicted_swatch(dark: bool) -> El {
 /// Build the legend. `on_toggle` reports the requested new setting state; the
 /// host owns the persisted "smart foreign key prediction" flag.
 #[allow(dead_code)] // view entry point; consumer: the ER canvas host (not wired).
-pub(crate) fn er_relation_legend<S: 'static>(
+pub fn er_relation_legend<S: 'static>(
     vm: &ErRelationLegendVm,
     dark: bool,
     on_toggle: Option<Rc<dyn Fn(&mut S, bool) + 'static>>,

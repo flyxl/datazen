@@ -67,7 +67,7 @@ use crate::ui::kit::kit;
 /// placeholder badge (its `bgClass` is the [`BadgeTone`] the tile
 /// paints, mapped once at the `db_badge_meta` mirror).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ResolvedIcon {
+pub enum ResolvedIcon {
     Lucide(String),
     Url(String),
     Placeholder { label: String, tone: BadgeTone },
@@ -76,14 +76,14 @@ pub(crate) enum ResolvedIcon {
 /// React's `IconResolver` interface — `resolve(semanticId)`. The
 /// resolver's construction is T535's (segment 2); this is the seam the
 /// consumers hold.
-pub(crate) type IconResolver = Rc<dyn Fn(&str) -> ResolvedIcon>;
+pub type IconResolver = Rc<dyn Fn(&str) -> ResolvedIcon>;
 
 /// React's module-level default resolver (`iconResolver.ts`'s
 /// `activeIconResolver` seed): empty `packIcons`, `driverIcons` and
 /// `lucideById`, and `placeholderForDb` = the db type's first two
 /// characters on slate — so a `db.*` id degrades to its two-character
 /// tile and every other id to the `?` placeholder.
-pub(crate) fn default_resolver(semantic_id: &str) -> ResolvedIcon {
+pub fn default_resolver(semantic_id: &str) -> ResolvedIcon {
     if let Some(db_type) = semantic_id.strip_prefix("db.") {
         return ResolvedIcon::Placeholder {
             label: db_type.chars().take(2).collect(),
@@ -105,7 +105,7 @@ fn ui_placeholder() -> ResolvedIcon {
 /// catalog's defaults reference, to the registry's constants. The
 /// 36-name set is React's exactly; 16 were already registered, and T262
 /// registered the other 20 from the lucide sources.
-pub(crate) fn lucide_map_icon(name: &str) -> Option<&'static rune::Icon> {
+pub fn lucide_map_icon(name: &str) -> Option<&'static rune::Icon> {
     use crate::icons as i;
     let icon = match name {
         "activity" => &i::ICON_ACTIVITY,
@@ -152,10 +152,10 @@ pub(crate) fn lucide_map_icon(name: &str) -> Option<&'static rune::Icon> {
 /// The host's picture wire: a resolved URL to a decoded or decoding
 /// [`Image`] from the host's cache, or `None` when the host has no
 /// picture for it yet (the `WappIcon` images pattern).
-pub(crate) type ThemedIconImages = Rc<dyn Fn(&str) -> Option<Image>>;
+pub type ThemedIconImages = Rc<dyn Fn(&str) -> Option<Image>>;
 
 /// One themed icon.
-pub(crate) struct ThemedIcon<S: 'static> {
+pub struct ThemedIcon<S: 'static> {
     key: String,
     id: String,
     size_pt: f32,
@@ -168,7 +168,7 @@ pub(crate) struct ThemedIcon<S: 'static> {
 impl<S: 'static> ThemedIcon<S> {
     /// `ThemedIcon::<S>::new("themed-icon", id)` — the key is this
     /// port's own (React has no `data-testid`).
-    pub(crate) fn new(key: impl Into<String>, id: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, id: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             id: id.into(),
@@ -182,27 +182,27 @@ impl<S: 'static> ThemedIcon<S> {
 
     /// The icon's side in points (React's callers all pass a Tailwind
     /// size: 14, 16, or 20).
-    pub(crate) fn size_pt(mut self, points: f32) -> Self {
+    pub fn size_pt(mut self, points: f32) -> Self {
         self.size_pt = points;
         self
     }
 
     /// React's `resolver` prop — `None` uses the default resolver's
     /// module behavior.
-    pub(crate) fn resolver(mut self, resolver: IconResolver) -> Self {
+    pub fn resolver(mut self, resolver: IconResolver) -> Self {
         self.resolver = Some(resolver);
         self
     }
 
     /// React's `fallback` — the lucide component used when the map has
     /// no entry for the resolved name.
-    pub(crate) fn fallback_icon(mut self, icon: &'static rune::Icon) -> Self {
+    pub fn fallback_icon(mut self, icon: &'static rune::Icon) -> Self {
         self.fallback_icon = Some(icon);
         self
     }
 
     /// The url branch's picture wire.
-    pub(crate) fn images(mut self, images: ThemedIconImages) -> Self {
+    pub fn images(mut self, images: ThemedIconImages) -> Self {
         self.images = Some(images);
         self
     }
@@ -212,14 +212,14 @@ impl<S: 'static> ThemedIcon<S> {
     /// performs. In immediate mode the next frame re-resolves anyway;
     /// this seam is for the host-side bookkeeping (cache flushes).
     #[allow(dead_code)] // the theme-pack wiring task is the caller
-    pub(crate) fn on_pack_changed(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_pack_changed(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_pack_changed = Some(Rc::new(f));
         self
     }
 
     /// What `id` resolves to — the resolver's answer, without a
     /// runtime (React's `resolved`, for the parity tests).
-    pub(crate) fn kind(&self) -> ResolvedIcon {
+    pub fn kind(&self) -> ResolvedIcon {
         match &self.resolver {
             Some(resolver) => resolver(&self.id),
             None => default_resolver(&self.id),
@@ -227,7 +227,7 @@ impl<S: 'static> ThemedIcon<S> {
     }
 
     /// Paint the icon: the three branches of React 102–143.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         match self.kind() {
             // React 102–111: the url — an `<img>` the host loads; here
             // the host's picture wire, letterboxed

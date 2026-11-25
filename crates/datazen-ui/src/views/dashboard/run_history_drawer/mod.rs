@@ -124,7 +124,7 @@ use crate::views::dashboard::chart_widget_tile::{
 
 /// React's `HISTORY_LIMIT` — the `listWidgetRuns` page size the host passes.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) const HISTORY_LIMIT: usize = 50;
+pub const HISTORY_LIMIT: usize = 50;
 /// React `max-w-3xl` on the aside.
 const DRAWER_MAX_W: f32 = 768.0;
 /// React `bg-black/40` on the scrim.
@@ -170,11 +170,11 @@ const VIEW_TOGGLE_KEY: &str = "run-history-view-toggle";
 /// the wire type; `started_at` stays the raw ISO text for the formatter).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RunIndexEntryVm {
-    pub(crate) id: String,
-    pub(crate) started_at: String,
-    pub(crate) status: WidgetRunStatus,
-    pub(crate) alert_fired: bool,
+pub struct RunIndexEntryVm {
+    pub id: String,
+    pub started_at: String,
+    pub status: WidgetRunStatus,
+    pub alert_fired: bool,
 }
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
@@ -182,7 +182,7 @@ impl RunIndexEntryVm {
     /// Build from the wire fields (`status` is the wire string; unknown
     /// values fall back to `error`, the tile's stance, so a malformed
     /// payload cannot paint a success state).
-    pub(crate) fn from_wire(id: &str, started_at: &str, status: &str, alert_fired: bool) -> Self {
+    pub fn from_wire(id: &str, started_at: &str, status: &str, alert_fired: bool) -> Self {
         Self {
             id: id.to_owned(),
             started_at: started_at.to_owned(),
@@ -198,30 +198,30 @@ impl RunIndexEntryVm {
 /// fetch tokens, kept in the owning state `S`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug)]
-pub(crate) struct RunHistoryDrawerState {
+pub struct RunHistoryDrawerState {
     /// React's `open` prop; `false` builds nothing at all.
-    pub(crate) open: bool,
+    pub open: bool,
     /// Bumped on each resync; the index fetch's cancel token.
-    pub(crate) index_epoch: u64,
+    pub index_epoch: u64,
     /// Bumped on each run fetch (and by resync/close); the run fetch's
     /// cancel token.
-    pub(crate) run_epoch: u64,
+    pub run_epoch: u64,
     /// The pair the current index epoch was issued for (React's dep array);
     /// the host compares through [`Self::needs_resync`].
-    pub(crate) dashboard_id: String,
-    pub(crate) widget_id: String,
+    pub dashboard_id: String,
+    pub widget_id: String,
     /// React's `index`.
-    pub(crate) index: Vec<RunIndexEntryVm>,
+    pub index: Vec<RunIndexEntryVm>,
     /// React's `selectedId` (`None` = nothing selected).
-    pub(crate) selected_id: Option<String>,
+    pub selected_id: Option<String>,
     /// React's `loadedRun`.
-    pub(crate) loaded_run: Option<WidgetRunVm>,
-    pub(crate) loading_index: bool,
-    pub(crate) loading_run: bool,
-    pub(crate) index_error: Option<String>,
-    pub(crate) run_error: Option<String>,
+    pub loaded_run: Option<WidgetRunVm>,
+    pub loading_index: bool,
+    pub loading_run: bool,
+    pub index_error: Option<String>,
+    pub run_error: Option<String>,
     /// React's `viewMode`, seeded from the widget on every open.
-    pub(crate) view_mode: TileViewMode,
+    pub view_mode: TileViewMode,
 }
 
 impl Default for RunHistoryDrawerState {
@@ -251,7 +251,7 @@ impl RunHistoryDrawerState {
     /// React's dep-array check for the index effect: `[open, dashboardId,
     /// widget]` changed — the drawer is closed, or the id pair differs (the
     /// empty default never matches a real pair, so the mount counts too).
-    pub(crate) fn needs_resync(&self, dashboard_id: &str, widget_id: &str) -> bool {
+    pub fn needs_resync(&self, dashboard_id: &str, widget_id: &str) -> bool {
         !self.open || self.dashboard_id != dashboard_id || self.widget_id != widget_id
     }
 
@@ -260,7 +260,7 @@ impl RunHistoryDrawerState {
     /// view mode, arm the index fetch and cancel anything in flight. The
     /// stale `index` and `loading_run` deliberately survive — React's effect
     /// clears neither (the loading gates hide both).
-    pub(crate) fn begin_resync(&mut self, dashboard_id: &str, widget: &ChartWidgetVm) {
+    pub fn begin_resync(&mut self, dashboard_id: &str, widget: &ChartWidgetVm) {
         self.open = true;
         self.dashboard_id = dashboard_id.to_owned();
         self.widget_id = widget.id.clone();
@@ -278,7 +278,7 @@ impl RunHistoryDrawerState {
     /// drawer builds nothing, and both effects' cleanups cancel anything in
     /// flight. The remaining state survives exactly as React's does — the
     /// next open's effect resets it.
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.open = false;
         self.index_epoch = self.index_epoch.saturating_add(1);
         self.run_epoch = self.run_epoch.saturating_add(1);
@@ -290,7 +290,7 @@ impl RunHistoryDrawerState {
     /// returns `false` — nothing fetched, nothing re-armed. `loaded_run`
     /// survives a new fetch (React keeps the previous run mounted under the
     /// absolute loading overlay).
-    pub(crate) fn select(&mut self, id: &str) -> bool {
+    pub fn select(&mut self, id: &str) -> bool {
         if self.selected_id.as_deref() == Some(id) {
             return false;
         }
@@ -310,7 +310,7 @@ impl RunHistoryDrawerState {
     /// entry auto-selects — arming the run fetch, exactly as React's effect
     /// cascade does — and the spinner stops. A stale token (or a closed
     /// drawer) lands nothing, which is the `cancelled` guard.
-    pub(crate) fn deliver_index(&mut self, entries: Vec<RunIndexEntryVm>, token: u64) -> bool {
+    pub fn deliver_index(&mut self, entries: Vec<RunIndexEntryVm>, token: u64) -> bool {
         if !self.open || token != self.index_epoch {
             return false;
         }
@@ -325,7 +325,7 @@ impl RunHistoryDrawerState {
 
     /// The index fetch's `.catch` + `.finally`: the error text lands and the
     /// spinner stops. The stale list survives (React's does).
-    pub(crate) fn deliver_index_error(&mut self, reason: String, token: u64) -> bool {
+    pub fn deliver_index_error(&mut self, reason: String, token: u64) -> bool {
         if !self.open || token != self.index_epoch {
             return false;
         }
@@ -336,7 +336,7 @@ impl RunHistoryDrawerState {
 
     /// The run fetch's `.then` + `.finally`: the run lands and the spinner
     /// stops.
-    pub(crate) fn deliver_run(&mut self, run: WidgetRunVm, token: u64) -> bool {
+    pub fn deliver_run(&mut self, run: WidgetRunVm, token: u64) -> bool {
         if !self.open || token != self.run_epoch {
             return false;
         }
@@ -347,7 +347,7 @@ impl RunHistoryDrawerState {
 
     /// The run fetch's `.catch` + `.finally`: the run clears (so the view
     /// switch goes with it) and the error text lands.
-    pub(crate) fn deliver_run_error(&mut self, reason: String, token: u64) -> bool {
+    pub fn deliver_run_error(&mut self, reason: String, token: u64) -> bool {
         if !self.open || token != self.run_epoch {
             return false;
         }
@@ -360,7 +360,7 @@ impl RunHistoryDrawerState {
     /// The run fetch the state has armed: the run id the host should fetch,
     /// with the current `run_epoch` as the delivery token. `None` while
     /// nothing is due; the host serves each epoch once.
-    pub(crate) fn run_fetch_due(&self) -> Option<&str> {
+    pub fn run_fetch_due(&self) -> Option<&str> {
         if self.open && self.loading_run {
             self.selected_id.as_deref()
         } else {
@@ -369,7 +369,7 @@ impl RunHistoryDrawerState {
     }
 
     /// The view switch's `setViewMode`.
-    pub(crate) fn set_view_mode(&mut self, mode: TileViewMode) {
+    pub fn set_view_mode(&mut self, mode: TileViewMode) {
         self.view_mode = mode;
     }
 }
@@ -411,7 +411,7 @@ type ViewModeFn<S> = Rc<dyn Fn(&mut S, TileViewMode) + 'static>;
 /// Builder for the drawer, generic over the app state `S` that owns the
 /// state slice (the ported-dialog pattern of T018/T069/T146).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) struct RunHistoryDrawer<'a, S: 'static> {
+pub struct RunHistoryDrawer<'a, S: 'static> {
     state: &'a RunHistoryDrawerState,
     widget: &'a ChartWidgetVm,
     /// The `chartData` memo's output for `(loadedRun, widget.chartConfig)` —
@@ -424,7 +424,7 @@ pub(crate) struct RunHistoryDrawer<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl<'a, S: 'static> RunHistoryDrawer<'a, S> {
-    pub(crate) fn new(state: &'a RunHistoryDrawerState, widget: &'a ChartWidgetVm) -> Self {
+    pub fn new(state: &'a RunHistoryDrawerState, widget: &'a ChartWidgetVm) -> Self {
         Self {
             state,
             widget,
@@ -438,13 +438,13 @@ impl<'a, S: 'static> RunHistoryDrawer<'a, S> {
     /// The `chartData` memo for `widget.chartConfig` over the loaded run
     /// (the transform seam; `None` while no run is loaded or the widget
     /// carries no config, which is React's memo returning null).
-    pub(crate) fn chart_data(mut self, data: Option<&'a [ChartDataPoint]>) -> Self {
+    pub fn chart_data(mut self, data: Option<&'a [ChartDataPoint]>) -> Self {
         self.chart_data = data;
         self
     }
 
     /// React `onClose` (the header button; React's scrim has no handler).
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
@@ -452,13 +452,13 @@ impl<'a, S: 'static> RunHistoryDrawer<'a, S> {
     /// An index entry pressed — React's `handleSelect(entry.id)`. The host
     /// applies [`RunHistoryDrawerState::select`] (which arms the run fetch
     /// when the id changed) and dispatches `getWidgetRun` for the due epoch.
-    pub(crate) fn on_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_select = Some(Rc::new(f));
         self
     }
 
     /// The view switch's `setViewMode` half (host-applied).
-    pub(crate) fn on_view_mode_change(
+    pub fn on_view_mode_change(
         mut self,
         f: impl Fn(&mut S, TileViewMode) + 'static,
     ) -> Self {
@@ -468,7 +468,7 @@ impl<'a, S: 'static> RunHistoryDrawer<'a, S> {
 
     /// Paints the drawer into `layer`; nothing at all while closed (React's
     /// `if (!open || !widget) return null`).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         if !self.state.open {
             return;
         }

@@ -12,7 +12,7 @@ use crate::commands::ai::workflow::{AiSubmissionTokenVm, with_submission_token};
 /// The Data Sync `MethodMap` slice — one variant per domain method;
 /// `wire_name` is the transport call name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SyncMethod {
+pub enum SyncMethod {
     ClassifyDataSyncPair,
     GetSyncTasks,
     GetSyncProfiles,
@@ -35,7 +35,7 @@ pub(crate) enum SyncMethod {
 
 impl SyncMethod {
     /// The transport call name (`transport.call(name, payload)`).
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::ClassifyDataSyncPair => "classifyDataSyncPair",
             Self::GetSyncTasks => "getSyncTasks",
@@ -64,19 +64,19 @@ impl SyncMethod {
 /// strings — the server owns the closed vocabularies).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SyncOptionsVm {
-    pub(crate) insert: bool,
-    pub(crate) update: bool,
-    pub(crate) delete: bool,
-    pub(crate) matching_strategy: String,
-    pub(crate) batch_size: u64,
-    pub(crate) large_value_mode: String,
-    pub(crate) conflict_policy: String,
+pub struct SyncOptionsVm {
+    pub insert: bool,
+    pub update: bool,
+    pub delete: bool,
+    pub matching_strategy: String,
+    pub batch_size: u64,
+    pub large_value_mode: String,
+    pub conflict_policy: String,
 }
 
 impl SyncOptionsVm {
     /// `DEFAULT_SYNC_OPTIONS`, the literal's fields verbatim.
-    pub(crate) fn default_options() -> Self {
+    pub fn default_options() -> Self {
         Self {
             insert: true,
             update: true,
@@ -92,17 +92,17 @@ impl SyncOptionsVm {
 /// `DataSyncSelectedRow` — one row of a reviewed selection.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct DataSyncSelectedRowVm {
-    pub(crate) source_table: String,
-    pub(crate) target_table: String,
+pub struct DataSyncSelectedRowVm {
+    pub source_table: String,
+    pub target_table: String,
     /// `INSERT` / `UPDATE` / `DELETE` (the server's vocabulary).
-    pub(crate) operation: String,
+    pub operation: String,
     /// The row's key (an opaque value array).
-    pub(crate) key: Vec<Value>,
+    pub key: Vec<Value>,
 }
 
 /// `classifyDataSyncPair(sourceDatabaseType, targetDatabaseType)`.
-pub(crate) fn classify_data_sync_pair_request(
+pub fn classify_data_sync_pair_request(
     source_database_type: &str,
     target_database_type: &str,
 ) -> (SyncMethod, Value) {
@@ -116,18 +116,18 @@ pub(crate) fn classify_data_sync_pair_request(
 }
 
 /// `getSyncTasks()`.
-pub(crate) fn get_sync_tasks_request() -> (SyncMethod, Value) {
+pub fn get_sync_tasks_request() -> (SyncMethod, Value) {
     (SyncMethod::GetSyncTasks, json!({}))
 }
 
 /// `getSyncProfiles()`.
-pub(crate) fn get_sync_profiles_request() -> (SyncMethod, Value) {
+pub fn get_sync_profiles_request() -> (SyncMethod, Value) {
     (SyncMethod::GetSyncProfiles, json!({}))
 }
 
 /// `saveSyncProfile(profile)` — the body-carrying write face (the
 /// `saveUserAsset` submission token rides the request).
-pub(crate) fn save_sync_profile_request(
+pub fn save_sync_profile_request(
     profile: &Value,
     token: &AiSubmissionTokenVm,
 ) -> (SyncMethod, Value) {
@@ -138,7 +138,7 @@ pub(crate) fn save_sync_profile_request(
 }
 
 /// `deleteSyncProfile(profileId)`.
-pub(crate) fn delete_sync_profile_request(profile_id: &str) -> (SyncMethod, Value) {
+pub fn delete_sync_profile_request(profile_id: &str) -> (SyncMethod, Value) {
     (
         SyncMethod::DeleteSyncProfile,
         json!({ "profileId": profile_id }),
@@ -146,12 +146,12 @@ pub(crate) fn delete_sync_profile_request(profile_id: &str) -> (SyncMethod, Valu
 }
 
 /// `deleteSyncTask(taskId)`.
-pub(crate) fn delete_sync_task_request(task_id: &str) -> (SyncMethod, Value) {
+pub fn delete_sync_task_request(task_id: &str) -> (SyncMethod, Value) {
     (SyncMethod::DeleteSyncTask, json!({ "taskId": task_id }))
 }
 
 /// `checkSyncConflicts(taskId)`.
-pub(crate) fn check_sync_conflicts_request(task_id: &str) -> (SyncMethod, Value) {
+pub fn check_sync_conflicts_request(task_id: &str) -> (SyncMethod, Value) {
     (
         SyncMethod::CheckSyncConflicts,
         json!({ "taskId": task_id }),
@@ -159,7 +159,7 @@ pub(crate) fn check_sync_conflicts_request(task_id: &str) -> (SyncMethod, Value)
 }
 
 /// The `DataSyncRunRequest` payload (executeDataSync's request body).
-pub(crate) fn data_sync_run_request(
+pub fn data_sync_run_request(
     plan_id: &str,
     selection: &Value,
     options: &SyncOptionsVm,
@@ -176,7 +176,7 @@ pub(crate) fn data_sync_run_request(
 
 /// `executeDataSync({ request, ...(profile ? { profile } : {}) })` —
 /// the profile spread is an ABSENT key without one.
-pub(crate) fn execute_data_sync_request(
+pub fn execute_data_sync_request(
     request: &Value,
     profile: Option<&Value>,
 ) -> (SyncMethod, Value) {
@@ -189,7 +189,7 @@ pub(crate) fn execute_data_sync_request(
 
 /// `cancelDataSync({ jobId }, token)` — the second body-carrying
 /// write face.
-pub(crate) fn cancel_data_sync_request(
+pub fn cancel_data_sync_request(
     job_id: &str,
     token: &AiSubmissionTokenVm,
 ) -> (SyncMethod, Value) {
@@ -202,7 +202,7 @@ pub(crate) fn cancel_data_sync_request(
 /// `startDataSyncPrepareJob({ … })` — the accepted-receipt arm of the
 /// compare chain. `tables`/`options`/`filters` (and the database /
 /// schema qualifiers) are the explicit-null wire spellings.
-pub(crate) fn start_data_sync_prepare_job_request(
+pub fn start_data_sync_prepare_job_request(
     source_db_session_id: &str,
     target_db_session_id: &str,
     tables: Option<&[String]>,
@@ -232,12 +232,12 @@ pub(crate) fn start_data_sync_prepare_job_request(
 }
 
 /// `getDataSyncJob({ jobId })` — the poll read.
-pub(crate) fn get_data_sync_job_request(job_id: &str) -> (SyncMethod, Value) {
+pub fn get_data_sync_job_request(job_id: &str) -> (SyncMethod, Value) {
     (SyncMethod::GetDataSyncJob, json!({ "jobId": job_id }))
 }
 
 /// `getDataSyncJobPreview({ jobId })` — the reviewed-plan read.
-pub(crate) fn get_data_sync_job_preview_request(job_id: &str) -> (SyncMethod, Value) {
+pub fn get_data_sync_job_preview_request(job_id: &str) -> (SyncMethod, Value) {
     (
         SyncMethod::GetDataSyncJobPreview,
         json!({ "jobId": job_id }),
@@ -246,7 +246,7 @@ pub(crate) fn get_data_sync_job_preview_request(job_id: &str) -> (SyncMethod, Va
 
 /// `startDataSyncApplyJob({ sourceDbSessionId, targetDbSessionId,
 /// request })` — the durable apply's accepted receipt.
-pub(crate) fn start_data_sync_apply_job_request(
+pub fn start_data_sync_apply_job_request(
     source_db_session_id: &str,
     target_db_session_id: &str,
     request: &Value,
@@ -262,7 +262,7 @@ pub(crate) fn start_data_sync_apply_job_request(
 }
 
 /// `getDataSyncJobDetails({ jobId })`.
-pub(crate) fn get_data_sync_job_details_request(job_id: &str) -> (SyncMethod, Value) {
+pub fn get_data_sync_job_details_request(job_id: &str) -> (SyncMethod, Value) {
     (
         SyncMethod::GetDataSyncJobDetails,
         json!({ "jobId": job_id }),
@@ -270,18 +270,18 @@ pub(crate) fn get_data_sync_job_details_request(job_id: &str) -> (SyncMethod, Va
 }
 
 /// `listDataSyncJobs()`.
-pub(crate) fn list_data_sync_jobs_request() -> (SyncMethod, Value) {
+pub fn list_data_sync_jobs_request() -> (SyncMethod, Value) {
     (SyncMethod::ListDataSyncJobs, json!({}))
 }
 
 /// `verifyDataSyncRecovery(request)`.
-pub(crate) fn verify_data_sync_recovery_request(request: &Value) -> (SyncMethod, Value) {
+pub fn verify_data_sync_recovery_request(request: &Value) -> (SyncMethod, Value) {
     (SyncMethod::VerifyDataSyncRecovery, request.clone())
 }
 
 /// `inspectDataSync({ … })` — the mapping inspection (the `tables`
 /// spread is an ABSENT key without mappings).
-pub(crate) fn inspect_data_sync_request(
+pub fn inspect_data_sync_request(
     source_db_session_id: &str,
     target_db_session_id: &str,
     source_database: Option<&str>,
@@ -306,7 +306,7 @@ pub(crate) fn inspect_data_sync_request(
 
 /// `generateDataSyncSql({ planId, selection, options })` — only the
 /// selected rows; failures never trigger another write path.
-pub(crate) fn generate_data_sync_sql_request(
+pub fn generate_data_sync_sql_request(
     plan_id: &str,
     selection: &Value,
     options: &SyncOptionsVm,
@@ -324,11 +324,11 @@ pub(crate) fn generate_data_sync_sql_request(
 /// A legacy-rail command (the `legacyInvoke` calls): the method name
 /// and the payload as the React file sends them.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SyncLegacyRequest {
+pub struct SyncLegacyRequest {
     /// The legacy command name.
-    pub(crate) command: &'static str,
+    pub command: &'static str,
     /// The payload object.
-    pub(crate) payload: Value,
+    pub payload: Value,
 }
 
 /// `get_data_sync_comparison_page` — the plan_store row-level paged
@@ -338,7 +338,7 @@ pub(crate) struct SyncLegacyRequest {
 /// declaring it a capability gap via `unsupportedMethods`.
 ///
 /// `limit ?? activeComparisonPlan.pageSize ?? 100`.
-pub(crate) fn get_data_sync_comparison_page_legacy_request(
+pub fn get_data_sync_comparison_page_legacy_request(
     plan_id: &str,
     source_table: &str,
     target_table: &str,
@@ -365,7 +365,7 @@ pub(crate) fn get_data_sync_comparison_page_legacy_request(
 /// and submit the reviewed selection as a durable Data Sync job");
 /// the command stays on the legacy rail for signature compatibility
 /// only — every call gets that refusal.
-pub(crate) fn apply_data_sync_legacy_request(
+pub fn apply_data_sync_legacy_request(
     source_db_session_id: &str,
     target_db_session_id: &str,
     tables: &[String],

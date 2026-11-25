@@ -35,7 +35,7 @@
 /// built-in profile uses 'none' (a driver may declare it); identifier
 /// quoting is the passthrough then.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum QuoteStyle {
+pub enum QuoteStyle {
     None,
     Double,
     Backtick,
@@ -44,7 +44,7 @@ pub(crate) enum QuoteStyle {
 
 /// React `foldCase`: 'lower' | 'upper' | 'preserve'.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FoldCase {
+pub enum FoldCase {
     Lower,
     Upper,
     Preserve,
@@ -52,7 +52,7 @@ pub(crate) enum FoldCase {
 
 /// React `projectionAliasVisibility`: 'select-only' | 'order-group' | 'broad'.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ProjectionAliasVisibility {
+pub enum ProjectionAliasVisibility {
     SelectOnly,
     OrderGroup,
     Broad,
@@ -61,48 +61,48 @@ pub(crate) enum ProjectionAliasVisibility {
 /// React `parameterPolicy` (all five flags; a driver that omits one means
 /// "not accepted").
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ParameterPolicy {
-    pub(crate) at_named: bool,
-    pub(crate) question: bool,
-    pub(crate) dollar_positional: bool,
-    pub(crate) dollar_named: bool,
-    pub(crate) template: bool,
+pub struct ParameterPolicy {
+    pub at_named: bool,
+    pub question: bool,
+    pub dollar_positional: bool,
+    pub dollar_named: bool,
+    pub template: bool,
 }
 
 /// React `ResolvedSqlDialectProfile`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SqlDialectProfile {
-    pub(crate) quote_style: QuoteStyle,
-    pub(crate) fold_case: FoldCase,
-    pub(crate) projection_alias_visibility: ProjectionAliasVisibility,
-    pub(crate) parameter_policy: ParameterPolicy,
+pub struct SqlDialectProfile {
+    pub quote_style: QuoteStyle,
+    pub fold_case: FoldCase,
+    pub projection_alias_visibility: ProjectionAliasVisibility,
+    pub parameter_policy: ParameterPolicy,
     /// `reservedKeywords?: string[]` — carried, not interpreted here.
-    pub(crate) reserved_keywords: Option<Vec<String>>,
+    pub reserved_keywords: Option<Vec<String>>,
 }
 
 /// React `SqlDialectProfile['parameterPolicy']` (the declared, partially
 /// optional shape).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DeclaredParameterPolicy {
-    pub(crate) at_named: Option<bool>,
-    pub(crate) question: Option<bool>,
-    pub(crate) dollar_positional: Option<bool>,
-    pub(crate) dollar_named: Option<bool>,
-    pub(crate) template: Option<bool>,
+pub struct DeclaredParameterPolicy {
+    pub at_named: Option<bool>,
+    pub question: Option<bool>,
+    pub dollar_positional: Option<bool>,
+    pub dollar_named: Option<bool>,
+    pub template: Option<bool>,
 }
 
 /// React `SqlDialectProfile` (a driver's declaration).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DeclaredSqlDialectProfile {
-    pub(crate) quote_style: Option<QuoteStyle>,
-    pub(crate) fold_case: Option<FoldCase>,
-    pub(crate) projection_alias_visibility: Option<ProjectionAliasVisibility>,
-    pub(crate) parameter_policy: DeclaredParameterPolicy,
-    pub(crate) reserved_keywords: Option<Vec<String>>,
+pub struct DeclaredSqlDialectProfile {
+    pub quote_style: Option<QuoteStyle>,
+    pub fold_case: Option<FoldCase>,
+    pub projection_alias_visibility: Option<ProjectionAliasVisibility>,
+    pub parameter_policy: DeclaredParameterPolicy,
+    pub reserved_keywords: Option<Vec<String>>,
 }
 
 /// React `STANDARD_DIALECT_PROFILE` (dollar-positional only).
-pub(crate) const STANDARD_DIALECT_PROFILE: SqlDialectProfile = SqlDialectProfile {
+pub const STANDARD_DIALECT_PROFILE: SqlDialectProfile = SqlDialectProfile {
     quote_style: QuoteStyle::Double,
     fold_case: FoldCase::Lower,
     projection_alias_visibility: ProjectionAliasVisibility::SelectOnly,
@@ -202,7 +202,7 @@ const ORACLE_PROFILE: SqlDialectProfile = SqlDialectProfile {
 
 /// The built-in default for a dialect id *or* family alias (the exact keys
 /// of React's `DIALECT_PROFILES` table).
-pub(crate) fn builtin_dialect_profile(key: &str) -> Option<&'static SqlDialectProfile> {
+pub fn builtin_dialect_profile(key: &str) -> Option<&'static SqlDialectProfile> {
     match key {
         "standard" | "generic" | "postgresql" | "postgres" | "pg" => Some(&STANDARD_DIALECT_PROFILE),
         "sqlite" => Some(&SQLITE_PROFILE),
@@ -218,7 +218,7 @@ pub(crate) fn builtin_dialect_profile(key: &str) -> Option<&'static SqlDialectPr
 /// React `normalizeDeclaredProfile`: the declaration replaces the family
 /// default wholesale; only the five placeholder flags default (to false —
 /// a driver that omits one means "not accepted").
-pub(crate) fn normalize_declared_profile(declared: &DeclaredSqlDialectProfile) -> SqlDialectProfile {
+pub fn normalize_declared_profile(declared: &DeclaredSqlDialectProfile) -> SqlDialectProfile {
     SqlDialectProfile {
         // The React type makes the non-policy fields required; the Option
         // here is the Rust projection seam — a missing field resolves the
@@ -244,7 +244,7 @@ pub(crate) fn normalize_declared_profile(declared: &DeclaredSqlDialectProfile) -
 /// declaration for the dialect (by id, or by family match); `None` means
 /// the registry has none. Trim/lowercase the id, empty = `standard`,
 /// built-in table, standard fallback.
-pub(crate) fn resolve_dialect_profile(
+pub fn resolve_dialect_profile(
     dialect_id: &str,
     declared: Option<&DeclaredSqlDialectProfile>,
 ) -> SqlDialectProfile {
@@ -259,7 +259,7 @@ pub(crate) fn resolve_dialect_profile(
 }
 
 /// React `listBuiltinDialectProfileIds`, in the table's declaration order.
-pub(crate) fn list_builtin_dialect_profile_ids() -> &'static [&'static str] {
+pub fn list_builtin_dialect_profile_ids() -> &'static [&'static str] {
     &[
         "standard",
         "generic",
@@ -279,7 +279,7 @@ pub(crate) fn list_builtin_dialect_profile_ids() -> &'static [&'static str] {
 
 /// React `foldIdentifierForDialect` (the host passes the declaration it
 /// resolved for the dialect, or `None` for the built-in path).
-pub(crate) fn fold_identifier_for_dialect(
+pub fn fold_identifier_for_dialect(
     value: &str,
     dialect_id: &str,
     declared: Option<&DeclaredSqlDialectProfile>,
@@ -291,6 +291,6 @@ pub(crate) fn fold_identifier_for_dialect(
 /// Fold an unquoted identifier the way the dialect does (the primitive
 /// lives in [`super::identifier_quoting`]; this is the profile-resolved
 /// spelling React's callers reach through).
-pub(crate) fn fold_identifier(value: &str, profile: &SqlDialectProfile) -> String {
+pub fn fold_identifier(value: &str, profile: &SqlDialectProfile) -> String {
     super::identifier_quoting::fold_identifier(value, profile.fold_case)
 }

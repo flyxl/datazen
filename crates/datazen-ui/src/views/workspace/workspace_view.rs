@@ -107,29 +107,29 @@ use crate::views::workspace_tab_bar::{ActivateTabSlot, CloseTabSlot, WorkspaceTa
 use crate::views::WappSummaryVm;
 
 /// The wapp store's `fetch` — the initial list load's host slot.
-pub(crate) type FetchWappsSlot<S> = Rc<dyn Fn(&mut S)>;
+pub type FetchWappsSlot<S> = Rc<dyn Fn(&mut S)>;
 
 /// The workspace-tabs store's `closeByWapp(wappId)` — the external-refresh
 /// diff's host slot.
-pub(crate) type CloseByWappSlot<S> = Rc<dyn Fn(&mut S, &str)>;
+pub type CloseByWappSlot<S> = Rc<dyn Fn(&mut S, &str)>;
 
 /// The host's per-tab lens: from its state and a tab key to that tab's
 /// [`WappPageShellState`] (the T067 `WappShellLens` is unkeyed; this view
 /// keys it because it hosts one shell per open tab). See the module docs
 /// for the `entry().or_default()` idiom the host writes.
-pub(crate) type WorkspaceShellLens<S> =
+pub type WorkspaceShellLens<S> =
     Rc<dyn for<'host> Fn(&'host mut S, &str) -> &'host mut WappPageShellState>;
 
 // The deep-link payload lives in its 1:1 home since the T224
 // `workspace_pages.rs` port; re-exported so this module's own surface
 // (`open_page_deep_link`) and its audit keep their import paths.
-pub(crate) use super::workspace_pages::OpenPageEventPayload;
+pub use super::workspace_pages::OpenPageEventPayload;
 
 /// The `WorkspaceView` React props plus the Rune seams: the derived page
 /// list, the store projections, the sidebar's measured size and built
 /// handle, the four host press slots, the per-tab shell lens and the T017
 /// picture / page-surface wires.
-pub(crate) struct WorkspaceView<'a, S: 'static> {
+pub struct WorkspaceView<'a, S: 'static> {
     pages: &'a [WorkspacePageEntry],
     tabs: &'a [WorkspaceTabVm],
     shell_states: &'a BTreeMap<String, WappPageShellState>,
@@ -149,7 +149,7 @@ impl<'a, S: 'static> WorkspaceView<'a, S> {
     /// React's four store reads (`pages`, `tabs`, `activeKey` — plus the
     /// wapp projections the effect functions take) — the actions are the
     /// slots below.
-    pub(crate) fn new(
+    pub fn new(
         pages: &'a [WorkspacePageEntry],
         tabs: &'a [WorkspaceTabVm],
         shell_states: &'a BTreeMap<String, WappPageShellState>,
@@ -179,7 +179,7 @@ impl<'a, S: 'static> WorkspaceView<'a, S> {
     /// WORKSPACE_SIDEBAR_WIDTH_KEY, WORKSPACE_SIDEBAR_WIDTH_DEFAULT)`. The
     /// hook's initializer clamps a persisted value into `[minSize,
     /// maxSize]`, so the view clamps whatever arrives.
-    pub(crate) fn sidebar_width(mut self, width: f32) -> Self {
+    pub fn sidebar_width(mut self, width: f32) -> Self {
         self.sidebar_width =
             width.clamp(WORKSPACE_SIDEBAR_WIDTH_MIN as f32, WORKSPACE_SIDEBAR_WIDTH_MAX as f32);
         self
@@ -191,60 +191,60 @@ impl<'a, S: 'static> WorkspaceView<'a, S> {
     /// the tooltip, the column-resize cursor and the accent hover. Without
     /// it the fallback handle renders the same presentation minus the
     /// drag.
-    pub(crate) fn resize_handle(mut self, handle: El) -> Self {
+    pub fn resize_handle(mut self, handle: El) -> Self {
         self.resize_handle = Some(handle);
         self
     }
 
     /// The `onOpenExtensions` prop — fanned out to the navigator's and the
     /// cards' empty-state buttons.
-    pub(crate) fn on_open_extensions(mut self, slot: OpenExtensionsSlot<S>) -> Self {
+    pub fn on_open_extensions(mut self, slot: OpenExtensionsSlot<S>) -> Self {
         self.on_open_extensions = Some(slot);
         self
     }
 
     /// The `openWappPage` seam — the navigator's item presses, the cards'
     /// presses and the deep link all route through the one slot.
-    pub(crate) fn on_open_page(mut self, slot: OpenWappPageSlot<S>) -> Self {
+    pub fn on_open_page(mut self, slot: OpenWappPageSlot<S>) -> Self {
         self.on_open_page = Some(slot);
         self
     }
 
     /// The store's `activate(tab.key)` — fanned into the tab strip.
-    pub(crate) fn on_activate_tab(mut self, slot: ActivateTabSlot<S>) -> Self {
+    pub fn on_activate_tab(mut self, slot: ActivateTabSlot<S>) -> Self {
         self.on_activate_tab = Some(slot);
         self
     }
 
     /// The store's `close(tab.key)` — fanned into the tab strip's close
     /// buttons.
-    pub(crate) fn on_close_tab(mut self, slot: CloseTabSlot<S>) -> Self {
+    pub fn on_close_tab(mut self, slot: CloseTabSlot<S>) -> Self {
         self.on_close_tab = Some(slot);
         self
     }
 
     /// The per-tab lens the shells' reload/retry presses act through.
-    pub(crate) fn shell_lens(mut self, lens: WorkspaceShellLens<S>) -> Self {
+    pub fn shell_lens(mut self, lens: WorkspaceShellLens<S>) -> Self {
         self.shell_lens = Some(lens);
         self
     }
 
     /// The icons' picture wire (the T017 port's `WappIconImages`), fanned
     /// out to every sibling that draws a `WappIcon`.
-    pub(crate) fn images(mut self, images: WappIconImages) -> Self {
+    pub fn images(mut self, images: WappIconImages) -> Self {
         self.images = Some(images);
         self
     }
 
     /// The page-surface wire ([`WappPageSurface`]), forwarded to every
     /// shell.
-    pub(crate) fn surface(mut self, surface: WappPageSurface) -> Self {
+    pub fn surface(mut self, surface: WappPageSurface) -> Self {
         self.surface = Some(surface);
         self
     }
 
     /// Build the layout at the given theme.
-    pub(crate) fn build(mut self, dark: bool) -> El {
+    pub fn build(mut self, dark: bool) -> El {
         let handle = self.resize_handle.take();
         row()
             .key("workspace-view")
@@ -404,7 +404,7 @@ impl<'a, S: 'static> WorkspaceView<'a, S> {
     /// `if (!loaded) void fetch()`. The host runs this once per mount
     /// (React's `[]` deps are its calling discipline); the refreshed loads
     /// afterwards ride the store's own `wapps:changed` seam.
-    pub(crate) fn initial_wapp_load(
+    pub fn initial_wapp_load(
         wapps_loaded: bool,
         fetch: &FetchWappsSlot<S>,
         host: &mut S,
@@ -423,7 +423,7 @@ impl<'a, S: 'static> WorkspaceView<'a, S> {
     /// list can never close pre-existing tabs; each open tab's wapp id is
     /// visited once, in tab order, and a missing or disabled wapp closes
     /// its tabs through the store's `closeByWapp`.
-    pub(crate) fn resync_wapps(
+    pub fn resync_wapps(
         wapps: &[WappSummaryVm],
         wapps_loaded: bool,
         open_tabs: &[WorkspaceTabVm],
@@ -455,7 +455,7 @@ impl<'a, S: 'static> WorkspaceView<'a, S> {
     /// whether the link passed the gates and was forwarded to the
     /// `openWappPage` seam; the tab the resolve opens (and its `params`)
     /// is the workspace-tabs/T224 seam.
-    pub(crate) fn open_page_deep_link(
+    pub fn open_page_deep_link(
         payload: &OpenPageEventPayload,
         wapps: &[WappSummaryVm],
         open_page: &OpenWappPageSlot<S>,

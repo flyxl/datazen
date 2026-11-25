@@ -83,7 +83,7 @@ use crate::ui::select::Select;
 use crate::views::TransferRecordset;
 
 /// The ten operators the React source hard-codes (`OPERATORS`).
-pub(crate) const OPERATORS: [&str; 10] = [
+pub const OPERATORS: [&str; 10] = [
     "eq",
     "ne",
     "gt",
@@ -100,7 +100,7 @@ pub(crate) const OPERATORS: [&str; 10] = [
 /// structured filter this editor edits, with the sync-only recordset the
 /// predicate editor must preserve.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct StructuredSourceFilter {
+pub struct StructuredSourceFilter {
     pub filters: Vec<FilterCondition>,
     /// `Some` = the React `logic` field (`'and'` | `'or'`); `None` lets the
     /// update chain default it to `'and'`.
@@ -126,7 +126,7 @@ fn value_for_operator_change(
 /// slice borrows the drafts for this frame, and `bind` locates the same
 /// draft mutably when the field reports an edit. The host keeps the slice
 /// in step with the condition list (same length, same order).
-pub(crate) struct ValueDrafts<S: 'static> {
+pub struct ValueDrafts<S: 'static> {
     pub edits: Vec<TextEdit>,
     /// Locates one condition's draft in the host state.
     pub bind: Rc<dyn for<'b> Fn(&'b mut S, usize) -> &'b mut TextEdit>,
@@ -136,7 +136,7 @@ pub(crate) struct ValueDrafts<S: 'static> {
 /// Rune keeps the one open slot in the host state, the same shape
 /// `filter_condition_editor` takes (`EditorSelect`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SourceFilterSelect {
+pub enum SourceFilterSelect {
     Logic,
     Column(usize),
     Operator(usize),
@@ -144,7 +144,7 @@ pub(crate) enum SourceFilterSelect {
 
 /// The editor builder. `S` is the host state that owns the filter (and,
 /// if value drafts are supplied, the drafts) and the open select slot.
-pub(crate) struct SourceFilterEditor<S: 'static> {
+pub struct SourceFilterEditor<S: 'static> {
     columns: Vec<String>,
     filter: Option<StructuredSourceFilter>,
     disabled: bool,
@@ -156,7 +156,7 @@ pub(crate) struct SourceFilterEditor<S: 'static> {
 }
 
 impl<S: 'static> SourceFilterEditor<S> {
-    pub(crate) fn new(columns: Vec<String>, filter: Option<StructuredSourceFilter>) -> Self {
+    pub fn new(columns: Vec<String>, filter: Option<StructuredSourceFilter>) -> Self {
         Self {
             columns,
             filter,
@@ -171,13 +171,13 @@ impl<S: 'static> SourceFilterEditor<S> {
 
     /// The open select, from the host's slot (React's listbox is
     /// DOM-local; the host mirrors it, exactly like the filter panel does).
-    pub(crate) fn open(mut self, open: Option<SourceFilterSelect>) -> Self {
+    pub fn open(mut self, open: Option<SourceFilterSelect>) -> Self {
         self.open = open;
         self
     }
 
     /// The host records which select opened.
-    pub(crate) fn on_toggle(
+    pub fn on_toggle(
         mut self,
         f: impl Fn(&mut S, SourceFilterSelect) + 'static,
     ) -> Self {
@@ -186,19 +186,19 @@ impl<S: 'static> SourceFilterEditor<S> {
     }
 
     /// The host clears the slot when any select closes.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// React `disabled`: held inert while the transfer job prepares.
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// React `onChange(filter | undefined)`.
-    pub(crate) fn on_change(
+    pub fn on_change(
         mut self,
         f: impl Fn(&mut S, Option<StructuredSourceFilter>) + 'static,
     ) -> Self {
@@ -210,13 +210,13 @@ impl<S: 'static> SourceFilterEditor<S> {
     /// in order). Without them the rows still render, minus the value
     /// inputs — the same shape as a React mount whose draft state has not
     /// been wired yet.
-    pub(crate) fn value_drafts(mut self, drafts: ValueDrafts<S>) -> Self {
+    pub fn value_drafts(mut self, drafts: ValueDrafts<S>) -> Self {
         self.value_drafts = Some(drafts);
         self
     }
 
     /// The editor on its own kit root.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut layer = Vec::new();
         let root = self.build_inner(dark, &k, &mut layer);
@@ -225,7 +225,7 @@ impl<S: 'static> SourceFilterEditor<S> {
 
     /// The same editor without its kit root (for a parent that roots the
     /// overlay once).
-    pub(crate) fn build_inner(self, dark: bool, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build_inner(self, dark: bool, k: &Kit, layer: &mut Vec<El>) -> El {
         let conditions = self
             .filter
             .as_ref()
@@ -540,7 +540,7 @@ impl<S: 'static> SourceFilterEditor<S> {
 /// rebuild the filter with the logic and recordset preserved, keep
 /// `{ filters: [], recordset }` while a recordset is present, and report
 /// `None` otherwise. (`apply_change` wraps it with the callback.)
-pub(crate) fn rebuild_filter(
+pub fn rebuild_filter(
     filter: Option<&StructuredSourceFilter>,
     next: Vec<FilterCondition>,
 ) -> Option<StructuredSourceFilter> {

@@ -15,13 +15,13 @@ use rune::{FileDialogOptions, Tx};
 
 /// The connections page: the home body. The connection form and the import
 /// dialog float over it from the root modal layer (`views/modals.rs`).
-pub(crate) fn connection_list(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn connection_list(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     connections_home(state, theme, dark)
 }
 
 /// T7: an Open dialog picks the export file; the host reads and parses it.
 /// The password field serves the encrypted export formats.
-pub(crate) fn import_press(_state: &mut AppState, tx: &mut Tx) {
+pub fn import_press(_state: &mut AppState, tx: &mut Tx) {
     let options = FileDialogOptions {
         title: "Choose a connection export".into(),
         ..Default::default()
@@ -47,7 +47,7 @@ fn short_file_name(path: &str) -> String {
 /// Import dialog body (React-aligned layout) with preserved keys:
 /// `import-dialog-fields`, `import-choose-file`, `import-password-input`,
 /// `import-preview`/`import-notice` and `connection-import` content.
-pub(crate) fn import_dialog_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn import_dialog_body(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut body = col().key("import-dialog-fields").w_full().gap(14.0);
 
     body = body.child(
@@ -136,7 +136,7 @@ pub(crate) fn import_dialog_body(state: &AppState, theme: tok::Theme, dark: bool
 /// The import bar (T7): password, parsed preview and outcome notice.
 /// Keys preserved for import flows/tests (`import-password-input`,
 /// `connection-import`, `import-preview`, `import-confirm`, `import-notice`).
-pub(crate) fn import_bar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn import_bar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut import = col().key("connection-import").w_full().gap(10.0).child(
         col()
             .key("connection-import-form")
@@ -286,7 +286,7 @@ fn section_toggle(key: &str, title: &str, subtitle: Option<&str>, theme: tok::Th
 
 /// Connection form body (React-aligned grid/sections) with preserved keys for
 /// tests and flows.
-pub(crate) fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     // Basic: name + engine (engine also selectable from sidebar).
     let basic = col()
         .key("connection-section-basic")

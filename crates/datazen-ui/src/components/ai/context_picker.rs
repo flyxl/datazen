@@ -80,7 +80,7 @@ use crate::ui::kit::kit;
 use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 
 /// React's `MAX_RECENT`: the recents list cap.
-pub(crate) const MAX_RECENT: usize = 8;
+pub const MAX_RECENT: usize = 8;
 
 /// React's `w-72` (288px).
 const W: f32 = 288.0;
@@ -91,7 +91,7 @@ const ICON_PT: f32 = 14.0;
 
 /// React's `View`: root (categories) or one drill-in list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PickerView {
+pub enum PickerView {
     #[default]
     Root,
     Tables,
@@ -100,14 +100,14 @@ pub(crate) enum PickerView {
 
 /// React's category ids (`'tables' | 'files'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PickerCategory {
+pub enum PickerCategory {
     Tables,
     Files,
 }
 
 impl PickerCategory {
     /// The React id string (`'tables'` / `'files'`).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             PickerCategory::Tables => "tables",
             PickerCategory::Files => "files",
@@ -126,7 +126,7 @@ impl PickerCategory {
 /// React's `position` prop ('above' | 'below'): a host placement hint (see
 /// the deviations — no rune absolute layout, so it renders no offset).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PickerPosition {
+pub enum PickerPosition {
     #[default]
     Above,
     Below,
@@ -134,7 +134,7 @@ pub(crate) enum PickerPosition {
 
 /// React's `Row`: a category, a section header, or one item.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PickerRow {
+pub enum PickerRow {
     Category { id: PickerCategory, label: String },
     Section { label: String },
     Item(ContextItem),
@@ -143,7 +143,7 @@ pub(crate) enum PickerRow {
 /// What the picker's keydown router did (the host translates `Selected` /
 /// `Close` into its `onSelect` / `onClose`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum PickerKeyOutcome {
+pub enum PickerKeyOutcome {
     /// Not one of the picker's keys: the caller lets the key through.
     Ignored,
     /// Handled entirely inside the state (an arrow move, a view switch).
@@ -158,7 +158,7 @@ pub(crate) enum PickerKeyOutcome {
 /// with its nested children. The host wiring flattens its fetch through
 /// [`flatten_file_entries`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ContextEntry {
+pub struct ContextEntry {
     pub name: String,
     pub path: String,
     pub is_dir: bool,
@@ -167,7 +167,7 @@ pub(crate) struct ContextEntry {
 
 /// React's `matchesQuery`: the name or the id contains the lowercased
 /// query.
-pub(crate) fn matches_query(item: &ContextItem, q: &str) -> bool {
+pub fn matches_query(item: &ContextItem, q: &str) -> bool {
     let lower = q.to_lowercase();
     item.name.to_lowercase().contains(lower.as_str())
         || item.id.to_lowercase().contains(lower.as_str())
@@ -175,13 +175,13 @@ pub(crate) fn matches_query(item: &ContextItem, q: &str) -> bool {
 
 /// React's `isCtxYaml` arm: the item icon picks `Layers` for a
 /// `.ctx.yaml` / `.ctx.yml` file.
-pub(crate) fn is_ctx_yaml(name: &str) -> bool {
+pub fn is_ctx_yaml(name: &str) -> bool {
     name.ends_with(".ctx.yaml") || name.ends_with(".ctx.yml")
 }
 
 /// React's item icon ternary: `Table2` for tables, `Folder` for dirs,
 /// `Layers` for ctx.yaml files, `File` otherwise.
-pub(crate) fn item_icon(item: &ContextItem) -> &'static rune::Icon {
+pub fn item_icon(item: &ContextItem) -> &'static rune::Icon {
     match item.kind {
         ContextKind::Table => &ICON_TABLE,
         ContextKind::Dir => &ICON_FOLDER,
@@ -192,7 +192,7 @@ pub(crate) fn item_icon(item: &ContextItem) -> &'static rune::Icon {
 
 /// React's `tableToItem` name: `schema.name` when the schema is truthy,
 /// the bare name otherwise.
-pub(crate) fn table_label(schema: Option<&str>, name: &str) -> String {
+pub fn table_label(schema: Option<&str>, name: &str) -> String {
     match schema {
         Some(schema) if !schema.is_empty() => format!("{schema}.{name}"),
         _ => name.to_owned(),
@@ -200,7 +200,7 @@ pub(crate) fn table_label(schema: Option<&str>, name: &str) -> String {
 }
 
 /// React's `entryToItem`: the entry's kind/id/name.
-pub(crate) fn entry_to_item(entry: &ContextEntry) -> ContextItem {
+pub fn entry_to_item(entry: &ContextEntry) -> ContextItem {
     ContextItem {
         kind: if entry.is_dir { ContextKind::Dir } else { ContextKind::File },
         id: entry.path.clone(),
@@ -210,7 +210,7 @@ pub(crate) fn entry_to_item(entry: &ContextEntry) -> ContextItem {
 
 /// React's `flattenFileEntries`: the entry, then its children
 /// depth-first (dirs included as their own items).
-pub(crate) fn flatten_file_entries(entries: &[ContextEntry]) -> Vec<ContextItem> {
+pub fn flatten_file_entries(entries: &[ContextEntry]) -> Vec<ContextItem> {
     let mut result = Vec::new();
     for entry in entries {
         result.push(entry_to_item(entry));
@@ -222,7 +222,7 @@ pub(crate) fn flatten_file_entries(entries: &[ContextEntry]) -> Vec<ContextItem>
 /// The state the host owns for one mounted picker: the view, the lists,
 /// the loading flags, the recents, and the active row.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ContextPickerState {
+pub struct ContextPickerState {
     view: PickerView,
     recent: Vec<ContextItem>,
     tables: Vec<ContextItem>,
@@ -236,77 +236,77 @@ impl ContextPickerState {
     /// The empty picker (React mounts with an empty `recent` until the
     /// effect reloads it — the host seeds through
     /// [`ContextPickerState::set_recent`]).
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// React's `view` state.
-    pub(crate) fn view(&self) -> PickerView {
+    pub fn view(&self) -> PickerView {
         self.view
     }
 
     /// React's `recent` state.
-    pub(crate) fn recent(&self) -> &[ContextItem] {
+    pub fn recent(&self) -> &[ContextItem] {
         &self.recent
     }
 
     /// React's `tables` state (the fetched, already-mapped list).
-    pub(crate) fn tables(&self) -> &[ContextItem] {
+    pub fn tables(&self) -> &[ContextItem] {
         &self.tables
     }
 
     /// React's `files` state (the fetched, already-flattened list).
-    pub(crate) fn files(&self) -> &[ContextItem] {
+    pub fn files(&self) -> &[ContextItem] {
         &self.files
     }
 
     /// React's `loadingTables`.
-    pub(crate) fn loading_tables(&self) -> bool {
+    pub fn loading_tables(&self) -> bool {
         self.loading_tables
     }
 
     /// React's `loadingFiles`.
-    pub(crate) fn loading_files(&self) -> bool {
+    pub fn loading_files(&self) -> bool {
         self.loading_files
     }
 
     /// React's `activeIndex`.
-    pub(crate) fn active_index(&self) -> usize {
+    pub fn active_index(&self) -> usize {
         self.active_index
     }
 
     /// The recents seed (React's mount effect reloading `loadRecent`).
-    pub(crate) fn set_recent(&mut self, recent: Vec<ContextItem>) {
+    pub fn set_recent(&mut self, recent: Vec<ContextItem>) {
         self.recent = recent;
     }
 
     /// The tables fetch's write end: the mapped list lands and the
     /// loading flag clears in the same write, exactly the pair React's
     /// `then` does (the catch arm writes an empty list — the same call).
-    pub(crate) fn set_tables(&mut self, tables: Vec<ContextItem>) {
+    pub fn set_tables(&mut self, tables: Vec<ContextItem>) {
         self.tables = tables;
         self.loading_tables = false;
     }
 
     /// The files fetch's write end (same pairing as `set_tables`).
-    pub(crate) fn set_files(&mut self, files: Vec<ContextItem>) {
+    pub fn set_files(&mut self, files: Vec<ContextItem>) {
         self.files = files;
         self.loading_files = false;
     }
 
     /// React's `setLoadingTables(true)` arm (the fetch's start).
-    pub(crate) fn set_loading_tables(&mut self, loading: bool) {
+    pub fn set_loading_tables(&mut self, loading: bool) {
         self.loading_tables = loading;
     }
 
     /// React's `setLoadingFiles(true)` arm.
-    pub(crate) fn set_loading_files(&mut self, loading: bool) {
+    pub fn set_loading_files(&mut self, loading: bool) {
         self.loading_files = loading;
     }
 
     /// React's `setView` + `setActiveIndex(0)` pair — both call sites
     /// (the category click, the back button) reset the active row.
-    pub(crate) fn set_view(&mut self, view: PickerView) {
+    pub fn set_view(&mut self, view: PickerView) {
         self.view = view;
         self.active_index = 0;
     }
@@ -314,7 +314,7 @@ impl ContextPickerState {
     /// React's rows `useMemo`: the current view's row list, narrowed by
     /// the query exactly as React does (root filters only the recents;
     /// the drill-ins filter their lists; an empty query is no filter).
-    pub(crate) fn rows(&self, query: &str, show_tables_category: bool) -> Vec<PickerRow> {
+    pub fn rows(&self, query: &str, show_tables_category: bool) -> Vec<PickerRow> {
         match self.view {
             PickerView::Tables => filter_rows(&self.tables, query),
             PickerView::Files => filter_rows(&self.files, query),
@@ -352,14 +352,14 @@ impl ContextPickerState {
 
     /// React's rows-length effect: clamp the active row into the list
     /// (`Math.min(prev, Math.max(rows.length - 1, 0))`).
-    pub(crate) fn clamp_active(&mut self, rows_len: usize) {
+    pub fn clamp_active(&mut self, rows_len: usize) {
         self.active_index = self.active_index.min(rows_len.saturating_sub(1));
     }
 
     /// React's `pushRecent` + `setRecent` pair: the picked item moves to
     /// the front (a duplicate by kind + id drops out first), the list caps
     /// at [`MAX_RECENT`].
-    pub(crate) fn push_recent(&mut self, item: ContextItem) {
+    pub fn push_recent(&mut self, item: ContextItem) {
         self.recent
             .retain(|existing| !(existing.kind == item.kind && existing.id == item.id));
         self.recent.insert(0, item);
@@ -371,7 +371,7 @@ impl ContextPickerState {
     /// view switches mutate here; the pick and the root Escape come back
     /// as [`PickerKeyOutcome::Selected`] / [`PickerKeyOutcome::Close`]
     /// for the host's `onSelect` / `onClose`.
-    pub(crate) fn handle_key(&mut self, event: &KeyEvent, rows: &[PickerRow]) -> PickerKeyOutcome {
+    pub fn handle_key(&mut self, event: &KeyEvent, rows: &[PickerRow]) -> PickerKeyOutcome {
         match &event.key {
             Key::Down => {
                 self.active_index = (self.active_index + 1).min(rows.len().saturating_sub(1));
@@ -423,7 +423,7 @@ fn filter_rows(items: &[ContextItem], query: &str) -> Vec<PickerRow> {
 
 /// The picker. Renders the state; the presses and keys mutate through the
 /// state wire, the pick and the close come back through the callbacks.
-pub(crate) struct ContextPicker<'a, S: 'static> {
+pub struct ContextPicker<'a, S: 'static> {
     state: &'a ContextPickerState,
     query: String,
     position: PickerPosition,
@@ -434,7 +434,7 @@ pub(crate) struct ContextPicker<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> ContextPicker<'a, S> {
-    pub(crate) fn new(state: &'a ContextPickerState) -> Self {
+    pub fn new(state: &'a ContextPickerState) -> Self {
         Self {
             state,
             query: String::new(),
@@ -447,13 +447,13 @@ impl<'a, S: 'static> ContextPicker<'a, S> {
     }
 
     /// React's `query` prop (the `@`-word; empty means unfiltered).
-    pub(crate) fn query(mut self, query: impl Into<String>) -> Self {
+    pub fn query(mut self, query: impl Into<String>) -> Self {
         self.query = query.into();
         self
     }
 
     /// React's `position` prop (a host placement hint; see the deviations).
-    pub(crate) fn position(mut self, position: PickerPosition) -> Self {
+    pub fn position(mut self, position: PickerPosition) -> Self {
         self.position = position;
         self
     }
@@ -461,7 +461,7 @@ impl<'a, S: 'static> ContextPicker<'a, S> {
     /// React's `dbSessionId` prop: presence alone gates the Tables
     /// category (`Boolean(dbSessionId)`); the fetch inputs themselves
     /// (`dbSessionId`, `database`) live with the host wiring.
-    pub(crate) fn db_session(mut self, db_session: Option<&'a str>) -> Self {
+    pub fn db_session(mut self, db_session: Option<&'a str>) -> Self {
         self.db_session = db_session;
         self
     }
@@ -469,7 +469,7 @@ impl<'a, S: 'static> ContextPicker<'a, S> {
     /// The wire that binds the picker's rows to the host's state: the
     /// presses (drill-in, back, pick) and the standalone key router
     /// mutate through it.
-    pub(crate) fn state_access(
+    pub fn state_access(
         mut self,
         access: impl for<'b> Fn(&'b mut S) -> &'b mut ContextPickerState + Clone + 'static,
     ) -> Self {
@@ -478,14 +478,14 @@ impl<'a, S: 'static> ContextPicker<'a, S> {
     }
 
     /// React's `onSelect` (a pick — the recents already advanced).
-    pub(crate) fn on_select(mut self, f: impl Fn(&mut S, ContextItem) + 'static) -> Self {
+    pub fn on_select(mut self, f: impl Fn(&mut S, ContextItem) + 'static) -> Self {
         self.on_select = Some(Rc::new(f));
         self
     }
 
     /// React's `onClose` (the root view's Escape; the click-away is the
     /// host layer's job).
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
@@ -511,7 +511,7 @@ impl<'a, S: 'static> ContextPicker<'a, S> {
 
     /// The picker, mounted (React renders it whenever the host layer
     /// mounts it).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let show_tables = self.db_session.is_some();
         let rows = self.state.rows(&self.query, show_tables);

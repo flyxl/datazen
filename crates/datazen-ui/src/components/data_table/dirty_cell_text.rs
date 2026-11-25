@@ -31,7 +31,7 @@ use crate::components::data_table::cell_renderer::js_string;
 use crate::i18n::t;
 
 /// `formatDirtyValue`: the word a value reads as inside a dirty-cell tooltip.
-pub(crate) fn format_dirty_value(value: &Value) -> String {
+pub fn format_dirty_value(value: &Value) -> String {
     match value {
         Value::Null => t("tableData.dirtyValueNull").to_owned(),
         Value::String(text) if text.is_empty() => t("tableData.dirtyValueEmpty").to_owned(),
@@ -43,17 +43,17 @@ pub(crate) fn format_dirty_value(value: &Value) -> String {
 /// `formatDirtyExpression` (DBR-05): the word a staged write expression
 /// reads as in a dirty tooltip — the intent in the user's words, not the
 /// placeholder value the wire invariant keeps in `currentValues`.
-pub(crate) fn format_dirty_expression() -> String {
+pub fn format_dirty_expression() -> String {
     t("tableData.dirtyValueExpression").to_owned()
 }
 
 /// The `expression === 'currentTimestamp'` marker's spelling, as the React
 /// call sites compare it.
-pub(crate) const CURRENT_TIMESTAMP_EXPRESSION: &str = "currentTimestamp";
+pub const CURRENT_TIMESTAMP_EXPRESSION: &str = "currentTimestamp";
 
 /// `dirtyCellTooltip`: the tooltip of a dirty cell — the original value and
 /// the value it becomes. `expression` rewrites the "to" side only.
-pub(crate) fn dirty_cell_tooltip(
+pub fn dirty_cell_tooltip(
     original: &Value,
     next: &Value,
     expression: Option<&str>,
@@ -69,7 +69,7 @@ pub(crate) fn dirty_cell_tooltip(
 /// tooltip in words. The `{original}`/`{next}` placeholders the zh-CN pack
 /// carries are formatted here, the caller-facing convention `i18n.rs`
 /// documents.
-pub(crate) fn dirty_cell_aria_label(
+pub fn dirty_cell_aria_label(
     original: &Value,
     next: &Value,
     expression: Option<&str>,

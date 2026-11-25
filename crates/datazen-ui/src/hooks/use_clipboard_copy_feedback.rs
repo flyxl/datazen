@@ -30,7 +30,7 @@
 /// The hook's state: the copied flag, the newest request id, and the
 /// clear deadline the host wakes at.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ClipboardCopyFeedback {
+pub struct ClipboardCopyFeedback {
     copied: bool,
     /// Monotonic id of the newest request; older ones are stale and must
     /// not roll back.
@@ -41,7 +41,7 @@ pub(crate) struct ClipboardCopyFeedback {
 
 /// What [`ClipboardCopyFeedback::copy`] asks the host to do.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ClipboardCopyWrite {
+pub enum ClipboardCopyWrite {
     /// The plain write (`copyToClipboard(text)`).
     Plain { text: String },
     /// The rich write (`copyRichTextToClipboard(html, text)`): both
@@ -53,12 +53,12 @@ pub(crate) enum ClipboardCopyWrite {
 impl ClipboardCopyFeedback {
     /// `copied`: whether the last copy succeeded (the window is still
     /// live).
-    pub(crate) fn copied(&self) -> bool {
+    pub fn copied(&self) -> bool {
         self.copied
     }
 
     /// The clear deadline, when armed (the host's `wake_at`).
-    pub(crate) fn clear_at_ms(&self) -> Option<i64> {
+    pub fn clear_at_ms(&self) -> Option<i64> {
         self.clear_at_ms
     }
 
@@ -67,7 +67,7 @@ impl ClipboardCopyFeedback {
     /// lights optimistically, the window (re)arms, and the host performs
     /// the returned write, reporting back through
     /// [`Self::on_copy_result`] with the returned request id.
-    pub(crate) fn copy(
+    pub fn copy(
         &mut self,
         text: &str,
         rich_html: Option<&str>,
@@ -95,7 +95,7 @@ impl ClipboardCopyFeedback {
     /// rejection's `catch(() => false)` collapsed). A failure rolls back
     /// only when it is still the newest request; a success keeps the
     /// window (the timer clears it).
-    pub(crate) fn on_copy_result(&mut self, request_id: u64, ok: bool) {
+    pub fn on_copy_result(&mut self, request_id: u64, ok: bool) {
         if !ok && request_id == self.request_id {
             self.copied = false;
             self.clear_at_ms = None;
@@ -104,7 +104,7 @@ impl ClipboardCopyFeedback {
 
     /// The clock tick: a due deadline clears the feedback (the host calls
     /// this from its `wake_at`).
-    pub(crate) fn tick(&mut self, now_ms: i64) {
+    pub fn tick(&mut self, now_ms: i64) {
         if self.clear_at_ms.is_some_and(|clear_at| now_ms >= clear_at) {
             self.copied = false;
             self.clear_at_ms = None;
@@ -112,14 +112,14 @@ impl ClipboardCopyFeedback {
     }
 
     /// The unmount cleanup: the timer never fires after the hook is gone.
-    pub(crate) fn dispose(&mut self) {
+    pub fn dispose(&mut self) {
         self.clear_at_ms = None;
         self.copied = false;
     }
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     #[test]

@@ -24,7 +24,7 @@ type SwitchBind = Box<dyn FnOnce(KitSwitch) -> KitSwitch>;
 type RadioBind = Box<dyn FnOnce(KitRadioItem) -> KitRadioItem>;
 
 /// A row that toggles one boolean: a 16 point box and its label.
-pub(crate) struct Checkbox {
+pub struct Checkbox {
     key: String,
     checked: bool,
     indeterminate: bool,
@@ -35,7 +35,7 @@ pub(crate) struct Checkbox {
 }
 
 impl Checkbox {
-    pub(crate) fn new(key: impl Into<String>, checked: bool) -> Checkbox {
+    pub fn new(key: impl Into<String>, checked: bool) -> Checkbox {
         Checkbox {
             key: key.into(),
             checked,
@@ -49,34 +49,34 @@ impl Checkbox {
 
     /// Partly on: the box draws a dash and the control reports `aria-checked="mixed"`
     /// (the "some rows are selected" header box in the React data table).
-    pub(crate) fn indeterminate(mut self, indeterminate: bool) -> Checkbox {
+    pub fn indeterminate(mut self, indeterminate: bool) -> Checkbox {
         self.indeterminate = indeterminate;
         self
     }
 
-    pub(crate) fn label(mut self, label: impl Into<String>) -> Checkbox {
+    pub fn label(mut self, label: impl Into<String>) -> Checkbox {
         self.label = Some(label.into());
         self
     }
 
     /// A second line under the label.
-    pub(crate) fn description(mut self, description: impl Into<String>) -> Checkbox {
+    pub fn description(mut self, description: impl Into<String>) -> Checkbox {
         self.description = Some(description.into());
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Checkbox {
+    pub fn disabled(mut self, disabled: bool) -> Checkbox {
         self.disabled = disabled;
         self
     }
 
     /// A press anywhere on the row (the box or the label) toggles it.
-    pub(crate) fn on_toggle<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Checkbox {
+    pub fn on_toggle<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Checkbox {
         self.binds.push(Box::new(move |c| c.on_toggle(f)));
         self
     }
 
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let mut kit = KitCheckbox::new(self.checked)
             .disabled(self.disabled)
             .indeterminate(self.indeterminate);
@@ -96,7 +96,7 @@ impl Checkbox {
 }
 
 /// A row that toggles one boolean: a sliding control and its label.
-pub(crate) struct Switch {
+pub struct Switch {
     key: String,
     checked: bool,
     label: Option<String>,
@@ -110,7 +110,7 @@ pub(crate) struct Switch {
 }
 
 impl Switch {
-    pub(crate) fn new(key: impl Into<String>, checked: bool) -> Switch {
+    pub fn new(key: impl Into<String>, checked: bool) -> Switch {
         Switch {
             key: key.into(),
             checked,
@@ -125,53 +125,53 @@ impl Switch {
         }
     }
 
-    pub(crate) fn label(mut self, label: impl Into<String>) -> Switch {
+    pub fn label(mut self, label: impl Into<String>) -> Switch {
         self.label = Some(label.into());
         self
     }
 
     /// Keep the label for accessibility only (the kit's `hide_label`):
     /// the row already shows it, as React's `aria-label`-only switches do.
-    pub(crate) fn hide_label(mut self) -> Switch {
+    pub fn hide_label(mut self) -> Switch {
         self.hide_label = true;
         self
     }
 
     /// A second line under the label.
-    pub(crate) fn description(mut self, description: impl Into<String>) -> Switch {
+    pub fn description(mut self, description: impl Into<String>) -> Switch {
         self.description = Some(description.into());
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Switch {
+    pub fn disabled(mut self, disabled: bool) -> Switch {
         self.disabled = disabled;
         self
     }
 
     /// The control's size; compact by default (a 36 × 16 track).
-    pub(crate) fn control_size(mut self, size: ControlSize) -> Switch {
+    pub fn control_size(mut self, size: ControlSize) -> Switch {
         self.control_size = size;
         self
     }
 
     /// The web track (24 × 16 with a 12 point thumb) instead of the compact native one.
-    pub(crate) fn web(mut self) -> Switch {
+    pub fn web(mut self) -> Switch {
         self.web = true;
         self
     }
 
     /// The macOS standard control (28 × 16, its label in the standard ink).
-    pub(crate) fn standard(mut self) -> Switch {
+    pub fn standard(mut self) -> Switch {
         self.standard = true;
         self
     }
 
-    pub(crate) fn on_toggle<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Switch {
+    pub fn on_toggle<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Switch {
         self.binds.push(Box::new(move |s| s.on_toggle(f)));
         self
     }
 
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let mut kit = KitSwitch::new(self.checked)
             .disabled(self.disabled)
             .control_size(self.control_size);
@@ -200,7 +200,7 @@ impl Switch {
 }
 
 /// One row of a [`RadioGroup`]: a circular control, its label and an optional description.
-pub(crate) struct RadioItem {
+pub struct RadioItem {
     label: String,
     checked: bool,
     description: Option<String>,
@@ -209,7 +209,7 @@ pub(crate) struct RadioItem {
 }
 
 impl RadioItem {
-    pub(crate) fn new(label: impl Into<String>, checked: bool) -> RadioItem {
+    pub fn new(label: impl Into<String>, checked: bool) -> RadioItem {
         RadioItem {
             label: label.into(),
             checked,
@@ -219,18 +219,18 @@ impl RadioItem {
         }
     }
 
-    pub(crate) fn description(mut self, description: impl Into<String>) -> RadioItem {
+    pub fn description(mut self, description: impl Into<String>) -> RadioItem {
         self.description = Some(description.into());
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> RadioItem {
+    pub fn disabled(mut self, disabled: bool) -> RadioItem {
         self.disabled = disabled;
         self
     }
 
     /// A press anywhere on the row (the control or the label) selects it.
-    pub(crate) fn on_select<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> RadioItem {
+    pub fn on_select<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> RadioItem {
         self.binds.push(Box::new(move |i| i.on_select(f)));
         self
     }
@@ -246,7 +246,7 @@ impl RadioItem {
 }
 
 /// A labelled set of [`RadioItem`]s; exactly one is checked.
-pub(crate) struct RadioGroup {
+pub struct RadioGroup {
     key: String,
     label: Option<String>,
     description: Option<String>,
@@ -255,7 +255,7 @@ pub(crate) struct RadioGroup {
 }
 
 impl RadioGroup {
-    pub(crate) fn new(key: impl Into<String>) -> RadioGroup {
+    pub fn new(key: impl Into<String>) -> RadioGroup {
         RadioGroup {
             key: key.into(),
             label: None,
@@ -265,27 +265,27 @@ impl RadioGroup {
         }
     }
 
-    pub(crate) fn label(mut self, label: impl Into<String>) -> RadioGroup {
+    pub fn label(mut self, label: impl Into<String>) -> RadioGroup {
         self.label = Some(label.into());
         self
     }
 
-    pub(crate) fn description(mut self, description: impl Into<String>) -> RadioGroup {
+    pub fn description(mut self, description: impl Into<String>) -> RadioGroup {
         self.description = Some(description.into());
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> RadioGroup {
+    pub fn disabled(mut self, disabled: bool) -> RadioGroup {
         self.disabled = disabled;
         self
     }
 
-    pub(crate) fn item(mut self, item: RadioItem) -> RadioGroup {
+    pub fn item(mut self, item: RadioItem) -> RadioGroup {
         self.items.push(item);
         self
     }
 
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let c = &k.c;
         let mut root = col()
             .key(&self.key)

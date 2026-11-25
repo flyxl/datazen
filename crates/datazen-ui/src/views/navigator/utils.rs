@@ -29,7 +29,7 @@ use super::types::NavigatorRow;
 /// React `getUnifiedRowKey` — lives with the row union it reads (T572's
 /// `types.ts` port); re-exported here because `utils.ts` is where React
 /// exports it from.
-pub(crate) use super::types::row_key as get_unified_row_key;
+pub use super::types::row_key as get_unified_row_key;
 
 /// React `CONNECTION_CHILD_DEPTH` — the depth every child of a connection is
 /// painted at — databases, namespace branches, and their loading
@@ -43,7 +43,7 @@ pub(crate) use super::types::row_key as get_unified_row_key;
 /// It lives here rather than in the builder because `flattenNamespaceTree`
 /// builds rows of the same ladder and would otherwise have to import from a
 /// module that already imports it.
-pub(crate) const CONNECTION_CHILD_DEPTH: usize = 2;
+pub const CONNECTION_CHILD_DEPTH: usize = 2;
 
 /// React `DATABASE_CHILD_DEPTH` — the depth a database's children are painted
 /// at: its schema row, and the placeholders shown while it loads.
@@ -51,13 +51,13 @@ pub(crate) const CONNECTION_CHILD_DEPTH: usize = 2;
 /// Derived rather than declared, so the ladder has a single root: move
 /// `CONNECTION_CHILD_DEPTH` and every level below it follows. A database with
 /// no schemas puts its categories here instead of one level deeper.
-pub(crate) const DATABASE_CHILD_DEPTH: usize = CONNECTION_CHILD_DEPTH + 1;
+pub const DATABASE_CHILD_DEPTH: usize = CONNECTION_CHILD_DEPTH + 1;
 
 /// React `shouldUseMultiDatabaseTree`: multi-DB tree when the driver supports
 /// it, unless the connection pinned a *logical* database. Kiwi stores its
 /// domain in `connection.database` (`databaseFieldType: 'domain'`) and that
 /// must not lock the sidebar out of the multi-database tree.
-pub(crate) fn should_use_multi_database_tree(
+pub fn should_use_multi_database_tree(
     meta_has_multi_database: bool,
     meta_database_field_type: &str,
     initial_database: Option<&str>,
@@ -74,7 +74,7 @@ pub(crate) fn should_use_multi_database_tree(
 /// React `depthPadding(depth)` — `` `${0.375 + depth * 1}rem` ``. The number
 /// is the port (the rem unit is the stylesheet's business); the base is the
 /// chevron gutter, the step one indent rung.
-pub(crate) fn depth_padding(depth: usize) -> f32 {
+pub fn depth_padding(depth: usize) -> f32 {
     0.375 + depth as f32
 }
 
@@ -83,7 +83,7 @@ pub(crate) fn depth_padding(depth: usize) -> f32 {
 ///
 /// `None` is React's `null`: no item carries a schema and no extras were
 /// named, so there is no schema ladder to draw at all.
-pub(crate) fn group_by_schema(
+pub fn group_by_schema(
     items: &[TableInfo],
     extra_schema_names: &[String],
 ) -> Option<BTreeMap<String, Vec<TableInfo>>> {
@@ -111,7 +111,7 @@ pub(crate) fn group_by_schema(
 /// before dropping `dropping`: `postgres` first (the maintenance database is
 /// always there on PG), then the configured database, then whatever else
 /// remains. `None` when `dropping` was the last one.
-pub(crate) fn resolve_drop_database_fallback(
+pub fn resolve_drop_database_fallback(
     databases: &[String],
     dropping: &str,
     configured_db: Option<&str>,
@@ -133,7 +133,7 @@ pub(crate) fn resolve_drop_database_fallback(
 /// field, else the localized fallback. The command failures arrive here as
 /// JSON values (the driver IPC shape), so the object branch reads
 /// `message` off `serde_json::Value` exactly as React reads it off `unknown`.
-pub(crate) fn extract_error_message(error: &Value, fallback: &str) -> String {
+pub fn extract_error_message(error: &Value, fallback: &str) -> String {
     match error {
         Value::String(s) if !s.trim().is_empty() => s.clone(),
         Value::Object(obj) => match obj.get("message") {
@@ -150,7 +150,7 @@ pub(crate) fn extract_error_message(error: &Value, fallback: &str) -> String {
 /// (Redis) gets the name as-is. Removal stage: shard 2's registry task
 /// (T450) ports `DB_REGISTRY` formally; the quote char arrives from the
 /// caller's meta snapshot until then.
-pub(crate) fn escape_ident(name: &str, quote_char: &str) -> String {
+pub fn escape_ident(name: &str, quote_char: &str) -> String {
     match quote_char {
         "`" => format!("`{}`", name.replace('`', "``")),
         "\"" => format!("\"{}\"", name.replace('"', "\"\"")),
@@ -163,7 +163,7 @@ pub(crate) fn escape_ident(name: &str, quote_char: &str) -> String {
 /// React `quoteRelationName` — `schema.name` with both halves quoted by the
 /// driver's identifier quoter (the escape char arrives from the caller's
 /// registry snapshot; `"` is PostgreSQL's and the default).
-pub(crate) fn quote_relation_name(
+pub fn quote_relation_name(
     name: &str,
     schema: Option<&str>,
     quote_char: &str,
@@ -179,7 +179,7 @@ pub(crate) fn quote_relation_name(
 }
 
 /// React `namespaceTreeContains` — any key on any depth matches the query.
-pub(crate) fn namespace_tree_contains(tree: &SqlNamespace, query: &str) -> bool {
+pub fn namespace_tree_contains(tree: &SqlNamespace, query: &str) -> bool {
     if tree.is_leaf() {
         return false;
     }
@@ -201,13 +201,13 @@ pub(crate) fn namespace_tree_contains(tree: &SqlNamespace, query: &str) -> bool 
 /// `pathAliases` (Superset-style ids), the rest join with `/` to form the
 /// fetch path; the schema is only meaningful at depth 2+ (the segment that
 /// names the schema inside the path).
-pub(crate) struct NamespaceLeafContext {
+pub struct NamespaceLeafContext {
     pub table_name: String,
     pub schema: Option<String>,
     pub database: Option<String>,
 }
 
-pub(crate) fn namespace_leaf_context(
+pub fn namespace_leaf_context(
     segments: &[String],
     path_aliases: &HashMap<String, String>,
 ) -> NamespaceLeafContext {
@@ -257,7 +257,7 @@ pub(crate) fn namespace_leaf_context(
 /// drops a leaf that misses; an expanded branch with no children yet shows the
 /// path-ensure spinner unless the path is already loaded or a search is on.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn flatten_namespace_tree(
+pub fn flatten_namespace_tree(
     tree: &SqlNamespace,
     connection_id: &str,
     db_session_id: &str,
@@ -357,7 +357,7 @@ pub(crate) fn flatten_namespace_tree(
 
 /// React `createDragGhost`'s element id — the handle `removeDragGhost` looks
 /// up when the drag began in an earlier render (or another window).
-pub(crate) const DRAG_GHOST_ID: &str = "datazen-drag-ghost";
+pub const DRAG_GHOST_ID: &str = "datazen-drag-ghost";
 
 /// React `createDragGhost(label)`'s DOM node, as a spec: the host mounts it
 /// as a detached overlay (fixed, off-screen, pointer-events none) and hands
@@ -366,7 +366,7 @@ pub(crate) const DRAG_GHOST_ID: &str = "datazen-drag-ghost";
 /// transformed virtualized container snapshots the wrong coordinates — is
 /// exactly why the spec is fixed-positioned off-screen rather than inline.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DragGhostSpec {
+pub struct DragGhostSpec {
     pub id: &'static str,
     pub label: String,
     /// `padding: 4px 10px; border-radius: 6px` — the pill.
@@ -379,7 +379,7 @@ pub(crate) struct DragGhostSpec {
 /// one: the React function removes the active ghost before creating a new
 /// node, which the drag machine expresses as `ShowDragGhost` after
 /// `HideDragGhost` when a drag follows a drag).
-pub(crate) fn create_drag_ghost(label: &str) -> DragGhostSpec {
+pub fn create_drag_ghost(label: &str) -> DragGhostSpec {
     DragGhostSpec {
         id: DRAG_GHOST_ID,
         label: label.to_owned(),

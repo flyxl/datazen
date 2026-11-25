@@ -32,7 +32,7 @@ use crate::ui::palette;
 /// "no entry in activeConnections" case (`?? 'idle'`).
 #[allow(dead_code)] // VM mirror; consumed by the tree host and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ConnectionStatus {
+pub enum ConnectionStatus {
     #[default]
     Idle,
     Connecting,
@@ -43,7 +43,7 @@ pub(crate) enum ConnectionStatus {
 impl ConnectionStatus {
     /// React's `activeConnections[connectionId]?.status ?? 'idle'`.
     #[allow(dead_code)] // pure helper; consumed by the renderer and tests.
-    pub(crate) fn from_str(value: Option<&str>) -> Self {
+    pub fn from_str(value: Option<&str>) -> Self {
         match value {
             Some("connecting") => Self::Connecting,
             Some("connected") => Self::Connected,
@@ -54,7 +54,7 @@ impl ConnectionStatus {
 
     /// Exact `title` / aria locale key React attaches to each pip.
     #[allow(dead_code)] // pure mapping; consumed by the renderer and tests.
-    pub(crate) fn aria_key(self) -> Option<&'static str> {
+    pub fn aria_key(self) -> Option<&'static str> {
         match self {
             Self::Idle => None,
             Self::Connecting => Some("conn.connecting"),
@@ -66,7 +66,7 @@ impl ConnectionStatus {
     /// React's `bg-yellow-400` / `bg-green-500` / `bg-red-500`, mapped to the
     /// existing kit/palette status tokens. `Idle` draws nothing (`None`).
     #[allow(dead_code)] // pure mapping; consumed by the renderer and tests.
-    pub(crate) fn fill(self, dark: bool) -> Option<Color> {
+    pub fn fill(self, dark: bool) -> Option<Color> {
         match self {
             Self::Idle => None,
             Self::Connecting => Some(kit(dark).c.warning.icon),
@@ -77,7 +77,7 @@ impl ConnectionStatus {
 
     /// React's `animate-pulse` only applies to the connecting pip.
     #[allow(dead_code)] // parity helper; consumed by the tests until a pulse animator lands.
-    pub(crate) fn pulses(self) -> bool {
+    pub fn pulses(self) -> bool {
         self == Self::Connecting
     }
 }
@@ -86,7 +86,7 @@ impl ConnectionStatus {
 /// slice mirrors `Record<string, ConnectionEntry | undefined>`; a missing id
 /// resolves to `Idle` and renders no element at all.
 #[allow(dead_code)] // consumer: the connection-tree host (not landed).
-pub(crate) fn render_status_dot(
+pub fn render_status_dot(
     connection_id: &str,
     active: &[(String, ConnectionStatus)],
     dark: bool,

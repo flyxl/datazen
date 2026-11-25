@@ -45,7 +45,7 @@ use crate::views::data_transfer::source_filter_editor::StructuredSourceFilter;
 
 /// The step builder. `S` is the host state that owns the disabled set, the
 /// filters and the navigation actions (the panel's callbacks pass through).
-pub(crate) struct DataSyncObjectsStep<S: 'static> {
+pub struct DataSyncObjectsStep<S: 'static> {
     sync_state: SyncState,
     rows: Vec<DataSyncTableResult>,
     disabled_tables: HashSet<String>,
@@ -59,7 +59,7 @@ pub(crate) struct DataSyncObjectsStep<S: 'static> {
 }
 
 impl<S: 'static> DataSyncObjectsStep<S> {
-    pub(crate) fn new(
+    pub fn new(
         sync_state: SyncState,
         rows: Vec<DataSyncTableResult>,
         disabled_tables: HashSet<String>,
@@ -78,31 +78,31 @@ impl<S: 'static> DataSyncObjectsStep<S> {
     }
 
     /// The step renders through the kit the window's theme picked.
-    pub(crate) fn dark(mut self, dark: bool) -> Self {
+    pub fn dark(mut self, dark: bool) -> Self {
         self.dark = dark;
         self
     }
 
     /// `onToggleDisabled` — passed through to the mapping panel.
-    pub(crate) fn on_toggle_disabled(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_disabled(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_disabled = Some(Rc::new(f));
         self
     }
 
     /// `onOpenSchemaDiff` — passed through.
-    pub(crate) fn on_open_schema_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_schema_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_schema_diff = Some(Rc::new(f));
         self
     }
 
     /// `onOpenDataTransfer` — passed through (required in this step).
-    pub(crate) fn on_open_data_transfer(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_data_transfer(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_data_transfer = Some(Rc::new(f));
         self
     }
 
     /// `onUpdateSourceFilter` — passed through.
-    pub(crate) fn on_update_source_filter(
+    pub fn on_update_source_filter(
         mut self,
         f: impl Fn(&mut S, String, Option<StructuredSourceFilter>) + 'static,
     ) -> Self {
@@ -111,12 +111,12 @@ impl<S: 'static> DataSyncObjectsStep<S> {
     }
 
     /// The mapping panel's expand toggle — passed through.
-    pub(crate) fn on_toggle_filter_editor(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_filter_editor(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_filter_editor = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, _dark: bool) -> El {
+    pub fn build(self, _dark: bool) -> El {
         let k = kit(self.dark);
         let root = col().key("data-sync-objects-step").w_full().gap(12.0);
         if self.sync_state == SyncState::Inspecting {

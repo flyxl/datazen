@@ -21,33 +21,33 @@
 use crate::i18n;
 
 /// `I18nParams`: the `{param}` tokens `t` interpolates.
-pub(crate) type I18nParams<'a> = &'a [(&'a str, &'a str)];
+pub type I18nParams<'a> = &'a [(&'a str, &'a str)];
 
 /// `useI18n()`'s answer: the translate function and the active
 /// language. The language is the compiled locale (zh-CN), the table's
 /// own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct UseI18n {
-    pub(crate) language: &'static str,
+pub struct UseI18n {
+    pub language: &'static str,
 }
 
 impl UseI18n {
     /// `useI18n()` — the single hook every host/driver consumer
     /// imports.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { language: "zh-CN" }
     }
 
     /// `t(key)` — the registered text, or the key itself when the
     /// table lacks it (an empty string is a real translation, not a
     /// miss).
-    pub(crate) fn t<'k>(&self, key: &'k str) -> &'k str {
+    pub fn t<'k>(&self, key: &'k str) -> &'k str {
         i18n::t(key)
     }
 
     /// `t(key, params)` — the text with `{param}` tokens interpolated
     /// (`formatMessage`: an unknown token stays verbatim).
-    pub(crate) fn t_with_params(&self, key: &str, params: I18nParams<'_>) -> String {
+    pub fn t_with_params(&self, key: &str, params: I18nParams<'_>) -> String {
         format_message(i18n::t(key), params)
     }
 }
@@ -60,7 +60,7 @@ impl Default for UseI18n {
 
 /// `formatMessage`: interpolate `{param}` tokens in a template; a
 /// token without a value stays verbatim (the React `match` return).
-pub(crate) fn format_message(template: &str, params: I18nParams<'_>) -> String {
+pub fn format_message(template: &str, params: I18nParams<'_>) -> String {
     let mut out = String::with_capacity(template.len());
     let mut rest = template;
     while let Some(open) = rest.find('{') {

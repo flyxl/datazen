@@ -89,19 +89,19 @@ const ICON_SIZE: f32 = 12.0;
 /// One history row — the `AiSessionSummary` slice the list reads
 /// (`title` / `preview` / `messageCount`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct AiSessionHistoryItem {
-    pub(crate) id: String,
+pub struct AiSessionHistoryItem {
+    pub id: String,
     /// React `title` — the saved name.
-    pub(crate) title: String,
+    pub title: String,
     /// React `preview` — the first-message excerpt.
-    pub(crate) preview: String,
+    pub preview: String,
     /// React `messageCount`.
-    pub(crate) message_count: u32,
+    pub message_count: u32,
 }
 
 impl AiSessionHistoryItem {
     /// The primary line: `title || preview || t('chat.sessions.untitled')`.
-    pub(crate) fn primary_label(&self) -> String {
+    pub fn primary_label(&self) -> String {
         if !self.title.is_empty() {
             return self.title.clone();
         }
@@ -113,7 +113,7 @@ impl AiSessionHistoryItem {
 
     /// The secondary line: `{count} 条消息` (+ ` · preview` when both a
     /// title and a preview exist, React's `preview ? ... : ''`).
-    pub(crate) fn secondary_label(&self) -> String {
+    pub fn secondary_label(&self) -> String {
         let mut line = t("chat.sessions.messages")
             .replacen("{count}", &self.message_count.to_string(), 1)
             .to_string();
@@ -127,27 +127,27 @@ impl AiSessionHistoryItem {
 
 /// The store slice's projection the panel renders.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct AiSessionHistoryState {
+pub struct AiSessionHistoryState {
     /// React `chatSessions`.
-    pub(crate) sessions: Vec<AiSessionHistoryItem>,
+    pub sessions: Vec<AiSessionHistoryItem>,
     /// The current session's id (`chatSession?.id`); `None` = no session.
-    pub(crate) current_id: Option<String>,
+    pub current_id: Option<String>,
     /// Whether the current session has messages (`!current?.messages.length`
     /// gates the export buttons).
-    pub(crate) current_has_messages: bool,
+    pub current_has_messages: bool,
     /// React `sessionHistoryLoading`.
-    pub(crate) loading: bool,
+    pub loading: bool,
     /// React `sessionHistoryError`.
-    pub(crate) history_error: Option<String>,
+    pub history_error: Option<String>,
     /// React `sessionMigrationError`.
-    pub(crate) migration_error: Option<String>,
+    pub migration_error: Option<String>,
     /// React `sessionMigrationSuccess` (count).
-    pub(crate) migration_success: u32,
+    pub migration_success: u32,
 }
 
 impl AiSessionHistoryState {
     /// The session row that is active, if any.
-    pub(crate) fn active_index(&self) -> Option<usize> {
+    pub fn active_index(&self) -> Option<usize> {
         self.current_id
             .as_ref()
             .and_then(|current| self.sessions.iter().position(|s| &s.id == current))
@@ -160,14 +160,14 @@ type ExportFn<S> = Rc<dyn Fn(&mut S, AiSessionExportFormat)>;
 
 /// React `exportChatSession(format)`'s two formats.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AiSessionExportFormat {
+pub enum AiSessionExportFormat {
     Json,
     Markdown,
 }
 
 impl AiSessionExportFormat {
     /// The button label (React's literal `JSON` / `Markdown`).
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Json => "JSON",
             Self::Markdown => "Markdown",
@@ -177,7 +177,7 @@ impl AiSessionExportFormat {
 
 /// The history panel. Build with the state's projection and the callbacks;
 /// `build` returns `None` while closed (React's `null`).
-pub(crate) struct AiSessionHistory<S: 'static> {
+pub struct AiSessionHistory<S: 'static> {
     state: AiSessionHistoryState,
     open: bool,
     on_close: Option<CloseFn<S>>,
@@ -189,7 +189,7 @@ pub(crate) struct AiSessionHistory<S: 'static> {
 
 impl<S: 'static> AiSessionHistory<S> {
     /// The panel over the caller's state slice.
-    pub(crate) fn new(state: AiSessionHistoryState) -> Self {
+    pub fn new(state: AiSessionHistoryState) -> Self {
         AiSessionHistory {
             state,
             open: false,
@@ -202,25 +202,25 @@ impl<S: 'static> AiSessionHistory<S> {
     }
 
     /// React `open`.
-    pub(crate) fn open(mut self, open: bool) -> Self {
+    pub fn open(mut self, open: bool) -> Self {
         self.open = open;
         self
     }
 
     /// React `onClose` — the title row's X.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// React `newChatSession` (the button also closes the panel).
-    pub(crate) fn on_new_session(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_new_session(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_new_session = Some(Rc::new(f));
         self
     }
 
     /// React `selectChatSession(id)` (the row press also closes).
-    pub(crate) fn on_select_session(
+    pub fn on_select_session(
         mut self,
         f: impl Fn(&mut S, &str) + 'static,
     ) -> Self {
@@ -229,7 +229,7 @@ impl<S: 'static> AiSessionHistory<S> {
     }
 
     /// React `deleteChatSession(id)`.
-    pub(crate) fn on_delete_session(
+    pub fn on_delete_session(
         mut self,
         f: impl Fn(&mut S, &str) + 'static,
     ) -> Self {
@@ -238,7 +238,7 @@ impl<S: 'static> AiSessionHistory<S> {
     }
 
     /// React `exportChatSession(format)`.
-    pub(crate) fn on_export_session(
+    pub fn on_export_session(
         mut self,
         f: impl Fn(&mut S, AiSessionExportFormat) + 'static,
     ) -> Self {
@@ -247,7 +247,7 @@ impl<S: 'static> AiSessionHistory<S> {
     }
 
     /// Builds the strip — `None` while closed (React's `null` return).
-    pub(crate) fn build(self, dark: bool) -> Option<El> {
+    pub fn build(self, dark: bool) -> Option<El> {
         if !self.open {
             return None;
         }

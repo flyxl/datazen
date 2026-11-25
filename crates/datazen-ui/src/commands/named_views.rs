@@ -43,7 +43,7 @@ use crate::commands::file::open_text_with_dialog_request;
 
 /// `namedViewOperations.list(scope)`: the views of a scope; omitting
 /// the scope lists every view (the request type's `scope?`).
-pub(crate) fn list_named_views_request(scope: Option<&Value>) -> (DatabaseMethod, Value) {
+pub fn list_named_views_request(scope: Option<&Value>) -> (DatabaseMethod, Value) {
     match scope {
         Some(scope) => (DatabaseMethod::ListNamedViews, json!({ "scope": scope })),
         None => (DatabaseMethod::ListNamedViews, json!({})),
@@ -52,13 +52,13 @@ pub(crate) fn list_named_views_request(scope: Option<&Value>) -> (DatabaseMethod
 
 /// `namedViewOperations.save(view)`: save a view; the answer carries
 /// the minted id and the timestamps.
-pub(crate) fn save_named_view_request(view: &Value) -> (DatabaseMethod, Value) {
+pub fn save_named_view_request(view: &Value) -> (DatabaseMethod, Value) {
     (DatabaseMethod::SaveNamedView, json!({ "view": view }))
 }
 
 /// `namedViewOperations.remove(id)`: delete a view; the answer
 /// carries the remaining ones.
-pub(crate) fn delete_named_view_request(id: &str) -> (DatabaseMethod, Value) {
+pub fn delete_named_view_request(id: &str) -> (DatabaseMethod, Value) {
     (DatabaseMethod::DeleteNamedView, json!({ "id": id }))
 }
 
@@ -70,14 +70,14 @@ pub(crate) fn delete_named_view_request(id: &str) -> (DatabaseMethod, Value) {
 /// via the native save dialog; the receipt is `false` when the user
 /// cancelled. The React wrapper flips the menu's argument order into
 /// the file command's (`contents` first) and pins the JSON filter.
-pub(crate) fn named_view_export_request(file_name: &str, content: &str) -> FileCommandRequest {
+pub fn named_view_export_request(file_name: &str, content: &str) -> FileCommandRequest {
     save_text_with_dialog_request(content, file_name, "JSON", &["json"])
 }
 
 /// `namedViewFiles.read()`: read an import file via the native open
 /// dialog; the receipt is [`crate::commands::file::OpenedTextFile`]
 /// or `null` when the user cancelled.
-pub(crate) fn named_view_import_request() -> FileCommandRequest {
+pub fn named_view_import_request() -> FileCommandRequest {
     open_text_with_dialog_request("JSON", &["json"])
 }
 

@@ -25,9 +25,9 @@ use crate::i18n::t;
 use crate::views::{BackupProgress, BackupProgressPhase};
 
 /// `MAX_PROGRESS_LOG_LINES` (`backupProgress.ts`).
-pub(crate) const MAX_PROGRESS_LOG_LINES: usize = 1500;
+pub const MAX_PROGRESS_LOG_LINES: usize = 1500;
 /// `MAX_PROGRESS_LOG_CHARS` (`backupProgress.ts`): 256 KiB.
-pub(crate) const MAX_PROGRESS_LOG_CHARS: usize = 256 * 1024;
+pub const MAX_PROGRESS_LOG_CHARS: usize = 256 * 1024;
 /// `MAX_LINE_CHARS` (`backupProgress.ts`).
 const MAX_LINE_CHARS: usize = 4096;
 /// `LOG_HEAD_KEEP` (`backupProgress.ts`).
@@ -48,7 +48,7 @@ fn fill(template: &str, pairs: &[(&str, &str)]) -> String {
 
 /// React `formatBackupProgress` (`lib/backupProgress.ts`): the status
 /// line for a `backup-progress` payload.
-pub(crate) fn format_backup_progress(payload: &BackupProgress) -> String {
+pub fn format_backup_progress(payload: &BackupProgress) -> String {
     match payload.phase {
         BackupProgressPhase::Writing => t("backup.progressWriting").to_owned(),
         BackupProgressPhase::Done => t("backup.success").to_owned(),
@@ -73,7 +73,7 @@ pub(crate) fn format_backup_progress(payload: &BackupProgress) -> String {
 /// line for a `restore-progress` payload, as `runSqlFileExecution`
 /// (`lib/sqlFileExecution.ts`) formats it. An unknown total renders
 /// as `…`, like the JS `total: '…'` branch.
-pub(crate) fn format_restore_progress(payload: &BackupProgress) -> String {
+pub fn format_restore_progress(payload: &BackupProgress) -> String {
     match payload.phase {
         BackupProgressPhase::Done => t("backup.restoreSuccess").to_owned(),
         BackupProgressPhase::Writing => t("backup.restorePreparing").to_owned(),
@@ -101,7 +101,7 @@ pub(crate) fn format_restore_progress(payload: &BackupProgress) -> String {
 
 /// React `backupProgressRatio` (`lib/backupProgress.ts`): the progress
 /// bar's fill, 0.0–1.0.
-pub(crate) fn backup_progress_ratio(payload: &BackupProgress) -> f64 {
+pub fn backup_progress_ratio(payload: &BackupProgress) -> f64 {
     match payload.phase {
         BackupProgressPhase::Done => 1.0,
         BackupProgressPhase::Writing => 0.95,
@@ -210,7 +210,7 @@ fn trim_progress_log(lines: Vec<String>) -> Vec<String> {
 ///
 /// blank lines are dropped, a line identical to the last one is
 /// dropped, the line is truncated, and the log is trimmed to budget.
-pub(crate) fn append_progress_log(lines: &[String], next: &str) -> Vec<String> {
+pub fn append_progress_log(lines: &[String], next: &str) -> Vec<String> {
     let trimmed = next.trim();
     if trimmed.is_empty() {
         return lines.to_vec();
@@ -231,33 +231,33 @@ pub(crate) fn append_progress_log(lines: &[String], next: &str) -> Vec<String> {
 /// no-op that exists to keep the React call sites 1:1. There is no
 /// 80 ms batching: a push is visible on the next frame.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct BackupLogPump {
+pub struct BackupLogPump {
     lines: Vec<String>,
 }
 
 impl BackupLogPump {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The pump's lines, for the caller to copy into the Vm.
-    pub(crate) fn lines(&self) -> &[String] {
+    pub fn lines(&self) -> &[String] {
         &self.lines
     }
 
     /// `reset(initial)`: replace the log with `initial`, immediately
     /// (React's `reset` also calls `setLines` at once).
-    pub(crate) fn reset(&mut self, initial: Vec<String>) {
+    pub fn reset(&mut self, initial: Vec<String>) {
         self.lines = initial;
     }
 
     /// `push(line)`: append through [`append_progress_log`].
-    pub(crate) fn push(&mut self, line: &str) {
+    pub fn push(&mut self, line: &str) {
         self.lines = append_progress_log(&self.lines, line);
     }
 
     /// `flush()`: apply the lines. A no-op here — the caller reads
     /// [`BackupLogPump::lines`] after every pump step, so there is
     /// nothing pending to apply.
-    pub(crate) fn flush(&mut self) {}
+    pub fn flush(&mut self) {}
 }

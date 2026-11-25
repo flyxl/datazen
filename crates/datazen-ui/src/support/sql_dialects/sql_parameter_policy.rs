@@ -36,7 +36,7 @@ use super::dialect_profile::DeclaredParameterPolicy;
 /// extension-points `SqlParameterOccurrence['syntax']` — the six placeholder
 /// forms the shared scanner recognizes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SqlParamSyntax {
+pub enum SqlParamSyntax {
     Colon,
     At,
     DollarPositional,
@@ -49,35 +49,35 @@ pub(crate) enum SqlParamSyntax {
 /// its span. Carried so [`SqlParameterStrategy`] is nameable; T605's
 /// scanner emits it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SqlParameterOccurrence {
-    pub(crate) from: usize,
-    pub(crate) to: usize,
-    pub(crate) id: String,
-    pub(crate) token: String,
-    pub(crate) syntax: SqlParamSyntax,
-    pub(crate) name: String,
+pub struct SqlParameterOccurrence {
+    pub from: usize,
+    pub to: usize,
+    pub id: String,
+    pub token: String,
+    pub syntax: SqlParamSyntax,
+    pub name: String,
     /// 1-based ordinal for `?` placeholders.
-    pub(crate) ordinal: Option<u32>,
+    pub ordinal: Option<u32>,
 }
 
 /// extension-points `SqlParameterStrategy` — optional driver-owned
 /// filtering for syntax that is ambiguous in its dialect.
 #[derive(Clone)]
-pub(crate) struct SqlParameterStrategy {
-    pub(crate) filter_occurrences:
+pub struct SqlParameterStrategy {
+    pub filter_occurrences:
         Rc<dyn Fn(&str, &[SqlParameterOccurrence]) -> Vec<SqlParameterOccurrence>>,
 }
 
 impl SqlParameterStrategy {
     /// The identity filter React's test uses as "a strategy the driver
     /// bound" — and the shape of a driver with no disambiguation to do.
-    pub(crate) fn passthrough() -> Self {
+    pub fn passthrough() -> Self {
         Self { filter_occurrences: Rc::new(|_, occurrences| occurrences.to_vec()) }
     }
 
     /// Reference identity — what React's `toEqual` checks for function
     /// values: the same binding passes, a look-alike closure fails.
-    pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
+    pub fn ptr_eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.filter_occurrences, &other.filter_occurrences)
     }
 }
@@ -91,19 +91,19 @@ impl fmt::Debug for SqlParameterStrategy {
 /// sqlBindParams `SqlParamDialectPolicy` — the resolved scanner policy
 /// (T605 owns that file and will absorb this type verbatim).
 #[derive(Clone, Default)]
-pub(crate) struct SqlParamDialectPolicy {
+pub struct SqlParamDialectPolicy {
     /// Recognize `@name`; driver metadata decides whether this syntax is native.
-    pub(crate) enable_at: bool,
+    pub enable_at: bool,
     /// Recognize `?`; driver metadata decides whether this syntax is native.
-    pub(crate) enable_question: bool,
+    pub enable_question: bool,
     /// Recognize `$1` placeholders.
-    pub(crate) enable_dollar_positional: bool,
+    pub enable_dollar_positional: bool,
     /// Recognize `$name` placeholders.
-    pub(crate) enable_dollar_named: bool,
+    pub enable_dollar_named: bool,
     /// Recognize `${name}` template placeholders.
-    pub(crate) enable_template: bool,
+    pub enable_template: bool,
     /// Driver-owned syntax disambiguation, carried through untouched.
-    pub(crate) strategy: Option<SqlParameterStrategy>,
+    pub strategy: Option<SqlParameterStrategy>,
 }
 
 impl PartialEq for SqlParamDialectPolicy {
@@ -137,7 +137,7 @@ impl fmt::Debug for SqlParamDialectPolicy {
 
 /// React `GENERIC_SQL_PARAMETER_POLICY` — what a driver with no native
 /// declaration resolves to: only the shared template form.
-pub(crate) const GENERIC_SQL_PARAMETER_POLICY: SqlParamDialectPolicy = SqlParamDialectPolicy {
+pub const GENERIC_SQL_PARAMETER_POLICY: SqlParamDialectPolicy = SqlParamDialectPolicy {
     enable_at: false,
     enable_question: false,
     enable_dollar_positional: false,
@@ -151,10 +151,10 @@ pub(crate) const GENERIC_SQL_PARAMETER_POLICY: SqlParamDialectPolicy = SqlParamD
 /// `sqlDialectProfile.parameterPolicy` is the same flags reached through
 /// the profile declaration (React's `Pick<SqlDialectProfile,
 /// 'parameterPolicy'>`).
-pub(crate) struct SqlParameterMeta {
-    pub(crate) sql_parameter_policy: Option<DeclaredParameterPolicy>,
-    pub(crate) sql_dialect_profile_parameter_policy: Option<DeclaredParameterPolicy>,
-    pub(crate) sql_parameter_strategy: Option<SqlParameterStrategy>,
+pub struct SqlParameterMeta {
+    pub sql_parameter_policy: Option<DeclaredParameterPolicy>,
+    pub sql_dialect_profile_parameter_policy: Option<DeclaredParameterPolicy>,
+    pub sql_parameter_strategy: Option<SqlParameterStrategy>,
 }
 
 impl Default for SqlParameterMeta {
@@ -178,7 +178,7 @@ impl SqlParameterMeta {
 /// The registry the host resolved (`DB_REGISTRY`'s `Record<string,
 /// SqlParameterMeta>`; a `BTreeMap` so test expectations are
 /// order-independent).
-pub(crate) type SqlParameterRegistry = BTreeMap<String, SqlParameterMeta>;
+pub type SqlParameterRegistry = BTreeMap<String, SqlParameterMeta>;
 
 /// React `resolveSqlParameterPolicy`.
 ///
@@ -187,7 +187,7 @@ pub(crate) type SqlParameterRegistry = BTreeMap<String, SqlParameterMeta>;
 /// to the generic form with its strategy still carried, and a driver that
 /// does declare one maps each flag through `?? false` (an omitted flag
 /// means "not accepted").
-pub(crate) fn resolve_sql_parameter_policy(
+pub fn resolve_sql_parameter_policy(
     database_type: Option<&str>,
     registry: &SqlParameterRegistry,
 ) -> SqlParamDialectPolicy {

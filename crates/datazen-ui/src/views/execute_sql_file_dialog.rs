@@ -31,14 +31,14 @@ use crate::icons::{ICON_CHECK, ICON_X};
 use crate::ui::dialog::Dialog;
 use crate::ui::kit::kit;
 
-pub(crate) const DIALOG_KEY: &str = "content-view-sql-file-dialog";
-pub(crate) const EXECUTE_KEY: &str = "sql-file-execute";
-pub(crate) const STATUS_KEY: &str = "sql-file-status";
+pub const DIALOG_KEY: &str = "content-view-sql-file-dialog";
+pub const EXECUTE_KEY: &str = "sql-file-execute";
+pub const STATUS_KEY: &str = "sql-file-status";
 
 /// React `StatusKind`.
 #[allow(dead_code)] // view VM; consumer: the host execution port (not wired).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum SqlFileStatusKind {
+pub enum SqlFileStatusKind {
     #[default]
     Idle,
     Running,
@@ -47,7 +47,7 @@ pub(crate) enum SqlFileStatusKind {
 }
 
 impl SqlFileStatusKind {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Idle => "idle",
             Self::Running => "running",
@@ -60,7 +60,7 @@ impl SqlFileStatusKind {
 /// The three `useState` values around the host execution.
 #[allow(dead_code)] // view VM; consumer: the host execution port (not wired).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ExecuteSqlFileState {
+pub struct ExecuteSqlFileState {
     pub running: bool,
     pub status_message: String,
     pub status_kind: SqlFileStatusKind,
@@ -70,7 +70,7 @@ pub(crate) struct ExecuteSqlFileState {
 impl ExecuteSqlFileState {
     /// React's `open === false` reset effect.
     #[allow(dead_code)] // host API; consumer: the dialog host (not wired).
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.running = false;
         self.status_message.clear();
         self.status_kind = SqlFileStatusKind::Idle;
@@ -79,7 +79,7 @@ impl ExecuteSqlFileState {
 
     /// React `handleExecute` prologue: no database means no command at all.
     #[allow(dead_code)] // validation; consumed by the execute button.
-    pub(crate) fn begin(&mut self, database: Option<&str>) -> bool {
+    pub fn begin(&mut self, database: Option<&str>) -> bool {
         if database.map_or(true, str::is_empty) {
             return false;
         }
@@ -93,7 +93,7 @@ impl ExecuteSqlFileState {
     /// React `onProgress` — a `done` phase settles success, any other line keeps
     /// the running state.
     #[allow(dead_code)] // host API; consumer: the execution port (not wired).
-    pub(crate) fn apply_progress(&mut self, line: String, done: bool) {
+    pub fn apply_progress(&mut self, line: String, done: bool) {
         self.status_message = line.clone();
         if done {
             self.status_kind = SqlFileStatusKind::Success;
@@ -105,7 +105,7 @@ impl ExecuteSqlFileState {
 
     /// React `onError`.
     #[allow(dead_code)] // host API; consumer: the execution port (not wired).
-    pub(crate) fn apply_error(&mut self, message: String) {
+    pub fn apply_error(&mut self, message: String) {
         self.status_message = message.clone();
         self.status_kind = SqlFileStatusKind::Error;
         self.progress_log.push(message);
@@ -113,7 +113,7 @@ impl ExecuteSqlFileState {
 
     /// React `finally { setRunning(false) }`.
     #[allow(dead_code)] // host API; consumer: the execution port (not wired).
-    pub(crate) fn settle(&mut self) {
+    pub fn settle(&mut self) {
         self.running = false;
     }
 }
@@ -121,7 +121,7 @@ impl ExecuteSqlFileState {
 /// The request the host executes: it owns the native file picker and session.
 #[allow(dead_code)] // host port; consumer: the dialog host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SqlFileRequest {
+pub struct SqlFileRequest {
     pub db_session_id: String,
     pub database: String,
 }
@@ -129,7 +129,7 @@ pub(crate) struct SqlFileRequest {
 /// Host ports behind the dialog. `on_confirm` gates execution like React's
 /// `confirmBeforeExecute`; a missing port means "confirmed".
 #[allow(dead_code)] // host port; consumer: the dialog host (not wired).
-pub(crate) struct ExecuteSqlFileHostPort<S> {
+pub struct ExecuteSqlFileHostPort<S> {
     pub on_close: Option<Rc<dyn Fn(&mut S) + 'static>>,
     pub on_execute: Option<Rc<dyn Fn(&mut S, SqlFileRequest) + 'static>>,
     pub on_executed: Option<Rc<dyn Fn(&mut S) + 'static>>,
@@ -150,7 +150,7 @@ impl<S> Default for ExecuteSqlFileHostPort<S> {
 /// React `ExecuteSqlFileDialogProps` plus the state slice the host owns.
 #[allow(dead_code)] // view VM; consumer: the dialog host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExecuteSqlFileVm {
+pub struct ExecuteSqlFileVm {
     pub open: bool,
     pub connection_name: String,
     pub database: Option<String>,
@@ -172,7 +172,7 @@ impl Default for ExecuteSqlFileVm {
 
 /// Build the dialog into `layer`. A closed dialog mounts nothing, as in React.
 #[allow(dead_code)] // view entry point; consumer: the content-view dialogs slot.
-pub(crate) fn execute_sql_file_dialog<S: 'static>(
+pub fn execute_sql_file_dialog<S: 'static>(
     vm: &ExecuteSqlFileVm,
     dark: bool,
     layer: &mut Vec<El>,

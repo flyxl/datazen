@@ -55,17 +55,17 @@ use crate::views::appearance_section::ThemeMode;
 
 /// React `OPTIONS` (9-13): the three modes with their pack words and
 /// their icon ids (the theme-pack semantic ids).
-pub(crate) struct ThemeOption {
-    pub(crate) value: ThemeMode,
+pub struct ThemeOption {
+    pub value: ThemeMode,
     /// The option's pack word (`theme.light` &c).
-    pub(crate) key: &'static str,
+    pub key: &'static str,
     /// The ThemedIcon semantic id (also `theme.light` &c — the ids and
     /// the words share their spelling in React's catalog).
-    pub(crate) icon_id: &'static str,
+    pub icon_id: &'static str,
 }
 
 /// The three options, in React's order.
-pub(crate) const OPTIONS: [ThemeOption; 3] = [
+pub const OPTIONS: [ThemeOption; 3] = [
     ThemeOption { value: ThemeMode::Light, key: "theme.light", icon_id: "theme.light" },
     ThemeOption { value: ThemeMode::Dark, key: "theme.dark", icon_id: "theme.dark" },
     ThemeOption { value: ThemeMode::System, key: "theme.system", icon_id: "theme.system" },
@@ -73,7 +73,7 @@ pub(crate) const OPTIONS: [ThemeOption; 3] = [
 
 /// React 31: `OPTIONS.find((o) => o.value === theme.mode) ?? OPTIONS[2]`
 /// — the current mode's option, system for an unknown mode.
-pub(crate) fn current_option(mode: ThemeMode) -> &'static ThemeOption {
+pub fn current_option(mode: ThemeMode) -> &'static ThemeOption {
     OPTIONS
         .iter()
         .find(|option| option.value == mode)
@@ -82,7 +82,7 @@ pub(crate) fn current_option(mode: ThemeMode) -> &'static ThemeOption {
 
 /// The theme toggle. `S` is the host state that owns the open cell and
 /// the settings write.
-pub(crate) struct ThemeToggle<S: 'static> {
+pub struct ThemeToggle<S: 'static> {
     mode: ThemeMode,
     open: bool,
     resolver: Option<IconResolver>,
@@ -93,7 +93,7 @@ pub(crate) struct ThemeToggle<S: 'static> {
 
 impl<S: 'static> ThemeToggle<S> {
     /// The toggle over the current mode and the host's open cell.
-    pub(crate) fn new(mode: ThemeMode, open: bool) -> Self {
+    pub fn new(mode: ThemeMode, open: bool) -> Self {
         Self {
             mode,
             open,
@@ -107,33 +107,33 @@ impl<S: 'static> ThemeToggle<S> {
     /// The shared icon resolver (React's `ThemedIcon` context; the
     /// resolver's construction is T535's seam). `None` uses the
     /// default resolver.
-    pub(crate) fn resolver(mut self, resolver: IconResolver) -> Self {
+    pub fn resolver(mut self, resolver: IconResolver) -> Self {
         self.resolver = Some(resolver);
         self
     }
 
     /// The trigger's press: `setOpen((v) => !v)`.
-    pub(crate) fn on_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle = Some(Rc::new(f));
         self
     }
 
     /// An option's press (React 52-55): the settings write and the
     /// close — the host performs both.
-    pub(crate) fn on_select(mut self, f: impl Fn(&mut S, ThemeMode) + 'static) -> Self {
+    pub fn on_select(mut self, f: impl Fn(&mut S, ThemeMode) + 'static) -> Self {
         self.on_select = Some(Rc::new(f));
         self
     }
 
     /// The outside press and Escape (the scrim and the modal channel).
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// The toggle on its own kit root: the trigger in place, the
     /// popover and scrim mounted through the root's layer while open.
-    pub(crate) fn build_root(self, k: &Kit) -> El {
+    pub fn build_root(self, k: &Kit) -> El {
         let mut layer = Vec::new();
         let root = self.build(k, &mut layer);
         rune_kit::root(root, layer)
@@ -141,7 +141,7 @@ impl<S: 'static> ThemeToggle<S> {
 
     /// The toggle: the trigger in place, the popover in `layer` while
     /// open.
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let current = current_option(self.mode);
 
         // React 40: the tooltip names the current mode.

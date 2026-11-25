@@ -33,20 +33,20 @@ use crate::icons::{ICON_TABLE, ICON_TERMINAL};
 use crate::ui::copyable::CopyableError;
 use crate::ui::kit::kit;
 
-pub(crate) const ROOT_KEY: &str = "result-workspace";
-pub(crate) const ERROR_KEY: &str = "result-workspace-error";
-pub(crate) const EMPTY_KEY: &str = "result-workspace-empty";
-pub(crate) const VIEW_TABLE_KEY: &str = "result-workspace-view-table";
-pub(crate) const VIEW_CHART_KEY: &str = "result-workspace-view-chart";
-pub(crate) const TABLE_SLOT_KEY: &str = "result-workspace-table-slot";
-pub(crate) const CHART_SLOT_KEY: &str = "result-workspace-chart-slot";
-pub(crate) const SUMMARY_SLOT_KEY: &str = "result-workspace-summary-slot";
-pub(crate) const FIND_SLOT_KEY: &str = "result-workspace-find-slot";
+pub const ROOT_KEY: &str = "result-workspace";
+pub const ERROR_KEY: &str = "result-workspace-error";
+pub const EMPTY_KEY: &str = "result-workspace-empty";
+pub const VIEW_TABLE_KEY: &str = "result-workspace-view-table";
+pub const VIEW_CHART_KEY: &str = "result-workspace-view-chart";
+pub const TABLE_SLOT_KEY: &str = "result-workspace-table-slot";
+pub const CHART_SLOT_KEY: &str = "result-workspace-chart-slot";
+pub const SUMMARY_SLOT_KEY: &str = "result-workspace-summary-slot";
+pub const FIND_SLOT_KEY: &str = "result-workspace-find-slot";
 
 /// React `ResultWorkspaceView`.
 #[allow(dead_code)] // contract mirror; remove when the host owns the view.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ResultWorkspaceView {
+pub enum ResultWorkspaceView {
     #[default]
     Table,
     Chart,
@@ -55,7 +55,7 @@ pub(crate) enum ResultWorkspaceView {
 /// React `ResultWorkspaceFallbackReason`.
 #[allow(dead_code)] // contract mirror; remove when the shared helper lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FallbackReason {
+pub enum FallbackReason {
     EmptyResult,
     NotChartable,
 }
@@ -63,31 +63,31 @@ pub(crate) enum FallbackReason {
 /// React `ResultWorkspaceViewResolution`.
 #[allow(dead_code)] // pure result; remove when the shared helper lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ViewResolution {
-    pub(crate) view: ResultWorkspaceView,
-    pub(crate) chart_available: bool,
-    pub(crate) fallback_reason: Option<FallbackReason>,
+pub struct ViewResolution {
+    pub view: ResultWorkspaceView,
+    pub chart_available: bool,
+    pub fallback_reason: Option<FallbackReason>,
 }
 
 /// The result fields the workspace reads (columns carry a data type; rows are
 /// sample strings used for numeric inference).
 #[allow(dead_code)] // VM mirror; remove when the host owns the result feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct WorkspaceResultVm {
-    pub(crate) columns: Vec<(String, String)>,
-    pub(crate) rows: Vec<Vec<String>>,
+pub struct WorkspaceResultVm {
+    pub columns: Vec<(String, String)>,
+    pub rows: Vec<Vec<String>>,
 }
 
 /// React `ResultWorkspaceProps` reduced to the observable state.
 #[allow(dead_code)] // VM surface; remove when the host wires the workspace.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ResultWorkspaceVm {
-    pub(crate) result: Option<WorkspaceResultVm>,
-    pub(crate) view: ResultWorkspaceView,
+pub struct ResultWorkspaceVm {
+    pub result: Option<WorkspaceResultVm>,
+    pub view: ResultWorkspaceView,
     /// Whether a saved chart config exists (ChartView can initialize without).
-    pub(crate) has_chart_config: bool,
-    pub(crate) error: String,
-    pub(crate) row_detail_index: Option<usize>,
+    pub has_chart_config: bool,
+    pub error: String,
+    pub row_detail_index: Option<usize>,
 }
 
 /// Field types React infers for chartability. Only numeric matters here.
@@ -130,7 +130,7 @@ fn infer_numeric(data_type: &str, samples: &[String]) -> InferredType {
 
 /// React `isChartableResult`.
 #[allow(dead_code)] // pure helper; remove when fieldInference lands.
-pub(crate) fn is_chartable_result(result: Option<&WorkspaceResultVm>) -> bool {
+pub fn is_chartable_result(result: Option<&WorkspaceResultVm>) -> bool {
     let Some(result) = result else {
         return false;
     };
@@ -151,13 +151,13 @@ pub(crate) fn is_chartable_result(result: Option<&WorkspaceResultVm>) -> bool {
 
 /// React `canRenderResultChart`.
 #[allow(dead_code)] // pure helper; remove when the shared helper lands.
-pub(crate) fn can_render_result_chart(result: Option<&WorkspaceResultVm>) -> bool {
+pub fn can_render_result_chart(result: Option<&WorkspaceResultVm>) -> bool {
     is_chartable_result(result)
 }
 
 /// React `resolveResultWorkspaceView`, byte-for-byte logic.
 #[allow(dead_code)] // pure helper; remove when the shared helper lands.
-pub(crate) fn resolve_view(vm: &ResultWorkspaceVm) -> ViewResolution {
+pub fn resolve_view(vm: &ResultWorkspaceVm) -> ViewResolution {
     let chart_available = can_render_result_chart(vm.result.as_ref());
     if vm.view == ResultWorkspaceView::Table {
         return ViewResolution {
@@ -194,7 +194,7 @@ pub(crate) fn resolve_view(vm: &ResultWorkspaceVm) -> ViewResolution {
 /// React's chart data-point handler: switch to table *before* forwarding the
 /// row. The host applies these two actions in this exact order.
 #[allow(dead_code)] // pure helper; remove when the host wires the chart slot.
-pub(crate) fn chart_data_point_actions(row: usize) -> [ResultWorkspaceAction; 2] {
+pub fn chart_data_point_actions(row: usize) -> [ResultWorkspaceAction; 2] {
     [
         ResultWorkspaceAction::SetView(ResultWorkspaceView::Table),
         ResultWorkspaceAction::RowDetail(row),
@@ -204,7 +204,7 @@ pub(crate) fn chart_data_point_actions(row: usize) -> [ResultWorkspaceAction; 2]
 /// The interactions the shell emits.
 #[allow(dead_code)] // host port; remove when the host wires the workspace.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ResultWorkspaceAction {
+pub enum ResultWorkspaceAction {
     SetView(ResultWorkspaceView),
     RowDetail(usize),
     ChartConfigChange,
@@ -213,7 +213,7 @@ pub(crate) enum ResultWorkspaceAction {
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the workspace.
-pub(crate) type ResultWorkspaceActionFn<S> = Rc<dyn Fn(&mut S, ResultWorkspaceAction) + 'static>;
+pub type ResultWorkspaceActionFn<S> = Rc<dyn Fn(&mut S, ResultWorkspaceAction) + 'static>;
 
 fn view_button<S: 'static>(
     key: &str,
@@ -255,7 +255,7 @@ fn view_button<S: 'static>(
 
 /// Build the workspace into `layer`.
 #[allow(dead_code)] // view entry; remove when the host wires the workspace.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ResultWorkspaceVm,
     on_action: &Option<ResultWorkspaceActionFn<S>>,
     dark: bool,

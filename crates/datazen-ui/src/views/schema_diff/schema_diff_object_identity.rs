@@ -54,7 +54,7 @@ use serde::{Deserialize, Serialize};
 /// themselves travel as the plan's `tables` string list, not identities).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) enum SchemaDiffObjectKindVm {
+pub enum SchemaDiffObjectKindVm {
     View,
     Function,
     Procedure,
@@ -80,7 +80,7 @@ impl<'de> serde::Deserialize<'de> for SchemaDiffObjectKindVm {
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
 impl SchemaDiffObjectKindVm {
     /// The wire spelling (the `as_str` twin of the ui-api kind enums).
-    pub(crate) fn wire_str(self) -> &'static str {
+    pub fn wire_str(self) -> &'static str {
         match self {
             Self::View => "view",
             Self::Function => "function",
@@ -92,7 +92,7 @@ impl SchemaDiffObjectKindVm {
     }
 
     /// The wire spelling's parse twin (serde + host conversion use it).
-    pub(crate) fn from_wire_str(value: &str) -> Option<Self> {
+    pub fn from_wire_str(value: &str) -> Option<Self> {
         match value {
             "view" => Some(Self::View),
             "function" => Some(Self::Function),
@@ -112,20 +112,20 @@ impl SchemaDiffObjectKindVm {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) struct SchemaDiffObjectIdentityVm {
-    pub(crate) kind: SchemaDiffObjectKindVm,
+pub struct SchemaDiffObjectIdentityVm {
+    pub kind: SchemaDiffObjectKindVm,
     /// Null when the engine has no schema level.
-    pub(crate) schema: Option<String>,
-    pub(crate) name: String,
+    pub schema: Option<String>,
+    pub name: String,
     /// PostgreSQL routine identity arguments — disambiguates overloaded
     /// functions/procedures without putting SQL syntax into `name`.
-    pub(crate) signature: Option<String>,
+    pub signature: Option<String>,
     /// Schema of the relation a trigger is attached to, when the driver
     /// exposes it.
-    pub(crate) target_schema: Option<String>,
+    pub target_schema: Option<String>,
     /// Name of the relation a trigger is attached to, when the driver
     /// exposes it.
-    pub(crate) target_name: Option<String>,
+    pub target_name: Option<String>,
 }
 
 /// React `schemaDiffObjectIdentityKey` (`schemaDiffObjectIdentity.ts:4`):
@@ -136,7 +136,7 @@ pub(crate) struct SchemaDiffObjectIdentityVm {
 /// byte on these primitives; `unwrap_or_default` is the inert branch — a
 /// `json!` array of strings and nulls always serializes.
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) fn schema_diff_object_identity_key(object: &SchemaDiffObjectIdentityVm) -> String {
+pub fn schema_diff_object_identity_key(object: &SchemaDiffObjectIdentityVm) -> String {
     serde_json::to_string(&serde_json::json!([
         object.kind.wire_str(),
         object.schema.as_deref(),
@@ -148,8 +148,8 @@ pub(crate) fn schema_diff_object_identity_key(object: &SchemaDiffObjectIdentityV
     .unwrap_or_default()
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[doc(hidden)]  // exposed for integration tests
+pub mod tests {
     use super::*;
 
     fn view(name: &str) -> SchemaDiffObjectIdentityVm {

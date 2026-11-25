@@ -48,7 +48,7 @@ use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 /// host. `ConnectionPage` is *not* the app root: React's `MainPage.tsx:137`
 /// renders `<ConnectionPage />` beside those hosts, and owns the load-failure
 /// branch the router has to be able to show.
-pub(crate) fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
+pub fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
     crate::views::app_root(state, cx)
 }
 
@@ -107,7 +107,7 @@ pub fn app_with_adapter(adapter: Box<dyn DesktopAdapter>) -> App<AppState> {
 /// the page from the start. H3: the native process lists connections through
 /// the connection use case, over the adapter's in-memory store; the wasm
 /// host starts on the unwired adapter and the port answers.
-pub(crate) fn init_state() -> AppState {
+pub fn init_state() -> AppState {
     #[cfg(not(target_arch = "wasm32"))]
     {
         crate::bootstrap::start_shared_app_state(Some(Box::new(
@@ -120,7 +120,7 @@ pub(crate) fn init_state() -> AppState {
     }
 }
 
-pub(crate) fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
+pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if state.active != Section::Workspace {
         // T145: the workflow page's yaml document takes the keyboard while
         // the edit pane's yaml mode is the active panel (the lite editor's
@@ -159,7 +159,7 @@ pub(crate) fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool 
     false
 }
 
-pub(crate) fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
+pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     // T144: the home's per-row copy marker carries a real deadline; when the
     // runtime wakes at expiry the label must revert on the next frame.
     let mut dirty = crate::views::home_copy_tick(state, now);
@@ -190,7 +190,7 @@ pub(crate) fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     dirty || (state.grid.has_page() && state.grid.sync_scroll())
 }
 
-pub(crate) fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
+pub fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
     if state.active == Section::Workflows && state.workflow_yaml_focused() {
         return crate::sql_editor::on_ime(&mut state.workflow_yaml, ev);
     }

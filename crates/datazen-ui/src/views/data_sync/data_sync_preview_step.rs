@@ -46,41 +46,41 @@ use crate::views::data_sync::sql_preview::{SqlPreview, SqlPreviewVm};
 /// one reviewed row of the execution ticket. The T024 compare step never
 /// read it; this step's props are the first consumer, so it lands here.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DataSyncSelectedRow {
-    pub(crate) source_table: String,
-    pub(crate) target_table: String,
+pub struct DataSyncSelectedRow {
+    pub source_table: String,
+    pub target_table: String,
     /// The reviewed operation of this row.
-    pub(crate) operation: crate::views::DataSyncOperation,
+    pub operation: crate::views::DataSyncOperation,
     /// The composite primary key (`Value[]` → `serde_json::Value`).
-    pub(crate) key: Vec<serde_json::Value>,
+    pub key: Vec<serde_json::Value>,
 }
 
 /// The step's data.
-pub(crate) struct DataSyncPreviewStepVm {
-    pub(crate) sync_state: SyncState,
+pub struct DataSyncPreviewStepVm {
+    pub sync_state: SyncState,
     /// The execution progress text (the feedback store's
     /// `executeProgress`).
-    pub(crate) execute_progress: String,
+    pub execute_progress: String,
     /// The source db session id — absent until the comparison binds one.
-    pub(crate) source_db_session_id: Option<String>,
+    pub source_db_session_id: Option<String>,
     /// The target db session id, same rule.
-    pub(crate) target_db_session_id: Option<String>,
+    pub target_db_session_id: Option<String>,
     /// The tables of the pending write (the preview's input).
-    pub(crate) tables: Vec<DataSyncTableResult>,
+    pub tables: Vec<DataSyncTableResult>,
     /// The sync options of the pending write.
-    pub(crate) options: crate::views::data_sync::data_sync_compare_step::SyncOptions,
+    pub options: crate::views::data_sync::data_sync_compare_step::SyncOptions,
     /// The reviewed rows.
-    pub(crate) selected_rows: Vec<DataSyncSelectedRow>,
+    pub selected_rows: Vec<DataSyncSelectedRow>,
     /// The server-owned selections.
-    pub(crate) table_selections: Vec<DataSyncTableSelection>,
+    pub table_selections: Vec<DataSyncTableSelection>,
     /// The preview's controlled state (the host-built statements, filter,
     /// loading and error — T371's contract).
-    pub(crate) preview: SqlPreviewVm,
+    pub preview: SqlPreviewVm,
 }
 
 /// The step builder. `S` is the host state that owns the preview load and
 /// the copy feedback.
-pub(crate) struct DataSyncPreviewStep<S: 'static> {
+pub struct DataSyncPreviewStep<S: 'static> {
     vm: DataSyncPreviewStepVm,
     dark: bool,
     on_filter: Option<Rc<dyn Fn(&mut S, OpFilter)>>,
@@ -89,7 +89,7 @@ pub(crate) struct DataSyncPreviewStep<S: 'static> {
 }
 
 impl<S: 'static> DataSyncPreviewStep<S> {
-    pub(crate) fn new(vm: DataSyncPreviewStepVm) -> Self {
+    pub fn new(vm: DataSyncPreviewStepVm) -> Self {
         Self {
             vm,
             dark: true,
@@ -100,30 +100,30 @@ impl<S: 'static> DataSyncPreviewStep<S> {
     }
 
     /// The step renders through the kit the window's theme picked.
-    pub(crate) fn dark(mut self, dark: bool) -> Self {
+    pub fn dark(mut self, dark: bool) -> Self {
         self.dark = dark;
         self
     }
 
     /// `SqlPreview`'s filter-chip press.
-    pub(crate) fn on_filter(mut self, f: impl Fn(&mut S, OpFilter) + 'static) -> Self {
+    pub fn on_filter(mut self, f: impl Fn(&mut S, OpFilter) + 'static) -> Self {
         self.on_filter = Some(Rc::new(f));
         self
     }
 
     /// `SqlPreview`'s refresh press.
-    pub(crate) fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_refresh = Some(Rc::new(f));
         self
     }
 
     /// `SqlPreview`'s copy press (the text it copied).
-    pub(crate) fn on_copy(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_copy(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_copy = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(self.dark);
         let _ = dark;
         let mut root = col()

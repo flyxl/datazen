@@ -25,13 +25,13 @@ use rune::{col, row, text, El};
 use crate::i18n::t;
 use crate::ui::kit::kit;
 
-pub(crate) const FOOTER_KEY: &str = "connections-shortcut-footer";
-pub(crate) const REACT_KEY: &str = "home-shortcut-footer";
+pub const FOOTER_KEY: &str = "connections-shortcut-footer";
+pub const REACT_KEY: &str = "home-shortcut-footer";
 
 /// React `KeymapAction`.
 #[allow(dead_code)] // keymap mirror; consumer: the settings host (not wired).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum KeymapAction {
+pub enum KeymapAction {
     Execute,
     ExecuteAll,
     NewQuery,
@@ -41,7 +41,7 @@ pub(crate) enum KeymapAction {
 }
 
 impl KeymapAction {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Execute => "execute",
             Self::ExecuteAll => "executeAll",
@@ -56,7 +56,7 @@ impl KeymapAction {
 /// React `KeymapPreset`.
 #[allow(dead_code)] // keymap mirror; consumer: the settings host (not wired).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum KeymapPreset {
+pub enum KeymapPreset {
     #[default]
     Default,
     Dbeaver,
@@ -64,7 +64,7 @@ pub(crate) enum KeymapPreset {
 }
 
 impl KeymapPreset {
-    pub(crate) fn from_value(value: &str) -> Self {
+    pub fn from_value(value: &str) -> Self {
         match value {
             "dbeaver" => Self::Dbeaver,
             "navicat" => Self::Navicat,
@@ -99,7 +99,7 @@ fn preset_shortcut(preset: KeymapPreset, action: KeymapAction) -> &'static str {
 
 /// React `getActionShortcut`: custom value wins, then preset, then default.
 #[allow(dead_code)] // pure keymap rule; consumed by the footer builder.
-pub(crate) fn get_action_shortcut(
+pub fn get_action_shortcut(
     action: KeymapAction,
     preset: KeymapPreset,
     custom: &BTreeMap<String, String>,
@@ -116,7 +116,7 @@ pub(crate) fn get_action_shortcut(
 /// (React sniffs `navigator`); `is_mac = true` keeps the macOS `Cmd`/`Option`
 /// copy, otherwise the Windows/Linux `Ctrl`/`Alt` copy is used.
 #[allow(dead_code)] // pure keymap rule; consumed by the footer builder.
-pub(crate) fn format_shortcut_for_display(key: &str, is_mac: bool) -> String {
+pub fn format_shortcut_for_display(key: &str, is_mac: bool) -> String {
     key.split(|c| c == '-' || c == '+')
         .map(|part| match part.trim().to_lowercase().as_str() {
             "mod" => if is_mac { "Cmd" } else { "Ctrl" }.to_owned(),
@@ -133,7 +133,7 @@ pub(crate) fn format_shortcut_for_display(key: &str, is_mac: bool) -> String {
 /// Keymap snapshot from the settings store.
 #[allow(dead_code)] // view VM; consumer: the home host (not wired).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ShortcutFooterVm {
+pub struct ShortcutFooterVm {
     pub preset: KeymapPreset,
     /// Custom bindings keyed by `KeymapAction::as_str()`.
     pub custom: BTreeMap<String, String>,
@@ -147,7 +147,7 @@ const CANDIDATES: [(KeymapAction, &str, &str); 3] = [
 ];
 
 #[allow(dead_code)] // view entry point; consumer: the landing page host (not wired).
-pub(crate) fn shortcut_footer(vm: &ShortcutFooterVm, dark: bool, is_mac: bool) -> Option<El> {
+pub fn shortcut_footer(vm: &ShortcutFooterVm, dark: bool, is_mac: bool) -> Option<El> {
     let k = kit(dark);
     let mut footer = row()
         .key(FOOTER_KEY)

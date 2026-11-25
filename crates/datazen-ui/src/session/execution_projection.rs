@@ -37,9 +37,9 @@
 //! backend-client DTOs, then import them from `datazen-ui-api` instead.
 
 #[path = "execution_projection_types.rs"]
-pub(crate) mod types;
+pub mod types;
 
-pub(crate) use types::*;
+pub use types::*;
 
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -116,7 +116,7 @@ enum PayloadOutcome {
     Stop,
 }
 /// `ExecutionProjection` — one instance per execution receipt.
-pub(crate) struct ExecutionProjection {
+pub struct ExecutionProjection {
     backend_id: String,
     receipt: ExecutionReceipt,
     original_handle: Option<SessionHandle>,
@@ -138,7 +138,7 @@ pub(crate) struct ExecutionProjection {
 
 #[allow(dead_code)] // host-driven port; the query-panel result view is not landed yet.
 impl ExecutionProjection {
-    pub(crate) fn new(
+    pub fn new(
         backend_id: String,
         receipt: ExecutionReceipt,
         original_handle: Option<SessionHandle>,
@@ -167,19 +167,19 @@ impl ExecutionProjection {
     /// Install the `onSession` callback (the event-payload variant, mirrored as
     /// the session itself).
     #[allow(dead_code)] // host observer; remove with the result view.
-    pub(crate) fn set_on_session(&mut self, callback: Box<dyn FnMut(SessionView)>) {
+    pub fn set_on_session(&mut self, callback: Box<dyn FnMut(SessionView)>) {
         self.on_session = Some(callback);
     }
 
     /// Subscribe to publish notifications; the returned id can be released.
-    pub(crate) fn subscribe(&mut self, listener: Listener) -> usize {
+    pub fn subscribe(&mut self, listener: Listener) -> usize {
         let id = self.listeners.len();
         self.listeners.push(Some(listener));
         id
     }
 
     #[allow(dead_code)] // symmetric with subscribe; remove with the result view.
-    pub(crate) fn unsubscribe_listener(&mut self, id: usize) {
+    pub fn unsubscribe_listener(&mut self, id: usize) {
         if let Some(slot) = self.listeners.get_mut(id) {
             *slot = None;
         }
@@ -208,34 +208,34 @@ impl ExecutionProjection {
 
     // --- read-only surface ---------------------------------------------------
 
-    pub(crate) fn view(&self) -> Option<&ExecutionView> {
+    pub fn view(&self) -> Option<&ExecutionView> {
         self.view.as_ref()
     }
 
-    pub(crate) fn error(&self) -> Option<&ProjectionError> {
+    pub fn error(&self) -> Option<&ProjectionError> {
         self.error.as_ref()
     }
 
-    pub(crate) fn sequence(&self) -> Option<&str> {
+    pub fn sequence(&self) -> Option<&str> {
         self.sequence.as_deref()
     }
 
-    pub(crate) fn generation(&self) -> u64 {
+    pub fn generation(&self) -> u64 {
         self.generation
     }
 
-    pub(crate) fn publish_count(&self) -> u64 {
+    pub fn publish_count(&self) -> u64 {
         self.publish_count
     }
 
-    pub(crate) fn read_phases(&self) -> &[ReadPhase] {
+    pub fn read_phases(&self) -> &[ReadPhase] {
         &self.read_phases
     }
 
     /// `chunks` getter: sorted by `artifactId.localeCompare`, then the numeric
     /// chunk index. Rust's `Ord` on ASCII ids equals JS `localeCompare` for the
     /// wire ids used here.
-    pub(crate) fn chunks(&self) -> Vec<&PublishedResultChunk> {
+    pub fn chunks(&self) -> Vec<&PublishedResultChunk> {
         let mut chunks: Vec<&PublishedResultChunk> = self.chunks_by_key.values().collect();
         chunks.sort_by(|a, b| {
             a.chunk
@@ -263,7 +263,7 @@ impl ExecutionProjection {
     /// `writableBinding(currentHandle)`: the published binding is writable only
     /// when its execution id and *both* session handles (original and current)
     /// agree — an epoch change kills it.
-    pub(crate) fn writable_binding(
+    pub fn writable_binding(
         &self,
         current_handle: Option<&SessionHandle>,
     ) -> Option<&RuntimeResultBinding> {
@@ -282,7 +282,7 @@ impl ExecutionProjection {
 
     /// `invalidateRuntimeBinding()`: permanently drop the view's runtime
     /// binding; later `recover()`/`executionChanged` feeds stay nulled.
-    pub(crate) fn invalidate_runtime_binding(&mut self) {
+    pub fn invalidate_runtime_binding(&mut self) {
         self.runtime_invalidated = true;
         if let Some(view) = self.view.as_mut() {
             view.runtime_binding = None;
@@ -374,7 +374,7 @@ impl ExecutionProjection {
         });
     }
 
-    pub(crate) fn recover(&mut self) -> Vec<ProjectionEffect> {
+    pub fn recover(&mut self) -> Vec<ProjectionEffect> {
         let mut effects = Vec::new();
         self.recover_with(Resume::None, &mut effects);
         effects
@@ -475,7 +475,7 @@ impl ExecutionProjection {
     /// `accept(event)`: stream/execution filters, reset-before-dedupe, dedupe
     /// and gap recovery, then payload dispatch. The cursor advances only after
     /// any required read succeeds.
-    pub(crate) fn accept(&mut self, event: EventEnvelope, effects: &mut Vec<ProjectionEffect>) {
+    pub fn accept(&mut self, event: EventEnvelope, effects: &mut Vec<ProjectionEffect>) {
         if event.stream_id != self.receipt.stream_id {
             return;
         }
@@ -575,7 +575,7 @@ impl ExecutionProjection {
 
     // --- host feeds ----------------------------------------------------------
 
-    pub(crate) fn on_get_execution(
+    pub fn on_get_execution(
         &mut self,
         call_id: u64,
         result: Result<ExecutionView, ProjectionError>,
@@ -613,7 +613,7 @@ impl ExecutionProjection {
         self.continue_recover_artifacts(queue, resume, effects);
     }
 
-    pub(crate) fn on_read_artifact(
+    pub fn on_read_artifact(
         &mut self,
         call_id: u64,
         result: Result<ArtifactChunk, ProjectionError>,
@@ -708,7 +708,7 @@ impl ExecutionProjection {
         });
     }
 
-    pub(crate) fn consume(&mut self) -> Vec<ProjectionEffect> {
+    pub fn consume(&mut self) -> Vec<ProjectionEffect> {
         let mut effects = Vec::new();
         // React `consume` begins with `await this.unsubscribe()`.
         self.unsubscribe(&mut effects);
@@ -716,7 +716,7 @@ impl ExecutionProjection {
         effects
     }
 
-    pub(crate) fn on_event(
+    pub fn on_event(
         &mut self,
         call_id: u64,
         item: StreamItem,
@@ -758,7 +758,7 @@ impl ExecutionProjection {
         }
     }
 
-    pub(crate) fn reconnect(&mut self) -> Vec<ProjectionEffect> {
+    pub fn reconnect(&mut self) -> Vec<ProjectionEffect> {
         let mut effects = Vec::new();
         self.unsubscribe(&mut effects);
         self.recover_with(Resume::ThenConsume, &mut effects);
@@ -766,7 +766,7 @@ impl ExecutionProjection {
     }
 
     /// `unsubscribe()`: invalidate the current generation and stop the stream.
-    pub(crate) fn unsubscribe(&mut self, effects: &mut Vec<ProjectionEffect>) {
+    pub fn unsubscribe(&mut self, effects: &mut Vec<ProjectionEffect>) {
         self.generation += 1;
         if let Some(subscription) = self.subscription.take() {
             let call_id = self.alloc_call();
@@ -777,7 +777,7 @@ impl ExecutionProjection {
         }
     }
 
-    pub(crate) fn dispose(&mut self) -> Vec<ProjectionEffect> {
+    pub fn dispose(&mut self) -> Vec<ProjectionEffect> {
         self.listeners.clear();
         let mut effects = Vec::new();
         self.unsubscribe(&mut effects);

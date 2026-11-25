@@ -62,7 +62,7 @@ const TEXT_XS: TextStyle = TextStyle::new(12.0, 400.0);
 const TEXT_XS_MEDIUM: TextStyle = TextStyle::new(12.0, 500.0);
 
 /// `PREFIX_REGEX`: `^[A-Za-z_][A-Za-z0-9_*]*$`.
-pub(crate) fn prefix_valid(prefix: &str) -> bool {
+pub fn prefix_valid(prefix: &str) -> bool {
     let mut chars = prefix.chars();
     match chars.next() {
         Some(first) if first.is_ascii_alphabetic() || first == '_' => {}
@@ -73,7 +73,7 @@ pub(crate) fn prefix_valid(prefix: &str) -> bool {
 
 /// The three validation errors (the React message keys).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SnippetSaveError {
+pub enum SnippetSaveError {
     PrefixInvalid,
     PrefixDuplicate,
     TemplateRequired,
@@ -81,7 +81,7 @@ pub(crate) enum SnippetSaveError {
 
 impl SnippetSaveError {
     /// The message key the React `setError(t(...))` spells.
-    pub(crate) fn message_key(self) -> &'static str {
+    pub fn message_key(self) -> &'static str {
         match self {
             Self::PrefixInvalid => "query.snippets.prefixInvalid",
             Self::PrefixDuplicate => "query.snippets.prefixDuplicate",
@@ -93,12 +93,12 @@ impl SnippetSaveError {
 /// The dialog's state: the open flag, the three-field draft and the
 /// validation error.
 #[derive(Clone, Default, PartialEq)]
-pub(crate) struct SnippetEditDialogState {
-    pub(crate) open: bool,
-    pub(crate) prefix: TextEdit,
-    pub(crate) description: TextEdit,
-    pub(crate) template: TextEdit,
-    pub(crate) error: Option<SnippetSaveError>,
+pub struct SnippetEditDialogState {
+    pub open: bool,
+    pub prefix: TextEdit,
+    pub description: TextEdit,
+    pub template: TextEdit,
+    pub error: Option<SnippetSaveError>,
 }
 
 impl std::fmt::Debug for SnippetEditDialogState {
@@ -114,13 +114,13 @@ impl std::fmt::Debug for SnippetEditDialogState {
 }
 
 impl SnippetEditDialogState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The `useEffect` seed: open (re)seeds the draft; the error
     /// always resets.
-    pub(crate) fn seed(
+    pub fn seed(
         &mut self,
         open: bool,
         snippet: Option<&SqlSnippetItem>,
@@ -158,7 +158,7 @@ impl SnippetEditDialogState {
     /// The validation chain alone (the same three errors in the
     /// same order; the error lands in the draft either way) — the
     /// host's gate before it mints a fresh id.
-    pub(crate) fn validate(
+    pub fn validate(
         &mut self,
         edited_id: Option<&str>,
         existing_prefixes: &[String],
@@ -191,7 +191,7 @@ impl SnippetEditDialogState {
     /// `fresh_id` mints the new identity an add/duplicate takes
     /// (React's `crypto.randomUUID`) and only runs once the
     /// validation has passed — a refused save never consumes one.
-    pub(crate) fn save(
+    pub fn save(
         &mut self,
         edited_id: Option<&str>,
         fresh_id: impl FnOnce() -> String,
@@ -221,14 +221,14 @@ impl SnippetEditDialogState {
     }
 
     /// An edit clears the error (the prefix/template onChange arms).
-    pub(crate) fn clear_error(&mut self) {
+    pub fn clear_error(&mut self) {
         self.error = None;
     }
 }
 
 /// `SnippetEditDialog({...})`: the dialog over the state, the
 /// existing prefixes and the host's action slots.
-pub(crate) struct SnippetEditDialog<'a, S: 'static> {
+pub struct SnippetEditDialog<'a, S: 'static> {
     state: &'a SnippetEditDialogState,
     dark: bool,
     /// `isDuplicate` (the title and the `{prefix}_copy` seed).
@@ -251,7 +251,7 @@ pub(crate) struct SnippetEditDialog<'a, S: 'static> {
 
 impl<'a, S: 'static> SnippetEditDialog<'a, S> {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         state: &'a SnippetEditDialogState,
         dark: bool,
         is_duplicate: bool,
@@ -275,7 +275,7 @@ impl<'a, S: 'static> SnippetEditDialog<'a, S> {
         }
     }
 
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
@@ -284,13 +284,13 @@ impl<'a, S: 'static> SnippetEditDialog<'a, S> {
     /// the state and, on success, saves and closes (React's
     /// `onSave(item); onClose();` tail — the audit pins both
     /// firing).
-    pub(crate) fn on_save_pressed(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save_pressed(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save_pressed = Some(Rc::new(f));
         self
     }
 
     /// The dialog (nothing when closed).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) {
         if !self.state.open {
             return;
         }

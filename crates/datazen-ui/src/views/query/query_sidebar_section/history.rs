@@ -22,20 +22,20 @@ use super::{
 
 /// React `HISTORY_UNKNOWN_DB_KEY`.
 #[allow(dead_code)] // grouping constant; remove when the shared helper lands.
-pub(crate) const UNKNOWN_DB_KEY: &str = "__unknown_db__";
+pub const UNKNOWN_DB_KEY: &str = "__unknown_db__";
 
 /// React `QueryHistoryGroup`.
 #[allow(dead_code)] // grouping VM; remove when the shared helper lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct HistoryGroup {
-    pub(crate) key: String,
-    pub(crate) label: String,
-    pub(crate) entries: Vec<HistoryEntryVm>,
+pub struct HistoryGroup {
+    pub key: String,
+    pub label: String,
+    pub entries: Vec<HistoryEntryVm>,
 }
 
 /// React `groupQueryHistory`, ordered by each group's newest entry.
 #[allow(dead_code)] // pure helper; remove when the shared helper lands.
-pub(crate) fn group_history(entries: &[HistoryEntryVm], unknown_label: &str) -> Vec<HistoryGroup> {
+pub fn group_history(entries: &[HistoryEntryVm], unknown_label: &str) -> Vec<HistoryGroup> {
     let mut groups: Vec<HistoryGroup> = Vec::new();
     for entry in entries {
         let db = entry.database.as_deref().map(str::trim).filter(|db| !db.is_empty());
@@ -69,7 +69,7 @@ pub(crate) fn group_history(entries: &[HistoryEntryVm], unknown_label: &str) -> 
 
 /// React `findGroupForDatabase`.
 #[allow(dead_code)] // pure helper; remove when the shared helper lands.
-pub(crate) fn find_group<'a>(
+pub fn find_group<'a>(
     groups: &'a [HistoryGroup],
     database: Option<&str>,
 ) -> Option<&'a HistoryGroup> {
@@ -82,7 +82,7 @@ pub(crate) fn find_group<'a>(
 
 /// Build the history aside into `layer`.
 #[allow(dead_code)] // panel builder; remove when the query host wires the sidebar.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &SidebarSectionVm,
     on_action: &Option<QuerySidebarActionFn<S>>,
     search_edit: Option<SearchEditFn<S>>,

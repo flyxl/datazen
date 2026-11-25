@@ -74,7 +74,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize};
 /// The panel's data: the store slices the input reads (the host
 /// copies them), the panel's columns, and the two local cells.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct NlFilterInputVm {
+pub struct NlFilterInputVm {
     /// `isConfigured`.
     pub is_configured: bool,
     /// `nlFilterInput` — the composer's text.
@@ -97,7 +97,7 @@ pub(crate) struct NlFilterInputVm {
 /// change clears the nl-filter slice, the validation error, and the
 /// expanded flag, and re-arms the abort cell (the stale-parse guard's
 /// own reset). The host applies it whenever the table changes.
-pub(crate) fn table_changed() -> NlFilterReset {
+pub fn table_changed() -> NlFilterReset {
     NlFilterReset {
         clear_nl_filter: true,
         clear_validation_error: true,
@@ -108,7 +108,7 @@ pub(crate) fn table_changed() -> NlFilterReset {
 
 /// The reset the host applies on a table change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct NlFilterReset {
+pub struct NlFilterReset {
     pub clear_nl_filter: bool,
     pub clear_validation_error: bool,
     pub collapse: bool,
@@ -122,7 +122,7 @@ pub(crate) struct NlFilterReset {
 /// write. The `context` inputs are the stale-parse guard (56-58): a
 /// parse landing on a panel that moved on is dropped.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ParsedFilterOutcome {
+pub enum ParsedFilterOutcome {
     /// The parse landed on a panel that moved on — dropped.
     Stale,
     /// The filters name unknown columns: the warning (the trim, the
@@ -132,7 +132,7 @@ pub(crate) enum ParsedFilterOutcome {
     Apply(Vec<FilterCondition>),
 }
 
-pub(crate) fn parsed_filter_outcome(
+pub fn parsed_filter_outcome(
     filters: &[FilterCondition],
     columns: &[ColumnSchema],
     context_table: Option<&str>,
@@ -181,13 +181,13 @@ pub(crate) fn parsed_filter_outcome(
 
 /// The unknown-columns warning sentence (React 74-75):
 /// `smartFilter.invalidColumns` with `{columns}` replaced.
-pub(crate) fn unknown_columns_message(unknown: &[String]) -> String {
+pub fn unknown_columns_message(unknown: &[String]) -> String {
     t("smartFilter.invalidColumns").replace("{columns}", &unknown.join(", "))
 }
 
 /// The NL filter input. `S` is the host state that owns the VM, the
 /// input's `TextEdit` + keyboard map, and every action.
-pub(crate) struct NlFilterInput<'a, S: 'static> {
+pub struct NlFilterInput<'a, S: 'static> {
     vm: &'a NlFilterInputVm,
     /// The input's edit buffer (the host-held `TextEdit`).
     input_edit: Option<&'a rune::TextEdit>,
@@ -206,7 +206,7 @@ pub(crate) struct NlFilterInput<'a, S: 'static> {
 
 impl<'a, S: 'static> NlFilterInput<'a, S> {
     /// The input over its VM.
-    pub(crate) fn new(vm: &'a NlFilterInputVm) -> Self {
+    pub fn new(vm: &'a NlFilterInputVm) -> Self {
         Self {
             vm,
             input_edit: None,
@@ -224,25 +224,25 @@ impl<'a, S: 'static> NlFilterInput<'a, S> {
     }
 
     /// The input's edit buffer (the controlled value's host cell).
-    pub(crate) fn input_edit(mut self, edit: &'a rune::TextEdit) -> Self {
+    pub fn input_edit(mut self, edit: &'a rune::TextEdit) -> Self {
         self.input_edit = Some(edit);
         self
     }
 
     /// The AI keyboard map's state.
-    pub(crate) fn keyboard(mut self, keyboard: &'a AiKeyboardInput) -> Self {
+    pub fn keyboard(mut self, keyboard: &'a AiKeyboardInput) -> Self {
         self.keyboard = Some(keyboard);
         self
     }
 
     /// The theme.
-    pub(crate) fn dark(mut self, dark: bool) -> Self {
+    pub fn dark(mut self, dark: bool) -> Self {
         self.dark = dark;
         self
     }
 
     /// The input's edit accessor (the `TextField::on_edit` contract).
-    pub(crate) fn on_input_edit(
+    pub fn on_input_edit(
         mut self,
         f: impl Fn(&mut S) -> &mut rune::TextEdit + 'static,
     ) -> Self {
@@ -252,7 +252,7 @@ impl<'a, S: 'static> NlFilterInput<'a, S> {
 
     /// The AI keyboard map's key feed (`on_key` — the Enter the
     /// keyboard map swallows reports the submit to the host).
-    pub(crate) fn on_key(
+    pub fn on_key(
         mut self,
         f: impl Fn(&mut S, rune::Key, bool) + 'static,
     ) -> Self {
@@ -262,17 +262,17 @@ impl<'a, S: 'static> NlFilterInput<'a, S> {
 
     /// `onCompositionStart` / `onCompositionEnd` (the keyboard map's
     /// own pair).
-    pub(crate) fn on_composition_start(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_composition_start(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_composition_start = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_composition_end(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_composition_end(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_composition_end = Some(Rc::new(f));
         self
     }
 
     /// The collapsed toggle's press (`setExpanded(true)`).
-    pub(crate) fn on_expand(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_expand(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_expand = Some(Rc::new(f));
         self
     }
@@ -280,26 +280,26 @@ impl<'a, S: 'static> NlFilterInput<'a, S> {
     /// `handleParse` — the parse press (and the input's Enter through
     /// the keyboard map): the host drives the store's parse seams and
     /// applies [`parsed_filter_outcome`].
-    pub(crate) fn on_parse(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_parse(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_parse = Some(Rc::new(f));
         self
     }
 
     /// `handleClear` + collapse (159-166): the host clears the store's
     /// nl slice and the panel's filters, then the input collapses.
-    pub(crate) fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear = Some(Rc::new(f));
         self
     }
 
     /// `openSettingsWindow('ai')` — the unconfigured notice's press.
-    pub(crate) fn on_open_ai_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_ai_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_ai_settings = Some(Rc::new(f));
         self
     }
 
     /// The input. The caller roots it once.
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let vm = self.vm;
         // React 96-111: the unconfigured notice — the sparkle and the
         // pack word, the settings press.

@@ -9,12 +9,12 @@
 //! ([`capabilities`]), and the compile-time form determination
 //! ([`env`]).
 
-pub(crate) mod blob_tables_emission;
-pub(crate) mod blob_tables_exporter;
-pub(crate) mod capabilities;
+pub mod blob_tables_emission;
+pub mod blob_tables_exporter;
+pub mod capabilities;
 // T129: the platform port contracts (updater wire types, window routing,
 // the exporter port, the binding registry with §7.4 semantics).
-pub(crate) mod contracts;
-pub(crate) mod env;
-pub(crate) mod export_format;
-pub(crate) mod export_plan;
+pub mod contracts;
+pub mod env;
+pub mod export_format;
+pub mod export_plan;

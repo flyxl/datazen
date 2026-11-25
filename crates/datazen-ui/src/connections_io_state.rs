@@ -24,9 +24,9 @@ use rune::{
 
 impl AppState {
     /// The export formats the dialog collects, in cycle order.
-    pub(crate) const EXPORT_FORMATS: [&'static str; 3] = ["csv", "json", "sql"];
+    pub const EXPORT_FORMATS: [&'static str; 3] = ["csv", "json", "sql"];
 
-    pub(crate) fn open_connection_dialog(&mut self) {
+    pub fn open_connection_dialog(&mut self) {
         self.connection_dialog_open = true;
         // A new open is a new body for the dialog base, so its scroll viewport
         // starts at the top (`Dialog::open_epoch`).
@@ -44,12 +44,12 @@ impl AppState {
         self.connection_ssh_username = TextEdit::new(String::new());
     }
 
-    pub(crate) fn close_connection_dialog(&mut self) {
+    pub fn close_connection_dialog(&mut self) {
         self.connection_dialog_open = false;
         self.connection_error = None;
     }
 
-    pub(crate) fn save_connection_form(&mut self) {
+    pub fn save_connection_form(&mut self) {
         // E5: the engines the host links are the form's whitelist — the
         // registry's own admission ("linked means offered"). A host that
         // answers none is the demo process: the memory port's own default
@@ -111,7 +111,7 @@ impl AppState {
     }
     /// Parse a picked import file (T7): the preview before anything is
     /// saved. The host is the side with filesystem rights.
-    pub(crate) fn begin_connections_import(&mut self, path: &str) {
+    pub fn begin_connections_import(&mut self, path: &str) {
         self.import_file = Some(path.to_owned());
         let password = self.import_password.text.clone();
         match self.desktop.parse_connections_import(path, &password) {
@@ -136,7 +136,7 @@ impl AppState {
 
     /// Save the previewed import (T7): names already in the store are
     /// skipped; the notice counts what landed.
-    pub(crate) fn confirm_connections_import(&mut self) {
+    pub fn confirm_connections_import(&mut self) {
         let Some(preview) = self.import_preview.take() else {
             return;
         };
@@ -151,7 +151,7 @@ impl AppState {
 
     /// Primary import action: confirm a ready preview, or (re)parse the chosen
     /// file when a password is needed/changed and no preview is available yet.
-    pub(crate) fn submit_connections_import(&mut self) {
+    pub fn submit_connections_import(&mut self) {
         if self.import_preview.is_some() {
             self.confirm_connections_import();
             return;
@@ -168,7 +168,7 @@ impl AppState {
 
     /// The import modal (the React share dialog's import mode): opening it
     /// starts from a clean slate; closing drops the journey's picks.
-    pub(crate) fn open_import_dialog(&mut self) {
+    pub fn open_import_dialog(&mut self) {
         self.import_dialog_open = true;
         // See `open_connection_dialog`: a reopened dialog starts at the top.
         self.import_dialog_epoch = self.import_dialog_epoch.wrapping_add(1);
@@ -178,7 +178,7 @@ impl AppState {
         self.import_password = TextEdit::new(String::new());
     }
 
-    pub(crate) fn close_import_dialog(&mut self) {
+    pub fn close_import_dialog(&mut self) {
         self.import_dialog_open = false;
         self.import_file = None;
         self.import_preview = None;
@@ -189,10 +189,10 @@ impl AppState {
     /// The outbound foreign key of the focused cell's column (T5), with the
     /// column's own pairing index. E1: the key list is the structure
     /// cache's foreign-key segment — the job's answer, never a live read.
-    pub(crate) fn export_format(&self) -> &'static str {
+    pub fn export_format(&self) -> &'static str {
         Self::EXPORT_FORMATS[(self.export_format_index as usize) % Self::EXPORT_FORMATS.len()]
     }
-    pub(crate) fn cycle_export_format(&mut self) {
+    pub fn cycle_export_format(&mut self) {
         self.export_format_index =
             (self.export_format_index + 1) % Self::EXPORT_FORMATS.len() as u32;
     }
@@ -202,7 +202,7 @@ impl AppState {
     /// T2: the save path is picked first; the answer in `export_answered`
     /// starts the job (or cancels, or falls back to the default directory
     /// when no dialog could show).
-    pub(crate) fn begin_export_form(&mut self, tx: &mut Tx) {
+    pub fn begin_export_form(&mut self, tx: &mut Tx) {
         let table = self.grid.table_label().to_owned();
         let format = self.export_format().to_owned();
         let range = self.export_range.text.trim().to_owned();
@@ -223,7 +223,7 @@ impl AppState {
             state.export_answered(table, format, range, result);
         });
     }
-    pub(crate) fn export_answered(
+    pub fn export_answered(
         &mut self,
         table: String,
         format: String,
@@ -273,7 +273,7 @@ impl AppState {
 
     /// One job's progress: the host's if it owns the job, the port's
     /// otherwise (N11).
-    pub(crate) fn job_progress(&mut self, job: u64) -> Option<ProgressSnapshot> {
+    pub fn job_progress(&mut self, job: u64) -> Option<ProgressSnapshot> {
         if let Some(snapshot) = self.desktop.host_job_progress(job) {
             return Some(snapshot);
         }
@@ -281,7 +281,7 @@ impl AppState {
     }
 
     /// Pull one progress snapshot. No streaming, no polling.
-    pub(crate) fn refresh_export_progress(&mut self) {
+    pub fn refresh_export_progress(&mut self) {
         if let Some(job) = self.export_job {
             self.export_snapshot = self.job_progress(job);
         }

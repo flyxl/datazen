@@ -32,8 +32,8 @@ impl Sel {
 /// CodeMirror's `EditorSelection`: ranges plus which one is main.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Selection {
-    pub(crate) ranges: Vec<Sel>,
-    pub(crate) main: usize,
+    pub ranges: Vec<Sel>,
+    pub main: usize,
 }
 
 impl Selection {
@@ -60,9 +60,9 @@ impl Selection {
 
 /// One undo step: the document and selection before a change.
 #[derive(Clone, Debug)]
-pub(crate) struct Snapshot {
-    pub(crate) doc: String,
-    pub(crate) selection: Selection,
+pub struct Snapshot {
+    pub doc: String,
+    pub selection: Selection,
 }
 
 /// How many insert and delete steps the editor remembers.
@@ -73,7 +73,7 @@ pub(super) const COMPLETION_LIMIT: usize = 8;
 
 /// The in-canvas completion: the word prefix at the caret and its candidates.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Completion {
+pub struct Completion {
     prefix: String,
     items: Vec<&'static str>,
     selected: usize,
@@ -81,19 +81,19 @@ pub(crate) struct Completion {
 
 #[derive(Debug)]
 pub struct SqlEditor {
-    pub(crate) doc: String,
-    pub(crate) selection: Selection,
+    pub doc: String,
+    pub selection: Selection,
     /// Marked text at the main caret. Not part of `doc` until commit.
-    pub(crate) composition: Option<String>,
-    pub(crate) focused: bool,
+    pub composition: Option<String>,
+    pub focused: bool,
     /// Undo and redo cover character insertion and deletion only.
-    pub(crate) undo_stack: Vec<Snapshot>,
-    pub(crate) redo_stack: Vec<Snapshot>,
+    pub undo_stack: Vec<Snapshot>,
+    pub redo_stack: Vec<Snapshot>,
     /// The find bar's needle and replacement.
-    pub(crate) find_input: TextEdit,
-    pub(crate) replace_input: TextEdit,
+    pub find_input: TextEdit,
+    pub replace_input: TextEdit,
     /// The open completion list, if any.
-    pub(crate) completion: Option<Completion>,
+    pub completion: Option<Completion>,
 }
 
 impl Default for SqlEditor {
@@ -199,27 +199,27 @@ impl SqlEditor {
     }
 
 
-    pub(crate) fn has_completion(&self) -> bool {
+    pub fn has_completion(&self) -> bool {
         self.completion.is_some()
     }
-    pub(crate) fn completion_down(&mut self) {
+    pub fn completion_down(&mut self) {
         if let Some(completion) = &mut self.completion {
             completion.selected = (completion.selected + 1) % completion.items.len();
         }
     }
 
-    pub(crate) fn completion_up(&mut self) {
+    pub fn completion_up(&mut self) {
         if let Some(completion) = &mut self.completion {
             completion.selected = (completion.selected + completion.items.len() - 1) % completion.items.len();
         }
     }
 
-    pub(crate) fn completion_close(&mut self) {
+    pub fn completion_close(&mut self) {
         self.completion = None;
     }
 
     /// Insert the highlighted completion over its prefix.
-    pub(crate) fn completion_accept(&mut self) {
+    pub fn completion_accept(&mut self) {
         let selected = self.completion_selected();
         self.completion_accept_index(selected);
     }
@@ -236,7 +236,7 @@ impl SqlEditor {
     }
 
     /// Rebuild the completion from the word at the caret; close it when nothing matches.
-    pub(crate) fn refresh_completion(&mut self) {
+    pub fn refresh_completion(&mut self) {
         let head = self.selection.main().head;
         let start = word_start(&self.doc, head);
         let prefix = &self.doc[start..head];
@@ -469,7 +469,7 @@ impl SqlEditor {
         self.replace_all(&needle, &replacement)
     }
 
-    pub(crate) fn push_history(&mut self) {
+    pub fn push_history(&mut self) {
         if self.undo_stack.len() >= HISTORY_LIMIT {
             self.undo_stack.remove(0);
         }
@@ -503,7 +503,7 @@ impl SqlEditor {
         true
     }
 
-    pub(crate) fn change_by_range(&mut self, mut change: impl FnMut(Sel) -> (usize, usize, String)) {
+    pub fn change_by_range(&mut self, mut change: impl FnMut(Sel) -> (usize, usize, String)) {
         let snapshot = self.selection.ranges.clone();
         let main_i = self.selection.main;
         let mut specs: Vec<(usize, usize, String, bool)> = snapshot
@@ -536,7 +536,7 @@ impl SqlEditor {
         self.selection.main = main;
     }
 
-    pub(crate) fn apply_change(&mut self, from: usize, to: usize, text: &str) {
+    pub fn apply_change(&mut self, from: usize, to: usize, text: &str) {
         let from = boundary(&self.doc, from);
         let to = boundary(&self.doc, to.max(from));
         let new_len = text.len();

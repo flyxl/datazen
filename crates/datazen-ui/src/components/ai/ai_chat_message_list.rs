@@ -129,7 +129,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 /// the scroll anchor, and the jump-to-bottom pill. The caller owns the
 /// [`AiChatMessageListState`] and wires the callbacks; the list itself
 /// keeps no state.
-pub(crate) struct AiChatMessageList<'a, S: 'static> {
+pub struct AiChatMessageList<'a, S: 'static> {
     state: &'a AiChatMessageListState,
     sql_dialect: Option<String>,
     on_insert_sql: Option<Rc<dyn Fn(&mut S, &str)>>,
@@ -161,7 +161,7 @@ pub(crate) struct AiChatMessageList<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> AiChatMessageList<'a, S> {
-    pub(crate) fn new(state: &'a AiChatMessageListState) -> Self {
+    pub fn new(state: &'a AiChatMessageListState) -> Self {
         Self {
             state,
             sql_dialect: None,
@@ -188,25 +188,25 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
 
     /// The SQL dialect for `AiMessageContent`'s code blocks (T169).
     /// Stored only until that slice lands.
-    pub(crate) fn sql_dialect(mut self, sql_dialect: impl Into<String>) -> Self {
+    pub fn sql_dialect(mut self, sql_dialect: impl Into<String>) -> Self {
         self.sql_dialect = Some(sql_dialect.into());
         self
     }
 
     /// `AiMessageContent`'s `onInsertSql` (T169). Stored only.
-    pub(crate) fn on_insert_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_insert_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_insert_sql = Some(Rc::new(f));
         self
     }
 
     /// `AiMessageContent`'s `onRunCode` (T169). Stored only.
-    pub(crate) fn on_run_code(mut self, f: impl Fn(&mut S, &str, &str) + 'static) -> Self {
+    pub fn on_run_code(mut self, f: impl Fn(&mut S, &str, &str) + 'static) -> Self {
         self.on_run_code = Some(Rc::new(f));
         self
     }
 
     /// `AiMessageContent`'s `onNewQuery` (T169). Stored only.
-    pub(crate) fn on_new_query(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_new_query(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_new_query = Some(Rc::new(f));
         self
     }
@@ -215,21 +215,21 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
     /// pressed; the caller drives
     /// [`AiChatMessageListState::bubble_state_mut`] +
     /// `ChatBubbleState::toggle_reasoning`.
-    pub(crate) fn on_toggle_reasoning(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_toggle_reasoning(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_toggle_reasoning = Some(Rc::new(f));
         self
     }
 
     /// Called with the message index when a bubble's tool toggle is
     /// pressed; the caller drives `ChatBubbleState::toggle_tool`.
-    pub(crate) fn on_toggle_tool(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_toggle_tool(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_toggle_tool = Some(Rc::new(f));
         self
     }
 
     /// Called with the message index when a bubble's memory chip is
     /// pressed; the caller drives `ChatBubbleState::toggle_memory`.
-    pub(crate) fn on_toggle_memory(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_toggle_memory(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_toggle_memory = Some(Rc::new(f));
         self
     }
@@ -238,21 +238,21 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
     /// `#memory-<reference>` citation is activated; the caller drives
     /// `ChatBubbleState::open_memory_citation`. No element calls this
     /// yet — the placeholder content has no links (see S2).
-    pub(crate) fn on_cite_memory(mut self, f: impl Fn(&mut S, usize, &str) + 'static) -> Self {
+    pub fn on_cite_memory(mut self, f: impl Fn(&mut S, usize, &str) + 'static) -> Self {
         self.on_cite_memory = Some(Rc::new(f));
         self
     }
 
     /// Called with the message when a bubble's remember button is
     /// pressed; the caller owns `handleRemember`.
-    pub(crate) fn on_remember(mut self, f: impl Fn(&mut S, &AiChatMessage) + 'static) -> Self {
+    pub fn on_remember(mut self, f: impl Fn(&mut S, &AiChatMessage) + 'static) -> Self {
         self.on_remember = Some(Rc::new(f));
         self
     }
 
     /// The questions block's option toggle, with the message index; the
     /// caller drives `QuestionBlockState::toggle` on that message's state.
-    pub(crate) fn on_toggle_question(
+    pub fn on_toggle_question(
         mut self,
         f: impl Fn(&mut S, usize, &str, &str, bool) + 'static,
     ) -> Self {
@@ -263,7 +263,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
     /// The questions block's custom-text edit accessor, with the message
     /// index; the caller returns that message's `QuestionBlockState`
     /// draft edit.
-    pub(crate) fn on_custom_edit(
+    pub fn on_custom_edit(
         mut self,
         f: impl for<'b, 'c> Fn(&'b mut S, usize, &'c str) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -274,7 +274,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
     /// The questions block's submit, with the message index; the caller
     /// drives `QuestionBlockState::submit` and forwards the payload to
     /// `sendMessage` (React's `onAnswerQuestions` on the bubble).
-    pub(crate) fn on_submit_questions(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_submit_questions(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_submit_questions = Some(Rc::new(f));
         self
     }
@@ -282,14 +282,14 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
     /// Called when the memory-candidate toast's dismiss is pressed; the
     /// caller drives the store's `dismissMemoryCandidateNotice` (here:
     /// `AiChatMessageListState::dismiss_memory_candidate`).
-    pub(crate) fn on_dismiss_memory_candidate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss_memory_candidate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_dismiss_memory_candidate = Some(Rc::new(f));
         self
     }
 
     /// Called when the remember toast's dismiss is pressed; the caller
     /// drives `AiChatMessageListState::dismiss_remember_notice`.
-    pub(crate) fn on_dismiss_remember_notice(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss_remember_notice(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_dismiss_remember_notice = Some(Rc::new(f));
         self
     }
@@ -297,14 +297,14 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
     /// Called when the jump-to-bottom pill is pressed; the caller drives
     /// [`AiChatMessageListState::jump_to_bottom`] and issues
     /// `tx.scroll_to_bottom("ai-chat-message-list-viewport")`.
-    pub(crate) fn on_jump_to_bottom(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_jump_to_bottom(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_jump_to_bottom = Some(Rc::new(f));
         self
     }
 
     /// Called with the viewport's at-bottom report; the caller drives
     /// [`AiChatMessageListState::set_at_bottom`].
-    pub(crate) fn on_at_bottom(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_at_bottom(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_at_bottom = Some(Rc::new(f));
         self
     }
@@ -314,7 +314,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
     /// `AiMessageCodeWiring`. With this set (and only then) message
     /// bubbles render their assistant content through
     /// `AiMessageContent` instead of the plain placeholder.
-    pub(crate) fn code_wiring(
+    pub fn code_wiring(
         mut self,
         factory: impl Fn(usize) -> AiMessageCodeWiring<S> + 'static,
     ) -> Self {
@@ -324,7 +324,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
 
     /// The host's clipboard write starter for a code segment's copy
     /// button: `(message index, code, request)`.
-    pub(crate) fn on_copy_code(
+    pub fn on_copy_code(
         mut self,
         f: impl Fn(&mut S, usize, String, u64) + 'static,
     ) -> Self {
@@ -334,7 +334,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
 
     /// A markdown link press in a message's content: `(message index,
     /// url)`.
-    pub(crate) fn on_open_link(
+    pub fn on_open_link(
         mut self,
         f: impl Fn(&mut S, usize, String) + 'static,
     ) -> Self {
@@ -342,7 +342,7 @@ impl<'a, S: 'static> AiChatMessageList<'a, S> {
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let mut root = col()
             .key("ai-chat-message-list")

@@ -38,7 +38,7 @@ const TRIGGER_KEY: &str = "editor-execution-strategy-button";
 /// React `SqlExecutionStrategy` wire ids. Kept local so the shared enum in
 /// `query_editor_section` stays the single type; this is only its wire spelling.
 #[allow(dead_code)] // pure mapping; consumed by the menu items and tests.
-pub(crate) fn strategy_id(strategy: ExecutionStrategy) -> &'static str {
+pub fn strategy_id(strategy: ExecutionStrategy) -> &'static str {
     match strategy {
         ExecutionStrategy::CurrentStatement => "current_statement",
         ExecutionStrategy::EntireScript => "entire_script",
@@ -49,32 +49,32 @@ pub(crate) fn strategy_id(strategy: ExecutionStrategy) -> &'static str {
 
 /// React `STRATEGIES` order, as the shared enum's declared order.
 #[allow(dead_code)] // pure projection; consumed by the menu and tests.
-pub(crate) fn all_strategies() -> [ExecutionStrategy; 4] {
+pub fn all_strategies() -> [ExecutionStrategy; 4] {
     ExecutionStrategy::ALL
 }
 
 /// Host-owned projection of the component props plus `settings.sqlExecutionStrategy`.
 #[allow(dead_code)] // VM surface; owned by the query toolbar host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ExecutionStrategySelectVm {
+pub struct ExecutionStrategySelectVm {
     /// React defaults to `current_statement` when the setting is unset.
-    pub(crate) strategy: ExecutionStrategy,
+    pub strategy: ExecutionStrategy,
     /// Rune needs the popup state from the caller (React's native menu owns it).
-    pub(crate) open: bool,
-    pub(crate) icon_only: bool,
-    pub(crate) disabled: bool,
+    pub open: bool,
+    pub icon_only: bool,
+    pub disabled: bool,
 }
 
 impl ExecutionStrategySelectVm {
     /// React's `activeLabelKey` lookup with the current-statement fallback.
     #[allow(dead_code)] // pure helper; consumed by the trigger and tests.
-    pub(crate) fn active_label_key(&self) -> &'static str {
+    pub fn active_label_key(&self) -> &'static str {
         self.strategy.label_key()
     }
 
     /// React's composed `title`: `<title key>: <active label key>`.
     #[allow(dead_code)] // pure helper; consumed by the trigger and tests.
-    pub(crate) fn title(&self) -> String {
+    pub fn title(&self) -> String {
         format!("{}: {}", t(TITLE_KEY), t(self.active_label_key()))
     }
 }
@@ -82,7 +82,7 @@ impl ExecutionStrategySelectVm {
 /// The host intents this control can emit.
 #[allow(dead_code)] // host port; remove when the toolbar host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ExecutionStrategyAction {
+pub enum ExecutionStrategyAction {
     ToggleMenu,
     Select(ExecutionStrategy),
 }
@@ -103,7 +103,7 @@ fn emit<S: 'static>(
 
 /// Build the trigger and its optional dropdown.
 #[allow(dead_code)] // consumer: the query toolbar host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ExecutionStrategySelectVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

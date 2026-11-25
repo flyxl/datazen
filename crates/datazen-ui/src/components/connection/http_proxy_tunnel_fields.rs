@@ -30,7 +30,7 @@ use crate::ui::select::Select;
 
 const ROOT: &str = "new-conn-http-proxy-fields";
 
-pub(crate) use super::tunnel_field_contracts::{
+pub use super::tunnel_field_contracts::{
     HttpProxyScheme, HttpProxyTunnelFieldsValue as HttpProxyValue,
 };
 
@@ -41,7 +41,7 @@ type BoolFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut bool + 'static>;
 /// Builder for the field group. `S` owns the five text edits and handles the
 /// scheme change; no IPC or network call happens here.
 #[allow(dead_code)] // consumer: the tunnel settings editor (not wired); remove when wired.
-pub(crate) struct HttpProxyTunnelFields<'a, S: 'static> {
+pub struct HttpProxyTunnelFields<'a, S: 'static> {
     value: &'a HttpProxyValue,
     host: EditFn<S>,
     port: EditFn<S>,
@@ -54,7 +54,7 @@ pub(crate) struct HttpProxyTunnelFields<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: the tunnel settings editor (not wired); remove when wired.
 impl<'a, S: 'static> HttpProxyTunnelFields<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         value: &'a HttpProxyValue,
         host: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
         port: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
@@ -74,7 +74,7 @@ impl<'a, S: 'static> HttpProxyTunnelFields<'a, S> {
         }
     }
 
-    pub(crate) fn scheme_open(
+    pub fn scheme_open(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut bool + 'static,
     ) -> Self {
@@ -82,7 +82,7 @@ impl<'a, S: 'static> HttpProxyTunnelFields<'a, S> {
         self
     }
 
-    pub(crate) fn on_scheme(
+    pub fn on_scheme(
         mut self,
         f: impl Fn(&mut S, HttpProxyScheme) + 'static,
     ) -> Self {
@@ -90,7 +90,7 @@ impl<'a, S: 'static> HttpProxyTunnelFields<'a, S> {
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let value = self.value;
         let mut root = col().key(ROOT).w_full().gap(12.0);

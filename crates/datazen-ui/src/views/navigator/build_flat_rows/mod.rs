@@ -31,13 +31,13 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::i18n::t;
 
-pub(crate) mod deps;
-pub(crate) mod inputs;
+pub mod deps;
+pub mod inputs;
 
 // The row union lives in `views/navigator/types.rs` since T572 (the formal
 // `types.ts` port); re-exported here because every builder consumer reads it
 // through this module.
-pub(crate) use super::types::{row_key, DepthPair, NavigatorRow};
+pub use super::types::{row_key, DepthPair, NavigatorRow};
 
 use deps::categories::get_categories_for_driver;
 use deps::groups::format_group_label;
@@ -58,7 +58,7 @@ use inputs::{
 
 /// React `BuildNavigatorFlatRowsParams`.
 #[derive(Clone, Default)]
-pub(crate) struct BuildFlatRowsParams {
+pub struct BuildFlatRowsParams {
     pub grouped: Vec<GroupedSection>,
     pub expanded_groups: HashSet<String>,
     pub expanded_connections: HashSet<String>,
@@ -107,7 +107,7 @@ fn is_database_open(
 }
 
 /// React `buildNavigatorFlatRows`.
-pub(crate) fn build_navigator_flat_rows(params: &BuildFlatRowsParams) -> Vec<NavigatorRow> {
+pub fn build_navigator_flat_rows(params: &BuildFlatRowsParams) -> Vec<NavigatorRow> {
     let mut rows: Vec<NavigatorRow> = Vec::new();
     let query = params.query.as_str();
     let searching = !query.is_empty();

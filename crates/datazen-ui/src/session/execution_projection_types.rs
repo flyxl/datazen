@@ -11,8 +11,8 @@ use serde_json::Value;
 use crate::session::counters::{counter_value, Counter, CounterError, CounterInput};
 // Re-export the reused DTOs so one `use ...execution_projection::*` serves the
 // tests and the future result view (they stay T083's types, not duplicates).
-pub(crate) use crate::session::counters::SessionHandle;
-pub(crate) use crate::session::editor_session_controller::{
+pub use crate::session::counters::SessionHandle;
+pub use crate::session::editor_session_controller::{
     ExecutionErrorCode, ExecutionReceipt, ExecutionState, ExecutionTarget, NamespaceTarget,
     SessionView,
 };
@@ -21,7 +21,7 @@ pub(crate) use crate::session::editor_session_controller::{
 /// the projection itself emits). Recorded for host observability.
 #[allow(dead_code)] // diagnostics; remove with the host observer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ReadPhase {
+pub enum ReadPhase {
     ExecutionView,
     ArtifactRead,
 }
@@ -31,7 +31,7 @@ pub(crate) enum ReadPhase {
 /// and host failures ride in [`ProjectionError::Host`].
 #[allow(dead_code)] // error surface; remove with the query-panel result view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ProjectionError {
+pub enum ProjectionError {
     /// "Artifact read returned a different chunk"
     ArtifactIdentityMismatch,
     /// "Execution identity mismatch"
@@ -45,7 +45,7 @@ pub(crate) enum ProjectionError {
 }
 
 impl ProjectionError {
-    pub(crate) fn message(&self) -> String {
+    pub fn message(&self) -> String {
         match self {
             Self::ArtifactIdentityMismatch => "Artifact read returned a different chunk".into(),
             Self::ExecutionIdentityMismatch => "Execution identity mismatch".into(),
@@ -61,7 +61,7 @@ impl ProjectionError {
 /// `EffectOutcome` — only the values an execution view can report.
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EffectOutcome {
+pub enum EffectOutcome {
     NotStarted,
     Completed,
     RolledBack,
@@ -72,7 +72,7 @@ pub(crate) enum EffectOutcome {
 /// `ResultCompleteness` from the backend-client contract.
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ResultCompleteness {
+pub enum ResultCompleteness {
     Pending,
     Complete,
     Truncated,
@@ -81,7 +81,7 @@ pub(crate) enum ResultCompleteness {
 /// `StatementResultSource.writableMapping`.
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WritableMapping {
+pub enum WritableMapping {
     Verified,
     ReadOnly,
 }
@@ -89,7 +89,7 @@ pub(crate) enum WritableMapping {
 /// `RuntimeResultBinding` — the writable binding validated by the projection.
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct RuntimeResultBinding {
+pub struct RuntimeResultBinding {
     pub handle: SessionHandle,
     pub resource_binding_id: String,
     pub execution_id: String,
@@ -99,7 +99,7 @@ pub(crate) struct RuntimeResultBinding {
 /// reads `requestedTarget.namespace.database` off the published view.
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ResultProvenance {
+pub struct ResultProvenance {
     pub requested_target: ExecutionTarget,
 }
 
@@ -107,7 +107,7 @@ pub(crate) struct ResultProvenance {
 /// `execution_id` + `error_code`).
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ExecutionView {
+pub struct ExecutionView {
     pub execution_id: String,
     pub state: ExecutionState,
     pub effect_outcome: EffectOutcome,
@@ -123,7 +123,7 @@ pub(crate) struct ExecutionView {
 /// DTO but never read by this projection, so they are intentionally omitted.
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct StatementResultSource {
+pub struct StatementResultSource {
     pub execution_id: String,
     pub statement_index: serde_json::Number,
     pub writable_mapping: WritableMapping,
@@ -133,7 +133,7 @@ pub(crate) struct StatementResultSource {
 /// raw result bytes (never a path or credential).
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ArtifactChunk {
+pub struct ArtifactChunk {
     pub artifact_id: String,
     pub chunk_index: Counter,
     pub total_chunks: Option<Counter>,
@@ -147,7 +147,7 @@ pub(crate) struct ArtifactChunk {
 /// One `ConnectionEvent` payload; mirrors the four React variants.
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ConnectionEvent {
+pub enum ConnectionEvent {
     SessionChanged { session: SessionView },
     ExecutionChanged { execution: ExecutionView },
     ResultChunk { artifact_id: String, chunk_index: Counter, source: StatementResultSource },
@@ -157,7 +157,7 @@ pub(crate) enum ConnectionEvent {
 /// `EventEnvelope<ConnectionEvent>`.
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct EventEnvelope {
+pub struct EventEnvelope {
     pub stream_id: String,
     pub sequence: Counter,
     pub runtime_epoch: String,
@@ -173,7 +173,7 @@ pub(crate) struct EventEnvelope {
 /// embedded `source` object.
 #[allow(dead_code)] // DTO mirror; remove with the query-panel result view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PublishedResultChunk {
+pub struct PublishedResultChunk {
     pub chunk: ArtifactChunk,
     pub source: Option<StatementResultSource>,
     pub payload: Value,
@@ -184,7 +184,7 @@ pub(crate) struct PublishedResultChunk {
 /// Work the host must perform. The host answers with the matching `on_*` feed.
 #[allow(dead_code)] // emitted work; remove when the result view wires the port.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ProjectionEffect {
+pub enum ProjectionEffect {
     GetExecution { call_id: u64, execution_id: String },
     ReadArtifact { call_id: u64, artifact_id: String, chunk_index: Counter },
     SubscribeEvents { call_id: u64, stream_id: String, after_sequence: Option<Counter> },
@@ -194,7 +194,7 @@ pub(crate) enum ProjectionEffect {
 /// One delivery from the async iterator, supplied by the host.
 #[allow(dead_code)] // host feed; remove when the result view wires the port.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum StreamItem {
+pub enum StreamItem {
     Event(EventEnvelope),
     Done,
     Error(ProjectionError),
@@ -203,13 +203,13 @@ pub(crate) enum StreamItem {
 // --- Counter / terminal helpers ---------------------------------------------
 
 /// Canonical decimal form of a wire counter (the React `bigint`).
-pub(crate) fn canonical(value: &str) -> Result<String, ProjectionError> {
+pub fn canonical(value: &str) -> Result<String, ProjectionError> {
     counter_value(CounterInput::Text(value.to_owned()))
         .map(|v| v.as_str().to_owned())
         .map_err(ProjectionError::Counter)
 }
 
-pub(crate) fn compare(a: &str, b: &str) -> Result<Ordering, ProjectionError> {
+pub fn compare(a: &str, b: &str) -> Result<Ordering, ProjectionError> {
     // Compare the `BigCounter` values, whose `Ord` is numeric (length first,
     // then digits) — comparing their decimal strings would order "10" before
     // "2" and break the chunk sort / gap dedupe.
@@ -219,7 +219,7 @@ pub(crate) fn compare(a: &str, b: &str) -> Result<Ordering, ProjectionError> {
 }
 
 /// Arbitrary-precision decimal increment (`+1n`) without a bigint crate.
-pub(crate) fn increment(decimal: &str) -> String {
+pub fn increment(decimal: &str) -> String {
     let mut digits = decimal.as_bytes().to_vec();
     let mut carry = 1u8;
     for byte in digits.iter_mut().rev() {
@@ -242,14 +242,14 @@ pub(crate) fn increment(decimal: &str) -> String {
     String::from_utf8_lossy(&digits[start..]).into_owned()
 }
 
-pub(crate) fn is_terminal(state: ExecutionState) -> bool {
+pub fn is_terminal(state: ExecutionState) -> bool {
     matches!(
         state,
         ExecutionState::Succeeded | ExecutionState::Failed | ExecutionState::Cancelled
     )
 }
 
-pub(crate) fn with_binding_null(mut view: ExecutionView) -> ExecutionView {
+pub fn with_binding_null(mut view: ExecutionView) -> ExecutionView {
     view.runtime_binding = None;
     view
 }

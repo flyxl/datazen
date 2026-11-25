@@ -29,7 +29,7 @@ fn emit<S: 'static>(on_action: &Option<ActionFn<S>>, action: DocAction) -> impl 
 }
 
 /// Compose the whole view (header + active tab body) into `layer`.
-pub(crate) fn build_body<S: 'static>(
+pub fn build_body<S: 'static>(
     vm: &DocumentViewVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

@@ -85,20 +85,20 @@ fn is_valid_port(value: &str) -> bool {
 
 /// The dialog's state.
 #[derive(Clone, PartialEq)]
-pub(crate) struct TunnelTestDialogState {
-    pub(crate) open: bool,
+pub struct TunnelTestDialogState {
+    pub open: bool,
     /// The tunnel under test (`None` = closed / none).
-    pub(crate) tunnel: Option<SavedTunnelSummary>,
+    pub tunnel: Option<SavedTunnelSummary>,
     /// The target host input (defaults to `127.0.0.1`).
-    pub(crate) host: TextEdit,
+    pub host: TextEdit,
     /// The target port input (blank until typed).
-    pub(crate) port: TextEdit,
+    pub port: TextEdit,
     /// The probe in flight.
-    pub(crate) running: bool,
+    pub running: bool,
     /// The probe's answer: elapsed milliseconds.
-    pub(crate) elapsed_ms: Option<u64>,
+    pub elapsed_ms: Option<u64>,
     /// The probe's failure sentence (already the display text).
-    pub(crate) error: Option<String>,
+    pub error: Option<String>,
 }
 
 impl Default for TunnelTestDialogState {
@@ -119,7 +119,7 @@ impl TunnelTestDialogState {
     /// The `useEffect([open, tunnel?.id])` arm: an open always
     /// starts from the clean form; a close keeps the stale one
     /// (React's early return).
-    pub(crate) fn open_changed(&mut self, open: bool, tunnel: Option<&SavedTunnelSummary>) {
+    pub fn open_changed(&mut self, open: bool, tunnel: Option<&SavedTunnelSummary>) {
         self.open = open;
         self.tunnel = tunnel.cloned();
         if !open {
@@ -133,30 +133,30 @@ impl TunnelTestDialogState {
     }
 
     /// `hostMissing` — a blank host (after trim).
-    pub(crate) fn host_missing(&self) -> bool {
+    pub fn host_missing(&self) -> bool {
         self.host.text.trim().is_empty()
     }
 
     /// `portMissing` — not a valid port.
-    pub(crate) fn port_missing(&self) -> bool {
+    pub fn port_missing(&self) -> bool {
         !is_valid_port(&self.port.text)
     }
 
     /// `invalid = hostMissing || portMissing` — the run button's
     /// disabled gate and the hint's show gate.
-    pub(crate) fn invalid(&self) -> bool {
+    pub fn invalid(&self) -> bool {
         self.host_missing() || self.port_missing()
     }
 
     /// The run button's gate: `if (!tunnelId || invalid || running)
     /// return;`.
-    pub(crate) fn run_gate(&self) -> bool {
+    pub fn run_gate(&self) -> bool {
         self.tunnel.is_some() && !self.invalid() && !self.running
     }
 
     /// `handleRun`'s preamble: mark the probe in flight and clear
     /// the previous answer.
-    pub(crate) fn begin_run(&mut self) {
+    pub fn begin_run(&mut self) {
         self.running = true;
         self.elapsed_ms = None;
         self.error = None;
@@ -165,7 +165,7 @@ impl TunnelTestDialogState {
     /// `handleRun`'s ask: the tunnel id, the trimmed target host
     /// and the target port (`Number(port)`). `None` when the gate
     /// refuses.
-    pub(crate) fn run_request(&self) -> Option<(String, String, u16)> {
+    pub fn run_request(&self) -> Option<(String, String, u16)> {
         if !self.run_gate() {
             return None;
         }
@@ -177,7 +177,7 @@ impl TunnelTestDialogState {
 
     /// The probe's success answer (`setElapsedMs(ms)`), landing in
     /// the `finally`'s shadow.
-    pub(crate) fn note_success(&mut self, elapsed_ms: u64) {
+    pub fn note_success(&mut self, elapsed_ms: u64) {
         self.running = false;
         self.elapsed_ms = Some(elapsed_ms);
     }
@@ -185,7 +185,7 @@ impl TunnelTestDialogState {
     /// The probe's failure answer: `messageOf(e) ??
     /// t('common.operationFailed')` — a blank message falls back to
     /// the generic sentence.
-    pub(crate) fn note_failure(&mut self, message: &str) {
+    pub fn note_failure(&mut self, message: &str) {
         self.running = false;
         self.error = Some(if message.is_empty() {
             t("common.operationFailed").to_owned()
@@ -195,7 +195,7 @@ impl TunnelTestDialogState {
     }
 
     /// `scopeKey` — which surface a pass actually proves.
-    pub(crate) fn scope_key(&self) -> &'static str {
+    pub fn scope_key(&self) -> &'static str {
         match self.tunnel.as_ref().map(|t| t.kind) {
             Some(SavedTunnelKind::Ssh) => "settings.tunnels.test.scope.ssh",
             Some(SavedTunnelKind::HttpProxy) => "settings.tunnels.test.scope.httpProxy",
@@ -204,14 +204,14 @@ impl TunnelTestDialogState {
     }
 
     /// The success line (`role="status"`): `t('…success', { ms })`.
-    pub(crate) fn success_line(&self) -> Option<String> {
+    pub fn success_line(&self) -> Option<String> {
         self.elapsed_ms
             .map(|ms| t("settings.tunnels.test.success").replace("{ms}", &ms.to_string()))
     }
 
     /// The target hint: the host's sentence first, the port's
     /// second, nothing when both are valid.
-    pub(crate) fn target_hint(&self) -> Option<&'static str> {
+    pub fn target_hint(&self) -> Option<&'static str> {
         if self.host_missing() {
             Some("settings.tunnels.test.hostRequired")
         } else if self.port_missing() {
@@ -224,7 +224,7 @@ impl TunnelTestDialogState {
 
 /// `TunnelTestDialog({ open, tunnel, onClose, onRun })`: the dialog
 /// over the state, the state lens and the host's action slots.
-pub(crate) struct TunnelTestDialog<'a, S: 'static> {
+pub struct TunnelTestDialog<'a, S: 'static> {
     state: &'a TunnelTestDialogState,
     dark: bool,
     dialog_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TunnelTestDialogState>,
@@ -252,7 +252,7 @@ fn port_edit_of<S: 'static>(
 }
 
 impl<'a, S: 'static> TunnelTestDialog<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a TunnelTestDialogState,
         dark: bool,
         dialog_edit: impl for<'b> Fn(&'b mut S) -> &'b mut TunnelTestDialogState + 'static,
@@ -264,20 +264,20 @@ impl<'a, S: 'static> TunnelTestDialog<'a, S> {
 
     /// `onClose` (a no-op while the probe runs — the dialog's
     /// dismissal rule).
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// `onRun(id, host, port)`: the host runs the probe and answers
     /// through the note methods.
-    pub(crate) fn on_run(mut self, f: impl Fn(&mut S, &str, &str, u16) + 'static) -> Self {
+    pub fn on_run(mut self, f: impl Fn(&mut S, &str, &str, u16) + 'static) -> Self {
         self.on_run = Some(Rc::new(f));
         self
     }
 
     /// The dialog (nothing when closed).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) {
         let state = self.state;
         if !state.open {
             return;

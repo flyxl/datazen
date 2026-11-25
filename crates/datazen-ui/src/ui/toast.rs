@@ -46,10 +46,10 @@ use rune::{El, Icon, Tx};
 use rune_kit::toast_stack::{ToastEffect, ToastEvent, ToastStack};
 use rune_kit::{Kit, Toast as KitToast, ToastRegion as KitToastRegion};
 
-pub(crate) use rune_kit::toast_stack::{ToastEntry, ToastPage, ToastPlacement, ToastTimer};
+pub use rune_kit::toast_stack::{ToastEntry, ToastPage, ToastPlacement, ToastTimer};
 
 /// One toast card (visual builder).
-pub(crate) struct Toast {
+pub struct Toast {
     key: String,
     title: String,
     description: Option<String>,
@@ -61,7 +61,7 @@ pub(crate) struct Toast {
 }
 
 impl Toast {
-    pub(crate) fn new(key: impl Into<String>, title: impl Into<String>) -> Toast {
+    pub fn new(key: impl Into<String>, title: impl Into<String>) -> Toast {
         Toast {
             key: key.into(),
             title: title.into(),
@@ -74,25 +74,25 @@ impl Toast {
         }
     }
 
-    pub(crate) fn description(mut self, description: impl Into<String>) -> Toast {
+    pub fn description(mut self, description: impl Into<String>) -> Toast {
         self.description = Some(description.into());
         self
     }
 
     /// A 16 point icon in the theme's base icon colour.
-    pub(crate) fn icon(mut self, icon: &'static Icon) -> Toast {
+    pub fn icon(mut self, icon: &'static Icon) -> Toast {
         self.icon = Some(icon);
         self
     }
 
     /// Any 16 point leading element (coloured icons, a loader). Confirm at first real call site.
-    pub(crate) fn lead(mut self, element: El) -> Toast {
+    pub fn lead(mut self, element: El) -> Toast {
         self.lead = Some(element);
         self
     }
 
     /// Shows the close button and runs `f` when it is pressed.
-    pub(crate) fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Toast {
+    pub fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Toast {
         self.close_handler = true;
         self.closable = true;
         self.actions.push(Box::new(move |_k, t| t.on_close(f)));
@@ -100,13 +100,13 @@ impl Toast {
     }
 
     /// Shows the close button without a handler.
-    pub(crate) fn closable(mut self) -> Toast {
+    pub fn closable(mut self) -> Toast {
         self.closable = true;
         self
     }
 
     /// A primary or secondary small action button.
-    pub(crate) fn action<S: 'static>(
+    pub fn action<S: 'static>(
         mut self,
         label: impl Into<String>,
         primary: bool,
@@ -118,7 +118,7 @@ impl Toast {
         self
     }
 
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let mut kit = KitToast::new(&self.key, &self.title);
         if let Some(description) = self.description.as_deref() {
             kit = kit.description(description);
@@ -142,21 +142,21 @@ impl Toast {
 /// A bottom-right notification region. Mount it in the overlay layer (e.g. via `rune_kit::root`).
 ///
 /// Children stack vertically in the order provided (first element at top).
-pub(crate) struct ToastRegion {
+pub struct ToastRegion {
     toasts: Vec<El>,
 }
 
-pub(crate) fn toast_region(toasts: Vec<El>) -> ToastRegion {
+pub fn toast_region(toasts: Vec<El>) -> ToastRegion {
     ToastRegion { toasts }
 }
 
 impl ToastRegion {
-    pub(crate) fn toast(mut self, toast: El) -> ToastRegion {
+    pub fn toast(mut self, toast: El) -> ToastRegion {
         self.toasts.push(toast);
         self
     }
 
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         self.toasts
             .into_iter()
             .fold(KitToastRegion::new(), |r, t| r.toast(t))
@@ -170,7 +170,7 @@ impl ToastRegion {
 /// [`ToastEffect::WakeAt`] by scheduling a wake at the given time; on [`ToastEffect::Closed`]
 /// invoke the toast's close callback exactly once.
 #[derive(Clone, Debug)]
-pub(crate) struct ToastHost<O> {
+pub struct ToastHost<O> {
     stack: ToastStack<O>,
 }
 
@@ -183,33 +183,33 @@ impl<O> Default for ToastHost<O> {
 }
 
 impl<O> ToastHost<O> {
-    pub(crate) fn new() -> ToastHost<O> {
+    pub fn new() -> ToastHost<O> {
         ToastHost::default()
     }
 
-    pub(crate) fn stack(&self) -> &ToastStack<O> {
+    pub fn stack(&self) -> &ToastStack<O> {
         &self.stack
     }
 
-    pub(crate) fn stack_mut(&mut self) -> &mut ToastStack<O> {
+    pub fn stack_mut(&mut self) -> &mut ToastStack<O> {
         &mut self.stack
     }
 
     /// Entries in stack order (oldest first, front/newest last).
-    pub(crate) fn entries(&self) -> &[ToastEntry<O>] {
+    pub fn entries(&self) -> &[ToastEntry<O>] {
         self.stack.entries()
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.stack.entries().is_empty()
     }
 
-    pub(crate) fn step(&mut self, event: ToastEvent<O>) -> rune::machine::Effects<ToastEffect> {
+    pub fn step(&mut self, event: ToastEvent<O>) -> rune::machine::Effects<ToastEffect> {
         self.stack.step(event)
     }
 
     /// Show or update a toast. `secs` is the auto-dismiss duration (`None` = persistent).
-    pub(crate) fn show(
+    pub fn show(
         &mut self,
         key: impl Into<String>,
         options: O,
@@ -224,25 +224,25 @@ impl<O> ToastHost<O> {
         })
     }
 
-    pub(crate) fn dismiss(&mut self, id: u64, now: f64) -> rune::machine::Effects<ToastEffect> {
+    pub fn dismiss(&mut self, id: u64, now: f64) -> rune::machine::Effects<ToastEffect> {
         self.step(ToastEvent::Dismissed { id: Some(id), now })
     }
 
-    pub(crate) fn dismiss_all(&mut self, now: f64) -> rune::machine::Effects<ToastEffect> {
+    pub fn dismiss_all(&mut self, now: f64) -> rune::machine::Effects<ToastEffect> {
         self.step(ToastEvent::Dismissed { id: None, now })
     }
 
     /// Advance timers: closes any toast whose due time has passed and returns effects
     /// (including [`ToastEffect::Closed`] for each expired toast and the next [`ToastEffect::WakeAt`]).
-    pub(crate) fn tick(&mut self, now: f64) -> rune::machine::Effects<ToastEffect> {
+    pub fn tick(&mut self, now: f64) -> rune::machine::Effects<ToastEffect> {
         self.step(ToastEvent::Tick { now })
     }
 
-    pub(crate) fn pointer_over(&mut self, now: f64) -> rune::machine::Effects<ToastEffect> {
+    pub fn pointer_over(&mut self, now: f64) -> rune::machine::Effects<ToastEffect> {
         self.step(ToastEvent::PointerOver { now })
     }
 
-    pub(crate) fn pointer_left(&mut self, now: f64) -> rune::machine::Effects<ToastEffect> {
+    pub fn pointer_left(&mut self, now: f64) -> rune::machine::Effects<ToastEffect> {
         self.step(ToastEvent::PointerLeft { now })
     }
 
@@ -253,7 +253,7 @@ impl<O> ToastHost<O> {
     /// and filtered by [`ToastStack::place`] visibility so at most the front `VISIBLE` toasts
     /// are shown. Placement hints (`lift/scale/height/content`) are available via
     /// [`ToastStack::place`] for callers that need Sonner-style positioning.
-    pub(crate) fn render(&self, k: &Kit, mut build: impl FnMut(&ToastEntry<O>) -> El) -> El {
+    pub fn render(&self, k: &Kit, mut build: impl FnMut(&ToastEntry<O>) -> El) -> El {
         let cards = self
             .entries()
             .iter()

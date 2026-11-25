@@ -51,7 +51,7 @@ use crate::ui::copyable::CopyableError;
 /// Data Sync (mirrors the React `TransferRunFailureKind` union).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) enum TransferRunFailureKind {
+pub enum TransferRunFailureKind {
     BackendScope,
     PipelineBudget,
     PlanConsumed,
@@ -62,7 +62,7 @@ pub(crate) enum TransferRunFailureKind {
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl TransferRunFailureKind {
     /// The exact React `data-failure-kind` value and i18n key segment.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::BackendScope => "backendScope",
             Self::PipelineBudget => "pipelineBudget",
@@ -73,7 +73,7 @@ impl TransferRunFailureKind {
     }
 
     /// `TONE_CLASS` in React: backendScope/other are danger, the rest warning.
-    pub(crate) fn is_danger(self) -> bool {
+    pub fn is_danger(self) -> bool {
         matches!(self, Self::BackendScope | Self::Other)
     }
 }
@@ -82,7 +82,7 @@ impl TransferRunFailureKind {
 /// presented as a warning/retry — the flag is kept separate from the visual
 /// tone on purpose (`pipelineBudget` is warning-toned *and* fail-closed).
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) fn is_fail_closed(kind: TransferRunFailureKind) -> bool {
+pub fn is_fail_closed(kind: TransferRunFailureKind) -> bool {
     matches!(
         kind,
         TransferRunFailureKind::BackendScope | TransferRunFailureKind::PipelineBudget
@@ -92,7 +92,7 @@ pub(crate) fn is_fail_closed(kind: TransferRunFailureKind) -> bool {
 /// React's `offersReReview`: a consumed or stale plan may mint a new one; the
 /// two backend refusals and `other` never may.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) fn offers_re_review(kind: TransferRunFailureKind) -> bool {
+pub fn offers_re_review(kind: TransferRunFailureKind) -> bool {
     matches!(
         kind,
         TransferRunFailureKind::PlanConsumed | TransferRunFailureKind::StalePlan
@@ -102,20 +102,20 @@ pub(crate) fn offers_re_review(kind: TransferRunFailureKind) -> bool {
 /// View model for one failure (React `TransferRunFailure`).
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct TransferRunFailure {
+pub struct TransferRunFailure {
     pub kind: TransferRunFailureKind,
     pub message: String,
 }
 
 /// i18n title key for a kind (`titleKey` in React).
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) fn title_key(kind: TransferRunFailureKind) -> String {
+pub fn title_key(kind: TransferRunFailureKind) -> String {
     format!("migration.failure.{}.title", kind.as_str())
 }
 
 /// i18n body key for a kind (`bodyKey` in React).
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) fn body_key(kind: TransferRunFailureKind) -> String {
+pub fn body_key(kind: TransferRunFailureKind) -> String {
     format!("migration.failure.{}.body", kind.as_str())
 }
 
@@ -123,7 +123,7 @@ type Callback<S> = Box<dyn Fn(&mut S) + 'static>;
 
 /// Builder for the fail-closed refusal notice.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct MigrationJobFailureNotice<S: 'static> {
+pub struct MigrationJobFailureNotice<S: 'static> {
     failure: TransferRunFailure,
     test_id_prefix: String,
     on_review: Option<Callback<S>>,
@@ -132,7 +132,7 @@ pub(crate) struct MigrationJobFailureNotice<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl<S: 'static> MigrationJobFailureNotice<S> {
-    pub(crate) fn new(failure: TransferRunFailure) -> Self {
+    pub fn new(failure: TransferRunFailure) -> Self {
         Self {
             failure,
             test_id_prefix: "migration-job".to_owned(),
@@ -141,24 +141,24 @@ impl<S: 'static> MigrationJobFailureNotice<S> {
         }
     }
 
-    pub(crate) fn test_id_prefix(mut self, prefix: impl Into<String>) -> Self {
+    pub fn test_id_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.test_id_prefix = prefix.into();
         self
     }
 
     /// Mint a NEW plan. Never "apply the same plan again". Only mounted for
     /// `planConsumed` / `stalePlan` and only when a callback is present.
-    pub(crate) fn on_review(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_review(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_review = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn on_dismiss(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_dismiss = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k: &'static Kit = crate::ui::kit::kit(dark);
         let MigrationJobFailureNotice {
             failure,

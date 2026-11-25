@@ -66,7 +66,7 @@ fn apply_pump(vm: &mut BackupWindowVm, pump: &BackupLogPump) {
 
 /// The `handleBackup` head: arm the run, clear the last progress,
 /// reset the log to the preparing line, and set the status to it.
-pub(crate) fn begin_backup(vm: &mut BackupWindowVm, pump: &mut BackupLogPump) {
+pub fn begin_backup(vm: &mut BackupWindowVm, pump: &mut BackupLogPump) {
     vm.backing = true;
     vm.progress = None;
     pump.reset(vec![t("backup.progressPreparing").to_owned()]);
@@ -77,7 +77,7 @@ pub(crate) fn begin_backup(vm: &mut BackupWindowVm, pump: &mut BackupLogPump) {
 /// One `backup-progress` event: the formatted line becomes the
 /// status and is pushed to the log, and the payload becomes the
 /// progress bar's state.
-pub(crate) fn apply_backup_progress(
+pub fn apply_backup_progress(
     vm: &mut BackupWindowVm,
     pump: &mut BackupLogPump,
     payload: &BackupProgress,
@@ -96,7 +96,7 @@ pub(crate) fn apply_backup_progress(
 /// `t('backup.success')`, the progress becomes `done`, and the
 /// success line is pushed and flushed. Either way the run ends
 /// (`backing` clears, React's `finally`).
-pub(crate) fn finish_backup(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, saved: bool) {
+pub fn finish_backup(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, saved: bool) {
     if !saved {
         vm.status_message.clear();
         vm.progress = None;
@@ -116,7 +116,7 @@ pub(crate) fn finish_backup(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, s
 /// repeats after its confirm gate): arm the run, clear the last
 /// progress, reset the log to the restoring line, and set the
 /// status to it.
-pub(crate) fn begin_restore(vm: &mut BackupWindowVm, pump: &mut BackupLogPump) {
+pub fn begin_restore(vm: &mut BackupWindowVm, pump: &mut BackupLogPump) {
     vm.backing = true;
     vm.progress = None;
     pump.reset(vec![t("backup.restoring").to_owned()]);
@@ -129,7 +129,7 @@ pub(crate) fn begin_restore(vm: &mut BackupWindowVm, pump: &mut BackupLogPump) {
 /// progress bar's state, the formatted line becomes the status and
 /// is pushed to the log. (`format_restore_progress` is the line
 /// `runSqlFileExecution` formats before calling `onProgress`.)
-pub(crate) fn apply_restore_progress(
+pub fn apply_restore_progress(
     vm: &mut BackupWindowVm,
     pump: &mut BackupLogPump,
     payload: Option<&BackupProgress>,
@@ -151,7 +151,7 @@ pub(crate) fn apply_restore_progress(
 /// becomes that line. Either way the run ends. The host emits
 /// `datazen:refresh-connection` after this returns, only when
 /// `executed` is true.
-pub(crate) fn finish_restore(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, executed: bool) {
+pub fn finish_restore(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, executed: bool) {
     if !executed {
         pump.reset(Vec::new());
         apply_pump(vm, pump);
@@ -174,7 +174,7 @@ pub(crate) fn finish_restore(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, 
 /// `setBacking(false)` runs. (This is distinct from
 /// [`finish_restore`] with `executed == false`, which is the
 /// cancelled file dialog *after* the confirm.)
-pub(crate) fn abort_restore_before_execute(vm: &mut BackupWindowVm) {
+pub fn abort_restore_before_execute(vm: &mut BackupWindowVm) {
     vm.backing = false;
 }
 
@@ -183,7 +183,7 @@ pub(crate) fn abort_restore_before_execute(vm: &mut BackupWindowVm) {
 /// flushed; the run ends. (`runSqlFileExecution`'s own catch pushes
 /// first, so a restore error reaches the pump twice — the pump
 /// dedupes the consecutive identical line.)
-pub(crate) fn fail_run(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, message: &str) {
+pub fn fail_run(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, message: &str) {
     vm.status_message = message.to_owned();
     vm.progress = None;
     pump.push(message);
@@ -195,6 +195,6 @@ pub(crate) fn fail_run(vm: &mut BackupWindowVm, pump: &mut BackupLogPump, messag
 /// The restore progress line for a payload, for the host's
 /// `restore-progress` listener (the line `runSqlFileExecution`
 /// formats before its `onProgress` call).
-pub(crate) fn restore_progress_line(payload: &BackupProgress) -> String {
+pub fn restore_progress_line(payload: &BackupProgress) -> String {
     format_restore_progress(payload)
 }

@@ -23,7 +23,7 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 // port (`views/workflow/workflow_page.rs`, T145) — the lite inline editor
 // this module carried until that swap is retired with it.
 /// The dashboards page: the widget list. An empty list has its own state.
-pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let widgets = state.host_widgets();
     let mut page = col()
         .key("dashboards-page")
@@ -154,7 +154,7 @@ pub(crate) fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -
 /// from the widget's cache entry — the render never queries the widget's
 /// data; a read in flight, its failure sentence or the not-loaded hint
 /// each say themselves instead of a phantom empty chart.
-pub(crate) fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
+pub fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
     let notice = match state.widget_bars.get(&id) {
         None => Some("the widget's data is not loaded — refresh the page".to_owned()),
         Some(WidgetBarsState { loading: true, .. }) => {
@@ -227,14 +227,14 @@ pub(crate) fn bar_chart(state: &AppState, id: u64, theme: tok::Theme) -> El {
 }
 
 /// The tools page: one switcher, three tools. Sync, compare, transfer.
-pub(crate) fn workflow_yaml(name: &str, steps: &[String]) -> String {
+pub fn workflow_yaml(name: &str, steps: &[String]) -> String {
     let mut out = format!("name: {name}\nsteps:\n");
     for step in steps {
         out.push_str(&format!("  - {step}\n"));
     }
     out
 }
-pub(crate) fn next_connection(workspace: &MemoryWorkspace, current: &str) -> String {
+pub fn next_connection(workspace: &MemoryWorkspace, current: &str) -> String {
     let ids: Vec<String> = workspace
         .connections()
         .iter()

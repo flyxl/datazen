@@ -37,13 +37,13 @@ use crate::ui::kit::kit;
 
 const ROOT: &str = "panel-tab-bar";
 /// React's `h-12` (48pt) pinned by `PanelTabBarHeight.test.tsx`.
-pub(crate) const BAR_HEIGHT: f32 = 48.0;
+pub const BAR_HEIGHT: f32 = 48.0;
 const UNDERLINE_HEIGHT: f32 = 2.0;
 
 /// React's `Panel['type']` union (the variants that render an icon/label).
 #[allow(dead_code)] // VM mirror; consumed by the label/icon helpers and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PanelType {
+pub enum PanelType {
     Table,
     View,
     #[default]
@@ -61,7 +61,7 @@ pub(crate) enum PanelType {
 impl PanelType {
     /// React `getPanelShortLabel` for panel types whose label is a locale key.
     #[allow(dead_code)] // pure helper; consumed by tab_label and the tests.
-    pub(crate) fn localized_short(self) -> Option<&'static str> {
+    pub fn localized_short(self) -> Option<&'static str> {
         match self {
             Self::CreateTable => Some("common.newTable"),
             Self::ErDiagram => Some("common.erDiagram"),
@@ -75,7 +75,7 @@ impl PanelType {
 
     /// Closest registry glyph for React's `ThemedIcon` id (see module docs).
     #[allow(dead_code)] // pure helper; consumed by the tab builder and tests.
-    pub(crate) fn icon(self) -> &'static rune::Icon {
+    pub fn icon(self) -> &'static rune::Icon {
         match self {
             Self::Table | Self::View | Self::CreateTable | Self::DbObject => &ICON_TABLE,
             Self::Query => &ICON_TERMINAL,
@@ -91,14 +91,14 @@ impl PanelType {
 /// tab label may fall back to.
 #[allow(dead_code)] // VM surface; supplied by the connection-page host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PanelTabVm {
-    pub(crate) id: String,
-    pub(crate) panel_type: PanelType,
+pub struct PanelTabVm {
+    pub id: String,
+    pub panel_type: PanelType,
     /// React's panel-specific `title` / `tableName` / `viewName` / `objectName`.
-    pub(crate) name: String,
-    pub(crate) database: Option<String>,
-    pub(crate) connection_name: String,
-    pub(crate) session_database: Option<String>,
+    pub name: String,
+    pub database: Option<String>,
+    pub connection_name: String,
+    pub session_database: Option<String>,
 }
 
 impl PanelTabVm {
@@ -106,7 +106,7 @@ impl PanelTabVm {
     /// database omitted when unknown and the object from a locale key for the
     /// fixed panel types.
     #[allow(dead_code)] // pure helper; consumed by the tab builder and tests.
-    pub(crate) fn tab_label(&self) -> String {
+    pub fn tab_label(&self) -> String {
         let short = self
             .panel_type
             .localized_short()
@@ -133,7 +133,7 @@ impl PanelTabVm {
 /// Discrete interactions the strip asks the host to apply to `S`.
 #[allow(dead_code)] // host port; remove when the connection-page host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PanelTabAction {
+pub enum PanelTabAction {
     Select(String),
     Close(String),
     ContextMenu(String),
@@ -159,7 +159,7 @@ fn react_key(key: &str) -> El {
 
 /// Build the strip, or `None` when React would `return null` (no panels).
 #[allow(dead_code)] // consumer: the connection-page host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     panels: &[PanelTabVm],
     active_panel_id: Option<&str>,
     on_action: Option<ActionFn<S>>,

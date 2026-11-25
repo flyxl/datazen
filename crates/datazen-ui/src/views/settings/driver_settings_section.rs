@@ -47,11 +47,11 @@ use crate::views::settings::ai_settings_section::section_title;
 
 /// React's `setTimeout(() => setSaved(false), 2000)` — the saved line's
 /// window, in seconds.
-pub(crate) const DRIVER_SAVED_WINDOW: f64 = 2.0;
+pub const DRIVER_SAVED_WINDOW: f64 = 2.0;
 
 /// `mergeDriverSettings` (driver-sdk, carried): the next settings map
 /// with the driver's value replaced whole.
-pub(crate) fn merge_driver_settings(
+pub fn merge_driver_settings(
     all: &serde_json::Value,
     driver_id: &str,
     next: serde_json::Value,
@@ -63,7 +63,7 @@ pub(crate) fn merge_driver_settings(
 
 /// One `DRIVER_SETTINGS_ENTRIES` row (the generated artifact's shape,
 /// as far as this section reads it).
-pub(crate) struct DriverSettingsEntry {
+pub struct DriverSettingsEntry {
     /// The settings key the driver's block writes under.
     pub driver_id: String,
     /// The block's display label.
@@ -77,30 +77,30 @@ pub(crate) struct DriverSettingsEntry {
 
 /// The section's own state (the saved deadline).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DriverSettingsSectionState {
+pub struct DriverSettingsSectionState {
     /// `saved` while `now` is behind the deadline.
     pub saved_until: Option<f64>,
 }
 
 impl DriverSettingsSectionState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// `handleDriverChange`'s state half: arm the 2s window (the host
     /// persists the merged partial and calls `tx.wake_after`).
-    pub(crate) fn note_saved(&mut self, now: f64) {
+    pub fn note_saved(&mut self, now: f64) {
         self.saved_until = Some(now + DRIVER_SAVED_WINDOW);
     }
 
     /// Whether the saved line still shows.
-    pub(crate) fn saved(&self, now: f64) -> bool {
+    pub fn saved(&self, now: f64) -> bool {
         self.saved_until.is_some_and(|until| now < until)
     }
 }
 
 /// The driver settings section (React `DriverSettingsSection`).
-pub(crate) struct DriverSettingsSection<'a, S: 'static> {
+pub struct DriverSettingsSection<'a, S: 'static> {
     key: &'a str,
     entries: &'a [DriverSettingsEntry],
     /// `settings.driverSettings` (the stored map).
@@ -120,7 +120,7 @@ pub(crate) struct DriverSettingsSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> DriverSettingsSection<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         entries: &'a [DriverSettingsEntry],
         driver_settings: &'a serde_json::Value,
     ) -> Self {
@@ -137,19 +137,19 @@ impl<'a, S: 'static> DriverSettingsSection<'a, S> {
     }
 
     /// The draft-override mode (`onSettingsChange` present).
-    pub(crate) fn on_settings_change(mut self, present: bool) -> Self {
+    pub fn on_settings_change(mut self, present: bool) -> Self {
         self.on_settings_change = present;
         self
     }
 
     /// Whether the 2s saved window is still open.
-    pub(crate) fn saved(mut self, saved: bool) -> Self {
+    pub fn saved(mut self, saved: bool) -> Self {
         self.saved = saved;
         self
     }
 
     /// One custom entry's prebuilt block (the entry component's seam).
-    pub(crate) fn custom_section(mut self, driver_id: &str, block: El) -> Self {
+    pub fn custom_section(mut self, driver_id: &str, block: El) -> Self {
         self.custom_sections.push((driver_id.to_owned(), block));
         self
     }
@@ -157,7 +157,7 @@ impl<'a, S: 'static> DriverSettingsSection<'a, S> {
     /// The generic JSON-schema form's seam (T304's component): the
     /// builder receives the entry, the stored value and the change
     /// callback.
-    pub(crate) fn schema_form(
+    pub fn schema_form(
         mut self,
         build: impl Fn(&DriverSettingsEntry, &serde_json::Value, &dyn Fn(serde_json::Value)) -> El + 'static,
     ) -> Self {
@@ -167,7 +167,7 @@ impl<'a, S: 'static> DriverSettingsSection<'a, S> {
 
     /// A driver's settings change (`handleDriverChange`: merge under
     /// the driver's id, persist, arm the saved line).
-    pub(crate) fn on_driver_change(
+    pub fn on_driver_change(
         mut self,
         f: impl Fn(&mut S, String, serde_json::Value) + 'static,
     ) -> Self {
@@ -176,7 +176,7 @@ impl<'a, S: 'static> DriverSettingsSection<'a, S> {
     }
 
     /// Build the section.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
 
         // The bare SectionTitle (13/600 muted — this file's own local

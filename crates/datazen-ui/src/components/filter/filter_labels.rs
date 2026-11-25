@@ -18,13 +18,13 @@ use super::filter_values::{to_pair, to_tokens};
 
 /// React `opLabel`: the translated label of an operator, e.g. `filter.eq`.
 #[allow(dead_code)] // label contract; consumers are the filter chip and tests.
-pub(crate) fn op_label(operator: &str) -> String {
+pub fn op_label(operator: &str) -> String {
     t(&format!("filter.{operator}")).to_owned()
 }
 
 /// React `conditionSummary`: the text of one condition, e.g. `name = alice`.
 #[allow(dead_code)] // label contract; consumers are the filter chip and tests.
-pub(crate) fn condition_summary(filter: &FilterCondition) -> String {
+pub fn condition_summary(filter: &FilterCondition) -> String {
     let op = op_label(filter.operator);
     match value_input_for(filter.operator) {
         FilterValueInputKind::None => format!("{} {}", filter.column, op),

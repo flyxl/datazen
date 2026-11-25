@@ -8,7 +8,7 @@ use rune::TextEdit;
 /// React `PrivilegeGrant`.
 #[allow(dead_code)] // view VM; consumer: the privilege host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PrivilegeGrantVm {
+pub struct PrivilegeGrantVm {
     pub grantee: String,
     pub object_schema: Option<String>,
     pub object_name: String,
@@ -18,7 +18,7 @@ pub(crate) struct PrivilegeGrantVm {
 /// React `ViewMode`.
 #[allow(dead_code)] // view VM; consumer: the privilege host (not wired).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ViewMode {
+pub enum ViewMode {
     #[default]
     ByUser,
     ByObject,
@@ -28,7 +28,7 @@ pub(crate) enum ViewMode {
 /// an optional list of privilege leaves.
 #[allow(dead_code)] // render VM; consumer: the tree renderer.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PrivilegeNode {
+pub struct PrivilegeNode {
     pub key: String,
     pub label: String,
     pub depth: usize,
@@ -42,7 +42,7 @@ pub(crate) struct PrivilegeNode {
 
 /// React `buildUserTree` + the sorted user list, folded into render nodes.
 #[allow(dead_code)] // pure rule; pinned by the privilege tests.
-pub(crate) fn build_user_tree(grants: &[PrivilegeGrantVm]) -> Vec<PrivilegeNode> {
+pub fn build_user_tree(grants: &[PrivilegeGrantVm]) -> Vec<PrivilegeNode> {
     // user → dbKey → schema → table → privileges
     let mut tree: BTreeMap<String, BTreeMap<String, BTreeMap<String, BTreeMap<String, Vec<String>>>>> =
         BTreeMap::new();
@@ -161,7 +161,7 @@ fn schema_node(
 
 /// React `buildObjectTree`, folded into render nodes.
 #[allow(dead_code)] // pure rule; pinned by the privilege tests.
-pub(crate) fn build_object_tree(grants: &[PrivilegeGrantVm]) -> Vec<PrivilegeNode> {
+pub fn build_object_tree(grants: &[PrivilegeGrantVm]) -> Vec<PrivilegeNode> {
     // dbKey → schema → table → user → privileges
     let mut tree: BTreeMap<String, BTreeMap<String, BTreeMap<String, BTreeMap<String, Vec<String>>>>> =
         BTreeMap::new();
@@ -250,7 +250,7 @@ pub(crate) fn build_object_tree(grants: &[PrivilegeGrantVm]) -> Vec<PrivilegeNod
 /// Every host command the privilege view can request.
 #[allow(dead_code)] // host port; consumer: the content-view host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PrivilegeAction {
+pub enum PrivilegeAction {
     Load,
     SetViewMode(ViewMode),
     ToggleNode(String),
@@ -267,7 +267,7 @@ pub(crate) enum PrivilegeAction {
 }
 
 #[allow(dead_code)] // host port; consumer: the content-view host (not wired).
-pub(crate) struct PrivilegeHostPort<S> {
+pub struct PrivilegeHostPort<S> {
     pub on_action: Option<Rc<dyn Fn(&mut S, PrivilegeAction) + 'static>>,
 }
 
@@ -278,7 +278,7 @@ impl<S> Default for PrivilegeHostPort<S> {
 }
 
 impl<S: 'static> PrivilegeHostPort<S> {
-    pub(crate) fn emit(&self, state: &mut S, action: PrivilegeAction) {
+    pub fn emit(&self, state: &mut S, action: PrivilegeAction) {
         if let Some(on_action) = &self.on_action {
             on_action(state, action);
         }
@@ -288,7 +288,7 @@ impl<S: 'static> PrivilegeHostPort<S> {
 /// The view's state slice (React's `useState` values).
 #[allow(dead_code)] // view VM; consumer: the content-view host (not wired).
 #[derive(Clone, Debug)]
-pub(crate) struct PrivilegeVm {
+pub struct PrivilegeVm {
     pub db_session_id: String,
     pub database: Option<String>,
     pub grants: Vec<PrivilegeGrantVm>,
@@ -330,7 +330,7 @@ impl Default for PrivilegeVm {
 impl PrivilegeVm {
     /// React `uniqueGrantees` — sorted distinct grantees for the grant dialog.
     #[allow(dead_code)] // pure rule; pinned by the privilege tests.
-    pub(crate) fn unique_grantees(&self) -> Vec<String> {
+    pub fn unique_grantees(&self) -> Vec<String> {
         let mut users: Vec<String> = self.grants.iter().map(|g| g.grantee.clone()).collect();
         users.sort();
         users.dedup();

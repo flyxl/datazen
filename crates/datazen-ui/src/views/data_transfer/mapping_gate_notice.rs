@@ -54,14 +54,14 @@ use crate::views::data_transfer::{mapping_gate_block_reason, TransferTableVm};
 /// The gate notice. `visible` mirrors the React prop (the mapping step);
 /// `rows` are the mapping-step tables the reason is derived from;
 /// `gate_lost` is the prepare receipt's failure text (`''` = none).
-pub(crate) struct MappingGateNotice {
+pub struct MappingGateNotice {
     visible: bool,
     rows: Vec<TransferTableVm>,
     gate_lost: String,
 }
 
 impl MappingGateNotice {
-    pub(crate) fn new(visible: bool, rows: Vec<TransferTableVm>, gate_lost: String) -> Self {
+    pub fn new(visible: bool, rows: Vec<TransferTableVm>, gate_lost: String) -> Self {
         Self {
             visible,
             rows,
@@ -70,7 +70,7 @@ impl MappingGateNotice {
     }
 
     /// The notice, or nothing (`el()` = React's `null`).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         if !self.visible {
             return el();
         }

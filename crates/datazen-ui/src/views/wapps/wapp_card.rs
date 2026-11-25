@@ -60,7 +60,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant
 /// One installed wapp's card. `dark` carries the theme the hosting page built
 /// with; the card is a pure function of the wapp row (React's `renderCard`
 /// closes over nothing but the wapp).
-pub(crate) fn wapp_card(wapp: &WappSummaryVm, dark: bool) -> El {
+pub fn wapp_card(wapp: &WappSummaryVm, dark: bool) -> El {
     let k = kit(dark);
     let card_key = format!("extension-card-{}", wapp.id);
     let api_mismatch = wapp.api_version != WAPP_API_VERSION;

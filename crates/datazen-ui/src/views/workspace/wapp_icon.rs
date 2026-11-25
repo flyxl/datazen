@@ -68,13 +68,13 @@ use crate::ui::kit::kit;
 /// The host's picture wire: a built icon src (`datazen://…`) to a decoded or
 /// decoding [`Image`] from the host's cache, or `None` when the host has no
 /// picture for it. Kit markdown's `images` callback is the pattern.
-pub(crate) type WappIconImages = Rc<dyn Fn(&str) -> Option<Image>>;
+pub type WappIconImages = Rc<dyn Fn(&str) -> Option<Image>>;
 
 /// React's `useState(false)` plus the `useEffect` that resets it, kept in
 /// the owning state `S` (one per icon site the host shows).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-pub(crate) struct WappIconState {
+pub struct WappIconState {
     broken: bool,
     /// The effect dep: the last `icon` prop value this state synced to.
     last_icon: Option<String>,
@@ -86,7 +86,7 @@ impl WappIconState {
     /// value — including a change to or from `None` — recovers the picture.
     /// The same value again is a no-op, which is what keeps a failed load
     /// sticky in React.
-    pub(crate) fn sync_icon(&mut self, icon: Option<&str>) {
+    pub fn sync_icon(&mut self, icon: Option<&str>) {
         if self.last_icon.as_deref() != icon {
             self.last_icon = icon.map(str::to_owned);
             self.broken = false;
@@ -94,12 +94,12 @@ impl WappIconState {
     }
 
     /// The `<img onError={() => setBroken(true)}>` handler.
-    pub(crate) fn on_error(&mut self) {
+    pub fn on_error(&mut self) {
         self.broken = true;
     }
 
     /// Whether the site currently shows the fallback for a failed load.
-    pub(crate) fn is_broken(&self) -> bool {
+    pub fn is_broken(&self) -> bool {
         self.broken
     }
 }
@@ -109,7 +109,7 @@ impl WappIconState {
 /// and the resolver registry are `lib/wappAssetOrigin.ts`'s own port (not
 /// this segment); this seam re-points there when it lands.
 #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-pub(crate) fn build_icon_src(target_id: &str, icon: &str) -> String {
+pub fn build_icon_src(target_id: &str, icon: &str) -> String {
     format!("datazen://{}/{}", target_id, strip_leading_dot_slash(icon))
 }
 
@@ -117,7 +117,7 @@ pub(crate) fn build_icon_src(target_id: &str, icon: &str) -> String {
 /// `./`, not repeated ones. Shared with the page-entry src (T067's
 /// `wapp_page_shell.rs`): both are the desktop resolver's forms, so the two
 /// ports strip through this one function.
-pub(crate) fn strip_leading_dot_slash(path: &str) -> &str {
+pub fn strip_leading_dot_slash(path: &str) -> &str {
     path.strip_prefix("./").unwrap_or(path)
 }
 
@@ -125,7 +125,7 @@ pub(crate) fn strip_leading_dot_slash(path: &str) -> &str {
 /// React tests pin without a browser.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-pub(crate) enum WappIconKind {
+pub enum WappIconKind {
     /// The puzzle glyph: no icon contributed, or the load failed.
     Fallback,
     /// The picture element with the src it asks the host for.
@@ -134,7 +134,7 @@ pub(crate) enum WappIconKind {
 
 /// The `WappIcon` React props plus the Rune seams: the explicit size, the
 /// `broken` projection of [`WappIconState`] and the host's picture wire.
-pub(crate) struct WappIcon {
+pub struct WappIcon {
     key: String,
     /// React `wappId || ''` (empty string is falsy too, so both `None` and
     /// `""` collapse to the empty target id).
@@ -148,7 +148,7 @@ pub(crate) struct WappIcon {
 impl WappIcon {
     /// React `WappIconProps` (`wappId?`, `icon?`).
     #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-    pub(crate) fn new(wapp_id: Option<&str>, icon: Option<&str>) -> Self {
+    pub fn new(wapp_id: Option<&str>, icon: Option<&str>) -> Self {
         Self {
             key: "wapp-icon".to_owned(),
             target_id: wapp_id.filter(|id| !id.is_empty()).unwrap_or_default().to_owned(),
@@ -162,7 +162,7 @@ impl WappIcon {
     /// The element key prefix (default `"wapp-icon"`); sites that show
     /// several icons pass their own so the tree stays addressable.
     #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
@@ -170,21 +170,21 @@ impl WappIcon {
     /// The `className` size as points: `h-3.5 w-3.5` 14, `h-4 w-4` 16
     /// (default), `h-5 w-5` 20.
     #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-    pub(crate) fn size_pt(mut self, size_pt: f32) -> Self {
+    pub fn size_pt(mut self, size_pt: f32) -> Self {
         self.size_pt = size_pt;
         self
     }
 
     /// The `WappIconState::is_broken` projection of the owning state `S`.
     #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-    pub(crate) fn broken(mut self, broken: bool) -> Self {
+    pub fn broken(mut self, broken: bool) -> Self {
         self.broken = broken;
         self
     }
 
     /// The host's picture wire ([`WappIconImages`]).
     #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-    pub(crate) fn images(mut self, images: WappIconImages) -> Self {
+    pub fn images(mut self, images: WappIconImages) -> Self {
         self.images = Some(images);
         self
     }
@@ -193,7 +193,7 @@ impl WappIcon {
     /// any cache: `!icon || broken` is the fallback, else the picture with
     /// its src. (An empty-string icon is falsy in React, so it falls back.)
     #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-    pub(crate) fn kind(&self) -> WappIconKind {
+    pub fn kind(&self) -> WappIconKind {
         match self.icon.as_deref() {
             None => WappIconKind::Fallback,
             Some(_) if self.broken => WappIconKind::Fallback,
@@ -203,7 +203,7 @@ impl WappIcon {
 
     /// Build the icon at the given theme.
     #[allow(dead_code)] // reusable port; wired by the workspace wapp tracks
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         match self.kind() {
             WappIconKind::Fallback => self.puzzle(k),

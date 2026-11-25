@@ -28,7 +28,7 @@ use super::grant_state::AiGrantReceipt;
 // consumer: the AI chat panel's cancel wiring; delete this re-export (import
 // directly from session_cancel) when that panel lands.
 #[allow(dead_code)]
-pub(crate) use super::session_cancel::CancelReceipt;
+pub use super::session_cancel::CancelReceipt;
 
 /// `AiTargetClaim` — what a chat run is allowed to observe.
 ///
@@ -37,7 +37,7 @@ pub(crate) use super::session_cancel::CancelReceipt;
 /// grant id and the exact client/editor pair that claimed it.
 #[allow(dead_code)] // consumer: the AI chat panel's claimForSend; delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum AiTargetClaim {
+pub enum AiTargetClaim {
     Independent,
     EditorGrant {
         grant_id: String,
@@ -49,7 +49,7 @@ pub(crate) enum AiTargetClaim {
 impl AiTargetClaim {
     /// Exact React `kind` discriminant.
     #[allow(dead_code)] // consumer: the AI chat panel's IPC payload; delete then.
-    pub(crate) fn kind(&self) -> &'static str {
+    pub fn kind(&self) -> &'static str {
         match self {
             Self::Independent => "independent",
             Self::EditorGrant { .. } => "editorGrant",
@@ -61,28 +61,28 @@ impl AiTargetClaim {
 /// verbatim; never reconstructed from parts.
 #[allow(dead_code)] // consumer: ai_grant_editor_session request builder; delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiSessionHandle {
-    pub(crate) db_session_id: String,
-    pub(crate) runtime_epoch: String,
+pub struct AiSessionHandle {
+    pub db_session_id: String,
+    pub runtime_epoch: String,
 }
 
 /// Arguments for `ai_grant_editor_session` (camelCase in React; the host maps
 /// them to snake_case).
 #[allow(dead_code)] // consumer: ai_grant_editor_session request builder; delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiGrantRequest {
-    pub(crate) connection_id: String,
-    pub(crate) database: Option<String>,
-    pub(crate) editor_session_id: String,
-    pub(crate) claimed_client_instance_id: String,
-    pub(crate) session_handle: AiSessionHandle,
+pub struct AiGrantRequest {
+    pub connection_id: String,
+    pub database: Option<String>,
+    pub editor_session_id: String,
+    pub claimed_client_instance_id: String,
+    pub session_handle: AiSessionHandle,
 }
 
 /// Minimal attribution metadata retained for a run/message list. The claimed
 /// client instance id is deliberately **not** part of it.
 #[allow(dead_code)] // consumer: the AI run/message list projection; delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum AiRunAttribution {
+pub enum AiRunAttribution {
     Independent,
     EditorGrant {
         grant_id: String,
@@ -93,7 +93,7 @@ pub(crate) enum AiRunAttribution {
 impl AiRunAttribution {
     /// Exact React `kind` discriminant.
     #[allow(dead_code)] // consumer: the run/message list projection; delete then.
-    pub(crate) fn kind(&self) -> &'static str {
+    pub fn kind(&self) -> &'static str {
         match self {
             Self::Independent => "independent",
             Self::EditorGrant { .. } => "editorGrant",
@@ -103,14 +103,14 @@ impl AiRunAttribution {
 
 /// The default, unshared target: `{ kind: 'independent' }`.
 #[allow(dead_code)] // consumer: the AI chat panel's claimForSend; delete then.
-pub(crate) fn independent() -> AiTargetClaim {
+pub fn independent() -> AiTargetClaim {
     AiTargetClaim::Independent
 }
 
 /// Build a claim from an issued grant receipt. Only the receipt's `grantId` is
 /// copied, exactly like React's `Pick<AiGrantReceipt, 'grantId'>`.
 #[allow(dead_code)] // consumer: the AI chat panel's claimForSend; delete then.
-pub(crate) fn editor_grant(
+pub fn editor_grant(
     receipt: &AiGrantReceipt,
     claimed_client_instance_id: impl Into<String>,
     editor_session_id: impl Into<String>,
@@ -126,7 +126,7 @@ pub(crate) fn editor_grant(
 /// 'editorGrant'` is `false` for both `null` and `undefined`, so `None` fails
 /// closed here.
 #[allow(dead_code)] // consumer: the run attribution projection; delete then.
-pub(crate) fn is_editor_grant(claim: Option<&AiTargetClaim>) -> bool {
+pub fn is_editor_grant(claim: Option<&AiTargetClaim>) -> bool {
     claim.is_some_and(|claim| matches!(claim, AiTargetClaim::EditorGrant { .. }))
 }
 
@@ -135,7 +135,7 @@ pub(crate) fn is_editor_grant(claim: Option<&AiTargetClaim>) -> bool {
 /// (notably the claimed client instance id) is dropped, and any absent/other
 /// claim becomes `independent`.
 #[allow(dead_code)] // consumer: the AI run/message list projection; delete then.
-pub(crate) fn attribution_of(claim: Option<&AiTargetClaim>) -> AiRunAttribution {
+pub fn attribution_of(claim: Option<&AiTargetClaim>) -> AiRunAttribution {
     match claim {
         Some(AiTargetClaim::EditorGrant {
             grant_id,
@@ -152,7 +152,7 @@ pub(crate) fn attribution_of(claim: Option<&AiTargetClaim>) -> AiRunAttribution 
 // segment 4's T086 inline suite: the wire contract against the real receipt
 // produced by grant_state; `impl Into<String>` above accepts its `&str` args.
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
     use crate::ai::grant_state::AiGrantReceipt;
 

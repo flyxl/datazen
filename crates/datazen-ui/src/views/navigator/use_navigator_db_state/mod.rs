@@ -30,7 +30,7 @@
 //! (a schema-tree file, formal task T604) is [`expanded_cache_refresh`],
 //! invoked from [`NavigatorDbState::cache_refresh_pass`].
 
-pub(crate) mod expanded_cache_refresh;
+pub mod expanded_cache_refresh;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -43,7 +43,7 @@ use expanded_cache_refresh::cache_refresh_pass;
 
 /// React `LoadForConnectionOptions`, the read set the navigator passes.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct LoadForConnectionOpts {
+pub struct LoadForConnectionOpts {
     pub preferred_database: Option<String>,
     pub skip_load_tables: bool,
     pub database_type: String,
@@ -53,7 +53,7 @@ pub(crate) struct LoadForConnectionOpts {
 
 /// Every side effect the db state machine can ask the host for.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum DbEffect {
+pub enum DbEffect {
     /// `databaseCommands.listTables(dbSessionId, dbName, null, owner)`.
     ListTables {
         db_session_id: String,
@@ -92,7 +92,7 @@ pub(crate) enum DbEffect {
 }
 
 /// The snapshot the refresh ladder reads.
-pub(crate) struct DbStateInputs<'a> {
+pub struct DbStateInputs<'a> {
     pub active_connections: &'a HashMap<String, ActiveEntrySnapshot>,
     pub connections: &'a [ConnectionSnapshot],
     pub expanded_dbs: &'a HashSet<String>,
@@ -106,7 +106,7 @@ pub(crate) struct DbStateInputs<'a> {
 /// to, matched by prefix against the known databases *and* the expanded db
 /// keys of the connection. Longest name wins, so `db` does not swallow
 /// `db_extra`.
-pub(crate) fn database_name_for_category(
+pub fn database_name_for_category(
     connection_id: &str,
     cat_key: &str,
     expanded_dbs: &HashSet<String>,
@@ -127,7 +127,7 @@ pub(crate) fn database_name_for_category(
 
 /// The db caches and the operations over them.
 #[derive(Default)]
-pub(crate) struct NavigatorDbState {
+pub struct NavigatorDbState {
     /// The expanded-cache-refresh watch's `prevFpRef` (T604's file; the
     /// watch runs through [`Self::cache_refresh_pass`]).
     fingerprints: HashMap<String, String>,
@@ -150,39 +150,39 @@ impl NavigatorDbState {
     // cache reads (the row builder's inputs)
     // -----------------------------------------------------------------
 
-    pub(crate) fn db_tables_map(&self) -> &BTreeMap<String, Vec<TableInfo>> {
+    pub fn db_tables_map(&self) -> &BTreeMap<String, Vec<TableInfo>> {
         &self.db_tables_map
     }
 
-    pub(crate) fn db_errors(&self) -> &BTreeMap<String, String> {
+    pub fn db_errors(&self) -> &BTreeMap<String, String> {
         &self.db_errors
     }
 
-    pub(crate) fn db_objects_map(&self) -> &BTreeMap<String, Vec<DatabaseObject>> {
+    pub fn db_objects_map(&self) -> &BTreeMap<String, Vec<DatabaseObject>> {
         &self.db_objects_map
     }
 
-    pub(crate) fn loading_dbs(&self) -> &HashSet<String> {
+    pub fn loading_dbs(&self) -> &HashSet<String> {
         &self.loading_dbs
     }
 
-    pub(crate) fn open_dbs(&self) -> &HashMap<String, HashSet<String>> {
+    pub fn open_dbs(&self) -> &HashMap<String, HashSet<String>> {
         &self.open_dbs
     }
 
-    pub(crate) fn tables_of(&self, db_session_id: &str, db_name: &str) -> Option<&Vec<TableInfo>> {
+    pub fn tables_of(&self, db_session_id: &str, db_name: &str) -> Option<&Vec<TableInfo>> {
         self.db_tables_map.get(&table_key(db_session_id, db_name))
     }
 
     /// The raw setter the table menu's refresh-after-mutation uses
     /// (React exposes `setDbTablesMap`).
-    pub(crate) fn set_tables(&mut self, db_session_id: &str, db_name: &str, tables: Vec<TableInfo>) {
+    pub fn set_tables(&mut self, db_session_id: &str, db_name: &str, tables: Vec<TableInfo>) {
         self.db_tables_map.insert(table_key(db_session_id, db_name), tables);
     }
 
     /// Drop one relation's row from the cached table list (the menu's
     /// `refreshAfterMutation` filter). Returns whether anything changed.
-    pub(crate) fn drop_relation_row(
+    pub fn drop_relation_row(
         &mut self,
         db_session_id: &str,
         db_name: &str,
@@ -205,13 +205,13 @@ impl NavigatorDbState {
 
     /// React `refreshOpenDatabases` — reading a database is what opens its
     /// pool, so the marker is refreshed after reads, not only on demand.
-    pub(crate) fn refresh_open_databases(&self, db_session_id: &str) -> Vec<DbEffect> {
+    pub fn refresh_open_databases(&self, db_session_id: &str) -> Vec<DbEffect> {
         vec![DbEffect::GetOpenDatabases { db_session_id: db_session_id.to_owned() }]
     }
 
     /// Apply the marker read: a session gone (or not connected) drops its
     /// entry, so a stale marker cannot outlive the pool it described.
-    pub(crate) fn apply_open_databases(
+    pub fn apply_open_databases(
         &mut self,
         db_session_id: &str,
         open: Result<Vec<String>, String>,
@@ -234,7 +234,7 @@ impl NavigatorDbState {
     /// React `reloadDbTables` — the one table read everything funnels
     /// through. The owner lookup (which connection this session belongs to)
     /// is the host's live-map read, passed in.
-    pub(crate) fn reload_db_tables(
+    pub fn reload_db_tables(
         &self,
         db_session_id: &str,
         db_name: &str,
@@ -251,7 +251,7 @@ impl NavigatorDbState {
     /// into the session **without** pinning (background fills are neutral),
     /// and refresh the open-databases marker — the read is what opens the
     /// pool. Also clears a toggle's loading mark (React's `finally`).
-    pub(crate) fn apply_list_tables_ok(
+    pub fn apply_list_tables_ok(
         &mut self,
         db_session_id: &str,
         db_name: &str,
@@ -277,7 +277,7 @@ impl NavigatorDbState {
     /// error where the sidebar can show it. The previous list (if any)
     /// stays — a cached list beats a failed refresh. Also clears a toggle's
     /// loading mark.
-    pub(crate) fn apply_list_tables_err(
+    pub fn apply_list_tables_err(
         &mut self,
         db_session_id: &str,
         db_name: &str,
@@ -304,7 +304,7 @@ impl NavigatorDbState {
     /// one. Cache hit: publish the cached catalog (pinned). Miss: the
     /// pointer still has to move, but only for a database the session
     /// actually knows — `setCurrentDatabase` validates.
-    pub(crate) fn activate_database(
+    pub fn activate_database(
         &self,
         db_session_id: &str,
         db_name: &str,
@@ -331,7 +331,7 @@ impl NavigatorDbState {
     /// releases its pool, so it must stop being marked open immediately;
     /// the tables, the error and the object caches for that database go
     /// with it, so the next expand re-fetches.
-    pub(crate) fn clear_db_local_cache(
+    pub fn clear_db_local_cache(
         &mut self,
         connection_id: &str,
         db_session_id: &str,
@@ -351,7 +351,7 @@ impl NavigatorDbState {
     /// every table entry of the session, and — when the connection id is
     /// known — every object entry of the connection (the two caches key by
     /// different owners).
-    pub(crate) fn clear_session_caches(
+    pub fn clear_session_caches(
         &mut self,
         db_session_id: &str,
         connection_id: Option<&str>,
@@ -371,7 +371,7 @@ impl NavigatorDbState {
 
     /// React `reloadDbObjectCategory` — tables and views live in the table
     /// cache, never here.
-    pub(crate) fn reload_db_object_category(
+    pub fn reload_db_object_category(
         &self,
         db_session_id: &str,
         cat_key: &str,
@@ -390,7 +390,7 @@ impl NavigatorDbState {
 
     /// Apply the object read. A failure caches an empty list (React's
     /// catch), so the category shows as empty rather than spinning forever.
-    pub(crate) fn apply_database_objects(
+    pub fn apply_database_objects(
         &mut self,
         cat_key: &str,
         objects: Result<Vec<DatabaseObject>, String>,
@@ -400,7 +400,7 @@ impl NavigatorDbState {
     }
 
     /// React `toggleCategoryLoad` — expanding a category loads it once.
-    pub(crate) fn toggle_category_load(
+    pub fn toggle_category_load(
         &self,
         db_session_id: &str,
         cat_key: &str,
@@ -422,7 +422,7 @@ impl NavigatorDbState {
 
     /// React `reloadExpandedObjectCategories` — every expanded non-table
     /// category of the connection, its database resolved from the key.
-    pub(crate) fn reload_expanded_object_categories(
+    pub fn reload_expanded_object_categories(
         &self,
         inputs: &DbStateInputs<'_>,
         connection_id: &str,
@@ -461,7 +461,7 @@ impl NavigatorDbState {
     /// false`), then the open marker, then the path-hierarchy root for
     /// namespace drivers, then every expanded database of a multi-db
     /// connection, then the expanded object categories.
-    pub(crate) fn refresh_connection(
+    pub fn refresh_connection(
         &self,
         inputs: &DbStateInputs<'_>,
         connection_id: &str,
@@ -537,7 +537,7 @@ impl NavigatorDbState {
 
     /// React `refreshAllConnections` — the fan-out; every connected entry,
     /// each a full `refresh_connection`.
-    pub(crate) fn refresh_all_connections(&self, inputs: &DbStateInputs<'_>) -> Vec<DbEffect> {
+    pub fn refresh_all_connections(&self, inputs: &DbStateInputs<'_>) -> Vec<DbEffect> {
         let mut effects = Vec::new();
         for connection_id in inputs.active_connections.keys() {
             effects.extend(self.refresh_connection(inputs, connection_id));
@@ -550,7 +550,7 @@ impl NavigatorDbState {
     /// database preferred (still `activate: false` — refreshing one
     /// connection's database must not re-focus that session). Then the
     /// database's expanded object categories.
-    pub(crate) fn refresh_database(
+    pub fn refresh_database(
         &self,
         inputs: &DbStateInputs<'_>,
         connection_id: &str,
@@ -609,7 +609,7 @@ impl NavigatorDbState {
 
     /// React `refreshSchema` — the tables of the database, then the
     /// schema's expanded object categories.
-    pub(crate) fn refresh_schema(
+    pub fn refresh_schema(
         &self,
         inputs: &DbStateInputs<'_>,
         connection_id: &str,
@@ -648,7 +648,7 @@ impl NavigatorDbState {
     /// even on cache hits, in-flight fetches, and before the IPC resolves.
     /// A cache hit publishes the cached catalog into the session; a miss
     /// marks the load and reads.
-    pub(crate) fn toggle_db(
+    pub fn toggle_db(
         &mut self,
         db_session_id: &str,
         db_name: &str,
@@ -683,7 +683,7 @@ impl NavigatorDbState {
     /// The cache-refresh watch's fingerprint swap: store `next`, return
     /// what was there (React's `prev = prevFpRef.current;
     /// prevFpRef.current = nextFp`).
-    pub(crate) fn take_fingerprints(
+    pub fn take_fingerprints(
         &mut self,
         next: HashMap<String, String>,
     ) -> HashMap<String, String> {
@@ -693,7 +693,7 @@ impl NavigatorDbState {
     /// The `useExpandedDbCacheRefresh` watch, mounted: one synchronous
     /// invalidate-then-schedule pass over the schema store's fingerprints
     /// (see [`expanded_cache_refresh`] for the semantics).
-    pub(crate) fn cache_refresh_pass(
+    pub fn cache_refresh_pass(
         &mut self,
         inputs: &DbStateInputs<'_>,
     ) -> Vec<DbEffect> {

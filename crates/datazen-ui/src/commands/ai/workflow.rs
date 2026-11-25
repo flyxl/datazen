@@ -16,20 +16,20 @@ use serde_json::{Value, json};
 
 /// React `SubmissionToken` (the `saveUserAsset` mint).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct AiSubmissionTokenVm {
+pub struct AiSubmissionTokenVm {
     #[serde(rename = "idempotencyKey")]
-    pub(crate) idempotency_key: String,
+    pub idempotency_key: String,
     #[serde(rename = "expiresAt")]
-    pub(crate) expires_at: String,
+    pub expires_at: String,
 }
 
 /// The submission intent every workflow token mint uses
 /// (`issueSubmissionToken('saveUserAsset', null)`).
-pub(crate) const USER_ASSET_TOKEN_INTENT: &str = "saveUserAsset";
+pub const USER_ASSET_TOKEN_INTENT: &str = "saveUserAsset";
 
 /// `transport.call(name, { …request, submissionToken })` — the token merge
 /// the domain client performs for the three body-carrying write faces.
-pub(crate) fn with_submission_token(
+pub fn with_submission_token(
     mut request: serde_json::Value,
     token: &AiSubmissionTokenVm,
 ) -> serde_json::Value {
@@ -45,7 +45,7 @@ pub(crate) fn with_submission_token(
 /// The Workflow `MethodMap` slice — one variant per domain method;
 /// `wire_name` is the transport call name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WorkflowMethod {
+pub enum WorkflowMethod {
     ListWorkflows,
     GetWorkflow,
     GetWorkflowYaml,
@@ -61,7 +61,7 @@ pub(crate) enum WorkflowMethod {
 
 impl WorkflowMethod {
     /// The transport call name (`transport.call(name, payload)`).
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::ListWorkflows => "listWorkflows",
             Self::GetWorkflow => "getWorkflow",
@@ -79,23 +79,23 @@ impl WorkflowMethod {
 }
 
 /// `workflowList()` → `listWorkflows` `{}`.
-pub(crate) fn workflow_list_request() -> (WorkflowMethod, Value) {
+pub fn workflow_list_request() -> (WorkflowMethod, Value) {
     (WorkflowMethod::ListWorkflows, json!({}))
 }
 
 /// `workflowGet(workflowId)` → `getWorkflow` `{ workflowId }`.
-pub(crate) fn workflow_get_request(workflow_id: &str) -> (WorkflowMethod, Value) {
+pub fn workflow_get_request(workflow_id: &str) -> (WorkflowMethod, Value) {
     (WorkflowMethod::GetWorkflow, json!({ "workflowId": workflow_id }))
 }
 
 /// `workflowGetYaml(workflowId)` → `getWorkflowYaml` `{ workflowId }`.
-pub(crate) fn workflow_get_yaml_request(workflow_id: &str) -> (WorkflowMethod, Value) {
+pub fn workflow_get_yaml_request(workflow_id: &str) -> (WorkflowMethod, Value) {
     (WorkflowMethod::GetWorkflowYaml, json!({ "workflowId": workflow_id }))
 }
 
 /// `workflowSave(workflow)` → `saveWorkflow` with the `{ workflow }` bag
 /// (the draft-bridge merge already applied by the caller) plus the token.
-pub(crate) fn save_workflow_request(
+pub fn save_workflow_request(
     workflow: &Value,
     token: &AiSubmissionTokenVm,
 ) -> (WorkflowMethod, Value) {
@@ -106,7 +106,7 @@ pub(crate) fn save_workflow_request(
 }
 
 /// `workflowSaveYaml(yaml)` → `saveWorkflowYaml` `{ yaml }` plus the token.
-pub(crate) fn save_workflow_yaml_request(
+pub fn save_workflow_yaml_request(
     yaml: &str,
     token: &AiSubmissionTokenVm,
 ) -> (WorkflowMethod, Value) {
@@ -118,22 +118,22 @@ pub(crate) fn save_workflow_yaml_request(
 
 /// `workflowDelete(workflowId)` → `deleteWorkflow` (bodyless DELETE face,
 /// no token).
-pub(crate) fn workflow_delete_request(workflow_id: &str) -> (WorkflowMethod, Value) {
+pub fn workflow_delete_request(workflow_id: &str) -> (WorkflowMethod, Value) {
     (WorkflowMethod::DeleteWorkflow, json!({ "workflowId": workflow_id }))
 }
 
 /// `workflowExecute`'s param bag.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub(crate) struct WorkflowExecuteParams {
+pub struct WorkflowExecuteParams {
     #[serde(rename = "workflowId")]
-    pub(crate) workflow_id: String,
-    pub(crate) variables: Value,
+    pub workflow_id: String,
+    pub variables: Value,
     #[serde(rename = "connectionId", skip_serializing_if = "Option::is_none")]
-    pub(crate) connection_id: Option<String>,
+    pub connection_id: Option<String>,
 }
 
 /// `workflowExecute(params)` → `executeWorkflow` plus the token.
-pub(crate) fn workflow_execute_request(
+pub fn workflow_execute_request(
     params: &WorkflowExecuteParams,
     token: &AiSubmissionTokenVm,
 ) -> (WorkflowMethod, Value) {
@@ -144,14 +144,14 @@ pub(crate) fn workflow_execute_request(
 }
 
 /// `workflowReload()` → `reloadWorkflows` `{}`.
-pub(crate) fn workflow_reload_request() -> (WorkflowMethod, Value) {
+pub fn workflow_reload_request() -> (WorkflowMethod, Value) {
     (WorkflowMethod::ReloadWorkflows, json!({}))
 }
 
 /// `workflowHistoryList(workflowId?)` → `listWorkflowRuns`; an absent id
 /// means the whole recorded history (the `{}` call, exactly React's
 /// `workflowId == null ? {} : { workflowId }`).
-pub(crate) fn workflow_history_list_request(workflow_id: Option<&str>) -> (WorkflowMethod, Value) {
+pub fn workflow_history_list_request(workflow_id: Option<&str>) -> (WorkflowMethod, Value) {
     match workflow_id {
         Some(id) => (WorkflowMethod::ListWorkflowRuns, json!({ "workflowId": id })),
         None => (WorkflowMethod::ListWorkflowRuns, json!({})),
@@ -159,13 +159,13 @@ pub(crate) fn workflow_history_list_request(workflow_id: Option<&str>) -> (Workf
 }
 
 /// `workflowHistoryGet(historyId)` → `getWorkflowRun` `{ historyId }`.
-pub(crate) fn workflow_history_get_request(history_id: &str) -> (WorkflowMethod, Value) {
+pub fn workflow_history_get_request(history_id: &str) -> (WorkflowMethod, Value) {
     (WorkflowMethod::GetWorkflowRun, json!({ "historyId": history_id }))
 }
 
 /// `workflowHistoryClear(workflowId?)` → `clearWorkflowRuns` (bodyless
 /// DELETE face, no token; absent id = the whole history).
-pub(crate) fn workflow_history_clear_request(workflow_id: Option<&str>) -> (WorkflowMethod, Value) {
+pub fn workflow_history_clear_request(workflow_id: Option<&str>) -> (WorkflowMethod, Value) {
     match workflow_id {
         Some(id) => (WorkflowMethod::ClearWorkflowRuns, json!({ "workflowId": id })),
         None => (WorkflowMethod::ClearWorkflowRuns, json!({})),
@@ -175,6 +175,6 @@ pub(crate) fn workflow_history_clear_request(workflow_id: Option<&str>) -> (Work
 /// `workflowGetDir()` → the desktop-only `workflow_get_dir` legacy command
 /// (filesystem semantics; deliberately not a domain-client method — the
 /// web form reports the gap as `CapabilityUnsupported`).
-pub(crate) fn workflow_get_dir_request() -> super::wire::AiRequest {
+pub fn workflow_get_dir_request() -> super::wire::AiRequest {
     super::wire::AiRequest::native("workflow_get_dir", json!({}))
 }

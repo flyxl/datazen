@@ -36,7 +36,7 @@ use super::editor_session_controller::{ExecutionTarget, NamespaceTarget, OwnerRe
 /// Errors from the root's fail-loud paths.
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum RootError {
+pub enum RootError {
     /// §7.4: an unbound backend at a data-plane call site is a wiring gap.
     BackendUnbound,
     /// The host issued an empty client identity.
@@ -45,7 +45,7 @@ pub(crate) enum RootError {
 
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
 impl RootError {
-    pub(crate) fn message(&self) -> &'static str {
+    pub fn message(&self) -> &'static str {
         match self {
             Self::BackendUnbound => "Backend client is not bound",
             Self::MissingClientIdentity => "Missing client identity",
@@ -57,14 +57,14 @@ impl RootError {
 /// call counter lets a test pin React's "host identity fetched once" rule.
 #[allow(dead_code)] // host binding; remove when the app assembly lands.
 #[derive(Clone, Debug)]
-pub(crate) struct BackendClientStub {
-    pub(crate) client_instance_id: String,
+pub struct BackendClientStub {
+    pub client_instance_id: String,
     identity_calls: Rc<RefCell<usize>>,
 }
 
 #[allow(dead_code)] // host binding; remove when the app assembly lands.
 impl BackendClientStub {
-    pub(crate) fn new(client_instance_id: impl Into<String>) -> Self {
+    pub fn new(client_instance_id: impl Into<String>) -> Self {
         Self {
             client_instance_id: client_instance_id.into(),
             identity_calls: Rc::new(RefCell::new(0)),
@@ -72,7 +72,7 @@ impl BackendClientStub {
     }
 
     /// `queryPanelSessionClient().getPlatformIdentity()` — empty ids fail loud.
-    pub(crate) fn get_platform_identity(&self) -> Result<String, RootError> {
+    pub fn get_platform_identity(&self) -> Result<String, RootError> {
         *self.identity_calls.borrow_mut() += 1;
         if self.client_instance_id.is_empty() {
             return Err(RootError::MissingClientIdentity);
@@ -80,7 +80,7 @@ impl BackendClientStub {
         Ok(self.client_instance_id.clone())
     }
 
-    pub(crate) fn identity_calls(&self) -> usize {
+    pub fn identity_calls(&self) -> usize {
         *self.identity_calls.borrow()
     }
 }
@@ -91,7 +91,7 @@ impl BackendClientStub {
 // Remove when T183 lands here; use its registry instead.
 #[allow(dead_code)]
 #[derive(Debug)]
-pub(crate) struct QueryPanelSessionRegistry {
+pub struct QueryPanelSessionRegistry {
     identity_calls: Rc<RefCell<usize>>,
 }
 
@@ -103,7 +103,7 @@ impl QueryPanelSessionRegistry {
         }
     }
 
-    pub(crate) fn shares_client(&self, client: &BackendClientStub) -> bool {
+    pub fn shares_client(&self, client: &BackendClientStub) -> bool {
         Rc::ptr_eq(&self.identity_calls, &client.identity_calls)
     }
 }
@@ -112,7 +112,7 @@ impl QueryPanelSessionRegistry {
 /// identity result.
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
 #[derive(Debug)]
-pub(crate) struct QueryPanelSessionRoot {
+pub struct QueryPanelSessionRoot {
     client: Option<BackendClientStub>,
     registry: Option<Rc<RefCell<QueryPanelSessionRegistry>>>,
     client_instance_id: Option<Result<String, RootError>>,
@@ -120,7 +120,7 @@ pub(crate) struct QueryPanelSessionRoot {
 
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
 impl QueryPanelSessionRoot {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             client: None,
             registry: None,
@@ -130,12 +130,12 @@ impl QueryPanelSessionRoot {
 
     /// The app assembly's eager `requireBackendClient()` binding, before first
     /// paint. Only bookkeeping is construction-safe until this happens.
-    pub(crate) fn bind_client(&mut self, client: BackendClientStub) {
+    pub fn bind_client(&mut self, client: BackendClientStub) {
         self.client = Some(client);
     }
 
     /// `queryPanelSessionClient()` — fail loud when unbound.
-    pub(crate) fn query_panel_session_client(&self) -> Result<BackendClientStub, RootError> {
+    pub fn query_panel_session_client(&self) -> Result<BackendClientStub, RootError> {
         self.client
             .clone()
             .ok_or(RootError::BackendUnbound)
@@ -143,7 +143,7 @@ impl QueryPanelSessionRoot {
 
     /// `getQueryPanelSessionRegistry()` — one registry per root, created on
     /// first lookup and shared by every pane after that.
-    pub(crate) fn get_query_panel_session_registry(
+    pub fn get_query_panel_session_registry(
         &mut self,
     ) -> Result<Rc<RefCell<QueryPanelSessionRegistry>>, RootError> {
         if self.registry.is_none() {
@@ -161,7 +161,7 @@ impl QueryPanelSessionRoot {
 
     /// `queryPanelClientInstanceId()` — the identity result is cached once,
     /// failure included, exactly like React's cached promise.
-    pub(crate) fn query_panel_client_instance_id(&mut self) -> Result<String, RootError> {
+    pub fn query_panel_client_instance_id(&mut self) -> Result<String, RootError> {
         if self.client_instance_id.is_none() {
             let client = self.query_panel_session_client()?;
             self.client_instance_id = Some(client.get_platform_identity());
@@ -174,7 +174,7 @@ impl QueryPanelSessionRoot {
 
     /// `editorOwnerForPane(paneKey)` — the pane key is the editor's stable local
     /// owner id, so a duplicated tab (new pane key) gets a distinct owner.
-    pub(crate) fn editor_owner_for_pane(&mut self, pane_key: &str) -> Result<OwnerRef, RootError> {
+    pub fn editor_owner_for_pane(&mut self, pane_key: &str) -> Result<OwnerRef, RootError> {
         let client_instance_id = self.query_panel_client_instance_id()?;
         // React's `toId` is an identity cast on a non-empty string, already
         // guaranteed for the client id by the check above; pane keys are passed
@@ -187,7 +187,7 @@ impl QueryPanelSessionRoot {
 
     /// `queryPanelExecutionTarget` — a pure projection with a normalized
     /// namespace (`?? null` for both database and schema).
-    pub(crate) fn query_panel_execution_target(
+    pub fn query_panel_execution_target(
         connection_id: &str,
         database: Option<&str>,
         schema: Option<&str>,
@@ -206,7 +206,7 @@ impl QueryPanelSessionRoot {
 
     /// Host teardown: drops the cached identity and registry. React only gets
     /// this via a fresh module graph; a long-lived Rune host needs it explicit.
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.client = None;
         self.registry = None;
         self.client_instance_id = None;
@@ -220,38 +220,38 @@ thread_local! {
 
 /// `getQueryPanelSessionRegistry()` on the ambient root.
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
-pub(crate) fn get_query_panel_session_registry(
+pub fn get_query_panel_session_registry(
 ) -> Result<Rc<RefCell<QueryPanelSessionRegistry>>, RootError> {
     SESSION_ROOT.with(|root| root.borrow_mut().get_query_panel_session_registry())
 }
 
 /// `queryPanelClientInstanceId()` on the ambient root.
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
-pub(crate) fn query_panel_client_instance_id() -> Result<String, RootError> {
+pub fn query_panel_client_instance_id() -> Result<String, RootError> {
     SESSION_ROOT.with(|root| root.borrow_mut().query_panel_client_instance_id())
 }
 
 /// `editorOwnerForPane(paneKey)` on the ambient root.
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
-pub(crate) fn editor_owner_for_pane(pane_key: &str) -> Result<OwnerRef, RootError> {
+pub fn editor_owner_for_pane(pane_key: &str) -> Result<OwnerRef, RootError> {
     SESSION_ROOT.with(|root| root.borrow_mut().editor_owner_for_pane(pane_key))
 }
 
 /// Bind the ambient root's backend, mirroring the app assembly.
 #[allow(dead_code)] // consumer: the app assembly; remove when it lands.
-pub(crate) fn bind_session_client(client: BackendClientStub) {
+pub fn bind_session_client(client: BackendClientStub) {
     SESSION_ROOT.with(|root| root.borrow_mut().bind_client(client));
 }
 
 /// Tear down the ambient root (test/module-reload equivalent).
 #[allow(dead_code)] // consumer: host teardown/tests; remove when a view owns the root.
-pub(crate) fn reset_query_panel_session_root() {
+pub fn reset_query_panel_session_root() {
     SESSION_ROOT.with(|root| root.borrow_mut().reset());
 }
 
 /// `queryPanelExecutionTarget` is pure and needs no root.
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
-pub(crate) fn query_panel_execution_target(
+pub fn query_panel_execution_target(
     connection_id: &str,
     database: Option<&str>,
     schema: Option<&str>,

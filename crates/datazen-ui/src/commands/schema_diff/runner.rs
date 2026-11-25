@@ -23,7 +23,7 @@ use crate::views::schema_diff::schema_diff_object_identity::SchemaDiffObjectIden
 /// The `MethodMap` slice (`SchemaDiffMethodMap`) — one variant per domain
 /// method; `wire_name` is the transport call name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SchemaDiffMethod {
+pub enum SchemaDiffMethod {
     ListProfiles,
     SaveProfile,
     DeleteProfile,
@@ -39,7 +39,7 @@ pub(crate) enum SchemaDiffMethod {
 
 impl SchemaDiffMethod {
     /// The transport call name (`transport.call(name, payload)`).
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::ListProfiles => "listSchemaDiffProfiles",
             Self::SaveProfile => "saveSchemaDiffProfile",
@@ -61,17 +61,17 @@ impl SchemaDiffMethod {
 /// (`issueSubmissionToken('saveUserAsset', null)`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SchemaDiffSubmissionTokenVm {
-    pub(crate) idempotency_key: String,
-    pub(crate) expires_at: String,
+pub struct SchemaDiffSubmissionTokenVm {
+    pub idempotency_key: String,
+    pub expires_at: String,
 }
 
 /// The submission intent every schema-diff token mint uses.
-pub(crate) const USER_ASSET_TOKEN_INTENT: &str = "saveUserAsset";
+pub const USER_ASSET_TOKEN_INTENT: &str = "saveUserAsset";
 
 /// `transport.call(name, { …request, submissionToken })` — the token merge
 /// the domain client performs.
-pub(crate) fn with_submission_token(
+pub fn with_submission_token(
     mut request: serde_json::Value,
     token: &SchemaDiffSubmissionTokenVm,
 ) -> serde_json::Value {
@@ -87,12 +87,12 @@ pub(crate) fn with_submission_token(
 // ---- the single-shot payload shapers -----------------------------------------
 
 /// `getProfiles` → `listSchemaDiffProfiles`, empty payload.
-pub(crate) fn get_profiles_request() -> serde_json::Value {
+pub fn get_profiles_request() -> serde_json::Value {
     json!({})
 }
 
 /// `saveProfile` → `saveSchemaDiffProfile`, `{ profile }`.
-pub(crate) fn save_profile_request(profile: &super::wire::SchemaDiffProfileVm) -> serde_json::Value {
+pub fn save_profile_request(profile: &super::wire::SchemaDiffProfileVm) -> serde_json::Value {
     match serde_json::to_value(profile) {
         Ok(value) => json!({ "profile": value }),
         Err(_) => json!({ "profile": serde_json::Value::Null }),
@@ -100,13 +100,13 @@ pub(crate) fn save_profile_request(profile: &super::wire::SchemaDiffProfileVm) -
 }
 
 /// `deleteProfile` → `deleteSchemaDiffProfile`, `{ profileId }`.
-pub(crate) fn delete_profile_request(profile_id: &str) -> serde_json::Value {
+pub fn delete_profile_request(profile_id: &str) -> serde_json::Value {
     json!({ "profileId": profile_id })
 }
 
 /// `compareTableSchemas`: endpoint-specific table names; the schemas ride
 /// the wire ALWAYS (`sourceSchema ?? null`), null when absent.
-pub(crate) fn compare_table_schemas_request(
+pub fn compare_table_schemas_request(
     source_db_session_id: &str,
     target_db_session_id: &str,
     source_table_name: &str,
@@ -125,23 +125,23 @@ pub(crate) fn compare_table_schemas_request(
 }
 
 /// `getJobDetails` → `getSchemaDiffJobDetails`, `{ jobId }`.
-pub(crate) fn get_job_details_request(job_id: &str) -> serde_json::Value {
+pub fn get_job_details_request(job_id: &str) -> serde_json::Value {
     json!({ "jobId": job_id })
 }
 
 /// `listJobs` → `listSchemaDiffJobs`, `{ states: null, limit: 100 }`.
-pub(crate) fn list_jobs_request() -> serde_json::Value {
+pub fn list_jobs_request() -> serde_json::Value {
     json!({ "states": null, "limit": 100 })
 }
 
 /// `cancelDeploy` → `cancelSchemaDiffDeploy`, `{ jobId }` (+token).
-pub(crate) fn cancel_deploy_request(job_id: &str) -> serde_json::Value {
+pub fn cancel_deploy_request(job_id: &str) -> serde_json::Value {
     json!({ "jobId": job_id })
 }
 
 /// `verifyRecovery` → `verifySchemaDiffJobRecovery`,
 /// `{ jobId, targetDbSessionId }` (+token).
-pub(crate) fn verify_recovery_request(job_id: &str, target_db_session_id: &str) -> serde_json::Value {
+pub fn verify_recovery_request(job_id: &str, target_db_session_id: &str) -> serde_json::Value {
     json!({ "jobId": job_id, "targetDbSessionId": target_db_session_id })
 }
 
@@ -149,24 +149,24 @@ pub(crate) fn verify_recovery_request(job_id: &str, target_db_session_id: &str) 
 
 /// `schemaDiffCommands.preparePlan`'s params.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct PreparePlanParamsVm {
-    pub(crate) source_db_session_id: String,
-    pub(crate) target_db_session_id: String,
-    pub(crate) table_names: Vec<String>,
-    pub(crate) target_table_names: Option<Vec<String>>,
-    pub(crate) target_only_table_names: Option<Vec<String>>,
-    pub(crate) source_schema: Option<String>,
-    pub(crate) target_schema: Option<String>,
-    pub(crate) allow_destructive: bool,
-    pub(crate) include_indexes: Option<bool>,
-    pub(crate) type_overrides: Option<Vec<ColumnTypeOverrideVm>>,
+pub struct PreparePlanParamsVm {
+    pub source_db_session_id: String,
+    pub target_db_session_id: String,
+    pub table_names: Vec<String>,
+    pub target_table_names: Option<Vec<String>>,
+    pub target_only_table_names: Option<Vec<String>>,
+    pub source_schema: Option<String>,
+    pub target_schema: Option<String>,
+    pub allow_destructive: bool,
+    pub include_indexes: Option<bool>,
+    pub type_overrides: Option<Vec<ColumnTypeOverrideVm>>,
 }
 
 /// `SchemaDiffPreparePlanRequest` on the wire. `targetOnlyTableNames` is
 /// spread ONLY when non-empty (React's conditional spread in
 /// `schemaDiffCommands.preparePlan`); the other optionals ride when
 /// present (`JSON.stringify` drops `undefined`).
-pub(crate) fn prepare_plan_request(params: &PreparePlanParamsVm) -> serde_json::Value {
+pub fn prepare_plan_request(params: &PreparePlanParamsVm) -> serde_json::Value {
     let mut request = json!({
         "sourceDbSessionId": params.source_db_session_id,
         "targetDbSessionId": params.target_db_session_id,
@@ -207,19 +207,19 @@ pub(crate) fn prepare_plan_request(params: &PreparePlanParamsVm) -> serde_json::
 /// `schemaDiffCommands.prepareUnifiedPlan`'s params — the table plan plus
 /// the explicit object identities.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct PrepareUnifiedParamsVm {
-    pub(crate) source_db_session_id: String,
-    pub(crate) target_db_session_id: String,
-    pub(crate) table_names: Vec<String>,
-    pub(crate) target_table_names: Option<Vec<String>>,
-    pub(crate) target_only_table_names: Option<Vec<String>>,
-    pub(crate) source_schema: Option<String>,
-    pub(crate) target_schema: Option<String>,
-    pub(crate) allow_destructive: bool,
-    pub(crate) include_indexes: Option<bool>,
-    pub(crate) type_overrides: Option<Vec<ColumnTypeOverrideVm>>,
-    pub(crate) source_objects: Vec<SchemaDiffObjectIdentityVm>,
-    pub(crate) target_objects: Vec<SchemaDiffObjectIdentityVm>,
+pub struct PrepareUnifiedParamsVm {
+    pub source_db_session_id: String,
+    pub target_db_session_id: String,
+    pub table_names: Vec<String>,
+    pub target_table_names: Option<Vec<String>>,
+    pub target_only_table_names: Option<Vec<String>>,
+    pub source_schema: Option<String>,
+    pub target_schema: Option<String>,
+    pub allow_destructive: bool,
+    pub include_indexes: Option<bool>,
+    pub type_overrides: Option<Vec<ColumnTypeOverrideVm>>,
+    pub source_objects: Vec<SchemaDiffObjectIdentityVm>,
+    pub target_objects: Vec<SchemaDiffObjectIdentityVm>,
 }
 
 /// React's `exactIdentity`: the six fields with the optionals
@@ -240,7 +240,7 @@ fn exact_identity(object: &SchemaDiffObjectIdentityVm) -> serde_json::Value {
 /// `targetOnlyTableNames` rides whenever present (React passes
 /// `params.targetOnlyTableNames` through unconditionally — an empty array
 /// stays an empty array); the identities are `exactIdentity`-mapped.
-pub(crate) fn prepare_unified_plan_request(params: &PrepareUnifiedParamsVm) -> serde_json::Value {
+pub fn prepare_unified_plan_request(params: &PrepareUnifiedParamsVm) -> serde_json::Value {
     let mut request = json!({
         "sourceDbSessionId": params.source_db_session_id,
         "targetDbSessionId": params.target_db_session_id,
@@ -286,9 +286,9 @@ pub(crate) fn prepare_unified_plan_request(params: &PrepareUnifiedParamsVm) -> s
 
 /// `schemaDiffCommands.executeDeploy`'s `profile` reference.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DeployProfileRefVm {
-    pub(crate) id: String,
-    pub(crate) revision: String,
+pub struct DeployProfileRefVm {
+    pub id: String,
+    pub revision: String,
 }
 
 /// `schemaDiffCommands.executeDeploy`'s params. `target_database` /
@@ -296,27 +296,27 @@ pub(crate) struct DeployProfileRefVm {
 /// (key absent), `Some(None)` is the explicit `null` the window sends
 /// (`endpoints.targetDatabase || null`), `Some(Some(_))` a value.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ExecuteDeployParamsVm {
-    pub(crate) target_db_session_id: String,
-    pub(crate) plan: Option<SchemaDiffPlanVm>,
-    pub(crate) use_transaction: Option<bool>,
-    pub(crate) require_rollback: Option<bool>,
-    pub(crate) confirm_destructive: Option<String>,
-    pub(crate) job_id: Option<String>,
-    pub(crate) target_database: Option<Option<String>>,
-    pub(crate) target_schema: Option<Option<String>>,
-    pub(crate) profile: Option<DeployProfileRefVm>,
+pub struct ExecuteDeployParamsVm {
+    pub target_db_session_id: String,
+    pub plan: Option<SchemaDiffPlanVm>,
+    pub use_transaction: Option<bool>,
+    pub require_rollback: Option<bool>,
+    pub confirm_destructive: Option<String>,
+    pub job_id: Option<String>,
+    pub target_database: Option<Option<String>>,
+    pub target_schema: Option<Option<String>>,
+    pub profile: Option<DeployProfileRefVm>,
     /// P5: the planId the apply job consumes (from a prepare envelope).
-    pub(crate) plan_id: Option<String>,
+    pub plan_id: Option<String>,
     /// P5: the review version (from a prepare envelope).
-    pub(crate) selection_revision: Option<i64>,
+    pub selection_revision: Option<i64>,
 }
 
 /// `SchemaDiffDeployRequest` on the wire: the base keys always, the plan
 /// body denormalized when present, and the conditional spreads for
 /// `profile` / `planId` / `selectionRevision` (`!= null`, so a
 /// `selectionRevision` of 0 still rides).
-pub(crate) fn execute_deploy_request(params: &ExecuteDeployParamsVm) -> serde_json::Value {
+pub fn execute_deploy_request(params: &ExecuteDeployParamsVm) -> serde_json::Value {
     let mut request = json!({
         "targetDbSessionId": params.target_db_session_id,
     });
@@ -361,11 +361,11 @@ pub(crate) fn execute_deploy_request(params: &ExecuteDeployParamsVm) -> serde_js
 // ---- the submit→poll→resolve machine -----------------------------------------
 
 /// React's poll cadence: `wait(400)` between `getJobDetails` calls.
-pub(crate) const SCHEMA_DIFF_POLL_INTERVAL_MS: i64 = 400;
+pub const SCHEMA_DIFF_POLL_INTERVAL_MS: i64 = 400;
 
 /// What the resolved run produced (`result.prepared` / `detail.deployResult`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum SchemaDiffJobRunOutcome {
+pub enum SchemaDiffJobRunOutcome {
     /// A prepare run's `result.prepared`.
     Prepared(SchemaDiffPrepareEnvelopeVm),
     /// An apply run's `detail.deployResult`.
@@ -375,7 +375,7 @@ pub(crate) enum SchemaDiffJobRunOutcome {
 /// What the host must run next — the await points of
 /// `submitSchemaDiffPrepare` / `executeDeploy`, as effects.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum SchemaDiffEffect {
+pub enum SchemaDiffEffect {
     /// `userAssetToken()`: mint the `saveUserAsset` submission token.
     IssueUserAssetToken,
     /// One domain-client call: the method and its exact wire payload.
@@ -388,7 +388,7 @@ pub(crate) enum SchemaDiffEffect {
 
 /// Which orchestration a run performs (the error wording depends on it).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SchemaDiffRunKind {
+pub enum SchemaDiffRunKind {
     Prepare,
     Apply,
 }
@@ -406,7 +406,7 @@ enum PollArmed {
 /// One in-flight orchestration. The host drives: [`SchemaDiffJobRun::begin`]
 /// → token → call → accepted → (poll → details)* → resolved.
 #[derive(Debug)]
-pub(crate) struct SchemaDiffJobRun {
+pub struct SchemaDiffJobRun {
     kind: SchemaDiffRunKind,
     phase: RunPhase,
     armed: PollArmed,
@@ -428,7 +428,7 @@ enum RunPhase {
 impl SchemaDiffJobRun {
     /// `submitSchemaDiffPrepare` / `executeDeploy`'s entry: mint the token
     /// first (`userAssetToken()`), then fire the call.
-    pub(crate) fn begin(
+    pub fn begin(
         kind: SchemaDiffRunKind,
         method: SchemaDiffMethod,
         request: serde_json::Value,
@@ -443,7 +443,7 @@ impl SchemaDiffJobRun {
 
     /// `on_token`: merge the token into the pending request and fire the
     /// call.
-    pub(crate) fn on_token(&mut self, token: &SchemaDiffSubmissionTokenVm) -> Vec<SchemaDiffEffect> {
+    pub fn on_token(&mut self, token: &SchemaDiffSubmissionTokenVm) -> Vec<SchemaDiffEffect> {
         match std::mem::replace(&mut self.phase, RunPhase::Done(None)) {
             RunPhase::AwaitingToken => {
                 if let Some((method, request)) = self.pending_call.take() {
@@ -467,7 +467,7 @@ impl SchemaDiffJobRun {
     /// The accepted receipt: publish it, then enter the poll loop — the
     /// first `getJobDetails` fires immediately (React's `for(;;)` polls
     /// before its first `wait`), armed `InFlight` until the receipt.
-    pub(crate) fn on_accepted(&mut self, accepted: SchemaDiffJobAcceptedVm) -> Vec<SchemaDiffEffect> {
+    pub fn on_accepted(&mut self, accepted: SchemaDiffJobAcceptedVm) -> Vec<SchemaDiffEffect> {
         let job_id = accepted.job_id.clone();
         match std::mem::replace(&mut self.phase, RunPhase::Done(None)) {
             RunPhase::AwaitingAccepted => {
@@ -489,7 +489,7 @@ impl SchemaDiffJobRun {
     }
 
     /// The accepted receipt from its raw wire JSON (host convenience).
-    pub(crate) fn on_accepted_json(&mut self, accepted: serde_json::Value) -> Vec<SchemaDiffEffect> {
+    pub fn on_accepted_json(&mut self, accepted: serde_json::Value) -> Vec<SchemaDiffEffect> {
         match parse_job_accepted(accepted) {
             Ok(accepted) => self.on_accepted(accepted),
             Err(error) => {
@@ -502,7 +502,7 @@ impl SchemaDiffJobRun {
     /// The clock tick: fire the due poll call. A `PollArmed::At` deadline
     /// that has passed becomes due (the `wake_at` the host armed); a poll
     /// already in flight does not re-fire (React is `await`ing it).
-    pub(crate) fn tick(&mut self, now_ms: i64) -> Vec<SchemaDiffEffect> {
+    pub fn tick(&mut self, now_ms: i64) -> Vec<SchemaDiffEffect> {
         if !matches!(self.phase, RunPhase::Polling { .. }) {
             return Vec::new();
         }
@@ -529,7 +529,7 @@ impl SchemaDiffJobRun {
     /// terminal resolves the run (prepare → `result.prepared` or the
     /// plan-unavailable error; apply → `detail.deployResult` or the apply
     /// error), non-terminal re-arms the 400ms wait.
-    pub(crate) fn on_details(&mut self, now_ms: i64, details: SchemaDiffJobDetailsVm) -> Vec<SchemaDiffEffect> {
+    pub fn on_details(&mut self, now_ms: i64, details: SchemaDiffJobDetailsVm) -> Vec<SchemaDiffEffect> {
         if !matches!(self.phase, RunPhase::Polling { .. }) {
             return Vec::new();
         }
@@ -548,7 +548,7 @@ impl SchemaDiffJobRun {
 
     /// The details receipt from its raw wire JSON — the domain client's
     /// `getJobDetails` path (fold the tagged requirements, then continue).
-    pub(crate) fn on_details_json(&mut self, now_ms: i64, raw: serde_json::Value) -> Vec<SchemaDiffEffect> {
+    pub fn on_details_json(&mut self, now_ms: i64, raw: serde_json::Value) -> Vec<SchemaDiffEffect> {
         match super::wire::normalize_job_details(raw) {
             Ok(details) => self.on_details(now_ms, details),
             Err(error) => {
@@ -560,12 +560,12 @@ impl SchemaDiffJobRun {
 
     /// A transport failure on any in-flight call: the promise rejects
     /// (the guard's throw path).
-    pub(crate) fn on_call_error(&mut self, error: String) {
+    pub fn on_call_error(&mut self, error: String) {
         self.fail(error);
     }
 
     /// The run's resolution, once terminal.
-    pub(crate) fn result(&self) -> Option<&Result<SchemaDiffJobRunOutcome, String>> {
+    pub fn result(&self) -> Option<&Result<SchemaDiffJobRunOutcome, String>> {
         match &self.phase {
             RunPhase::Done(settled) => settled.as_ref(),
             _ => None,
@@ -573,13 +573,13 @@ impl SchemaDiffJobRun {
     }
 
     /// Whether the run has settled.
-    pub(crate) fn is_done(&self) -> bool {
+    pub fn is_done(&self) -> bool {
         matches!(self.phase, RunPhase::Done(_))
     }
 
     /// The poll deadline the host should `wake_at` (`None` when no wait
     /// is armed).
-    pub(crate) fn next_wake_ms(&self) -> Option<i64> {
+    pub fn next_wake_ms(&self) -> Option<i64> {
         match self.armed {
             PollArmed::At(until) if matches!(self.phase, RunPhase::Polling { .. }) => Some(until),
             _ => None,
@@ -633,5 +633,5 @@ impl SchemaDiffJobRun {
 
 /// The `schemaDiffPrepare` / `schemaDiffApply` accepted kinds, as the wire
 /// spells them (for host-side kind routing).
-pub(crate) const SCHEMA_DIFF_PREPARE_KIND: &str = "schemaDiffPrepare";
-pub(crate) const SCHEMA_DIFF_APPLY_KIND: &str = "schemaDiffApply";
+pub const SCHEMA_DIFF_PREPARE_KIND: &str = "schemaDiffPrepare";
+pub const SCHEMA_DIFF_APPLY_KIND: &str = "schemaDiffApply";

@@ -32,7 +32,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// React `r.db` — the row's database id, a `number | string`.
 #[allow(dead_code)] // VM mirror; supplied by the host driver result.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum DbRef {
+pub enum DbRef {
     Num(f64),
     Text(String),
 }
@@ -40,7 +40,7 @@ pub(crate) enum DbRef {
 /// React `rows: Array<{ db: number | string; keys: number }>`.
 #[allow(dead_code)] // VM mirror; supplied by the host driver result.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CountRow {
+pub struct CountRow {
     pub db: DbRef,
     pub keys: f64,
 }
@@ -49,7 +49,7 @@ pub(crate) struct CountRow {
 /// empty string coerces to 0 (JS `Number('') === 0`); non-numeric text is
 /// skipped (the map would get a `NaN` key, which React never reads).
 #[allow(dead_code)] // pure helper; consumed by the derivation and tests.
-pub(crate) fn js_db_key(value: &DbRef) -> Option<i64> {
+pub fn js_db_key(value: &DbRef) -> Option<i64> {
     match value {
         DbRef::Num(number) => Some(*number as i64),
         DbRef::Text(text) => {
@@ -65,7 +65,7 @@ pub(crate) fn js_db_key(value: &DbRef) -> Option<i64> {
 /// React `fetchDbCounts`' row→map derivation. `None` means `res.data` was not
 /// an array, which the hook treats as `[]`.
 #[allow(dead_code)] // pure rule; consumed by the machine and tests.
-pub(crate) fn parse_db_counts(rows: Option<&[CountRow]>) -> BTreeMap<i64, i64> {
+pub fn parse_db_counts(rows: Option<&[CountRow]>) -> BTreeMap<i64, i64> {
     let mut map = BTreeMap::new();
     for row in rows.unwrap_or_default() {
         if let Some(db) = js_db_key(&row.db) {
@@ -81,7 +81,7 @@ pub(crate) fn parse_db_counts(rows: Option<&[CountRow]>) -> BTreeMap<i64, i64> {
 /// cache's promise callbacks.
 #[allow(dead_code)] // host port; remove when the navigator host wires the machine.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum KvCountsEvent {
+pub enum KvCountsEvent {
     /// The hook effect runs for `(dbSessionId, command)`.
     Subscribe {
         db_session_id: Option<String>,
@@ -105,7 +105,7 @@ pub(crate) enum KvCountsEvent {
 /// What the host must do; only `Execute` reaches the driver.
 #[allow(dead_code)] // host effect; remove when the navigator host wires the machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum KvCountsEffect {
+pub enum KvCountsEffect {
     None,
     Execute {
         db_session_id: String,
@@ -116,7 +116,7 @@ pub(crate) enum KvCountsEffect {
 /// The whole pure state: module cache + hook state in one machine.
 #[allow(dead_code)] // state machine; consumer: the navigator tree host (not wired).
 #[derive(Default)]
-pub(crate) struct KvDbCountsMachine {
+pub struct KvDbCountsMachine {
     /// Sessions with a cached promise — in-flight AND settled. React only deletes
     /// an entry in `.catch` or via `invalidateKvDbCounts`, so a resolve stays cached.
     pending: BTreeSet<String>,
@@ -128,17 +128,17 @@ pub(crate) struct KvDbCountsMachine {
 
 impl KvDbCountsMachine {
     #[allow(dead_code)] // accessor; consumed by the host and tests.
-    pub(crate) fn counts(&self) -> &BTreeMap<i64, i64> {
+    pub fn counts(&self) -> &BTreeMap<i64, i64> {
         &self.counts
     }
 
     #[allow(dead_code)] // accessor; consumed by tests.
-    pub(crate) fn is_pending(&self, db_session_id: &str) -> bool {
+    pub fn is_pending(&self, db_session_id: &str) -> bool {
         self.pending.contains(db_session_id)
     }
 
     #[allow(dead_code)] // accessor; consumed by tests.
-    pub(crate) fn active(&self) -> Option<(&str, &str)> {
+    pub fn active(&self) -> Option<(&str, &str)> {
         self.active
             .as_ref()
             .map(|(session, command)| (session.as_str(), command.as_str()))
@@ -159,7 +159,7 @@ impl KvDbCountsMachine {
 
     /// Drive one transition and return the host effect it implies.
     #[allow(dead_code)] // state machine step; remove with the host wiring.
-    pub(crate) fn step(&mut self, event: KvCountsEvent) -> KvCountsEffect {
+    pub fn step(&mut self, event: KvCountsEvent) -> KvCountsEffect {
         match event {
             KvCountsEvent::Subscribe {
                 db_session_id,
@@ -228,7 +228,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 /// React `DbCountsMap = Record<number, number>` — db index to key count.
-pub(crate) type DbCountsMap = HashMap<i64, i64>;
+pub type DbCountsMap = HashMap<i64, i64>;
 
 /// One cache entry: the shared promise's lifecycle.
 #[derive(Clone, Debug, PartialEq)]
@@ -241,7 +241,7 @@ enum Entry {
 
 /// The module cache, verbatim: one entry per `dbSessionId`.
 #[derive(Default)]
-pub(crate) struct KvDbCountsCache {
+pub struct KvDbCountsCache {
     cache: HashMap<String, Entry>,
 }
 
@@ -251,7 +251,7 @@ impl KvDbCountsCache {
     /// is already in flight. Returns `true` only for the caller whose request
     /// actually created the entry — that caller (the host) runs the driver
     /// command; everyone else dedupes onto it.
-    pub(crate) fn maybe_begin(&mut self, db_session_id: Option<&str>, command: Option<&str>) -> bool {
+    pub fn maybe_begin(&mut self, db_session_id: Option<&str>, command: Option<&str>) -> bool {
         let (Some(session), Some(command)) = (db_session_id, command) else {
             return false;
         };
@@ -270,7 +270,7 @@ impl KvDbCountsCache {
     /// `Number(r.db)` / `Number(r.keys)` coerce in React — db may arrive as
     /// a number or a numeric string, and a row that coerces to nothing
     /// (React's `NaN` key, which no lookup ever matches) is dropped.
-    pub(crate) fn apply_rows(&mut self, db_session_id: &str, data: &Value) -> DbCountsMap {
+    pub fn apply_rows(&mut self, db_session_id: &str, data: &Value) -> DbCountsMap {
         let mut map = DbCountsMap::new();
         if let Value::Array(rows) = data {
             for row in rows {
@@ -287,19 +287,19 @@ impl KvDbCountsCache {
 
     /// The promise's `.catch`: evict the entry so the next read refetches.
     /// The reading row keeps whatever it had — counts are best-effort.
-    pub(crate) fn fetch_failed(&mut self, db_session_id: &str) {
+    pub fn fetch_failed(&mut self, db_session_id: &str) {
         self.cache.remove(db_session_id);
     }
 
     /// React `invalidateKvDbCounts` — drop cached counts for a session so the
     /// next read refetches (e.g. after a flush).
-    pub(crate) fn invalidate(&mut self, db_session_id: &str) {
+    pub fn invalidate(&mut self, db_session_id: &str) {
         self.cache.remove(db_session_id);
     }
 
     /// What a row paints: the resolved map, or empty while pending /
     /// missing / failed.
-    pub(crate) fn counts_of(&self, db_session_id: &str) -> DbCountsMap {
+    pub fn counts_of(&self, db_session_id: &str) -> DbCountsMap {
         match self.cache.get(db_session_id) {
             Some(Entry::Ready(map)) => map.clone(),
             _ => DbCountsMap::new(),
@@ -308,7 +308,7 @@ impl KvDbCountsCache {
 
     /// Whether an entry exists at all (pending or ready) — for hosts that
     /// need to distinguish "never asked" from "asked and empty".
-    pub(crate) fn is_cached(&self, db_session_id: &str) -> bool {
+    pub fn is_cached(&self, db_session_id: &str) -> bool {
         self.cache.contains_key(db_session_id)
     }
 }

@@ -89,7 +89,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 use crate::views::wapp_icon::{strip_leading_dot_slash, WappIcon, WappIconImages, WappIconState};
 
 /// React `LOAD_TIMEOUT_MS` (10 000 ms), in the runtime's seconds.
-pub(crate) const LOAD_TIMEOUT_S: f64 = 10.0;
+pub const LOAD_TIMEOUT_S: f64 = 10.0;
 
 /// React's `WorkspaceTab` (`stores/workspaceTabsStore.ts`): the tab payload a
 /// shell hosts — the stable `key` (`workspaceTabKey(wappId, pageId)`), the
@@ -97,26 +97,26 @@ pub(crate) const LOAD_TIMEOUT_S: f64 = 10.0;
 /// own port (T143/T172 area) is ahead, so the future host feeds this view
 /// model; `page_id` only rides the key.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WorkspaceTabVm {
+pub struct WorkspaceTabVm {
     /// `${wappId}:${pageId}` — the shell's identity (React unmounts the shell
     /// with its tab, keyed by this).
-    pub(crate) key: String,
-    pub(crate) wapp_id: String,
-    pub(crate) page_id: String,
-    pub(crate) title: String,
+    pub key: String,
+    pub wapp_id: String,
+    pub page_id: String,
+    pub title: String,
     /// The page contribution's optional icon path (the header `WappIcon`).
-    pub(crate) icon: Option<String>,
-    pub(crate) version: String,
+    pub icon: Option<String>,
+    pub version: String,
 }
 
 /// React's `EntryCacheHit`: one memoized manifest entry, reused while the
 /// wapp's version is unchanged.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WappEntryCacheHit {
+pub struct WappEntryCacheHit {
     /// The version the entry was resolved under (the summary's version for
     /// the inline branch, the manifest's for the fetch branch).
-    pub(crate) version: String,
-    pub(crate) entry: String,
+    pub version: String,
+    pub entry: String,
 }
 
 /// React's module-scope `entryCache` — resolved page entries keyed by wapp id.
@@ -124,24 +124,24 @@ pub(crate) struct WappEntryCacheHit {
 /// module singleton's scope); [`WappEntryCache::clear`] is the
 /// `clearWappEntryCache` test seam.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct WappEntryCache {
+pub struct WappEntryCache {
     hits: BTreeMap<String, WappEntryCacheHit>,
 }
 
 impl WappEntryCache {
     /// React's `clearWappEntryCache()`: the test seam that resets the
     /// memoized entries.
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.hits.clear();
     }
 
     /// React's `entryCache.get(wappId)`.
-    pub(crate) fn hit(&self, wapp_id: &str) -> Option<&WappEntryCacheHit> {
+    pub fn hit(&self, wapp_id: &str) -> Option<&WappEntryCacheHit> {
         self.hits.get(wapp_id)
     }
 
     /// React's `entryCache.set(wappId, { version, entry })`.
-    pub(crate) fn set(&mut self, wapp_id: &str, version: &str, entry: &str) {
+    pub fn set(&mut self, wapp_id: &str, version: &str, entry: &str) {
         self.hits.insert(
             wapp_id.to_owned(),
             WappEntryCacheHit {
@@ -153,7 +153,7 @@ impl WappEntryCache {
 
     /// React's `cachedSrc(tab)`: a hit under the tab's version builds the
     /// src; a miss (or a version change) is `null`.
-    pub(crate) fn cached_src(&self, tab: &WorkspaceTabVm) -> Option<String> {
+    pub fn cached_src(&self, tab: &WorkspaceTabVm) -> Option<String> {
         let hit = self.hit(&tab.wapp_id)?;
         if hit.version != tab.version {
             return None;
@@ -164,7 +164,7 @@ impl WappEntryCache {
 
 /// React's `EntryPhase`: idle → resolving → ready (with the src) / missing.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub(crate) enum EntryPhase {
+pub enum EntryPhase {
     #[default]
     Idle,
     Resolving,
@@ -179,7 +179,7 @@ pub(crate) enum EntryPhase {
 /// (`datazen://acme.bill-audit/index.html?v=1.0.0`); the web form and the
 /// resolver registry are `lib/wappAssetOrigin.ts`'s own port (ahead), and
 /// this seam re-points there when it lands.
-pub(crate) fn build_page_src(target_id: &str, entry: &str, version: &str) -> String {
+pub fn build_page_src(target_id: &str, entry: &str, version: &str) -> String {
     format!(
         "datazen://{}/{}?v={}",
         target_id,
@@ -218,14 +218,14 @@ fn encode_uri_component(value: &str) -> String {
 /// version it was declared under — `resolveEntry`'s preference, no manifest
 /// round-trip.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WappInlineEntry {
-    pub(crate) version: String,
-    pub(crate) entry: String,
+pub struct WappInlineEntry {
+    pub version: String,
+    pub entry: String,
 }
 
 /// What `begin_resolve` did — the honest answer the host acts on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ResolveStart {
+pub enum ResolveStart {
     /// The effect's gate held (not yet activated, or the phase is past idle,
     /// or a resolve is already in flight): nothing started.
     NotStarted,
@@ -240,7 +240,7 @@ pub(crate) enum ResolveStart {
 /// `resolvingRef` latch, the load-watchdog deadline and the header icon
 /// site's own [`WappIconState`] — kept in the host state, one per open tab.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct WappPageShellState {
+pub struct WappPageShellState {
     /// `useState(active)` + the `[active]` effect: latched on first
     /// activation, never retracted.
     ever_activated: bool,
@@ -265,7 +265,7 @@ impl WappPageShellState {
     /// starts at the mount-time `active`, and a cache hit under the tab's
     /// version starts the phase `Ready` (anything else `Idle`) — plus the
     /// load-watchdog effect's mount run (armed for a ready mount).
-    pub(crate) fn new(
+    pub fn new(
         tab: &WorkspaceTabVm,
         active: bool,
         cache: &WappEntryCache,
@@ -291,7 +291,7 @@ impl WappPageShellState {
     /// The `useEffect(() => { if (active) setEverActivated(true) }, [active])`
     /// resync: the host runs it with the tab's `active` prop each time it
     /// changes (the latch never retracts).
-    pub(crate) fn sync_activation(&mut self, active: bool) {
+    pub fn sync_activation(&mut self, active: bool) {
         if active {
             self.ever_activated = true;
         }
@@ -299,7 +299,7 @@ impl WappPageShellState {
 
     /// The header `WappIcon`'s `[icon]` effect — the T017 port's contract:
     /// the host runs it with the tab's `icon` value whenever it changes.
-    pub(crate) fn sync_icon(&mut self, icon: Option<&str>) {
+    pub fn sync_icon(&mut self, icon: Option<&str>) {
         self.icon.sync_icon(icon);
     }
 
@@ -307,7 +307,7 @@ impl WappPageShellState {
     /// tab.version]`): gated exactly as React gates it, it moves the phase to
     /// `Resolving` and either resolves from the summary's inline entry
     /// (synchronously — React's microtask) or asks the host for the manifest.
-    pub(crate) fn begin_resolve(
+    pub fn begin_resolve(
         &mut self,
         tab: &WorkspaceTabVm,
         inline: Option<&WappInlineEntry>,
@@ -347,7 +347,7 @@ impl WappPageShellState {
     /// or an entry-less manifest (`!manifest.entry` is falsy for `""` too)
     /// lands in the missing state — React's catch swallows the message, so
     /// the phase carries none.
-    pub(crate) fn resolve_answer(
+    pub fn resolve_answer(
         &mut self,
         tab: &WorkspaceTabVm,
         manifest: Option<(&str, &str)>,
@@ -374,13 +374,13 @@ impl WappPageShellState {
 
     /// The iframe's `onLoad`: a loaded frame disarms the watchdog (the
     /// effect's cleanup on the `loaded` dep).
-    pub(crate) fn on_load(&mut self) {
+    pub fn on_load(&mut self) {
         self.loaded = true;
         self.watchdog_until = None;
     }
 
     /// The iframe's `onError`: the failure state, the watchdog disarmed.
-    pub(crate) fn on_error(&mut self) {
+    pub fn on_error(&mut self) {
         self.failed = true;
         self.watchdog_until = None;
     }
@@ -389,7 +389,7 @@ impl WappPageShellState {
     /// remount nonce, and reopen a missing shell (the phase back to idle so
     /// the resolve runs again). A ready shell keeps its src — only the frame
     /// remounts.
-    pub(crate) fn reload(&mut self, tx: &mut Tx) {
+    pub fn reload(&mut self, tx: &mut Tx) {
         self.failed = false;
         self.loaded = false;
         self.reload_nonce = self.reload_nonce.wrapping_add(1);
@@ -402,7 +402,7 @@ impl WappPageShellState {
     /// The host's poll (the watchdog timer's fire): a fresh frame that
     /// outlived the budget flips into the failure state. Returns whether it
     /// fired.
-    pub(crate) fn tick(&mut self, now: f64) -> bool {
+    pub fn tick(&mut self, now: f64) -> bool {
         if self.watchdog_until.is_some_and(|deadline| now >= deadline) {
             self.watchdog_until = None;
             self.failed = true;
@@ -428,27 +428,27 @@ impl WappPageShellState {
     }
 
     /// The current entry phase (the render's branch input).
-    pub(crate) fn phase(&self) -> &EntryPhase {
+    pub fn phase(&self) -> &EntryPhase {
         &self.phase
     }
 
     /// Whether the failure/recovery rows show.
-    pub(crate) fn failed(&self) -> bool {
+    pub fn failed(&self) -> bool {
         self.failed
     }
 
     /// Whether the frame signalled load.
-    pub(crate) fn loaded(&self) -> bool {
+    pub fn loaded(&self) -> bool {
         self.loaded
     }
 
     /// The reload count (the iframe's remount identity).
-    pub(crate) fn reload_nonce(&self) -> u32 {
+    pub fn reload_nonce(&self) -> u32 {
         self.reload_nonce
     }
 
     /// Whether the tab has ever been active (the lazy-mount latch).
-    pub(crate) fn ever_activated(&self) -> bool {
+    pub fn ever_activated(&self) -> bool {
         self.ever_activated
     }
 }
@@ -458,16 +458,16 @@ impl WappPageShellState {
 /// when the host has no surface for it (the box renders empty: React's
 /// iframe before its document arrives; `bg-transparent border-0`). Kit
 /// markdown's `images` callback is the pattern.
-pub(crate) type WappPageSurface = Rc<dyn Fn(&str) -> Option<El>>;
+pub type WappPageSurface = Rc<dyn Fn(&str) -> Option<El>>;
 
 /// The host's lens from its state `S` to this shell's
 /// [`WappPageShellState`] (the workspace host keeps one per open wapp tab,
 /// keyed by tab key) — what the reload/retry presses act through.
-pub(crate) type WappShellLens<S> = Rc<dyn Fn(&mut S) -> &mut WappPageShellState>;
+pub type WappShellLens<S> = Rc<dyn Fn(&mut S) -> &mut WappPageShellState>;
 
 /// The `WappPageShell` React props plus the Rune seams: the `active` prop,
 /// the state projections, the two host wires and the lens the buttons use.
-pub(crate) struct WappPageShell<'a, S: 'static> {
+pub struct WappPageShell<'a, S: 'static> {
     tab: &'a WorkspaceTabVm,
     state: &'a WappPageShellState,
     active: bool,
@@ -478,7 +478,7 @@ pub(crate) struct WappPageShell<'a, S: 'static> {
 
 impl<'a, S: 'static> WappPageShell<'a, S> {
     /// React's `WappPageShellProps` (`tab`, `active`).
-    pub(crate) fn new(tab: &'a WorkspaceTabVm, state: &'a WappPageShellState, active: bool) -> Self {
+    pub fn new(tab: &'a WorkspaceTabVm, state: &'a WappPageShellState, active: bool) -> Self {
         Self {
             tab,
             state,
@@ -490,13 +490,13 @@ impl<'a, S: 'static> WappPageShell<'a, S> {
     }
 
     /// The header icon's picture wire (the T017 port's `WappIconImages`).
-    pub(crate) fn images(mut self, images: WappIconImages) -> Self {
+    pub fn images(mut self, images: WappIconImages) -> Self {
         self.images = Some(images);
         self
     }
 
     /// The page-surface wire ([`WappPageSurface`]).
-    pub(crate) fn surface(mut self, surface: WappPageSurface) -> Self {
+    pub fn surface(mut self, surface: WappPageSurface) -> Self {
         self.surface = Some(surface);
         self
     }
@@ -504,13 +504,13 @@ impl<'a, S: 'static> WappPageShell<'a, S> {
     /// The lens the reload/retry presses run `handleReload` through. Without
     /// it the buttons render but their presses no-op — the not-yet-wired
     /// host's case.
-    pub(crate) fn shell(mut self, lens: WappShellLens<S>) -> Self {
+    pub fn shell(mut self, lens: WappShellLens<S>) -> Self {
         self.lens = Some(lens);
         self
     }
 
     /// Build the shell at the given theme.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let root_key = format!("wapp-page-shell-{}", self.tab.key);
         let mut root = col()

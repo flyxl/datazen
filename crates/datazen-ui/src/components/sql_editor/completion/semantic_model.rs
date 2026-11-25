@@ -50,20 +50,20 @@ use super::schema_completion::{SqlCompletionDialect, SqlToken};
 
 /// Inclusive-exclusive document offset range (`SqlTextRange`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SqlTextRange {
+pub struct SqlTextRange {
     pub from: usize,
     pub to: usize,
 }
 
 impl SqlTextRange {
-    pub(crate) fn new(from: usize, to: usize) -> Self {
+    pub fn new(from: usize, to: usize) -> Self {
         Self { from, to }
     }
 }
 
 /// The cursor intents the completion entry points branch on.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SqlCursorIntentKind {
+pub enum SqlCursorIntentKind {
     /// `relation`
     Relation,
     /// `qualified_column`
@@ -84,7 +84,7 @@ pub(crate) enum SqlCursorIntentKind {
 
 /// `SqlCursorIntent`: what the user is typing at the cursor.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SqlCursorIntent {
+pub struct SqlCursorIntent {
     pub kind: SqlCursorIntentKind,
     /// Source text from the statement start (or 128 chars back) to the
     /// cursor — the prefix the intent was detected from.
@@ -96,7 +96,7 @@ pub(crate) struct SqlCursorIntent {
 
 /// `SqlRelationBinding`: one FROM/JOIN binding (relation + alias).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SqlRelationBinding {
+pub struct SqlRelationBinding {
     pub relation: QualifiedRelationId,
     pub alias: Option<String>,
     pub source_range: SqlTextRange,
@@ -106,7 +106,7 @@ pub(crate) struct SqlRelationBinding {
 
 impl SqlRelationBinding {
     /// A table binding with no alias — the test/builder shorthand.
-    pub(crate) fn table(name: &str) -> Self {
+    pub fn table(name: &str) -> Self {
         Self {
             relation: QualifiedRelationId::bare(name),
             alias: None,
@@ -119,7 +119,7 @@ impl SqlRelationBinding {
 
 /// `SqlCteBinding`: one `WITH name AS (…)` entry.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SqlCteBinding {
+pub struct SqlCteBinding {
     pub name: String,
     pub name_range: SqlTextRange,
     /// `columnNames` (CTE column list) — carried for shape fidelity; the
@@ -131,7 +131,7 @@ pub(crate) struct SqlCteBinding {
 }
 
 impl SqlCteBinding {
-    pub(crate) fn named(name: &str) -> Self {
+    pub fn named(name: &str) -> Self {
         Self {
             name: name.to_string(),
             name_range: SqlTextRange::new(0, 0),
@@ -146,7 +146,7 @@ impl SqlCteBinding {
 /// entry points do not read it; the scope shape does).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // shape-fidelity field of SqlScope
-pub(crate) struct SqlProjectionAlias {
+pub struct SqlProjectionAlias {
     pub alias: String,
     pub alias_range: SqlTextRange,
     pub expression_range: SqlTextRange,
@@ -154,7 +154,7 @@ pub(crate) struct SqlProjectionAlias {
 
 /// `SqlScope`: one nested analysis scope with its bindings.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SqlScope {
+pub struct SqlScope {
     pub id: String,
     pub range: SqlTextRange,
     pub parent_id: Option<String>,
@@ -166,7 +166,7 @@ pub(crate) struct SqlScope {
 
 /// `SqlScope['kind']`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SqlScopeKind {
+pub enum SqlScopeKind {
     Select,
     Insert,
     Update,
@@ -177,7 +177,7 @@ pub(crate) enum SqlScopeKind {
 
 impl SqlScope {
     /// A `select` scope with no parent — the hand-built-fixture shorthand.
-    pub(crate) fn select(id: &str, from: usize, to: usize) -> Self {
+    pub fn select(id: &str, from: usize, to: usize) -> Self {
         Self {
             id: id.to_string(),
             range: SqlTextRange::new(from, to),
@@ -192,7 +192,7 @@ impl SqlScope {
 
 /// `SqlSemanticModel` — the resolver-visible subset (see module docs).
 #[derive(Clone, Debug)]
-pub(crate) struct SqlSemanticModel {
+pub struct SqlSemanticModel {
     pub tokens: Vec<SqlToken>,
     pub scopes: Vec<SqlScope>,
     pub cursor_intent: SqlCursorIntent,
@@ -201,7 +201,7 @@ pub(crate) struct SqlSemanticModel {
 /// `RelationResolveResult`: unique binding, ambiguous candidates, or
 /// nothing.
 #[derive(Clone, Debug)]
-pub(crate) enum RelationResolveResult {
+pub enum RelationResolveResult {
     Unique(Box<SqlRelationBinding>),
     Ambiguous(Vec<SqlRelationBinding>),
     Unresolved,
@@ -214,7 +214,7 @@ pub(crate) enum RelationResolveResult {
 /// The innermost scope containing `cursor`; when the cursor sits past a
 /// scope's end (trailing whitespace, a typed dot), the scope that starts
 /// before or at the cursor wins — React's fallback, kept verbatim.
-pub(crate) fn find_scope_at_cursor<'a>(
+pub fn find_scope_at_cursor<'a>(
     scopes: &'a [SqlScope],
     cursor: usize,
 ) -> Option<&'a SqlScope> {
@@ -248,7 +248,7 @@ pub(crate) fn find_scope_at_cursor<'a>(
 }
 
 /// The scope chain from `scope_id` out to the root (innermost first).
-pub(crate) fn get_scope_chain<'a>(
+pub fn get_scope_chain<'a>(
     scopes: &'a [SqlScope],
     scope_id: &str,
 ) -> Vec<&'a SqlScope> {
@@ -322,7 +322,7 @@ fn relation_key(id: &QualifiedRelationId, dialect: &SqlCompletionDialect) -> Str
 /// `resolveRelation`: resolve a table/alias name within the scope chain,
 /// inner scopes shadowing outer. A CTE name shadows same-named relations
 /// in the same scope. Ambiguity is reported, never guessed.
-pub(crate) fn resolve_relation(
+pub fn resolve_relation(
     name: &str,
     model: &SqlSemanticModel,
     cursor: Option<usize>,
@@ -373,7 +373,7 @@ pub(crate) fn resolve_relation(
 /// `cteToBinding`-synthesized CTE bindings in one array; cloning the few
 /// reachable bindings keeps that single-shape list without lifetime
 /// acrobatics over synthesized values.
-pub(crate) fn list_visible_relations(
+pub fn list_visible_relations(
     model: &SqlSemanticModel,
     cursor: Option<usize>,
     dialect: &SqlCompletionDialect,

@@ -27,11 +27,11 @@
 //! is the React file's verbatim.
 
 /// The hook's default distance-from-bottom threshold (px).
-pub(crate) const AUTO_SCROLL_THRESHOLD_DEFAULT: i64 = 120;
+pub const AUTO_SCROLL_THRESHOLD_DEFAULT: i64 = 120;
 
 /// `useAutoScroll`'s state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct AutoScrollState {
+pub struct AutoScrollState {
     threshold: i64,
     /// Whether the container is at (or near) the bottom.
     at_bottom: bool,
@@ -47,24 +47,24 @@ impl Default for AutoScrollState {
 
 impl AutoScrollState {
     /// `useAutoScroll({ threshold })` — the hook's initial state.
-    pub(crate) fn new(threshold: i64) -> Self {
+    pub fn new(threshold: i64) -> Self {
         Self { threshold, ..Self::default() }
     }
 
     /// Whether the scroll container is at (or near) the bottom.
-    pub(crate) fn at_bottom(&self) -> bool {
+    pub fn at_bottom(&self) -> bool {
         self.at_bottom
     }
 
     /// Messages that arrived while the user was scrolled up.
-    pub(crate) fn unread_count(&self) -> usize {
+    pub fn unread_count(&self) -> usize {
         self.unread_count
     }
 
     /// `onScroll` / `checkAtBottom`: the container's live metrics. At (or
     /// within the threshold of) the bottom re-pins and clears the unread
     /// count.
-    pub(crate) fn on_scroll(&mut self, scroll_height: i64, scroll_top: i64, client_height: i64) {
+    pub fn on_scroll(&mut self, scroll_height: i64, scroll_top: i64, client_height: i64) {
         let distance_from_bottom = scroll_height - scroll_top - client_height;
         let is_at_bottom = distance_from_bottom <= self.threshold;
         self.at_bottom = is_at_bottom;
@@ -75,7 +75,7 @@ impl AutoScrollState {
 
     /// `jumpToBottom`: pin to the bottom and reset the unread count. The
     /// host performs the scroll itself (Rune owns the surface).
-    pub(crate) fn jump_to_bottom(&mut self) {
+    pub fn jump_to_bottom(&mut self) {
         self.at_bottom = true;
         self.unread_count = 0;
     }
@@ -83,7 +83,7 @@ impl AutoScrollState {
     /// The container grew: one more message arrived while the user is not
     /// at the bottom (the hook's own counter — the sibling
     /// [`TrackUnread`] is `useTrackUnread`'s separate machine).
-    pub(crate) fn note_message_arrived(&mut self) {
+    pub fn note_message_arrived(&mut self) {
         if !self.at_bottom {
             self.unread_count += 1;
         }
@@ -94,19 +94,19 @@ impl AutoScrollState {
 /// driven by message-count changes — `prevRef` + the two effects as one
 /// step function.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TrackUnread {
+pub struct TrackUnread {
     prev_count: usize,
     unread: usize,
 }
 
 impl TrackUnread {
     /// The hook's initial state (prev 0, unread 0).
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The tracked unread count.
-    pub(crate) fn unread(&self) -> usize {
+    pub fn unread(&self) -> usize {
         self.unread
     }
 
@@ -115,7 +115,7 @@ impl TrackUnread {
     /// resets the counter — both effects of the React hook, folded into
     /// the step the host calls when `messages.length` or `atBottom`
     /// changes.
-    pub(crate) fn step(&mut self, message_count: usize, at_bottom: bool) {
+    pub fn step(&mut self, message_count: usize, at_bottom: bool) {
         if message_count > self.prev_count {
             let delta = message_count - self.prev_count;
             if at_bottom {
@@ -132,7 +132,7 @@ impl TrackUnread {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     #[test]

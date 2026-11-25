@@ -43,11 +43,11 @@
 
 /// The cross-window notification's channel (the only literal the
 /// hook carries).
-pub(crate) const SETTINGS_CHANGED_CHANNEL: &str = "datazen:settings-changed";
+pub const SETTINGS_CHANGED_CHANNEL: &str = "datazen:settings-changed";
 
 /// The hook's state machine.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct UseSettingsSyncState {
+pub struct UseSettingsSyncState {
     /// Whether the subscription resolved: `None` while the subscribe
     /// is in flight, `Some(true)` once listening, `Some(false)` when
     /// the bus is unavailable (the `.catch` arm).
@@ -60,12 +60,12 @@ pub(crate) struct UseSettingsSyncState {
 }
 
 impl UseSettingsSyncState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The subscribe resolved: the window is listening.
-    pub(crate) fn note_subscribed(&mut self) {
+    pub fn note_subscribed(&mut self) {
         if self.cancelled {
             // `if (cancelled) fn(); else unlisten = fn;` — the handle
             // unlistens immediately; nothing to keep.
@@ -78,12 +78,12 @@ impl UseSettingsSyncState {
 
     /// The bus is unavailable (tests / non-Tauri / the single-window
     /// Rune build): the `.catch` arm — nothing to unlisten.
-    pub(crate) fn note_unavailable(&mut self) {
+    pub fn note_unavailable(&mut self) {
         self.subscribed = Some(false);
     }
 
     /// Whether the window is listening (the subscription's answer).
-    pub(crate) fn subscribed(&self) -> bool {
+    pub fn subscribed(&self) -> bool {
         self.subscribed == Some(true)
     }
 
@@ -92,12 +92,12 @@ impl UseSettingsSyncState {
     /// payload is deliberately absent — a notification, never a
     /// snapshot (T11: the receiving end re-reads; the broadcast's
     /// payload is not a trusted base).
-    pub(crate) fn note_settings_changed(&mut self) -> bool {
+    pub fn note_settings_changed(&mut self) -> bool {
         !self.cancelled
     }
 
     /// The effect's cleanup: `cancelled = true` + the unlisten.
-    pub(crate) fn unmount(&mut self) {
+    pub fn unmount(&mut self) {
         self.cancelled = true;
         if self.subscribed == Some(true) {
             // `unlisten?.()`
@@ -107,7 +107,7 @@ impl UseSettingsSyncState {
     }
 
     /// Whether the unlisten has run.
-    pub(crate) fn unlistened(&self) -> bool {
+    pub fn unlistened(&self) -> bool {
         self.unlistened
     }
 }

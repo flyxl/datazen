@@ -21,11 +21,11 @@ use crate::commands::ai::mcp::{mcp_client_list_request, mcp_client_tools_request
 /// React `McpClientStatus` (types/index.ts) — one connected server.
 /// The api crate's [`WebMcpConnectedServer`] is the identical wire
 /// shape (`serverId` / `serverName` / `toolsCount`).
-pub(crate) type McpClientStatus = WebMcpConnectedServer;
+pub type McpClientStatus = WebMcpConnectedServer;
 
 /// React `McpToolInfo` — one tool a connected server exposes. The api
 /// crate's [`WebMcpToolInfo`] is the identical wire shape.
-pub(crate) type McpToolInfo = WebMcpToolInfo;
+pub type McpToolInfo = WebMcpToolInfo;
 
 // ---------------------------------------------------------------------------
 // The config view-model (React `McpServerConfig`)
@@ -34,14 +34,14 @@ pub(crate) type McpToolInfo = WebMcpToolInfo;
 /// `transport: 'stdio'` — the React union's only member today; one
 /// value so a second member is an explicit change.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum McpTransport {
+pub enum McpTransport {
     #[default]
     Stdio,
 }
 
 impl McpTransport {
     /// The React literal (`'stdio'`).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             McpTransport::Stdio => "stdio",
         }
@@ -52,7 +52,7 @@ impl McpTransport {
 /// persisted under `mcpClientServers`). `command` is a plain `String`
 /// (React's `command?: string` — `EMPTY_DRAFT` carries `''`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct McpServerConfigVm {
+pub struct McpServerConfigVm {
     pub id: String,
     pub name: String,
     pub transport: McpTransport,
@@ -82,7 +82,7 @@ impl Default for McpServerConfigVm {
 
 /// `isValidMcpServerId`: `^[a-zA-Z0-9_-]+$` (non-empty) — the same
 /// rule the desktop `validate_mcp_server_id` mirrors.
-pub(crate) fn is_valid_mcp_server_id(id: &str) -> bool {
+pub fn is_valid_mcp_server_id(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
@@ -93,13 +93,13 @@ pub(crate) fn is_valid_mcp_server_id(id: &str) -> bool {
 /// One env row: `{ key, value }` as two `TextEdit`s (the field atoms
 /// edit them in place).
 #[derive(Clone, Default, PartialEq)]
-pub(crate) struct EnvRowEdit {
+pub struct EnvRowEdit {
     pub key: TextEdit,
     pub value: TextEdit,
 }
 
 /// `envToRows`: the env map as rows.
-pub(crate) fn env_to_rows(env: &BTreeMap<String, String>) -> Vec<EnvRowEdit> {
+pub fn env_to_rows(env: &BTreeMap<String, String>) -> Vec<EnvRowEdit> {
     env.iter()
         .map(|(key, value)| EnvRowEdit {
             key: TextEdit::new(key.clone()),
@@ -110,7 +110,7 @@ pub(crate) fn env_to_rows(env: &BTreeMap<String, String>) -> Vec<EnvRowEdit> {
 
 /// `rowsToEnv`: trimmed keys, empty keys dropped, a later duplicate
 /// key wins (the React loop's last write).
-pub(crate) fn rows_to_env(rows: &[EnvRowEdit]) -> BTreeMap<String, String> {
+pub fn rows_to_env(rows: &[EnvRowEdit]) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     for row in rows {
         let key = row.key.text.trim().to_owned();
@@ -129,7 +129,7 @@ pub(crate) fn rows_to_env(rows: &[EnvRowEdit]) -> BTreeMap<String, String> {
 /// (`model_profile_form`'s convention); the toggles are plain booleans
 /// (default `true`, `EMPTY_DRAFT`'s shape).
 #[derive(Clone, Default, PartialEq)]
-pub(crate) struct McpServerFormDraft {
+pub struct McpServerFormDraft {
     pub id: TextEdit,
     pub name: TextEdit,
     pub command: TextEdit,
@@ -141,13 +141,13 @@ pub(crate) struct McpServerFormDraft {
 
 impl McpServerFormDraft {
     /// `EMPTY_DRAFT` (both toggles on).
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         McpServerFormDraft { enabled: true, enabled_for_ai: true, ..Default::default() }
     }
 
     /// `startEdit`'s seed: the config's values (args joined with
     /// newlines, env as rows).
-    pub(crate) fn from_config(config: &McpServerConfigVm) -> (Self, Vec<EnvRowEdit>) {
+    pub fn from_config(config: &McpServerConfigVm) -> (Self, Vec<EnvRowEdit>) {
         (
             McpServerFormDraft {
                 id: TextEdit::new(config.id.clone()),
@@ -168,7 +168,7 @@ impl McpServerFormDraft {
 
 /// The save walk's outcome.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum SavePlan {
+pub enum SavePlan {
     /// The handler's first early return (`!draft.id.trim() ||
     /// !draft.command?.trim()`) — unreachable through the button (its
     /// disabled state is the same rule); carried for host parity.
@@ -188,7 +188,7 @@ pub(crate) enum SavePlan {
 
 impl SavePlan {
     /// The error-line key the outcome arms, when it arms one.
-    pub(crate) fn error_key(&self) -> Option<&'static str> {
+    pub fn error_key(&self) -> Option<&'static str> {
         match self {
             SavePlan::InvalidId => Some("mcpClient.invalidId"),
             SavePlan::DuplicateId => Some("mcpClient.duplicateId"),
@@ -200,7 +200,7 @@ impl SavePlan {
 /// `handleDelete`: the next list plus the per-server error clear that
 /// follows the awaited save.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DeletePlan {
+pub struct DeletePlan {
     pub next: Vec<McpServerConfigVm>,
     /// `clearMcpServerError(id)` — the store clear the host runs after
     /// the save lands.
@@ -210,7 +210,7 @@ pub(crate) struct DeletePlan {
 /// The section's state: the store projections (host-delivered) plus
 /// React's `useState` fields.
 #[derive(Clone, Default, PartialEq)]
-pub(crate) struct McpClientSectionState {
+pub struct McpClientSectionState {
     // ---- useSettingsStore / useAiStore projections ----
     /// `savedConfigs` (`settings.mcpClientServers ?? []`).
     pub saved_configs: Vec<McpServerConfigVm>,
@@ -244,49 +244,49 @@ pub(crate) struct McpClientSectionState {
 }
 
 impl McpClientSectionState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The mount effect: the load pair the host runs (`loadMcpServers`
     /// + `loadMcpTools`, both fire-and-forget).
-    pub(crate) fn on_mount(&self) -> [AiRequest; 2] {
+    pub fn on_mount(&self) -> [AiRequest; 2] {
         [mcp_client_list_request(), mcp_client_tools_request()]
     }
 
     /// `loadMcpServers`' answer (`set({ mcpServers })`).
-    pub(crate) fn deliver_servers(&mut self, servers: Vec<McpClientStatus>) {
+    pub fn deliver_servers(&mut self, servers: Vec<McpClientStatus>) {
         self.mcp_servers = servers;
     }
 
     /// `loadMcpTools`' answer (`set({ mcpTools })`).
-    pub(crate) fn deliver_tools(&mut self, tools: Vec<McpToolInfo>) {
+    pub fn deliver_tools(&mut self, tools: Vec<McpToolInfo>) {
         self.mcp_tools = tools;
     }
 
     // ---- the saved-config projections ----
 
     /// `trimmedDraftId`.
-    pub(crate) fn trimmed_draft_id(&self) -> &str {
+    pub fn trimmed_draft_id(&self) -> &str {
         self.draft.id.text.trim()
     }
 
     /// `idInvalid`: a non-empty draft id that fails the id rule.
-    pub(crate) fn id_invalid(&self) -> bool {
+    pub fn id_invalid(&self) -> bool {
         let id = self.trimmed_draft_id();
         !id.is_empty() && !is_valid_mcp_server_id(id)
     }
 
     /// `idDuplicate`: a FRESH config (not editing) whose trimmed id
     /// collides with a saved one.
-    pub(crate) fn id_duplicate(&self) -> bool {
+    pub fn id_duplicate(&self) -> bool {
         self.editing_id.is_none()
             && !self.trimmed_draft_id().is_empty()
             && self.saved_configs.iter().any(|c| c.id == self.trimmed_draft_id())
     }
 
     /// The save button's disabled rule, verbatim.
-    pub(crate) fn save_disabled(&self) -> bool {
+    pub fn save_disabled(&self) -> bool {
         self.saving
             || self.trimmed_draft_id().is_empty()
             || self.draft.command.text.trim().is_empty()
@@ -297,7 +297,7 @@ impl McpClientSectionState {
     // ---- the form ----
 
     /// `startAdd`: reset every form field and open the form.
-    pub(crate) fn start_add(&mut self) {
+    pub fn start_add(&mut self) {
         self.editing_id = None;
         self.draft = McpServerFormDraft::empty();
         self.env_rows = Vec::new();
@@ -306,7 +306,7 @@ impl McpClientSectionState {
     }
 
     /// `startEdit`: seed the form from the config.
-    pub(crate) fn start_edit(&mut self, config: &McpServerConfigVm) {
+    pub fn start_edit(&mut self, config: &McpServerConfigVm) {
         self.editing_id = Some(config.id.clone());
         let (draft, rows) = McpServerFormDraft::from_config(config);
         self.draft = draft;
@@ -317,27 +317,27 @@ impl McpClientSectionState {
 
     /// The id input's `onChange` → `setSaveError(null)` — the host
     /// calls this when its edit machinery mutates the id `TextEdit`.
-    pub(crate) fn note_id_edited(&mut self) {
+    pub fn note_id_edited(&mut self) {
         self.save_error = None;
     }
 
     /// `ToggleRow`'s `onChange` for `enabled`.
-    pub(crate) fn set_draft_enabled(&mut self, enabled: bool) {
+    pub fn set_draft_enabled(&mut self, enabled: bool) {
         self.draft.enabled = enabled;
     }
 
     /// `ToggleRow`'s `onChange` for `enabledForAi`.
-    pub(crate) fn set_draft_enabled_for_ai(&mut self, enabled_for_ai: bool) {
+    pub fn set_draft_enabled_for_ai(&mut self, enabled_for_ai: bool) {
         self.draft.enabled_for_ai = enabled_for_ai;
     }
 
     /// The env block's `+` button: append an empty row.
-    pub(crate) fn add_env_row(&mut self) {
+    pub fn add_env_row(&mut self) {
         self.env_rows.push(EnvRowEdit::default());
     }
 
     /// One row's trash button.
-    pub(crate) fn remove_env_row(&mut self, index: usize) {
+    pub fn remove_env_row(&mut self, index: usize) {
         if index < self.env_rows.len() {
             self.env_rows.remove(index);
         }
@@ -345,7 +345,7 @@ impl McpClientSectionState {
 
     /// Cancel: `setShowForm(false)` — the draft stays as it was
     /// (React keeps it; `startAdd`/`startEdit` reseed).
-    pub(crate) fn close_form(&mut self) {
+    pub fn close_form(&mut self) {
         self.show_form = false;
     }
 
@@ -353,7 +353,7 @@ impl McpClientSectionState {
     /// arm `save_error` (the render's key); `Save` arms `saving` and
     /// clears the error. The built config keeps `command` untrimmed
     /// (the guard trims, the save does not).
-    pub(crate) fn begin_save(&mut self) -> SavePlan {
+    pub fn begin_save(&mut self) -> SavePlan {
         let trimmed_id = self.trimmed_draft_id().to_owned();
         if trimmed_id.is_empty() || self.draft.command.text.trim().is_empty() {
             return SavePlan::Refused;
@@ -409,7 +409,7 @@ impl McpClientSectionState {
 
     /// The save landed: close and reset the form, disarm `saving` (the
     /// `try` block plus the `finally`).
-    pub(crate) fn note_save_ok(&mut self) {
+    pub fn note_save_ok(&mut self) {
         self.show_form = false;
         self.editing_id = None;
         self.draft = McpServerFormDraft::empty();
@@ -420,7 +420,7 @@ impl McpClientSectionState {
     /// The save rejected: React has no `catch` — the `finally` disarms
     /// `saving` and the form stays exactly as it was (the store's own
     /// `mcpError` strip is the visible failure surface).
-    pub(crate) fn note_save_failed(&mut self) {
+    pub fn note_save_failed(&mut self) {
         self.saving = false;
     }
 
@@ -428,7 +428,7 @@ impl McpClientSectionState {
 
     /// `handleDelete`: the filtered list plus the trailing
     /// `clearMcpServerError(id)`.
-    pub(crate) fn delete_plan(&self, id: &str) -> DeletePlan {
+    pub fn delete_plan(&self, id: &str) -> DeletePlan {
         DeletePlan {
             next: self
                 .saved_configs
@@ -442,7 +442,7 @@ impl McpClientSectionState {
 
     /// `handleToggleEnabled`: the list with the one entry's `enabled`
     /// replaced.
-    pub(crate) fn toggle_enabled_plan(&self, id: &str, enabled: bool) -> Vec<McpServerConfigVm> {
+    pub fn toggle_enabled_plan(&self, id: &str, enabled: bool) -> Vec<McpServerConfigVm> {
         self.saved_configs
             .iter()
             .map(|c| {
@@ -458,29 +458,29 @@ impl McpClientSectionState {
     // ---- the runtime projections ----
 
     /// `toggleServerTools`: expand ↔ collapse.
-    pub(crate) fn toggle_server_tools(&mut self, server_id: &str) {
+    pub fn toggle_server_tools(&mut self, server_id: &str) {
         if !self.expanded_servers.remove(server_id) {
             self.expanded_servers.insert(server_id.to_owned());
         }
     }
 
     /// `isConnecting` for one saved config.
-    pub(crate) fn is_connecting(&self, id: &str) -> bool {
+    pub fn is_connecting(&self, id: &str) -> bool {
         self.mcp_connecting && self.mcp_connecting_server_id.as_deref() == Some(id)
     }
 
     /// `connectedIds.has(config.id)`.
-    pub(crate) fn is_connected(&self, id: &str) -> bool {
+    pub fn is_connected(&self, id: &str) -> bool {
         self.mcp_servers.iter().any(|s| s.server_id == id)
     }
 
     /// `mcpServerErrors[config.id]`.
-    pub(crate) fn server_error(&self, id: &str) -> Option<&str> {
+    pub fn server_error(&self, id: &str) -> Option<&str> {
         self.mcp_server_errors.get(id).map(String::as_str)
     }
 
     /// One runtime server's tools, in list order.
-    pub(crate) fn tools_for(&self, server_id: &str) -> Vec<&McpToolInfo> {
+    pub fn tools_for(&self, server_id: &str) -> Vec<&McpToolInfo> {
         self.mcp_tools.iter().filter(|tool| tool.server_id == server_id).collect()
     }
 }

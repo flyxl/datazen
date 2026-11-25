@@ -11,7 +11,7 @@ use super::native_menu::MenuNode;
 /// React `MainWindowContextMenuLabels` — every label the two builders read,
 /// supplied by the caller (the navigator builds it from `t()`).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct MainWindowContextMenuLabels {
+pub struct MainWindowContextMenuLabels {
     pub new_group: String,
     pub new_connection: String,
     pub rename_group: String,
@@ -51,7 +51,7 @@ pub(crate) struct MainWindowContextMenuLabels {
 
 /// React `buildMainGroupContextMenuItems`. The rename/delete pair is gated
 /// on `is_ungrouped` inside the builder, exactly as in React.
-pub(crate) fn build_main_group_context_menu_items<A: Clone>(
+pub fn build_main_group_context_menu_items<A: Clone>(
     labels: &MainWindowContextMenuLabels,
     is_ungrouped: bool,
     on_new_group: A,
@@ -74,7 +74,7 @@ pub(crate) fn build_main_group_context_menu_items<A: Clone>(
 /// One move target of the connection menu's organize submenu: the group's
 /// storage key, its display label, and the action moving there.
 #[derive(Clone, Debug)]
-pub(crate) struct MoveTarget<A> {
+pub struct MoveTarget<A> {
     pub id: String,
     pub label: String,
     pub action: A,
@@ -83,7 +83,7 @@ pub(crate) struct MoveTarget<A> {
 /// React `buildMainConnectionContextMenuItems`' callback set, as slots. The
 /// `Option` slots are React's optional handlers: a submenu entry appears
 /// only when its handler is wired.
-pub(crate) struct ConnectionMenuSlots<A> {
+pub struct ConnectionMenuSlots<A> {
     pub on_open_or_disconnect: A,
     pub on_copy_name: A,
     pub on_copy_url: A,
@@ -110,7 +110,7 @@ pub(crate) struct ConnectionMenuSlots<A> {
 /// actions, the connection submenu (edit/duplicate/copy/filter), the server
 /// submenu (monitoring + backup/restore), the create submenu
 /// (database/schema/user), then refresh / organize / delete.
-pub(crate) fn build_main_connection_context_menu_items<A: Clone>(
+pub fn build_main_connection_context_menu_items<A: Clone>(
     labels: &MainWindowContextMenuLabels,
     is_connected: bool,
     grouped: bool,

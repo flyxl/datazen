@@ -38,7 +38,7 @@
 /// `SqlCompletionKind`: the cursor context a completion source ranks
 /// itself against.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SqlCompletionKind {
+pub enum SqlCompletionKind {
     Column,
     Table,
     Any,
@@ -71,7 +71,7 @@ fn is_word_or_dollar(b: u8) -> bool {
 /// The last SQL keyword before the cursor, with its end offset,
 /// ignoring `'…'` strings (with `''` escapes), `--` line comments and
 /// `/* … */` block comments — the React scanner verbatim.
-pub(crate) fn last_bare_sql_keyword_with_offset(sql: &str) -> Option<(&'static str, usize)> {
+pub fn last_bare_sql_keyword_with_offset(sql: &str) -> Option<(&'static str, usize)> {
     let b = sql.as_bytes();
     let n = b.len();
     let mut last_kw: Option<&'static str> = None;
@@ -161,7 +161,7 @@ pub(crate) fn last_bare_sql_keyword_with_offset(sql: &str) -> Option<(&'static s
 /// statement ends inside an unclosed `(` whose content is free of a
 /// closing paren and of dangling quotes, with the word `into`
 /// (case-insensitive) somewhere before it.
-pub(crate) fn in_insert_column_list(stmt: &str) -> bool {
+pub fn in_insert_column_list(stmt: &str) -> bool {
     // The positions of `(` whose tail can satisfy
     // `(?:[^)'"`]|'[^']*'|"[^"]*"|`[^`]*`)*$`.
     let b = stmt.as_bytes();
@@ -307,7 +307,7 @@ fn scan_identifier_runs(segment: &str) -> Vec<(usize, usize)> {
 /// `isTableContext(tail)` (extension-points `completionContext.ts`):
 /// whether the text tail following a table-clause keyword is still in
 /// the process of typing a table name, vs. already completed it.
-pub(crate) fn is_table_context(tail: &str) -> bool {
+pub fn is_table_context(tail: &str) -> bool {
     let comma_idx = tail.rfind(',');
     let segment = match comma_idx {
         Some(i) => &tail[i + 1..],
@@ -332,7 +332,7 @@ pub(crate) fn is_table_context(tail: &str) -> bool {
 /// `inferSqlCompletionKind(textBeforeCursor)`: `FROM`/`JOIN` →
 /// tables; `WHERE`/`SELECT`/`HAVING` → columns; after `ident.` the
 /// schema path already picked the level — do not filter.
-pub(crate) fn infer_sql_completion_kind(text_before_cursor: &str) -> SqlCompletionKind {
+pub fn infer_sql_completion_kind(text_before_cursor: &str) -> SqlCompletionKind {
     // `/\.\s*(?:["`][\w$]*|[\w$]*)$/` — a qualifier dot plus a
     // partial (possibly quoted, possibly empty) identifier.
     if dot_partial_identifier(text_before_cursor) {

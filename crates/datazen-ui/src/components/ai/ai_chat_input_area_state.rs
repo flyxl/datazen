@@ -22,26 +22,26 @@ use crate::i18n::t;
 /// name; the key is `skill.id ?? skill.name`, exactly as React keys the
 /// chip (`AiChatPanel.tsx:793`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiLoadedSkill {
+pub struct AiLoadedSkill {
     pub id: Option<String>,
     pub name: String,
 }
 
 impl AiLoadedSkill {
-    pub(crate) fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             id: None,
             name: name.into(),
         }
     }
 
-    pub(crate) fn id(mut self, id: impl Into<String>) -> Self {
+    pub fn id(mut self, id: impl Into<String>) -> Self {
         self.id = Some(id.into());
         self
     }
 
     /// React's chip key: `skill.id ?? skill.name`.
-    pub(crate) fn key(&self) -> &str {
+    pub fn key(&self) -> &str {
         self.id.as_deref().unwrap_or(&self.name)
     }
 }
@@ -51,7 +51,7 @@ impl AiLoadedSkill {
 /// read-only chips. Only the presence flags and the template name render;
 /// `templateId` / `templateHash` never display.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct AiInjection {
+pub struct AiInjection {
     pub template_name: Option<String>,
     pub has_connection_notes: bool,
     pub has_global_instructions: bool,
@@ -61,7 +61,7 @@ impl AiInjection {
     /// React's injection-row gate (`AiChatPanel.tsx:845–848`): any of the
     /// template name, the connection-notes flag, or the global-
     /// instructions flag shows the row.
-    pub(crate) fn shows_row(&self) -> bool {
+    pub fn shows_row(&self) -> bool {
         self.template_name
             .as_deref()
             .is_some_and(|name| !name.trim().is_empty())
@@ -71,7 +71,7 @@ impl AiInjection {
 
     /// React's priority-chip gate (`AiChatPanel.tsx:869–871`): global
     /// instructions show the priority chip only together with a template.
-    pub(crate) fn shows_priority(&self) -> bool {
+    pub fn shows_priority(&self) -> bool {
         self.has_global_instructions
             && self
                 .template_name
@@ -86,13 +86,13 @@ impl AiInjection {
 /// `onDraftConsumed` ack, owned by the panel slice) and the content (what
 /// replace / append prefills) render here.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiPendingDraft {
+pub struct AiPendingDraft {
     pub request_id: String,
     pub content: String,
 }
 
 impl AiPendingDraft {
-    pub(crate) fn new(request_id: impl Into<String>, content: impl Into<String>) -> Self {
+    pub fn new(request_id: impl Into<String>, content: impl Into<String>) -> Self {
         Self {
             request_id: request_id.into(),
             content: content.into(),
@@ -104,7 +104,7 @@ impl AiPendingDraft {
 /// `replace` swaps the input for the draft, `append` joins it after the
 /// `chat.draft.appendSeparator` separator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConflictResolution {
+pub enum ConflictResolution {
     Replace,
     Append,
 }
@@ -117,7 +117,7 @@ pub(crate) enum ConflictResolution {
 /// React's initials: an empty input, nothing streaming, no snapshot, no
 /// skills, no injection, no KV key, no pending conflict, no egress.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct AiChatInputAreaState {
+pub struct AiChatInputAreaState {
     input: TextEdit,
     is_streaming: bool,
     snapshot: Option<AiChatContextSnapshot>,
@@ -138,94 +138,94 @@ pub(crate) struct AiChatInputAreaState {
 }
 
 impl AiChatInputAreaState {
-    pub(crate) fn input_text(&self) -> &str {
+    pub fn input_text(&self) -> &str {
         &self.input.text
     }
 
     /// The draft buffer, for the input field's edit binding.
-    pub(crate) fn input(&self) -> &TextEdit {
+    pub fn input(&self) -> &TextEdit {
         &self.input
     }
 
-    pub(crate) fn is_streaming(&self) -> bool {
+    pub fn is_streaming(&self) -> bool {
         self.is_streaming
     }
 
-    pub(crate) fn snapshot(&self) -> Option<&AiChatContextSnapshot> {
+    pub fn snapshot(&self) -> Option<&AiChatContextSnapshot> {
         self.snapshot.as_ref()
     }
 
-    pub(crate) fn loaded_skills(&self) -> &[AiLoadedSkill] {
+    pub fn loaded_skills(&self) -> &[AiLoadedSkill] {
         &self.loaded_skills
     }
 
-    pub(crate) fn injection(&self) -> Option<&AiInjection> {
+    pub fn injection(&self) -> Option<&AiInjection> {
         self.injection.as_ref()
     }
 
-    pub(crate) fn kv_key_name(&self) -> Option<&str> {
+    pub fn kv_key_name(&self) -> Option<&str> {
         self.kv_key_name.as_deref()
     }
 
-    pub(crate) fn pending_conflict(&self) -> Option<&AiPendingDraft> {
+    pub fn pending_conflict(&self) -> Option<&AiPendingDraft> {
         self.pending_conflict.as_ref()
     }
 
-    pub(crate) fn egress_summary(&self) -> Option<&str> {
+    pub fn egress_summary(&self) -> Option<&str> {
         self.egress_summary.as_deref()
     }
 
-    pub(crate) fn egress_database(&self) -> Option<&str> {
+    pub fn egress_database(&self) -> Option<&str> {
         self.egress_database.as_deref()
     }
 
-    pub(crate) fn egress_relaxed(&self) -> bool {
+    pub fn egress_relaxed(&self) -> bool {
         self.egress_relaxed
     }
 
-    pub(crate) fn egress_has_context_files(&self) -> bool {
+    pub fn egress_has_context_files(&self) -> bool {
         self.egress_has_context_files
     }
 
-    pub(crate) fn context_items_count(&self) -> usize {
+    pub fn context_items_count(&self) -> usize {
         self.context_items_count
     }
 
-    pub(crate) fn db_session_id(&self) -> Option<&str> {
+    pub fn db_session_id(&self) -> Option<&str> {
         self.db_session_id.as_deref()
     }
 
-    pub(crate) fn database(&self) -> Option<&str> {
+    pub fn database(&self) -> Option<&str> {
         self.database.as_deref()
     }
 
     /// React's `AiInput` send gate (`AiInput.tsx:70`): non-blank input
     /// while not streaming. `handleSend` (`AiChatPanel.tsx:325`) guards
     /// the same way, so the state machine — not the caller — owns it.
-    pub(crate) fn can_send(&self) -> bool {
+    pub fn can_send(&self) -> bool {
         !self.input.text.trim().is_empty() && !self.is_streaming
     }
 
     /// The edit accessor the input field binds: returns the draft buffer.
-    pub(crate) fn input_edit(&mut self) -> &mut TextEdit {
+    pub fn input_edit(&mut self) -> &mut TextEdit {
         &mut self.input
     }
 
     /// React's loaded-skills gate (`AiChatPanel.tsx:782`): any skill
     /// shows the row. `normalizeLoadedSkills` already drops nameless
     /// entries, so the VM stores only displayable skills.
-    pub(crate) fn show_loaded_skills(&self) -> bool {
+    pub fn show_loaded_skills(&self) -> bool {
         !self.loaded_skills.is_empty()
     }
 
     /// React's auto-context gate (`AiChatPanel.tsx:805`): S1's
     /// [`has_snapshot_content`] on the snapshot.
-    pub(crate) fn show_auto_context(&self) -> bool {
+    pub fn show_auto_context(&self) -> bool {
         has_snapshot_content(self.snapshot.as_ref())
     }
 
     /// React's injection gate (`AiChatPanel.tsx:845–848`).
-    pub(crate) fn show_injection(&self) -> bool {
+    pub fn show_injection(&self) -> bool {
         self.injection.as_ref().is_some_and(AiInjection::shows_row)
     }
 
@@ -233,7 +233,7 @@ impl AiChatInputAreaState {
     /// non-null only when a key is selected
     /// (`lib/kvAiContext.ts:64` returns `null` for an empty key), so the
     /// VM shows the chip only for a non-blank key name.
-    pub(crate) fn show_kv_chip(&self) -> bool {
+    pub fn show_kv_chip(&self) -> bool {
         self.kv_key_name
             .as_deref()
             .is_some_and(|name| !name.trim().is_empty())
@@ -241,7 +241,7 @@ impl AiChatInputAreaState {
 
     /// React's conflict-bar gate (`AiChatPanel.tsx:898`): a pending draft
     /// conflict is showing.
-    pub(crate) fn show_conflict_bar(&self) -> bool {
+    pub fn show_conflict_bar(&self) -> bool {
         self.pending_conflict.is_some()
     }
 
@@ -250,7 +250,7 @@ impl AiChatInputAreaState {
     /// are attached, or when a summary arrived. A database label alone
     /// does not show it — React checks the database only inside the
     /// rendered notice.
-    pub(crate) fn show_egress_notice(&self) -> bool {
+    pub fn show_egress_notice(&self) -> bool {
         self.egress_relaxed
             || self.egress_has_context_files
             || self
@@ -261,7 +261,7 @@ impl AiChatInputAreaState {
 
     /// `AiEgressNotice`'s summary line (`AiEgressNotice.tsx:17`): the
     /// trimmed summary, when non-empty.
-    pub(crate) fn egress_summary_text(&self) -> Option<&str> {
+    pub fn egress_summary_text(&self) -> Option<&str> {
         self.egress_summary
             .as_deref()
             .map(str::trim)
@@ -270,7 +270,7 @@ impl AiChatInputAreaState {
 
     /// `AiEgressNotice`'s database line (`AiEgressNotice.tsx:21`): the
     /// trimmed database label, when non-empty.
-    pub(crate) fn egress_database_label(&self) -> Option<String> {
+    pub fn egress_database_label(&self) -> Option<String> {
         let database = self.egress_database.as_deref().map(str::trim)?;
         if database.is_empty() {
             return None;
@@ -281,7 +281,7 @@ impl AiChatInputAreaState {
     /// `AiEgressNotice`'s relaxed / context messages, in React's order
     /// (`AiEgressNotice.tsx:29–35`): the relaxed-egress note first, then
     /// the attached-context note.
-    pub(crate) fn egress_messages(&self) -> Vec<String> {
+    pub fn egress_messages(&self) -> Vec<String> {
         let mut messages = Vec::new();
         if self.egress_relaxed {
             messages.push(t("chat.egressNoticeRelaxed").to_string());
@@ -298,7 +298,7 @@ impl AiChatInputAreaState {
     /// field's own empty state is what shows. The text field only
     /// displays a placeholder while empty, so the count is the only
     /// extra condition the builder needs.
-    pub(crate) fn input_placeholder(&self) -> Option<&str> {
+    pub fn input_placeholder(&self) -> Option<&str> {
         if self.context_items_count == 0 {
             Some(t("chat.placeholder"))
         } else {
@@ -312,7 +312,7 @@ impl AiChatInputAreaState {
     /// The send itself — `composeKvAiMessage`, the snapshot attach, the
     /// context split, clearing `contextItems` — is the panel slice's job;
     /// this only owns the draft.
-    pub(crate) fn submit(&mut self) -> Option<String> {
+    pub fn submit(&mut self) -> Option<String> {
         if !self.can_send() {
             return None;
         }
@@ -327,7 +327,7 @@ impl AiChatInputAreaState {
     /// `onDraftConsumed` ack and the tab switch / focus are the panel
     /// slice's job; the request id is returned so the caller can ack it.
     /// Returns `None` when no conflict is pending.
-    pub(crate) fn resolve_conflict(&mut self, strategy: ConflictResolution) -> Option<String> {
+    pub fn resolve_conflict(&mut self, strategy: ConflictResolution) -> Option<String> {
         let draft = self.pending_conflict.take()?;
         match strategy {
             ConflictResolution::Replace => {
@@ -344,7 +344,7 @@ impl AiChatInputAreaState {
 
     /// React's `dismissConflict` (`AiChatPanel.tsx:291–293`): drop the
     /// pending draft, leaving the input untouched.
-    pub(crate) fn dismiss_conflict(&mut self) {
+    pub fn dismiss_conflict(&mut self) {
         self.pending_conflict = None;
     }
 
@@ -353,7 +353,7 @@ impl AiChatInputAreaState {
     /// goes `null`. Unknown field names are a no-op. Field names are
     /// React's `keyof AiChatContextSnapshot`: `editorSql`, `selection`,
     /// `lastError`, `resultPreview`.
-    pub(crate) fn remove_snapshot_field(&mut self, field: &str) {
+    pub fn remove_snapshot_field(&mut self, field: &str) {
         let Some(snapshot) = self.snapshot.as_mut() else {
             return;
         };
@@ -373,31 +373,31 @@ impl AiChatInputAreaState {
     // lands. Until then tests (and the panel slice's placeholder) drive
     // these directly. --
 
-    pub(crate) fn set_input(&mut self, input: impl Into<String>) {
+    pub fn set_input(&mut self, input: impl Into<String>) {
         self.input = TextEdit::new(input.into());
     }
 
-    pub(crate) fn set_streaming(&mut self, is_streaming: bool) {
+    pub fn set_streaming(&mut self, is_streaming: bool) {
         self.is_streaming = is_streaming;
     }
 
-    pub(crate) fn set_snapshot(&mut self, snapshot: Option<AiChatContextSnapshot>) {
+    pub fn set_snapshot(&mut self, snapshot: Option<AiChatContextSnapshot>) {
         self.snapshot = snapshot;
     }
 
-    pub(crate) fn set_loaded_skills(&mut self, skills: Vec<AiLoadedSkill>) {
+    pub fn set_loaded_skills(&mut self, skills: Vec<AiLoadedSkill>) {
         self.loaded_skills = skills;
     }
 
-    pub(crate) fn set_injection(&mut self, injection: Option<AiInjection>) {
+    pub fn set_injection(&mut self, injection: Option<AiInjection>) {
         self.injection = injection;
     }
 
-    pub(crate) fn set_kv_key_name(&mut self, key_name: Option<String>) {
+    pub fn set_kv_key_name(&mut self, key_name: Option<String>) {
         self.kv_key_name = key_name;
     }
 
-    pub(crate) fn set_pending_conflict(&mut self, draft: Option<AiPendingDraft>) {
+    pub fn set_pending_conflict(&mut self, draft: Option<AiPendingDraft>) {
         self.pending_conflict = draft;
     }
 
@@ -407,7 +407,7 @@ impl AiChatInputAreaState {
     /// attached context item is a file or directory. The VM carries the
     /// values because the settings store and the context-item split live
     /// outside this slice.
-    pub(crate) fn set_egress(
+    pub fn set_egress(
         &mut self,
         summary: Option<String>,
         database: Option<String>,
@@ -420,17 +420,17 @@ impl AiChatInputAreaState {
         self.egress_has_context_files = has_context_files;
     }
 
-    pub(crate) fn set_context_items_count(&mut self, count: usize) {
+    pub fn set_context_items_count(&mut self, count: usize) {
         self.context_items_count = count;
     }
 
     /// `AiInput`'s `dbSessionId` prop (T139). Stored only.
-    pub(crate) fn set_db_session_id(&mut self, db_session_id: Option<String>) {
+    pub fn set_db_session_id(&mut self, db_session_id: Option<String>) {
         self.db_session_id = db_session_id;
     }
 
     /// `AiInput`'s `database` prop (T139). Stored only.
-    pub(crate) fn set_database(&mut self, database: Option<String>) {
+    pub fn set_database(&mut self, database: Option<String>) {
         self.database = database;
     }
 }

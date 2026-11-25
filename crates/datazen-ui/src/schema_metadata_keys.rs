@@ -35,7 +35,7 @@ use datazen_ui_api::{
 /// `String` / `Option<String>`. (The relation target below fixes `catalog`
 /// to `null` and `path` to empty, exactly as the React key does.)
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RelationRef {
+pub struct RelationRef {
     pub database: String,
     pub schema: Option<String>,
     pub name: String,
@@ -47,7 +47,7 @@ pub(crate) struct RelationRef {
 /// is React's `identityForSession` with the brand casts collapsed (see the
 /// module docs). A bare [`MetadataTarget::Namespace`] passes through
 /// unchanged, exactly as the `ExecutionTarget | NamespaceTarget` union does.
-pub(crate) fn identity_for_session(
+pub fn identity_for_session(
     connection_id: String,
     config_revision: u64,
     db_session_id: String,
@@ -69,7 +69,7 @@ pub(crate) fn identity_for_session(
 /// is deliberately not part of this struct — React passes `dbSessionId`
 /// alongside at call time and so does the key below.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SessionMetadataIdentity {
+pub struct SessionMetadataIdentity {
     /// Persistent connection config id this session's schema belongs to.
     pub connection_id: String,
     /// Session-local config revision; bumped whenever that identity changes.
@@ -84,7 +84,7 @@ pub(crate) struct SessionMetadataIdentity {
 /// string is the canonical `metadataCacheKey` spelling, so the schema
 /// store's column cache and the `lib/metadata` batcher deduplicate through
 /// one derivation rather than two spellings of the same address.
-pub(crate) fn relation_columns_cache_key(
+pub fn relation_columns_cache_key(
     session: &SessionMetadataIdentity,
     db_session_id: &str,
     relation: &RelationRef,

@@ -13,7 +13,7 @@ use crate::components::connection::connection_advanced_settings::TunnelKind as K
 
 /// React `ConnectionFormSnapshot` — the fields saved when switching driver types.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FormSnapshot {
+pub struct FormSnapshot {
     pub name: String,
     pub host: String,
     pub port: String,
@@ -45,7 +45,7 @@ pub(crate) struct FormSnapshot {
     pub ssh_jump_passphrase: String,
 }
 
-pub(crate) fn capture(state: &ConnectionFormState) -> FormSnapshot {
+pub fn capture(state: &ConnectionFormState) -> FormSnapshot {
     FormSnapshot {
         name: state.name.clone(),
         host: state.host.clone(),
@@ -79,7 +79,7 @@ pub(crate) fn capture(state: &ConnectionFormState) -> FormSnapshot {
     }
 }
 
-pub(crate) fn restore(state: &mut ConnectionFormState, snapshot: &FormSnapshot) {
+pub fn restore(state: &mut ConnectionFormState, snapshot: &FormSnapshot) {
     state.name = snapshot.name.clone();
     state.host = snapshot.host.clone();
     state.port = snapshot.port.clone();
@@ -113,7 +113,7 @@ pub(crate) fn restore(state: &mut ConnectionFormState, snapshot: &FormSnapshot) 
 }
 
 /// `applyTypeDefaults` from the React hook.
-pub(crate) fn apply_type_defaults(state: &mut ConnectionFormState, new_type: &str) {
+pub fn apply_type_defaults(state: &mut ConnectionFormState, new_type: &str) {
     let Some(new_meta) = meta::db_meta(new_type) else {
         return;
     };
@@ -160,7 +160,7 @@ pub(crate) fn apply_type_defaults(state: &mut ConnectionFormState, new_type: &st
 // ---- Plain connection config ------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct JumpConfig {
+pub struct JumpConfig {
     pub enabled: bool,
     pub host: String,
     pub port: u16,
@@ -172,7 +172,7 @@ pub(crate) struct JumpConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SshConfig {
+pub struct SshConfig {
     pub enabled: bool,
     pub host: String,
     pub port: u16,
@@ -185,7 +185,7 @@ pub(crate) struct SshConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct HttpProxyConfig {
+pub struct HttpProxyConfig {
     pub enabled: bool,
     pub host: String,
     pub port: u16,
@@ -196,7 +196,7 @@ pub(crate) struct HttpProxyConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WebSocketConfig {
+pub struct WebSocketConfig {
     pub enabled: bool,
     pub url: String,
     pub mode: WsMode,
@@ -206,7 +206,7 @@ pub(crate) struct WebSocketConfig {
 
 /// Plain, JSON-shaped output of `buildConnectionConfig`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct BuiltConfig {
+pub struct BuiltConfig {
     pub id: String,
     pub name: String,
     pub database_type: String,
@@ -310,7 +310,7 @@ fn websocket_config(state: &ConnectionFormState) -> Option<WebSocketConfig> {
 
 /// `buildConnectionConfig` with the tunnel rules: a saved reference skips all
 /// inline tunnel configs but keeps the kind hint.
-pub(crate) fn build_config(
+pub fn build_config(
     state: &ConnectionFormState,
     new_id: &str,
     unnamed_label: &str,

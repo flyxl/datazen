@@ -116,7 +116,7 @@ use crate::views::data_transfer::transfer_pairing_vm::{
 
 /// React `WizardStep` (`DataTransferWindow.tsx:74`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WizardStep {
+pub enum WizardStep {
     Endpoints,
     Setup,
     Objects,
@@ -127,7 +127,7 @@ pub(crate) enum WizardStep {
 
 impl WizardStep {
     /// React `STEPS.indexOf(step)` (React 879) — the step rail's index.
-    pub(crate) fn index(self) -> usize {
+    pub fn index(self) -> usize {
         STEPS
             .iter()
             .position(|step| *step == self)
@@ -136,7 +136,7 @@ impl WizardStep {
 
     /// The React step id's own spelling (`endpoints` … `result`), for
     /// the element keys the rail and the body name.
-    pub(crate) fn as_key(self) -> &'static str {
+    pub fn as_key(self) -> &'static str {
         match self {
             WizardStep::Endpoints => "endpoints",
             WizardStep::Setup => "setup",
@@ -149,7 +149,7 @@ impl WizardStep {
 
     /// The i18n key the step rail's label uses (React 1135:
     /// `` t(`transfer.step.${s}`) ``).
-    pub(crate) fn label_key(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
             WizardStep::Endpoints => "transfer.step.endpoints",
             WizardStep::Setup => "transfer.step.setup",
@@ -162,7 +162,7 @@ impl WizardStep {
 }
 
 /// React `STEPS` (React 76).
-pub(crate) const STEPS: [WizardStep; 6] = [
+pub const STEPS: [WizardStep; 6] = [
     WizardStep::Endpoints,
     WizardStep::Setup,
     WizardStep::Objects,
@@ -173,7 +173,7 @@ pub(crate) const STEPS: [WizardStep; 6] = [
 
 /// React `NARROW_STEPS` (React 78) — the steps whose body uses the narrow
 /// (`max-w-2xl`) column.
-pub(crate) const NARROW_STEPS: [WizardStep; 3] = [
+pub const NARROW_STEPS: [WizardStep; 3] = [
     WizardStep::Endpoints,
     WizardStep::Setup,
     WizardStep::Result,
@@ -185,7 +185,7 @@ pub(crate) const NARROW_STEPS: [WizardStep; 3] = [
 
 /// React `TransferMode` (`commands/transfer.ts:4`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TransferMode {
+pub enum TransferMode {
     Structure,
     #[default]
     Data,
@@ -194,7 +194,7 @@ pub(crate) enum TransferMode {
 
 impl TransferMode {
     /// The TS union's own spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             TransferMode::Structure => "structure",
             TransferMode::Data => "data",
@@ -203,7 +203,7 @@ impl TransferMode {
     }
 
     /// Parse the TS union's own spelling.
-    pub(crate) fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "structure" => Some(TransferMode::Structure),
             "data" => Some(TransferMode::Data),
@@ -215,7 +215,7 @@ impl TransferMode {
 
 /// React `WriteMode` (`commands/transfer.ts:5`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum WriteMode {
+pub enum WriteMode {
     #[default]
     Insert,
     TruncateInsert,
@@ -224,7 +224,7 @@ pub(crate) enum WriteMode {
 
 impl WriteMode {
     /// The TS union's own spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             WriteMode::Insert => "insert",
             WriteMode::TruncateInsert => "truncateInsert",
@@ -233,7 +233,7 @@ impl WriteMode {
     }
 
     /// Parse the TS union's own spelling.
-    pub(crate) fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "insert" => Some(WriteMode::Insert),
             "truncateInsert" => Some(WriteMode::TruncateInsert),
@@ -246,7 +246,7 @@ impl WriteMode {
 /// The window's SQL-file encoding union (React 115-118):
 /// `'utf8' | 'utf8Bom' | 'utf16Le' | 'utf16Be'`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum SqlFileEncoding {
+pub enum SqlFileEncoding {
     #[default]
     Utf8,
     Utf8Bom,
@@ -256,7 +256,7 @@ pub(crate) enum SqlFileEncoding {
 
 impl SqlFileEncoding {
     /// The TS union's own spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             SqlFileEncoding::Utf8 => "utf8",
             SqlFileEncoding::Utf8Bom => "utf8Bom",
@@ -268,7 +268,7 @@ impl SqlFileEncoding {
 
 /// The window's SQL-file compression union (React 118): `'none' | 'gzip'`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum SqlFileCompression {
+pub enum SqlFileCompression {
     #[default]
     None,
     Gzip,
@@ -276,7 +276,7 @@ pub(crate) enum SqlFileCompression {
 
 impl SqlFileCompression {
     /// The TS union's own spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             SqlFileCompression::None => "none",
             SqlFileCompression::Gzip => "gzip",
@@ -288,7 +288,7 @@ impl SqlFileCompression {
 /// `buildJob` assembles it; the schema rides the connection, not the
 /// session.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TransferEndpointVm {
+pub struct TransferEndpointVm {
     pub db_session_id: String,
     pub database: String,
     pub schema: Option<String>,
@@ -296,7 +296,7 @@ pub(crate) struct TransferEndpointVm {
 
 /// React `DedicatedSideSession` (`lib/dedicatedDbSession.ts:3-7`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DedicatedSessionVm {
+pub struct DedicatedSessionVm {
     pub connection_id: String,
     pub database: String,
     pub db_session_id: String,
@@ -306,7 +306,7 @@ pub(crate) struct DedicatedSessionVm {
 /// window's state holds it. The optional fields are `Option` because the
 /// wire distinguishes "omitted" (the default) from an explicit value.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferSqlFileTargetVm {
+pub struct TransferSqlFileTargetVm {
     /// Opaque host token returned by the native SQL save dialog.
     pub file_token: String,
     /// Registered SQL driver used to render the artifact; omitted means
@@ -324,7 +324,7 @@ pub(crate) struct TransferSqlFileTargetVm {
 
 /// React `TransferSourceFilter` (`commands/transfer.ts:43-46`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferSourceFilter {
+pub struct TransferSourceFilter {
     pub filters: Vec<FilterCondition>,
     pub logic: Option<FilterLogic>,
 }
@@ -332,7 +332,7 @@ pub(crate) struct TransferSourceFilter {
 /// React `TransferTableMapping` (`commands/transfer.ts:29-41`) — what the
 /// window sends for every table.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferTableMapping {
+pub struct TransferTableMapping {
     pub source_table: String,
     pub target_table: String,
     pub create_new: Option<bool>,
@@ -350,7 +350,7 @@ pub(crate) struct TransferTableMapping {
 /// option fields the window reads; `batchSize` is the parsed number, the
 /// raw edit text lives in the Vm.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct TransferOptionsVm {
+pub struct TransferOptionsVm {
     pub batch_size: Option<i64>,
     pub stop_on_error: bool,
     pub confirmed_destructive: bool,
@@ -358,7 +358,7 @@ pub(crate) struct TransferOptionsVm {
 }
 
 /// React `DEFAULT_TRANSFER_OPTIONS` (`commands/transfer.ts:228-233`).
-pub(crate) const DEFAULT_TRANSFER_OPTIONS: TransferOptionsVm = TransferOptionsVm {
+pub const DEFAULT_TRANSFER_OPTIONS: TransferOptionsVm = TransferOptionsVm {
     batch_size: Some(500),
     stop_on_error: true,
     confirmed_destructive: false,
@@ -368,7 +368,7 @@ pub(crate) const DEFAULT_TRANSFER_OPTIONS: TransferOptionsVm = TransferOptionsVm
 /// React `TransferJob` (`commands/transfer.ts:83-92`) as the window's
 /// `buildJob` assembles it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferJobVm {
+pub struct TransferJobVm {
     pub source: TransferEndpointVm,
     pub target: Option<TransferEndpointVm>,
     pub sql_file_target: Option<TransferSqlFileTargetVm>,
@@ -381,7 +381,7 @@ pub(crate) struct TransferJobVm {
 /// React `TransferProfile` (`commands/transfer.ts:108-130`) — the save
 /// payload's shape.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferProfileVm {
+pub struct TransferProfileVm {
     pub version: i64,
     pub id: String,
     pub name: String,
@@ -407,7 +407,7 @@ pub(crate) struct TransferProfileVm {
 
 /// The window's destination union (React 112): `'database' | 'sqlFile'`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TransferDestinationMode {
+pub enum TransferDestinationMode {
     #[default]
     Database,
     SqlFile,
@@ -415,7 +415,7 @@ pub(crate) enum TransferDestinationMode {
 
 /// React `TransferDdlPreview` (`commands/transfer.ts:150-156`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferDdlPreviewVm {
+pub struct TransferDdlPreviewVm {
     pub source_table: String,
     pub target_table: String,
     pub ddl: String,
@@ -427,7 +427,7 @@ pub(crate) struct TransferDdlPreviewVm {
 
 /// The DDL item kind union (`commands/transfer.ts:154`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DdlKind {
+pub enum DdlKind {
     Table,
     Index,
     ForeignKey,
@@ -437,7 +437,7 @@ pub(crate) enum DdlKind {
 impl DdlKind {
     /// The React kind union's own spelling (`table` / `index` / …), for
     /// the element keys the DDL cards name.
-    pub(crate) fn as_key(self) -> &'static str {
+    pub fn as_key(self) -> &'static str {
         match self {
             DdlKind::Table => "table",
             DdlKind::Index => "index",
@@ -447,7 +447,7 @@ impl DdlKind {
     }
 
     /// React's `item.kind ?? 'table'` default (React 1631).
-    pub(crate) fn or_table(self) -> &'static str {
+    pub fn or_table(self) -> &'static str {
         match self {
             DdlKind::Table => "table",
             DdlKind::Index => "index",
@@ -459,7 +459,7 @@ impl DdlKind {
 
 /// React `TransferWritePlan` (`commands/transfer.ts:158-167`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferWritePlanVm {
+pub struct TransferWritePlanVm {
     pub source_table: String,
     pub target_table: String,
     pub write_mode: WriteMode,
@@ -473,7 +473,7 @@ pub(crate) struct TransferWritePlanVm {
 /// React `TransferPreview` (`commands/transfer.ts:169-179`) — the review
 /// the prepare Job returns.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferPreviewVm {
+pub struct TransferPreviewVm {
     pub plan_id: String,
     pub pairing_path: String,
     pub mode: TransferMode,
@@ -491,7 +491,7 @@ pub(crate) struct TransferPreviewVm {
 /// `sourceFilter`. The split keeps the T023/T305 placeholder model
 /// untouched (its own doc forbids extending it with new semantics).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferTableRow {
+pub struct TransferTableRow {
     pub vm: TransferTableVm,
     /// React `ddlOverride?: string` — execute this CREATE instead of the
     /// auto-generated DDL.
@@ -506,15 +506,15 @@ pub(crate) struct TransferTableRow {
 
 impl TransferTableRow {
     /// React `tbl.sourceTable` / `tbl.targetTable` / `tbl.status` reads.
-    pub(crate) fn source_table(&self) -> &str {
+    pub fn source_table(&self) -> &str {
         &self.vm.source_table
     }
 
-    pub(crate) fn target_table(&self) -> &str {
+    pub fn target_table(&self) -> &str {
         &self.vm.target_table
     }
 
-    pub(crate) fn status(&self) -> TransferMappingStatus {
+    pub fn status(&self) -> TransferMappingStatus {
         self.vm.status
     }
 }
@@ -524,7 +524,7 @@ impl TransferTableRow {
 /// override and source filter the preview step writes. Fields React never
 /// patches from the window (status, column lists, row count) are absent.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferTablePatch {
+pub struct TransferTablePatch {
     pub target_table: Option<String>,
     pub create_new: Option<bool>,
     pub enabled: Option<bool>,
@@ -538,7 +538,7 @@ impl TransferTablePatch {
     /// Apply the patch the way the parent's `setTables` spread does
     /// (React 973-982) — including the rule that a `columnMappings` patch
     /// clears `ddlOverride` (React 977-980).
-    pub(crate) fn apply_to(&self, row: &mut TransferTableRow) {
+    pub fn apply_to(&self, row: &mut TransferTableRow) {
         if let Some(target_table) = &self.target_table {
             row.vm.target_table = target_table.clone();
         }
@@ -571,7 +571,7 @@ impl TransferTablePatch {
 /// The `ConnectionConfig` slice the window reads (`id`, `name`,
 /// `databaseType`, `database`, `schema`, `readOnly`).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferConnectionVm {
+pub struct TransferConnectionVm {
     pub id: String,
     pub name: String,
     pub database_type: String,
@@ -583,7 +583,7 @@ pub(crate) struct TransferConnectionVm {
 /// One `{ value, label, disabled?, title? }` option the endpoints bar
 /// renders (React 259-289).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ConnectionOption {
+pub struct ConnectionOption {
     pub value: String,
     pub label: String,
     pub disabled: bool,
@@ -599,7 +599,7 @@ pub(crate) struct ConnectionOption {
 /// The Data Transfer window's state — every `useState` slot React holds
 /// (React 86-155) as one struct, with the derivations as methods.
 #[derive(Clone, Debug)]
-pub(crate) struct DataTransferWindowVm {
+pub struct DataTransferWindowVm {
     // -- endpoints (React 86-121) -----------------------------------------
     pub connections: Vec<TransferConnectionVm>,
     pub source_id: String,
@@ -740,24 +740,24 @@ impl Default for DataTransferWindowVm {
 impl DataTransferWindowVm {
     /// The parsed batch size (React 127 binds `batchSize`; the deviation
     /// above records why the raw edit text is the field).
-    pub(crate) fn batch_size(&self) -> Option<i64> {
+    pub fn batch_size(&self) -> Option<i64> {
         self.batch_size_edit.trim().parse::<i64>().ok()
     }
 
     // -- endpoint derivations (React 250-296) ------------------------------
 
     /// React `sourceConn` (React 250-253).
-    pub(crate) fn source_conn(&self) -> Option<&TransferConnectionVm> {
+    pub fn source_conn(&self) -> Option<&TransferConnectionVm> {
         self.connections.iter().find(|c| c.id == self.source_id)
     }
 
     /// React `targetConn` (React 254-257).
-    pub(crate) fn target_conn(&self) -> Option<&TransferConnectionVm> {
+    pub fn target_conn(&self) -> Option<&TransferConnectionVm> {
         self.connections.iter().find(|c| c.id == self.target_id)
     }
 
     /// React `connOptions` (React 259-266): `` `${c.name} (${c.databaseType})` ``.
-    pub(crate) fn conn_options(&self) -> Vec<ConnectionOption> {
+    pub fn conn_options(&self) -> Vec<ConnectionOption> {
         self.connections
             .iter()
             .map(|c| ConnectionOption {
@@ -772,7 +772,7 @@ impl DataTransferWindowVm {
     /// React `targetOptions` (React 268-289), line for line: the target
     /// select's options with the unsupported pair hint and the
     /// experimental pair hint.
-    pub(crate) fn target_options(&self) -> Vec<ConnectionOption> {
+    pub fn target_options(&self) -> Vec<ConnectionOption> {
         let hint = t("common.unsupportedPair");
         let experimental_hint = t("common.experimentalPairHint");
         let src_type = self.source_conn().map(|c| c.database_type.clone());
@@ -813,7 +813,7 @@ impl DataTransferWindowVm {
     }
 
     /// React `pairing` (React 291-294).
-    pub(crate) fn pairing(&self) -> Option<TransferPairingResult> {
+    pub fn pairing(&self) -> Option<TransferPairingResult> {
         let source = self.source_conn()?;
         let target = self.target_conn()?;
         Some(resolve_transfer_pairing(
@@ -823,7 +823,7 @@ impl DataTransferWindowVm {
     }
 
     /// React `targetReadOnly` (React 296).
-    pub(crate) fn target_read_only(&self) -> bool {
+    pub fn target_read_only(&self) -> bool {
         self.target_conn().map(|c| c.read_only).unwrap_or(false)
     }
 
@@ -832,7 +832,7 @@ impl DataTransferWindowVm {
     /// React `validBatchSize` (React 880):
     /// `Number.isInteger(batchSize) && batchSize >= 1 && batchSize <= 500`.
     /// The parsed edit is always integral, so only the range remains.
-    pub(crate) fn valid_batch_size(&self) -> bool {
+    pub fn valid_batch_size(&self) -> bool {
         match self.batch_size() {
             Some(batch_size) => (1..=500).contains(&batch_size),
             None => false,
@@ -840,7 +840,7 @@ impl DataTransferWindowVm {
     }
 
     /// React `canNext` (React 882-917), line for line, switch by step.
-    pub(crate) fn can_next(&self) -> bool {
+    pub fn can_next(&self) -> bool {
         match self.step {
             WizardStep::Endpoints => {
                 let endpoints_ready = match self.destination_mode {
@@ -875,7 +875,7 @@ impl DataTransferWindowVm {
     }
 
     /// React `canExecute` (React 919-925), line for line.
-    pub(crate) fn can_execute(&self) -> bool {
+    pub fn can_execute(&self) -> bool {
         self.preview
             .as_ref()
             .map(|preview| preview.can_execute)
@@ -886,7 +886,7 @@ impl DataTransferWindowVm {
     }
 
     /// The table rows as the mapping-gate VM sees them (the row's VM half).
-    pub(crate) fn table_vms(&self) -> Vec<TransferTableVm> {
+    pub fn table_vms(&self) -> Vec<TransferTableVm> {
         self.tables.iter().map(|row| row.vm.clone()).collect()
     }
 
@@ -895,7 +895,7 @@ impl DataTransferWindowVm {
     /// React `allTablesToMappings` (React 431-446), line for line: every
     /// table with a source name, mappings normalized, `ddlOverride`
     /// trimmed-to-Some.
-    pub(crate) fn all_tables_to_mappings(&self) -> Vec<TransferTableMapping> {
+    pub fn all_tables_to_mappings(&self) -> Vec<TransferTableMapping> {
         self.tables
             .iter()
             .filter(|tbl| !tbl.vm.source_table.is_empty())
@@ -918,7 +918,7 @@ impl DataTransferWindowVm {
     }
 
     /// React `tablesToMappings` (React 448-451): the enabled subset.
-    pub(crate) fn tables_to_mappings(&self) -> Vec<TransferTableMapping> {
+    pub fn tables_to_mappings(&self) -> Vec<TransferTableMapping> {
         self.all_tables_to_mappings()
             .into_iter()
             .filter(|table| table.enabled.unwrap_or(true))
@@ -930,7 +930,7 @@ impl DataTransferWindowVm {
     /// React `buildJob` (React 595-657), the pure half: the sessions are
     /// parameters exactly as React's `buildJob` takes them. `None` is
     /// every refusal React's guard returns `null` for.
-    pub(crate) fn build_job(
+    pub fn build_job(
         &self,
         source_session: Option<&DedicatedSessionVm>,
         target_session: Option<&DedicatedSessionVm>,
@@ -1005,7 +1005,7 @@ impl DataTransferWindowVm {
 
     /// React `refreshEndpointSessions`' guard (React 566-571): whether the
     /// refresh may run at all. The host performs the session IPC.
-    pub(crate) fn refresh_sessions_guard(&self) -> bool {
+    pub fn refresh_sessions_guard(&self) -> bool {
         !self.source_id.is_empty()
             && !self.source_database.is_empty()
             && (self.destination_mode == TransferDestinationMode::SqlFile
@@ -1016,7 +1016,7 @@ impl DataTransferWindowVm {
 
     /// React `nextPrepareKey` (React 175-178):
     /// `data-transfer/prepare/<scope>/<seq>`, seq pre-incremented.
-    pub(crate) fn next_prepare_key(&mut self) -> String {
+    pub fn next_prepare_key(&mut self) -> String {
         self.prepare_seq += 1;
         format!(
             "data-transfer/prepare/{}/{}",
@@ -1026,7 +1026,7 @@ impl DataTransferWindowVm {
 
     /// React `applyKeyForPlan` (React 179):
     /// `data-transfer/apply/<planId>`.
-    pub(crate) fn apply_key_for_plan(plan_id: &str) -> String {
+    pub fn apply_key_for_plan(plan_id: &str) -> String {
         format!("data-transfer/apply/{}", plan_id)
     }
 
@@ -1038,7 +1038,7 @@ impl DataTransferWindowVm {
     /// the loaded list; the prefill connection ids apply here (React
     /// 227's `useMigrationEndpointPrefill` effect). Returns whether the
     /// prefill applied.
-    pub(crate) fn apply_connections_loaded(
+    pub fn apply_connections_loaded(
         &mut self,
         connections: Vec<TransferConnectionVm>,
     ) -> bool {
@@ -1069,7 +1069,7 @@ impl DataTransferWindowVm {
     /// React `setSourceDatabases` effect body (React 325-355): the host
     /// feeds `listDatabasesDedicated`'s result (or `None` for its catch);
     /// the prefill database leg and the default resolution live here.
-    pub(crate) fn apply_source_databases(&mut self, databases: Option<Vec<String>>) {
+    pub fn apply_source_databases(&mut self, databases: Option<Vec<String>>) {
         let preferred = self
             .source_conn()
             .and_then(|c| c.database.clone())
@@ -1089,7 +1089,7 @@ impl DataTransferWindowVm {
 
     /// React `setTargetDatabases` effect body (React 378-408): the target
     /// twin of [`apply_source_databases`].
-    pub(crate) fn apply_target_databases(&mut self, databases: Option<Vec<String>>) {
+    pub fn apply_target_databases(&mut self, databases: Option<Vec<String>>) {
         let preferred = self
             .target_conn()
             .and_then(|c| c.database.clone())
@@ -1111,7 +1111,7 @@ impl DataTransferWindowVm {
     /// SQL drivers whose meta `supportsSQL === true && category === 'sql'`
     /// (the meta's `supportsSQL` gate rides the `Sql` category filter —
     /// every `Sql`-category driver in the table declares it).
-    pub(crate) fn set_available_sql_dialects(&mut self, drivers: Vec<String>) {
+    pub fn set_available_sql_dialects(&mut self, drivers: Vec<String>) {
         self.available_sql_dialects = drivers
             .into_iter()
             .filter(|driver| sync_category(driver) == SyncCategory::Sql)
@@ -1120,7 +1120,7 @@ impl DataTransferWindowVm {
 
     /// React `chooseSqlFile` (React 298-309): a picked file switches the
     /// destination to `sqlFile`; the dialog error is the host's.
-    pub(crate) fn choose_sql_file(&mut self, picked: Option<TransferSqlFileTargetVm>) {
+    pub fn choose_sql_file(&mut self, picked: Option<TransferSqlFileTargetVm>) {
         if let Some(picked) = picked {
             self.sql_file_target = Some(picked);
             self.destination_mode = TransferDestinationMode::SqlFile;
@@ -1131,7 +1131,7 @@ impl DataTransferWindowVm {
     /// 230-239): drop the side sessions whose id matches. The host owns
     /// the listener and maps a missing payload to `""` (an empty id is a
     /// no-op by design, per the BackupWindow N4 precedent).
-    pub(crate) fn on_connection_closed(&mut self, closed_db_session_id: &str) {
+    pub fn on_connection_closed(&mut self, closed_db_session_id: &str) {
         if closed_db_session_id.is_empty() {
             return;
         }
@@ -1157,22 +1157,22 @@ impl DataTransferWindowVm {
     /// empty source endpoint clears its databases and session; a source
     /// without a database clears the session only. The host calls these
     /// when its own effect tracking sees the change.
-    pub(crate) fn source_endpoint_cleared(&mut self) {
+    pub fn source_endpoint_cleared(&mut self) {
         self.source_databases.clear();
         self.source_session = None;
     }
 
-    pub(crate) fn source_database_cleared(&mut self) {
+    pub fn source_database_cleared(&mut self) {
         self.source_session = None;
     }
 
     /// React's target twins (React 379-383, 411-413).
-    pub(crate) fn target_endpoint_cleared(&mut self) {
+    pub fn target_endpoint_cleared(&mut self) {
         self.target_databases.clear();
         self.target_session = None;
     }
 
-    pub(crate) fn target_database_cleared(&mut self) {
+    pub fn target_database_cleared(&mut self) {
         self.target_session = None;
     }
 
@@ -1181,32 +1181,32 @@ impl DataTransferWindowVm {
     /// React's dialect `onChange` (React 1288-1294): target-native type
     /// overrides are dialect-specific, so the preview and the inspected
     /// tables are dropped to force a fresh source-only inspection.
-    pub(crate) fn set_sql_file_dialect(&mut self, dialect: String) {
+    pub fn set_sql_file_dialect(&mut self, dialect: String) {
         self.sql_file_dialect = dialect;
         self.preview = None;
         self.tables.clear();
     }
 
     /// React's encoding `onChange` (React 1327-1330).
-    pub(crate) fn set_sql_file_encoding(&mut self, encoding: SqlFileEncoding) {
+    pub fn set_sql_file_encoding(&mut self, encoding: SqlFileEncoding) {
         self.sql_file_encoding = encoding;
         self.preview = None;
     }
 
     /// React's compression `onChange` (React 1350-1353).
-    pub(crate) fn set_sql_file_compression(&mut self, compression: SqlFileCompression) {
+    pub fn set_sql_file_compression(&mut self, compression: SqlFileCompression) {
         self.sql_file_compression = compression;
         self.preview = None;
     }
 
     /// React's target-database input `onChange` (React 1364-1367).
-    pub(crate) fn set_sql_file_database(&mut self, database: String) {
+    pub fn set_sql_file_database(&mut self, database: String) {
         self.sql_file_database = database;
         self.preview = None;
     }
 
     /// React's target-schema input `onChange` (React 1379-1382).
-    pub(crate) fn set_sql_file_schema(&mut self, schema: String) {
+    pub fn set_sql_file_schema(&mut self, schema: String) {
         self.sql_file_schema = schema;
         self.preview = None;
     }
@@ -1215,7 +1215,7 @@ impl DataTransferWindowVm {
 
     /// React `loadTransferProfiles` (React 185-190): the host loads; a
     /// failure feeds an empty list.
-    pub(crate) fn apply_transfer_profiles(&mut self, profiles: Vec<TransferProfileVm>) {
+    pub fn apply_transfer_profiles(&mut self, profiles: Vec<TransferProfileVm>) {
         self.transfer_profiles = profiles;
     }
 
@@ -1223,7 +1223,7 @@ impl DataTransferWindowVm {
     /// the job-run reset (`resetJobRun`, S2's field) which the caller
     /// applies after this. Returns the "choose a file" flag so the host
     /// can raise the dialog error exactly as React does (React 554-557).
-    pub(crate) fn load_selected_profile(&mut self) -> bool {
+    pub fn load_selected_profile(&mut self) -> bool {
         let Some(profile) = self
             .transfer_profiles
             .iter()
@@ -1274,7 +1274,7 @@ impl DataTransferWindowVm {
     /// React `saveCurrentProfile`'s missing-fields refusal (React 454-464)
     /// — the pure check; the host raises the dialog error when this
     /// returns `false`.
-    pub(crate) fn profile_missing_fields(&self) -> bool {
+    pub fn profile_missing_fields(&self) -> bool {
         self.profile_name.trim().is_empty()
             || self.source_id.is_empty()
             || self.source_database.is_empty()
@@ -1285,7 +1285,7 @@ impl DataTransferWindowVm {
     /// React `saveCurrentProfile`'s payload assembly (React 465-489). The
     /// host performs the save with its own id mint; `now` is the host's
     /// clock (React 465).
-    pub(crate) fn profile_save_payload(&self, now: &str, profile_id: &str) -> TransferProfileVm {
+    pub fn profile_save_payload(&self, now: &str, profile_id: &str) -> TransferProfileVm {
         let existing = self
             .transfer_profiles
             .iter()
@@ -1342,7 +1342,7 @@ impl DataTransferWindowVm {
 
     /// The save-success application (React 490-494): select the saved id,
     /// show its name; the host reloads the profile list.
-    pub(crate) fn profile_saved(&mut self, profile: &TransferProfileVm) {
+    pub fn profile_saved(&mut self, profile: &TransferProfileVm) {
         self.selected_profile_id = profile.id.clone();
         self.profile_name = profile.name.clone();
     }
@@ -1350,7 +1350,7 @@ impl DataTransferWindowVm {
     // -- the table reducers (React 560-564, 967-1042) ---------------------------
 
     /// React `updateTableDdlOverride` (React 560-564).
-    pub(crate) fn update_table_ddl_override(&mut self, source_table: &str, ddl: String) {
+    pub fn update_table_ddl_override(&mut self, source_table: &str, ddl: String) {
         for row in &mut self.tables {
             if row.vm.source_table == source_table {
                 row.ddl_override = Some(ddl.clone());
@@ -1362,7 +1362,7 @@ impl DataTransferWindowVm {
     /// recordset change — invalidate the opaque server preview immediately
     /// (React 969-970: `setPreview(null)`) and clear the gate error the
     /// user is re-answering (React 972).
-    pub(crate) fn update_table(&mut self, source_table: &str, patch: &TransferTablePatch) {
+    pub fn update_table(&mut self, source_table: &str, patch: &TransferTablePatch) {
         self.preview = None;
         self.mapping_gate_error.clear();
         for row in &mut self.tables {
@@ -1374,7 +1374,7 @@ impl DataTransferWindowVm {
 
     /// React `toggleTable` (React 1036-1042) — a toggle does not
     /// invalidate the preview.
-    pub(crate) fn toggle_table(&mut self, source_table: &str) {
+    pub fn toggle_table(&mut self, source_table: &str) {
         for row in &mut self.tables {
             if row.vm.source_table == source_table {
                 row.vm.enabled = !row.vm.enabled;
@@ -1387,7 +1387,7 @@ impl DataTransferWindowVm {
     /// profile stash, and re-pick the selected mapping table (prev kept
     /// only while still present; else the first enabled row, else the
     /// first row).
-    pub(crate) fn apply_inspect_rows(&mut self, rows: Vec<TransferTableRow>) {
+    pub fn apply_inspect_rows(&mut self, rows: Vec<TransferTableRow>) {
         let enabled: Vec<TransferTableRow> = rows
             .into_iter()
             .filter(|row| !row.vm.source_table.is_empty())
@@ -1420,7 +1420,7 @@ impl DataTransferWindowVm {
     /// `targetTable`, `columnMappings`) survive. An absent response row
     /// or a failed refresh leaves the table untouched (React 1009,
     /// 1022-1024).
-    pub(crate) fn apply_table_refresh(&mut self, source_table: &str, inspected: Option<&TransferTableRow>) {
+    pub fn apply_table_refresh(&mut self, source_table: &str, inspected: Option<&TransferTableRow>) {
         let Some(inspected) = inspected else {
             return;
         };
@@ -1439,7 +1439,7 @@ impl DataTransferWindowVm {
 
     /// React `runInspect`'s head (React 659-671): the refusal message when
     /// the endpoints are not both picked (the host raises the dialog).
-    pub(crate) fn inspect_missing_endpoints(&self) -> bool {
+    pub fn inspect_missing_endpoints(&self) -> bool {
         !(self.source_session.is_some()
             && !self.source_database.is_empty()
             && (self.destination_mode == TransferDestinationMode::SqlFile
@@ -1448,23 +1448,23 @@ impl DataTransferWindowVm {
 
     /// React `runInspect`'s busy/error brackets (React 672-713): `loading`
     /// around the round trip, the error dialog on a refusal.
-    pub(crate) fn begin_inspect(&mut self) {
+    pub fn begin_inspect(&mut self) {
         self.loading = true;
     }
 
-    pub(crate) fn finish_inspect(&mut self) {
+    pub fn finish_inspect(&mut self) {
         self.loading = false;
     }
 
     /// React `runPreview` (React 725-771), the reducer half. The host
     /// performs the prepare; the refusals classify in S2.
-    pub(crate) fn begin_preview(&mut self) {
+    pub fn begin_preview(&mut self) {
         self.preview_error.clear();
         self.mapping_gate_error.clear();
         self.loading = true;
     }
 
-    pub(crate) fn finish_preview(&mut self, review: TransferPreviewVm) {
+    pub fn finish_preview(&mut self, review: TransferPreviewVm) {
         self.preview = Some(review);
         self.loading = false;
     }
@@ -1472,7 +1472,7 @@ impl DataTransferWindowVm {
     /// React `runPreview`'s catch (React 757-765): the preview is dropped,
     /// the message recorded, and — unless `quiet` — the error dialog
     /// opens.
-    pub(crate) fn fail_preview(&mut self, message: &str, quiet: bool) {
+    pub fn fail_preview(&mut self, message: &str, quiet: bool) {
         self.preview = None;
         self.preview_error = message.to_owned();
         if !quiet {
@@ -1487,7 +1487,7 @@ impl DataTransferWindowVm {
     /// wizard must not advance past a plan the backend declined to admit.
     /// The backend's own words are read synchronously into the preview
     /// error surface.
-    pub(crate) fn preview_refused(&mut self, detail: &str) {
+    pub fn preview_refused(&mut self, detail: &str) {
         self.preview_error = detail.to_owned();
         self.loading = false;
     }
@@ -1496,21 +1496,21 @@ impl DataTransferWindowVm {
 
     /// React `runExecute`'s readOnly refusal (React 777-780) — the pure
     /// check; the host raises the dialog error.
-    pub(crate) fn execute_read_only_blocked(&self) -> bool {
+    pub fn execute_read_only_blocked(&self) -> bool {
         self.destination_mode == TransferDestinationMode::Database && self.target_read_only()
     }
 
     /// React `runExecute`'s stale-plan refusal (React 785-792): the plan
     /// must come from `prepare`. The host raises the dialog error, drops
     /// the preview and steps back to mapping.
-    pub(crate) fn execute_stale_plan(&self) -> bool {
+    pub fn execute_stale_plan(&self) -> bool {
         self.preview.is_none()
     }
 
     /// React `runExecute`'s progress line (React 794-798): the table count
     /// — the job's enabled tables when rows were inspected, else the
     /// plan's own size.
-    pub(crate) fn execute_table_count(&self, job: &TransferJobVm) -> usize {
+    pub fn execute_table_count(&self, job: &TransferJobVm) -> usize {
         if !self.tables.is_empty() {
             job.tables
                 .iter()
@@ -1534,7 +1534,7 @@ impl DataTransferWindowVm {
     /// React `runExecute`'s source-tables selection (React 799-805): an
     /// absent selection means "every table the plan froze" (the SQL-file
     /// case); an explicit list would disable every table.
-    pub(crate) fn execute_source_tables(&self, job: &TransferJobVm) -> Option<Vec<String>> {
+    pub fn execute_source_tables(&self, job: &TransferJobVm) -> Option<Vec<String>> {
         if self.destination_mode == TransferDestinationMode::SqlFile && self.tables.is_empty() {
             None
         } else {
@@ -1550,20 +1550,20 @@ impl DataTransferWindowVm {
 
     /// React `handleExecuteClick`'s gate (React 834-840): a destructive
     /// write mode routes through the confirm dialog first.
-    pub(crate) fn handle_execute_click_confirm(&self) -> bool {
+    pub fn handle_execute_click_confirm(&self) -> bool {
         self.write_mode != WriteMode::Insert
     }
 
     /// React `handleExecuteConfirm` (React 842-845) — the dialog's
     /// confirmation closes it; the host then runs the execute.
-    pub(crate) fn handle_execute_confirm(&mut self) {
+    pub fn handle_execute_confirm(&mut self) {
         self.execute_confirm_open = false;
     }
 
     // -- the step arithmetic (React 879-965) --------------------------------------
 
     /// React `goBack` (React 962-965).
-    pub(crate) fn go_back(&mut self) {
+    pub fn go_back(&mut self) {
         let index = self.step.index();
         if index > 0 {
             self.step = STEPS[index - 1];
@@ -1575,14 +1575,14 @@ impl DataTransferWindowVm {
     /// on the post-await rows) is the S2 host contract:
     /// [`go_next_after_mapping_gate`] re-decides the gate against the
     /// rows that exist *after* the prepare.
-    pub(crate) fn go_next_target(&self) -> Option<WizardStep> {
+    pub fn go_next_target(&self) -> Option<WizardStep> {
         STEPS.get(self.step.index() + 1).copied()
     }
 
     /// React `goNext`'s mapping→preview gate (React 949-953): re-decided
     /// against the rows that exist *after* the prepare round trip. A lost
     /// gate records the i18n message (React 950) and stays on mapping.
-    pub(crate) fn go_next_after_mapping_gate(&mut self, rows: &[TransferTableRow]) -> bool {
+    pub fn go_next_after_mapping_gate(&mut self, rows: &[TransferTableRow]) -> bool {
         let vms: Vec<TransferTableVm> = rows.iter().map(|row| row.vm.clone()).collect();
         if mapping_gate_allows_advance(&vms) {
             true
@@ -1595,33 +1595,33 @@ impl DataTransferWindowVm {
     /// React `goNext`'s objects leg (React 956-958): stepping into objects
     /// with no rows inspects first — the host performs the inspect; this
     /// reports whether it must.
-    pub(crate) fn go_next_needs_inspect(&self) -> bool {
+    pub fn go_next_needs_inspect(&self) -> bool {
         self.go_next_target() == Some(WizardStep::Objects) && self.tables.is_empty()
     }
 
     /// React `if (next) setStep(next)` (React 959).
-    pub(crate) fn advance_step(&mut self) {
+    pub fn advance_step(&mut self) {
         if let Some(next) = self.go_next_target() {
             self.step = next;
         }
     }
 
     /// The dialog surfaces (React 147-148, 196-200).
-    pub(crate) fn set_limitations_open(&mut self, open: bool) {
+    pub fn set_limitations_open(&mut self, open: bool) {
         self.limitations_open = open;
     }
 
-    pub(crate) fn set_execute_confirm_open(&mut self, open: bool) {
+    pub fn set_execute_confirm_open(&mut self, open: bool) {
         self.execute_confirm_open = open;
     }
 
     /// React's error dialog (React 142-143, 1881-1897).
-    pub(crate) fn raise_error(&mut self, message: &str) {
+    pub fn raise_error(&mut self, message: &str) {
         self.error_msg = message.to_owned();
         self.error_open = true;
     }
 
-    pub(crate) fn dismiss_error(&mut self) {
+    pub fn dismiss_error(&mut self) {
         self.error_open = false;
     }
 
@@ -1635,7 +1635,7 @@ impl DataTransferWindowVm {
     /// offered while nothing is pending reconcile. A `null` verdict means
     /// no Job settled at all (a refusal before any write), so there is no
     /// half-written range to protect and the affordance stays open.
-    pub(crate) fn reconcile_pending(&self) -> bool {
+    pub fn reconcile_pending(&self) -> bool {
         self.job_run
             .verdict()
             .map(|verdict| verdict.requires_reconcile)
@@ -1650,7 +1650,7 @@ impl DataTransferWindowVm {
     /// verdict for. Dropping it back to mapping is the honest outcome —
     /// the next review mints a fresh planId. A cancel that could not be
     /// addressed changes nothing and must leave the review untouched.
-    pub(crate) fn handle_cancel(&mut self, was_applying: bool, acknowledged: bool) {
+    pub fn handle_cancel(&mut self, was_applying: bool, acknowledged: bool) {
         if acknowledged && !was_applying {
             self.job_run.reset();
             self.preview = None;
@@ -1661,7 +1661,7 @@ impl DataTransferWindowVm {
 
     /// React `handleReReviewPlan`'s full body (React 872-877) — the run
     /// reset joins the state reset now that the machine is a field.
-    pub(crate) fn handle_re_review_plan(&mut self) {
+    pub fn handle_re_review_plan(&mut self) {
         self.job_run.reset();
         self.preview = None;
         self.step = WizardStep::Mapping;
@@ -1674,13 +1674,13 @@ impl DataTransferWindowVm {
     /// budget, consumed plan) stays on `preview` so the fail-closed
     /// notices are shown where the user still has the review in front of
     /// them (React 813-815).
-    pub(crate) fn begin_execute(&mut self, table_count: usize) {
+    pub fn begin_execute(&mut self, table_count: usize) {
         self.executing = true;
         // React 798: `t('transfer.executingProgress', { count })`.
         self.execute_progress = t("transfer.executingProgress").replace("{count}", &table_count.to_string());
     }
 
-    pub(crate) fn finish_execute(&mut self, settled: bool) {
+    pub fn finish_execute(&mut self, settled: bool) {
         self.executing = false;
         self.execute_progress.clear();
         self.step = if settled {
@@ -1695,17 +1695,17 @@ impl DataTransferWindowVm {
     /// (`preparing`), and the decision is re-made against the rows that
     /// exist *after* it (the host calls
     /// [`go_next_after_mapping_gate`] with the post-await rows).
-    pub(crate) fn begin_go_next_prepare(&mut self) {
+    pub fn begin_go_next_prepare(&mut self) {
         self.preparing = true;
     }
 
-    pub(crate) fn finish_go_next_prepare(&mut self) {
+    pub fn finish_go_next_prepare(&mut self) {
         self.preparing = false;
     }
 
     /// The prepare refusal path of `goNext` (React 944-947): prepare
     /// itself refused; the preview step owns that error surface.
-    pub(crate) fn go_next_prepare_refused(&mut self) {
+    pub fn go_next_prepare_refused(&mut self) {
         self.preparing = false;
         self.step = WizardStep::Preview;
     }
@@ -1713,31 +1713,31 @@ impl DataTransferWindowVm {
     /// `loadSelectedProfile`'s run reset (React 550-552): a different
     /// profile is a different plan; any run state from the previous one
     /// must go with it, or a spent planId would look reusable.
-    pub(crate) fn profile_run_reset(&mut self) {
+    pub fn profile_run_reset(&mut self) {
         self.job_run.reset();
     }
 
     /// `runPreview`'s non-advance detail read (React 751-753): the
     /// backend's own words, read synchronously from the run machine's
     /// same-tick mirror.
-    pub(crate) fn last_run_failure_message(&self) -> Option<&str> {
+    pub fn last_run_failure_message(&self) -> Option<&str> {
         self.job_run.last_failure().map(|failure| failure.message.as_str())
     }
 
     /// The window's own `preparing`/`executing`/`loading` gating the
     /// footer's Next button honours (React 1801, 1851-1852): back is
     /// disabled while executing; next while loading.
-    pub(crate) fn back_disabled(&self) -> bool {
+    pub fn back_disabled(&self) -> bool {
         self.step.index() == 0 || self.executing
     }
 
-    pub(crate) fn next_disabled(&self) -> bool {
+    pub fn next_disabled(&self) -> bool {
         !self.can_next() || self.loading
     }
 
     /// The run phase the window surfaces (the footer's cancel buttons and
     /// the pending-id notice key off it, React 1767-1807).
-    pub(crate) fn run_phase(&self) -> TransferRunPhase {
+    pub fn run_phase(&self) -> TransferRunPhase {
         self.job_run.phase
     }
 }

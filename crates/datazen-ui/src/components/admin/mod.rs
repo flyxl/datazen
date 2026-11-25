@@ -15,26 +15,26 @@
 
 #[allow(unused_imports)]
 // the CreateDatabaseDialog / CreateSchemaDialog wiring is the production consumer
-pub(crate) use admin_create_dialog::{
+pub use admin_create_dialog::{
     AdminCreateDialogConfig, AdminCreateDialogState, AdminCreateExecuteRequest, AdminSchemaField,
 };
 #[allow(unused_imports)]
 // the CreateDatabaseDialog / CreateSchemaDialog wiring is the production consumer
-pub(crate) use admin_create_dialog_view::AdminCreateDialog;
+pub use admin_create_dialog_view::AdminCreateDialog;
 #[allow(unused_imports)]
 // the CreateDatabaseDialog / CreateSchemaDialog wiring is the production consumer
-pub(crate) use admin_schema_fields::{
+pub use admin_schema_fields::{
     AdminSchemaFields, SchemaFieldEditFn, admin_schema_field, admin_schema_has_field,
     schema_field_label, schema_properties, visible_schema_fields,
 };
 #[allow(unused_imports)]
 // the CreateUserDialog / PrivilegeView wiring is the production consumer
-pub(crate) use privilege_selector::{
+pub use privilege_selector::{
     IsPrivilegeSelectedFn, PrivilegeGroup, PrivilegeSelector, TogglePrivilegeFn, all_privileges,
     privilege_groups, visible_privilege_groups,
 };
 
-pub(crate) mod admin_create_dialog;
-pub(crate) mod admin_create_dialog_view;
-pub(crate) mod admin_schema_fields;
-pub(crate) mod privilege_selector;
+pub mod admin_create_dialog;
+pub mod admin_create_dialog_view;
+pub mod admin_schema_fields;
+pub mod privilege_selector;

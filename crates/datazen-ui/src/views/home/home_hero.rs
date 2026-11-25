@@ -36,7 +36,7 @@ use crate::views::engine_label;
 /// from live store data each frame; no fake async or timers live here.
 #[allow(dead_code)] // VM surface; consumed by the home wiring and the port tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct HomeHeroVm {
+pub struct HomeHeroVm {
     /// React `connectionCount`.
     pub connection_count: usize,
     /// React `groupCount`.
@@ -48,12 +48,12 @@ pub(crate) struct HomeHeroVm {
 #[allow(dead_code)] // VM helper; consumed by counts_line and the tests.
 impl HomeHeroVm {
     /// React `dbTypes.length` in the subtitle count.
-    pub(crate) fn type_count(&self) -> usize {
+    pub fn type_count(&self) -> usize {
         self.db_types.len()
     }
 
     /// React `dbTypes.slice(0, 4)` for the badge cluster.
-    pub(crate) fn badge_types(&self) -> &[String] {
+    pub fn badge_types(&self) -> &[String] {
         let end = self.db_types.len().min(4);
         &self.db_types[..end]
     }
@@ -63,7 +63,7 @@ impl HomeHeroVm {
 /// numbers bold, mirroring React's three `<b>` segments. Returns the content
 /// and byte spans for [`rich`]; the separators are plain text (React's `·`).
 #[allow(dead_code)] // rendering helper; delete with the host wiring.
-pub(crate) fn counts_line(vm: &HomeHeroVm, strong: Color) -> (String, Vec<Span>) {
+pub fn counts_line(vm: &HomeHeroVm, strong: Color) -> (String, Vec<Span>) {
     let segments = [
         (
             vm.connection_count,
@@ -94,7 +94,7 @@ pub(crate) fn counts_line(vm: &HomeHeroVm, strong: Color) -> (String, Vec<Span>)
 /// badge is the same stable hue monogram the A1 home uses; the exact engine
 /// label rides on the a11y label where React used the `title` attribute.
 #[allow(dead_code)] // rendering helper; delete with the host wiring.
-pub(crate) fn badge_cluster(vm: &HomeHeroVm, theme: tok::Theme, dark: bool) -> El {
+pub fn badge_cluster(vm: &HomeHeroVm, theme: tok::Theme, dark: bool) -> El {
     let mut cluster = row()
         .key("connections-badge-cluster")
         .items_center()
@@ -129,7 +129,7 @@ pub(crate) fn badge_cluster(vm: &HomeHeroVm, theme: tok::Theme, dark: bool) -> E
 
 /// Build the hero. Keys match the A1 home so the existing probes keep working.
 #[allow(dead_code)] // consumer: the connections-home host that mounts this view (not landed); delete when it replaces the inline hero.
-pub(crate) fn build_home_hero(vm: &HomeHeroVm, theme: tok::Theme, dark: bool) -> El {
+pub fn build_home_hero(vm: &HomeHeroVm, theme: tok::Theme, dark: bool) -> El {
     let (line, spans) = counts_line(vm, theme.text);
     let mut hero = row()
         .key("connections-home-hero")

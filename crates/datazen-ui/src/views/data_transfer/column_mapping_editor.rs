@@ -154,7 +154,7 @@ use crate::ui::toggle::Checkbox;
 /// mapping row, keyed by source column, and re-seeds the buffers from the
 /// model whenever a patch lands (see [`ColumnMappingEditorState::resync_rows`]).
 #[derive(Clone, Debug)]
-pub(crate) struct ColumnMappingRowHost {
+pub struct ColumnMappingRowHost {
     pub source_column: String,
     pub target_column_edit: TextEdit,
     pub target_native_type_edit: TextEdit,
@@ -179,7 +179,7 @@ impl ColumnMappingRowHost {
 /// every callback through one `editor_mut` accessor, the same shape as
 /// `AiChatPanel`'s `panel_mut`.
 #[derive(Clone, Debug)]
-pub(crate) struct ColumnMappingEditorState {
+pub struct ColumnMappingEditorState {
     pub table: TransferTableVm,
     pub structure_mode: bool,
     pub disabled: bool,
@@ -192,7 +192,7 @@ pub(crate) struct ColumnMappingEditorState {
 }
 
 impl ColumnMappingEditorState {
-    pub(crate) fn new(table: TransferTableVm, structure_mode: bool, disabled: bool) -> Self {
+    pub fn new(table: TransferTableVm, structure_mode: bool, disabled: bool) -> Self {
         let target_table_edit = TextEdit::new(table.target_table.clone());
         let mut state = Self {
             table,
@@ -209,7 +209,7 @@ impl ColumnMappingEditorState {
 
     /// The normalized mapping rows the shell renders (the same list React
     /// maps over: `normalizeColumnMappings(table)`).
-    pub(crate) fn mappings(&self) -> Vec<TransferColumnMapping> {
+    pub fn mappings(&self) -> Vec<TransferColumnMapping> {
         normalize_column_mappings(&self.table)
     }
 
@@ -218,7 +218,7 @@ impl ColumnMappingEditorState {
     /// from `table` after every commit). The target-table buffer is only
     /// re-seeded when the patch carries a new target-table value, so an
     /// unrelated patch cannot wipe a draft the user is still typing.
-    pub(crate) fn apply_table_patch(&mut self, patch: &ColumnMappingTablePatch) {
+    pub fn apply_table_patch(&mut self, patch: &ColumnMappingTablePatch) {
         patch.apply_to(&mut self.table);
         if patch.target_table.is_some() {
             self.target_table_edit
@@ -232,7 +232,7 @@ impl ColumnMappingEditorState {
 
     /// Re-seed the recordset editor's buffers from the model, keyed by
     /// the table's primary keys (`table.sourcePrimaryKeys ?? []`).
-    pub(crate) fn resync_recordset(&mut self) {
+    pub fn resync_recordset(&mut self) {
         let primary_keys = self
             .table
             .source_primary_keys
@@ -247,7 +247,7 @@ impl ColumnMappingEditorState {
     /// column is still present, and re-seeding both edit buffers from the
     /// mapping — so an auto-match or clear that rewrites the model cannot
     /// leave a stale buffer behind.
-    pub(crate) fn resync_rows(&mut self) {
+    pub fn resync_rows(&mut self) {
         let mappings = normalize_column_mappings(&self.table);
         let mut old: HashMap<String, ColumnMappingRowHost> = std::mem::take(&mut self.rows)
             .into_iter()
@@ -271,7 +271,7 @@ impl ColumnMappingEditorState {
 
     /// The S1 view model for row `index`, or `None` when the index is
     /// outside the normalized rows (defensive: the shell skips it).
-    pub(crate) fn row_vm(&self, index: usize) -> Option<ColumnMappingRowVm> {
+    pub fn row_vm(&self, index: usize) -> Option<ColumnMappingRowVm> {
         let mappings = self.mappings();
         let mapping = mappings.get(index)?.clone();
         let table = &self.table;
@@ -311,7 +311,7 @@ type Action<S> = Rc<dyn Fn(&mut S)>;
 /// caller roots the editor once (see the module docs on the mounting
 /// decision). The rows' select listboxes are pushed into `layer`, which
 /// the caller mounts alongside the root.
-pub(crate) struct ColumnMappingEditor<'a, S: 'static> {
+pub struct ColumnMappingEditor<'a, S: 'static> {
     state: &'a ColumnMappingEditorState,
     editor: Option<EditorFn<S>>,
     on_change: Option<TableChange<S>>,
@@ -319,7 +319,7 @@ pub(crate) struct ColumnMappingEditor<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
-    pub(crate) fn new(state: &'a ColumnMappingEditorState) -> Self {
+    pub fn new(state: &'a ColumnMappingEditorState) -> Self {
         Self {
             state,
             editor: None,
@@ -331,7 +331,7 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
     /// The state accessor every callback drives, e.g.
     /// `|state| &mut state.editor`. One accessor wires the whole editor;
     /// without it the shell renders read-only (see the module docs).
-    pub(crate) fn editor_mut(
+    pub fn editor_mut(
         mut self,
         f: impl Fn(&mut S) -> &mut ColumnMappingEditorState + 'static,
     ) -> Self {
@@ -342,7 +342,7 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
     /// React `onChange`: receives the table patch for every commit the
     /// shell makes (target-table submit, toggle, auto-match, clear,
     /// and each row's patch, re-expressed as a full `columnMappings`).
-    pub(crate) fn on_change(
+    pub fn on_change(
         mut self,
         f: impl Fn(&mut S, ColumnMappingTablePatch) + 'static,
     ) -> Self {
@@ -352,12 +352,12 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
 
     /// React `onTargetTableBlur`. Rune has no focus-loss hook, so this
     /// fires from the target-table submit instead (see the module docs).
-    pub(crate) fn on_target_table_blur(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_target_table_blur(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_target_table_blur = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let state = self.state;
         let table = &state.table;

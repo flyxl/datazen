@@ -49,7 +49,7 @@ use std::collections::HashMap;
 /// `StreamPhase` from `streamRegistry.ts` — the four states of one run.
 #[allow(dead_code)] // consumer: AI chat panel (not landed). Delete when it lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StreamPhase {
+pub enum StreamPhase {
     Starting,
     Streaming,
     Cancelling,
@@ -59,7 +59,7 @@ pub(crate) enum StreamPhase {
 /// `StreamTerminalKind` from `streamRegistry.ts`.
 #[allow(dead_code)] // consumer: AI chat panel (not landed). Delete when it lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StreamTerminalKind {
+pub enum StreamTerminalKind {
     Done,
     Cancelled,
     Error,
@@ -68,7 +68,7 @@ pub(crate) enum StreamTerminalKind {
 /// `StreamDropReason` — why a chunk was not applied.
 #[allow(dead_code)] // reported by apply_chunk/apply_error; delete with the registry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StreamDropReason {
+pub enum StreamDropReason {
     UnknownRequest,
     StaleGeneration,
     CancelIssued,
@@ -77,7 +77,7 @@ pub(crate) enum StreamDropReason {
 
 #[allow(dead_code)] // string parity with the React union; delete with the enum.
 impl StreamDropReason {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             StreamDropReason::UnknownRequest => "unknown-request",
             StreamDropReason::StaleGeneration => "stale-generation",
@@ -91,7 +91,7 @@ impl StreamDropReason {
 /// always returns a clone, mirroring React's `snapshot(entry)` spread.
 #[allow(dead_code)] // consumer: AI chat panel (not landed). Delete when it lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StreamEntry {
+pub struct StreamEntry {
     pub request_id: String,
     pub conversation_id: String,
     pub generation: u64,
@@ -104,13 +104,13 @@ pub(crate) struct StreamEntry {
 /// `session_cancel::StreamEntrySnapshot` is a three-field projection of this
 /// struct. Removal stage: when T097 is rewired to `StreamRegistry` directly.
 #[allow(dead_code)] // swap shim only; delete with the T097 local trait.
-pub(crate) type StreamEntrySnapshot = StreamEntry;
+pub type StreamEntrySnapshot = StreamEntry;
 
 /// `ApplyChunkInput` — terminal markers of one backend chunk. An empty
 /// `error` string is falsy in React and is therefore treated as no error.
 #[allow(dead_code)] // consumer: AI chat panel (not landed). Delete when it lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ApplyChunkInput {
+pub struct ApplyChunkInput {
     pub done: bool,
     pub cancelled: bool,
     pub error: Option<String>,
@@ -119,12 +119,12 @@ pub(crate) struct ApplyChunkInput {
 #[allow(dead_code)] // convenience constructors; delete with the input type.
 impl ApplyChunkInput {
     /// A non-terminal content chunk.
-    pub(crate) fn content() -> Self {
+    pub fn content() -> Self {
         Self::default()
     }
 
     /// A terminal chunk (`done: true`).
-    pub(crate) fn done() -> Self {
+    pub fn done() -> Self {
         Self {
             done: true,
             ..Self::default()
@@ -132,7 +132,7 @@ impl ApplyChunkInput {
     }
 
     /// A terminal chunk ended by cancel (`done && cancelled`).
-    pub(crate) fn cancelled() -> Self {
+    pub fn cancelled() -> Self {
         Self {
             done: true,
             cancelled: true,
@@ -141,7 +141,7 @@ impl ApplyChunkInput {
     }
 
     /// An inline backend error, treated as a terminal `error`.
-    pub(crate) fn error(message: impl Into<String>) -> Self {
+    pub fn error(message: impl Into<String>) -> Self {
         Self {
             error: Some(message.into()),
             ..Self::default()
@@ -154,7 +154,7 @@ impl ApplyChunkInput {
 /// (all `null` for an unknown request), exactly like React.
 #[allow(dead_code)] // consumer: AI chat panel (not landed). Delete when it lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ApplyChunkResult {
+pub struct ApplyChunkResult {
     pub accepted: bool,
     pub drop_reason: Option<StreamDropReason>,
     pub phase: Option<StreamPhase>,
@@ -167,7 +167,7 @@ pub(crate) struct ApplyChunkResult {
 /// React union; `Settled` additionally carries `terminalKind`.
 #[allow(dead_code)] // consumer: AI chat panel (not landed). Delete when it lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum StreamEvent {
+pub enum StreamEvent {
     Started { entry: StreamEntry },
     Streaming { entry: StreamEntry },
     Cancelling { entry: StreamEntry },
@@ -180,7 +180,7 @@ pub(crate) enum StreamEvent {
 #[allow(dead_code)] // observers use these; delete with StreamEvent.
 impl StreamEvent {
     /// React `event.type` as a string.
-    pub(crate) fn event_type(&self) -> &'static str {
+    pub fn event_type(&self) -> &'static str {
         match self {
             StreamEvent::Started { .. } => "started",
             StreamEvent::Streaming { .. } => "streaming",
@@ -190,7 +190,7 @@ impl StreamEvent {
     }
 
     /// The `requestId` of the entry this event describes (T097 swap helper).
-    pub(crate) fn request_id(&self) -> &str {
+    pub fn request_id(&self) -> &str {
         match self {
             StreamEvent::Started { entry }
             | StreamEvent::Streaming { entry }
@@ -200,7 +200,7 @@ impl StreamEvent {
     }
 
     /// `Some(kind)` only for the `settled` arm (T097 swap helper).
-    pub(crate) fn terminal_kind(&self) -> Option<StreamTerminalKind> {
+    pub fn terminal_kind(&self) -> Option<StreamTerminalKind> {
         match self {
             StreamEvent::Settled { terminal_kind, .. } => Some(*terminal_kind),
             _ => None,
@@ -211,17 +211,17 @@ impl StreamEvent {
 /// Listener id returned by [`StreamRegistry::subscribe`]. `u64` ids replace
 /// React's returned unsubscribe closure for the reason in the module doc.
 #[allow(dead_code)] // swap shim; delete with the T097 local trait.
-pub(crate) type ListenerId = u64;
+pub type ListenerId = u64;
 
 /// `StreamRegistryListener` from `streamRegistry.ts`.
 #[allow(dead_code)] // observer API; delete with the registry.
-pub(crate) type RegistryListener = Box<dyn FnMut(StreamEvent)>;
+pub type RegistryListener = Box<dyn FnMut(StreamEvent)>;
 
 /// `StreamRegistry` — the ported class. Holds the three React maps, the
 /// listener list and the injected clock. All state lives here; the host may
 /// embed it in its own `S`.
 #[allow(dead_code)] // consumer: AI chat panel (not landed). Delete when it lands.
-pub(crate) struct StreamRegistry {
+pub struct StreamRegistry {
     entries: HashMap<String, StreamEntry>,
     generations: HashMap<String, u64>,
     current_request: HashMap<String, String>,
@@ -240,12 +240,12 @@ impl Default for StreamRegistry {
 #[allow(dead_code)] // consumer: AI chat panel (not landed). Delete when it lands.
 impl StreamRegistry {
     /// A registry with a deterministic zero clock (pure tests / immediate mode).
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::with_now(|| 0)
     }
 
     /// React `constructor(options)` with an injected `now()`.
-    pub(crate) fn with_now(now: fn() -> i64) -> Self {
+    pub fn with_now(now: fn() -> i64) -> Self {
         StreamRegistry {
             entries: HashMap::new(),
             generations: HashMap::new(),
@@ -257,7 +257,7 @@ impl StreamRegistry {
     }
 
     /// React `begin(conversationId, requestId)`.
-    pub(crate) fn begin(&mut self, conversation_id: &str, request_id: &str) -> StreamEntry {
+    pub fn begin(&mut self, conversation_id: &str, request_id: &str) -> StreamEntry {
         // Duplicated send of a still-live request: no-op, no event, no new generation.
         if let Some(existing) = self.entries.get(request_id) {
             if existing.phase != StreamPhase::Terminal {
@@ -300,22 +300,22 @@ impl StreamRegistry {
     }
 
     /// React `has(requestId)`. Terminal entries are still present (no pruning).
-    pub(crate) fn has(&self, request_id: &str) -> bool {
+    pub fn has(&self, request_id: &str) -> bool {
         self.entries.contains_key(request_id)
     }
 
     /// React `get(requestId)` — always a fresh snapshot.
-    pub(crate) fn get(&self, request_id: &str) -> Option<StreamEntry> {
+    pub fn get(&self, request_id: &str) -> Option<StreamEntry> {
         self.entries.get(request_id).cloned()
     }
 
     /// React `conversationGeneration(conversationId)`.
-    pub(crate) fn conversation_generation(&self, conversation_id: &str) -> u64 {
+    pub fn conversation_generation(&self, conversation_id: &str) -> u64 {
         self.generations.get(conversation_id).copied().unwrap_or(0)
     }
 
     /// React `applyChunk(requestId, chunk)`.
-    pub(crate) fn apply_chunk(
+    pub fn apply_chunk(
         &mut self,
         request_id: &str,
         chunk: ApplyChunkInput,
@@ -355,7 +355,7 @@ impl StreamRegistry {
     }
 
     /// React `applyError(requestId)` — an out-of-band terminal error.
-    pub(crate) fn apply_error(&mut self, request_id: &str) -> ApplyChunkResult {
+    pub fn apply_error(&mut self, request_id: &str) -> ApplyChunkResult {
         match self.gate(request_id) {
             Ok(_) => self.settle_entry(request_id, StreamTerminalKind::Error),
             Err(drop) => drop,
@@ -363,13 +363,13 @@ impl StreamRegistry {
     }
 
     /// React `markCancelling(requestId, atMs = this.now())`.
-    pub(crate) fn mark_cancelling(&mut self, request_id: &str) -> bool {
+    pub fn mark_cancelling(&mut self, request_id: &str) -> bool {
         let at_ms = (self.now)();
         self.mark_cancelling_at(request_id, at_ms)
     }
 
     /// The explicit-timestamp form the React tests pass directly.
-    pub(crate) fn mark_cancelling_at(&mut self, request_id: &str, at_ms: i64) -> bool {
+    pub fn mark_cancelling_at(&mut self, request_id: &str, at_ms: i64) -> bool {
         let Some(entry) = self.entries.get(request_id) else {
             return false;
         };
@@ -392,7 +392,7 @@ impl StreamRegistry {
     }
 
     /// React `settle(requestId, kind)`. Idempotent: `false` for terminal/unknown.
-    pub(crate) fn settle(&mut self, request_id: &str, kind: StreamTerminalKind) -> bool {
+    pub fn settle(&mut self, request_id: &str, kind: StreamTerminalKind) -> bool {
         let Some(entry) = self.entries.get(request_id) else {
             return false;
         };
@@ -405,7 +405,7 @@ impl StreamRegistry {
 
     /// React `subscribe(listener)`. Returns a listener id; pair with
     /// [`StreamRegistry::unsubscribe`] (see the module doc for why not a closure).
-    pub(crate) fn subscribe(&mut self, listener: RegistryListener) -> ListenerId {
+    pub fn subscribe(&mut self, listener: RegistryListener) -> ListenerId {
         let id = self.next_listener_id;
         self.next_listener_id = self.next_listener_id.wrapping_add(1);
         self.listeners.push((id, listener));
@@ -413,7 +413,7 @@ impl StreamRegistry {
     }
 
     /// Detach the listener previously returned by [`StreamRegistry::subscribe`].
-    pub(crate) fn unsubscribe(&mut self, id: ListenerId) {
+    pub fn unsubscribe(&mut self, id: ListenerId) {
         self.listeners.retain(|(listener_id, _)| *listener_id != id);
     }
 

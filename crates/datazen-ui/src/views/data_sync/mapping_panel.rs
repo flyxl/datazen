@@ -83,18 +83,18 @@ use crate::views::TransferRecordset;
 /// The panel's data: the inspected table results, the disabled set, whether
 /// a comparison has run, and the expanded editors' table key.
 #[derive(Clone, Default)]
-pub(crate) struct MappingPanelVm {
-    pub(crate) rows: Vec<DataSyncTableResult>,
-    pub(crate) disabled_tables: HashSet<String>,
-    pub(crate) compared: bool,
+pub struct MappingPanelVm {
+    pub rows: Vec<DataSyncTableResult>,
+    pub disabled_tables: HashSet<String>,
+    pub compared: bool,
     /// `useState<string | null>`: the source table whose filter editors
     /// are expanded, or none.
-    pub(crate) filter_table: Option<String>,
+    pub filter_table: Option<String>,
 }
 
 /// The panel builder. `S` is the host state that owns the disabled set,
 /// the navigation actions and the source filters.
-pub(crate) struct MappingPanel<S: 'static> {
+pub struct MappingPanel<S: 'static> {
     vm: MappingPanelVm,
     on_toggle_disabled: Option<Rc<dyn Fn(&mut S, String)>>,
     on_open_schema_diff: Option<Rc<dyn Fn(&mut S)>>,
@@ -105,7 +105,7 @@ pub(crate) struct MappingPanel<S: 'static> {
 }
 
 impl<S: 'static> MappingPanel<S> {
-    pub(crate) fn new(vm: MappingPanelVm) -> Self {
+    pub fn new(vm: MappingPanelVm) -> Self {
         Self {
             vm,
             on_toggle_disabled: None,
@@ -117,27 +117,27 @@ impl<S: 'static> MappingPanel<S> {
     }
 
     /// `onToggleDisabled(sourceTable)`.
-    pub(crate) fn on_toggle_disabled(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_disabled(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_disabled = Some(Rc::new(f));
         self
     }
 
     /// `onOpenSchemaDiff()`.
-    pub(crate) fn on_open_schema_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_schema_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_schema_diff = Some(Rc::new(f));
         self
     }
 
     /// `onOpenDataTransfer()` — optional in React; wiring it enables the
     /// incompatible rows' transfer button.
-    pub(crate) fn on_open_data_transfer(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_data_transfer(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_data_transfer = Some(Rc::new(f));
         self
     }
 
     /// `onUpdateSourceFilter(sourceTable, filter)` — optional in React;
     /// wiring it enables the matched rows' expand buttons and editors.
-    pub(crate) fn on_update_source_filter(
+    pub fn on_update_source_filter(
         mut self,
         f: impl Fn(&mut S, String, Option<StructuredSourceFilter>) + 'static,
     ) -> Self {
@@ -151,12 +151,12 @@ impl<S: 'static> MappingPanel<S> {
     /// host flips its cell — `current === row.sourceTable ? null :
     /// row.sourceTable`. React's two buttons write the same state; the
     /// host's callback is that write.
-    pub(crate) fn on_toggle_filter_editor(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_filter_editor(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_filter_editor = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut root = col()
             .key("data-sync-mapping-panel")

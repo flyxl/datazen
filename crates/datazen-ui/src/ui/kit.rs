@@ -15,7 +15,7 @@ static LIGHT: OnceLock<Kit> = OnceLock::new();
 
 /// The kit for one appearance, built once: `Kit::neutral` resolves ~70 tokens
 /// and a few shadow layers, too much to repeat on every frame.
-pub(crate) fn kit(dark: bool) -> &'static Kit {
+pub fn kit(dark: bool) -> &'static Kit {
     let slot = if dark { &DARK } else { &LIGHT };
     slot.get_or_init(|| Kit::neutral(dark))
 }

@@ -30,26 +30,26 @@ use crate::session::query_panel_session::QueryPanelSessionRegistry;
 /// React `TableChangeContext` (only the fields this module reads).
 #[allow(dead_code)] // local VM; remove with the shared table-change module.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TableChangeContext {
-    pub(crate) connection_id: Option<String>,
-    pub(crate) db_session_id: String,
-    pub(crate) driver_type: Option<String>,
-    pub(crate) database: Option<String>,
-    pub(crate) schema: Option<String>,
-    pub(crate) table: String,
+pub struct TableChangeContext {
+    pub connection_id: Option<String>,
+    pub db_session_id: String,
+    pub driver_type: Option<String>,
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub table: String,
 }
 
 /// The two fail-loud conditions from the React source.
 #[allow(dead_code)] // error mirror; remove with the table view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TableSessionError {
+pub enum TableSessionError {
     ConnectionRequired,
     SessionLost,
 }
 
 #[allow(dead_code)] // error mirror; remove with the table view.
 impl TableSessionError {
-    pub(crate) fn message(self) -> &'static str {
+    pub fn message(self) -> &'static str {
         match self {
             Self::ConnectionRequired => "Table connection required",
             Self::SessionLost => "Table session lost; explicitly open a new session.",
@@ -59,24 +59,24 @@ impl TableSessionError {
 
 /// React `tableSessionKey(panelId)`.
 #[allow(dead_code)] // helper; remove with the table view.
-pub(crate) fn table_session_key(panel_id: &str) -> String {
+pub fn table_session_key(panel_id: &str) -> String {
     format!("{panel_id}:table")
 }
 
 /// The exact registry-lookup inputs React passes to `registry.get`.
 #[allow(dead_code)] // helper; remove with the table view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TableControllerRequest {
-    pub(crate) key: String,
-    pub(crate) target: ExecutionTarget,
-    pub(crate) owner: OwnerRef,
+pub struct TableControllerRequest {
+    pub key: String,
+    pub target: ExecutionTarget,
+    pub owner: OwnerRef,
 }
 
 /// Validate the context and derive `(key, target, owner)` for the registry.
 /// `client_instance_id` is the host-issued identity T208's
 /// `editorOwnerForPane` would fetch; pass it through verbatim.
 #[allow(dead_code)] // helper; remove with the table view.
-pub(crate) fn table_session_controller_request(
+pub fn table_session_controller_request(
     panel_id: &str,
     context: &TableChangeContext,
     client_instance_id: &str,
@@ -108,7 +108,7 @@ pub(crate) fn table_session_controller_request(
 /// an active/aborted transaction. A missing view yields `None`; a
 /// closing/closed/lost view fails loudly instead of returning a stale handle.
 #[allow(dead_code)] // helper; remove with the table view.
-pub(crate) fn table_manual_handle(
+pub fn table_manual_handle(
     registry: &QueryPanelSessionRegistry,
     panel_id: &str,
 ) -> Result<Option<SessionHandle>, TableSessionError> {

@@ -20,10 +20,10 @@
 //! [cache-new]: crate::relation_metadata::metadata_cache::MetadataCache::new
 //! [default_metadata_cache]: crate::relation_metadata::metadata_cache::default_metadata_cache
 
-pub(crate) use crate::relation_metadata::identity::{
+pub use crate::relation_metadata::identity::{
     build_editor_relation_key, relation_identity_key,
 };
-pub(crate) use crate::relation_metadata::metadata_cache::{
+pub use crate::relation_metadata::metadata_cache::{
     default_metadata_cache, MetadataCache, MetadataCacheDeps,
 };
-pub(crate) use crate::relation_metadata::schema::schema_to_metadata;
+pub use crate::relation_metadata::schema::schema_to_metadata;

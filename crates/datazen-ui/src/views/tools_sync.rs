@@ -17,7 +17,7 @@ use rune::tok::{self, type_};
 use rune::{col, row, text, text_input, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
-pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let entry = |key: &str, label: &str, tool: Tool, active: bool| {
         row()
             .key(key)
@@ -81,7 +81,7 @@ pub(crate) fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El 
             Tool::ValueSearch => value_search_tool(state, theme, dark),
         })
 }
-pub(crate) fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col().key("sync-tool").w_full().gap(6.0);
     match state.sync_step {
         0 => {

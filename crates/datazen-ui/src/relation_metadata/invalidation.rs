@@ -8,12 +8,12 @@
 
 /// A listener notified on every schema/DDL invalidation.
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) type InvalidationListener = dyn Fn(&str, Option<&str>);
+pub type InvalidationListener = dyn Fn(&str, Option<&str>);
 
 /// Explicit replacement for the React process-global invalidation set.
 #[derive(Default)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct SchemaInvalidationBus {
+pub struct SchemaInvalidationBus {
     listeners: Vec<(usize, Box<InvalidationListener>)>,
     next_id: usize,
 }

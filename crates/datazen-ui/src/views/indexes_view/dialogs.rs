@@ -37,7 +37,7 @@ fn check_box(checked: bool, key: &str, dark: bool) -> El {
 
 /// React `CreateIndexDialog`.
 #[allow(dead_code)] // dialog entry; remove when the host mounts the view.
-pub(crate) fn build_create<S: 'static>(
+pub fn build_create<S: 'static>(
     identity: &IndexesIdentity,
     state: &IndexesViewState,
     host: &IndexesHostPort<S>,
@@ -326,7 +326,7 @@ pub(crate) fn build_create<S: 'static>(
 
 /// React `DeleteConfirmDialog`.
 #[allow(dead_code)] // dialog entry; remove when the host mounts the view.
-pub(crate) fn build_delete<S: 'static>(
+pub fn build_delete<S: 'static>(
     identity: &IndexesIdentity,
     state: &IndexesViewState,
     host: &IndexesHostPort<S>,

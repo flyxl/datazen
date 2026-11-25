@@ -44,7 +44,7 @@ const PANEL_WIDTH: f32 = 208.0;
 /// Mirror of `lib/chart/colors.ts` `COLOR_PALETTES`, in declaration order.
 /// Eight palettes, each with at least four swatches (React shows `slice(0, 4)`).
 #[allow(dead_code)] // palette data; consumed by this module's build.
-pub(crate) const COLOR_PALETTES: [(&str, &[&str]); 8] = [
+pub const COLOR_PALETTES: [(&str, &[&str]); 8] = [
     (
         "default",
         &["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#22d3ee", "#fb923c", "#f472b6"],
@@ -79,9 +79,9 @@ pub(crate) const COLOR_PALETTES: [(&str, &[&str]); 8] = [
 /// The only chart-recommendation field this panel renders.
 #[allow(dead_code)] // contract mirror; remove when the shared chart contract lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AxisRecommendation {
+pub struct AxisRecommendation {
     /// A translation key, passed through `t()` exactly like React.
-    pub(crate) reason: String,
+    pub reason: String,
 }
 
 type ChangeFn<S> = Rc<dyn Fn(&mut S, ChartConfig) + 'static>;
@@ -264,7 +264,7 @@ fn icon_button<S: 'static>(
 
 /// Builder for the ported panel.
 #[allow(dead_code)] // consumer: the chart view (not wired); remove when wired.
-pub(crate) struct AxisConfigurator<'a, S: 'static> {
+pub struct AxisConfigurator<'a, S: 'static> {
     fields: &'a [ChartField],
     config: &'a ChartConfig,
     recommendation: Option<&'a AxisRecommendation>,
@@ -277,7 +277,7 @@ pub(crate) struct AxisConfigurator<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: the chart view (not wired); remove when wired.
 impl<'a, S: 'static> AxisConfigurator<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         fields: &'a [ChartField],
         config: &'a ChartConfig,
         recommendation: Option<&'a AxisRecommendation>,
@@ -295,24 +295,24 @@ impl<'a, S: 'static> AxisConfigurator<'a, S> {
     }
 
     /// React's local `collapsed` state at build time.
-    pub(crate) fn collapsed(mut self, collapsed: bool) -> Self {
+    pub fn collapsed(mut self, collapsed: bool) -> Self {
         self.collapsed = collapsed;
         self
     }
 
-    pub(crate) fn on_collapsed(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_collapsed(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_collapsed = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, ChartConfig) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, ChartConfig) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
     /// Per-select open state accessor and its current values (React keeps this
     /// inside each `Select`).
-    pub(crate) fn select_open(
+    pub fn select_open(
         mut self,
         values: HashMap<String, bool>,
         f: impl for<'b> Fn(&'b mut S, &str) -> &'b mut bool + 'static,
@@ -322,7 +322,7 @@ impl<'a, S: 'static> AxisConfigurator<'a, S> {
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let collapsed = self.collapsed;
         let toggle_action = {

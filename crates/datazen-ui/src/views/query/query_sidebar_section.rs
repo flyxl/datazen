@@ -36,49 +36,49 @@ use crate::ui::menu::{context_menu, Item};
 mod favorites;
 mod history;
 
-pub(crate) use history::{find_group, group_history, HistoryGroup};
+pub use history::{find_group, group_history, HistoryGroup};
 
-pub(crate) const FAVORITES_PANEL_KEY: &str = "query-favorites-panel";
-pub(crate) const FAVORITES_REFRESH_KEY: &str = "favorites-refresh";
-pub(crate) const FAVORITES_ROOT_KEY: &str = "favorites-root";
-pub(crate) const HISTORY_PANEL_KEY: &str = "query-history-panel";
-pub(crate) const HISTORY_SEARCH_KEY: &str = "query-history-search";
-pub(crate) const SCOPE_CURRENT_KEY: &str = "history-scope-current";
-pub(crate) const SCOPE_ALL_KEY: &str = "history-scope-all";
-pub(crate) const FALLBACK_KEY: &str = "history-scope-fallback-hint";
-pub(crate) const GROUP_LABEL_KEY: &str = "history-group-label";
-pub(crate) const HISTORY_ITEM_KEY: &str = "query-history-item";
-pub(crate) const FAVORITE_MENU_KEY: &str = "favorite-context-menu";
-pub(crate) const HISTORY_MENU_KEY: &str = "history-context-menu";
-pub(crate) const HISTORY_HEADER_MENU_KEY: &str = "history-header-context-menu";
+pub const FAVORITES_PANEL_KEY: &str = "query-favorites-panel";
+pub const FAVORITES_REFRESH_KEY: &str = "favorites-refresh";
+pub const FAVORITES_ROOT_KEY: &str = "favorites-root";
+pub const HISTORY_PANEL_KEY: &str = "query-history-panel";
+pub const HISTORY_SEARCH_KEY: &str = "query-history-search";
+pub const SCOPE_CURRENT_KEY: &str = "history-scope-current";
+pub const SCOPE_ALL_KEY: &str = "history-scope-all";
+pub const FALLBACK_KEY: &str = "history-scope-fallback-hint";
+pub const GROUP_LABEL_KEY: &str = "history-group-label";
+pub const HISTORY_ITEM_KEY: &str = "query-history-item";
+pub const FAVORITE_MENU_KEY: &str = "favorite-context-menu";
+pub const HISTORY_MENU_KEY: &str = "history-context-menu";
+pub const HISTORY_HEADER_MENU_KEY: &str = "history-header-context-menu";
 
 /// React's `FavoriteQuery` fields the panel reads.
 #[allow(dead_code)] // VM mirror; remove when the host owns the store slice.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FavoriteVm {
-    pub(crate) id: String,
-    pub(crate) title: String,
-    pub(crate) sql: String,
+pub struct FavoriteVm {
+    pub id: String,
+    pub title: String,
+    pub sql: String,
 }
 
 /// React's `QueryHistoryEntry` fields the panel reads.
 #[allow(dead_code)] // VM mirror; remove when the host owns the store slice.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct HistoryEntryVm {
-    pub(crate) id: String,
-    pub(crate) sql: String,
-    pub(crate) database: Option<String>,
-    pub(crate) success: bool,
-    pub(crate) execution_time_ms: u64,
-    pub(crate) rows_affected: Option<u64>,
+pub struct HistoryEntryVm {
+    pub id: String,
+    pub sql: String,
+    pub database: Option<String>,
+    pub success: bool,
+    pub execution_time_ms: u64,
+    pub rows_affected: Option<u64>,
     /// RFC3339 timestamp, mirrored verbatim for the host's formatter.
-    pub(crate) executed_at: String,
+    pub executed_at: String,
 }
 
 /// React `historyScopeMode`.
 #[allow(dead_code)] // VM mirror; remove when the host owns the scope.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum HistoryScope {
+pub enum HistoryScope {
     #[default]
     Current,
     All,
@@ -87,42 +87,42 @@ pub(crate) enum HistoryScope {
 /// A grouped section after search filtering (React's `scopedSections` entry).
 #[allow(dead_code)] // VM helper; remove when the panel host computes sections.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct HistorySection {
-    pub(crate) key: String,
+pub struct HistorySection {
+    pub key: String,
     /// `None` for the single current-database section (no group header).
-    pub(crate) label: Option<String>,
-    pub(crate) items: Vec<HistoryEntryVm>,
+    pub label: Option<String>,
+    pub items: Vec<HistoryEntryVm>,
 }
 
 /// React props plus the two local `useState` values.
 #[allow(dead_code)] // VM; owned by the host until the panel view lands.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct SidebarSectionVm {
-    pub(crate) favorites_visible: bool,
-    pub(crate) history_visible: bool,
-    pub(crate) favorites_root: Option<String>,
-    pub(crate) favorites: Vec<FavoriteVm>,
-    pub(crate) history: Vec<HistoryEntryVm>,
-    pub(crate) selected_database: Option<String>,
-    pub(crate) history_search: TextEdit,
-    pub(crate) history_scope: HistoryScope,
+pub struct SidebarSectionVm {
+    pub favorites_visible: bool,
+    pub history_visible: bool,
+    pub favorites_root: Option<String>,
+    pub favorites: Vec<FavoriteVm>,
+    pub history: Vec<HistoryEntryVm>,
+    pub selected_database: Option<String>,
+    pub history_search: TextEdit,
+    pub history_scope: HistoryScope,
     /// Context-menu anchors: which row the menu came from, and where.
-    pub(crate) favorite_menu: Option<(FavoriteVm, PointerPress)>,
-    pub(crate) history_menu: Option<(String, PointerPress)>,
-    pub(crate) header_menu: Option<PointerPress>,
+    pub favorite_menu: Option<(FavoriteVm, PointerPress)>,
+    pub history_menu: Option<(String, PointerPress)>,
+    pub header_menu: Option<PointerPress>,
 }
 
 #[allow(dead_code)] // pure helpers; remove when the shared libs are ported.
 impl SidebarSectionVm {
     /// React `historyScopeFallback`: current scope but no matching group.
-    pub(crate) fn scope_fallback(&self, groups: &[HistoryGroup]) -> bool {
+    pub fn scope_fallback(&self, groups: &[HistoryGroup]) -> bool {
         self.history_scope == HistoryScope::Current
             && history::find_group(groups, self.selected_database.as_deref()).is_none()
     }
 
     /// React's `scopedSections` + `filteredCount`, including case-insensitive
     /// SQL search within the active scope.
-    pub(crate) fn sections(&self, groups: &[HistoryGroup]) -> Vec<HistorySection> {
+    pub fn sections(&self, groups: &[HistoryGroup]) -> Vec<HistorySection> {
         let query = self.history_search.text.trim().to_ascii_lowercase();
         let filter = |items: &[HistoryEntryVm]| -> Vec<HistoryEntryVm> {
             if query.is_empty() {
@@ -156,7 +156,7 @@ impl SidebarSectionVm {
 
     /// The pure part of `handleSelectContextLevel`: a non-empty level extends
     /// the path up to `index`; an empty value is ignored.
-    pub(crate) fn select_context_level(path: &[String], index: usize, value: &str) -> Option<Vec<String>> {
+    pub fn select_context_level(path: &[String], index: usize, value: &str) -> Option<Vec<String>> {
         if value.is_empty() {
             return None;
         }
@@ -167,7 +167,7 @@ impl SidebarSectionVm {
 
     /// Reference host reducer for the view-owned state; commands stay with the
     /// host. Consumers: the query-panel host (not landed) and the tests.
-    pub(crate) fn reduce(&mut self, action: &QuerySidebarAction) {
+    pub fn reduce(&mut self, action: &QuerySidebarAction) {
         match action {
             QuerySidebarAction::SetHistoryScope(scope) => self.history_scope = *scope,
             QuerySidebarAction::SetHistorySearch(value) => self.history_search = TextEdit::new(value.clone()),
@@ -198,7 +198,7 @@ impl SidebarSectionVm {
 /// Every interaction the two sidebars ask the host to perform.
 #[allow(dead_code)] // host port; remove when the panel wires the sidebars.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum QuerySidebarAction {
+pub enum QuerySidebarAction {
     RefreshFavorites,
     OpenFavorite(FavoriteVm),
     DeleteFavorite(String),
@@ -217,12 +217,12 @@ pub(crate) enum QuerySidebarAction {
 }
 
 #[allow(dead_code)] // host port; remove when the panel wires the sidebars.
-pub(crate) type QuerySidebarActionFn<S> = Rc<dyn Fn(&mut S, QuerySidebarAction) + 'static>;
+pub type QuerySidebarActionFn<S> = Rc<dyn Fn(&mut S, QuerySidebarAction) + 'static>;
 #[allow(dead_code)] // text accessor; remove when the panel owns the search field.
-pub(crate) type SearchEditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
+pub type SearchEditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 
 /// A 24pt icon-only control on a panel header.
-pub(crate) fn icon_button<S: 'static>(
+pub fn icon_button<S: 'static>(
     key: &str,
     label: &str,
     glyph: &'static Icon,
@@ -242,7 +242,7 @@ pub(crate) fn icon_button<S: 'static>(
 }
 
 /// A trailing separator line, matching React's `border-b border-edge`.
-pub(crate) fn bottom_border(dark: bool) -> El {
+pub fn bottom_border(dark: bool) -> El {
     row()
         .w_full()
         .h(1.0)
@@ -252,7 +252,7 @@ pub(crate) fn bottom_border(dark: bool) -> El {
 
 /// Render the two optional panels into `layer`.
 #[allow(dead_code)] // view entry; remove when the panel wires the sidebars.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &SidebarSectionVm,
     on_action: &Option<QuerySidebarActionFn<S>>,
     search_edit: Option<SearchEditFn<S>>,

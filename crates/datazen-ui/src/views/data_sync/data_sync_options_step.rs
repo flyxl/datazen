@@ -36,7 +36,7 @@ use crate::ui::kit::kit;
 use crate::views::{OptionsBar, SyncOptions};
 
 /// The step builder. `S` is the host state that owns the options.
-pub(crate) struct DataSyncOptionsStep<S: 'static> {
+pub struct DataSyncOptionsStep<S: 'static> {
     options: SyncOptions,
     policy_select_open: bool,
     on_change: Option<Rc<dyn Fn(&mut S, SyncOptions)>>,
@@ -46,7 +46,7 @@ pub(crate) struct DataSyncOptionsStep<S: 'static> {
 }
 
 impl<S: 'static> DataSyncOptionsStep<S> {
-    pub(crate) fn new(options: SyncOptions) -> Self {
+    pub fn new(options: SyncOptions) -> Self {
         Self {
             options,
             policy_select_open: false,
@@ -58,38 +58,38 @@ impl<S: 'static> DataSyncOptionsStep<S> {
     }
 
     /// React `onOptionsChange(next)`.
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, SyncOptions) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, SyncOptions) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
     /// React `onEnableDelete`.
-    pub(crate) fn on_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_enable_delete = Some(Rc::new(f));
         self
     }
 
     /// The conflict-policy select's open flag, from the host's slot (the
     /// bar needs it; the wizard owns it one level up).
-    pub(crate) fn policy_select_open(mut self, open: bool) -> Self {
+    pub fn policy_select_open(mut self, open: bool) -> Self {
         self.policy_select_open = open;
         self
     }
 
     /// The host records the conflict select opening.
-    pub(crate) fn on_toggle_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_policy = Some(Rc::new(f));
         self
     }
 
     /// The host closes the conflict select.
-    pub(crate) fn on_close_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_policy = Some(Rc::new(f));
         self
     }
 
     /// The step on its own kit root.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut layer = Vec::new();
         let root = self.build_inner(&k, &mut layer);
@@ -98,7 +98,7 @@ impl<S: 'static> DataSyncOptionsStep<S> {
 
     /// The same step without its kit root (for a parent that roots the
     /// overlay once).
-    pub(crate) fn build_inner(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build_inner(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let mut bar = OptionsBar::<S>::new(self.options);
         bar = bar.policy_select_open(self.policy_select_open);
         if let Some(on_change) = &self.on_change {

@@ -71,7 +71,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 /// brand sidebar + main column) around a host-fed wizard slot, carrying
 /// the completion action React wires to `invoke('onboarding_complete')`.
 #[allow(dead_code)] // the wizard host wiring (T114) is the production consumer
-pub(crate) struct OnboardingWindow<S: 'static> {
+pub struct OnboardingWindow<S: 'static> {
     /// The host-delivered app version for the brand sidebar's footer.
     version: Option<String>,
     /// The T114 seam: the wizard — the children of React's `<main>`.
@@ -92,14 +92,14 @@ impl<S: 'static> OnboardingWindow<S> {
     /// React's start: no wizard slot yet (it paints nothing) and the
     /// sidebar's em-dash version placeholder.
     #[allow(dead_code)] // the wizard host wiring (T114) is the production consumer
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { version: None, wizard: None, on_complete: None }
     }
 
     /// The sidebar's app version (React: the platform port's
     /// `getAppVersion()`; `None` keeps BrandSidebar's `'…'` default).
     #[allow(dead_code)] // the wizard host wiring (T114) is the production consumer
-    pub(crate) fn version(mut self, version: impl Into<String>) -> Self {
+    pub fn version(mut self, version: impl Into<String>) -> Self {
         self.version = Some(version.into());
         self
     }
@@ -107,7 +107,7 @@ impl<S: 'static> OnboardingWindow<S> {
     /// The wizard slot (T114): the children of React's `<main>` — the
     /// padded step area plus the `WizardFooter` — as one host-built `El`.
     #[allow(dead_code)] // the wizard host wiring (T114) is the production consumer
-    pub(crate) fn wizard(mut self, wizard: El) -> Self {
+    pub fn wizard(mut self, wizard: El) -> Self {
         self.wizard = Some(wizard);
         self
     }
@@ -116,7 +116,7 @@ impl<S: 'static> OnboardingWindow<S> {
     /// after settings have been persisted (the desktop host then creates
     /// the main window and closes the wizard window).
     #[allow(dead_code)] // the wizard host wiring (T114) is the production consumer
-    pub(crate) fn on_complete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_complete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_complete = Some(Rc::new(f));
         self
     }
@@ -124,14 +124,14 @@ impl<S: 'static> OnboardingWindow<S> {
     /// The completion action for the wizard seam: what the T114 host hands
     /// the ported wizard as its `onComplete` prop.
     #[allow(dead_code)] // the wizard host wiring (T114) is the production consumer
-    pub(crate) fn completion_action(&self) -> Option<ActionFn<S>> {
+    pub fn completion_action(&self) -> Option<ActionFn<S>> {
         self.on_complete.clone()
     }
 
     /// Paint the window. `dark` drives the kit tokens (the sidebar's
     /// gradient anchor stays fixed-dark, as in React).
     #[allow(dead_code)] // the wizard host wiring (T114) is the production consumer
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
 
         let mut sidebar = BrandSidebar::new();

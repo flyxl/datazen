@@ -40,7 +40,7 @@ const ROOT: &str = "content-view-create-user-dialog";
 /// React's `step` state.
 #[allow(dead_code)] // VM surface; consumed by the host result feed (not landed).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum CreateUserStep {
+pub enum CreateUserStep {
     #[default]
     Create,
     Grant,
@@ -50,7 +50,7 @@ pub(crate) enum CreateUserStep {
 /// names; the actions carry only the form values.
 #[allow(dead_code)] // host port; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CreateUserAction {
+pub enum CreateUserAction {
     Close,
     Create { username: String, password: String },
     Grant { username: String, database: String, privileges: Vec<String>, grant_option: bool },
@@ -61,7 +61,7 @@ pub(crate) enum CreateUserAction {
 /// All `useState` values plus the host-supplied fact snapshot.
 #[allow(dead_code)] // VM surface; owned by the host until the driver definition lands.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct CreateUserState {
+pub struct CreateUserState {
     pub username: TextEdit,
     pub password: TextEdit,
     pub selected_privileges: Vec<String>,
@@ -82,7 +82,7 @@ pub(crate) struct CreateUserState {
 impl CreateUserState {
     /// React `resetForm`.
     #[allow(dead_code)] // consumer: the dialog host result feed (not landed); remove when wired.
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         *self = Self {
             privileges: self.privileges.clone(),
             databases: self.databases.clone(),
@@ -93,7 +93,7 @@ impl CreateUserState {
     }
 
     /// React `togglePrivilege`: insertion-ordered set semantics.
-    pub(crate) fn toggle_privilege(&mut self, privilege: &str) {
+    pub fn toggle_privilege(&mut self, privilege: &str) {
         if let Some(index) = self.selected_privileges.iter().position(|p| p == privilege) {
             self.selected_privileges.remove(index);
         } else {
@@ -102,7 +102,7 @@ impl CreateUserState {
     }
 
     /// React `selectAllPrivileges`: selecting everything toggles to empty.
-    pub(crate) fn select_all_privileges(&mut self) {
+    pub fn select_all_privileges(&mut self) {
         if self.selected_privileges.len() == self.privileges.len() {
             self.selected_privileges.clear();
         } else {
@@ -111,7 +111,7 @@ impl CreateUserState {
     }
 
     /// React `handleCreate` guard + command payload.
-    pub(crate) fn begin_create(&mut self) -> Option<CreateUserAction> {
+    pub fn begin_create(&mut self) -> Option<CreateUserAction> {
         let username = self.username.text.trim().to_owned();
         if username.is_empty() {
             return None;
@@ -123,7 +123,7 @@ impl CreateUserState {
 
     /// Resolve the create answer: success advances to the grant step.
     #[allow(dead_code)] // consumer: the host create-user result feed (not landed); remove when wired.
-    pub(crate) fn apply_create(
+    pub fn apply_create(
         &mut self,
         result: Result<(), String>,
         username: &str,
@@ -143,7 +143,7 @@ impl CreateUserState {
     }
 
     /// React `handleGrant` guard + command payload.
-    pub(crate) fn begin_grant(&mut self) -> Option<CreateUserAction> {
+    pub fn begin_grant(&mut self) -> Option<CreateUserAction> {
         if self.selected_privileges.is_empty() {
             return None;
         }
@@ -159,7 +159,7 @@ impl CreateUserState {
 
     /// Resolve the grant answer: success resets and reports creation.
     #[allow(dead_code)] // consumer: the host create-user result feed (not landed); remove when wired.
-    pub(crate) fn apply_grant(&mut self, result: Result<(), String>) -> Vec<CreateUserAction> {
+    pub fn apply_grant(&mut self, result: Result<(), String>) -> Vec<CreateUserAction> {
         self.running = false;
         match result {
             Ok(()) => {
@@ -175,14 +175,14 @@ impl CreateUserState {
     }
 
     /// React `handleSkipGrant`.
-    pub(crate) fn skip_grant(&mut self) -> Vec<CreateUserAction> {
+    pub fn skip_grant(&mut self) -> Vec<CreateUserAction> {
         let username = self.created_username.clone();
         self.reset();
         vec![CreateUserAction::Skip { username }, CreateUserAction::Close]
     }
 
     /// React `t('createUser.success').replace('{name}', createdUsername)`.
-    pub(crate) fn success_text(&self) -> String {
+    pub fn success_text(&self) -> String {
         t("createUser.success").replace("{name}", &self.created_username)
     }
 }
@@ -203,7 +203,7 @@ fn emit<S: 'static>(
 
 /// Render the dialog into `layer`. The open gate is applied by the slot host.
 #[allow(dead_code)] // consumer: content_view_dialogs slot (wired by T286).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     state: &CreateUserState,
     context: Option<&str>,
     state_edit: Option<Rc<dyn Fn(&mut S) -> &mut CreateUserState>>,
@@ -464,7 +464,7 @@ fn build_grant_body<S: 'static>(
 
 /// Snapshot entry point for the T223 slot: the host owns no form state there.
 #[allow(dead_code)] // consumer: content_view_dialogs slot; remove when the host wires form state.
-pub(crate) fn build_snapshot<S: 'static>(
+pub fn build_snapshot<S: 'static>(
     state: &CreateUserState,
     context: Option<&str>,
     on_action: Option<ActionFn<S>>,

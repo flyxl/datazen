@@ -49,7 +49,7 @@
 
 /// `defaultAiMemorySettings` (`types/ai.ts`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiMemorySettings {
+pub struct AiMemorySettings {
     pub enabled: bool,
     pub auto_learn: bool,
     pub cloud_policy: &'static str,
@@ -69,7 +69,7 @@ impl Default for AiMemorySettings {
 
 /// `defaultAiSkillsSettings`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiSkillsSettings {
+pub struct AiSkillsSettings {
     pub enabled: bool,
     pub custom_dir: Option<String>,
     pub auto_use: bool,
@@ -88,7 +88,7 @@ impl Default for AiSkillsSettings {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PromptTemplate {
+pub struct PromptTemplate {
     pub id: String,
     pub name: String,
     pub content: String,
@@ -99,14 +99,14 @@ pub(crate) struct PromptTemplate {
 /// The profile fields `saveProfile` / `deleteProfile` actually branch on,
 /// plus the name the settings form round-trips.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiModelProfile {
+pub struct AiModelProfile {
     pub id: String,
     pub name: String,
     pub is_default: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiSettingsConfig {
+pub struct AiSettingsConfig {
     pub active_profile_id: String,
     pub profiles: Vec<AiModelProfile>,
     pub global_instructions: String,
@@ -118,7 +118,7 @@ pub(crate) struct AiSettingsConfig {
 /// Provider config as the store holds it. The store never opens the
 /// fields; they round-trip through save / load.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiProviderConfig {
+pub struct AiProviderConfig {
     pub provider_type: String,
     pub model: String,
     pub api_key: Option<String>,
@@ -126,13 +126,13 @@ pub(crate) struct AiProviderConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProviderListItem {
+pub struct ProviderListItem {
     pub provider_type: String,
     pub display_name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ModelInfo {
+pub struct ModelInfo {
     pub id: String,
     pub display_name: String,
 }
@@ -140,7 +140,7 @@ pub(crate) struct ModelInfo {
 /// `Nl2SqlState` (`stores/ai/types.ts`). `memory_used` is only cleared by
 /// this slice; the chat slice fills the references.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Nl2SqlState {
+pub struct Nl2SqlState {
     pub input: String,
     pub streaming_sql: String,
     pub streaming_preview: String,
@@ -166,7 +166,7 @@ impl Default for Nl2SqlState {
 
 /// Opaque diagnosis payload. The store does not read its fields.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DiagnosisResult {
+pub struct DiagnosisResult {
     pub summary: String,
 }
 
@@ -175,7 +175,7 @@ pub(crate) struct DiagnosisResult {
 /// suggestions with their optional SQL and expected impact. The store
 /// stores them uninterpreted; T260's panel is the renderer.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ExplainAnalysis {
+pub struct ExplainAnalysis {
     pub summary: String,
     pub bottlenecks: Vec<ExplainBottleneck>,
     pub suggestions: Vec<ExplainSuggestion>,
@@ -184,7 +184,7 @@ pub(crate) struct ExplainAnalysis {
 /// One bottleneck (`types/ai.ts`: `Bottleneck`): the plan node it
 /// names, what it costs, and how bad it is.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExplainBottleneck {
+pub struct ExplainBottleneck {
     pub node: String,
     pub description: String,
     pub severity: ExplainSeverity,
@@ -192,7 +192,7 @@ pub(crate) struct ExplainBottleneck {
 
 /// The React `'high' | 'medium' | 'low'` union.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ExplainSeverity {
+pub enum ExplainSeverity {
     High,
     Medium,
     #[default]
@@ -204,7 +204,7 @@ impl ExplainSeverity {
     /// React's render degradation — `severityColors[b.severity] ??
     /// severityColors.low` — here at the parse boundary, so the store
     /// never carries a severity the panel cannot paint.
-    pub(crate) fn from_wire(word: &str) -> Self {
+    pub fn from_wire(word: &str) -> Self {
         match word {
             "high" => ExplainSeverity::High,
             "medium" => ExplainSeverity::Medium,
@@ -217,7 +217,7 @@ impl ExplainSeverity {
 /// the SQL to apply (null when the advice is prose only), and the
 /// expected impact.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExplainSuggestion {
+pub struct ExplainSuggestion {
     pub description: String,
     pub sql: Option<String>,
     pub impact: String,
@@ -226,7 +226,7 @@ pub(crate) struct ExplainSuggestion {
 /// One smart-filter condition. The store stores the list; it does not
 /// interpret the fields.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FilterCondition {
+pub struct FilterCondition {
     pub column: String,
     pub operator: String,
     pub value: String,
@@ -234,7 +234,7 @@ pub(crate) struct FilterCondition {
 
 /// What the host must do next. Payloads are the request, not a promise.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum AiConfigEffect {
+pub enum AiConfigEffect {
     /// `getConfig` + `getSettingsConfig`, then `complete_load_config`.
     /// `arm_listener` is the first successful chance to subscribe to
     /// `ai:config-changed`.
@@ -257,21 +257,21 @@ pub(crate) enum AiConfigEffect {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConfigStart {
+pub enum ConfigStart {
     /// No backend bound. React returns before `set`.
     Skipped,
     Started,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ProfileEdit {
+pub enum ProfileEdit {
     /// `deleteProfile` when `settingsConfig` is null. No IPC.
     Rejected,
     Save(AiConfigEffect),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiStore {
+pub struct AiStore {
     pub config: Option<AiProviderConfig>,
     pub settings_config: Option<AiSettingsConfig>,
     pub is_configured: bool,
@@ -303,7 +303,7 @@ pub(crate) struct AiStore {
     pub memory_candidate_notice: Option<crate::ai_store_chat::MemoryCandidateNotice>,
     /// Module-level `chatInitToken`. Bumped by init, select, and new chat.
     pub chat_init_token: u64,
-    pub(crate) init_message_baseline: Option<usize>,
+    pub init_message_baseline: Option<usize>,
     pub workflow_chat: Option<crate::ai_store_chat::ChatSession>,
     /// `sendWorkflowChatMessage` sets `independent`; init leaves this empty
     /// and `clearWorkflowChat` clears it. Not a field of [`crate::ai_store_chat::ChatSession`]
@@ -314,10 +314,10 @@ pub(crate) struct AiStore {
     pub workflow_execution_result: Option<String>,
     pub is_executing_workflow: bool,
     pub workflow_error: Option<String>,
-    pub(crate) workflow_load_started: Option<u64>,
-    pub(crate) workflow_shown_at: Option<u64>,
-    pub(crate) pending_workflows: Option<Vec<crate::ai_store_rest::WorkflowItem>>,
-    pub(crate) pending_workflow_error: Option<String>,
+    pub workflow_load_started: Option<u64>,
+    pub workflow_shown_at: Option<u64>,
+    pub pending_workflows: Option<Vec<crate::ai_store_rest::WorkflowItem>>,
+    pub pending_workflow_error: Option<String>,
     pub schema_doc: Option<String>,
     pub is_generating_schema_doc: bool,
     pub schema_doc_error: Option<String>,
@@ -402,12 +402,12 @@ impl Default for AiStore {
 }
 
 impl AiStore {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// `loadConfig`.
-    pub(crate) fn begin_load_config(
+    pub fn begin_load_config(
         &mut self,
         backend_bound: bool,
     ) -> (ConfigStart, Option<AiConfigEffect>) {
@@ -417,11 +417,11 @@ impl AiStore {
         }
     }
 
-    pub(crate) fn note_listener_installed(&mut self, installed: bool) {
+    pub fn note_listener_installed(&mut self, installed: bool) {
         self.listener_armed = installed;
     }
 
-    pub(crate) fn complete_load_config(
+    pub fn complete_load_config(
         &mut self,
         config: Option<AiProviderConfig>,
         settings: Option<AiSettingsConfig>,
@@ -432,20 +432,20 @@ impl AiStore {
         self.config_loading = false;
     }
 
-    pub(crate) fn fail_load_config(&mut self, message: &str) {
+    pub fn fail_load_config(&mut self, message: &str) {
         self.config_loading = false;
         self.config_error = Some(message.to_owned());
     }
 
     /// `loadSettingsConfig`. Does not touch `config_loading`.
-    pub(crate) fn begin_load_settings(&mut self, backend_bound: bool) -> ConfigStart {
+    pub fn begin_load_settings(&mut self, backend_bound: bool) -> ConfigStart {
         if !backend_bound {
             return ConfigStart::Skipped;
         }
         ConfigStart::Started
     }
 
-    pub(crate) fn complete_load_settings(
+    pub fn complete_load_settings(
         &mut self,
         config: Option<AiProviderConfig>,
         settings: AiSettingsConfig,
@@ -455,12 +455,12 @@ impl AiStore {
         self.settings_config = Some(settings);
     }
 
-    pub(crate) fn fail_load_settings(&mut self, message: &str) {
+    pub fn fail_load_settings(&mut self, message: &str) {
         self.config_error = Some(message.to_owned());
     }
 
     /// `saveSettingsConfig` up to the IPC. Local settings are unchanged.
-    pub(crate) fn begin_save_settings(&mut self, config: AiSettingsConfig) -> AiConfigEffect {
+    pub fn begin_save_settings(&mut self, config: AiSettingsConfig) -> AiConfigEffect {
         self.saving = true;
         self.config_error = None;
         AiConfigEffect::SaveSettings(config)
@@ -469,24 +469,24 @@ impl AiStore {
     /// IPC succeeded. Start the `loadConfig()` React awaits next, while
     /// `saving` is still true. `None` when no backend is bound (the reload
     /// no-ops).
-    pub(crate) fn ack_save_settings(&mut self, backend_bound: bool) -> Option<AiConfigEffect> {
+    pub fn ack_save_settings(&mut self, backend_bound: bool) -> Option<AiConfigEffect> {
         self.arm_config_fetch(backend_bound)
     }
 
     /// The `set({ saving: false }); return true` after the reload settles,
     /// including a reload that failed inside `loadConfig`.
-    pub(crate) fn finish_save_settings(&mut self) -> bool {
+    pub fn finish_save_settings(&mut self) -> bool {
         self.saving = false;
         true
     }
 
-    pub(crate) fn fail_save_settings(&mut self, message: &str) -> bool {
+    pub fn fail_save_settings(&mut self, message: &str) -> bool {
         self.saving = false;
         self.config_error = Some(message.to_owned());
         false
     }
 
-    pub(crate) fn begin_set_active_profile(
+    pub fn begin_set_active_profile(
         &mut self,
         profile_id: impl Into<String>,
     ) -> AiConfigEffect {
@@ -495,36 +495,36 @@ impl AiStore {
         AiConfigEffect::SetActiveProfile(profile_id.into())
     }
 
-    pub(crate) fn ack_set_active_profile(&mut self, backend_bound: bool) -> Option<AiConfigEffect> {
+    pub fn ack_set_active_profile(&mut self, backend_bound: bool) -> Option<AiConfigEffect> {
         self.arm_config_fetch(backend_bound)
     }
 
-    pub(crate) fn finish_set_active_profile(&mut self) -> bool {
+    pub fn finish_set_active_profile(&mut self) -> bool {
         self.config_loading = false;
         true
     }
 
-    pub(crate) fn fail_set_active_profile(&mut self, message: &str) -> bool {
+    pub fn fail_set_active_profile(&mut self, message: &str) -> bool {
         self.config_loading = false;
         self.config_error = Some(message.to_owned());
         false
     }
 
     /// `saveProfile`: build the next settings and start `saveSettingsConfig`.
-    pub(crate) fn save_profile(&mut self, profile: AiModelProfile) -> AiConfigEffect {
+    pub fn save_profile(&mut self, profile: AiModelProfile) -> AiConfigEffect {
         let next = next_settings_for_save(self.settings_config.as_ref(), profile);
         self.begin_save_settings(next)
     }
 
     /// `deleteProfile`.
-    pub(crate) fn delete_profile(&mut self, profile_id: &str) -> ProfileEdit {
+    pub fn delete_profile(&mut self, profile_id: &str) -> ProfileEdit {
         let Some(next) = next_settings_for_delete(self.settings_config.as_ref(), profile_id) else {
             return ProfileEdit::Rejected;
         };
         ProfileEdit::Save(self.begin_save_settings(next))
     }
 
-    pub(crate) fn begin_load_providers(&mut self, backend_bound: bool) -> ConfigStart {
+    pub fn begin_load_providers(&mut self, backend_bound: bool) -> ConfigStart {
         if !backend_bound {
             ConfigStart::Skipped
         } else {
@@ -532,17 +532,17 @@ impl AiStore {
         }
     }
 
-    pub(crate) fn complete_load_providers(&mut self, providers: Vec<ProviderListItem>) {
+    pub fn complete_load_providers(&mut self, providers: Vec<ProviderListItem>) {
         self.providers = providers;
     }
 
-    pub(crate) fn fail_load_providers(&mut self) {
+    pub fn fail_load_providers(&mut self) {
         // React's catch is `console.error` only: the list and `config_error`
         // are left alone. The parameter keeps the host call symmetrical.
         let _ = &self.providers;
     }
 
-    pub(crate) fn begin_fetch_remote_models(
+    pub fn begin_fetch_remote_models(
         &mut self,
         protocol: impl Into<String>,
         endpoint: impl Into<String>,
@@ -557,7 +557,7 @@ impl AiStore {
         }
     }
 
-    pub(crate) fn complete_fetch_remote_models(
+    pub fn complete_fetch_remote_models(
         &mut self,
         models: Vec<ModelInfo>,
     ) -> Vec<ModelInfo> {
@@ -566,67 +566,67 @@ impl AiStore {
         models
     }
 
-    pub(crate) fn fail_fetch_remote_models(&mut self, message: &str) -> Vec<ModelInfo> {
+    pub fn fail_fetch_remote_models(&mut self, message: &str) -> Vec<ModelInfo> {
         self.fetching_remote_models = false;
         self.config_error = Some(message.to_owned());
         Vec::new()
     }
 
-    pub(crate) fn begin_validate(&mut self, config: AiProviderConfig) -> AiConfigEffect {
+    pub fn begin_validate(&mut self, config: AiProviderConfig) -> AiConfigEffect {
         self.validating = true;
         self.config_error = None;
         AiConfigEffect::Validate(config)
     }
 
-    pub(crate) fn complete_validate(&mut self) -> bool {
+    pub fn complete_validate(&mut self) -> bool {
         self.validating = false;
         true
     }
 
-    pub(crate) fn fail_validate(&mut self, message: &str) -> bool {
+    pub fn fail_validate(&mut self, message: &str) -> bool {
         self.validating = false;
         self.config_error = Some(message.to_owned());
         false
     }
 
-    pub(crate) fn begin_save_config(&mut self, config: AiProviderConfig) -> AiConfigEffect {
+    pub fn begin_save_config(&mut self, config: AiProviderConfig) -> AiConfigEffect {
         self.saving = true;
         self.config_error = None;
         AiConfigEffect::SaveProvider(config)
     }
 
-    pub(crate) fn complete_save_config(&mut self, config: AiProviderConfig) -> bool {
+    pub fn complete_save_config(&mut self, config: AiProviderConfig) -> bool {
         self.config = Some(config);
         self.is_configured = true;
         self.saving = false;
         true
     }
 
-    pub(crate) fn fail_save_config(&mut self, message: &str) -> bool {
+    pub fn fail_save_config(&mut self, message: &str) -> bool {
         self.saving = false;
         self.config_error = Some(message.to_owned());
         false
     }
 
-    pub(crate) fn begin_delete_config(&mut self) -> AiConfigEffect {
+    pub fn begin_delete_config(&mut self) -> AiConfigEffect {
         AiConfigEffect::DeleteProvider
     }
 
-    pub(crate) fn complete_delete_config(&mut self) {
+    pub fn complete_delete_config(&mut self) {
         self.config = None;
         self.is_configured = false;
     }
 
-    pub(crate) fn fail_delete_config(&mut self, message: &str) {
+    pub fn fail_delete_config(&mut self, message: &str) {
         self.config_error = Some(message.to_owned());
     }
 
-    pub(crate) fn clear_error(&mut self) {
+    pub fn clear_error(&mut self) {
         self.config_error = None;
     }
 
     /// `setNl2SqlInput`. Other NL2SQL fields stay.
-    pub(crate) fn set_nl2sql_input(&mut self, input: impl Into<String>) {
+    pub fn set_nl2sql_input(&mut self, input: impl Into<String>) {
         self.nl2sql.input = input.into();
     }
 
@@ -636,7 +636,7 @@ impl AiStore {
     /// only clears the flag and records the error.
     ///
     /// `console.debug` lines are dropped.
-    pub(crate) fn begin_generate_sql(&mut self, request_id: impl Into<String>) -> bool {
+    pub fn begin_generate_sql(&mut self, request_id: impl Into<String>) -> bool {
         if self.nl2sql.input.trim().is_empty() {
             return false;
         }
@@ -650,13 +650,13 @@ impl AiStore {
         true
     }
 
-    pub(crate) fn fail_generate_sql(&mut self, message: &str) {
+    pub fn fail_generate_sql(&mut self, message: &str) {
         self.nl2sql.is_generating = false;
         self.nl2sql_error = Some(message.to_owned());
     }
 
     /// `clearNl2Sql`.
-    pub(crate) fn clear_nl2sql(&mut self) {
+    pub fn clear_nl2sql(&mut self) {
         self.nl2sql = Nl2SqlState::default();
         self.nl2sql_error = None;
     }
@@ -664,58 +664,58 @@ impl AiStore {
     /// `diagnoseError`. The host passes `sql` and `error_message` already
     /// run through `redactSensitiveText` (`lib/aiQueryActions.ts`). That
     /// helper is a different file and is not part of this slice.
-    pub(crate) fn begin_diagnose(&mut self) {
+    pub fn begin_diagnose(&mut self) {
         self.is_diagnosing = true;
         self.diagnosis_error = None;
         self.diagnosis = None;
     }
 
-    pub(crate) fn complete_diagnose(&mut self, result: DiagnosisResult) {
+    pub fn complete_diagnose(&mut self, result: DiagnosisResult) {
         self.diagnosis = Some(result);
         self.is_diagnosing = false;
     }
 
-    pub(crate) fn fail_diagnose(&mut self, message: &str) {
+    pub fn fail_diagnose(&mut self, message: &str) {
         self.is_diagnosing = false;
         self.diagnosis_error = Some(message.to_owned());
     }
 
-    pub(crate) fn clear_diagnosis(&mut self) {
+    pub fn clear_diagnosis(&mut self) {
         self.diagnosis = None;
         self.is_diagnosing = false;
         self.diagnosis_error = None;
     }
 
     /// `analyzeExplain`.
-    pub(crate) fn begin_analyze_explain(&mut self) {
+    pub fn begin_analyze_explain(&mut self) {
         self.is_analyzing_explain = true;
         self.explain_analysis = None;
         self.explain_error = None;
     }
 
-    pub(crate) fn complete_analyze_explain(&mut self, result: ExplainAnalysis) {
+    pub fn complete_analyze_explain(&mut self, result: ExplainAnalysis) {
         self.explain_analysis = Some(result);
         self.is_analyzing_explain = false;
     }
 
-    pub(crate) fn fail_analyze_explain(&mut self, message: &str) {
+    pub fn fail_analyze_explain(&mut self, message: &str) {
         self.is_analyzing_explain = false;
         self.explain_error = Some(message.to_owned());
     }
 
-    pub(crate) fn clear_explain_analysis(&mut self) {
+    pub fn clear_explain_analysis(&mut self) {
         self.explain_analysis = None;
         self.is_analyzing_explain = false;
         self.explain_error = None;
     }
 
-    pub(crate) fn set_nl_filter_input(&mut self, input: impl Into<String>) {
+    pub fn set_nl_filter_input(&mut self, input: impl Into<String>) {
         self.nl_filter_input = input.into();
     }
 
     /// `parseFilter`. Blank input returns `None` and does not clear a
     /// previous result. Success stores and returns the filters.
-    pub(crate) fn begin_parse_filter(&mut self) -> bool {
+    pub fn begin_parse_filter(&mut self) -> bool {
         if self.nl_filter_input.trim().is_empty() {
             return false;
         }
@@ -725,19 +725,19 @@ impl AiStore {
         true
     }
 
-    pub(crate) fn complete_parse_filter(&mut self, filters: Vec<FilterCondition>) -> Vec<FilterCondition> {
+    pub fn complete_parse_filter(&mut self, filters: Vec<FilterCondition>) -> Vec<FilterCondition> {
         self.parsed_filters = Some(filters.clone());
         self.is_parsing_filter = false;
         filters
     }
 
-    pub(crate) fn fail_parse_filter(&mut self, message: &str) {
+    pub fn fail_parse_filter(&mut self, message: &str) {
         self.is_parsing_filter = false;
         self.nl_filter_error = Some(message.to_owned());
     }
 
     /// `clearNlFilter`.
-    pub(crate) fn clear_nl_filter(&mut self) {
+    pub fn clear_nl_filter(&mut self) {
         self.nl_filter_input.clear();
         self.parsed_filters = None;
         self.is_parsing_filter = false;
@@ -772,7 +772,7 @@ fn blank_settings(active_profile_id: String) -> AiSettingsConfig {
 }
 
 /// `saveProfile`'s local merge. Does not write the store.
-pub(crate) fn next_settings_for_save(
+pub fn next_settings_for_save(
     current: Option<&AiSettingsConfig>,
     profile: AiModelProfile,
 ) -> AiSettingsConfig {
@@ -802,7 +802,7 @@ pub(crate) fn next_settings_for_save(
 }
 
 /// `deleteProfile`'s local merge. `None` when there is no settings object.
-pub(crate) fn next_settings_for_delete(
+pub fn next_settings_for_delete(
     current: Option<&AiSettingsConfig>,
     profile_id: &str,
 ) -> Option<AiSettingsConfig> {

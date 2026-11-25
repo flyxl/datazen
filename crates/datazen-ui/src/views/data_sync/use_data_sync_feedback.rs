@@ -37,40 +37,40 @@
 /// `useDataSyncFeedback()`'s four `useState` seeds.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the Data Sync window track (T268, not landed yet)
-pub(crate) struct DataSyncFeedback {
+pub struct DataSyncFeedback {
     /// The error dialog's message body.
-    pub(crate) error_msg: String,
+    pub error_msg: String,
     /// Whether the error dialog is open. Closing it (`setErrorOpen(false)`,
     /// the window's `onCloseError`) clears only this flag — the message is
     /// kept until the next `setErrorMsg` overwrites it.
-    pub(crate) error_open: bool,
+    pub error_open: bool,
     /// The status bar's left line.
-    pub(crate) status_msg: String,
+    pub status_msg: String,
     /// The running execution's progress text.
-    pub(crate) execute_progress: String,
+    pub execute_progress: String,
 }
 
 #[allow(dead_code)] // consumers: the Data Sync window track (T268, not landed yet)
 impl DataSyncFeedback {
     /// `setErrorMsg(value)` — plain value only (no React call site passes an
     /// updater function).
-    pub(crate) fn set_error_msg(&mut self, value: impl Into<String>) {
+    pub fn set_error_msg(&mut self, value: impl Into<String>) {
         self.error_msg = value.into();
     }
 
     /// `setErrorOpen(value)` — opens/closes the error dialog without
     /// touching the message.
-    pub(crate) fn set_error_open(&mut self, value: bool) {
+    pub fn set_error_open(&mut self, value: bool) {
         self.error_open = value;
     }
 
     /// `setStatusMsg(value)`.
-    pub(crate) fn set_status_msg(&mut self, value: impl Into<String>) {
+    pub fn set_status_msg(&mut self, value: impl Into<String>) {
         self.status_msg = value.into();
     }
 
     /// `setExecuteProgress(value)`.
-    pub(crate) fn set_execute_progress(&mut self, value: impl Into<String>) {
+    pub fn set_execute_progress(&mut self, value: impl Into<String>) {
         self.execute_progress = value.into();
     }
 }

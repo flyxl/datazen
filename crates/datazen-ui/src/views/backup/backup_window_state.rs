@@ -103,7 +103,7 @@ use super::backup_db_meta::{backup_options_for, db_label, db_supports_backup, Ba
 use super::backup_grouping::{group_connections, initial_expanded_groups, ConnectionGroup};
 /// React `DatabaseInfo` (`BackupWindow.tsx:30-32`): one database name.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DatabaseInfo {
+pub struct DatabaseInfo {
     pub name: String,
 }
 
@@ -115,7 +115,7 @@ pub(crate) struct DatabaseInfo {
 /// data; the window only needs identity, display, grouping, and the
 /// search/ranking inputs, so only those travel here.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct BackupConnection {
+pub struct BackupConnection {
     pub id: String,
     pub name: String,
     pub database_type: String,
@@ -129,7 +129,7 @@ pub(crate) struct BackupConnection {
 /// React `BackupDumpPhase` (`lib/backupProgress.ts:3`):
 /// `'object' | 'writing' | 'done'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum BackupProgressPhase {
+pub enum BackupProgressPhase {
     #[default]
     Object,
     Writing,
@@ -141,7 +141,7 @@ pub(crate) enum BackupProgressPhase {
 /// renders the status line and the progress bar; S1 only carries the
 /// shape the run state sets and clears.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct BackupProgress {
+pub struct BackupProgress {
     pub current: u64,
     pub total: u64,
     pub object_name: String,
@@ -155,7 +155,7 @@ pub(crate) struct BackupProgress {
 /// `get_connection_info` and `listDatabases`) and feed the result back
 /// through [`BackupWindowVm::apply_session_connected`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SelectConnectionOutcome {
+pub enum SelectConnectionOutcome {
     UnsupportedType,
     NeedsConnect { connection_id: String },
 }
@@ -168,7 +168,7 @@ pub(crate) enum SelectConnectionOutcome {
 /// name missing from `databases` selects nothing, matching React's
 /// `if (dbPick && dbs.includes(dbPick))`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SessionConnected {
+pub struct SessionConnected {
     pub db_session_id: String,
     pub server_version: Option<String>,
     pub databases: Vec<String>,
@@ -179,7 +179,7 @@ pub(crate) struct SessionConnected {
 /// host: the connection to select and the preferred database
 /// (`database` URL param, if any).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PrefillTarget {
+pub struct PrefillTarget {
     pub connection: BackupConnection,
     pub preferred_database: Option<String>,
 }
@@ -189,7 +189,7 @@ pub(crate) struct PrefillTarget {
 /// guard. `is_restore` is `getUrlParam('mode') === 'restore'`, read by
 /// the host and passed to [`BackupWindowVm::new`].
 #[derive(Clone, Debug)]
-pub(crate) struct BackupWindowVm {
+pub struct BackupWindowVm {
     pub is_restore: bool,
     pub connections: Vec<BackupConnection>,
     pub groups: Vec<String>,
@@ -240,7 +240,7 @@ impl Default for BackupWindowVm {
 }
 
 impl BackupWindowVm {
-    pub(crate) fn new(is_restore: bool) -> Self {
+    pub fn new(is_restore: bool) -> Self {
         Self {
             is_restore,
             ..Self::default()
@@ -249,14 +249,14 @@ impl BackupWindowVm {
 
     /// React's `selectedConn` memo: the connection matching
     /// `selectedConnId`, or `None`.
-    pub(crate) fn selected_conn(&self) -> Option<&BackupConnection> {
+    pub fn selected_conn(&self) -> Option<&BackupConnection> {
         let id = self.selected_conn_id.as_deref()?;
         self.connections.iter().find(|c| c.id == id)
     }
 
     /// React's `backupOptions` memo: `[]` without a selected
     /// connection, otherwise the selected type's dialect options.
-    pub(crate) fn backup_options(&self) -> &'static [BackupOption] {
+    pub fn backup_options(&self) -> &'static [BackupOption] {
         match self.selected_conn() {
             Some(conn) => backup_options_for(&conn.database_type),
             None => &[],
@@ -265,14 +265,14 @@ impl BackupWindowVm {
 
     /// React's `grouped` memo: [`super::backup_grouping::group_connections`] over the current
     /// connections, groups, and connection search.
-    pub(crate) fn grouped(&self) -> Vec<ConnectionGroup> {
+    pub fn grouped(&self) -> Vec<ConnectionGroup> {
         group_connections(&self.connections, &self.groups, &self.search_conn)
     }
 
     /// React's `filteredDbs` memo: a trimmed, case-insensitive
     /// substring match on the database name; an empty query returns
     /// every loaded database.
-    pub(crate) fn filtered_dbs(&self) -> Vec<&DatabaseInfo> {
+    pub fn filtered_dbs(&self) -> Vec<&DatabaseInfo> {
         let q = self.search_db.trim().to_lowercase();
         if q.is_empty() {
             return self.databases.iter().collect();
@@ -286,7 +286,7 @@ impl BackupWindowVm {
     /// React's `dbTypeDisplayLabel`: the type label, plus the server
     /// version when one was reported; `""` without a selected
     /// connection.
-    pub(crate) fn db_type_display_label(&self) -> String {
+    pub fn db_type_display_label(&self) -> String {
         let Some(conn) = self.selected_conn() else {
             return String::new();
         };
@@ -299,14 +299,14 @@ impl BackupWindowVm {
     }
 
     /// React's `toggleGroup`: flip one group in `expandedGroups`.
-    pub(crate) fn toggle_group(&mut self, group: &str) {
+    pub fn toggle_group(&mut self, group: &str) {
         if !self.expanded_groups.remove(group) {
             self.expanded_groups.insert(group.to_owned());
         }
     }
 
     /// React's `toggleOption`: flip one option id in `enabledOptions`.
-    pub(crate) fn toggle_option(&mut self, option_id: &str) {
+    pub fn toggle_option(&mut self, option_id: &str) {
         if !self.enabled_options.remove(option_id) {
             self.enabled_options.insert(option_id.to_owned());
         }
@@ -315,7 +315,7 @@ impl BackupWindowVm {
     /// The `handleBackup` extension rule: gzip wins, then the
     /// (dialect-removed but still honored) `format-custom` option
     /// means `.dump`, otherwise `.sql`.
-    pub(crate) fn file_extension(&self) -> &'static str {
+    pub fn file_extension(&self) -> &'static str {
         if self.compress_gzip {
             "gz"
         } else if self.enabled_options.contains("format-custom") {
@@ -327,7 +327,7 @@ impl BackupWindowVm {
 
     /// The `handleBackup` default file name: `{fileName}.sql.gz` when
     /// gzipped, otherwise `{fileName}.{extension}`.
-    pub(crate) fn default_file_name(&self) -> String {
+    pub fn default_file_name(&self) -> String {
         if self.compress_gzip {
             format!("{}.sql.gz", self.file_name)
         } else {
@@ -338,13 +338,13 @@ impl BackupWindowVm {
     /// The start button's `disabled` condition, as a pure predicate
     /// for S2: a live session and a selected database, and no run in
     /// progress.
-    pub(crate) fn can_start(&self) -> bool {
+    pub fn can_start(&self) -> bool {
         self.db_session_id.is_some() && self.selected_db.is_some() && !self.backing
     }
 
     /// The `get_connections` / `get_groups` load effect: store the
     /// lists and expand every group (see [`super::backup_grouping::initial_expanded_groups`]).
-    pub(crate) fn apply_connections_loaded(
+    pub fn apply_connections_loaded(
         &mut self,
         connections: Vec<BackupConnection>,
         groups: Vec<String>,
@@ -361,7 +361,7 @@ impl BackupWindowVm {
     /// `t('backup.unsupportedType')`, and the host must not connect.
     /// Otherwise the host must connect and feed the session back
     /// through [`BackupWindowVm::apply_session_connected`].
-    pub(crate) fn begin_select_connection(
+    pub fn begin_select_connection(
         &mut self,
         conn: &BackupConnection,
     ) -> SelectConnectionOutcome {
@@ -389,7 +389,7 @@ impl BackupWindowVm {
     /// to `""`), load the database list, pick the default database
     /// when it is among them, and enable the dialect's default
     /// options (`routines` / `triggers` when the dialect offers them).
-    pub(crate) fn apply_session_connected(&mut self, session: SessionConnected) {
+    pub fn apply_session_connected(&mut self, session: SessionConnected) {
         self.db_session_id = Some(session.db_session_id);
         if let Some(version) = session.server_version {
             if !version.is_empty() {
@@ -418,14 +418,14 @@ impl BackupWindowVm {
 
     /// The `handleSelectConnection` catch branch: the connect /
     /// list-databases error becomes the status message.
-    pub(crate) fn apply_select_error(&mut self, message: &str) {
+    pub fn apply_select_error(&mut self, message: &str) {
         self.status_message = message.to_owned();
     }
 
     /// The `datazen:connection-closed` listener: a close for the
     /// current session clears it; any other session id (or an empty
     /// payload) leaves the state alone.
-    pub(crate) fn on_connection_closed(&mut self, closed_db_session_id: &str) {
+    pub fn on_connection_closed(&mut self, closed_db_session_id: &str) {
         if closed_db_session_id.is_empty() {
             return;
         }
@@ -442,7 +442,7 @@ impl BackupWindowVm {
     /// *without* marking, so a later connections load retries —
     /// exactly like React's early returns before
     /// `prefillAppliedRef.current = true`.
-    pub(crate) fn take_prefill(
+    pub fn take_prefill(
         &mut self,
         connection_id: Option<&str>,
         database: Option<&str>,
@@ -465,7 +465,7 @@ impl BackupWindowVm {
 /// the `flex-1` spacer while the log is empty). The key is internal —
 /// React puts no `data-testid` on the log — and the mount keeps the
 /// column's `flex-1` geometry until the child fills it.
-pub(crate) fn progress_log_mount() -> El {
+pub fn progress_log_mount() -> El {
     col()
         .key("backup-progress-log")
         .w_full()

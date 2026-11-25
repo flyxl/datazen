@@ -80,7 +80,7 @@ const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 /// `'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) enum JobState {
+pub enum JobState {
     Queued,
     Running,
     Succeeded,
@@ -91,7 +91,7 @@ pub(crate) enum JobState {
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
 impl JobState {
     /// The wire spelling, for the host that decodes the job projection.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Queued => "queued",
             Self::Running => "running",
@@ -103,7 +103,7 @@ impl JobState {
 
     /// Parses the wire spelling; anything else is not a state React could
     /// have produced, so it is `None` rather than a silent default.
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "queued" => Some(Self::Queued),
             "running" => Some(Self::Running),
@@ -122,7 +122,7 @@ impl JobState {
 /// front.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) enum JobCounter {
+pub enum JobCounter {
     /// A JSON number.
     Number(f64),
     /// A decimal string — the encoding Rust actually emits.
@@ -136,7 +136,7 @@ pub(crate) enum JobCounter {
 /// as `0`.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) struct JobProgress {
+pub struct JobProgress {
     pub read: Option<JobCounter>,
     pub converted: Option<JobCounter>,
     pub attempted: Option<JobCounter>,
@@ -156,7 +156,7 @@ pub(crate) struct JobProgress {
 /// decimal string, so this only bites on a JSON number input, never on a
 /// real backend counter.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) fn read_job_counter(value: Option<&JobCounter>) -> Option<u64> {
+pub fn read_job_counter(value: Option<&JobCounter>) -> Option<u64> {
     match value {
         None => None,
         Some(JobCounter::Number(value)) => {
@@ -190,7 +190,7 @@ pub(crate) fn read_job_counter(value: Option<&JobCounter>) -> Option<u64> {
 /// counts line, exactly as the React `.map((value) => readJobCounter(value)
 /// ?? 0)` does.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) fn job_counter_or_zero(value: Option<&JobCounter>) -> u64 {
+pub fn job_counter_or_zero(value: Option<&JobCounter>) -> u64 {
     read_job_counter(value).unwrap_or(0)
 }
 
@@ -198,7 +198,7 @@ pub(crate) fn job_counter_or_zero(value: Option<&JobCounter>) -> u64 {
 /// in that order — React's
 /// `[read, converted, attempted, committed, unknown].map(… ?? 0).join(' / ')`.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) fn progress_counts_text(progress: &JobProgress) -> String {
+pub fn progress_counts_text(progress: &JobProgress) -> String {
     [
         job_counter_or_zero(progress.read.as_ref()),
         job_counter_or_zero(progress.converted.as_ref()),
@@ -218,7 +218,7 @@ pub(crate) fn progress_counts_text(progress: &JobProgress) -> String {
 /// reaches this strip, so it is not modelled here.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) struct AttachedJob {
+pub struct AttachedJob {
     pub job_id: String,
     pub kind: String,
     pub state: JobState,
@@ -232,7 +232,7 @@ pub(crate) struct AttachedJob {
 /// current run's job id. `None` excludes nothing, as React's
 /// `jobId !== undefined` never excludes.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) fn active_attached_jobs<'a>(
+pub fn active_attached_jobs<'a>(
     jobs: &'a [AttachedJob],
     exclude_job_id: Option<&str>,
 ) -> Vec<&'a AttachedJob> {
@@ -249,7 +249,7 @@ pub(crate) fn active_attached_jobs<'a>(
 /// stage is a non-empty string — React's `job.stage ? ` · ${job.stage}` :
 /// ''` (an empty stage is falsy there too).
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) fn job_state_label(job: &AttachedJob) -> String {
+pub fn job_state_label(job: &AttachedJob) -> String {
     let key = format!("transfer.job.{}", job.state.as_str());
     let mut label = t(&key).to_owned();
     if let Some(stage) = job.stage.as_deref().filter(|stage| !stage.is_empty()) {
@@ -262,14 +262,14 @@ pub(crate) fn job_state_label(job: &AttachedJob) -> String {
 /// React's `cancelSent`: the backend flag, or a local cancel that was
 /// accepted.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) fn cancel_sent(job: &AttachedJob, state: &AttachedJobsState) -> bool {
+pub fn cancel_sent(job: &AttachedJob, state: &AttachedJobsState) -> bool {
     job.cancel_requested || state.cancel_result.get(&job.job_id) == Some(&true)
 }
 
 /// React's `cancelUnknown`: a local cancel that came back `false` ("no such
 /// job"). Checked only after [`cancel_sent`], as React's ternary does.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) fn cancel_unknown(job: &AttachedJob, state: &AttachedJobsState) -> bool {
+pub fn cancel_unknown(job: &AttachedJob, state: &AttachedJobsState) -> bool {
     state.cancel_result.get(&job.job_id) == Some(&false)
 }
 
@@ -278,7 +278,7 @@ pub(crate) fn cancel_unknown(job: &AttachedJob, state: &AttachedJobsState) -> bo
 /// because Rune has no component-local `useState`.
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) struct AttachedJobsState {
+pub struct AttachedJobsState {
     /// Jobs with a cancel request still in flight.
     pub canceling: HashSet<String>,
     /// The last cancel outcome per job: `true` accepted, `false` "no such
@@ -292,7 +292,7 @@ impl AttachedJobsState {
     /// `false` (and changes nothing) when a cancel is already in flight
     /// for the job — the button is disabled while canceling, so this only
     /// guards a press that bypasses the button.
-    pub(crate) fn begin_cancel(&mut self, job_id: &str) -> bool {
+    pub fn begin_cancel(&mut self, job_id: &str) -> bool {
         if self.canceling.contains(job_id) {
             return false;
         }
@@ -303,7 +303,7 @@ impl AttachedJobsState {
     /// React's `try` / `catch` / `finally`: the in-flight mark always
     /// clears, and the outcome is recorded (`false` on rejection, exactly
     /// as React's `catch` records `false`).
-    pub(crate) fn finish_cancel(&mut self, job_id: &str, accepted: bool) {
+    pub fn finish_cancel(&mut self, job_id: &str, accepted: bool) {
         self.canceling.remove(job_id);
         self.cancel_result.insert(job_id.to_owned(), accepted);
     }
@@ -311,23 +311,23 @@ impl AttachedJobsState {
 
 /// Reads the attached-jobs state out of the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) type ReadAttachedJobsStateFn<S> = fn(&S) -> &AttachedJobsState;
+pub type ReadAttachedJobsStateFn<S> = fn(&S) -> &AttachedJobsState;
 
 /// Runs the in-flight guard on the app's `S`: the host's one-line call into
 /// [`AttachedJobsState::begin_cancel`]. Returns whether the cancel may start.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) type BeginCancelFn<S> = fn(&mut S, &str) -> bool;
+pub type BeginCancelFn<S> = fn(&mut S, &str) -> bool;
 
 /// Starts the host-owned async cancel of one job id (the
 /// `cancel_data_transfer` IPC). Only called after [`BeginCancelFn`] allowed
 /// it.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) type CancelJobFn<S> = fn(&mut S, String);
+pub type CancelJobFn<S> = fn(&mut S, String);
 
 /// The attached-jobs strip. `read_state` and `begin_cancel` locate the state
 /// slot in the app's `S`; `on_cancel` is the host's async cancel starter.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) struct DataTransferAttachedJobs<S: 'static> {
+pub struct DataTransferAttachedJobs<S: 'static> {
     jobs: Vec<AttachedJob>,
     exclude_job_id: Option<String>,
     read_state: ReadAttachedJobsStateFn<S>,
@@ -337,7 +337,7 @@ pub(crate) struct DataTransferAttachedJobs<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
 impl<S: 'static> DataTransferAttachedJobs<S> {
-    pub(crate) fn new(
+    pub fn new(
         jobs: Vec<AttachedJob>,
         exclude_job_id: Option<String>,
         read_state: ReadAttachedJobsStateFn<S>,
@@ -354,14 +354,14 @@ impl<S: 'static> DataTransferAttachedJobs<S> {
 
     /// The host's async cancel starter; without it the buttons render but
     /// do nothing, like a React strip whose command never resolves.
-    pub(crate) fn on_cancel(mut self, on_cancel: CancelJobFn<S>) -> Self {
+    pub fn on_cancel(mut self, on_cancel: CancelJobFn<S>) -> Self {
         self.on_cancel = Some(on_cancel);
         self
     }
 
     /// Builds the strip, or `el()` (nothing) when no job passes the filter
     /// — React's early `return null`.
-    pub(crate) fn build(self, s: &S, dark: bool) -> El {
+    pub fn build(self, s: &S, dark: bool) -> El {
         let active = active_attached_jobs(&self.jobs, self.exclude_job_id.as_deref());
         if active.is_empty() {
             return el();

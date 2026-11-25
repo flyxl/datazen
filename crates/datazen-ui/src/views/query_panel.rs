@@ -32,21 +32,21 @@ use rune::{col, row, El};
 mod dialogs;
 mod panes;
 
-pub(crate) const ROOT_KEY: &str = "query-panel";
-pub(crate) const EDITOR_KEY: &str = "query-panel-editor";
-pub(crate) const RESULTS_HOST_KEY: &str = "query-results-host";
-pub(crate) const SIDEBAR_KEY: &str = "query-panel-sidebar";
-pub(crate) const SESSION_BANNER_KEY: &str = "query-panel-session-banner";
-pub(crate) const NEW_SESSION_KEY: &str = "editor-new-session-button";
-pub(crate) const MESSAGE_DIALOG_KEY: &str = "result-message-dialog";
-pub(crate) const MESSAGE_OK_KEY: &str = "result-message-ok";
-pub(crate) const EXECUTE_KEY: &str = "query-panel-execute";
-pub(crate) const STOP_KEY: &str = "query-panel-stop";
+pub const ROOT_KEY: &str = "query-panel";
+pub const EDITOR_KEY: &str = "query-panel-editor";
+pub const RESULTS_HOST_KEY: &str = "query-results-host";
+pub const SIDEBAR_KEY: &str = "query-panel-sidebar";
+pub const SESSION_BANNER_KEY: &str = "query-panel-session-banner";
+pub const NEW_SESSION_KEY: &str = "editor-new-session-button";
+pub const MESSAGE_DIALOG_KEY: &str = "result-message-dialog";
+pub const MESSAGE_OK_KEY: &str = "result-message-ok";
+pub const EXECUTE_KEY: &str = "query-panel-execute";
+pub const STOP_KEY: &str = "query-panel-stop";
 
 /// React `SessionView.state` values the panel reacts to.
 #[allow(dead_code)] // VM mirror; remove when the session host lands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PanelSessionState {
+pub enum PanelSessionState {
     #[default]
     Active,
     Lost,
@@ -55,7 +55,7 @@ pub(crate) enum PanelSessionState {
 
 impl PanelSessionState {
     /// React `['lost', 'closed'].includes(state)`.
-    pub(crate) fn is_disconnected(self) -> bool {
+    pub fn is_disconnected(self) -> bool {
         matches!(self, Self::Lost | Self::Closed)
     }
 }
@@ -63,7 +63,7 @@ impl PanelSessionState {
 /// React's cancel button availability: execute vs stop, and why stop is off.
 #[allow(dead_code)] // VM helper; remove when the execution host lands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum CancelAvailability {
+pub enum CancelAvailability {
     #[default]
     Execute,
     Stop,
@@ -74,7 +74,7 @@ pub(crate) enum CancelAvailability {
 /// React `ResultMessageDialog` kind.
 #[allow(dead_code)] // VM mirror; remove when the message host lands.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum MessageKind {
+pub enum MessageKind {
     #[default]
     Error,
     Success,
@@ -83,54 +83,54 @@ pub(crate) enum MessageKind {
 /// React's message dialog `useState` triple.
 #[allow(dead_code)] // VM mirror; remove when the message host lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct MessageDialogVm {
-    pub(crate) open: bool,
-    pub(crate) kind: MessageKind,
-    pub(crate) text: String,
+pub struct MessageDialogVm {
+    pub open: bool,
+    pub kind: MessageKind,
+    pub text: String,
 }
 
 /// The observable panel state. The host owns the real store/editor/session.
 #[allow(dead_code)] // VM surface; remove when the workspace wires the panel host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct QueryPanelVm {
-    pub(crate) panel_id: String,
+pub struct QueryPanelVm {
+    pub panel_id: String,
     /// `None` means the tab is not split (the pre-pane call contract).
-    pub(crate) focused_pane_id: Option<String>,
-    pub(crate) database: Option<String>,
-    pub(crate) schema: Option<String>,
-    pub(crate) current_database: Option<String>,
-    pub(crate) current_schema: Option<String>,
+    pub focused_pane_id: Option<String>,
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub current_database: Option<String>,
+    pub current_schema: Option<String>,
     /// A confirmed session namespace overrides the panel's bound context.
-    pub(crate) observed_database: Option<String>,
-    pub(crate) observed_schema: Option<String>,
-    pub(crate) namespace_confirmed: bool,
-    pub(crate) is_path_hierarchy: bool,
-    pub(crate) sql: String,
-    pub(crate) running: bool,
-    pub(crate) execution_id: Option<String>,
-    pub(crate) error: String,
-    pub(crate) results_count: usize,
-    pub(crate) show_explain: bool,
-    pub(crate) diagnosis_visible: bool,
+    pub observed_database: Option<String>,
+    pub observed_schema: Option<String>,
+    pub namespace_confirmed: bool,
+    pub is_path_hierarchy: bool,
+    pub sql: String,
+    pub running: bool,
+    pub execution_id: Option<String>,
+    pub error: String,
+    pub results_count: usize,
+    pub show_explain: bool,
+    pub diagnosis_visible: bool,
     /// `supportsCancelQuery && supportsQueryExecutionCancel`. `None` = unknown.
-    pub(crate) cancel_capability: Option<bool>,
-    pub(crate) in_transaction: bool,
-    pub(crate) session_state: PanelSessionState,
-    pub(crate) history_visible: bool,
-    pub(crate) favorites_visible: bool,
-    pub(crate) message: MessageDialogVm,
+    pub cancel_capability: Option<bool>,
+    pub in_transaction: bool,
+    pub session_state: PanelSessionState,
+    pub history_visible: bool,
+    pub favorites_visible: bool,
+    pub message: MessageDialogVm,
     /// React's `copied` feedback flag; the host clears it after its deadline.
-    pub(crate) message_copied: bool,
-    pub(crate) dangerous_confirm_open: bool,
-    pub(crate) switch_tx_confirm_open: bool,
-    pub(crate) strategy_ask_open: bool,
-    pub(crate) execution_seq: u32,
+    pub message_copied: bool,
+    pub dangerous_confirm_open: bool,
+    pub switch_tx_confirm_open: bool,
+    pub strategy_ask_open: bool,
+    pub execution_seq: u32,
 }
 
 /// React `paneKey(panelId, pane)`: `panel::pane` for a split, bare panel id
 /// otherwise.
 #[allow(dead_code)] // pure helper; remove when the panel store port lands.
-pub(crate) fn pane_key(panel_id: &str, pane: Option<&str>) -> String {
+pub fn pane_key(panel_id: &str, pane: Option<&str>) -> String {
     match pane {
         Some(pane) if !pane.is_empty() => format!("{panel_id}::{pane}"),
         _ => panel_id.to_owned(),
@@ -139,7 +139,7 @@ pub(crate) fn pane_key(panel_id: &str, pane: Option<&str>) -> String {
 
 /// React `resolveFocusedPaneId`: the focused pane or the bare panel id.
 #[allow(dead_code)] // pure helper; remove when the panel store port lands.
-pub(crate) fn resolve_focused_pane_id(focused: Option<&str>) -> String {
+pub fn resolve_focused_pane_id(focused: Option<&str>) -> String {
     focused.filter(|pane| !pane.is_empty()).unwrap_or("").to_owned()
 }
 
@@ -148,7 +148,7 @@ impl QueryPanelVm {
     /// React's `selectedDatabase`: confirmed namespace, else path-hierarchy
     /// `(currentDatabase ?? boundDatabase)`, else `(boundDatabase ?? currentDatabase)`.
     /// A bound empty string is treated as unset (`database?.trim() ? database : null`).
-    pub(crate) fn selected_database(&self) -> Option<String> {
+    pub fn selected_database(&self) -> Option<String> {
         let bound = self.database.as_deref().filter(|db| !db.trim().is_empty());
         if self.namespace_confirmed {
             // React returns observedNamespace.database directly, even when null.
@@ -164,7 +164,7 @@ impl QueryPanelVm {
     }
 
     /// React's `selectedSchema`: confirmed namespace, else `schema ?? currentSchema`.
-    pub(crate) fn selected_schema(&self) -> Option<String> {
+    pub fn selected_schema(&self) -> Option<String> {
         if self.namespace_confirmed {
             self.observed_schema.clone()
         } else {
@@ -175,7 +175,7 @@ impl QueryPanelVm {
     }
 
     /// React `resultsIdle`: nothing executed and no explanation/diagnosis open.
-    pub(crate) fn results_idle(&self) -> bool {
+    pub fn results_idle(&self) -> bool {
         !self.running
             && self.error.is_empty()
             && !self.show_explain
@@ -184,7 +184,7 @@ impl QueryPanelVm {
     }
 
     /// React's execute/cancel button state.
-    pub(crate) fn cancel_availability(&self) -> CancelAvailability {
+    pub fn cancel_availability(&self) -> CancelAvailability {
         if !self.running {
             return CancelAvailability::Execute;
         }
@@ -195,22 +195,22 @@ impl QueryPanelVm {
     }
 
     /// React `cancelQuery` is only called for an enabled stop button.
-    pub(crate) fn can_cancel(&self) -> bool {
+    pub fn can_cancel(&self) -> bool {
         !self.running || self.cancel_availability() == CancelAvailability::Stop
     }
 
     /// React shows the disconnect banner only for a lost/closed session.
-    pub(crate) fn session_disconnected(&self) -> bool {
+    pub fn session_disconnected(&self) -> bool {
         self.session_state.is_disconnected()
     }
 
     /// React `needsTransactionSwitchConfirm` only guards an active transaction.
-    pub(crate) fn needs_switch_confirm(&self) -> bool {
+    pub fn needs_switch_confirm(&self) -> bool {
         self.in_transaction
     }
 
     /// React `showMessageDialog`: set text/kind and open the dialog.
-    pub(crate) fn show_message(&mut self, text: impl Into<String>, kind: MessageKind) {
+    pub fn show_message(&mut self, text: impl Into<String>, kind: MessageKind) {
         self.message = MessageDialogVm {
             open: true,
             kind,
@@ -219,7 +219,7 @@ impl QueryPanelVm {
     }
 
     /// React `onClose` of the result message dialog.
-    pub(crate) fn close_message(&mut self) {
+    pub fn close_message(&mut self) {
         self.message.open = false;
     }
 }
@@ -227,7 +227,7 @@ impl QueryPanelVm {
 /// Every interaction the panel asks the host to perform.
 #[allow(dead_code)] // host port; remove when the workspace wires the panel host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum QueryPanelAction {
+pub enum QueryPanelAction {
     /// Route an "execute all" to the focused pane.
     Execute { pane: Option<String> },
     ExecuteSelection { sql: String, pane: Option<String> },
@@ -250,7 +250,7 @@ pub(crate) enum QueryPanelAction {
 }
 
 #[allow(dead_code)] // host port; remove when the workspace wires the panel host.
-pub(crate) type QueryPanelActionFn<S> = Rc<dyn Fn(&mut S, QueryPanelAction) + 'static>;
+pub type QueryPanelActionFn<S> = Rc<dyn Fn(&mut S, QueryPanelAction) + 'static>;
 
 /// The focused pane of this VM (the bare pane id, or `None` when unsplit).
 fn focused_pane(vm: &QueryPanelVm) -> Option<String> {
@@ -259,7 +259,7 @@ fn focused_pane(vm: &QueryPanelVm) -> Option<String> {
 
 /// Build the panel into `layer`.
 #[allow(dead_code)] // view entry; remove when the workspace wires the panel host.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &QueryPanelVm,
     on_action: &Option<QueryPanelActionFn<S>>,
     dark: bool,

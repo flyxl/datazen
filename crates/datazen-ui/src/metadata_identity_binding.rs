@@ -29,33 +29,33 @@
 use std::rc::Rc;
 
 /// `MetadataIdentityBinder`: the schema store's binding action.
-pub(crate) type MetadataIdentityBinder =
+pub type MetadataIdentityBinder =
     Rc<dyn Fn(&str, &str, Option<&str>)>;
 
 /// The disposer `registerMetadataIdentityBinder` returns: a plain
 /// value naming the binder it installed ([`Rc::ptr_eq`] is the
 /// `binder === next` the closure compared).
 #[derive(Clone)]
-pub(crate) struct MetadataIdentityRegistration {
+pub struct MetadataIdentityRegistration {
     binder: MetadataIdentityBinder,
 }
 
 /// The seam's cell: one per host, the module-level `binder` variable.
 #[derive(Default)]
-pub(crate) struct MetadataIdentityBinding {
+pub struct MetadataIdentityBinding {
     binder: Option<MetadataIdentityBinder>,
 }
 
 impl MetadataIdentityBinding {
     /// The module's initial state: no binder, announcements inert.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { binder: None }
     }
 
     /// `registerMetadataIdentityBinder(next)`: install the schema-store
     /// binder. Installing over an existing one replaces it, exactly as
     /// the module write does.
-    pub(crate) fn register(
+    pub fn register(
         &mut self,
         next: MetadataIdentityBinder,
     ) -> MetadataIdentityRegistration {
@@ -66,7 +66,7 @@ impl MetadataIdentityBinding {
     /// The registration's disposer: restore the void — but only if the
     /// binder is still this registration's (a replaced binder is not
     /// uninstalled by the old token, the closure's own guard).
-    pub(crate) fn unregister(&mut self, registration: &MetadataIdentityRegistration) {
+    pub fn unregister(&mut self, registration: &MetadataIdentityRegistration) {
         if let Some(current) = &self.binder {
             if Rc::ptr_eq(current, &registration.binder) {
                 self.binder = None;
@@ -77,7 +77,7 @@ impl MetadataIdentityBinding {
     /// `bindSessionMetadataIdentity(dbSessionId, connectionId, scope)`:
     /// forward a newly observed (session, config) pair to the schema
     /// store — inert until one exists (`binder?.(...)`).
-    pub(crate) fn bind_session_metadata_identity(
+    pub fn bind_session_metadata_identity(
         &self,
         db_session_id: &str,
         connection_id: &str,
@@ -90,7 +90,7 @@ impl MetadataIdentityBinding {
 
     /// Whether a binder is installed (the `binder != null` half the
     /// tests observe directly).
-    pub(crate) fn has_binder(&self) -> bool {
+    pub fn has_binder(&self) -> bool {
         self.binder.is_some()
     }
 }

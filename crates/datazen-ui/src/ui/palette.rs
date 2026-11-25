@@ -10,14 +10,14 @@ use super::kit::kit;
 /// pre-migration hue/lightness so the editor look does not drift; kit has no
 /// dedicated syntax tokens, so these remain explicit literals here.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct CodePalette {
+pub struct CodePalette {
     pub keyword: Color,
     pub string: Color,
     pub comment: Color,
     pub number: Color,
 }
 
-pub(crate) fn code_palette(dark: bool) -> CodePalette {
+pub fn code_palette(dark: bool) -> CodePalette {
     if dark {
         CodePalette {
             // kit 无对应 token: syntax keyword (violet)
@@ -52,7 +52,7 @@ pub(crate) fn code_palette(dark: bool) -> CodePalette {
 /// foreground ink — stay explicit literals here under the same rule: kit
 /// has no dedicated syntax tokens.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct YamlPalette {
+pub struct YamlPalette {
     pub comment: Color,
     pub keyword: Color,
     pub string: Color,
@@ -62,7 +62,7 @@ pub(crate) struct YamlPalette {
     pub foreground: Color,
 }
 
-pub(crate) fn yaml_palette(dark: bool, foreground: Color) -> YamlPalette {
+pub fn yaml_palette(dark: bool, foreground: Color) -> YamlPalette {
     let code = code_palette(dark);
     let (atom, punctuation) = if dark {
         // kit 无对应 token: yaml atom literal (React --cm-operator)
@@ -84,7 +84,7 @@ pub(crate) fn yaml_palette(dark: bool, foreground: Color) -> YamlPalette {
 
 /// Data-grid chrome and cell background colors.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct GridPalette {
+pub struct GridPalette {
     pub header_bg: Color,
     pub header_gutter_bg: Color,
     pub gutter_bg: Color,
@@ -99,7 +99,7 @@ pub(crate) struct GridPalette {
     pub zebra_odd_light: Color,
 }
 
-pub(crate) fn grid_palette(dark: bool) -> GridPalette {
+pub fn grid_palette(dark: bool) -> GridPalette {
     if dark {
         GridPalette {
             // kit 无对应 token: grid header chrome (cool dark)
@@ -158,7 +158,7 @@ pub(crate) fn grid_palette(dark: bool) -> GridPalette {
 }
 
 /// SQL editor surface/completion/caret colors.
-pub(crate) fn editor_bg(dark: bool) -> Color {
+pub fn editor_bg(dark: bool) -> Color {
     if dark {
         // kit 无对应 token: editor document background
         rune::oklch(0.22, 0.03, 250.0)
@@ -168,7 +168,7 @@ pub(crate) fn editor_bg(dark: bool) -> Color {
     }
 }
 
-pub(crate) fn editor_selection_bg(dark: bool) -> Color {
+pub fn editor_selection_bg(dark: bool) -> Color {
     if dark {
         // kit 无对应 token: editor selection/completion highlight
         rune::oklch(0.34, 0.08, 250.0)
@@ -178,7 +178,7 @@ pub(crate) fn editor_selection_bg(dark: bool) -> Color {
     }
 }
 
-pub(crate) fn editor_composition_underline(dark: bool) -> Color {
+pub fn editor_composition_underline(dark: bool) -> Color {
     if dark {
         // kit 无对应 token: IME composition underline
         rune::oklch(0.8, 0.1, 95.0)
@@ -188,7 +188,7 @@ pub(crate) fn editor_composition_underline(dark: bool) -> Color {
     }
 }
 
-pub(crate) fn editor_caret_fill(main: bool, dark: bool) -> Color {
+pub fn editor_caret_fill(main: bool, dark: bool) -> Color {
     if dark {
         if main {
             // kit 无对应 token: main caret
@@ -207,42 +207,42 @@ pub(crate) fn editor_caret_fill(main: bool, dark: bool) -> Color {
 }
 
 /// Amber folder icon used in navigator section headers.
-pub(crate) fn folder_icon(_dark: bool) -> Color {
+pub fn folder_icon(_dark: bool) -> Color {
     // kit 无对应 token: amber folder glyph
     rune::oklcha(0.78, 0.15, 80.0, 1.0)
 }
 
 /// Splitter drag handle fill.
-pub(crate) fn splitter_drag_fill(_dark: bool) -> Color {
+pub fn splitter_drag_fill(_dark: bool) -> Color {
     // kit 无对应 token: neutral drag handle with alpha
     rune::oklch(0.5, 0.0, 0.0).alpha(0.2)
 }
 
 /// Status indicators for compare/sync/run results and connection states.
-pub(crate) fn status_ok(_dark: bool) -> Color {
+pub fn status_ok(_dark: bool) -> Color {
     // kit 无对应 token: success indicator dot (kept as explicit hue)
     rune::oklch(0.75, 0.12, 145.0)
 }
 
-pub(crate) fn status_fail(_dark: bool) -> Color {
+pub fn status_fail(_dark: bool) -> Color {
     // kit 无对应 token: failure indicator dot (kept as explicit hue)
     rune::oklch(0.7, 0.14, 25.0)
 }
 
 /// Accent bar fill used in simple charts/widgets.
-pub(crate) fn chart_bar_accent(_dark: bool) -> Color {
+pub fn chart_bar_accent(_dark: bool) -> Color {
     // kit 无对应 token: chart bar accent
     rune::oklch(0.72, 0.13, 250.0)
 }
 
 /// Warning banner tint (desktop adapter banner).
-pub(crate) fn warning_banner_fill(_dark: bool) -> Color {
+pub fn warning_banner_fill(_dark: bool) -> Color {
     // kit 无对应 token: warm warning banner tint with alpha
     rune::oklcha(0.66, 0.15, 58.0, 0.14)
 }
 
 /// Subtle accent-tinted surface (MCP promo icon well, empty-state icon well).
-pub(crate) fn accent_tint_fill(dark: bool) -> Color {
+pub fn accent_tint_fill(dark: bool) -> Color {
     if dark {
         // kit 无对应 token: accent-tinted translucent fill
         rune::oklcha(0.62, 0.17, 256.0, 0.14)
@@ -253,7 +253,7 @@ pub(crate) fn accent_tint_fill(dark: bool) -> Color {
 }
 
 /// Connected status pill background.
-pub(crate) fn status_pill_connected_bg(dark: bool) -> Color {
+pub fn status_pill_connected_bg(dark: bool) -> Color {
     if dark {
         // kit 无对应 token: connected pill translucent green
         rune::oklcha(0.7, 0.16, 152.0, 0.16)
@@ -264,7 +264,7 @@ pub(crate) fn status_pill_connected_bg(dark: bool) -> Color {
 }
 
 /// Connecting status pill background.
-pub(crate) fn status_pill_connecting_bg(dark: bool) -> Color {
+pub fn status_pill_connecting_bg(dark: bool) -> Color {
     if dark {
         // kit 无对应 token: connecting pill translucent blue
         rune::oklcha(0.66, 0.17, 256.0, 0.16)
@@ -275,25 +275,25 @@ pub(crate) fn status_pill_connecting_bg(dark: bool) -> Color {
 }
 
 /// Engine badge fill keyed by hue, matching the React connection badges.
-pub(crate) fn engine_badge_fill(dark: bool, hue: f32) -> Color {
+pub fn engine_badge_fill(dark: bool, hue: f32) -> Color {
     // kit 无对应 token: engine badge chroma keyed by engine hue
     rune::oklch(if dark { 0.5 } else { 0.58 }, 0.12, hue)
 }
 
 /// Near-white ink used on saturated badges.
-pub(crate) fn badge_ink(_dark: bool) -> Color {
+pub fn badge_ink(_dark: bool) -> Color {
     // kit 无对应 token: badge foreground near-white
     rune::oklch(0.99, 0.005, 256.0)
 }
 
 /// Text that stays readable on accent fills in both appearances.
-pub(crate) fn on_accent(_dark: bool) -> Color {
+pub fn on_accent(_dark: bool) -> Color {
     // kit 无对应 token: on-accent near-white
     rune::oklch(0.985, 0.005, 256.0)
 }
 
 /// Danger/error text for inline form validation.
-pub(crate) fn danger_text(dark: bool) -> Color {
+pub fn danger_text(dark: bool) -> Color {
     let c = kit(dark).c;
     // Mapped to kit semantic danger foreground for consistency.
     c.danger.fg
@@ -303,7 +303,7 @@ pub(crate) fn danger_text(dark: bool) -> Color {
 /// `text-amber-500` on the fired-alert triangle). Tailwind amber-500
 /// (oklch 0.769 0.164 70.08) verbatim — the same hue `ai_amber_border`
 /// carries at 30%.
-pub(crate) fn alert_amber(_dark: bool) -> Color {
+pub fn alert_amber(_dark: bool) -> Color {
     // kit 无对应 token: dashboard alert amber
     rune::oklch(0.769, 0.164, 70.08)
 }
@@ -311,7 +311,7 @@ pub(crate) fn alert_amber(_dark: bool) -> Color {
 /// Dashboard tile run-timeout ink (T069, `ChartWidgetTile.tsx`'s
 /// `text-amber-400` on the timeout line). Tailwind amber-400
 /// (oklch 0.828 0.189 84.429) verbatim.
-pub(crate) fn timeout_amber(_dark: bool) -> Color {
+pub fn timeout_amber(_dark: bool) -> Color {
     // kit 无对应 token: dashboard timeout amber
     rune::oklch(0.828, 0.189, 84.429)
 }
@@ -320,7 +320,7 @@ pub(crate) fn timeout_amber(_dark: bool) -> Color {
 /// `text-emerald-500` on an ok index entry — the `statusClass` table's ok
 /// arm). Tailwind emerald-500 (oklch 0.696 0.17 162.48) verbatim, the
 /// sibling of the tile's `alert_amber` / `timeout_amber`.
-pub(crate) fn run_ok_emerald(_dark: bool) -> Color {
+pub fn run_ok_emerald(_dark: bool) -> Color {
     // kit 无对应 token: dashboard run-status emerald
     rune::oklch(0.696, 0.17, 162.48)
 }
@@ -328,15 +328,15 @@ pub(crate) fn run_ok_emerald(_dark: bool) -> Color {
 /// AI profile shield tint per safety preset (T009-S3, `AiChatPanel.tsx`:
 /// `text-emerald-400` / `text-amber-400` / `text-blue-400`). Exact Tailwind
 /// sRGB values, so the laid-out shield reports the same hue React paints.
-pub(crate) fn ai_shield_local_trust(_dark: bool) -> Color {
+pub fn ai_shield_local_trust(_dark: bool) -> Color {
     rune::color::hex("#34d399").unwrap_or(Color::WHITE)
 }
 
-pub(crate) fn ai_shield_enterprise_balanced(_dark: bool) -> Color {
+pub fn ai_shield_enterprise_balanced(_dark: bool) -> Color {
     rune::color::hex("#fbbf24").unwrap_or(Color::WHITE)
 }
 
-pub(crate) fn ai_shield_cloud_strict(_dark: bool) -> Color {
+pub fn ai_shield_cloud_strict(_dark: bool) -> Color {
     rune::color::hex("#60a5fa").unwrap_or(Color::WHITE)
 }
 
@@ -346,17 +346,17 @@ pub(crate) fn ai_shield_cloud_strict(_dark: bool) -> Color {
 /// text-amber-200`), as oklch literals in this module only. The database
 /// line is the same amber-200 text at 70% opacity, applied by the caller
 /// through `kit.alpha`.
-pub(crate) fn ai_amber_border(_dark: bool) -> Color {
+pub fn ai_amber_border(_dark: bool) -> Color {
     // Tailwind amber-500 (oklch 0.769 0.164 70.08) at 30% — `/30`.
     rune::oklcha(0.769, 0.164, 70.08, 0.30)
 }
 
-pub(crate) fn ai_amber_fill(_dark: bool) -> Color {
+pub fn ai_amber_fill(_dark: bool) -> Color {
     // Tailwind amber-500 at 10% — `/10`.
     rune::oklcha(0.769, 0.164, 70.08, 0.10)
 }
 
-pub(crate) fn ai_amber_text(_dark: bool) -> Color {
+pub fn ai_amber_text(_dark: bool) -> Color {
     // Tailwind amber-200 (oklch 0.924 0.12 95.08).
     rune::oklch(0.924, 0.12, 95.08)
 }
@@ -365,34 +365,34 @@ pub(crate) fn ai_amber_text(_dark: bool) -> Color {
 /// buttons: `border-blue-500` / `border-amber-500` / `border-emerald-500`).
 /// Exact Tailwind sRGB values so the active preset reports the hue React
 /// paints; the `-400` label inks are the `ai_shield_*` helpers above.
-pub(crate) fn ai_preset_blue_border(_dark: bool) -> Color {
+pub fn ai_preset_blue_border(_dark: bool) -> Color {
     rune::color::hex("#3b82f6").unwrap_or(Color::WHITE)
 }
 
-pub(crate) fn ai_preset_amber_border(_dark: bool) -> Color {
+pub fn ai_preset_amber_border(_dark: bool) -> Color {
     rune::color::hex("#f59e0b").unwrap_or(Color::WHITE)
 }
 
-pub(crate) fn ai_preset_emerald_border(_dark: bool) -> Color {
+pub fn ai_preset_emerald_border(_dark: bool) -> Color {
     rune::color::hex("#10b981").unwrap_or(Color::WHITE)
 }
 
 /// AI preset-badge purple (T141, `ModelProfileListItem.tsx`'s custom-preset
 /// badge: `bg-purple-500/10` — the 500-hue fill the other three presets
 /// take from the `ai_preset_*_border` helpers above, at 10% via `Kit::alpha`).
-pub(crate) fn ai_preset_purple_border(_dark: bool) -> Color {
+pub fn ai_preset_purple_border(_dark: bool) -> Color {
     rune::color::hex("#a855f7").unwrap_or(Color::WHITE)
 }
 
 /// The custom-preset badge's purple-400 ink (T141, `text-purple-400`), the
 /// `ai_shield_*` naming of the T009-S3/T107 400-hue label inks.
-pub(crate) fn ai_shield_custom(_dark: bool) -> Color {
+pub fn ai_shield_custom(_dark: bool) -> Color {
     rune::color::hex("#c084fc").unwrap_or(Color::WHITE)
 }
 
 
 /// ER diagram box background.
-pub(crate) fn er_box_fill(dark: bool) -> Color {
+pub fn er_box_fill(dark: bool) -> Color {
     if dark {
         // kit 无对应 token: ER box surface
         rune::oklch(0.24, 0.03, 250.0)
@@ -405,7 +405,7 @@ pub(crate) fn er_box_fill(dark: bool) -> Color {
 /// The onboarding brand sidebar's fixed dark vertical gradient (React
 /// `linear-gradient(180deg,#0e131c,#0a0e15)` — an always-dark brand anchor
 /// regardless of the app theme), as `(top, bottom)`.
-pub(crate) fn brand_sidebar_gradient() -> (Color, Color) {
+pub fn brand_sidebar_gradient() -> (Color, Color) {
     // kit 无对应 token: brand sidebar anchor #0e131c / #0a0e15
     (rune::oklch(0.186, 0.020, 262.0), rune::oklch(0.163, 0.016, 262.0))
 }
@@ -413,7 +413,7 @@ pub(crate) fn brand_sidebar_gradient() -> (Color, Color) {
 /// The brand sidebar's radial accent tint (React
 /// `rgba(79,195,247,0.13)` — #4fc3f7 at 13% — fading to transparent at 55%,
 /// centred on the sidebar's top-left corner).
-pub(crate) fn brand_sidebar_radial_tint() -> Color {
+pub fn brand_sidebar_radial_tint() -> Color {
     // kit 无对应 token: brand radial tint #4fc3f7 @ 13%
     rune::oklcha(0.773, 0.127, 231.0, 0.13)
 }
@@ -424,7 +424,7 @@ pub(crate) fn brand_sidebar_radial_tint() -> Color {
 /// React's opaque `bg-edge` surface (themes.css `--c-edge`: the future
 /// step-dot pin and other solid edge fills — NOT the kit's translucent
 /// border ink).
-pub(crate) fn edge_solid(dark: bool) -> Color {
+pub fn edge_solid(dark: bool) -> Color {
     if dark {
         rune::color::hex("#1e2534").unwrap_or(Color::WHITE)
     } else {
@@ -432,7 +432,7 @@ pub(crate) fn edge_solid(dark: bool) -> Color {
     }
 }
 
-pub(crate) fn welcome_card_gradient() -> (Color, Color) {
+pub fn welcome_card_gradient() -> (Color, Color) {
     // kit 无对应 token: the entry cards' dark pair #121824 / #0f131c
     (
         rune::color::hex("#121824").unwrap_or(Color::BLACK),
@@ -443,7 +443,7 @@ pub(crate) fn welcome_card_gradient() -> (Color, Color) {
 /// The onboarding S0 entry cards' hover fill: dark is React's
 /// `dark:hover:bg-[#141a26]`, light is `hover:bg-accent-dim` — the
 /// `--c-accent-dim` token, #4fc3f7 at 12%.
-pub(crate) fn welcome_card_hover(dark: bool) -> Color {
+pub fn welcome_card_hover(dark: bool) -> Color {
     if dark {
         // kit 无对应 token: the entry cards' dark hover #141a26
         rune::color::hex("#141a26").unwrap_or(Color::BLACK)

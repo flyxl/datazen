@@ -45,22 +45,22 @@ const TOOLBAR_HEIGHT: f32 = 36.0;
 /// React `ProcessListCache.columns` / `ColumnInfo` projected into the view.
 #[allow(dead_code)] // VM mirror; supplied by the host result feed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ProcessColumn {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
+pub struct ProcessColumn {
+    pub name: String,
+    pub data_type: String,
 }
 
 /// React `QueryResult` reduced to what the table paints.
 #[allow(dead_code)] // VM mirror; supplied by the host result feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ProcessResult {
-    pub(crate) columns: Vec<ProcessColumn>,
-    pub(crate) rows: Vec<Vec<String>>,
+pub struct ProcessResult {
+    pub columns: Vec<ProcessColumn>,
+    pub rows: Vec<Vec<String>>,
 }
 
 /// React's `PROCESS_COLUMN_LABELS` map (`lib/processListResult.ts`).
 #[allow(dead_code)] // pure mapping; consumed by the column builder and tests.
-pub(crate) fn column_label_key(name: &str) -> Option<&'static str> {
+pub fn column_label_key(name: &str) -> Option<&'static str> {
     match name {
         "pid" => Some("processList.colPid"),
         "user" => Some("processList.colUser"),
@@ -75,7 +75,7 @@ pub(crate) fn column_label_key(name: &str) -> Option<&'static str> {
 
 /// React `result.columns.findIndex(c => c.name.toLowerCase() === 'pid')`.
 #[allow(dead_code)] // pure helper; consumed by kill gating and tests.
-pub(crate) fn pid_column_index(result: &ProcessResult) -> Option<usize> {
+pub fn pid_column_index(result: &ProcessResult) -> Option<usize> {
     result
         .columns
         .iter()
@@ -86,7 +86,7 @@ impl ProcessResult {
     /// React `commandResultColumns(result.columns, t)` with the default set as
     /// fallback when the host supplied no columns.
     #[allow(dead_code)] // pure helper; consumed by the table builder and tests.
-    pub(crate) fn columns(&self) -> Vec<Column> {
+    pub fn columns(&self) -> Vec<Column> {
         let source: Vec<ProcessColumn> = if self.columns.is_empty() {
             ["pid", "user", "database", "client", "state", "query", "durationMs"]
                 .into_iter()
@@ -116,7 +116,7 @@ impl ProcessResult {
 
     /// React `rows` as table cells; a null cell is shown as an em dash.
     #[allow(dead_code)] // pure helper; consumed by the table builder and tests.
-    pub(crate) fn table_rows(&self) -> Vec<Row> {
+    pub fn table_rows(&self) -> Vec<Row> {
         self.rows
             .iter()
             .enumerate()
@@ -142,22 +142,22 @@ impl ProcessResult {
 /// The full view snapshot the host fills each frame.
 #[allow(dead_code)] // VM surface; owned by the connection-page host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ProcessListViewVm {
-    pub(crate) db_session_id: String,
-    pub(crate) connection_name: String,
-    pub(crate) result: Option<ProcessResult>,
-    pub(crate) loading: bool,
-    pub(crate) error: String,
+pub struct ProcessListViewVm {
+    pub db_session_id: String,
+    pub connection_name: String,
+    pub result: Option<ProcessResult>,
+    pub loading: bool,
+    pub error: String,
     /// Rendered-order row index, matching React's `onRowClick(row)`.
-    pub(crate) highlighted_row: Option<usize>,
-    pub(crate) killing: bool,
-    pub(crate) sort: Option<(usize, SortDir)>,
+    pub highlighted_row: Option<usize>,
+    pub killing: bool,
+    pub sort: Option<(usize, SortDir)>,
 }
 
 impl ProcessListViewVm {
     /// React's kill gate: a parsed row, a selected row and a pid column.
     #[allow(dead_code)] // pure helper; consumed by the kill button and tests.
-    pub(crate) fn can_kill(&self) -> bool {
+    pub fn can_kill(&self) -> bool {
         !self.killing && self.highlighted_row.is_some() && self.pid_index().is_some()
     }
 
@@ -167,7 +167,7 @@ impl ProcessListViewVm {
 
     /// The pid of the highlighted row, after mapping rendered → base order.
     #[allow(dead_code)] // pure helper; consumed by the kill action and tests.
-    pub(crate) fn highlighted_pid(&self) -> Option<i64> {
+    pub fn highlighted_pid(&self) -> Option<i64> {
         let result = self.result.as_ref()?;
         let column = self.pid_index()?;
         let rendered = self.highlighted_row?;
@@ -179,7 +179,7 @@ impl ProcessListViewVm {
 /// The rendered row order the table base computes, mirrored so selection maps
 /// back to the host's base-order rows.
 #[allow(dead_code)] // pure helper; consumed by selection and tests.
-pub(crate) fn rendered_order(result: &ProcessResult, sort: Option<(usize, SortDir)>) -> Vec<usize> {
+pub fn rendered_order(result: &ProcessResult, sort: Option<(usize, SortDir)>) -> Vec<usize> {
     let mut order: Vec<usize> = (0..result.rows.len()).collect();
     if let Some((column, dir)) = sort {
         order.sort_by(|&a, &b| {
@@ -198,7 +198,7 @@ pub(crate) fn rendered_order(result: &ProcessResult, sort: Option<(usize, SortDi
 /// Intents the host applies; the kill action carries React's confirm copy.
 #[allow(dead_code)] // host port; remove when the connection-page host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ProcessListAction {
+pub enum ProcessListAction {
     Refresh,
     KillRequest {
         db_session_id: String,
@@ -224,7 +224,7 @@ fn emit<S: 'static>(on_action: &Option<ActionFn<S>>, action: ProcessListAction) 
 
 /// Build the panel.
 #[allow(dead_code)] // consumer: the connection-page host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ProcessListViewVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

@@ -36,7 +36,7 @@ step() {
 step "check datazen-ui" cargo check -p datazen-ui --offline
 if [ "$fail" -eq 0 ] && [ "$fast" -eq 0 ]; then
     step "check the three crates" cargo check -p datazen-ui-api -p datazen-ui -p datazen-rune-host --offline
-    step "test ui + ui-api" cargo test -p datazen-ui-api -p datazen-ui --offline --lib
+    step "test ui + ui-api" cargo test -p datazen-ui-api -p datazen-ui --offline --tests --no-fail-fast
 fi
 
 [ "$fail" -eq 0 ] && echo "gate: PASS" || echo "gate: FAIL"

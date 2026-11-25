@@ -56,7 +56,7 @@ use crate::i18n::t;
 use crate::ui::kit::kit;
 use crate::ui::toggle::Checkbox;
 
-pub(crate) use type_suggestions::COMMON_MYSQL_TEXT_TYPES;
+pub use type_suggestions::COMMON_MYSQL_TEXT_TYPES;
 
 use requirements::plan_requirements;
 use rollback_status::plan_rollback_status;
@@ -67,12 +67,12 @@ type ToggleFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 /// The host's per-suggestion edit slot: `(table, column, initial)` → the
 /// mutable [`TextEdit`] the input binds to (entry-or-insert). See the
 /// type-suggestions submodule for the derived-value contract.
-pub(crate) type OverrideEditFn<S> = Rc<
+pub type OverrideEditFn<S> = Rc<
     dyn for<'b, 'c> Fn(&'b mut S, &'c str, &'c str, &'c str) -> &'b mut TextEdit,
 >;
 
 /// The plan panel builder, generic over the owning state `S`.
-pub(crate) struct SchemaDiffPlanPanel<'a, S: 'static> {
+pub struct SchemaDiffPlanPanel<'a, S: 'static> {
     plan: &'a SchemaDiffPlanVm,
     allow_destructive: bool,
     include_indexes: bool,
@@ -88,7 +88,7 @@ pub(crate) struct SchemaDiffPlanPanel<'a, S: 'static> {
 
 impl<'a, S: 'static> SchemaDiffPlanPanel<'a, S> {
     /// React's `plan` / `allowDestructive` / `includeIndexes` props.
-    pub(crate) fn new(plan: &'a SchemaDiffPlanVm, allow_destructive: bool, include_indexes: bool) -> Self {
+    pub fn new(plan: &'a SchemaDiffPlanVm, allow_destructive: bool, include_indexes: bool) -> Self {
         Self {
             plan,
             allow_destructive,
@@ -106,20 +106,20 @@ impl<'a, S: 'static> SchemaDiffPlanPanel<'a, S> {
 
     /// React's `regenerating` (the Regenerate link's disabled state and
     /// the Apply button's).
-    pub(crate) fn regenerating(mut self, regenerating: bool) -> Self {
+    pub fn regenerating(mut self, regenerating: bool) -> Self {
         self.regenerating = regenerating;
         self
     }
 
     /// React's `typeOverrides`.
-    pub(crate) fn type_overrides(mut self, overrides: &'a [ColumnTypeOverrideVm]) -> Self {
+    pub fn type_overrides(mut self, overrides: &'a [ColumnTypeOverrideVm]) -> Self {
         self.type_overrides = overrides;
         self
     }
 
     /// The host-mirrored override edit slots (see the type-suggestions
     /// submodule).
-    pub(crate) fn override_edits(
+    pub fn override_edits(
         mut self,
         edits: Option<&'a std::collections::HashMap<String, TextEdit>>,
     ) -> Self {
@@ -129,7 +129,7 @@ impl<'a, S: 'static> SchemaDiffPlanPanel<'a, S> {
 
     /// React's `onTypeOverrideChange` landing (the per-suggestion edit
     /// slot accessor).
-    pub(crate) fn on_override_edit(
+    pub fn on_override_edit(
         mut self,
         f: impl for<'b, 'c> Fn(&'b mut S, &'c str, &'c str, &'c str) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -139,31 +139,31 @@ impl<'a, S: 'static> SchemaDiffPlanPanel<'a, S> {
 
     /// React's `onAllowDestructiveChange` (the host flips its own flag —
     /// the new value is the flipped one).
-    pub(crate) fn on_allow_destructive(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_allow_destructive(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_allow_destructive = Some(Rc::new(f));
         self
     }
 
     /// React's `onIncludeIndexesChange`.
-    pub(crate) fn on_include_indexes(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_include_indexes(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_include_indexes = Some(Rc::new(f));
         self
     }
 
     /// React's `onRegenerate`.
-    pub(crate) fn on_regenerate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_regenerate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_regenerate = Some(Rc::new(f));
         self
     }
 
     /// React's `onApplyTypeOverrides`.
-    pub(crate) fn on_apply_type_overrides(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_apply_type_overrides(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_apply_type_overrides = Some(Rc::new(f));
         self
     }
 
     /// Paint the panel (React's `space-y-3` column).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut panel = col()
             .key("schema-diff-plan")

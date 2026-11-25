@@ -16,7 +16,7 @@ use super::{StructureCapabilities, StructureCapabilityFlag};
 // consumers: control_hints::cap_enabled and the future structure-editor view;
 // delete this allow when both are gone.
 #[allow(dead_code)]
-pub(crate) fn is_control_enabled(
+pub fn is_control_enabled(
     caps: &StructureCapabilities,
     control: StructureCapabilityFlag,
 ) -> bool {

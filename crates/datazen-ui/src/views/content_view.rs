@@ -38,45 +38,45 @@ use crate::state_def::AppState;
 /// The conditional structure of React `ContentView` that Rune can represent.
 #[allow(dead_code)] // VM surface; consumed by connection_page and the tests
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ContentViewVm {
+pub struct ContentViewVm {
     /// A panel tab is active (React `activePanel != null`).
-    pub(crate) has_active_panel: bool,
+    pub has_active_panel: bool,
     /// Key-value panel: React hides the whole toolbar band.
-    pub(crate) is_kv_panel: bool,
+    pub is_kv_panel: bool,
     /// React's `detailOpen` drawer.
-    pub(crate) detail_open: bool,
+    pub detail_open: bool,
     /// React's `aiChatOpen` drawer.
-    pub(crate) ai_chat_open: bool,
+    pub ai_chat_open: bool,
     /// React's `detailPanelApplicable` gate for the detail affordance.
-    pub(crate) detail_panel_applicable: bool,
+    pub detail_panel_applicable: bool,
     /// The active panel has a second pane (React `focusedPaneId` split).
-    pub(crate) split_secondary: bool,
+    pub split_secondary: bool,
     /// React `activePanel && !isKvPanel` — the toolbar gate.
-    pub(crate) react_toolbar_gate: bool,
+    pub react_toolbar_gate: bool,
     /// React `activePanel` — the status-bar gate.
-    pub(crate) react_status_gate: bool,
+    pub react_status_gate: bool,
     /// The seven dialogs of React `ContentViewDialogs`; `None` until a host
     /// view owns their open flags (leftover: connection view track).
-    pub(crate) dialogs_vm: Option<super::content_view_dialogs::DialogsVm>,
+    pub dialogs_vm: Option<super::content_view_dialogs::DialogsVm>,
     /// The selected database object; `None` until a host object store owns one.
-    pub(crate) object_vm: Option<super::database_object_view::DatabaseObjectVm>,
+    pub object_vm: Option<super::database_object_view::DatabaseObjectVm>,
     /// The document browser; `None` until a host owns a document connection.
-    pub(crate) document_vm: Option<super::document_connection_view::DocumentViewVm>,
+    pub document_vm: Option<super::document_connection_view::DocumentViewVm>,
 }
 
 impl ContentViewVm {
     #[allow(dead_code)] // VM surface; consumed by build and the tests
-    pub(crate) fn show_toolbar(&self) -> bool {
+    pub fn show_toolbar(&self) -> bool {
         self.has_active_panel && !self.is_kv_panel
     }
 
     #[allow(dead_code)] // VM surface; consumed by build and the tests
-    pub(crate) fn show_status_bar(&self) -> bool {
+    pub fn show_status_bar(&self) -> bool {
         self.has_active_panel
     }
 
     #[allow(dead_code)] // VM surface; consumed by build and the tests
-    pub(crate) fn show_drawers(&self) -> bool {
+    pub fn show_drawers(&self) -> bool {
         (self.detail_open && self.detail_panel_applicable) || self.ai_chat_open
     }
 
@@ -84,7 +84,7 @@ impl ContentViewVm {
     /// section (pinned by `tests/connection_page.rs`). React's gates are kept
     /// in the VM for a view that ports the panel store.
     #[allow(dead_code)] // VM surface; consumed by connection_page
-    pub(crate) fn from_host(state: &crate::state_def::AppState) -> Self {
+    pub fn from_host(state: &crate::state_def::AppState) -> Self {
         let has_active_panel = state.tabs.selected().is_some();
         Self {
             has_active_panel,
@@ -107,7 +107,7 @@ impl ContentViewVm {
 /// Compose the content view from the existing Rune views. `vm` decides the
 /// conditional structure; `state`/`theme` feed the reused body functions.
 #[allow(dead_code)] // reusable component; mounted by connection_page
-pub(crate) fn build(
+pub fn build(
     state: &crate::state_def::AppState,
     theme: tok::Theme,
     dark: bool,

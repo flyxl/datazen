@@ -9,14 +9,14 @@ use std::collections::BTreeMap;
 
 /// React `DatabaseTypeMeta.connectionMode`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ConnectionMode {
+pub enum ConnectionMode {
     Server,
     File,
 }
 
 /// React `DatabaseTypeMeta.databaseFieldType`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DatabaseFieldType {
+pub enum DatabaseFieldType {
     Name,
     Path,
     Index,
@@ -24,24 +24,24 @@ pub(crate) enum DatabaseFieldType {
 
 /// The subset of `DatabaseTypeMeta` the form hook reads.
 #[derive(Clone, Debug)]
-pub(crate) struct DatabaseTypeMeta {
-    pub(crate) default_host: &'static str,
-    pub(crate) default_port: u16,
-    pub(crate) default_user: &'static str,
-    pub(crate) default_database: &'static str,
-    pub(crate) default_ssl_mode: &'static str,
-    pub(crate) connection_form: &'static str,
-    pub(crate) connection_mode: ConnectionMode,
-    pub(crate) database_field_type: DatabaseFieldType,
-    pub(crate) supports_ssl: bool,
-    pub(crate) supports_ssh: bool,
-    pub(crate) read_only: bool,
-    pub(crate) connection_includes_schema: bool,
-    pub(crate) default_options: &'static [(&'static str, &'static str)],
+pub struct DatabaseTypeMeta {
+    pub default_host: &'static str,
+    pub default_port: u16,
+    pub default_user: &'static str,
+    pub default_database: &'static str,
+    pub default_ssl_mode: &'static str,
+    pub connection_form: &'static str,
+    pub connection_mode: ConnectionMode,
+    pub database_field_type: DatabaseFieldType,
+    pub supports_ssl: bool,
+    pub supports_ssh: bool,
+    pub read_only: bool,
+    pub connection_includes_schema: bool,
+    pub default_options: &'static [(&'static str, &'static str)],
 }
 
 /// React `PRESET_GROUPS.development`.
-pub(crate) const PRESET_DEVELOPMENT: &str = "preset:development";
+pub const PRESET_DEVELOPMENT: &str = "preset:development";
 
 const META: &[(&str, DatabaseTypeMeta)] = &[
     (
@@ -137,19 +137,19 @@ const META: &[(&str, DatabaseTypeMeta)] = &[
 ];
 
 /// `DB_REGISTRY[id]` stand-in. Unknown types are absent, matching React.
-pub(crate) fn db_meta(id: &str) -> Option<&'static DatabaseTypeMeta> {
+pub fn db_meta(id: &str) -> Option<&'static DatabaseTypeMeta> {
     META.iter().find(|(key, _)| *key == id).map(|(_, meta)| meta)
 }
 
 /// `coerceConnectionGroup`: only a plain string survives; a mistaken DOM event
 /// becomes the empty group.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum GroupInput {
+pub enum GroupInput {
     Text(String),
     Other,
 }
 
-pub(crate) fn coerce_group(value: GroupInput) -> String {
+pub fn coerce_group(value: GroupInput) -> String {
     match value {
         GroupInput::Text(text) => text,
         GroupInput::Other => String::new(),
@@ -157,7 +157,7 @@ pub(crate) fn coerce_group(value: GroupInput) -> String {
 }
 
 /// `sanitizeConnectionOptions` — scalar JSON-compatible options only.
-pub(crate) fn sanitize_options(
+pub fn sanitize_options(
     value: &BTreeMap<String, String>,
 ) -> BTreeMap<String, String> {
     value
@@ -168,7 +168,7 @@ pub(crate) fn sanitize_options(
 }
 
 /// `hasEnabledTlsOption` from `connectionFormModel.ts`.
-pub(crate) fn has_enabled_tls_option(options: &BTreeMap<String, String>) -> bool {
+pub fn has_enabled_tls_option(options: &BTreeMap<String, String>) -> bool {
     options
         .iter()
         .any(|(key, value)| {
@@ -184,7 +184,7 @@ pub(crate) fn has_enabled_tls_option(options: &BTreeMap<String, String>) -> bool
 // ---- Existing connection (stand-in for `ConnectionConfig`) ------------------
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ExistingSsh {
+pub struct ExistingSsh {
     pub enabled: bool,
     pub host: String,
     pub port: u16,
@@ -204,7 +204,7 @@ pub(crate) struct ExistingSsh {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ExistingHttpProxy {
+pub struct ExistingHttpProxy {
     pub enabled: bool,
     pub host: String,
     pub port: u16,
@@ -215,7 +215,7 @@ pub(crate) struct ExistingHttpProxy {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ExistingWebSocket {
+pub struct ExistingWebSocket {
     pub enabled: bool,
     pub url: String,
     pub mode: String,
@@ -225,7 +225,7 @@ pub(crate) struct ExistingWebSocket {
 
 /// The fields of React `ConnectionConfig` the form hydrates from.
 #[derive(Clone, Debug)]
-pub(crate) struct ExistingConnection {
+pub struct ExistingConnection {
     pub id: String,
     pub name: String,
     pub database_type: String,
@@ -248,7 +248,7 @@ pub(crate) struct ExistingConnection {
 }
 
 impl ExistingConnection {
-    pub(crate) fn new(id: &str, database_type: &str, name: &str) -> Self {
+    pub fn new(id: &str, database_type: &str, name: &str) -> Self {
         Self {
             id: id.to_owned(),
             name: name.to_owned(),

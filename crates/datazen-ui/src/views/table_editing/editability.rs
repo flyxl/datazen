@@ -14,12 +14,12 @@ use crate::support::cell_types::{
 
 /// React `CELL_EDIT_MAX_BYTES` from `lib/cellEditorKind.ts`.
 #[allow(dead_code)] // pure constant; drop with the cell editability host.
-pub(crate) const CELL_EDIT_MAX_BYTES: usize = 64 * 1024;
+pub const CELL_EDIT_MAX_BYTES: usize = 64 * 1024;
 
 /// React `CellReadOnlyReason`.
 #[allow(dead_code)] // VM mirror; drop when the host supplies editability.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EditingReadOnlyReason {
+pub enum EditingReadOnlyReason {
     ConnectionReadOnly,
     DriverCapability,
     View,
@@ -35,7 +35,7 @@ pub(crate) enum EditingReadOnlyReason {
 impl EditingReadOnlyReason {
     /// React `readOnlyReasonMessageKey` — the one reason→key mapping.
     #[allow(dead_code)] // pure helper; drop with the read-only tip.
-    pub(crate) fn message_key(self) -> &'static str {
+    pub fn message_key(self) -> &'static str {
         match self {
             Self::ConnectionReadOnly => "cellEditor.readOnly.connection",
             Self::DriverCapability => "cellEditor.readOnly.driverCapability",
@@ -54,7 +54,7 @@ impl EditingReadOnlyReason {
 /// React `CellValueErrorReason` — why an open editor refused its draft.
 #[allow(dead_code)] // VM mirror; drop with the navigation guard.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CellValueErrorReason {
+pub enum CellValueErrorReason {
     EmptyNotNull,
     InvalidNumber,
     InvalidInteger,
@@ -71,7 +71,7 @@ pub(crate) enum CellValueErrorReason {
 impl CellValueErrorReason {
     /// React `cellValueErrorMessageKey`.
     #[allow(dead_code)] // pure helper; drop with the navigation guard.
-    pub(crate) fn message_key(self) -> &'static str {
+    pub fn message_key(self) -> &'static str {
         match self {
             Self::EmptyNotNull => "cellEditor.notNull",
             Self::InvalidNumber => "cellEditor.invalidNumber",
@@ -91,7 +91,7 @@ impl CellValueErrorReason {
 /// React `TableType`: every non-`Table` relation is refused as a view.
 #[allow(dead_code)] // VM mirror; drop when the host supplies the relation kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RelationKind {
+pub enum RelationKind {
     Table,
     View,
 }
@@ -99,7 +99,7 @@ pub(crate) enum RelationKind {
 /// React `rowKind`: a draft row is not yet in the database.
 #[allow(dead_code)] // VM mirror; drop with the cell editability host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EditingRowKind {
+pub enum EditingRowKind {
     Update,
     Insert,
 }
@@ -107,55 +107,55 @@ pub(crate) enum EditingRowKind {
 /// The columns facts `buildColumnEditorInfo` needs, supplied by the host.
 #[allow(dead_code)] // VM mirror; drop when the host owns column metadata.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct EditingColumnVm {
-    pub(crate) name: String,
-    pub(crate) data_type: Option<String>,
-    pub(crate) nullable: bool,
-    pub(crate) is_primary_key: bool,
-    pub(crate) is_auto_increment: bool,
+pub struct EditingColumnVm {
+    pub name: String,
+    pub data_type: Option<String>,
+    pub nullable: bool,
+    pub is_primary_key: bool,
+    pub is_auto_increment: bool,
 }
 
 /// The driver facts `useTableEditing` reads from `DB_REGISTRY` (host-supplied).
 #[allow(dead_code)] // VM mirror; drop when the host supplies driver metadata.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DriverEditingMetaVm {
+pub struct DriverEditingMetaVm {
     /// `DatabaseTypeMeta.dataGrid?.editable`; absent means editable.
-    pub(crate) editable: Option<bool>,
+    pub editable: Option<bool>,
     /// `dataGrid?.currentDatetimeWrite` (DBR-05).
-    pub(crate) current_datetime_write: Option<bool>,
-    pub(crate) hints: Option<CellTypeHints>,
+    pub current_datetime_write: Option<bool>,
+    pub hints: Option<CellTypeHints>,
 }
 
 /// The panel facts `useTableEditing` folds into its `TableEditingContext`.
 #[allow(dead_code)] // VM mirror; drop when the host owns the panel context.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct EditingPanelFactsVm {
-    pub(crate) panel_id: String,
-    pub(crate) connection_read_only: bool,
-    pub(crate) mount_reason: Option<EditingReadOnlyReason>,
-    pub(crate) columns: Vec<EditingColumnVm>,
+pub struct EditingPanelFactsVm {
+    pub panel_id: String,
+    pub connection_read_only: bool,
+    pub mount_reason: Option<EditingReadOnlyReason>,
+    pub columns: Vec<EditingColumnVm>,
 }
 
 /// React `TableEditingContext` after the hook's `useMemo` has run.
 #[allow(dead_code)] // VM mirror; drop when the host owns the panel context.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct EditingContextVm {
-    pub(crate) panel_id: String,
-    pub(crate) connection_read_only: bool,
-    pub(crate) mount_reason: Option<EditingReadOnlyReason>,
-    pub(crate) relation_kind: RelationKind,
-    pub(crate) capability_editable: Option<bool>,
-    pub(crate) current_datetime_write: Option<bool>,
-    pub(crate) has_primary_key: bool,
-    pub(crate) has_columns: bool,
-    pub(crate) columns: Vec<EditingColumnVm>,
-    pub(crate) hints: Option<CellTypeHints>,
+pub struct EditingContextVm {
+    pub panel_id: String,
+    pub connection_read_only: bool,
+    pub mount_reason: Option<EditingReadOnlyReason>,
+    pub relation_kind: RelationKind,
+    pub capability_editable: Option<bool>,
+    pub current_datetime_write: Option<bool>,
+    pub has_primary_key: bool,
+    pub has_columns: bool,
+    pub columns: Vec<EditingColumnVm>,
+    pub hints: Option<CellTypeHints>,
 }
 
 /// The hook's `useMemo`: primary-key/column presence come from the columns,
 /// driver capability and type hints come from the host's driver metadata.
 #[allow(dead_code)] // pure derivation; drop when the host owns the context.
-pub(crate) fn derive_editing_context(
+pub fn derive_editing_context(
     facts: &EditingPanelFactsVm,
     meta: Option<&DriverEditingMetaVm>,
 ) -> EditingContextVm {
@@ -177,16 +177,16 @@ pub(crate) fn derive_editing_context(
 /// React `ColumnEditorInfo`.
 #[allow(dead_code)] // VM mirror; drop when the grid owns column info.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnEditorInfoVm {
-    pub(crate) cell_type: CellType,
-    pub(crate) nullable: bool,
-    pub(crate) integer_only: bool,
-    pub(crate) read_only_reason: Option<EditingReadOnlyReason>,
+pub struct ColumnEditorInfoVm {
+    pub cell_type: CellType,
+    pub nullable: bool,
+    pub integer_only: bool,
+    pub read_only_reason: Option<EditingReadOnlyReason>,
 }
 
 /// React `buildPanelColumnEditorInfo`: once per column, never per cell.
 #[allow(dead_code)] // pure helper; drop when the grid owns column info.
-pub(crate) fn build_panel_column_editor_info(
+pub fn build_panel_column_editor_info(
     context: &EditingContextVm,
 ) -> BTreeMap<String, ColumnEditorInfoVm> {
     let mut info = BTreeMap::new();
@@ -216,7 +216,7 @@ pub(crate) fn build_panel_column_editor_info(
 /// React `resolvePanelReadOnlyReason`. The empty-panel exception is deliberate:
 /// no columns means "not loaded yet", which is not a refusal.
 #[allow(dead_code)] // pure gate; drop when the host owns the panel context.
-pub(crate) fn resolve_panel_read_only_reason(
+pub fn resolve_panel_read_only_reason(
     context: &EditingContextVm,
 ) -> Option<EditingReadOnlyReason> {
     if let Some(reason) = context.mount_reason {
@@ -240,7 +240,7 @@ pub(crate) fn resolve_panel_read_only_reason(
 /// React `resolvePanelCellReadOnlyReason`: the panel reason wins; only then the
 /// column's own reason (a driver-declared unwritable type, or binary).
 #[allow(dead_code)] // pure gate; drop when the host owns the context.
-pub(crate) fn resolve_panel_cell_read_only_reason(
+pub fn resolve_panel_cell_read_only_reason(
     context: &EditingContextVm,
     column_name: &str,
 ) -> Option<EditingReadOnlyReason> {
@@ -255,11 +255,11 @@ pub(crate) fn resolve_panel_cell_read_only_reason(
 /// React `CellEditability`.
 #[allow(dead_code)] // VM mirror; drop with the editor host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CellEditabilityVm {
-    pub(crate) editable: bool,
-    pub(crate) reason: Option<EditingReadOnlyReason>,
-    pub(crate) code: Option<&'static str>,
-    pub(crate) message_key: &'static str,
+pub struct CellEditabilityVm {
+    pub editable: bool,
+    pub reason: Option<EditingReadOnlyReason>,
+    pub code: Option<&'static str>,
+    pub message_key: &'static str,
 }
 
 fn editable_vm() -> CellEditabilityVm {
@@ -283,23 +283,23 @@ fn refused_vm(reason: EditingReadOnlyReason) -> CellEditabilityVm {
 /// The row facts `resolvePanelCellEditable` passes to `resolveCellEditable`.
 #[allow(dead_code)] // VM mirror; drop when the store owns row identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct CellEditabilityInputVm {
-    pub(crate) mount_reason: Option<EditingReadOnlyReason>,
-    pub(crate) connection_read_only: bool,
-    pub(crate) capability_editable: Option<bool>,
-    pub(crate) relation_kind: RelationKind,
-    pub(crate) has_primary_key: bool,
-    pub(crate) row_identity_unique: bool,
-    pub(crate) column_is_auto_increment: bool,
-    pub(crate) cell_type: CellType,
-    pub(crate) in_memory_byte_size: usize,
-    pub(crate) type_read_only: bool,
-    pub(crate) row_kind: EditingRowKind,
+pub struct CellEditabilityInputVm {
+    pub mount_reason: Option<EditingReadOnlyReason>,
+    pub connection_read_only: bool,
+    pub capability_editable: Option<bool>,
+    pub relation_kind: RelationKind,
+    pub has_primary_key: bool,
+    pub row_identity_unique: bool,
+    pub column_is_auto_increment: bool,
+    pub cell_type: CellType,
+    pub in_memory_byte_size: usize,
+    pub type_read_only: bool,
+    pub row_kind: EditingRowKind,
 }
 
 /// React `readOnlyReasonOf`: the first match decides what the user is told.
 #[allow(dead_code)] // pure gate; drop with the cell editability host.
-pub(crate) fn read_only_reason_of(input: &CellEditabilityInputVm) -> Option<EditingReadOnlyReason> {
+pub fn read_only_reason_of(input: &CellEditabilityInputVm) -> Option<EditingReadOnlyReason> {
     use EditingReadOnlyReason::*;
     if let Some(reason) = input.mount_reason {
         return Some(reason);
@@ -336,7 +336,7 @@ pub(crate) fn read_only_reason_of(input: &CellEditabilityInputVm) -> Option<Edit
 
 /// React `resolveCellEditable`.
 #[allow(dead_code)] // pure gate; drop with the cell editability host.
-pub(crate) fn resolve_cell_editable(input: &CellEditabilityInputVm) -> CellEditabilityVm {
+pub fn resolve_cell_editable(input: &CellEditabilityInputVm) -> CellEditabilityVm {
     match read_only_reason_of(input) {
         None => editable_vm(),
         Some(reason) => refused_vm(reason),
@@ -347,7 +347,7 @@ pub(crate) fn resolve_cell_editable(input: &CellEditabilityInputVm) -> CellEdita
 /// pinned by passing `None` (the hook answers "connection read-only"), while a
 /// registered panel fills in `rowIdentityUnique: true`, size `0`, `update`.
 #[allow(dead_code)] // pure gate; drop when the host owns the panel registry.
-pub(crate) fn resolve_panel_cell_editability(
+pub fn resolve_panel_cell_editability(
     context: Option<&EditingContextVm>,
     column_name: &str,
 ) -> CellEditabilityVm {
@@ -379,23 +379,23 @@ pub(crate) fn resolve_panel_cell_editability(
 /// React `CellCoord` for the one editor-open entry point.
 #[allow(dead_code)] // VM mirror; drop when the host owns grid selection.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct EditingCoordVm {
-    pub(crate) row_index: usize,
-    pub(crate) column_name: String,
+pub struct EditingCoordVm {
+    pub row_index: usize,
+    pub column_name: String,
 }
 
 /// The one effect `requestEdit` emits on success: `startEdit(panel, row, col)`.
 #[allow(dead_code)] // host intent; drop when the host owns the editor.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StartEditEffectVm {
-    pub(crate) row: usize,
-    pub(crate) column: String,
+pub struct StartEditEffectVm {
+    pub row: usize,
+    pub column: String,
 }
 
 /// React `requestEdit`: ask first, open the editor only when allowed. The
 /// refusal is returned (never thrown, never silent), so the caller can show it.
 #[allow(dead_code)] // pure gate; drop when the host owns the editor entry point.
-pub(crate) fn request_edit_plan(
+pub fn request_edit_plan(
     context: Option<&EditingContextVm>,
     coord: &EditingCoordVm,
 ) -> (CellEditabilityVm, Option<StartEditEffectVm>) {

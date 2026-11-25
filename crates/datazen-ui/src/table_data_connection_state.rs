@@ -72,7 +72,7 @@ use serde_json::Value;
 /// Only `name` is read by this module (`rows_to_records`); the rest is
 /// carried so `TableState.columns` is the whole schema, not a projection.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnSchema {
+pub struct ColumnSchema {
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
@@ -88,7 +88,7 @@ pub(crate) struct ColumnSchema {
 /// estimate that has to be shown as "about N rows", and "this database
 /// cannot say".
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum CountStrategy {
+pub enum CountStrategy {
     #[default]
     Exact,
     Estimated,
@@ -100,7 +100,7 @@ pub(crate) enum CountStrategy {
 /// `Inherit` follows the global setting; the other values are this panel's
 /// own choice and are not persisted.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum DefaultOrderOverride {
+pub enum DefaultOrderOverride {
     #[default]
     Inherit,
     PrimaryKeyAsc,
@@ -110,7 +110,7 @@ pub(crate) enum DefaultOrderOverride {
 
 /// The request-wide logical operator joining a filter list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum FilterLogic {
+pub enum FilterLogic {
     #[default]
     And,
     Or,
@@ -123,7 +123,7 @@ pub(crate) enum FilterLogic {
 /// channel at a time — `filters` for structured/Any Column, `raw_where` for
 /// Raw SQL.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum FilterMode {
+pub enum FilterMode {
     #[default]
     Structured,
     AnyColumn,
@@ -140,7 +140,7 @@ pub(crate) enum FilterMode {
 /// condition to the one before it, and falls back to the request-wide
 /// operator when absent.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FilterCondition {
+pub struct FilterCondition {
     pub column: String,
     pub operator: String,
     pub value: Option<Value>,
@@ -149,7 +149,7 @@ pub(crate) struct FilterCondition {
 
 /// One sort: the column and its direction.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SortCondition {
+pub struct SortCondition {
     pub column: String,
     pub descending: bool,
 }
@@ -160,7 +160,7 @@ pub(crate) struct SortCondition {
 /// `page × page_size` rows in) or by seek (the page starts after a value
 /// boundary that was read from a real row).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PagingMode {
+pub enum PagingMode {
     #[default]
     Offset,
     Keyset,
@@ -172,7 +172,7 @@ pub(crate) enum PagingMode {
 /// **degradation**, not an error: the page is read by offset and the reason
 /// says why.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum KeysetUnavailableReason {
+pub enum KeysetUnavailableReason {
     DriverUnsupported,
     NoStableOrder,
     NullableKeyColumn,
@@ -191,7 +191,7 @@ pub(crate) enum KeysetUnavailableReason {
 /// — untagged it would change its variant on the way back, and the seek
 /// would compare against the wrong literal with no error anywhere.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum CursorValue {
+pub enum CursorValue {
     Null,
     Bool(bool),
     Integer(i64),
@@ -204,14 +204,14 @@ pub(crate) enum CursorValue {
 
 /// One ordering column and its direction.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct OrderColumn {
+pub struct OrderColumn {
     pub column: String,
     pub descending: bool,
 }
 
 /// One visited page and the boundary it started at.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct KeysetCursor {
+pub struct KeysetCursor {
     /// The boundary the page started at; `None` for the first page.
     pub boundary: Option<Vec<CursorValue>>,
     /// The sort that was in force when the boundary was taken.
@@ -227,7 +227,7 @@ pub(crate) struct KeysetCursor {
 /// state says how that page is **read**: by offset, or by seek from a
 /// boundary that was really read. There is no second page number.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct KeysetPagingState {
+pub struct KeysetPagingState {
     /// The strategy the back end reported.
     pub mode: PagingMode,
     /// The stable total order the back end reported.
@@ -249,7 +249,7 @@ pub(crate) struct KeysetPagingState {
 /// The state of a panel that has never paged by seek.
 ///
 /// Mirror of `emptyKeysetPagingState` (`lib/keysetPaging.ts`).
-pub(crate) const EMPTY_KEYSET_PAGING_STATE: KeysetPagingState = KeysetPagingState {
+pub const EMPTY_KEYSET_PAGING_STATE: KeysetPagingState = KeysetPagingState {
     mode: PagingMode::Offset,
     order_columns: Vec::new(),
     stack: Vec::new(),
@@ -268,7 +268,7 @@ pub(crate) const EMPTY_KEYSET_PAGING_STATE: KeysetPagingState = KeysetPagingStat
 /// must be pinned to a concrete database before a pending change can be
 /// committed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TableChangeContext {
+pub struct TableChangeContext {
     pub connection_id: Option<String>,
     pub db_session_id: String,
     pub driver_type: Option<String>,
@@ -282,7 +282,7 @@ pub(crate) struct TableChangeContext {
 /// wire). A staged expression renders the driver's own native SQL at commit
 /// time; it is never a literal value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WriteExpressionId {
+pub enum WriteExpressionId {
     CurrentTimestamp,
 }
 
@@ -295,7 +295,7 @@ pub(crate) enum WriteExpressionId {
 /// change to an existing row: such a row has no identity yet, so
 /// `changed_columns` is the exact INSERT column list.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PendingRowChange {
+pub struct PendingRowChange {
     /// UI-only hint for keeping a PK edit associated with its original row.
     pub row_index: Option<usize>,
     pub row_identity: HashMap<String, Value>,
@@ -317,7 +317,7 @@ pub(crate) struct PendingRowChange {
 /// written" and "written as NULL" are different statements, so clearing a
 /// draft cell removes the key instead of storing null.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PendingInsert {
+pub struct PendingInsert {
     /// UI association key: React key plus the draft row's `data-draft-id`.
     pub draft_id: String,
     /// Per-column write intent.
@@ -328,7 +328,7 @@ pub(crate) struct PendingInsert {
 ///
 /// Mirror of `PlannedStatement` (`lib/tableChanges.ts`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PlannedStatement {
+pub struct PlannedStatement {
     pub row_identity: HashMap<String, Value>,
     pub original_values: HashMap<String, Value>,
     pub current_values: HashMap<String, Value>,
@@ -343,7 +343,7 @@ pub(crate) struct PlannedStatement {
 
 /// One warning attached to a change plan.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ChangeWarning {
+pub struct ChangeWarning {
     pub code: String,
     pub message: String,
     pub severity: ChangeSeverity,
@@ -351,7 +351,7 @@ pub(crate) struct ChangeWarning {
 
 /// The severity of a [`ChangeWarning`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ChangeSeverity {
+pub enum ChangeSeverity {
     Info,
     Warning,
     Error,
@@ -363,7 +363,7 @@ pub(crate) enum ChangeSeverity {
 /// present — a plan without inserts carries an empty list, never a missing
 /// key.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct RowChangePlan {
+pub struct RowChangePlan {
     pub plan_id: String,
     pub fingerprint: String,
     pub config_revision: Option<u64>,
@@ -378,7 +378,7 @@ pub(crate) struct RowChangePlan {
 
 /// The staged-change lifecycle of a panel.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PendingStatus {
+pub enum PendingStatus {
     #[default]
     Idle,
     Previewing,
@@ -389,7 +389,7 @@ pub(crate) enum PendingStatus {
 /// column **name** (names stay stable across `visible_columns` changes and
 /// column moves, while a column index does not).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CellCoord {
+pub struct CellCoord {
     pub row_index: usize,
     pub column_name: String,
 }
@@ -397,14 +397,14 @@ pub(crate) struct CellCoord {
 /// One cell range; both corners, their order meaningless (normalised by the
 /// grid-selection helpers).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CellRange {
+pub struct CellRange {
     pub start: CellCoord,
     pub end: CellCoord,
 }
 
 /// The mode of a [`GridSelection`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum GridSelectionMode {
+pub enum GridSelectionMode {
     #[default]
     None,
     Cell,
@@ -417,7 +417,7 @@ pub(crate) enum GridSelectionMode {
 /// store is the only writer; `None` is the default. The selection owns no
 /// row set: `mode: Row` reports `TableState.selected_rows` verbatim.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct GridSelection {
+pub struct GridSelection {
     /// Anchor corner, fixed on pointerdown / when Shift-extension starts.
     pub anchor: Option<CellCoord>,
     /// Moving corner; follows the pointer drag or Shift+arrow.
@@ -432,7 +432,7 @@ pub(crate) struct GridSelection {
 /// Mirror of `EMPTY_GRID_SELECTION` (`gridSelection.ts`). Never write into
 /// it: all transitions build new selections — and as a Rust `const` this
 /// one is copied on use, so there is no shared backing to write into.
-pub(crate) const EMPTY_GRID_SELECTION: GridSelection = GridSelection {
+pub const EMPTY_GRID_SELECTION: GridSelection = GridSelection {
     anchor: None,
     focus: None,
     extra_ranges: Vec::new(),
@@ -441,7 +441,7 @@ pub(crate) const EMPTY_GRID_SELECTION: GridSelection = GridSelection {
 
 /// The cell being edited, if any.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct EditingCell {
+pub struct EditingCell {
     pub row: usize,
     pub col: String,
 }
@@ -453,7 +453,7 @@ pub(crate) struct EditingCell {
 /// belong to the tab that set them, never to the session, so two tabs on the
 /// same table never overwrite each other.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TableState {
+pub struct TableState {
     pub context: Option<TableChangeContext>,
     pub columns: Vec<ColumnSchema>,
     pub rows: Vec<HashMap<String, Value>>,
@@ -569,7 +569,7 @@ impl Default for TableState {
 
 /// The panel's immutable load target, as carried in every request.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TableTarget {
+pub struct TableTarget {
     pub db_session_id: String,
     pub table: String,
     pub connection_id: Option<String>,
@@ -584,7 +584,7 @@ pub(crate) struct TableTarget {
 /// columns leaves the missing cells `null`, and a row longer than the
 /// columns drops the surplus values — the record only ever has the
 /// columns' keys, in column order.
-pub(crate) fn rows_to_records(
+pub fn rows_to_records(
     columns: &[ColumnSchema],
     rows: &[Vec<Value>],
 ) -> Vec<HashMap<String, Value>> {
@@ -608,7 +608,7 @@ pub(crate) fn rows_to_records(
 /// passes through as a `Value`. The Rust caller holds `None` for the
 /// missing cases and `Some(value)` otherwise, so this is the collapse of
 /// that distinction into `Value::Null`.
-pub(crate) fn to_cell_value(val: Option<Value>) -> Value {
+pub fn to_cell_value(val: Option<Value>) -> Value {
     val.unwrap_or(Value::Null)
 }
 
@@ -619,7 +619,7 @@ pub(crate) fn to_cell_value(val: Option<Value>) -> Value {
 /// an object carrying a string `message` field. Rust has no `unknown`, so
 /// the caller says which shape it holds — `None` is everything else.
 #[derive(Debug)]
-pub(crate) enum ErrorMessageSource<'a> {
+pub enum ErrorMessageSource<'a> {
     /// A bare string (`typeof e === 'string'`).
     Text(&'a str),
     /// An error value (`e instanceof Error`); its message is its `Display`.
@@ -636,7 +636,7 @@ pub(crate) enum ErrorMessageSource<'a> {
 /// whitespace-only — is **not** a message: it falls through to the
 /// fallback. A message that passes is returned verbatim, untrimmed; only
 /// the blank check looks at the trimmed form.
-pub(crate) fn extract_error_message(
+pub fn extract_error_message(
     source: Option<ErrorMessageSource<'_>>,
     fallback: &str,
 ) -> String {
@@ -666,7 +666,7 @@ pub(crate) fn extract_error_message(
 /// [`EMPTY_KEYSET_PAGING_STATE`]); and the panel starts in the structured
 /// editor with both new-mode drafts empty and the raw channel idle (DBR-04,
 /// `filter_mode` is `Structured`).
-pub(crate) fn empty_table_state(context: Option<TableChangeContext>) -> TableState {
+pub fn empty_table_state(context: Option<TableChangeContext>) -> TableState {
     TableState {
         context,
         columns: Vec::new(),
@@ -721,7 +721,7 @@ pub(crate) fn empty_table_state(context: Option<TableChangeContext>) -> TableSta
 ///
 /// React `buildTableContext`: the five optional fields map with `?? null`,
 /// so an absent field is a null in the context, never a default.
-pub(crate) fn build_table_context(target: &TableTarget) -> TableChangeContext {
+pub fn build_table_context(target: &TableTarget) -> TableChangeContext {
     TableChangeContext {
         connection_id: target.connection_id.clone(),
         db_session_id: target.db_session_id.clone(),

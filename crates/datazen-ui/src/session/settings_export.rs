@@ -24,53 +24,53 @@ use serde_json::{Map, Number, Value};
 /// `id`, `prefix` and `template`; `descriptionKey` may be absent.
 #[allow(dead_code)] // local VM; remove with the shared settings DTO.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SqlSnippet {
-    pub(crate) id: String,
-    pub(crate) prefix: String,
-    pub(crate) description_key: Option<String>,
-    pub(crate) template: String,
+pub struct SqlSnippet {
+    pub id: String,
+    pub prefix: String,
+    pub description_key: Option<String>,
+    pub template: String,
 }
 
 /// The whitelisted editor preferences, as the host holds them.
 #[allow(dead_code)] // local VM; remove with the shared settings DTO.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct EditorSettings {
-    pub(crate) font_size: Option<Number>,
-    pub(crate) font_family: Option<String>,
-    pub(crate) completion_quote_policy: Option<String>,
-    pub(crate) completion_include_table_prefix: Option<bool>,
-    pub(crate) keymap_preset: Option<String>,
-    pub(crate) custom_keymap: Option<Map<String, Value>>,
-    pub(crate) sql_format_options: Option<Map<String, Value>>,
-    pub(crate) sql_execution_strategy: Option<String>,
-    pub(crate) sql_snippets: Vec<SqlSnippet>,
+pub struct EditorSettings {
+    pub font_size: Option<Number>,
+    pub font_family: Option<String>,
+    pub completion_quote_policy: Option<String>,
+    pub completion_include_table_prefix: Option<bool>,
+    pub keymap_preset: Option<String>,
+    pub custom_keymap: Option<Map<String, Value>>,
+    pub sql_format_options: Option<Map<String, Value>>,
+    pub sql_execution_strategy: Option<String>,
+    pub sql_snippets: Vec<SqlSnippet>,
 }
 
 /// What an import may change: absent fields leave the current value untouched.
 #[allow(dead_code)] // local VM; remove with the shared settings DTO.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct EditorSettingsPatch {
-    pub(crate) font_size: Option<Number>,
-    pub(crate) font_family: Option<String>,
-    pub(crate) completion_quote_policy: Option<String>,
-    pub(crate) completion_include_table_prefix: Option<bool>,
-    pub(crate) keymap_preset: Option<String>,
-    pub(crate) custom_keymap: Option<Map<String, Value>>,
-    pub(crate) sql_format_options: Option<Map<String, Value>>,
-    pub(crate) sql_execution_strategy: Option<String>,
-    pub(crate) sql_snippets: Option<Vec<SqlSnippet>>,
+pub struct EditorSettingsPatch {
+    pub font_size: Option<Number>,
+    pub font_family: Option<String>,
+    pub completion_quote_policy: Option<String>,
+    pub completion_include_table_prefix: Option<bool>,
+    pub keymap_preset: Option<String>,
+    pub custom_keymap: Option<Map<String, Value>>,
+    pub sql_format_options: Option<Map<String, Value>>,
+    pub sql_execution_strategy: Option<String>,
+    pub sql_snippets: Option<Vec<SqlSnippet>>,
 }
 
 #[allow(dead_code)] // error mirror; remove with the settings view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SettingsImportError {
+pub enum SettingsImportError {
     InvalidJson,
     RootMustBeObject,
 }
 
 #[allow(dead_code)] // error mirror; remove with the settings view.
 impl SettingsImportError {
-    pub(crate) fn message(self) -> &'static str {
+    pub fn message(self) -> &'static str {
         match self {
             Self::InvalidJson => "Invalid JSON format",
             Self::RootMustBeObject => "Root must be an object",
@@ -81,7 +81,7 @@ impl SettingsImportError {
 /// React `exportEditorSettings`: pretty JSON (2-space indent) of only the
 /// whitelisted editor/snippet fields. `exported_at` is the host's ISO string.
 #[allow(dead_code)] // helper; remove with the settings view.
-pub(crate) fn export_editor_settings(settings: &EditorSettings, exported_at: &str) -> String {
+pub fn export_editor_settings(settings: &EditorSettings, exported_at: &str) -> String {
     let mut editor = Map::new();
     if let Some(value) = &settings.font_size {
         editor.insert("fontSize".to_owned(), Value::Number(value.clone()));
@@ -135,7 +135,7 @@ pub(crate) fn export_editor_settings(settings: &EditorSettings, exported_at: &st
 /// React `importEditorSettings`: parse, validate the root, then map only the
 /// safe editor/snippet fields. Everything else is silently dropped.
 #[allow(dead_code)] // helper; remove with the settings view.
-pub(crate) fn import_editor_settings(json_str: &str) -> Result<EditorSettingsPatch, SettingsImportError> {
+pub fn import_editor_settings(json_str: &str) -> Result<EditorSettingsPatch, SettingsImportError> {
     let parsed: Value = serde_json::from_str(json_str)
         .map_err(|_| SettingsImportError::InvalidJson)?;
     // React's guard is `!parsed || typeof parsed !== 'object'`: arrays pass

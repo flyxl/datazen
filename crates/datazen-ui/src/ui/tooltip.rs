@@ -34,7 +34,7 @@ use rune_kit::{popover, Kit, Placement, Tooltip as KitTooltip, TooltipAppearance
 const COMPACT_MAX_WIDTH: f32 = 320.0;
 
 /// A small hint anchored to a trigger.
-pub(crate) struct Tooltip {
+pub struct Tooltip {
     key: String,
     trigger: Option<El>,
     text: Option<String>,
@@ -46,7 +46,7 @@ pub(crate) struct Tooltip {
 }
 
 impl Tooltip {
-    pub(crate) fn new(key: impl Into<String>) -> Tooltip {
+    pub fn new(key: impl Into<String>) -> Tooltip {
         Tooltip {
             key: key.into(),
             trigger: None,
@@ -59,46 +59,46 @@ impl Tooltip {
         }
     }
 
-    pub(crate) fn trigger(mut self, trigger: El) -> Tooltip {
+    pub fn trigger(mut self, trigger: El) -> Tooltip {
         self.trigger = Some(trigger);
         self
     }
 
     /// Plain text content in the kit's font and ink for the chosen appearance.
-    pub(crate) fn text(mut self, text: impl Into<String>) -> Tooltip {
+    pub fn text(mut self, text: impl Into<String>) -> Tooltip {
         self.text = Some(text.into());
         self
     }
 
     /// Plain text content in the style's font and ink, whichever style builds the tooltip.
-    pub(crate) fn label(mut self, label: impl Into<String>) -> Tooltip {
+    pub fn label(mut self, label: impl Into<String>) -> Tooltip {
         self.label = Some(label.into());
         self
     }
 
     /// Any extra content (keybinds, spans). Confirm at first real call site.
-    pub(crate) fn child(mut self, child: El) -> Tooltip {
+    pub fn child(mut self, child: El) -> Tooltip {
         self.children.push(child);
         self
     }
 
-    pub(crate) fn appearance(mut self, appearance: TooltipAppearance) -> Tooltip {
+    pub fn appearance(mut self, appearance: TooltipAppearance) -> Tooltip {
         self.appearance = appearance;
         self
     }
 
-    pub(crate) fn placement(mut self, placement: Placement) -> Tooltip {
+    pub fn placement(mut self, placement: Placement) -> Tooltip {
         self.placement = placement;
         self
     }
 
-    pub(crate) fn open(mut self, open: bool) -> Tooltip {
+    pub fn open(mut self, open: bool) -> Tooltip {
         self.open = open;
         self
     }
 
     /// Builds the trigger, pushing the tooltip into `layer` while `open`.
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let mut kit = KitTooltip::new(&self.key)
             .appearance(self.appearance)
             .placement(self.placement)
@@ -130,7 +130,7 @@ impl Tooltip {
 }
 
 /// A rich preview card anchored to a trigger.
-pub(crate) struct HoverCard {
+pub struct HoverCard {
     key: String,
     trigger: Option<El>,
     body: Vec<El>,
@@ -139,7 +139,7 @@ pub(crate) struct HoverCard {
 }
 
 impl HoverCard {
-    pub(crate) fn new(key: impl Into<String>) -> HoverCard {
+    pub fn new(key: impl Into<String>) -> HoverCard {
         HoverCard {
             key: key.into(),
             trigger: None,
@@ -149,22 +149,22 @@ impl HoverCard {
         }
     }
 
-    pub(crate) fn trigger(mut self, trigger: El) -> HoverCard {
+    pub fn trigger(mut self, trigger: El) -> HoverCard {
         self.trigger = Some(trigger);
         self
     }
 
-    pub(crate) fn child(mut self, child: El) -> HoverCard {
+    pub fn child(mut self, child: El) -> HoverCard {
         self.body.push(child);
         self
     }
 
-    pub(crate) fn placement(mut self, placement: Placement) -> HoverCard {
+    pub fn placement(mut self, placement: Placement) -> HoverCard {
         self.placement = placement;
         self
     }
 
-    pub(crate) fn open(mut self, open: bool) -> HoverCard {
+    pub fn open(mut self, open: bool) -> HoverCard {
         self.open = open;
         self
     }
@@ -173,7 +173,7 @@ impl HoverCard {
     ///
     /// The anchor row is sized to the trigger (not a full-width row) so placement is measured
     /// from the trigger bounds; content is positioned with `popover::anchored`.
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let anchor_key = format!("{}-trigger", self.key);
         // Keep the anchor sized to the trigger content even inside a stretching column.
         let anchor = row().key(anchor_key.clone()).children(self.trigger);

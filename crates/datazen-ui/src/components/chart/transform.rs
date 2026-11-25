@@ -66,7 +66,7 @@ const NULL_CATEGORY: &str = "__null__";
 const SERIES_SEPARATOR: &str = "·";
 
 /// React `transformData`: the full pipeline.
-pub(crate) fn transform_data(
+pub fn transform_data(
     result: &StatementResult,
     config: &ChartConfig,
 ) -> TransformResult {

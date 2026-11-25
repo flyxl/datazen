@@ -35,15 +35,15 @@ const ERROR_TEXT: f32 = 12.0;
 
 /// `SchemaDiffWindowJobSection`'s props (the React prop set verbatim;
 /// the callbacks are the host's).
-pub(crate) struct SchemaDiffWindowJobSection<'a, S: 'static> {
-    pub(crate) current_job: Option<&'a SchemaDiffTrackedJobVm>,
-    pub(crate) latest_apply: Option<&'a SchemaDiffJobDetailsVm>,
-    pub(crate) cancel_outcome: SchemaDiffCancelOutcome,
-    pub(crate) verifying: bool,
-    pub(crate) error: Option<&'a str>,
-    pub(crate) target_ready: bool,
-    pub(crate) on_cancel: Option<Rc<dyn Fn(&mut S)>>,
-    pub(crate) on_verify: Option<Rc<dyn Fn(&mut S, String)>>,
+pub struct SchemaDiffWindowJobSection<'a, S: 'static> {
+    pub current_job: Option<&'a SchemaDiffTrackedJobVm>,
+    pub latest_apply: Option<&'a SchemaDiffJobDetailsVm>,
+    pub cancel_outcome: SchemaDiffCancelOutcome,
+    pub verifying: bool,
+    pub error: Option<&'a str>,
+    pub target_ready: bool,
+    pub on_cancel: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_verify: Option<Rc<dyn Fn(&mut S, String)>>,
 }
 
 /// `SchemaDiffWindowJobSection({...})`: the status panel, then the
@@ -51,7 +51,7 @@ pub(crate) struct SchemaDiffWindowJobSection<'a, S: 'static> {
 /// answers `None` with nothing tracked; the strip renders only with
 /// an error) — the section is then empty, like React's empty
 /// fragment.
-pub(crate) fn schema_diff_window_job_section<S: 'static>(
+pub fn schema_diff_window_job_section<S: 'static>(
     k: &Kit,
     props: SchemaDiffWindowJobSection<'_, S>,
 ) -> El {

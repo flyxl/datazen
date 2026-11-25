@@ -34,10 +34,10 @@ use super::{
 #[allow(dead_code)] // structure-editor view not landed; remove its allow when wired
 impl AlterStrategy {
     /// Every React `'none' | 'direct' | 'sqliteRebuild'` value, in source order.
-    pub(crate) const ALL: [Self; 3] = [Self::None, Self::Direct, Self::SqliteRebuild];
+    pub const ALL: [Self; 3] = [Self::None, Self::Direct, Self::SqliteRebuild];
 
     /// The exact React string literal for this strategy.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",
             Self::Direct => "direct",
@@ -46,7 +46,7 @@ impl AlterStrategy {
     }
 
     /// Parse a React string literal back into the variant.
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "none" => Some(Self::None),
             "direct" => Some(Self::Direct),
@@ -59,10 +59,10 @@ impl AlterStrategy {
 #[allow(dead_code)] // structure-editor view not landed; remove its allow when wired
 impl StructureChangeMode {
     /// Every React `'create' | 'alter'` value, in source order.
-    pub(crate) const ALL: [Self; 2] = [Self::Create, Self::Alter];
+    pub const ALL: [Self; 2] = [Self::Create, Self::Alter];
 
     /// The exact React string literal for this mode (driver-api uses lowercase).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Create => "create",
             Self::Alter => "alter",
@@ -70,7 +70,7 @@ impl StructureChangeMode {
     }
 
     /// Parse a React string literal back into the variant.
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "create" => Some(Self::Create),
             "alter" => Some(Self::Alter),
@@ -83,7 +83,7 @@ impl StructureChangeMode {
 impl StatementRisk {
     /// Parse a React string literal back into the variant (`as_str` lives with
     /// the T036 mirror in `mod.rs`).
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "additive" => Some(Self::Additive),
             "destructive" => Some(Self::Destructive),
@@ -98,7 +98,7 @@ impl StructureCapabilityFlag {
     /// The 17 boolean-valued keys of `StructureCapabilities`, in React source
     /// order. `alterStrategy`, `dialectId` and `indexMethods` are non-boolean
     /// and therefore not flags (mapped-type semantics of the React export).
-    pub(crate) const ALL: [Self; 17] = [
+    pub const ALL: [Self; 17] = [
         Self::CreateTable,
         Self::AddColumn,
         Self::DropColumn,
@@ -119,7 +119,7 @@ impl StructureCapabilityFlag {
     ];
 
     /// The exact camelCase property name of the boolean capability field.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::CreateTable => "createTable",
             Self::AddColumn => "addColumn",
@@ -143,7 +143,7 @@ impl StructureCapabilityFlag {
 
     /// Parse a camelCase boolean capability key back into the variant. The
     /// three non-boolean keys are not accepted.
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|flag| flag.as_str() == value)
     }
 }
@@ -151,38 +151,38 @@ impl StructureCapabilityFlag {
 /// One `{ value, label }` entry of the extension-points `columnTypes` array.
 #[allow(dead_code)] // structure-editor view not landed; remove its allow when wired
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct StructureEditorColumnTypeOption {
-    pub(crate) value: String,
-    pub(crate) label: String,
+pub struct StructureEditorColumnTypeOption {
+    pub value: String,
+    pub label: String,
 }
 
 /// The optional boolean `fields` map of the extension-points config.
 #[allow(dead_code)] // structure-editor view not landed; remove its allow when wired
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct StructureEditorFields {
-    pub(crate) comment: Option<bool>,
-    pub(crate) charset: Option<bool>,
-    pub(crate) collation: Option<bool>,
-    pub(crate) unsigned: Option<bool>,
-    pub(crate) length: Option<bool>,
+pub struct StructureEditorFields {
+    pub comment: Option<bool>,
+    pub charset: Option<bool>,
+    pub collation: Option<bool>,
+    pub unsigned: Option<bool>,
+    pub length: Option<bool>,
 }
 
 /// Complete mirror of the `StructureEditorUiConfig` that React re-exports from
 /// `@datazen/extension-points` (`types.ts:1`).
 #[allow(dead_code)] // structure-editor view not landed; remove its allow when wired
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ExtensionStructureEditorUiConfig {
-    pub(crate) enabled: Option<bool>,
-    pub(crate) column_types: Vec<StructureEditorColumnTypeOption>,
-    pub(crate) default_column_type: String,
-    pub(crate) fields: StructureEditorFields,
-    pub(crate) index_methods: Vec<String>,
+pub struct ExtensionStructureEditorUiConfig {
+    pub enabled: Option<bool>,
+    pub column_types: Vec<StructureEditorColumnTypeOption>,
+    pub default_column_type: String,
+    pub fields: StructureEditorFields,
+    pub index_methods: Vec<String>,
 }
 
 #[allow(dead_code)] // structure-editor view not landed; remove its allow when wired
 impl ExtensionStructureEditorUiConfig {
     /// Project onto the two-field subset the T036/T085 helpers consume.
-    pub(crate) fn to_legacy(&self) -> StructureEditorUiConfig {
+    pub fn to_legacy(&self) -> StructureEditorUiConfig {
         StructureEditorUiConfig {
             enabled: self.enabled,
             default_column_type: self.default_column_type.clone(),

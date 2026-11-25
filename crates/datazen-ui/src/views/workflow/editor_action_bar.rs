@@ -38,7 +38,7 @@ const GAP: f32 = 12.0;
 /// `on_save` / `on_cancel` mutate the host's state `S`; `save_disabled`
 /// reproduces React's `disabled` prop (a disabled Save is neither focusable
 /// nor pressable, and dims like the kit's contrast skin does).
-pub(crate) fn workflow_editor_action_bar<S: 'static>(
+pub fn workflow_editor_action_bar<S: 'static>(
     save_key: impl Into<String>,
     save_disabled: bool,
     on_save: impl Fn(&mut S) + 'static,

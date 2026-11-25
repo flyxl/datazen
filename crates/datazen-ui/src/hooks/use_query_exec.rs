@@ -51,7 +51,7 @@ use std::sync::OnceLock;
 use datazen_driver_api::StatementResult;
 
 /// `DEFAULT_PANE_ID` — the pane a query panel owns before any split.
-pub(crate) const DEFAULT_PANE_ID: &str = "main";
+pub const DEFAULT_PANE_ID: &str = "main";
 
 /// `PANE_SEPARATOR` — between a panel id and a secondary pane id.
 /// Panel ids are `panel-<prefix>-<n>`, so they can never contain it.
@@ -59,7 +59,7 @@ const PANE_SEPARATOR: &str = "::";
 
 /// `QueryCancelState`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum QueryCancelState {
+pub enum QueryCancelState {
     Idle,
     Requested,
     Failed,
@@ -67,7 +67,7 @@ pub(crate) enum QueryCancelState {
 
 impl QueryCancelState {
     /// The wire spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Idle => "idle",
             Self::Requested => "requested",
@@ -78,7 +78,7 @@ impl QueryCancelState {
 
 /// `QueryTerminalState`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum QueryTerminalState {
+pub enum QueryTerminalState {
     Succeeded,
     Failed,
     Cancelled,
@@ -87,7 +87,7 @@ pub(crate) enum QueryTerminalState {
 
 impl QueryTerminalState {
     /// The wire spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Succeeded => "succeeded",
             Self::Failed => "failed",
@@ -99,7 +99,7 @@ impl QueryTerminalState {
 
 /// `resultViewMode?: 'table' | 'chart'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum QueryResultViewMode {
+pub enum QueryResultViewMode {
     Table,
     Chart,
 }
@@ -108,26 +108,26 @@ pub(crate) enum QueryResultViewMode {
 /// `PartialEq`: `results` is the driver api's `StatementResult`
 /// (an opaque wire type); tests compare the scalar fields.
 #[derive(Clone, Debug)]
-pub(crate) struct QueryExecState {
-    pub(crate) sql: String,
-    pub(crate) results: Vec<StatementResult>,
-    pub(crate) active_result_idx: u32,
-    pub(crate) error: Option<String>,
-    pub(crate) running: bool,
-    pub(crate) execution_time_ms: Option<u64>,
-    pub(crate) cancel_state: QueryCancelState,
-    pub(crate) cancel_error: Option<String>,
-    pub(crate) terminal_state: Option<QueryTerminalState>,
-    pub(crate) result_view_mode: Option<QueryResultViewMode>,
-    pub(crate) execution_id: Option<String>,
-    pub(crate) stream_run_id: Option<u64>,
-    pub(crate) result_detail_row_index: Option<u32>,
+pub struct QueryExecState {
+    pub sql: String,
+    pub results: Vec<StatementResult>,
+    pub active_result_idx: u32,
+    pub error: Option<String>,
+    pub running: bool,
+    pub execution_time_ms: Option<u64>,
+    pub cancel_state: QueryCancelState,
+    pub cancel_error: Option<String>,
+    pub terminal_state: Option<QueryTerminalState>,
+    pub result_view_mode: Option<QueryResultViewMode>,
+    pub execution_id: Option<String>,
+    pub stream_run_id: Option<u64>,
+    pub result_detail_row_index: Option<u32>,
 }
 
 impl QueryExecState {
     /// `emptyQueryExecState()` — a fresh mutable copy of the default
     /// (what the store seeds a pane with).
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             sql: String::new(),
             results: Vec::new(),
@@ -146,7 +146,7 @@ impl QueryExecState {
     }
 
     /// One field's value (the single-field face's answer).
-    pub(crate) fn field(&self, field: QueryExecField) -> QueryExecFieldValue {
+    pub fn field(&self, field: QueryExecField) -> QueryExecFieldValue {
         match field {
             QueryExecField::Sql => QueryExecFieldValue::Text(self.sql.clone()),
             QueryExecField::ActiveResultIdx => QueryExecFieldValue::Index(self.active_result_idx),
@@ -174,14 +174,14 @@ impl QueryExecState {
 
 /// `EMPTY_QUERY_EXEC` — the shared frozen default the `??` fallback
 /// answers (one instance for every caller, React's `Object.freeze`).
-pub(crate) fn empty_query_exec() -> &'static QueryExecState {
+pub fn empty_query_exec() -> &'static QueryExecState {
     static EMPTY: OnceLock<QueryExecState> = OnceLock::new();
     EMPTY.get_or_init(QueryExecState::empty)
 }
 
 /// `paneKey(panelId, paneId = DEFAULT_PANE_ID)`: the default pane
 /// keys by the bare panel id; a secondary pane by the composite.
-pub(crate) fn pane_key(panel_id: &str, pane_id: Option<&str>) -> String {
+pub fn pane_key(panel_id: &str, pane_id: Option<&str>) -> String {
     match pane_id {
         None | Some(DEFAULT_PANE_ID) => panel_id.to_owned(),
         Some(pane) => format!("{panel_id}{PANE_SEPARATOR}{pane}"),
@@ -190,7 +190,7 @@ pub(crate) fn pane_key(panel_id: &str, pane_id: Option<&str>) -> String {
 
 /// `panelIdOfPaneKey(key)`: the panel that owns `key` (a bare panel
 /// id is its own answer).
-pub(crate) fn panel_id_of_pane_key(key: &str) -> &str {
+pub fn panel_id_of_pane_key(key: &str) -> &str {
     match key.find(PANE_SEPARATOR) {
         Some(at) => &key[..at],
         None => key,
@@ -199,7 +199,7 @@ pub(crate) fn panel_id_of_pane_key(key: &str) -> &str {
 
 /// `paneIdOfPaneKey(key)`: the pane `key` names (a bare panel id is
 /// the default pane).
-pub(crate) fn pane_id_of_pane_key(key: &str) -> &str {
+pub fn pane_id_of_pane_key(key: &str) -> &str {
     match key.find(PANE_SEPARATOR) {
         Some(at) => &key[at + PANE_SEPARATOR.len()..],
         None => DEFAULT_PANE_ID,
@@ -208,7 +208,7 @@ pub(crate) fn pane_id_of_pane_key(key: &str) -> &str {
 
 /// The single-field face's field selector (`keyof QueryExecState`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum QueryExecField {
+pub enum QueryExecField {
     Sql,
     ActiveResultIdx,
     Error,
@@ -225,7 +225,7 @@ pub(crate) enum QueryExecField {
 
 /// The single-field face's answer (one field's scalar).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum QueryExecFieldValue {
+pub enum QueryExecFieldValue {
     Text(String),
     Index(u32),
     OptText(Option<String>),
@@ -240,7 +240,7 @@ pub(crate) enum QueryExecFieldValue {
 /// `useQueryExec(panelId, paneId?)`: the pane's execution state —
 /// the stored entry, or the shared default when the pane has none
 /// (a never-run pane, or the map itself not yet mounted).
-pub(crate) fn use_query_exec<'a>(
+pub fn use_query_exec<'a>(
     query_exec: Option<&'a HashMap<String, QueryExecState>>,
     panel_id: &str,
     pane_id: Option<&str>,
@@ -253,7 +253,7 @@ pub(crate) fn use_query_exec<'a>(
 
 /// `useQueryExecField(panelId, field, paneId?)`: one field of the
 /// pane's execution state (the `?? EMPTY[field]` fallback included).
-pub(crate) fn use_query_exec_field(
+pub fn use_query_exec_field(
     query_exec: Option<&HashMap<String, QueryExecState>>,
     panel_id: &str,
     field: QueryExecField,

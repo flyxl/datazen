@@ -66,7 +66,7 @@ use crate::ui::kit::kit;
 /// React `MessageSegment` (`lib/aiMessageBlocks.ts`): alternating text and
 /// fenced-code segments, in order.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum MessageSegment {
+pub enum MessageSegment {
     /// React `{ type: 'text', content }`.
     Text { content: String },
     /// React `{ type: 'code', language, code }`; `language` is already
@@ -80,7 +80,7 @@ pub(crate) enum MessageSegment {
 /// closing fence may be anywhere in the remaining text (the regex is not
 /// line-anchored); the captured code is `trimEnd()`-ed and the language
 /// tag lower-cased.
-pub(crate) fn parse_message_segments(src: &str) -> Vec<MessageSegment> {
+pub fn parse_message_segments(src: &str) -> Vec<MessageSegment> {
     if src.is_empty() {
         return Vec::new();
     }
@@ -548,7 +548,7 @@ fn markdown_link_at(src: &str, i: usize) -> Option<(String, String)> {
 /// passes to [`AiMessageContent::build`] (one slot per rendered block —
 /// a shared slot would share fullscreen, dialect and copy feedback; see
 /// the `AiCodeBlock` docs).
-pub(crate) struct AiMessageCodeWiring<S: 'static> {
+pub struct AiMessageCodeWiring<S: 'static> {
     /// Flips the `idx`-th block's fullscreen.
     pub toggle_fullscreen: Rc<dyn Fn(usize, &mut S)>,
     /// Picks the `idx`-th block's dialect.
@@ -577,7 +577,7 @@ impl<S: 'static> Clone for AiMessageCodeWiring<S> {
 /// forwarded to every `AiCodeBlock`; `on_cite_memory` and `on_open_link`
 /// are this port's dispatch for the citation / link `Link`s (React's
 /// browser handles `href` navigation; here the host decides).
-pub(crate) struct AiMessageContent<S: 'static> {
+pub struct AiMessageContent<S: 'static> {
     content: String,
     wiring: AiMessageCodeWiring<S>,
     sql_dialect: Option<SqlDialect>,
@@ -595,7 +595,7 @@ pub(crate) struct AiMessageContent<S: 'static> {
 impl<S: 'static> AiMessageContent<S> {
     /// React `<AiMessageContent content={...} />` with the code-block
     /// state wiring the caller owns.
-    pub(crate) fn new(content: impl Into<String>, wiring: AiMessageCodeWiring<S>) -> Self {
+    pub fn new(content: impl Into<String>, wiring: AiMessageCodeWiring<S>) -> Self {
         Self {
             content: content.into(),
             wiring,
@@ -614,31 +614,31 @@ impl<S: 'static> AiMessageContent<S> {
 
     /// React `sqlDialect?: string` (one of the seven values; an unknown
     /// value falls back to PostgreSQL, as `AiCodeBlockState::new` does).
-    pub(crate) fn sql_dialect(mut self, sql_dialect: impl AsRef<str>) -> Self {
+    pub fn sql_dialect(mut self, sql_dialect: impl AsRef<str>) -> Self {
         self.sql_dialect = SqlDialect::from_value(sql_dialect.as_ref());
         self
     }
 
     /// React `isStreaming?: boolean`.
-    pub(crate) fn is_streaming(mut self, is_streaming: bool) -> Self {
+    pub fn is_streaming(mut self, is_streaming: bool) -> Self {
         self.is_streaming = is_streaming;
         self
     }
 
     /// React `memoryReferences?: string[]`.
-    pub(crate) fn memory_references(mut self, references: Vec<String>) -> Self {
+    pub fn memory_references(mut self, references: Vec<String>) -> Self {
         self.memory_references = Some(references);
         self
     }
 
     /// React `onInsertSql?: (sql) => void`.
-    pub(crate) fn on_insert_sql(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_insert_sql(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_insert_sql = Some(Rc::new(f));
         self
     }
 
     /// React `onRunCode?: (code, language) => void`.
-    pub(crate) fn on_run_code(
+    pub fn on_run_code(
         mut self,
         f: impl Fn(&mut S, String, String) + 'static,
     ) -> Self {
@@ -647,14 +647,14 @@ impl<S: 'static> AiMessageContent<S> {
     }
 
     /// React `onNewQuery?: (code) => void`.
-    pub(crate) fn on_new_query(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_new_query(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_new_query = Some(Rc::new(f));
         self
     }
 
     /// The host's clipboard write starter for a code segment's copy
     /// button (`AiCodeBlock`'s `on_copy`).
-    pub(crate) fn on_copy_code(
+    pub fn on_copy_code(
         mut self,
         f: impl Fn(&mut S, String, u64) + 'static,
     ) -> Self {
@@ -664,20 +664,20 @@ impl<S: 'static> AiMessageContent<S> {
 
     /// A `[M1]` citation press: React's `<a href="#memory-M1">` click,
     /// which the bubble routes to `ChatBubbleState::open_memory_citation`.
-    pub(crate) fn on_cite_memory(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_cite_memory(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_cite_memory = Some(Rc::new(f));
         self
     }
 
     /// A markdown link press: React's browser navigates the `href`; the
     /// host opens it.
-    pub(crate) fn on_open_link(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_open_link(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_open_link = Some(Rc::new(f));
         self
     }
 
     /// Override the root key prefix.
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
@@ -689,7 +689,7 @@ impl<S: 'static> AiMessageContent<S> {
     /// (one per code segment, seeded to the segment count); a missing
     /// slot renders with the default state, which only a lagging seed
     /// can produce.
-    pub(crate) fn build(self, slots: &[AiCodeBlockState], dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, slots: &[AiCodeBlockState], dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let segments = parse_message_segments(&self.content);
         let mut root = col().key(self.key.clone()).min_w(0.0).w_full();

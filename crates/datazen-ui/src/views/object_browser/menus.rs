@@ -24,7 +24,7 @@ fn trigger(key: &str) -> El {
 
 /// React's routine-list menu, anchored at the secondary press point.
 #[allow(dead_code)] // menu builder; remove when the panel host wires the view.
-pub(crate) fn build_list_menu<S: 'static>(
+pub fn build_list_menu<S: 'static>(
     object: &BrowserObject,
     press: PointerPress,
     on_action: &Option<ObjectBrowserActionFn<S>>,
@@ -67,7 +67,7 @@ pub(crate) fn build_list_menu<S: 'static>(
 
 /// React's DDL-editor menu: a separator, then execute / format / comment.
 #[allow(dead_code)] // menu builder; remove when the panel host wires the view.
-pub(crate) fn build_editor_menu<S: 'static>(
+pub fn build_editor_menu<S: 'static>(
     vm: &ObjectBrowserVm,
     press: PointerPress,
     on_action: &Option<ObjectBrowserActionFn<S>>,

@@ -17,7 +17,7 @@ use crate::support::formatters::number_text;
 /// text is semantically equivalent, and turning on `preserve_order` would
 /// change every crate in the workspace, so the order is pinned by a test and
 /// left to a future decision.
-pub(crate) fn to_edit_string(value: &Value) -> String {
+pub fn to_edit_string(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
         Value::String(text) => text.clone(),
@@ -28,7 +28,7 @@ pub(crate) fn to_edit_string(value: &Value) -> String {
 }
 
 /// Unicode code points, not UTF-16 code units: an emoji is one, not two.
-pub(crate) fn count_code_points(text: &str) -> usize {
+pub fn count_code_points(text: &str) -> usize {
     text.chars().count()
 }
 
@@ -37,7 +37,7 @@ pub(crate) fn count_code_points(text: &str) -> usize {
 /// Strings count their UTF-8 bytes; numbers and booleans count their textual
 /// form; an array counts its length; everything else (objects, null) is 0,
 /// matching the React helper.
-pub(crate) fn value_byte_size(value: &Value) -> usize {
+pub fn value_byte_size(value: &Value) -> usize {
     match value {
         Value::String(text) => text.len(),
         Value::Number(number) => number_text(number).len(),

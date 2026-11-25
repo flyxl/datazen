@@ -58,7 +58,7 @@ use crate::ui::kit::kit;
 /// reads). The ten syntax slots are present in every shipped preset, so
 /// they are plain; `foreground` / `background` are the optional pair
 /// the fallbacks below resolve.
-pub(crate) struct SqlSyntaxPalette {
+pub struct SqlSyntaxPalette {
     pub keyword: &'static str,
     pub string: &'static str,
     pub number: &'static str,
@@ -74,7 +74,7 @@ pub(crate) struct SqlSyntaxPalette {
 }
 
 /// React `SqlSyntaxPreset` (the preview's read of it).
-pub(crate) struct SqlSyntaxPreset {
+pub struct SqlSyntaxPreset {
     pub id: &'static str,
     pub label: &'static str,
     pub dark: SqlSyntaxPalette,
@@ -83,7 +83,7 @@ pub(crate) struct SqlSyntaxPreset {
 
 /// React `SQL_SYNTAX_PRESETS` — all seven, verbatim from
 /// `themeEditorColors.ts:133–370` (T632's seam; see the module docs).
-pub(crate) static SQL_SYNTAX_PRESETS: [SqlSyntaxPreset; 7] = [
+pub static SQL_SYNTAX_PRESETS: [SqlSyntaxPreset; 7] = [
     SqlSyntaxPreset {
         id: "default",
         label: "Default (DataZen)",
@@ -312,7 +312,7 @@ pub(crate) static SQL_SYNTAX_PRESETS: [SqlSyntaxPreset; 7] = [
 
 /// React's inline `lookupPreset`: the id's preset, or the first when the
 /// id is unknown (`?? SQL_SYNTAX_PRESETS[0]`).
-pub(crate) fn preset_for(id: &str) -> &'static SqlSyntaxPreset {
+pub fn preset_for(id: &str) -> &'static SqlSyntaxPreset {
     SQL_SYNTAX_PRESETS
         .iter()
         .find(|preset| preset.id == id)
@@ -321,7 +321,7 @@ pub(crate) fn preset_for(id: &str) -> &'static SqlSyntaxPreset {
 
 /// React's background fallback: `palette.background ?? (dark ?
 /// '#1e1e1e' : '#ffffff')`.
-pub(crate) fn background_of(palette: &SqlSyntaxPalette, dark: bool) -> Color {
+pub fn background_of(palette: &SqlSyntaxPalette, dark: bool) -> Color {
     palette
         .background
         .and_then(|hex| rune::color::hex(hex))
@@ -334,7 +334,7 @@ pub(crate) fn background_of(palette: &SqlSyntaxPalette, dark: bool) -> Color {
 
 /// React's foreground fallback: `palette.foreground ?? (dark ?
 /// '#d4d4d4' : '#000000')`.
-pub(crate) fn foreground_of(palette: &SqlSyntaxPalette, dark: bool) -> Color {
+pub fn foreground_of(palette: &SqlSyntaxPalette, dark: bool) -> Color {
     palette
         .foreground
         .and_then(|hex| rune::color::hex(hex))
@@ -347,7 +347,7 @@ pub(crate) fn foreground_of(palette: &SqlSyntaxPalette, dark: bool) -> Color {
 
 /// One resolved slot colour: the preset's hex, or the foreground when
 /// the slot is absent (React's `palette[key] ?? fg`).
-pub(crate) fn slot_of(palette: &SqlSyntaxPalette, slot: &str, fg: Color) -> Color {
+pub fn slot_of(palette: &SqlSyntaxPalette, slot: &str, fg: Color) -> Color {
     let hex = match slot {
         "keyword" => Some(palette.keyword),
         "string" => Some(palette.string),
@@ -367,7 +367,7 @@ pub(crate) fn slot_of(palette: &SqlSyntaxPalette, slot: &str, fg: Color) -> Colo
 /// React `TokenDef.colorKey`: the six contract keys plus the four
 /// extended slots and the foreground fallback.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TokenColor {
+pub enum TokenColor {
     Comment,
     Keyword,
     String,
@@ -467,13 +467,13 @@ static SAMPLE_TOKENS: [TokenDef; 53] = [
 
 /// The preview: the sample query painted with the preset's colours.
 /// Build it with the selected `themeId` and the surface's dark flag.
-pub(crate) struct SqlSyntaxPreview {
+pub struct SqlSyntaxPreview {
     theme_id: String,
     dark: bool,
 }
 
 impl SqlSyntaxPreview {
-    pub(crate) fn new(theme_id: impl Into<String>, dark: bool) -> Self {
+    pub fn new(theme_id: impl Into<String>, dark: bool) -> Self {
         Self { theme_id: theme_id.into(), dark }
     }
 
@@ -481,7 +481,7 @@ impl SqlSyntaxPreview {
     /// rounded-lg border border-edge text-[12px] leading-[1.7]` over
     /// the preset background, the `<pre>` unwrapped mono text with one
     /// coloured span per token.
-    pub(crate) fn build(&self) -> El {
+    pub fn build(&self) -> El {
         let k = kit(self.dark);
         let preset = preset_for(&self.theme_id);
         let palette = if self.dark { &preset.dark } else { &preset.light };
@@ -518,7 +518,7 @@ impl SqlSyntaxPreview {
 /// with its coloured span (the comment tokens italic). This is React's
 /// per-token `<span>` list as the text model's span list — one span
 /// per token, covering the text with no gaps or overlaps.
-pub(crate) fn sample_token_spans(
+pub fn sample_token_spans(
     palette: &SqlSyntaxPalette,
     fg: Color,
 ) -> (String, Vec<Span>) {

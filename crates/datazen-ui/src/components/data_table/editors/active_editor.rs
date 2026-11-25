@@ -31,9 +31,9 @@ use crate::support::cell_editor_kind::CellValueErrorReason;
 
 /// React `ActiveCellEditor`: the panel the editor belongs to, plus the
 /// commit hook.
-pub(crate) struct ActiveCellEditor {
+pub struct ActiveCellEditor {
     /// The panel the editor belongs to.
-    pub(crate) panel_id: String,
+    pub panel_id: String,
     /// `commit()` — captures the draft; returns `None` when the draft was
     /// written (or the editor was closed), and the reason when it was
     /// refused — in which case the editor stays open with its inline error.
@@ -43,7 +43,7 @@ pub(crate) struct ActiveCellEditor {
 impl ActiveCellEditor {
     /// Build the editor the way React's object literal does: the panel id
     /// plus the `commit` method.
-    pub(crate) fn new(
+    pub fn new(
         panel_id: impl Into<String>,
         commit: impl Fn() -> Option<CellValueErrorReason> + 'static,
     ) -> Self {
@@ -55,7 +55,7 @@ impl ActiveCellEditor {
 
     /// Commit the draft. `None` = written; `Some(reason)` = refused, the
     /// editor stays open with its inline error.
-    pub(crate) fn commit(&self) -> Option<CellValueErrorReason> {
+    pub fn commit(&self) -> Option<CellValueErrorReason> {
         (self.commit)()
     }
 }
@@ -66,7 +66,7 @@ thread_local! {
 }
 
 /// `getActiveCellEditor()`: the editor that is open right now, if any.
-pub(crate) fn get_active_cell_editor() -> Option<Rc<ActiveCellEditor>> {
+pub fn get_active_cell_editor() -> Option<Rc<ActiveCellEditor>> {
     ACTIVE_EDITOR.with(|cell| cell.borrow().clone())
 }
 
@@ -77,14 +77,14 @@ pub(crate) fn get_active_cell_editor() -> Option<Rc<ActiveCellEditor>> {
 /// (`if (activeEditor === editor) activeEditor = null`). That is the React
 /// closure's identity guard, spelled with `Rc::ptr_eq`.
 #[must_use = "dropping the registration immediately unregisters the editor"]
-pub(crate) struct ActiveCellEditorRegistration {
+pub struct ActiveCellEditorRegistration {
     editor: Rc<ActiveCellEditor>,
 }
 
 impl ActiveCellEditorRegistration {
     /// The closure's explicit call form (React's effect cleanup). Consuming
     /// self, it is exactly the drop path.
-    pub(crate) fn unregister(self) {}
+    pub fn unregister(self) {}
 }
 
 impl Drop for ActiveCellEditorRegistration {
@@ -104,7 +104,7 @@ impl Drop for ActiveCellEditorRegistration {
 /// The editor registers itself when it mounts and unregisters when it
 /// unmounts; here mounting is the call and unmounting is the returned
 /// registration's `Drop` (or its explicit [`unregister`]).
-pub(crate) fn register_active_cell_editor(
+pub fn register_active_cell_editor(
     editor: ActiveCellEditor,
 ) -> ActiveCellEditorRegistration {
     let editor = Rc::new(editor);

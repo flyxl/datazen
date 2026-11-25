@@ -16,16 +16,16 @@ use std::collections::BTreeMap;
 
 /// React `CANDIDATE_VALUE_LIMIT` (`lib/cellEditorCandidates.ts`).
 #[allow(dead_code)] // pure constant; drop with the candidate loader.
-pub(crate) const CANDIDATE_VALUE_LIMIT: usize = 200;
+pub const CANDIDATE_VALUE_LIMIT: usize = 200;
 
 /// React `FK_SELECTOR_CANDIDATE_LIMIT` (`lib/fkSelector.ts`).
 #[allow(dead_code)] // pure constant; drop with the FK picker.
-pub(crate) const FK_SELECTOR_CANDIDATE_LIMIT: usize = 50;
+pub const FK_SELECTOR_CANDIDATE_LIMIT: usize = 50;
 
 /// One candidate cell as the wire reports it.
 #[allow(dead_code)] // VM mirror; drop with the candidate loader.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CandidateValueVm {
+pub enum CandidateValueVm {
     Null,
     Text(String),
     Number(String),
@@ -36,7 +36,7 @@ pub(crate) enum CandidateValueVm {
 impl CandidateValueVm {
     /// React `formatFkCandidate`: only `null`/`undefined` has no option.
     #[allow(dead_code)] // pure helper; drop with the picker.
-    pub(crate) fn display(&self) -> Option<String> {
+    pub fn display(&self) -> Option<String> {
         match self {
             Self::Null => None,
             Self::Text(text) | Self::Number(text) | Self::Other(text) => Some(text.clone()),
@@ -48,28 +48,28 @@ impl CandidateValueVm {
 /// React `FkCandidateSource` (the group's single local column).
 #[allow(dead_code)] // VM mirror; drop when the host owns FK groups.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FkCandidateSourceVm {
-    pub(crate) local_column: String,
-    pub(crate) constraint_name: Option<String>,
+pub struct FkCandidateSourceVm {
+    pub local_column: String,
+    pub constraint_name: Option<String>,
 }
 
 /// React `FkCandidateResolution`'s facts as the loader reads them.
 #[allow(dead_code)] // VM mirror; drop with the FK picker.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FkResolutionVm {
-    pub(crate) unique: bool,
-    pub(crate) candidates: Vec<Vec<CandidateValueVm>>,
+pub struct FkResolutionVm {
+    pub unique: bool,
+    pub candidates: Vec<Vec<CandidateValueVm>>,
 }
 
 /// The one refusal the loader raises on its own.
 #[allow(dead_code)] // decision; drop with the FK picker.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct FkCandidateErrorVm {
-    pub(crate) message_key: &'static str,
+pub struct FkCandidateErrorVm {
+    pub message_key: &'static str,
 }
 
 #[allow(dead_code)] // exact React key; drop with the FK picker.
-pub(crate) const NOT_UNIQUE_ERROR: FkCandidateErrorVm = FkCandidateErrorVm {
+pub const NOT_UNIQUE_ERROR: FkCandidateErrorVm = FkCandidateErrorVm {
     message_key: "fkSelector.notUnique",
 };
 
@@ -78,44 +78,44 @@ pub(crate) const NOT_UNIQUE_ERROR: FkCandidateErrorVm = FkCandidateErrorVm {
 /// is a separate pure module; a missing/empty statement means "no candidates").
 #[allow(dead_code)] // VM mirror; drop with the candidate loader.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CandidateLoaderArgsVm {
-    pub(crate) db_session_id: String,
-    pub(crate) table: String,
-    pub(crate) schema: Option<String>,
-    pub(crate) database: Option<String>,
-    pub(crate) distinct_sql: Option<String>,
-    pub(crate) fk_sources: BTreeMap<String, FkCandidateSourceVm>,
+pub struct CandidateLoaderArgsVm {
+    pub db_session_id: String,
+    pub table: String,
+    pub schema: Option<String>,
+    pub database: Option<String>,
+    pub distinct_sql: Option<String>,
+    pub fk_sources: BTreeMap<String, FkCandidateSourceVm>,
 }
 
 /// The browse request: no key values, exactly one `limit`, `browse: true`.
 #[allow(dead_code)] // host intent; drop with the FK picker.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FkBrowseRequestVm {
-    pub(crate) db_session_id: String,
-    pub(crate) database: Option<String>,
-    pub(crate) schema: Option<String>,
-    pub(crate) table: String,
-    pub(crate) columns: Vec<String>,
-    pub(crate) constraint_name: Option<String>,
-    pub(crate) values: Vec<CandidateValueVm>,
-    pub(crate) limit: usize,
-    pub(crate) browse: bool,
+pub struct FkBrowseRequestVm {
+    pub db_session_id: String,
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub constraint_name: Option<String>,
+    pub values: Vec<CandidateValueVm>,
+    pub limit: usize,
+    pub browse: bool,
 }
 
 /// The enum branch's single statement, with the session/database/schema it runs in.
 #[allow(dead_code)] // host intent; drop with the candidate loader.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct EnumQueryRequestVm {
-    pub(crate) db_session_id: String,
-    pub(crate) sql: String,
-    pub(crate) database: Option<String>,
-    pub(crate) schema: Option<String>,
+pub struct EnumQueryRequestVm {
+    pub db_session_id: String,
+    pub sql: String,
+    pub database: Option<String>,
+    pub schema: Option<String>,
 }
 
 /// Which branch the loader takes for one column.
 #[allow(dead_code)] // decision; drop with the candidate loader.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CandidateRequestPlanVm {
+pub enum CandidateRequestPlanVm {
     FkBrowse(FkBrowseRequestVm),
     EnumQuery(EnumQueryRequestVm),
     NoSql,
@@ -124,7 +124,7 @@ pub(crate) enum CandidateRequestPlanVm {
 /// React `createCandidateValuesLoader`: the FK source wins; otherwise the
 /// prepared DISTINCT statement is used, and `null`/empty means no statement.
 #[allow(dead_code)] // pure decision; drop with the candidate loader.
-pub(crate) fn candidate_request_plan(
+pub fn candidate_request_plan(
     column_name: &str,
     args: &CandidateLoaderArgsVm,
 ) -> CandidateRequestPlanVm {
@@ -155,20 +155,20 @@ pub(crate) fn candidate_request_plan(
 /// The first statement of a query result (React `result.results[0]`).
 #[allow(dead_code)] // VM mirror; drop with the candidate loader.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct QueryResultVm {
-    pub(crate) statements: Vec<QueryStatementVm>,
+pub struct QueryResultVm {
+    pub statements: Vec<QueryStatementVm>,
 }
 
 /// One statement's rows.
 #[allow(dead_code)] // VM mirror; drop with the candidate loader.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct QueryStatementVm {
-    pub(crate) rows: Vec<Vec<CandidateValueVm>>,
+pub struct QueryStatementVm {
+    pub rows: Vec<Vec<CandidateValueVm>>,
 }
 
 /// React's enum branch: first statement, first cell of each row, no nulls.
 #[allow(dead_code)] // pure helper; drop with the candidate loader.
-pub(crate) fn enum_candidate_values(result: Option<&QueryResultVm>) -> Vec<String> {
+pub fn enum_candidate_values(result: Option<&QueryResultVm>) -> Vec<String> {
     let Some(result) = result else {
         return Vec::new();
     };
@@ -185,7 +185,7 @@ pub(crate) fn enum_candidate_values(result: Option<&QueryResultVm>) -> Vec<Strin
 /// React `candidatesToPickerOptions`: statement order is kept and duplicates
 /// are kept; only a null first cell has no option.
 #[allow(dead_code)] // pure helper; drop with the FK picker.
-pub(crate) fn fk_candidate_values(
+pub fn fk_candidate_values(
     resolution: &FkResolutionVm,
 ) -> Result<Vec<String>, FkCandidateErrorVm> {
     if !resolution.unique {
@@ -202,7 +202,7 @@ pub(crate) fn fk_candidate_values(
 /// supplied yet offers nothing rather than inventing rows; an unknown request
 /// (no statement) is the React `if (!sql) return []` short-circuit.
 #[allow(dead_code)] // pure decision; drop with the candidate loader.
-pub(crate) fn load_candidate_values(
+pub fn load_candidate_values(
     plan: &CandidateRequestPlanVm,
     query_result: Option<&QueryResultVm>,
     fk_resolution: Option<&FkResolutionVm>,

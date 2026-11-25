@@ -69,16 +69,16 @@ use crate::support::value_presentation::timestamp_format::{
 };
 
 /// The contribution's unique id (design §2: provider.presenter).
-pub(crate) const TIMESTAMP_CONTRIBUTION_ID: &str = "datazen.timestamp";
+pub const TIMESTAMP_CONTRIBUTION_ID: &str = "datazen.timestamp";
 
 /// The config schema version (v1: the TimestampOptions JSON shape).
-pub(crate) const TIMESTAMP_CONTRIBUTION_CONFIG_VERSION: u32 = 1;
+pub const TIMESTAMP_CONTRIBUTION_CONFIG_VERSION: u32 = 1;
 
 /// Rebuild validated options as a JSON config value (T08 export; the plan
 /// layer passes a matched rule's options to prepare as the effective
 /// config). Only validated fields appear; `sourceTimeZone` is absent when
 /// unset — validateTimestampOptions' canonical shape.
-pub(crate) fn timestamp_options_to_config_value(options: &TimestampOptions) -> serde_json::Value {
+pub fn timestamp_options_to_config_value(options: &TimestampOptions) -> serde_json::Value {
     let interpretation = match &options.interpretation {
         TimestampInterpretation::Unix { unit } => json!({
             "kind": "unix",
@@ -399,9 +399,9 @@ fn resolve_effective_options(
 }
 
 /// The timestamp presentation contribution `datazen.timestamp`.
-pub(crate) struct TimestampContribution;
+pub struct TimestampContribution;
 
-pub(crate) fn timestamp_contribution() -> Rc<dyn ValuePresentationContribution> {
+pub fn timestamp_contribution() -> Rc<dyn ValuePresentationContribution> {
     Rc::new(TimestampContribution)
 }
 
@@ -444,7 +444,7 @@ impl ValuePresentationContribution for TimestampContribution {
 }
 
 /// Helper for hosts assembling a validated config snapshot inline.
-pub(crate) fn versioned_config(config: serde_json::Value) -> VersionedPresentationConfig {
+pub fn versioned_config(config: serde_json::Value) -> VersionedPresentationConfig {
     VersionedPresentationConfig {
         config_version: TIMESTAMP_CONTRIBUTION_CONFIG_VERSION,
         config,

@@ -64,7 +64,7 @@ const SCHEMA_DIFF_OBJECT_KINDS: [SchemaDiffObjectKindVm; 6] = [
 
 /// `parseObjectSelections(value, invalidConfigMessage)`: validate a
 /// config's object array. Every failure is the caller's message.
-pub(crate) fn parse_object_selections(
+pub fn parse_object_selections(
     value: Option<&Value>,
     invalid_config_message: &str,
 ) -> Result<Vec<SchemaDiffObjectIdentityVm>, String> {
@@ -142,31 +142,31 @@ pub(crate) fn parse_object_selections(
 
 /// The endpoint identity a config load recorded.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SchemaDiffConfigEndpointIdentity {
-    pub(crate) source_connection_id: String,
-    pub(crate) target_connection_id: String,
-    pub(crate) source_database: String,
-    pub(crate) target_database: String,
-    pub(crate) source_schema: String,
-    pub(crate) target_schema: String,
+pub struct SchemaDiffConfigEndpointIdentity {
+    pub source_connection_id: String,
+    pub target_connection_id: String,
+    pub source_database: String,
+    pub target_database: String,
+    pub source_schema: String,
+    pub target_schema: String,
 }
 
 /// The endpoints the preservation rule reads (the six fields).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct EndpointSnapshot {
-    pub(crate) source_id: String,
-    pub(crate) target_id: String,
-    pub(crate) source_database: String,
-    pub(crate) target_database: String,
-    pub(crate) source_schema: String,
-    pub(crate) target_schema: String,
+pub struct EndpointSnapshot {
+    pub source_id: String,
+    pub target_id: String,
+    pub source_database: String,
+    pub target_database: String,
+    pub source_schema: String,
+    pub target_schema: String,
 }
 
 /// `shouldPreserveEndpointChange`: whether an endpoint change must
 /// keep the current picks (a pending setup is settling). `profile_ref`
 /// / `config_ref` are the two "did the endpoint match once" refs —
 /// consumed (set `None`) exactly when they preserve.
-pub(crate) fn should_preserve_endpoint_change(
+pub fn should_preserve_endpoint_change(
     current: &EndpointSnapshot,
     pending_profile: Option<&SchemaDiffProfileVm>,
     pending_config: Option<&SchemaDiffConfigEndpointIdentity>,
@@ -210,26 +210,26 @@ pub(crate) fn should_preserve_endpoint_change(
 
 /// The import plan `applyImportedConfig` hands the host.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ImportPlan {
-    pub(crate) source_connection_id: String,
-    pub(crate) target_connection_id: String,
+pub struct ImportPlan {
+    pub source_connection_id: String,
+    pub target_connection_id: String,
     /// The picks built from `cfg.tables` + `cfg.targetOnlyTables`.
-    pub(crate) table_picks: Vec<SchemaDiffTablePickVm>,
-    pub(crate) allow_destructive: bool,
+    pub table_picks: Vec<SchemaDiffTablePickVm>,
+    pub allow_destructive: bool,
     /// `cfg.includeIndexes ?? true`.
-    pub(crate) include_indexes: bool,
-    pub(crate) require_rollback: bool,
+    pub include_indexes: bool,
+    pub require_rollback: bool,
     /// The endpoint identity the settle gate waits for.
-    pub(crate) config_identity: SchemaDiffConfigEndpointIdentity,
+    pub config_identity: SchemaDiffConfigEndpointIdentity,
     /// The parsed object selections (the pending config's payload).
-    pub(crate) source_objects: Vec<SchemaDiffObjectIdentityVm>,
-    pub(crate) target_objects: Vec<SchemaDiffObjectIdentityVm>,
+    pub source_objects: Vec<SchemaDiffObjectIdentityVm>,
+    pub target_objects: Vec<SchemaDiffObjectIdentityVm>,
 }
 
 /// `applyImportedConfig(text)`: the v2 gate, the object parse, the
 /// pick mapping and the state resets (the plan the host applies;
 /// `Err` is the import-config error message).
-pub(crate) fn apply_imported_config(
+pub fn apply_imported_config(
     text: &str,
     endpoints: &EndpointSnapshot,
     invalid_config_message: &str,
@@ -303,28 +303,28 @@ pub(crate) fn apply_imported_config(
 
 /// The profile-load plan `handleLoadProfile` hands the host.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ProfileLoad {
+pub struct ProfileLoad {
     /// The six endpoint fields to set.
-    pub(crate) source_connection_id: String,
-    pub(crate) target_connection_id: String,
-    pub(crate) source_database: String,
-    pub(crate) target_database: String,
+    pub source_connection_id: String,
+    pub target_connection_id: String,
+    pub source_database: String,
+    pub target_database: String,
     /// `profile.sourceSchema ?? ''`.
-    pub(crate) source_schema: String,
-    pub(crate) target_schema: String,
-    pub(crate) table_picks: Vec<SchemaDiffTablePickVm>,
-    pub(crate) allow_destructive: bool,
-    pub(crate) include_indexes: bool,
-    pub(crate) require_rollback: bool,
+    pub source_schema: String,
+    pub target_schema: String,
+    pub table_picks: Vec<SchemaDiffTablePickVm>,
+    pub allow_destructive: bool,
+    pub include_indexes: bool,
+    pub require_rollback: bool,
     /// `profile.typeOverrides ?? []`.
-    pub(crate) type_overrides_len: usize,
-    pub(crate) profile: SchemaDiffProfileVm,
+    pub type_overrides_len: usize,
+    pub profile: SchemaDiffProfileVm,
 }
 
 /// `handleLoadProfile(profile)`: the plan (the host applies the
 /// endpoint setters, the picks, the flags, and parks the profile as
 /// the pending load).
-pub(crate) fn profile_load(profile: &SchemaDiffProfileVm) -> ProfileLoad {
+pub fn profile_load(profile: &SchemaDiffProfileVm) -> ProfileLoad {
     let source_only = profile.tables.iter().map(|name| SchemaDiffTablePickVm {
         name: name.clone(),
         enabled: true,
@@ -368,7 +368,7 @@ fn target_only_fixup(profile: &SchemaDiffProfileVm) -> Vec<SchemaDiffTablePickVm
 
 /// The settle effect for a pending profile: it applies once the
 /// endpoints match all six fields (`sourceSchema ?? ''`).
-pub(crate) fn profile_applies_when(
+pub fn profile_applies_when(
     endpoints: &EndpointSnapshot,
     profile: &SchemaDiffProfileVm,
 ) -> bool {
@@ -381,7 +381,7 @@ pub(crate) fn profile_applies_when(
 }
 
 /// The settle effect for a pending config: the two connection ids.
-pub(crate) fn config_applies_when(
+pub fn config_applies_when(
     endpoints: &EndpointSnapshot,
     config: &SchemaDiffConfigEndpointIdentity,
 ) -> bool {
@@ -390,28 +390,28 @@ pub(crate) fn config_applies_when(
 }
 
 /// What `handleSaveProfile` needs to decide and build.
-pub(crate) struct SaveProfileInput<'a> {
-    pub(crate) profile_name: &'a str,
-    pub(crate) profiles: &'a [SchemaDiffProfileVm],
-    pub(crate) selected_profile_id: &'a str,
-    pub(crate) endpoints_valid: bool,
-    pub(crate) selected_tables: &'a [String],
-    pub(crate) table_picks: &'a [SchemaDiffTablePickVm],
-    pub(crate) selected_source_objects: &'a [SchemaDiffObjectIdentityVm],
-    pub(crate) selected_target_objects: &'a [SchemaDiffObjectIdentityVm],
-    pub(crate) allow_destructive: bool,
-    pub(crate) include_indexes: bool,
-    pub(crate) require_rollback: bool,
-    pub(crate) type_overrides: Vec<crate::commands::schema_diff::wire::ColumnTypeOverrideVm>,
+pub struct SaveProfileInput<'a> {
+    pub profile_name: &'a str,
+    pub profiles: &'a [SchemaDiffProfileVm],
+    pub selected_profile_id: &'a str,
+    pub endpoints_valid: bool,
+    pub selected_tables: &'a [String],
+    pub table_picks: &'a [SchemaDiffTablePickVm],
+    pub selected_source_objects: &'a [SchemaDiffObjectIdentityVm],
+    pub selected_target_objects: &'a [SchemaDiffObjectIdentityVm],
+    pub allow_destructive: bool,
+    pub include_indexes: bool,
+    pub require_rollback: bool,
+    pub type_overrides: Vec<crate::commands::schema_diff::wire::ColumnTypeOverrideVm>,
     /// `new Date().toISOString()` — the host's clock.
-    pub(crate) now: &'a str,
+    pub now: &'a str,
     /// The id mint seed (`Date.now()`).
-    pub(crate) now_ms: i64,
+    pub now_ms: i64,
 }
 
 /// `handleSaveProfile`'s refusals (the i18n keys React reports).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SaveProfileRefusal {
+pub enum SaveProfileRefusal {
     ProfileNameRequired,
     ObjectIdentityIncomplete,
     ProfileSetupRequired,
@@ -420,7 +420,7 @@ pub(crate) enum SaveProfileRefusal {
 /// `handleSaveProfile`: validate and assemble the profile. `Err` is
 /// the refusal the dialog reports; `Ok` is the profile the host
 /// persists (existing id kept, the `schema-diff-{now_ms}` mint).
-pub(crate) fn build_profile(
+pub fn build_profile(
     input: &SaveProfileInput<'_>,
 ) -> Result<SchemaDiffProfileVm, SaveProfileRefusal> {
     let name = input.profile_name.trim();
@@ -477,7 +477,7 @@ pub(crate) fn build_profile(
 }
 
 /// `handleExportConfig`'s assembly (the v2 config the host writes).
-pub(crate) fn build_config_json(
+pub fn build_config_json(
     selected_tables: &[String],
     table_picks: &[SchemaDiffTablePickVm],
     selected_source_objects: &[SchemaDiffObjectIdentityVm],

@@ -37,18 +37,18 @@ thread_local! {
 /// `showWebContextMenu` (`contextMenuStore.ts:31`): the bridge's show
 /// entry — normalize the items and open at the position, or stay closed
 /// when nothing survives normalization.
-pub(crate) fn show_web_context_menu(items: Vec<NativeMenuItemDef>, pos: (f32, f32)) {
+pub fn show_web_context_menu(items: Vec<NativeMenuItemDef>, pos: (f32, f32)) {
     CONTEXT_MENU_STORE.with_borrow_mut(|store| store.show(items, pos));
 }
 
 /// `useContextMenuStore.getState().hide()` — the bridge's hide entry.
-pub(crate) fn hide_web_context_menu() {
+pub fn hide_web_context_menu() {
     CONTEXT_MENU_STORE.with_borrow_mut(|store| store.hide());
 }
 
 /// Read the store (`useContextMenuStore.getState()`): open flag, cursor
 /// position, normalized items, the submenu and the measured sizes the
 /// host reads.
-pub(crate) fn with_context_menu_state<R>(f: impl FnOnce(&WebContextMenuState) -> R) -> R {
+pub fn with_context_menu_state<R>(f: impl FnOnce(&WebContextMenuState) -> R) -> R {
     CONTEXT_MENU_STORE.with_borrow(|store| f(&store))
 }

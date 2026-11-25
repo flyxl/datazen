@@ -49,12 +49,12 @@ use rune::{col, row, text, El};
 use rune_kit::Kit;
 
 /// Default bytes rendered per row.
-pub(crate) const DEFAULT_ROW_BYTES: usize = 16;
+pub const DEFAULT_ROW_BYTES: usize = 16;
 /// Max rows rendered for hex views (matches React), to keep large blobs bounded.
-pub(crate) const MAX_HEX_ROWS: usize = 4096;
+pub const MAX_HEX_ROWS: usize = 4096;
 
 /// Hex + ASCII viewer for binary data.
-pub(crate) struct BinaryViewer {
+pub struct BinaryViewer {
     key: String,
     bytes: Vec<u8>,
     row_bytes: usize,
@@ -63,7 +63,7 @@ pub(crate) struct BinaryViewer {
 }
 
 impl BinaryViewer {
-    pub(crate) fn new(key: impl Into<String>, bytes: &[u8]) -> Self {
+    pub fn new(key: impl Into<String>, bytes: &[u8]) -> Self {
         Self {
             key: key.into(),
             bytes: bytes.to_vec(),
@@ -73,22 +73,22 @@ impl BinaryViewer {
         }
     }
 
-    pub(crate) fn row_bytes(mut self, n: usize) -> Self {
+    pub fn row_bytes(mut self, n: usize) -> Self {
         self.row_bytes = n.max(1);
         self
     }
 
-    pub(crate) fn grow(mut self) -> Self {
+    pub fn grow(mut self) -> Self {
         self.grow = true;
         self
     }
 
-    pub(crate) fn height(mut self, height: f32) -> Self {
+    pub fn height(mut self, height: f32) -> Self {
         self.height = Some(height);
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let mut body = col()
             .key(format!("{}-hex", self.key))

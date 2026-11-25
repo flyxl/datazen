@@ -6,20 +6,20 @@
 //! a connection announce one rung higher while painting at the same indent.
 
 /// React `TREE_TOP_LEVEL` — `aria-level` is 1-based while depth is 0-based.
-pub(crate) const TREE_TOP_LEVEL: usize = 1;
+pub const TREE_TOP_LEVEL: usize = 1;
 /// React `INDENT_STEP_REM` (0.75rem = 12pt) and the base indent.
-pub(crate) const INDENT_BASE_PT: f32 = 0.0;
-pub(crate) const INDENT_STEP_PT: f32 = 12.0;
+pub const INDENT_BASE_PT: f32 = 0.0;
+pub const INDENT_STEP_PT: f32 = 12.0;
 /// React `CONNECTION_CHILD_DEPTH` — rows at/under this depth lose one level in a search.
-pub(crate) const CONNECTION_CHILD_DEPTH: usize = 2;
+pub const CONNECTION_CHILD_DEPTH: usize = 2;
 
-pub(crate) const PINNED_GROUP_KEY: &str = "__pinned__";
-pub(crate) const RECENT_GROUP_KEY: &str = "__recent__";
+pub const PINNED_GROUP_KEY: &str = "__pinned__";
+pub const RECENT_GROUP_KEY: &str = "__recent__";
 
 /// Connection states the row renders (React `ConnectionEntry['status']`).
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum RowConnectionStatus {
+pub enum RowConnectionStatus {
     #[default]
     Idle,
     Connecting,
@@ -30,7 +30,7 @@ pub(crate) enum RowConnectionStatus {
 /// The kinds of context menu a row can request.
 #[allow(dead_code)] // host port; consumer: the navigator host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ContextMenuTarget {
+pub enum ContextMenuTarget {
     Group(String),
     Connection(String),
     Database { db_name: String, connection_id: String },
@@ -43,7 +43,7 @@ pub(crate) enum ContextMenuTarget {
 /// The 13 React `UnifiedRow` variants. Depth/level live in [`RowVm`].
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum RowKind {
+pub enum RowKind {
     Section { section: String, display_name: String, count: usize, expanded: bool },
     Group { group_name: String, display_name: String, count: usize, expanded: bool, drop_target: bool },
     Connection {
@@ -74,7 +74,7 @@ pub(crate) enum RowKind {
 
 #[allow(dead_code)] // view VM; consumer: the navigator host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RowVm {
+pub struct RowVm {
     pub kind: RowKind,
     pub depth: usize,
     pub level_depth: usize,
@@ -82,26 +82,26 @@ pub(crate) struct RowVm {
 
 /// React `ariaLevelOf`.
 #[allow(dead_code)] // pure rule; pinned by the row tests.
-pub(crate) fn aria_level_of(row: &RowVm) -> usize {
+pub fn aria_level_of(row: &RowVm) -> usize {
     row.level_depth + TREE_TOP_LEVEL
 }
 
 /// React `indentOf` — painting indent, deliberately independent of `aria_level`.
 #[allow(dead_code)] // pure rule; pinned by the row tests.
-pub(crate) fn indent_of(row: &RowVm) -> f32 {
+pub fn indent_of(row: &RowVm) -> f32 {
     INDENT_BASE_PT + row.depth as f32 * INDENT_STEP_PT
 }
 
 /// React `navigatorRowAria` returns `null` for the two decoration rows.
 #[allow(dead_code)] // pure rule; pinned by the row tests.
-pub(crate) fn is_decoration(row: &RowVm) -> bool {
+pub fn is_decoration(row: &RowVm) -> bool {
     matches!(row.kind, RowKind::EmptyGroup { .. } | RowKind::NoConnections)
 }
 
 /// React `isNavigatorBranch`: connection is always a branch (its databases
 /// exist even when idle); a namespace node is a branch only while it has children.
 #[allow(dead_code)] // pure rule; pinned by the row tests.
-pub(crate) fn is_navigator_branch(row: &RowVm) -> bool {
+pub fn is_navigator_branch(row: &RowVm) -> bool {
     match &row.kind {
         RowKind::EmptyGroup { .. } | RowKind::NoConnections => false,
         RowKind::Table { .. }
@@ -117,7 +117,7 @@ pub(crate) fn is_navigator_branch(row: &RowVm) -> bool {
 /// React `connectionExpandedState`: a connected/connecting connection announces
 /// its disclosure state; an idle or failed one announces nothing at all.
 #[allow(dead_code)] // pure rule; pinned by the row tests.
-pub(crate) fn connection_expanded_state(row: &RowVm) -> Option<bool> {
+pub fn connection_expanded_state(row: &RowVm) -> Option<bool> {
     match &row.kind {
         RowKind::Connection { status, expanded, .. }
             if *status == RowConnectionStatus::Connected
@@ -132,7 +132,7 @@ pub(crate) fn connection_expanded_state(row: &RowVm) -> Option<bool> {
 /// The `aria-expanded` value this row should announce. `None` means the
 /// attribute is absent (leaves and idle connections), never `Some(false)`.
 #[allow(dead_code)] // pure rule; pinned by the row tests.
-pub(crate) fn aria_expanded(row: &RowVm) -> Option<bool> {
+pub fn aria_expanded(row: &RowVm) -> Option<bool> {
     if is_decoration(row) || !is_navigator_branch(row) {
         return None;
     }
@@ -150,7 +150,7 @@ pub(crate) fn aria_expanded(row: &RowVm) -> Option<bool> {
 
 /// The group a section row toggles (reserved pinned/recent keys).
 #[allow(dead_code)] // pure rule; pinned by the row tests.
-pub(crate) fn section_group_key(section: &str) -> &'static str {
+pub fn section_group_key(section: &str) -> &'static str {
     if section == "pinned" {
         PINNED_GROUP_KEY
     } else {
@@ -161,7 +161,7 @@ pub(crate) fn section_group_key(section: &str) -> &'static str {
 /// Apply the search's one-level shift: rows at or below the connection lose
 /// one rung while their paint depth stays put. Decorations are unaffected.
 #[allow(dead_code)] // pure rule; pinned by the row tests.
-pub(crate) fn searched(row: &RowVm) -> RowVm {
+pub fn searched(row: &RowVm) -> RowVm {
     if is_decoration(row) {
         return row.clone();
     }

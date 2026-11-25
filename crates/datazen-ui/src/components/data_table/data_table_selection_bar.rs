@@ -74,19 +74,19 @@ const BUTTON_ICON: f32 = 12.0; // Tailwind h-3 w-3
 /// The whole store layer is intentionally left in the React tree; only the
 /// `mode` discriminator affects the rendered DOM.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum GridSelectionMode {
+pub enum GridSelectionMode {
     #[default]
     Row,
     Cell,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct GridSelection {
-    pub(crate) mode: GridSelectionMode,
+pub struct GridSelection {
+    pub mode: GridSelectionMode,
 }
 
 impl GridSelection {
-    pub(crate) fn new(mode: GridSelectionMode) -> GridSelection {
+    pub fn new(mode: GridSelectionMode) -> GridSelection {
         GridSelection { mode }
     }
 }
@@ -97,7 +97,7 @@ type DeleteRowsFn<S> = Rc<dyn Fn(&mut S, Vec<usize>)>;
 /// The selection bar. Build with the props the view owns; callbacks are
 /// optional at the type level so a probe can render any branch, but the
 /// production caller wires both `on_select_all` and `on_export`.
-pub(crate) struct DataTableSelectionBar<S: 'static> {
+pub struct DataTableSelectionBar<S: 'static> {
     has_selection: bool,
     has_cell_selection: bool,
     selection: GridSelection,
@@ -121,7 +121,7 @@ pub(crate) struct DataTableSelectionBar<S: 'static> {
 // `tests/data_table_selection_bar.rs` is the caller today.
 #[allow(dead_code)]
 impl<S: 'static> DataTableSelectionBar<S> {
-    pub(crate) fn new(selection: GridSelection, row_count: usize) -> DataTableSelectionBar<S> {
+    pub fn new(selection: GridSelection, row_count: usize) -> DataTableSelectionBar<S> {
         DataTableSelectionBar {
             has_selection: false,
             has_cell_selection: false,
@@ -144,52 +144,52 @@ impl<S: 'static> DataTableSelectionBar<S> {
     }
 
     /// React `hasSelection` — row selection is a real set for this grid.
-    pub(crate) fn has_selection(mut self, has: bool) -> DataTableSelectionBar<S> {
+    pub fn has_selection(mut self, has: bool) -> DataTableSelectionBar<S> {
         self.has_selection = has;
         self
     }
 
     /// React `hasCellSelection` — the cell-selection contract is on.
-    pub(crate) fn has_cell_selection(mut self, has: bool) -> DataTableSelectionBar<S> {
+    pub fn has_cell_selection(mut self, has: bool) -> DataTableSelectionBar<S> {
         self.has_cell_selection = has;
         self
     }
 
     /// React `selectedRows`. Only `size` is read, so a `Vec` of row indices
     /// carries the same information as the React `ReadonlySet`.
-    pub(crate) fn selected_rows(mut self, rows: Vec<usize>) -> DataTableSelectionBar<S> {
+    pub fn selected_rows(mut self, rows: Vec<usize>) -> DataTableSelectionBar<S> {
         self.selected_rows = rows;
         self
     }
 
     /// React `coveredRows`. Only `length` is read (and echoed as a count).
-    pub(crate) fn covered_rows(mut self, rows: Vec<usize>) -> DataTableSelectionBar<S> {
+    pub fn covered_rows(mut self, rows: Vec<usize>) -> DataTableSelectionBar<S> {
         self.covered_rows = rows;
         self
     }
 
-    pub(crate) fn covered_columns(mut self, count: usize) -> DataTableSelectionBar<S> {
+    pub fn covered_columns(mut self, count: usize) -> DataTableSelectionBar<S> {
         self.covered_columns = count;
         self
     }
 
-    pub(crate) fn covered_cells(mut self, count: usize) -> DataTableSelectionBar<S> {
+    pub fn covered_cells(mut self, count: usize) -> DataTableSelectionBar<S> {
         self.covered_cells = count;
         self
     }
 
-    pub(crate) fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> DataTableSelectionBar<S> {
+    pub fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> DataTableSelectionBar<S> {
         self.on_select_all = Some(Rc::new(f));
         self
     }
 
     /// The React `headerActions` slot — an already-built element.
-    pub(crate) fn header_actions(mut self, slot: El) -> DataTableSelectionBar<S> {
+    pub fn header_actions(mut self, slot: El) -> DataTableSelectionBar<S> {
         self.header_actions = Some(slot);
         self
     }
 
-    pub(crate) fn on_delete_rows(
+    pub fn on_delete_rows(
         mut self,
         f: impl Fn(&mut S, Vec<usize>) + 'static,
     ) -> DataTableSelectionBar<S> {
@@ -197,18 +197,18 @@ impl<S: 'static> DataTableSelectionBar<S> {
         self
     }
 
-    pub(crate) fn delete_row_indices(mut self, rows: Vec<usize>) -> DataTableSelectionBar<S> {
+    pub fn delete_row_indices(mut self, rows: Vec<usize>) -> DataTableSelectionBar<S> {
         self.delete_row_indices = rows;
         self
     }
 
-    pub(crate) fn delete_row_count(mut self, count: usize) -> DataTableSelectionBar<S> {
+    pub fn delete_row_count(mut self, count: usize) -> DataTableSelectionBar<S> {
         self.delete_row_count = count;
         self
     }
 
     /// React `primaryKeyColumns`; only its `length` gates the delete button.
-    pub(crate) fn primary_key_columns(
+    pub fn primary_key_columns(
         mut self,
         columns: Vec<String>,
     ) -> DataTableSelectionBar<S> {
@@ -216,23 +216,23 @@ impl<S: 'static> DataTableSelectionBar<S> {
         self
     }
 
-    pub(crate) fn export_enabled(mut self, enabled: bool) -> DataTableSelectionBar<S> {
+    pub fn export_enabled(mut self, enabled: bool) -> DataTableSelectionBar<S> {
         self.export_enabled = enabled;
         self
     }
 
-    pub(crate) fn on_export(mut self, f: impl Fn(&mut S) + 'static) -> DataTableSelectionBar<S> {
+    pub fn on_export(mut self, f: impl Fn(&mut S) + 'static) -> DataTableSelectionBar<S> {
         self.on_export = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn loading(mut self, loading: bool) -> DataTableSelectionBar<S> {
+    pub fn loading(mut self, loading: bool) -> DataTableSelectionBar<S> {
         self.loading = loading;
         self
     }
 
     /// Builds the strip. Colours come from `kit(dark)` only.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let c = &k.c;
         let selected = self.selected_rows.len();

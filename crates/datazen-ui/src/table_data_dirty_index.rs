@@ -57,7 +57,7 @@ use crate::table_data_connection_state::{ColumnSchema, PendingRowChange, TableSt
 /// mark, the same fact is never expressed twice), `inserted` (produced by
 /// DB-04 on a draft row, **not by this chapter**).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DirtyRowState {
+pub enum DirtyRowState {
     Dirty,
     Deleted,
     Inserted,
@@ -67,7 +67,7 @@ pub(crate) enum DirtyRowState {
 /// uncommitted cell change. The column is a name, not an index: the index
 /// loses its meaning when columns are hidden.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DirtyCell {
+pub struct DirtyCell {
     pub column_name: String,
     /// The value before the change (`Value::Null` means SQL NULL).
     pub original: Value,
@@ -80,7 +80,7 @@ pub(crate) struct DirtyCell {
 
 /// React `DirtyRowEntry` (`dirtyIndex.ts:57-65`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DirtyRowEntry {
+pub struct DirtyRowEntry {
     pub identity_key: String,
     pub state: DirtyRowState,
     /// The columns that really changed. Empty for a deleted row.
@@ -91,7 +91,7 @@ pub(crate) struct DirtyRowEntry {
 
 /// React `DirtyCounts` (`dirtyIndex.ts:67-81`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DirtyCounts {
+pub struct DirtyCounts {
     pub update_rows: usize,
     pub delete_rows: usize,
     pub total_rows: usize,
@@ -102,7 +102,7 @@ pub(crate) struct DirtyCounts {
 
 /// React `DirtyIndex` (`dirtyIndex.ts:83-89`).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DirtyIndex {
+pub struct DirtyIndex {
     /// Current page row index → that row's dirty state.
     pub by_row_index: HashMap<usize, DirtyRowEntry>,
     /// Staged changes that are not on the current page (they are never
@@ -197,13 +197,13 @@ fn is_stable_identity_value(value: &Value) -> bool {
 /// identify a row for an UPDATE or DELETE, keyed by primary-key column
 /// name.
 #[allow(dead_code)] // T629 replaces this placeholder; the dirty index is its only caller
-pub(crate) type RowIdentity = HashMap<String, Value>;
+pub type RowIdentity = HashMap<String, Value>;
 
 /// `buildRowIdentity` (`tableChanges.ts:247-259`): a stable identity from
 /// the table's declared primary-key columns, or `None` when any of them
 /// holds null.
 #[allow(dead_code)] // T629 replaces this placeholder
-pub(crate) fn build_row_identity(
+pub fn build_row_identity(
     row: &HashMap<String, Value>,
     primary_key_columns: &[ColumnSchema],
 ) -> Option<RowIdentity> {
@@ -226,7 +226,7 @@ pub(crate) fn build_row_identity(
 /// React's throw on an empty identity or a NULL/unstable value (see
 /// Deliberate differences).
 #[allow(dead_code)] // T629 replaces this placeholder
-pub(crate) fn row_identity_key(identity: &RowIdentity) -> Option<String> {
+pub fn row_identity_key(identity: &RowIdentity) -> Option<String> {
     if identity.is_empty() {
         return None;
     }
@@ -248,7 +248,7 @@ pub(crate) fn row_identity_key(identity: &RowIdentity) -> Option<String> {
 /// `duplicateRowIdentityKeys` (`tableChanges.ts:280-295`): the duplicate
 /// stable identities in a loaded row set, sorted.
 #[allow(dead_code)] // T629 replaces this placeholder
-pub(crate) fn duplicate_row_identity_keys(
+pub fn duplicate_row_identity_keys(
     rows: &[HashMap<String, Value>],
     primary_key_columns: &[ColumnSchema],
 ) -> Vec<String> {
@@ -273,7 +273,7 @@ pub(crate) fn duplicate_row_identity_keys(
 /// `valuesEqual` (`tableChanges.ts:297-301`): both nulls read as equal
 /// null; otherwise the serialized forms decide.
 #[allow(dead_code)] // T629 replaces this placeholder
-pub(crate) fn values_equal(left: &Value, right: &Value) -> bool {
+pub fn values_equal(left: &Value, right: &Value) -> bool {
     stable_serialize(left) == stable_serialize(right)
 }
 
@@ -285,7 +285,7 @@ pub(crate) fn values_equal(left: &Value, right: &Value) -> bool {
 /// number becomes `None` (do not write); strings, booleans, arrays and
 /// objects pass through. T629 replaces this placeholder.
 #[allow(dead_code)] // T629 replaces this placeholder; the editor host (T297) is its caller
-pub(crate) fn normalize_edit_value(value: Option<&Value>) -> Option<Value> {
+pub fn normalize_edit_value(value: Option<&Value>) -> Option<Value> {
     match value {
         None => None,
         Some(Value::Null) => Some(Value::Null),
@@ -314,7 +314,7 @@ pub(crate) fn normalize_edit_value(value: Option<&Value>) -> Option<Value> {
 /// key, otherwise two chapters would build different keys for the same
 /// cell.
 #[allow(dead_code)] // 06 §3.1 contract symbol; the cell-level consumer lands later
-pub(crate) fn dirty_cell_key(identity_key: &str, column_name: &str) -> String {
+pub fn dirty_cell_key(identity_key: &str, column_name: &str) -> String {
     let mut key = String::with_capacity(identity_key.len() + column_name.len() + 1);
     key.push_str(identity_key);
     key.push('\u{0}');
@@ -324,7 +324,7 @@ pub(crate) fn dirty_cell_key(identity_key: &str, column_name: &str) -> String {
 
 /// React `EMPTY_DIRTY_INDEX`: the stable empty index, built once.
 #[allow(dead_code)] // reusable index; the grid render track wires it
-pub(crate) fn empty_dirty_index() -> &'static DirtyIndex {
+pub fn empty_dirty_index() -> &'static DirtyIndex {
     static EMPTY: std::sync::OnceLock<DirtyIndex> = std::sync::OnceLock::new();
     EMPTY.get_or_init(DirtyIndex::default)
 }
@@ -358,7 +358,7 @@ fn really_changed_columns(change: &PendingRowChange) -> Vec<String> {
 /// about the current page, so a panel whose rows were dropped or that has
 /// not loaded yet still reports the right number of staged changes.
 #[allow(dead_code)] // reusable selector; the panel header wires it
-pub(crate) fn select_dirty_counts(
+pub fn select_dirty_counts(
     pending_changes: &HashMap<String, PendingRowChange>,
 ) -> DirtyCounts {
     let mut update_rows = 0;
@@ -389,7 +389,7 @@ pub(crate) fn select_dirty_counts(
 /// React `selectDirtyRow` (`dirtyIndex.ts:174-178`): one row's dirty
 /// state, or `None` when the row is clean.
 #[allow(dead_code)] // reusable selector; the grid render track wires it
-pub(crate) fn select_dirty_row(index: Option<&DirtyIndex>, row_index: usize) -> Option<&DirtyRowEntry> {
+pub fn select_dirty_row(index: Option<&DirtyIndex>, row_index: usize) -> Option<&DirtyRowEntry> {
     index?.by_row_index.get(&row_index)
 }
 
@@ -480,7 +480,7 @@ fn row_entry(
 /// guess), and every staged change that matched no page row lands on
 /// `off_page_keys`.
 #[allow(dead_code)] // reusable index; the grid render track wires it
-pub(crate) fn build_dirty_index(ts: &TableState, previous: Option<&DirtyIndex>) -> DirtyIndex {
+pub fn build_dirty_index(ts: &TableState, previous: Option<&DirtyIndex>) -> DirtyIndex {
     if ts.pending_changes.is_empty() {
         return empty_dirty_index().clone();
     }

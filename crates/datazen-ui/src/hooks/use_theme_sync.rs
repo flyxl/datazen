@@ -51,15 +51,15 @@
 use crate::views::appearance_section::ThemeMode;
 
 /// `menu:theme-change` — the native menu's theme toggle.
-pub(crate) const MENU_THEME_CHANGE_CHANNEL: &str = "menu:theme-change";
+pub const MENU_THEME_CHANGE_CHANNEL: &str = "menu:theme-change";
 /// `datazen:theme-changed` — another window's theme toggle.
-pub(crate) const THEME_CHANGED_CHANNEL: &str = "datazen:theme-changed";
+pub const THEME_CHANGED_CHANNEL: &str = "datazen:theme-changed";
 /// `datazen:theme-pack-changed` — another window's theme-pack toggle.
-pub(crate) const THEME_PACK_CHANGED_CHANNEL: &str = "datazen:theme-pack-changed";
+pub const THEME_PACK_CHANGED_CHANNEL: &str = "datazen:theme-pack-changed";
 
 /// One subscription slot's lifecycle (the T413 triple).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ThemeSyncSlot {
+pub struct ThemeSyncSlot {
     /// `None` while the subscribe is in flight, `Some(true)` once
     /// listening, `Some(false)` when the bus is unavailable.
     subscribed: Option<bool>,
@@ -71,7 +71,7 @@ impl ThemeSyncSlot {
     /// The subscribe resolved: the window is listening on this
     /// channel — unless the unmount already began, in which case the
     /// late handle unlistens immediately (`if (cancelled) fn()`).
-    pub(crate) fn note_subscribed(&mut self, cancelled: bool) {
+    pub fn note_subscribed(&mut self, cancelled: bool) {
         if cancelled {
             self.unlistened = true;
             self.subscribed = Some(false);
@@ -82,18 +82,18 @@ impl ThemeSyncSlot {
 
     /// The bus is unavailable on this channel (tests / non-Tauri):
     /// the `.catch` arm — nothing to unlisten.
-    pub(crate) fn note_unavailable(&mut self) {
+    pub fn note_unavailable(&mut self) {
         self.subscribed = Some(false);
     }
 
     /// Whether this channel is listening.
-    pub(crate) fn subscribed(&self) -> bool {
+    pub fn subscribed(&self) -> bool {
         self.subscribed == Some(true)
     }
 
     /// Whether the resolved unlisten has run (the late-resolve or
     /// the unmount arm).
-    pub(crate) fn unlistened(&self) -> bool {
+    pub fn unlistened(&self) -> bool {
         self.unlistened
     }
 }
@@ -101,25 +101,25 @@ impl ThemeSyncSlot {
 /// `useThemeSync()`'s state machine: the three channel slots over
 /// the one `cancelled` guard.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct UseThemeSyncState {
+pub struct UseThemeSyncState {
     /// `menu:theme-change`.
-    pub(crate) menu: ThemeSyncSlot,
+    pub menu: ThemeSyncSlot,
     /// `datazen:theme-changed`.
-    pub(crate) theme_changed: ThemeSyncSlot,
+    pub theme_changed: ThemeSyncSlot,
     /// `datazen:theme-pack-changed`.
-    pub(crate) pack_changed: ThemeSyncSlot,
+    pub pack_changed: ThemeSyncSlot,
     /// The effect's `cancelled` flag (set by the cleanup).
     cancelled: bool,
 }
 
 impl UseThemeSyncState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The effect's cleanup: `cancelled = true` + every resolved
     /// unlisten.
-    pub(crate) fn unmount(&mut self) {
+    pub fn unmount(&mut self) {
         self.cancelled = true;
         for slot in [&mut self.menu, &mut self.theme_changed, &mut self.pack_changed] {
             if slot.subscribed() {
@@ -131,7 +131,7 @@ impl UseThemeSyncState {
 
     /// Whether a delivery on any channel is live (the `cancelled`
     /// guard).
-    pub(crate) fn live(&self) -> bool {
+    pub fn live(&self) -> bool {
         !self.cancelled
     }
 
@@ -140,14 +140,14 @@ impl UseThemeSyncState {
     /// `saveSettings` with the post-apply store state — the menu is
     /// this window's own authority). A mode equal to the store's is
     /// the React no-op (`return`).
-    pub(crate) fn note_menu_theme_change(&mut self, mode: ThemeMode, current_mode: ThemeMode) -> bool {
+    pub fn note_menu_theme_change(&mut self, mode: ThemeMode, current_mode: ThemeMode) -> bool {
         self.live() && mode != current_mode
     }
 
     /// `datazen:theme-changed`: answers whether the host should run
     /// the local apply ONLY (the originating window saved — this
     /// side never repeats the persistence). The same no-op guard.
-    pub(crate) fn note_theme_changed(&mut self, mode: ThemeMode, current_mode: ThemeMode) -> bool {
+    pub fn note_theme_changed(&mut self, mode: ThemeMode, current_mode: ThemeMode) -> bool {
         self.live() && mode != current_mode
     }
 
@@ -155,7 +155,7 @@ impl UseThemeSyncState {
     /// run `applyThemePack(packId, { broadcast: false })`. No
     /// equality guard — React applies every payload (a null packId
     /// is the built-in default).
-    pub(crate) fn note_theme_pack_changed(&mut self, _pack_id: Option<&str>) -> bool {
+    pub fn note_theme_pack_changed(&mut self, _pack_id: Option<&str>) -> bool {
         self.live()
     }
 }

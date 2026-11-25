@@ -32,7 +32,7 @@ const CONTENT_WIDTH: f32 = 1024.0;
 /// The connections page body: banners, and the centered empty state or the
 /// landing. The connection form and import dialogs ride the root modal layer
 /// (`views/modals.rs`).
-pub(crate) fn connections_home(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn connections_home(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     // React state 3b: a driver-claimed connection home takes the whole surface.
     // The host only sets the slot for a live session (React's "no context → no
     // takeover" case), so its presence is the context gate.
@@ -898,7 +898,7 @@ fn engine_chip(id: &str, engine: &str, theme: tok::Theme) -> El {
 }
 
 /// Display label for an engine id ("postgres" → "PostgreSQL").
-pub(crate) fn engine_label(engine: &str) -> String {
+pub fn engine_label(engine: &str) -> String {
     match engine.to_lowercase().as_str() {
         "postgres" | "postgresql" | "pg" => "PostgreSQL".into(),
         "sqlite" | "sqlite3" => "SQLite".into(),

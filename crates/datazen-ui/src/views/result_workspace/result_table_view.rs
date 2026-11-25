@@ -28,80 +28,80 @@ use crate::ui::table::{CellValue, Column, DataTable, Row};
 mod cells;
 mod header;
 
-pub(crate) use cells::{filter_rows, FindQuery, GridValue};
+pub use cells::{filter_rows, FindQuery, GridValue};
 #[allow(unused_imports)] // find/replace seam; consumer: the result-workspace host + tests; drop when the find port lands.
-pub(crate) use cells::{plan_replacements, replace_text, FindOperator};
+pub use cells::{plan_replacements, replace_text, FindOperator};
 use header::{data_marker, error_banner, find_bar, notice, pending_bar, read_only_banner, status_bar};
 
 /// React `StatementResult` column metadata.
 #[allow(dead_code)] // VM mirror; supplied by the host result feed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ResultColumn {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
+pub struct ResultColumn {
+    pub name: String,
+    pub data_type: String,
 }
 
 /// One staged cell edit (`PendingEdit` in React).
 #[allow(dead_code)] // VM mirror; consumed by the staging pipeline and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PendingEdit {
-    pub(crate) row: usize,
-    pub(crate) column: String,
-    pub(crate) original: GridValue,
-    pub(crate) value: GridValue,
+pub struct PendingEdit {
+    pub row: usize,
+    pub column: String,
+    pub original: GridValue,
+    pub value: GridValue,
 }
 
 /// One catalog identity/editable column from the server verdict.
 #[allow(dead_code)] // VM mirror; supplied by the verdict feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct EditColumn {
-    pub(crate) column: String,
-    pub(crate) source_column: String,
+pub struct EditColumn {
+    pub column: String,
+    pub source_column: String,
 }
 
 /// React `ServerEditability` (the table-level verdict, never recomputed here).
 #[allow(dead_code)] // VM mirror; supplied by the verdict feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ServerEditability {
-    pub(crate) writable: bool,
-    pub(crate) reason: Option<String>,
-    pub(crate) identity_columns: Vec<EditColumn>,
-    pub(crate) editable_columns: Vec<EditColumn>,
+pub struct ServerEditability {
+    pub writable: bool,
+    pub reason: Option<String>,
+    pub identity_columns: Vec<EditColumn>,
+    pub editable_columns: Vec<EditColumn>,
 }
 
 /// Host-owned projection of the component props and the store settings it reads.
 #[allow(dead_code)] // VM surface; owned by the result-workspace host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ResultTableVm {
-    pub(crate) sql: String,
-    pub(crate) columns: Vec<ResultColumn>,
-    pub(crate) rows: Vec<Vec<GridValue>>,
-    pub(crate) execution_time_ms: i64,
-    pub(crate) rows_affected: Option<i64>,
-    pub(crate) truncated: bool,
-    pub(crate) query_result_limit: usize,
-    pub(crate) source_writable_mapping_verified: bool,
-    pub(crate) has_runtime_binding: bool,
-    pub(crate) server_verdict: Option<ServerEditability>,
-    pub(crate) safe_mode: bool,
-    pub(crate) can_commit: bool,
-    pub(crate) row_detail_index: Option<usize>,
-    pub(crate) find_open: bool,
-    pub(crate) find_query: FindQuery,
-    pub(crate) find_replacement: String,
-    pub(crate) pending_edits: Vec<PendingEdit>,
-    pub(crate) editing_cell: Option<(usize, String)>,
-    pub(crate) commit_notice: Option<String>,
-    pub(crate) edit_error: Option<(String, Option<String>)>,
-    pub(crate) row_refusal: Option<String>,
-    pub(crate) preview_open: bool,
-    pub(crate) sort: Option<(usize, SortDir)>,
+pub struct ResultTableVm {
+    pub sql: String,
+    pub columns: Vec<ResultColumn>,
+    pub rows: Vec<Vec<GridValue>>,
+    pub execution_time_ms: i64,
+    pub rows_affected: Option<i64>,
+    pub truncated: bool,
+    pub query_result_limit: usize,
+    pub source_writable_mapping_verified: bool,
+    pub has_runtime_binding: bool,
+    pub server_verdict: Option<ServerEditability>,
+    pub safe_mode: bool,
+    pub can_commit: bool,
+    pub row_detail_index: Option<usize>,
+    pub find_open: bool,
+    pub find_query: FindQuery,
+    pub find_replacement: String,
+    pub pending_edits: Vec<PendingEdit>,
+    pub editing_cell: Option<(usize, String)>,
+    pub commit_notice: Option<String>,
+    pub edit_error: Option<(String, Option<String>)>,
+    pub row_refusal: Option<String>,
+    pub preview_open: bool,
+    pub sort: Option<(usize, SortDir)>,
 }
 
 /// Every host command this view requests.
 #[allow(dead_code)] // host port; removed with the result-workspace wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ResultTableAction {
+pub enum ResultTableAction {
     ToggleFind,
     CloseFind,
     SelectRow(usize),
@@ -114,9 +114,9 @@ pub(crate) enum ResultTableAction {
     ToggleSort(usize),
 }
 
-pub(crate) type ActionFn<S> = Rc<dyn Fn(&mut S, ResultTableAction) + 'static>;
+pub type ActionFn<S> = Rc<dyn Fn(&mut S, ResultTableAction) + 'static>;
 
-pub(crate) fn emit<S: 'static>(
+pub fn emit<S: 'static>(
     on_action: &Option<ActionFn<S>>,
     action: ResultTableAction,
 ) -> impl Fn(&mut S) + Clone {
@@ -130,7 +130,7 @@ pub(crate) fn emit<S: 'static>(
 
 /// React `isMutationExecution`: no tabular output + a mutating top-level verb.
 #[allow(dead_code)] // pure branch; consumed by build and tests.
-pub(crate) fn is_mutation_execution(vm: &ResultTableVm) -> bool {
+pub fn is_mutation_execution(vm: &ResultTableVm) -> bool {
     if !vm.columns.is_empty() || !vm.rows.is_empty() {
         return false;
     }
@@ -142,7 +142,7 @@ pub(crate) fn is_mutation_execution(vm: &ResultTableVm) -> bool {
 
 /// React `resolveResultWriteBack` with the origin release channel closed.
 #[allow(dead_code)] // pure helper; consumed by can_edit and tests.
-pub(crate) fn result_writable(vm: &ResultTableVm) -> bool {
+pub fn result_writable(vm: &ResultTableVm) -> bool {
     let server = vm.server_verdict.clone().unwrap_or_default();
     if !server.writable && server.reason.as_deref() == Some("sessionReadOnly") {
         return false;
@@ -152,13 +152,13 @@ pub(crate) fn result_writable(vm: &ResultTableVm) -> bool {
 
 /// React `canEdit = !safeMode && !!onCommitResultCells && resultWritable`.
 #[allow(dead_code)] // pure helper; consumed by build and tests.
-pub(crate) fn can_edit(vm: &ResultTableVm) -> bool {
+pub fn can_edit(vm: &ResultTableVm) -> bool {
     !vm.safe_mode && vm.can_commit && result_writable(vm)
 }
 
 /// React's read-only reason: `null` when the result may be written back.
 #[allow(dead_code)] // pure helper; consumed by build and tests.
-pub(crate) fn read_only_reason(vm: &ResultTableVm) -> Option<String> {
+pub fn read_only_reason(vm: &ResultTableVm) -> Option<String> {
     if result_writable(vm) {
         None
     } else {
@@ -173,7 +173,7 @@ pub(crate) fn read_only_reason(vm: &ResultTableVm) -> Option<String> {
 
 /// React `gridReadOnlyMessageKey`.
 #[allow(dead_code)] // pure helper; consumed by the banner and tests.
-pub(crate) fn grid_read_only_message_key(reason: &str) -> String {
+pub fn grid_read_only_message_key(reason: &str) -> String {
     format!("query.gridReadOnly.{reason}")
 }
 
@@ -183,7 +183,7 @@ fn column_names(vm: &ResultTableVm) -> Vec<String> {
 
 /// React `effectiveRows` with pending edits applied in place.
 #[allow(dead_code)] // pure helper; consumed by view_rows and tests.
-pub(crate) fn effective_rows(vm: &ResultTableVm) -> Vec<Vec<GridValue>> {
+pub fn effective_rows(vm: &ResultTableVm) -> Vec<Vec<GridValue>> {
     let mut rows = vm.result_rows();
     let names = column_names(vm);
     for edit in &vm.pending_edits {
@@ -206,7 +206,7 @@ impl ResultTableVm {
 
 /// React `viewRows` / `toOriginal` after find filtering.
 #[allow(dead_code)] // pure helper; consumed by build and tests.
-pub(crate) fn view_rows(vm: &ResultTableVm) -> (Vec<Vec<GridValue>>, Vec<usize>) {
+pub fn view_rows(vm: &ResultTableVm) -> (Vec<Vec<GridValue>>, Vec<usize>) {
     let names = column_names(vm);
     let effective = effective_rows(vm);
     if vm.find_open && !vm.find_query.needle.is_empty() {
@@ -221,7 +221,7 @@ pub(crate) fn view_rows(vm: &ResultTableVm) -> (Vec<Vec<GridValue>>, Vec<usize>)
 
 /// Build the result grid.
 #[allow(dead_code)] // consumer: the result-workspace host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ResultTableVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

@@ -39,31 +39,31 @@ use crate::views::workflow::workflow_page::WorkflowPanel;
 /// React's `labels: { aiCreate, edit, create }` — the tab strip's fixed
 /// spellings, injected the way the page passes its `t()` reads.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PanelTabLabels {
-    pub(crate) ai_create: String,
-    pub(crate) edit: String,
-    pub(crate) create: String,
+pub struct PanelTabLabels {
+    pub ai_create: String,
+    pub edit: String,
+    pub create: String,
 }
 
 // ---- The type guards (React 36-50) -----------------------------------------------
 
 /// React's `isWorkflowRunPanel`.
-pub(crate) fn is_workflow_run_panel(panel: &WorkflowPanel) -> bool {
+pub fn is_workflow_run_panel(panel: &WorkflowPanel) -> bool {
     matches!(panel, WorkflowPanel::Run(_))
 }
 
 /// React's `isHistoryDetailPanel`.
-pub(crate) fn is_history_detail_panel(panel: &WorkflowPanel) -> bool {
+pub fn is_history_detail_panel(panel: &WorkflowPanel) -> bool {
     matches!(panel, WorkflowPanel::History(_))
 }
 
 /// React's `isEditPanel`.
-pub(crate) fn is_edit_panel(panel: &WorkflowPanel) -> bool {
+pub fn is_edit_panel(panel: &WorkflowPanel) -> bool {
     matches!(panel, WorkflowPanel::Edit(_))
 }
 
 /// React's `isAiCreatePanel`.
-pub(crate) fn is_ai_create_panel(panel: &WorkflowPanel) -> bool {
+pub fn is_ai_create_panel(panel: &WorkflowPanel) -> bool {
     matches!(panel, WorkflowPanel::AiCreate { .. })
 }
 
@@ -72,7 +72,7 @@ pub(crate) fn is_ai_create_panel(panel: &WorkflowPanel) -> bool {
 /// React's `panelExecutionResult` — the run panel's answer (null while the
 /// run is in flight), the history record's result; edit and ai-create panels
 /// carry none.
-pub(crate) fn panel_execution_result(panel: &WorkflowPanel) -> Option<&WorkflowExecutionResult> {
+pub fn panel_execution_result(panel: &WorkflowPanel) -> Option<&WorkflowExecutionResult> {
     match panel {
         WorkflowPanel::Run(run) => run.result.as_ref(),
         WorkflowPanel::History(history) => Some(&history.result),
@@ -86,7 +86,7 @@ pub(crate) fn panel_execution_result(panel: &WorkflowPanel) -> Option<&WorkflowE
 /// `new Date(...).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})`
 /// — the `locale_string` stance: zoned input in the local zone; anything
 /// unparseable stays verbatim).
-pub(crate) fn tab_clock(iso: &str) -> String {
+pub fn tab_clock(iso: &str) -> String {
     match parse_zoned_instant(iso).and_then(chrono::DateTime::from_timestamp_millis) {
         Some(instant) => instant
             .with_timezone(&chrono::Local)
@@ -104,7 +104,7 @@ pub(crate) fn tab_clock(iso: &str) -> String {
 /// React's ladder (`isAiCreatePanel` → `isEditPanel` → `isWorkflowRunPanel` →
 /// `isHistoryDetailPanel` → `''`) narrows a disjoint union, so the branch
 /// order is type-level — the match arms carry it.
-pub(crate) fn panel_tab_label(
+pub fn panel_tab_label(
     panel: &WorkflowPanel,
     labels: &PanelTabLabels,
     edit_draft_name: &str,

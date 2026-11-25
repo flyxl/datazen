@@ -40,17 +40,17 @@ const TRIGGER_KEY: &str = "editor-snippets-button";
 /// React `SqlSnippetItem`, reduced to what the menu button reads.
 #[allow(dead_code)] // VM mirror; consumed by the menu and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SnippetItemVm {
-    pub(crate) id: String,
-    pub(crate) prefix: String,
-    pub(crate) description_key: String,
-    pub(crate) template: String,
+pub struct SnippetItemVm {
+    pub id: String,
+    pub prefix: String,
+    pub description_key: String,
+    pub template: String,
 }
 
 /// The seven `BUILTIN_SQL_SNIPPETS` in React order, verbatim ids/prefixes/keys
 /// and templates (the trailing `${n}` tabstop is part of the template).
 #[allow(dead_code)] // pure projection; consumed by the menu and tests.
-pub(crate) fn builtin_snippets() -> Vec<SnippetItemVm> {
+pub fn builtin_snippets() -> Vec<SnippetItemVm> {
     vec![
         snippet(
             "select-all",
@@ -110,18 +110,18 @@ fn snippet(id: &str, prefix: &str, description_key: &str, template: &str) -> Sni
 /// state the native menu owns in React.
 #[allow(dead_code)] // VM surface; owned by the query toolbar host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SnippetMenuButtonVm {
-    pub(crate) open: bool,
-    pub(crate) icon_only: bool,
-    pub(crate) disabled: bool,
+pub struct SnippetMenuButtonVm {
+    pub open: bool,
+    pub icon_only: bool,
+    pub disabled: bool,
     /// React `settings.sqlSnippets ?? []`, appended after the built-ins.
-    pub(crate) user_snippets: Vec<SnippetItemVm>,
+    pub user_snippets: Vec<SnippetItemVm>,
 }
 
 impl SnippetMenuButtonVm {
     /// React's menu source: `[...BUILTIN_SQL_SNIPPETS, ...(userSnippets ?? [])]`.
     #[allow(dead_code)] // pure projection; consumed by the menu and tests.
-    pub(crate) fn menu_items(&self) -> Vec<SnippetItemVm> {
+    pub fn menu_items(&self) -> Vec<SnippetItemVm> {
         let mut items = builtin_snippets();
         items.extend(self.user_snippets.iter().cloned());
         items
@@ -131,7 +131,7 @@ impl SnippetMenuButtonVm {
 /// The host intents this control can emit.
 #[allow(dead_code)] // host port; remove when the query toolbar host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SnippetAction {
+pub enum SnippetAction {
     ToggleMenu,
     Insert { id: String, template: String },
 }
@@ -152,7 +152,7 @@ fn emit<S: 'static>(
 
 /// Build the toolbar trigger and its optional dropdown.
 #[allow(dead_code)] // consumer: the query toolbar host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &SnippetMenuButtonVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

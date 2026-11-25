@@ -60,19 +60,19 @@ use std::rc::Rc;
 
 /// `CANCEL_TIMEOUT_MS` — exactly 8,000ms, the wait for the terminal chunk.
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
-pub(crate) const CANCEL_TIMEOUT_MS: i64 = 8_000;
+pub const CANCEL_TIMEOUT_MS: i64 = 8_000;
 
 /// Opaque, machine-owned timer handle. Stands in for the JS `TimerHandle`
 /// (`ReturnType<typeof setTimeout>`) so the machine can "store the handle,
 /// clear it later" without depending on a platform timer type.
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
-pub(crate) type CancelTimerHandle = u64;
+pub type CancelTimerHandle = u64;
 
 /// `CancelReceipt` from `ai/targetClaim.ts` — the three-state answer to
 /// `ai_cancel`.
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CancelReceipt {
+pub enum CancelReceipt {
     Marked { request_id: String },
     AlreadyFinished { request_id: String },
     Forbidden { request_id: String },
@@ -80,7 +80,7 @@ pub(crate) enum CancelReceipt {
 
 impl CancelReceipt {
     #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
-    pub(crate) fn kind(&self) -> &'static str {
+    pub fn kind(&self) -> &'static str {
         match self {
             CancelReceipt::Marked { .. } => "marked",
             CancelReceipt::AlreadyFinished { .. } => "alreadyFinished",
@@ -89,7 +89,7 @@ impl CancelReceipt {
     }
 
     #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
-    pub(crate) fn request_id(&self) -> &str {
+    pub fn request_id(&self) -> &str {
         match self {
             CancelReceipt::Marked { request_id }
             | CancelReceipt::AlreadyFinished { request_id }
@@ -102,7 +102,7 @@ impl CancelReceipt {
 /// fields the fallback reads are mirrored.
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StreamPhase {
+pub enum StreamPhase {
     Starting,
     Streaming,
     Cancelling,
@@ -111,7 +111,7 @@ pub(crate) enum StreamPhase {
 
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StreamTerminalKind {
+pub enum StreamTerminalKind {
     Done,
     Cancelled,
     Error,
@@ -120,7 +120,7 @@ pub(crate) enum StreamTerminalKind {
 /// The read-only view of a registry entry the fallback needs (`registry.get`).
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StreamEntrySnapshot {
+pub struct StreamEntrySnapshot {
     pub request_id: String,
     pub phase: StreamPhase,
     pub terminal_kind: Option<StreamTerminalKind>,
@@ -131,7 +131,7 @@ pub(crate) struct StreamEntrySnapshot {
 /// T133's registry and are ignored by [`SessionCanceller`].
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum StreamEvent {
+pub enum StreamEvent {
     Started { request_id: String },
     Streaming { request_id: String },
     Cancelling { request_id: String },
@@ -145,12 +145,12 @@ pub(crate) enum StreamEvent {
 /// unsubscribe closure (a closure borrowing the machine cannot live beside it
 /// in `S`), so dispose pairs with [`StreamRegistry::unsubscribe`].
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
-pub(crate) type RegistryListener = Box<dyn FnMut(StreamEvent)>;
+pub type RegistryListener = Box<dyn FnMut(StreamEvent)>;
 
 /// Minimal injected `StreamRegistry` port. Removal stage: T133 lands the real
 /// `streamRegistry.ts` port; delete this trait and use that type directly.
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
-pub(crate) trait StreamRegistry {
+pub trait StreamRegistry {
     /// React `markCancelling`: `true` when the entry exists, is non-terminal,
     /// current generation and now `cancelling`.
     fn mark_cancelling(&mut self, request_id: &str) -> bool;
@@ -168,7 +168,7 @@ pub(crate) trait StreamRegistry {
 /// async and timer functions without performing I/O or spawning threads.
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CancelEffect {
+pub enum CancelEffect {
     /// Execute the injected `cancel(requestId)`; deliver with
     /// [`SessionCanceller::on_cancel_result`].
     CallCancel { request_id: String },
@@ -195,7 +195,7 @@ pub(crate) enum CancelEffect {
 /// transport failure ("no receipt means no proof").
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
 #[derive(Debug)]
-pub(crate) struct CancelStep {
+pub struct CancelStep {
     pub receipt: Option<CancelReceipt>,
     pub effects: Vec<CancelEffect>,
 }
@@ -208,7 +208,7 @@ struct TimerState {
 /// `SessionCanceller` — the ported state machine. Embed in `S`; drive with
 /// `cancel` / `on_cancel_result` / `tick` and execute the returned effects.
 #[allow(dead_code)] // T097; consumer: AI chat panel (not landed). Delete then.
-pub(crate) struct SessionCanceller {
+pub struct SessionCanceller {
     registry: Box<dyn StreamRegistry>,
     timeout_ms: i64,
     timers: Rc<RefCell<HashMap<String, TimerState>>>,
@@ -221,7 +221,7 @@ pub(crate) struct SessionCanceller {
 impl SessionCanceller {
     /// Mirrors the React constructor: subscribe to the registry so any
     /// `settled` event clears that request's fallback timer.
-    pub(crate) fn new(mut registry: Box<dyn StreamRegistry>, timeout_ms: i64) -> Self {
+    pub fn new(mut registry: Box<dyn StreamRegistry>, timeout_ms: i64) -> Self {
         let timers = Rc::new(RefCell::new(HashMap::new()));
         let listener_timers = Rc::clone(&timers);
         let subscription = registry.subscribe(Box::new(move |event| {
@@ -241,7 +241,7 @@ impl SessionCanceller {
 
     /// `cancel(requestId)` — emit the injected transport call. The receipt is
     /// delivered later through [`Self::on_cancel_result`].
-    pub(crate) fn cancel(&mut self, request_id: &str) -> Vec<CancelEffect> {
+    pub fn cancel(&mut self, request_id: &str) -> Vec<CancelEffect> {
         if self.disposed {
             return Vec::new();
         }
@@ -253,7 +253,7 @@ impl SessionCanceller {
     /// Resolution of the injected `cancel` call (the TS `.then`/`.catch`).
     /// `Err(error)` is a transport failure: warn and return `None` leaving the
     /// stream untouched. Each receipt kind is translated exactly as React.
-    pub(crate) fn on_cancel_result(
+    pub fn on_cancel_result(
         &mut self,
         request_id: &str,
         result: Result<CancelReceipt, String>,
@@ -304,7 +304,7 @@ impl SessionCanceller {
     /// terminal entry is a no-op; otherwise force `settle(cancelled)` and emit
     /// [`CancelEffect::CancelTimeout`] only when the settle actually forced
     /// the terminal state.
-    pub(crate) fn tick(&mut self, now_ms: i64) -> Vec<CancelEffect> {
+    pub fn tick(&mut self, now_ms: i64) -> Vec<CancelEffect> {
         if self.disposed {
             return Vec::new();
         }
@@ -340,7 +340,7 @@ impl SessionCanceller {
     }
 
     /// Clear all fallback timers and detach from the registry.
-    pub(crate) fn dispose(&mut self) -> Vec<CancelEffect> {
+    pub fn dispose(&mut self) -> Vec<CancelEffect> {
         if self.disposed {
             return Vec::new();
         }
@@ -356,7 +356,7 @@ impl SessionCanceller {
     }
 
     /// Test/observability hook: is a fallback pending for `request_id`?
-    pub(crate) fn has_timer(&self, request_id: &str) -> bool {
+    pub fn has_timer(&self, request_id: &str) -> bool {
         self.timers.borrow().contains_key(request_id)
     }
 

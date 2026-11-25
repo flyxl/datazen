@@ -25,18 +25,18 @@ use rune::{
 /// A6: the 12 settings sections split across 2 nav groups, mirroring the
 /// React settings page structure. The id is the deep-link key within the page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SettingsSectionDef {
-    pub(crate) id: &'static str,
-    pub(crate) label_key: &'static str,
-    pub(crate) group: &'static str,
+pub struct SettingsSectionDef {
+    pub id: &'static str,
+    pub label_key: &'static str,
+    pub group: &'static str,
 }
 
-pub(crate) const SETTINGS_NAV_GROUPS: [(&str, &str); 2] = [
+pub const SETTINGS_NAV_GROUPS: [(&str, &str); 2] = [
     ("app", "settings.nav.group.app"),
     ("integration", "settings.nav.group.integration"),
 ];
 
-pub(crate) const SETTINGS_SECTIONS: [SettingsSectionDef; 12] = [
+pub const SETTINGS_SECTIONS: [SettingsSectionDef; 12] = [
     SettingsSectionDef {
         id: "general",
         label_key: "settings.general",
@@ -99,7 +99,7 @@ pub(crate) const SETTINGS_SECTIONS: [SettingsSectionDef; 12] = [
     },
 ];
 
-pub(crate) fn parse_settings_section(value: &str) -> &'static str {
+pub fn parse_settings_section(value: &str) -> &'static str {
     SETTINGS_SECTIONS
         .iter()
         .find(|section| section.id == value)
@@ -110,17 +110,17 @@ pub(crate) fn parse_settings_section(value: &str) -> &'static str {
 impl AppState {
     /// Deep-link form (A6): the selected settings section key. Unknown keys
     /// normalize to `general` so callers can address any of the 12 sections.
-    pub(crate) fn settings_section(&self) -> &'static str {
+    pub fn settings_section(&self) -> &'static str {
         parse_settings_section(&self.settings_section)
     }
 
     /// Select a settings section by key (A6). Accepts deep-link ids such as
     /// `appearance` or `mcpServer`; invalid ids fall back to `general`.
-    pub(crate) fn set_settings_section(&mut self, section: &str) {
+    pub fn set_settings_section(&mut self, section: &str) {
         self.settings_section = parse_settings_section(section).to_owned();
     }
 
-    pub(crate) fn ui_settings(&self) -> Vec<Setting> {
+    pub fn ui_settings(&self) -> Vec<Setting> {
         match self.desktop.read_ui_settings() {
             Ok(settings) => settings,
             Err(_) => self.workspace.read_settings(),
@@ -130,7 +130,7 @@ impl AppState {
     /// The active appearance: the persisted theme setting (from the desktop
     /// adapter) or the system preference when none is saved. Memory-workspace
     /// fallback settings are not treated as a persisted theme choice.
-    pub(crate) fn dark_theme(&self) -> bool {
+    pub fn dark_theme(&self) -> bool {
         let saved = match self.desktop.read_ui_settings() {
             Ok(settings) => settings.into_iter().find_map(|setting| match setting {
                 Setting::Theme { dark } => Some(dark),
@@ -144,7 +144,7 @@ impl AppState {
     /// The snippets in force (T3): the host's once its file store persists
     /// them, the memory port's while it does not. The host's read answers
     /// from its loaded file — memory-speed, like the settings read.
-    pub(crate) fn write_ui_setting(&mut self, setting: Setting) -> Result<(), String> {
+    pub fn write_ui_setting(&mut self, setting: Setting) -> Result<(), String> {
         match self.desktop.write_ui_setting(setting.clone()) {
             Ok(()) => Ok(()),
             Err(error) if error == DESKTOP_NOT_IMPLEMENTED => self.workspace.write_setting(setting),
@@ -155,7 +155,7 @@ impl AppState {
     /// One persisted layout size in points (L1), read from the settings in
     /// force. `None` means the region has never been resized: the caller
     /// applies its default.
-    pub(crate) fn layout_size(&self, key: &str) -> Option<u32> {
+    pub fn layout_size(&self, key: &str) -> Option<u32> {
         self.ui_settings()
             .into_iter()
             .find_map(|setting| match setting {
@@ -166,7 +166,7 @@ impl AppState {
 
     /// Persist one layout size in points (L1): the splitter stores it once
     /// the drag ends, so a restart reopens the same proportions.
-    pub(crate) fn set_layout_size(&mut self, key: &str, value: u32) -> Result<(), String> {
+    pub fn set_layout_size(&mut self, key: &str, value: u32) -> Result<(), String> {
         self.write_ui_setting(Setting::Layout {
             key: key.into(),
             value,
@@ -175,10 +175,10 @@ impl AppState {
 
     /// L4: the rail is expanded (icon + label) by default; collapsed shows
     /// icons only. Persisted as its width in points.
-    pub(crate) fn sidebar_expanded(&self) -> bool {
+    pub fn sidebar_expanded(&self) -> bool {
         self.sidebar_rail_width() > RAIL_WIDTH_COLLAPSED
     }
-    pub(crate) fn sidebar_rail_width(&self) -> u32 {
+    pub fn sidebar_rail_width(&self) -> u32 {
         let w = self
             .layout_size(SIDEBAR_RAIL_WIDTH_KEY)
             .unwrap_or(RAIL_WIDTH_EXPANDED);
@@ -188,7 +188,7 @@ impl AppState {
             RAIL_WIDTH_EXPANDED
         }
     }
-    pub(crate) fn toggle_sidebar_expanded(&mut self) {
+    pub fn toggle_sidebar_expanded(&mut self) {
         let next = if self.sidebar_expanded() {
             RAIL_WIDTH_COLLAPSED
         } else {
@@ -198,7 +198,7 @@ impl AppState {
     }
 
     /// L4: navigator panel width in points, clamped to its resizable range.
-    pub(crate) fn navigator_width(&self) -> u32 {
+    pub fn navigator_width(&self) -> u32 {
         let w = self
             .layout_size(NAVIGATOR_WIDTH_KEY)
             .unwrap_or(NAVIGATOR_WIDTH_DEFAULT);
@@ -206,7 +206,7 @@ impl AppState {
     }
 
     /// The table page size from the settings in force (fallback: the built-in 25).
-    pub(crate) fn table_page_size(&self) -> u32 {
+    pub fn table_page_size(&self) -> u32 {
         self.ui_settings()
             .iter()
             .find_map(|setting| match setting {
@@ -217,7 +217,7 @@ impl AppState {
     }
 
     /// A4: scope key for per-table column width persistence.
-    pub(crate) fn colw_scope(&self) -> String {
+    pub fn colw_scope(&self) -> String {
         self.desktop_connection
             .clone()
             .unwrap_or_else(|| "local".into())
@@ -227,7 +227,7 @@ impl AppState {
     /// Uses a stable FNV-1a hash so the key stays within the Layout key
     /// alphabet (lowercase letters, digits, hyphens) regardless of table or
     /// column name characters.
-    pub(crate) fn colw_key(&self, table: &str, column: &str) -> String {
+    pub fn colw_key(&self, table: &str, column: &str) -> String {
         fn fnv1a64(s: &str) -> u64 {
             let mut h: u64 = 0xcbf29ce484222325;
             for b in s.as_bytes() {
@@ -241,7 +241,7 @@ impl AppState {
     }
 
     /// A4: apply persisted column widths for the currently loaded table grid.
-    pub(crate) fn apply_table_column_widths(&mut self) {
+    pub fn apply_table_column_widths(&mut self) {
         if !self.grid.has_page() {
             return;
         }
@@ -258,7 +258,7 @@ impl AppState {
     }
 
     /// A4: set and persist one table column width (points).
-    pub(crate) fn set_table_column_width(&mut self, table: &str, column: &str, width: u32) -> Result<(), String> {
+    pub fn set_table_column_width(&mut self, table: &str, column: &str, width: u32) -> Result<(), String> {
         let key = self.colw_key(table, column);
         let width = width.max(40);
         self.set_layout_size(&key, width)?;
@@ -272,7 +272,7 @@ impl AppState {
 
     /// Set the table page size from the settings input; an invalid value keeps
     /// the old one and shows the port's error.
-    pub(crate) fn set_table_page_size(&mut self) {
+    pub fn set_table_page_size(&mut self) {
         let rows = self.page_size_input.text.trim().parse::<u32>();
         match rows {
             Ok(rows) => match self.write_ui_setting(Setting::TablePageSize { rows }) {
@@ -282,7 +282,7 @@ impl AppState {
             Err(_) => self.settings_error = Some("table page size must be a number".into()),
         }
     }
-    pub(crate) fn set_query_max_rows(&mut self) {
+    pub fn set_query_max_rows(&mut self) {
         let rows = self.max_rows_input.text.trim().parse::<u32>();
         match rows {
             Ok(rows) => match self.write_ui_setting(Setting::QueryMaxRows { rows }) {
@@ -298,7 +298,7 @@ impl AppState {
     /// live host persists it through its connection use case (the password
     /// lands sealed), the memory port keeps its semantics.
     /// Flip the theme. The only write goes to the settings in force.
-    pub(crate) fn toggle_theme(&mut self) {
+    pub fn toggle_theme(&mut self) {
         let dark = self
             .ui_settings()
             .iter()
@@ -317,7 +317,7 @@ impl AppState {
 /// by native host services (the F5 wiring's own table; the page's
 /// available set is `settings_sections_for_backend` over the
 /// capabilities).
-pub(crate) const DESKTOP_SETTINGS_SECTIONS: [&str; 7] = [
+pub const DESKTOP_SETTINGS_SECTIONS: [&str; 7] = [
     "logging",
     "ai",
     "prompts",
@@ -330,7 +330,7 @@ pub(crate) const DESKTOP_SETTINGS_SECTIONS: [&str; 7] = [
 /// `ALL_SETTINGS_SECTIONS` — every section the page knows (the
 /// desktop-shaped default until F5's table): the ids of
 /// [`SETTINGS_SECTIONS`], in order.
-pub(crate) fn all_settings_sections() -> Vec<&'static str> {
+pub fn all_settings_sections() -> Vec<&'static str> {
     SETTINGS_SECTIONS.iter().map(|section| section.id).collect()
 }
 
@@ -338,7 +338,7 @@ pub(crate) fn all_settings_sections() -> Vec<&'static str> {
 /// settings page may show, given the form's section set (F5's
 /// `PlatformCapabilities.settingsSections` plugs in directly;
 /// callers without capabilities pass the full set).
-pub(crate) fn settings_sections_for_backend(
+pub fn settings_sections_for_backend(
     sections: &[&str],
 ) -> Vec<&'static SettingsSectionDef> {
     SETTINGS_SECTIONS

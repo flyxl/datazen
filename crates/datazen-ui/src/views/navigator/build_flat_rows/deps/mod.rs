@@ -11,9 +11,9 @@
 //! | [`categories`] | `schema-tree/schemaTreeCategories.ts` | schema-tree family |
 //! | [`groups`] | `lib/connectionGroups.ts` (label half) | shard 2, T394 |
 
-pub(crate) mod categories;
-pub(crate) mod groups;
-pub(crate) mod locator;
-pub(crate) mod object_filter;
-pub(crate) mod sql_namespace;
-pub(crate) mod tree_rules;
+pub mod categories;
+pub mod groups;
+pub mod locator;
+pub mod object_filter;
+pub mod sql_namespace;
+pub mod tree_rules;

@@ -98,27 +98,27 @@ use rune_kit::Kit;
 // ---- Keys -------------------------------------------------------------------
 
 /// Root, recharts' `<PieChart>` frame.
-pub(crate) const ROOT_KEY: &str = "pie-chart";
+pub const ROOT_KEY: &str = "pie-chart";
 /// The pie canvas — every wedge paints in it.
-pub(crate) const PIE_KEY: &str = "pie-chart-pie";
+pub const PIE_KEY: &str = "pie-chart-pie";
 /// The `showValues` label row under the plot.
-pub(crate) const LABELS_KEY: &str = "pie-chart-labels";
+pub const LABELS_KEY: &str = "pie-chart-labels";
 /// One label per slice: `pie-chart-label-{row}`.
-pub(crate) const LABEL_PREFIX: &str = "pie-chart-label-";
+pub const LABEL_PREFIX: &str = "pie-chart-label-";
 /// The pointer raster over the plot.
-pub(crate) const HIT_ZONE_KEY: &str = "pie-chart-hit-zone";
+pub const HIT_ZONE_KEY: &str = "pie-chart-hit-zone";
 /// One raster cell: `pie-chart-hit-{r}-{c}`.
-pub(crate) const HIT_CELL_PREFIX: &str = "pie-chart-hit-";
+pub const HIT_CELL_PREFIX: &str = "pie-chart-hit-";
 /// The legend row (`config.showLegend` gate).
-pub(crate) const LEGEND_KEY: &str = "pie-chart-legend";
+pub const LEGEND_KEY: &str = "pie-chart-legend";
 /// One entry per slice: `pie-chart-legend-item-{row}` (+ `-swatch-`/`-name-`).
-pub(crate) const LEGEND_ITEM_PREFIX: &str = "pie-chart-legend-item-";
+pub const LEGEND_ITEM_PREFIX: &str = "pie-chart-legend-item-";
 /// The swatch of legend entry `{row}`.
-pub(crate) const LEGEND_SWATCH_PREFIX: &str = "pie-chart-legend-swatch-";
+pub const LEGEND_SWATCH_PREFIX: &str = "pie-chart-legend-swatch-";
 /// The name text of legend entry `{row}`.
-pub(crate) const LEGEND_NAME_PREFIX: &str = "pie-chart-legend-name-";
+pub const LEGEND_NAME_PREFIX: &str = "pie-chart-legend-name-";
 /// The `<Tooltip>` content box.
-pub(crate) const TOOLTIP_KEY: &str = "pie-chart-tooltip";
+pub const TOOLTIP_KEY: &str = "pie-chart-tooltip";
 
 // recharts defaults / React literals, verbatim.
 /// React `cx="50%"` / `cy="50%"`.
@@ -144,7 +144,7 @@ const TOOLTIP_DX: f32 = 2.0;
 /// The tooltip's anchor below the cell's top.
 const TOOLTIP_DY: f32 = 8.0;
 /// The hit raster's side count (16×16 cells tile the plot).
-pub(crate) const HIT_GRID: usize = 16;
+pub const HIT_GRID: usize = 16;
 /// The wedge arcs subdivide to this resolution over a full circle.
 const ARC_RESOLUTION: usize = 64;
 
@@ -152,39 +152,39 @@ const ARC_RESOLUTION: usize = 64;
 
 /// One slice's paint plan.
 #[derive(Clone, Debug)]
-pub(crate) struct PieSlicePlan {
+pub struct PieSlicePlan {
     /// The data row the slice renders (the Cell's `idx`).
-    pub(crate) row: usize,
+    pub row: usize,
     /// React `nameKey` (`config.xAxis ?? '__index'`) — the slice's name, the
     /// raw slot display.
-    pub(crate) name: String,
+    pub name: String,
     /// The slice's value (null/NaN rows draw no wedge — recharts' skip).
-    pub(crate) value: Option<f64>,
+    pub value: Option<f64>,
     /// `colors[idx % colors.length]` — the ROW index's palette slot (a null
     /// row still consumes its colour, as React's map does).
-    pub(crate) color: rune::Color,
+    pub color: rune::Color,
     /// The wedge's start angle, radians clockwise from 12 o'clock.
-    pub(crate) start: f64,
+    pub start: f64,
     /// The wedge's sweep (radians) — `value / total * 2π`.
-    pub(crate) weight: f64,
+    pub weight: f64,
     /// The `showValues` label text (`None` when the toggle is off or the row
     /// has no wedge).
-    pub(crate) label: Option<String>,
+    pub label: Option<String>,
 }
 
 /// Everything one frame of the engine paints, computed before any element:
 /// the React component's reads (the palette, `yKey`/`nameKey`, the wedge
 /// angles and the label texts), observable without a runtime.
 #[derive(Clone, Debug)]
-pub(crate) struct PieChartPlan {
+pub struct PieChartPlan {
     /// `config.yAxes[0]` — the one series the pie plots.
-    pub(crate) y_key: Option<String>,
+    pub y_key: Option<String>,
     /// `config.xAxis ?? '__index'`.
-    pub(crate) name_key: String,
+    pub name_key: String,
     /// The finite values' sum (the angles' denominator).
-    pub(crate) total: f64,
-    pub(crate) slices: Vec<PieSlicePlan>,
-    pub(crate) row_count: usize,
+    pub total: f64,
+    pub slices: Vec<PieSlicePlan>,
+    pub row_count: usize,
 }
 
 /// JS `toFixed(0)`: the integer display (round-half-even per Rust, the
@@ -196,7 +196,7 @@ fn round0(v: f64) -> String {
 /// The engine's whole plan for one frame: the React component's reads as
 /// pure data. The lean slices the chain reads are the area engine's,
 /// imported — see the seams table in the module docs.
-pub(crate) fn pie_chart_plan(
+pub fn pie_chart_plan(
     data: &[ChartDataPoint],
     config: &ChartConfig,
     dark: bool,
@@ -270,7 +270,7 @@ pub(crate) fn pie_chart_plan(
 
 /// One wedge's polygon: the centre vertex plus the arc (subdivided to the
 /// 64-gon resolution), in the plot's view-box fractions.
-pub(crate) fn wedge_polygon(start: f64, weight: f64) -> Vec<[f32; 2]> {
+pub fn wedge_polygon(start: f64, weight: f64) -> Vec<[f32; 2]> {
     let segments = (weight / std::f64::consts::TAU * ARC_RESOLUTION as f64).ceil() as usize;
     let segments = segments.max(2);
     let mut polygon = vec![[CENTER, CENTER]];
@@ -342,7 +342,7 @@ fn tooltip_el(slice: &PieSlicePlan, k: &Kit) -> El {
 /// The slice whose wedge contains a plot point (`None` outside the pie or
 /// between wedges): the angle test from 12 o'clock clockwise plus the radius
 /// test, over the slices' cumulative spans.
-pub(crate) fn slice_at(plan: &PieChartPlan, x: f32, y: f32) -> Option<usize> {
+pub fn slice_at(plan: &PieChartPlan, x: f32, y: f32) -> Option<usize> {
     let dx = x as f64 - CENTER as f64;
     let dy = y as f64 - CENTER as f64;
     if (dx * dx + dy * dy).sqrt() > OUTER_RADIUS as f64 {
@@ -429,24 +429,24 @@ struct EngineState {
 /// clones one engine per build keeps the user's hover across frames — the
 /// retained state React kept.
 #[derive(Clone)]
-pub(crate) struct PieChartRenderer {
+pub struct PieChartRenderer {
     state: Rc<RefCell<EngineState>>,
 }
 
 impl PieChartRenderer {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             state: Rc::new(RefCell::new(EngineState::default())),
         }
     }
 
     /// recharts' active slice index, as the engine keeps it.
-    pub(crate) fn hovered_slice(&self) -> Option<usize> {
+    pub fn hovered_slice(&self) -> Option<usize> {
         self.state.borrow().hovered
     }
 
     /// The hovered raster cell, as the engine keeps it (tests only).
-    pub(crate) fn hovered_cell(&self) -> Option<(usize, usize)> {
+    pub fn hovered_cell(&self) -> Option<(usize, usize)> {
         self.state.borrow().hovered_cell
     }
 }
@@ -460,7 +460,7 @@ impl Default for PieChartRenderer {
 /// The canvas's renderer-factory injection point: `ChartType::Pie` gets this
 /// engine (cloned per build, sharing its state), every other type keeps the
 /// honest placeholder.
-pub(crate) fn renderer_factory<S: 'static>(
+pub fn renderer_factory<S: 'static>(
     engine: PieChartRenderer,
 ) -> impl Fn(ChartType) -> Box<dyn ChartRenderer<S> + 'static> {
     move |chart_type| match chart_type {

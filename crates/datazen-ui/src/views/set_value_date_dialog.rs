@@ -26,7 +26,7 @@ const ROOT: &str = "set-value-date-dialog";
 /// React's `kind: 'date' | 'datetime'` union.
 #[allow(dead_code)] // VM mirror; consumed by the picker and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PickerKind {
+pub enum PickerKind {
     #[default]
     Date,
     DateTime,
@@ -35,7 +35,7 @@ pub(crate) enum PickerKind {
 impl PickerKind {
     /// React passes the literal kind to `TemporalValueInput`.
     #[allow(dead_code)] // pure mapping; consumed by the picker and tests.
-    pub(crate) fn from_str(value: &str) -> Self {
+    pub fn from_str(value: &str) -> Self {
         if value.eq_ignore_ascii_case("datetime") {
             Self::DateTime
         } else {
@@ -54,18 +54,18 @@ impl PickerKind {
 /// Host-owned projection of the dialog props plus its draft.
 #[allow(dead_code)] // VM surface; owned by the connection host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SetValueDateDialogVm {
-    pub(crate) open: bool,
-    pub(crate) column_name: String,
-    pub(crate) column_type: Option<String>,
-    pub(crate) kind: PickerKind,
-    pub(crate) draft: TextEdit,
+pub struct SetValueDateDialogVm {
+    pub open: bool,
+    pub column_name: String,
+    pub column_type: Option<String>,
+    pub kind: PickerKind,
+    pub draft: TextEdit,
 }
 
 impl SetValueDateDialogVm {
     /// React's description: `pickDate` plus ` · columnType` when present.
     #[allow(dead_code)] // pure helper; consumed by the dialog and tests.
-    pub(crate) fn description(&self) -> String {
+    pub fn description(&self) -> String {
         match self.column_type.as_deref() {
             Some(column_type) if !column_type.is_empty() => {
                 format!("{} · {}", t("dataTable.pickDate"), column_type)
@@ -78,7 +78,7 @@ impl SetValueDateDialogVm {
 /// What the dialog asks the host to do.
 #[allow(dead_code)] // host port; removed with the connection host wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SetValueDateAction {
+pub enum SetValueDateAction {
     Apply(String),
     Close,
 }
@@ -100,7 +100,7 @@ fn emit<S: 'static>(
 
 /// Build the dialog into `layer`; a closed React `Dialog` mounts nothing.
 #[allow(dead_code)] // consumer: the connection host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &SetValueDateDialogVm,
     edit: Option<EditFn<S>>,
     on_action: Option<ActionFn<S>>,

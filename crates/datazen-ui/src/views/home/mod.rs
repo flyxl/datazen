@@ -6,8 +6,8 @@
 //! that feeds them live store data is a later task, so the reusable items carry
 //! per-item `#[allow(dead_code)]` with that removal stage noted.
 
-pub(crate) mod connection_card_list;
-pub(crate) mod home_hero;
-pub(crate) mod mcp_promo_bar;
-pub(crate) mod shortcut_footer;
-pub(crate) mod recent_queries_list;
+pub mod connection_card_list;
+pub mod home_hero;
+pub mod mcp_promo_bar;
+pub mod shortcut_footer;
+pub mod recent_queries_list;

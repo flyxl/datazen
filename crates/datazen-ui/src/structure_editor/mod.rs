@@ -11,25 +11,25 @@
 //! structure-editor view that consumes these helpers does not exist yet. Remove
 //! the per-item allow (not the whole module) when that view lands.
 
-pub(crate) mod build_structure_change_request;
-pub(crate) mod can_open_structure_editor;
-pub(crate) mod control_hints;
+pub mod build_structure_change_request;
+pub mod can_open_structure_editor;
+pub mod control_hints;
 // T085: the remaining pure `.ts` helpers (draft IDs/defaults + DDL warnings).
-pub(crate) mod ddl_apply_warnings;
-pub(crate) mod draft_defaults;
-pub(crate) mod draft_ids;
+pub mod ddl_apply_warnings;
+pub mod draft_defaults;
+pub mod draft_ids;
 // T124: the capability/schema helpers from `lib/structureEditor`.
-pub(crate) mod is_control_enabled;
-pub(crate) mod resolve_create_table_schema;
-pub(crate) mod schema_to_draft;
+pub mod is_control_enabled;
+pub mod resolve_create_table_schema;
+pub mod schema_to_draft;
 // T156: contract verification + gap-fill for React lib/structureEditor/types.ts.
-pub(crate) mod types;
+pub mod types;
 
 /// Mirror of `StructureChangeMode` (`'create' | 'alter'`).
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StructureChangeMode {
+pub enum StructureChangeMode {
     Create,
     Alter,
 }
@@ -39,32 +39,32 @@ pub(crate) enum StructureChangeMode {
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StructureColumnDraft {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) data_type: String,
-    pub(crate) nullable: bool,
-    pub(crate) default_value: Option<String>,
-    pub(crate) comment: Option<String>,
-    pub(crate) is_primary_key: bool,
-    pub(crate) is_auto_increment: bool,
-    pub(crate) is_unique: bool,
+pub struct StructureColumnDraft {
+    pub id: String,
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub default_value: Option<String>,
+    pub comment: Option<String>,
+    pub is_primary_key: bool,
+    pub is_auto_increment: bool,
+    pub is_unique: bool,
 }
 
 /// Mirror of `StructureIndexDraft`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StructureIndexDraft {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) columns: Vec<String>,
-    pub(crate) is_unique: bool,
-    pub(crate) is_primary: bool,
-    pub(crate) index_type: Option<String>,
-    pub(crate) include_columns: Option<Vec<String>>,
-    pub(crate) filter: Option<String>,
-    pub(crate) comment: Option<String>,
+pub struct StructureIndexDraft {
+    pub id: String,
+    pub name: String,
+    pub columns: Vec<String>,
+    pub is_unique: bool,
+    pub is_primary: bool,
+    pub index_type: Option<String>,
+    pub include_columns: Option<Vec<String>>,
+    pub filter: Option<String>,
+    pub comment: Option<String>,
 }
 
 /// Mirror of the value returned by `buildStructureChangeRequest`. Both
@@ -73,21 +73,21 @@ pub(crate) struct StructureIndexDraft {
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StructureChangeRequest {
-    pub(crate) mode: StructureChangeMode,
-    pub(crate) table: String,
-    pub(crate) schema: Option<String>,
-    pub(crate) original_columns: Vec<StructureColumnDraft>,
-    pub(crate) current_columns: Vec<StructureColumnDraft>,
-    pub(crate) original_indexes: Vec<StructureIndexDraft>,
-    pub(crate) current_indexes: Vec<StructureIndexDraft>,
+pub struct StructureChangeRequest {
+    pub mode: StructureChangeMode,
+    pub table: String,
+    pub schema: Option<String>,
+    pub original_columns: Vec<StructureColumnDraft>,
+    pub current_columns: Vec<StructureColumnDraft>,
+    pub original_indexes: Vec<StructureIndexDraft>,
+    pub current_indexes: Vec<StructureIndexDraft>,
 }
 
 /// The three possible values of `DatabaseTypeMeta.connectionView`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConnectionView {
+pub enum ConnectionView {
     Sql,
     Keyvalue,
     Document,
@@ -100,16 +100,16 @@ pub(crate) enum ConnectionView {
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct StructureEditorUiConfig {
-    pub(crate) enabled: Option<bool>,
-    pub(crate) default_column_type: String,
+pub struct StructureEditorUiConfig {
+    pub enabled: Option<bool>,
+    pub default_column_type: String,
 }
 
 /// Mirror of `StatementRisk` (`'additive' | 'destructive' | 'rewrite'`).
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StatementRisk {
+pub enum StatementRisk {
     Additive,
     Destructive,
     Rewrite,
@@ -120,7 +120,7 @@ impl StatementRisk {
     /// joins the de-duplicated risky statement labels.
     // consumers: the future structure-editor view; delete this allow when it lands.
     #[allow(dead_code)]
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             StatementRisk::Additive => "additive",
             StatementRisk::Destructive => "destructive",
@@ -131,7 +131,7 @@ impl StatementRisk {
     /// The two risks `ddlApplyWarnings` treats as requiring confirmation.
     // consumers: the future structure-editor view; delete this allow when it lands.
     #[allow(dead_code)]
-    pub(crate) fn is_risky(self) -> bool {
+    pub fn is_risky(self) -> bool {
         matches!(self, StatementRisk::Destructive | StatementRisk::Rewrite)
     }
 }
@@ -140,37 +140,37 @@ impl StatementRisk {
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PlanStatement {
-    pub(crate) sql: String,
-    pub(crate) summary: String,
-    pub(crate) risk: StatementRisk,
+pub struct PlanStatement {
+    pub sql: String,
+    pub summary: String,
+    pub risk: StatementRisk,
 }
 
 /// Mirror of `StructureChangePlan` (`{ statements, warnings? }`).
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct StructureChangePlan {
-    pub(crate) statements: Vec<PlanStatement>,
-    pub(crate) warnings: Option<Vec<String>>,
+pub struct StructureChangePlan {
+    pub statements: Vec<PlanStatement>,
+    pub warnings: Option<Vec<String>>,
 }
 
 /// The subset of `DatabaseTypeMeta` read by `canOpenStructureEditor`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DatabaseTypeMeta {
-    pub(crate) is_key_value: bool,
-    pub(crate) connection_view: ConnectionView,
-    pub(crate) structure_editor: Option<StructureEditorUiConfig>,
-    pub(crate) supports_sql: bool,
+pub struct DatabaseTypeMeta {
+    pub is_key_value: bool,
+    pub connection_view: ConnectionView,
+    pub structure_editor: Option<StructureEditorUiConfig>,
+    pub supports_sql: bool,
 }
 
 /// Mirror of `AlterStrategy` from `structureEditor/types.ts`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum AlterStrategy {
+pub enum AlterStrategy {
     #[default]
     None,
     Direct,
@@ -183,27 +183,27 @@ pub(crate) enum AlterStrategy {
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct StructureCapabilities {
-    pub(crate) create_table: bool,
-    pub(crate) add_column: bool,
-    pub(crate) drop_column: bool,
-    pub(crate) rename_column: bool,
-    pub(crate) alter_type: bool,
-    pub(crate) alter_nullability: bool,
-    pub(crate) alter_default: bool,
-    pub(crate) alter_primary_key: bool,
-    pub(crate) reorder_column: bool,
-    pub(crate) comment: bool,
-    pub(crate) create_index: bool,
-    pub(crate) drop_index: bool,
-    pub(crate) rebuild_index: bool,
-    pub(crate) index_type: bool,
-    pub(crate) index_include: bool,
-    pub(crate) index_filter: bool,
-    pub(crate) index_comment: bool,
-    pub(crate) alter_strategy: AlterStrategy,
-    pub(crate) dialect_id: String,
-    pub(crate) index_methods: Vec<String>,
+pub struct StructureCapabilities {
+    pub create_table: bool,
+    pub add_column: bool,
+    pub drop_column: bool,
+    pub rename_column: bool,
+    pub alter_type: bool,
+    pub alter_nullability: bool,
+    pub alter_default: bool,
+    pub alter_primary_key: bool,
+    pub reorder_column: bool,
+    pub comment: bool,
+    pub create_index: bool,
+    pub drop_index: bool,
+    pub rebuild_index: bool,
+    pub index_type: bool,
+    pub index_include: bool,
+    pub index_filter: bool,
+    pub index_comment: bool,
+    pub alter_strategy: AlterStrategy,
+    pub dialect_id: String,
+    pub index_methods: Vec<String>,
 }
 
 /// Mirror of `StructureCapabilityFlag`: only the boolean-valued capability
@@ -211,7 +211,7 @@ pub(crate) struct StructureCapabilities {
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum StructureCapabilityFlag {
+pub enum StructureCapabilityFlag {
     CreateTable,
     AddColumn,
     DropColumn,

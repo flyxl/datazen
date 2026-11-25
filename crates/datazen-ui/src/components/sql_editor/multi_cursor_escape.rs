@@ -30,7 +30,7 @@
 
 /// What `exitMultiCursor` decided for one Escape.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EscapeDecision {
+pub enum EscapeDecision {
     /// Nothing to exit (one range): the command declines (`false`) and
     /// `simplifySelection` decides — a non-empty range becomes a
     /// cursor, an empty one is a no-op.
@@ -44,7 +44,7 @@ pub(crate) enum EscapeDecision {
 /// `exitMultiCursor`'s decision: `ranges.len() <= 1` declines; otherwise
 /// the main range's head becomes the single empty cursor (the user's
 /// last-moved range, so a Mod-d chain does not keep its highlight).
-pub(crate) fn exit_multi_cursor_decision(
+pub fn exit_multi_cursor_decision(
     range_count: usize,
     main_head: usize,
 ) -> EscapeDecision {

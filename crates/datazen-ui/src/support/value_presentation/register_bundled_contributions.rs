@@ -21,7 +21,7 @@ use crate::support::value_presentation::timestamp_contribution::{
 
 /// Register every core built-in presentation contribution (currently
 /// only `datazen.timestamp`). Idempotent and never unregistered.
-pub(crate) fn register_bundled_value_presentation_contributions(
+pub fn register_bundled_value_presentation_contributions(
     registry: &mut ValuePresentationRegistry,
 ) {
     if registry.get(TIMESTAMP_CONTRIBUTION_ID).is_some() {

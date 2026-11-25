@@ -128,7 +128,7 @@ mod chrome;
 mod state;
 
 #[allow(unused_imports)] // the audit and the future host consume the flow enums
-pub(crate) use state::{DashboardPanelState, EditorOpenFlow, MountArm};
+pub use state::{DashboardPanelState, EditorOpenFlow, MountArm};
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -191,25 +191,25 @@ fn type_sm() -> TextStyle {
 /// rule).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct BoardListItemVm {
-    pub(crate) id: String,
-    pub(crate) name: String,
+pub struct BoardListItemVm {
+    pub id: String,
+    pub name: String,
 }
 
 /// React `WidgetLayout` (`{ x, y, w, h }`).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct WidgetLayoutVm {
-    pub(crate) x: u32,
-    pub(crate) y: u32,
-    pub(crate) w: u32,
-    pub(crate) h: u32,
+pub struct WidgetLayoutVm {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
 }
 
 /// React `RefreshMode` (`'manual' | 'onOpen' | 'interval'`).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum RefreshModeVm {
+pub enum RefreshModeVm {
     #[default]
     Manual,
     OnOpen,
@@ -219,7 +219,7 @@ pub(crate) enum RefreshModeVm {
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl RefreshModeVm {
     /// Parse the wire spelling (`onOpen`, the camel-case literal).
-    pub(crate) fn from_str(value: &str) -> Self {
+    pub fn from_str(value: &str) -> Self {
         match value {
             "onOpen" => Self::OnOpen,
             "interval" => Self::Interval,
@@ -232,30 +232,30 @@ impl RefreshModeVm {
 /// (`{ mode: 'manual' }`).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RefreshPolicyVm {
-    pub(crate) mode: RefreshModeVm,
-    pub(crate) refresh_sec: Option<u32>,
+pub struct RefreshPolicyVm {
+    pub mode: RefreshModeVm,
+    pub refresh_sec: Option<u32>,
 }
 
 /// React `DashboardWidget`, the panel-flavoured slice: the T069 tile's
 /// fields plus the panel's own business (`workflowId`, `layout`, `refresh`).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PanelWidgetVm {
-    pub(crate) id: String,
-    pub(crate) title: String,
-    pub(crate) workflow_id: String,
-    pub(crate) view_mode: TileViewMode,
-    pub(crate) chart_config: Option<ChartConfig>,
-    pub(crate) layout: WidgetLayoutVm,
-    pub(crate) refresh: RefreshPolicyVm,
-    pub(crate) enabled: bool,
+pub struct PanelWidgetVm {
+    pub id: String,
+    pub title: String,
+    pub workflow_id: String,
+    pub view_mode: TileViewMode,
+    pub chart_config: Option<ChartConfig>,
+    pub layout: WidgetLayoutVm,
+    pub refresh: RefreshPolicyVm,
+    pub enabled: bool,
 }
 
 impl PanelWidgetVm {
     /// The T069 tile's projection of this widget (id / title / view mode /
     /// chart config / enabled — every field the tile reads).
-    pub(crate) fn tile_vm(&self) -> ChartWidgetVm {
+    pub fn tile_vm(&self) -> ChartWidgetVm {
         ChartWidgetVm {
             id: self.id.clone(),
             title: self.title.clone(),
@@ -270,76 +270,76 @@ impl PanelWidgetVm {
 /// need; the host converts the wire type).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DashboardVm {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) created_at: String,
-    pub(crate) updated_at: String,
-    pub(crate) layout_cols: u32,
-    pub(crate) layout_row_height: u32,
-    pub(crate) widgets: Vec<PanelWidgetVm>,
-    pub(crate) enabled: bool,
-    pub(crate) refresh_paused: bool,
+pub struct DashboardVm {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub layout_cols: u32,
+    pub layout_row_height: u32,
+    pub widgets: Vec<PanelWidgetVm>,
+    pub enabled: bool,
+    pub refresh_paused: bool,
 }
 
 /// React `editorHiddenSql` (`{ connectionId, sql }`) — also the T201 seam's
 /// `hiddenSql` prop.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct HiddenSqlVm {
-    pub(crate) connection_id: String,
-    pub(crate) sql: String,
+pub struct HiddenSqlVm {
+    pub connection_id: String,
+    pub sql: String,
 }
 
 /// The slice of React's `WorkflowListItem` the panel stores for the editor
 /// drawer (T201 extends it when it lands).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WorkflowListItemVm {
-    pub(crate) id: String,
-    pub(crate) name: String,
+pub struct WorkflowListItemVm {
+    pub id: String,
+    pub name: String,
 }
 
 /// One step of the `workflowGet` answer the panel's find reads.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct EditorWorkflowStepVm {
+pub struct EditorWorkflowStepVm {
     /// React's `s.type` (the find matches `'query'`).
-    pub(crate) kind: String,
-    pub(crate) connection: Option<String>,
-    pub(crate) sql: Option<String>,
+    pub kind: String,
+    pub connection: Option<String>,
+    pub sql: Option<String>,
 }
 
 /// The `workflowGet` + `workflowList` answers `openWidgetEditor` awaits,
 /// delivered together (the host runs both fetches before delivering).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct EditorWorkflowVm {
+pub struct EditorWorkflowVm {
     /// The workflow's visibility (`'dashboardHidden'` or anything else).
-    pub(crate) visibility: String,
+    pub visibility: String,
     /// `wf.connection` (`None` is React's `undefined`).
-    pub(crate) connection: Option<String>,
+    pub connection: Option<String>,
     /// `wf.steps` — the `type === 'query'` find runs on it.
-    pub(crate) steps: Vec<EditorWorkflowStepVm>,
+    pub steps: Vec<EditorWorkflowStepVm>,
     /// The `workflowList` answer (the visible-workflow branch's list).
-    pub(crate) user_workflows: Vec<WorkflowListItemVm>,
+    pub user_workflows: Vec<WorkflowListItemVm>,
 }
 
 /// The `DashboardWorkspaceSnapshot` (`workspacePanelStateStore.ts`, lines
 /// 27–38): the recreatable view state the mode-switch remount restores.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DashboardSnapshotVm {
-    pub(crate) active_dashboard_id: String,
-    pub(crate) editor_open: bool,
-    pub(crate) editing_widget: Option<PanelWidgetVm>,
-    pub(crate) is_new_widget: bool,
-    pub(crate) editor_hidden_sql: Option<HiddenSqlVm>,
-    pub(crate) user_workflows: Vec<WorkflowListItemVm>,
-    pub(crate) history_open: bool,
-    pub(crate) history_widget: Option<PanelWidgetVm>,
-    pub(crate) renaming: bool,
-    pub(crate) name_draft: String,
+pub struct DashboardSnapshotVm {
+    pub active_dashboard_id: String,
+    pub editor_open: bool,
+    pub editing_widget: Option<PanelWidgetVm>,
+    pub is_new_widget: bool,
+    pub editor_hidden_sql: Option<HiddenSqlVm>,
+    pub user_workflows: Vec<WorkflowListItemVm>,
+    pub history_open: bool,
+    pub history_widget: Option<PanelWidgetVm>,
+    pub renaming: bool,
+    pub name_draft: String,
 }
 
 // ---- Pure helpers -----------------------------------------------------------
@@ -348,7 +348,7 @@ pub(crate) struct DashboardSnapshotVm {
 /// `crypto.randomUUID()` id and the `new Date().toISOString()` stamp — both
 /// are host concerns, the `on_begin_create` ruling of the AI settings port.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn create_empty_dashboard(id: &str, name: &str, now_iso: &str) -> DashboardVm {
+pub fn create_empty_dashboard(id: &str, name: &str, now_iso: &str) -> DashboardVm {
     DashboardVm {
         id: id.to_owned(),
         name: name.to_owned(),
@@ -365,7 +365,7 @@ pub(crate) fn create_empty_dashboard(id: &str, name: &str, now_iso: &str) -> Das
 /// React's `nextWidgetLayout` (lines 49–52), verbatim: below the deepest
 /// widget's bottom edge, half the row width, four rows tall.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn next_widget_layout(widgets: &[PanelWidgetVm]) -> WidgetLayoutVm {
+pub fn next_widget_layout(widgets: &[PanelWidgetVm]) -> WidgetLayoutVm {
     let max_y = widgets
         .iter()
         .map(|widget| widget.layout.y + widget.layout.h)
@@ -385,7 +385,7 @@ pub(crate) fn next_widget_layout(widgets: &[PanelWidgetVm]) -> WidgetLayoutVm {
 /// `_`; only an empty result (the empty name — any non-word name yields at
 /// least `_`) falls back to `dashboard`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn sanitize_export_stem(name: &str) -> String {
+pub fn sanitize_export_stem(name: &str) -> String {
     let mut out = String::new();
     let mut in_bad_run = false;
     for ch in name.chars() {
@@ -410,7 +410,7 @@ pub(crate) fn sanitize_export_stem(name: &str) -> String {
 /// The `S` → panel-state projection (the T023-S2 `EditorFn` convention): the
 /// panel's own handlers mutate the state through it, so the host wires one
 /// closure instead of one per control.
-pub(crate) type PanelStateFn<S> = Rc<dyn Fn(&mut S) -> &mut DashboardPanelState>;
+pub type PanelStateFn<S> = Rc<dyn Fn(&mut S) -> &mut DashboardPanelState>;
 
 type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 type WidgetIdFn<S> = Rc<dyn Fn(&mut S, String) + 'static>;
@@ -423,7 +423,7 @@ type PauseFn<S> = Rc<dyn Fn(&mut S, bool) + 'static>;
 /// T146/T175, composed: the grid instantiates one T069 tile per widget and
 /// the layer carries the T175 drawer).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) struct DashboardPanel<'a, S: 'static> {
+pub struct DashboardPanel<'a, S: 'static> {
     state: &'a DashboardPanelState,
     /// The state projection every view-initiated transition flows through.
     state_fn: Option<PanelStateFn<S>>,
@@ -487,7 +487,7 @@ pub(crate) struct DashboardPanel<'a, S: 'static> {
 impl<'a, S: 'static> DashboardPanel<'a, S> {
     /// The panel over its state slice; every slot below is optional (the
     /// not-yet-wired host renders but nothing fires).
-    pub(crate) fn new(state: &'a DashboardPanelState) -> Self {
+    pub fn new(state: &'a DashboardPanelState) -> Self {
         Self {
             state,
             state_fn: None,
@@ -513,13 +513,13 @@ impl<'a, S: 'static> DashboardPanel<'a, S> {
     }
 
     /// The state projection every view-initiated transition flows through.
-    pub(crate) fn state_fn(mut self, f: PanelStateFn<S>) -> Self {
+    pub fn state_fn(mut self, f: PanelStateFn<S>) -> Self {
         self.state_fn = Some(f);
         self
     }
 
     /// The per-widget transform seam (the tile's `chartData` memo output).
-    pub(crate) fn tile_chart_data(
+    pub fn tile_chart_data(
         mut self,
         data: Option<&'a HashMap<String, Vec<ChartDataPoint>>>,
     ) -> Self {
@@ -528,20 +528,20 @@ impl<'a, S: 'static> DashboardPanel<'a, S> {
     }
 
     /// The run-history drawer's transform seam.
-    pub(crate) fn history_chart_data(mut self, data: Option<&'a [ChartDataPoint]>) -> Self {
+    pub fn history_chart_data(mut self, data: Option<&'a [ChartDataPoint]>) -> Self {
         self.history_chart_data = data;
         self
     }
 
     /// The T201 `WidgetEditorDrawer` seam (host-built, layer-pushed).
-    pub(crate) fn editor_drawer(mut self, slot: El) -> Self {
+    pub fn editor_drawer(mut self, slot: El) -> Self {
         self.editor_drawer = Some(slot);
         self
     }
 
     /// The rename field's `on_edit` projection (the host hands the field its
     /// `TextEdit` accessor, the T018 convention).
-    pub(crate) fn rename_edit(
+    pub fn rename_edit(
         mut self,
         f: impl FnOnce(TextField<'a>) -> TextField<'a> + 'static,
     ) -> Self {
@@ -550,87 +550,87 @@ impl<'a, S: 'static> DashboardPanel<'a, S> {
     }
 
     /// React `onDashboardChange(id, name)`.
-    pub(crate) fn on_dashboard_change(mut self, f: impl Fn(&mut S, &str, &str) + 'static) -> Self {
+    pub fn on_dashboard_change(mut self, f: impl Fn(&mut S, &str, &str) + 'static) -> Self {
         self.on_dashboard_change = Some(Rc::new(f));
         self
     }
 
     /// `handleCreatePanel`.
-    pub(crate) fn on_create_panel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_create_panel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_create_panel = Some(Rc::new(f));
         self
     }
 
     /// `handleCreateFirstBoard`.
-    pub(crate) fn on_create_first_board(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_create_first_board(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_create_first_board = Some(Rc::new(f));
         self
     }
 
     /// `handleImport`.
-    pub(crate) fn on_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_import = Some(Rc::new(f));
         self
     }
 
     /// The docs-help press (`openDocsWindow('opsDashboard')`).
-    pub(crate) fn on_open_docs(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_docs(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_docs = Some(Rc::new(f));
         self
     }
 
     /// `handleToggleMonitorPause(next)` — the host receives the computed
     /// `next` (React's `!monitorPaused`).
-    pub(crate) fn on_toggle_monitor_pause(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_toggle_monitor_pause(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_toggle_monitor_pause = Some(Rc::new(f));
         self
     }
 
     /// `handleRefreshAll`'s IPC half.
-    pub(crate) fn on_refresh_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_refresh_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_refresh_all = Some(Rc::new(f));
         self
     }
 
     /// `handleExport`.
-    pub(crate) fn on_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_export = Some(Rc::new(f));
         self
     }
 
     /// The rename commit's save half (Enter; the blur arm has no Rune
     /// counterpart — a documented delta).
-    pub(crate) fn on_rename_commit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_rename_commit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_rename_commit = Some(Rc::new(f));
         self
     }
 
     /// `handleAddWidget`'s uuid half.
-    pub(crate) fn on_add_widget(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_add_widget(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_add_widget = Some(Rc::new(f));
         self
     }
 
     /// The tile refresh press — `refreshWidget(current.id, widget.id)`.
-    pub(crate) fn on_refresh_widget(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_refresh_widget(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_refresh_widget = Some(Rc::new(f));
         self
     }
 
     /// The board save for a view-mode / chart-type / chart-config change.
-    pub(crate) fn on_save_board(mut self, f: impl Fn(&mut S, DashboardVm) + 'static) -> Self {
+    pub fn on_save_board(mut self, f: impl Fn(&mut S, DashboardVm) + 'static) -> Self {
         self.on_save_board = Some(Rc::new(f));
         self
     }
 
     /// `handleDeletePanel`'s IPC half.
-    pub(crate) fn on_delete_panel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_delete_panel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_delete_panel = Some(Rc::new(f));
         self
     }
 
     /// `handleDeleteWidget`'s save half.
-    pub(crate) fn on_delete_widget(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_delete_widget(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_delete_widget = Some(Rc::new(f));
         self
     }
@@ -639,7 +639,7 @@ impl<'a, S: 'static> DashboardPanel<'a, S> {
     /// `createPortal` convention), in React's DOM order — editor seam, run
     /// history, then the two dialogs. The three early-return branches build
     /// no layer children at all (React returns before the mounts).
-    pub(crate) fn build(mut self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(mut self, dark: bool, layer: &mut Vec<El>) -> El {
         let state = self.state;
         // React's early returns, in order (the locale gate is elided — the
         // T018 ruling).
@@ -994,7 +994,7 @@ impl<'a, S: 'static> DashboardPanel<'a, S> {
 
 /// The play / pause glyph pair the toolbar's monitor toggle swaps (React
 /// lines 640–645) — shared with the chrome half and the audit.
-pub(crate) fn monitor_toggle_glyph(paused: bool) -> &'static rune::Icon {
+pub fn monitor_toggle_glyph(paused: bool) -> &'static rune::Icon {
     if paused {
         &ICON_PLAY
     } else {

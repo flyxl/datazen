@@ -35,7 +35,7 @@ use crate::i18n::t;
 
 /// `SchemaDiffWizardStep`: the wizard's five steps.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SchemaDiffWizardStep {
+pub enum SchemaDiffWizardStep {
     Endpoints,
     Objects,
     Compare,
@@ -45,7 +45,7 @@ pub(crate) enum SchemaDiffWizardStep {
 
 impl SchemaDiffWizardStep {
     /// The React spelling (`'endpoints' | 'objects' | …`).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Endpoints => "endpoints",
             Self::Objects => "objects",
@@ -57,18 +57,18 @@ impl SchemaDiffWizardStep {
 
     /// `SCHEMA_DIFF_STEPS.indexOf(step)`: the step's position in the
     /// full rail, or `None` when unlisted.
-    pub(crate) fn index_in(self, steps: &[SchemaDiffWizardStep]) -> Option<usize> {
+    pub fn index_in(self, steps: &[SchemaDiffWizardStep]) -> Option<usize> {
         steps.iter().position(|candidate| *candidate == self)
     }
 
     /// `t(\`schemaDiff.step.${item}\`)`'s key.
-    pub(crate) fn label_key(self) -> String {
+    pub fn label_key(self) -> String {
         format!("schemaDiff.step.{}", self.as_str())
     }
 }
 
 /// `SCHEMA_DIFF_STEPS`.
-pub(crate) const SCHEMA_DIFF_STEPS: [SchemaDiffWizardStep; 5] = [
+pub const SCHEMA_DIFF_STEPS: [SchemaDiffWizardStep; 5] = [
     SchemaDiffWizardStep::Endpoints,
     SchemaDiffWizardStep::Objects,
     SchemaDiffWizardStep::Compare,
@@ -77,7 +77,7 @@ pub(crate) const SCHEMA_DIFF_STEPS: [SchemaDiffWizardStep; 5] = [
 ];
 
 /// `SCHEMA_DIFF_NARROW_STEPS` (the narrow window's three steps).
-pub(crate) const SCHEMA_DIFF_NARROW_STEPS: [SchemaDiffWizardStep; 3] = [
+pub const SCHEMA_DIFF_NARROW_STEPS: [SchemaDiffWizardStep; 3] = [
     SchemaDiffWizardStep::Endpoints,
     SchemaDiffWizardStep::Objects,
     SchemaDiffWizardStep::Deploy,
@@ -97,7 +97,7 @@ const CIRCLE_TEXT: f32 = 10.0;
 const LABEL_TEXT: f32 = 12.0;
 
 /// `SchemaDiffWizardProgress({ step })`.
-pub(crate) fn schema_diff_wizard_progress(k: &Kit, step: SchemaDiffWizardStep) -> El {
+pub fn schema_diff_wizard_progress(k: &Kit, step: SchemaDiffWizardStep) -> El {
     let step_index = step.index_in(&SCHEMA_DIFF_STEPS);
     let mut rail = row()
         .key("schema-diff-progress")

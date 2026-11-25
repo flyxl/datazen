@@ -61,26 +61,26 @@ use crate::views::dashboard::chart_widget_tile::WidgetRunVm;
 
 /// The store's per-dashboard entry — React's `DashboardEntry`.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DashboardEntry {
+pub struct DashboardEntry {
     /// React `dashboard: Dashboard | null`; `None` until the load lands.
-    pub(crate) dashboard: Option<DashboardVm>,
+    pub dashboard: Option<DashboardVm>,
     /// React `runs: Record<string, WidgetRun | null>` — a missing key is
     /// "never loaded" (React's absent property), a `None` value is
     /// "loaded, none available".
-    pub(crate) runs: HashMap<String, Option<WidgetRunVm>>,
+    pub runs: HashMap<String, Option<WidgetRunVm>>,
     /// React `busyWidgets: Record<string, boolean>` — membership is `true`.
-    pub(crate) busy_widgets: HashSet<String>,
+    pub busy_widgets: HashSet<String>,
     /// React `loading`.
-    pub(crate) loading: bool,
+    pub loading: bool,
     /// React `error: string | null`.
-    pub(crate) error: Option<String>,
+    pub error: Option<String>,
     /// React `refCount`.
-    pub(crate) ref_count: i64,
+    pub ref_count: i64,
 }
 
 impl DashboardEntry {
     /// React's `emptyEntry()`.
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         DashboardEntry {
             dashboard: None,
             runs: HashMap::new(),
@@ -95,15 +95,15 @@ impl DashboardEntry {
 /// The store: the map plus the list surface. The zustand hook becomes the
 /// host's single field.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DashboardStore {
+pub struct DashboardStore {
     /// React `dashboardsById`.
-    pub(crate) dashboards_by_id: HashMap<String, DashboardEntry>,
+    pub dashboards_by_id: HashMap<String, DashboardEntry>,
     /// React `list: Dashboard[]`.
-    pub(crate) list: Vec<DashboardVm>,
+    pub list: Vec<DashboardVm>,
     /// React `listError`.
-    pub(crate) list_error: Option<String>,
+    pub list_error: Option<String>,
     /// React `listLoading`.
-    pub(crate) list_loading: bool,
+    pub list_loading: bool,
 }
 
 impl DashboardStore {
@@ -121,7 +121,7 @@ impl DashboardStore {
     }
 
     /// The entry at `id`, if any (read access for hosts and tests).
-    pub(crate) fn entry(&self, id: &str) -> Option<&DashboardEntry> {
+    pub fn entry(&self, id: &str) -> Option<&DashboardEntry> {
         self.dashboards_by_id.get(id)
     }
 
@@ -129,7 +129,7 @@ impl DashboardStore {
 
     /// React `mountDashboard`: refCount+1. The listener install it triggers
     /// is a host concern (the module doc's rail ruling).
-    pub(crate) fn mount_dashboard(&mut self, id: &str) {
+    pub fn mount_dashboard(&mut self, id: &str) {
         let prev = self
             .dashboards_by_id
             .remove(id)
@@ -142,7 +142,7 @@ impl DashboardStore {
     /// React `releaseDashboard`: refCount−1, and the entry disappears
     /// entirely once the count reaches zero (an unknown id is a no-op —
     /// React's `if (!prev) return s`).
-    pub(crate) fn release_dashboard(&mut self, id: &str) {
+    pub fn release_dashboard(&mut self, id: &str) {
         let Some(mut prev) = self.dashboards_by_id.remove(id) else {
             return;
         };
@@ -156,13 +156,13 @@ impl DashboardStore {
 
     /// The first `set` of `fetchDashboards`: the list goes busy, the error
     /// clears.
-    pub(crate) fn begin_fetch(&mut self) {
+    pub fn begin_fetch(&mut self) {
         self.list_loading = true;
         self.list_error = None;
     }
 
     /// The success `set`: the list lands, busy clears.
-    pub(crate) fn apply_fetch_ok(&mut self, list: Vec<DashboardVm>) {
+    pub fn apply_fetch_ok(&mut self, list: Vec<DashboardVm>) {
         self.list = list;
         self.list_loading = false;
     }
@@ -170,7 +170,7 @@ impl DashboardStore {
     /// The catch `set`: busy clears, the error lands (React's
     /// `e instanceof Error ? e.message : String(e)` is the host's
     /// formatting — the port takes the string).
-    pub(crate) fn apply_fetch_err(&mut self, message: impl Into<String>) {
+    pub fn apply_fetch_err(&mut self, message: impl Into<String>) {
         self.list_loading = false;
         self.list_error = Some(message.into());
     }
@@ -179,7 +179,7 @@ impl DashboardStore {
 
     /// The first `set` of `loadDashboard`: the entry goes busy, its error
     /// clears (the entry materialises through `patchEntry`'s empty default).
-    pub(crate) fn begin_load(&mut self, id: &str) {
+    pub fn begin_load(&mut self, id: &str) {
         self.patch_entry(id, |mut entry| {
             entry.loading = true;
             entry.error = None;
@@ -191,7 +191,7 @@ impl DashboardStore {
     /// `runs` is the full record the host built (each widget's
     /// [`pick_latest_run`] outcome, `None` for a widget whose latest run
     /// could not be fetched).
-    pub(crate) fn apply_load_ok(
+    pub fn apply_load_ok(
         &mut self,
         id: &str,
         dashboard: DashboardVm,
@@ -206,7 +206,7 @@ impl DashboardStore {
     }
 
     /// The catch `set`: busy clears, the error lands.
-    pub(crate) fn apply_load_err(&mut self, id: &str, message: impl Into<String>) {
+    pub fn apply_load_err(&mut self, id: &str, message: impl Into<String>) {
         self.patch_entry(id, |mut entry| {
             entry.loading = false;
             entry.error = Some(message.into());
@@ -220,7 +220,7 @@ impl DashboardStore {
     /// entry takes the saved dashboard; the list upserts by id — a known
     /// member is replaced in place, an unknown one is appended (React's
     /// `some/map` vs `[...list, saved]`).
-    pub(crate) fn apply_save(&mut self, saved: DashboardVm) {
+    pub fn apply_save(&mut self, saved: DashboardVm) {
         if self.dashboards_by_id.contains_key(&saved.id) {
             let dashboard = saved.clone();
             self.patch_entry(&saved.id, |mut entry| {
@@ -239,7 +239,7 @@ impl DashboardStore {
 
     /// The `set` of `deleteDashboard`: the entry and the list member both
     /// disappear (an unknown id simply changes nothing).
-    pub(crate) fn apply_delete(&mut self, id: &str) {
+    pub fn apply_delete(&mut self, id: &str) {
         self.dashboards_by_id.remove(id);
         self.list.retain(|d| d.id != id);
     }
@@ -249,7 +249,7 @@ impl DashboardStore {
     /// The busy `set` of `refreshWidget`: the widget's busy flag goes on
     /// (the entry materialises from the empty default if absent —
     /// React's `?? emptyEntry()`).
-    pub(crate) fn begin_refresh(&mut self, dashboard_id: &str, widget_id: &str) {
+    pub fn begin_refresh(&mut self, dashboard_id: &str, widget_id: &str) {
         self.patch_entry(dashboard_id, |mut entry| {
             entry.busy_widgets.insert(widget_id.to_owned());
             entry
@@ -257,7 +257,7 @@ impl DashboardStore {
     }
 
     /// The success `set`s: the run lands under the widget, busy clears.
-    pub(crate) fn apply_refresh_ok(
+    pub fn apply_refresh_ok(
         &mut self,
         dashboard_id: &str,
         widget_id: &str,
@@ -272,7 +272,7 @@ impl DashboardStore {
 
     /// The catch `set`s: busy clears and the error lands (the run slot is
     /// left untouched — React writes no `runs` entry on the error path).
-    pub(crate) fn apply_refresh_err(
+    pub fn apply_refresh_err(
         &mut self,
         dashboard_id: &str,
         widget_id: &str,
@@ -290,7 +290,7 @@ impl DashboardStore {
     /// React `setRun`: the run slot under the widget — `None` clears it
     /// the way React's `run: null` does. The entry materialises from the
     /// empty default when absent.
-    pub(crate) fn set_run(
+    pub fn set_run(
         &mut self,
         dashboard_id: &str,
         widget_id: &str,
@@ -307,7 +307,7 @@ impl DashboardStore {
 /// `ok`, else the first entry, else nothing. The entries are the
 /// `listWidgetRuns(dashboardId, widgetId, 1)` answer — the single-entry
 /// index the host fetched.
-pub(crate) fn pick_latest_run(statuses: &[&str]) -> Option<usize> {
+pub fn pick_latest_run(statuses: &[&str]) -> Option<usize> {
     if let Some(ok_index) = statuses.iter().position(|status| *status == "ok") {
         return Some(ok_index);
     }
@@ -318,7 +318,7 @@ pub(crate) fn pick_latest_run(statuses: &[&str]) -> Option<usize> {
 /// `updatedAt: new Date().toISOString()`. The host owns the clock; the
 /// stamp is written before the request, so the answer's `updatedAt` and
 /// the list's copy agree.
-pub(crate) fn stamp_save_input(mut dashboard: DashboardVm, updated_at: impl Into<String>) -> DashboardVm {
+pub fn stamp_save_input(mut dashboard: DashboardVm, updated_at: impl Into<String>) -> DashboardVm {
     dashboard.updated_at = updated_at.into();
     dashboard
 }
@@ -326,7 +326,7 @@ pub(crate) fn stamp_save_input(mut dashboard: DashboardVm, updated_at: impl Into
 /// React `refreshAllWidgets`'s selection: the enabled widgets of the
 /// dashboard (the disabled ones are skipped, and an absent dashboard or
 /// entry means nothing to refresh).
-pub(crate) fn refresh_all_targets(entry: Option<&DashboardEntry>) -> Vec<String> {
+pub fn refresh_all_targets(entry: Option<&DashboardEntry>) -> Vec<String> {
     entry
         .and_then(|entry| entry.dashboard.as_ref())
         .map(|dashboard| {
@@ -344,7 +344,7 @@ pub(crate) fn refresh_all_targets(entry: Option<&DashboardEntry>) -> Vec<String>
 /// three fields present, and the entry must exist with a positive
 /// refCount (React's two early returns). The store write the listener then
 /// performs is [`DashboardStore::set_run`].
-pub(crate) fn run_updated_gate(
+pub fn run_updated_gate(
     store: &DashboardStore,
     dashboard_id: Option<&str>,
     widget_id: Option<&str>,
@@ -366,7 +366,7 @@ pub(crate) fn run_updated_gate(
 /// reloaded (it exists with a positive refCount). The list refetch that
 /// follows unconditionally is the host's fire-and-forget — it does not
 /// consult the store.
-pub(crate) fn changed_gate(store: &DashboardStore, dashboard_id: Option<&str>) -> bool {
+pub fn changed_gate(store: &DashboardStore, dashboard_id: Option<&str>) -> bool {
     match (dashboard_id, dashboard_id.and_then(|id| store.entry(id))) {
         (Some(_), Some(entry)) => entry.ref_count > 0,
         _ => false,

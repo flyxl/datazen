@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 /// `JobState` (backend-client `types/jobs.ts`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum JobState {
+pub enum JobState {
     Queued,
     Running,
     Succeeded,
@@ -41,7 +41,7 @@ pub(crate) enum JobState {
 impl JobState {
     /// The hydrate filter's active set and the projection's active
     /// bucket share this predicate (`'queued' || 'running'`).
-    pub(crate) fn is_active(self) -> bool {
+    pub fn is_active(self) -> bool {
         matches!(self, Self::Queued | Self::Running)
     }
 }
@@ -49,7 +49,7 @@ impl JobState {
 /// `EffectOutcome` (backend-client `types/session.ts`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum EffectOutcome {
+pub enum EffectOutcome {
     NotStarted,
     Completed,
     RolledBack,
@@ -60,54 +60,54 @@ pub(crate) enum EffectOutcome {
 /// `JobProgress`: the P5 five-bucket counters.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct JobProgress {
-    pub(crate) read: i64,
-    pub(crate) converted: i64,
-    pub(crate) attempted: i64,
-    pub(crate) committed: i64,
-    pub(crate) unknown: i64,
+pub struct JobProgress {
+    pub read: i64,
+    pub converted: i64,
+    pub attempted: i64,
+    pub committed: i64,
+    pub unknown: i64,
 }
 
 /// The `JobView` mirror (backend-client `types/jobs.ts`), camelCase on
 /// the wire exactly as the transport speaks.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MigrationJobViewVm {
-    pub(crate) job_id: String,
-    pub(crate) kind: String,
-    pub(crate) state: JobState,
-    pub(crate) stage: Option<String>,
-    pub(crate) execution_ids: Vec<String>,
-    pub(crate) artifact_ids: Vec<String>,
+pub struct MigrationJobViewVm {
+    pub job_id: String,
+    pub kind: String,
+    pub state: JobState,
+    pub stage: Option<String>,
+    pub execution_ids: Vec<String>,
+    pub artifact_ids: Vec<String>,
     /// Epoch milliseconds.
-    pub(crate) created_at: i64,
+    pub created_at: i64,
     /// Epoch milliseconds.
-    pub(crate) updated_at: i64,
-    pub(crate) effect_outcome: Option<EffectOutcome>,
-    pub(crate) cancel_requested: bool,
-    pub(crate) pending_verification_reason: Option<String>,
-    pub(crate) error: Option<String>,
-    pub(crate) progress: JobProgress,
+    pub updated_at: i64,
+    pub effect_outcome: Option<EffectOutcome>,
+    pub cancel_requested: bool,
+    pub pending_verification_reason: Option<String>,
+    pub error: Option<String>,
+    pub progress: JobProgress,
 }
 
 /// `MIGRATION_JOB_KINDS`: per-window job kind prefixes. Prepare and
 /// apply are separate Job kinds.
-pub(crate) const MIGRATION_JOB_KINDS: MigrationWindowKinds = MigrationWindowKinds {
+pub const MIGRATION_JOB_KINDS: MigrationWindowKinds = MigrationWindowKinds {
     schema_diff: ["schemaDiffPrepare", "schemaDiffApply"],
     data_sync: ["dataSyncPrepare", "dataSyncApply"],
     data_transfer: ["dataTransferPrepare", "dataTransferApply"],
 };
 
 /// The kinds table (a const struct — Rust has no const maps).
-pub(crate) struct MigrationWindowKinds {
-    pub(crate) schema_diff: [&'static str; 2],
-    pub(crate) data_sync: [&'static str; 2],
-    pub(crate) data_transfer: [&'static str; 2],
+pub struct MigrationWindowKinds {
+    pub schema_diff: [&'static str; 2],
+    pub data_sync: [&'static str; 2],
+    pub data_transfer: [&'static str; 2],
 }
 
 /// `MigrationWindow`: one of the three migration windows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MigrationWindow {
+pub enum MigrationWindow {
     SchemaDiff,
     DataSync,
     DataTransfer,
@@ -115,7 +115,7 @@ pub(crate) enum MigrationWindow {
 
 impl MigrationWindow {
     /// This window's job kinds (`MIGRATION_JOB_KINDS[window]`).
-    pub(crate) fn kinds(self) -> &'static [&'static str; 2] {
+    pub fn kinds(self) -> &'static [&'static str; 2] {
         match self {
             Self::SchemaDiff => &MIGRATION_JOB_KINDS.schema_diff,
             Self::DataSync => &MIGRATION_JOB_KINDS.data_sync,
@@ -124,29 +124,29 @@ impl MigrationWindow {
     }
 
     /// `isOurKind(job)`: whether a job belongs to this window.
-    pub(crate) fn owns(self, job: &MigrationJobViewVm) -> bool {
+    pub fn owns(self, job: &MigrationJobViewVm) -> bool {
         self.kinds().contains(&job.kind.as_str())
     }
 }
 
 /// `MigrationJobHydration`: the window's projection.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct MigrationJobHydration {
+pub struct MigrationJobHydration {
     /// Latest visible projection for this window, including completed
     /// jobs.
-    pub(crate) jobs: Vec<MigrationJobViewVm>,
+    pub jobs: Vec<MigrationJobViewVm>,
     /// Jobs of this window's kinds that are still queued/running.
-    pub(crate) active_jobs: Vec<MigrationJobViewVm>,
+    pub active_jobs: Vec<MigrationJobViewVm>,
     /// Jobs of this window's kinds that reached a terminal state.
-    pub(crate) terminal_jobs: Vec<MigrationJobViewVm>,
+    pub terminal_jobs: Vec<MigrationJobViewVm>,
     /// Terminal or paused jobs whose effect outcome still needs a
     /// human decision.
-    pub(crate) verification_jobs: Vec<MigrationJobViewVm>,
+    pub verification_jobs: Vec<MigrationJobViewVm>,
 }
 
 /// The job-center half the hydration fold reads: the host supplies the
 /// bound backend client behind it (`listJobs` / `getJob`).
-pub(crate) trait MigrationJobCenter {
+pub trait MigrationJobCenter {
     /// `client.listJobs({ states })` — `None` is the empty filter.
     /// The error is the message the hook surfaces.
     fn list_jobs(&self, states: Option<&[JobState]>) -> Result<Vec<MigrationJobViewVm>, String>;
@@ -170,7 +170,7 @@ fn rebucket(jobs: Vec<MigrationJobViewVm>) -> MigrationJobHydration {
 /// `hydrateMigrationJobs(client, window)`: query the job center
 /// first. The callers read plans/results only after this has run, so
 /// a window never hydrates from stale local state.
-pub(crate) fn hydrate_migration_jobs(
+pub fn hydrate_migration_jobs(
     center: &dyn MigrationJobCenter,
     window: MigrationWindow,
 ) -> Result<MigrationJobHydration, String> {
@@ -212,7 +212,7 @@ pub(crate) fn hydrate_migration_jobs(
 /// watched job in the window projection and recalculate its buckets.
 /// A stale update (older `updatedAt`) or one that would resurrect a
 /// terminal job leaves the projection untouched.
-pub(crate) fn update_migration_job_projection(
+pub fn update_migration_job_projection(
     current: &MigrationJobHydration,
     updated: MigrationJobViewVm,
 ) -> MigrationJobHydration {

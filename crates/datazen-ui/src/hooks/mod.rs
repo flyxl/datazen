@@ -6,60 +6,60 @@
 //! useFkNavigationShortcuts; T294 adds useGridClipboard with its carried
 //! lib helpers; the remaining hooks land with their own tasks).
 
-pub(crate) mod confirm_dialog;
-pub(crate) mod grid_clipboard_helpers;
-pub(crate) mod grid_paste_plan_helpers;
+pub mod confirm_dialog;
+pub mod grid_clipboard_helpers;
+pub mod grid_paste_plan_helpers;
 /// `lib/migrationJobHydration.ts` helpers carried for the
 /// useMigrationJobHydration port (T376) until T559 lands and absorbs
 /// them.
-pub(crate) mod migration_job_hydration_helpers;
-pub(crate) mod use_ai_editor_grant;
-pub(crate) mod use_ai_keyboard;
-pub(crate) mod use_auto_scroll;
-pub(crate) mod use_clipboard_copy_feedback;
-pub(crate) mod use_column_presentation_session;
-pub(crate) mod use_column_resize;
-pub(crate) mod use_column_stats;
-pub(crate) mod use_compact_toolbar;
-pub(crate) mod use_connection_command;
-pub(crate) mod use_fk_navigation_shortcuts;
-pub(crate) mod use_grid_clipboard;
+pub mod migration_job_hydration_helpers;
+pub mod use_ai_editor_grant;
+pub mod use_ai_keyboard;
+pub mod use_auto_scroll;
+pub mod use_clipboard_copy_feedback;
+pub mod use_column_presentation_session;
+pub mod use_column_resize;
+pub mod use_column_stats;
+pub mod use_compact_toolbar;
+pub mod use_connection_command;
+pub mod use_fk_navigation_shortcuts;
+pub mod use_grid_clipboard;
 /// T376: per-window job hydration for the three migration windows
 /// (job-center-first read, watch re-subscribe, unsubscribe-only
 /// unmount).
-pub(crate) mod use_migration_job_hydration;
+pub mod use_migration_job_hydration;
 /// T422: the foreign keys of one table as the grid needs them (DB-07:
 /// the schema-cache read, the column→group index, degradation).
-pub(crate) mod use_table_foreign_keys;
+pub mod use_table_foreign_keys;
 /// T341a: the host-side alias for the single i18n hook (the table
 /// face + `{param}` interpolation).
-pub(crate) mod use_i18n;
+pub mod use_i18n;
 /// T341b: the keyboard-shortcut registry (spec grammar, scope gates,
 /// first-match-wins resolution).
-pub(crate) mod use_keyboard_shortcuts;
+pub mod use_keyboard_shortcuts;
 /// T353: the leaf-side read of a KV panel's selected key (the
 /// host-owned relay's scalar, the AI button / assistant drawer's input).
-pub(crate) mod use_kv_slot_selected_key;
+pub mod use_kv_slot_selected_key;
 /// T363: ensure the lazy i18n domain packs are loaded for the active
 /// language (the stable-key ready gate; the packs themselves are
 /// compiled in under the T018 ruling).
-pub(crate) mod use_locale_domains;
+pub mod use_locale_domains;
 /// T384: the OS detection hook (the user-agent parse, the probe
 /// cache, the synchronous first frame; absorbed `Platform` from the
 /// sql_editor_context_menu carry).
-pub(crate) mod use_platform;
+pub mod use_platform;
 
 
 
 // T525/T527 seam: the grid keyboard semantics + the composing guard,
 // carried for the grid hooks until their own ledger tasks land (the
 // T041 mirror convention).
-pub(crate) mod grid_keyboard_helpers;
+pub mod grid_keyboard_helpers;
 // T313: the grid keyboard wiring (DB-02).
-pub(crate) mod use_grid_keyboard_nav;
+pub mod use_grid_keyboard_nav;
 // T328: the grid's pointer wiring (DB-01: the drag session, the
 // gutter hand-off, Escape's cancel-drag-first clearing).
-pub(crate) mod use_grid_selection;
+pub mod use_grid_selection;
 // T395: the per-pane query-execution read (the whole-entry and
 // single-field faces over the pane-key rule).
 mod use_query_exec;
@@ -77,7 +77,7 @@ mod use_settings_sync;
 mod use_theme_sync;
 // T438's carried half: the failure classification, the read-model
 // projections and the lib predicates (T561's until it lands).
-pub(crate) mod transfer_job_run_helpers;
+pub mod transfer_job_run_helpers;
 // T445: the host presentation pipeline wiring hook (the registry
 // revision + the cache-key-only plan memo over T157's builder).
 mod use_value_presentation;
@@ -89,7 +89,7 @@ mod use_value_presentation_snapshot;
 mod use_transfer_job_run;
 // T457's split half: the virtual table's layout vocabulary (the
 // VirtualRow projection, the default overscan, the max-offset clamp).
-pub(crate) mod virtual_table_helpers;
+pub mod virtual_table_helpers;
 // T457: the virtual table hook (the viewport window with overscan on
 // both edges, the absolute row offsets, the clamped scroll ask).
-pub(crate) mod use_virtual_table;
+pub mod use_virtual_table;

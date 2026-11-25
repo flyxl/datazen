@@ -25,20 +25,20 @@ use crate::i18n::t;
 use crate::icons::{ICON_CHEVRON_DOWN, ICON_CHEVRON_RIGHT};
 use crate::ui::kit::kit;
 
-pub(crate) const ROOT_KEY: &str = "er-table-node";
+pub const ROOT_KEY: &str = "er-table-node";
 
 /// `nodeMetrics.ts` constants, owned by the T568 port (`node_metrics.rs`);
 /// re-exported here so the T361 audits keep their import paths.
-pub(crate) use super::node_metrics::{
+pub use super::node_metrics::{
     ER_AUTO_COLLAPSE_COLUMNS, ER_COLLAPSED_FOOTER_HEIGHT, ER_COLUMN_ROW_HEIGHT,
     ER_HEADER_HEIGHT, ER_NODE_BORDER, ER_NODE_WIDTH,
 };
 
-pub(crate) fn er_node_body_height(column_count: usize) -> f32 {
+pub fn er_node_body_height(column_count: usize) -> f32 {
     super::node_metrics::er_node_body_height(column_count as i32)
 }
 
-pub(crate) fn er_column_row_center_y(index: usize) -> f32 {
+pub fn er_column_row_center_y(index: usize) -> f32 {
     // React adds ER_NODE_BORDER here because its CSS border participates in
     // layout. Rune's border is drawn inside the box and adds no layout offset,
     // so applying that 1pt here would put handle dots one point too low.
@@ -47,14 +47,14 @@ pub(crate) fn er_column_row_center_y(index: usize) -> f32 {
     ER_HEADER_HEIGHT + index as f32 * ER_COLUMN_ROW_HEIGHT + ER_COLUMN_ROW_HEIGHT / 2.0
 }
 
-pub(crate) fn er_node_height(column_count: usize, collapsed: bool) -> f32 {
+pub fn er_node_height(column_count: usize, collapsed: bool) -> f32 {
     super::node_metrics::er_node_height(column_count as i32, collapsed)
 }
 
 /// React `TableNodeData['columns'][i]`.
 #[allow(dead_code)] // view VM; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TableColumnVm {
+pub struct TableColumnVm {
     pub name: String,
     pub type_name: String,
     pub is_pk: bool,
@@ -64,7 +64,7 @@ pub(crate) struct TableColumnVm {
 /// React `TableNodeData` minus the xyflow-injected fields.
 #[allow(dead_code)] // view VM; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TableNodeVm {
+pub struct TableNodeVm {
     pub table_name: String,
     pub columns: Vec<TableColumnVm>,
     /// Columns an edge touches; only these get four per-row handles.
@@ -89,7 +89,7 @@ impl Default for TableNodeVm {
 
 /// Host ports for the interactions xyflow otherwise owns.
 #[allow(dead_code)] // host port; consumer: the ER canvas host (not wired).
-pub(crate) struct TableNodeHostPort<S> {
+pub struct TableNodeHostPort<S> {
     pub on_toggle_collapse: Option<Rc<dyn Fn(&mut S, &str) + 'static>>,
     pub on_select: Option<Rc<dyn Fn(&mut S, &str) + 'static>>,
     pub on_drag: Option<Rc<dyn Fn(&mut S, &str) + 'static>>,
@@ -195,7 +195,7 @@ fn column_row(
 /// Build the node. Callbacks are injected by the host; no IPC, thread or drag
 /// simulation happens here.
 #[allow(dead_code)] // view entry point; consumer: the ER canvas host (not wired).
-pub(crate) fn table_node<S: 'static>(
+pub fn table_node<S: 'static>(
     vm: &TableNodeVm,
     dark: bool,
     host: TableNodeHostPort<S>,

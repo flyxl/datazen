@@ -60,10 +60,10 @@
 //!   `recovery`, `domainResults`, `recoveryTargets`, fingerprints) are not
 //!   modelled: no schema-diff consumer reads them.
 
-pub(crate) mod runner;
-pub(crate) mod wire;
+pub mod runner;
+pub mod wire;
 
-pub(crate) use runner::{
+pub use runner::{
     DeployProfileRefVm, ExecuteDeployParamsVm, PreparePlanParamsVm, PrepareUnifiedParamsVm,
     SchemaDiffEffect, SchemaDiffJobRun, SchemaDiffJobRunOutcome, SchemaDiffMethod,
     SchemaDiffRunKind, SchemaDiffSubmissionTokenVm, cancel_deploy_request,
@@ -72,7 +72,7 @@ pub(crate) use runner::{
     prepare_unified_plan_request, save_profile_request, verify_recovery_request,
     with_submission_token,
 };
-pub(crate) use wire::{
+pub use wire::{
     ColumnTypeOverrideVm, DeployStatusVm, PlanRequirementKindVm, PlanRequirementVm,
     PlanStatementVm, RollbackCompletenessCountsVm, RollbackCompletenessVm, SchemaDiffDeployResultVm,
     SchemaDiffJobAcceptedVm, SchemaDiffJobDetailsVm, SchemaDiffPlanVm, SchemaDiffProfileVm,
@@ -87,11 +87,11 @@ use serde::{Deserialize, Serialize};
 use crate::views::schema_diff::schema_diff_object_identity::SchemaDiffObjectIdentityVm;
 
 /// React `DESTRUCTIVE_CONFIRM_TOKEN` ('DEPLOY').
-pub(crate) const DESTRUCTIVE_CONFIRM_TOKEN: &str = "DEPLOY";
+pub const DESTRUCTIVE_CONFIRM_TOKEN: &str = "DEPLOY";
 
 /// React `planHasDestructive`: any statement whose risk is `destructive` or
 /// `rewrite`.
-pub(crate) fn plan_has_destructive(plan: &SchemaDiffPlanVm) -> bool {
+pub fn plan_has_destructive(plan: &SchemaDiffPlanVm) -> bool {
     plan.statements.iter().any(|s| {
         matches!(s.risk, StatementRiskVm::Destructive | StatementRiskVm::Rewrite)
     })
@@ -99,7 +99,7 @@ pub(crate) fn plan_has_destructive(plan: &SchemaDiffPlanVm) -> bool {
 
 /// React `dialectSupportsTransactionalDdl`: postgresql / postgres / sqlite
 /// (case-insensitive).
-pub(crate) fn dialect_supports_transactional_ddl(dialect: &str) -> bool {
+pub fn dialect_supports_transactional_ddl(dialect: &str) -> bool {
     let d = dialect.to_lowercase();
     d == "postgresql" || d == "postgres" || d == "sqlite"
 }
@@ -108,7 +108,7 @@ pub(crate) fn dialect_supports_transactional_ddl(dialect: &str) -> bool {
 /// semicolon-terminated, joined by newlines —
 /// `[...header, ...statements].join('\n')` with the header's trailing
 /// empty string producing one blank line between header and statements.
-pub(crate) fn export_plan_sql(plan: &SchemaDiffPlanVm) -> String {
+pub fn export_plan_sql(plan: &SchemaDiffPlanVm) -> String {
     let mut lines: Vec<String> = vec![
         "-- Schema Diff Deploy plan".to_owned(),
         format!("-- tables: {}", plan.tables.join(", ")),
@@ -125,7 +125,7 @@ pub(crate) fn export_plan_sql(plan: &SchemaDiffPlanVm) -> String {
 /// apply job is taken, then every `getJobDetails` poll answer.
 /// React `SchemaDiffJobUpdate`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum SchemaDiffJobUpdateVm {
+pub enum SchemaDiffJobUpdateVm {
     Accepted(SchemaDiffJobAcceptedVm),
     Details(SchemaDiffJobDetailsVm),
 }
@@ -134,15 +134,15 @@ pub(crate) enum SchemaDiffJobUpdateVm {
 /// owns. Dropping it does NOT unsubscribe (React's closure must be called
 /// explicitly); the id is the key back into the bus.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SchemaDiffJobSubscription {
-    pub(crate) id: u64,
+pub struct SchemaDiffJobSubscription {
+    pub id: u64,
 }
 
 /// React's module-level `schemaDiffJobObservers` `Set`. The host owns one
 /// instance for the window's lifetime; insertion order is preserved (JS
 /// `Set` iteration order) so publishes reach observers in subscribe order.
 #[derive(Default)]
-pub(crate) struct SchemaDiffJobBus {
+pub struct SchemaDiffJobBus {
     observers: Vec<(u64, Rc<dyn Fn(&SchemaDiffJobUpdateVm)>)>,
     next_id: u64,
 }
@@ -150,7 +150,7 @@ pub(crate) struct SchemaDiffJobBus {
 impl SchemaDiffJobBus {
     /// `subscribeSchemaDiffJobUpdates(observer)`: register, get the
     /// unsubscribe handle.
-    pub(crate) fn subscribe(
+    pub fn subscribe(
         &mut self,
         observer: Rc<dyn Fn(&SchemaDiffJobUpdateVm)>,
     ) -> SchemaDiffJobSubscription {
@@ -162,26 +162,26 @@ impl SchemaDiffJobBus {
 
     /// The unsubscribe closure's `observers.delete(observer)`: `true` when
     /// the observer was registered.
-    pub(crate) fn unsubscribe(&mut self, subscription: SchemaDiffJobSubscription) -> bool {
+    pub fn unsubscribe(&mut self, subscription: SchemaDiffJobSubscription) -> bool {
         let before = self.observers.len();
         self.observers.retain(|(id, _)| *id != subscription.id);
         self.observers.len() != before
     }
 
     /// `publishSchemaDiffJobUpdate`: every observer, in subscribe order.
-    pub(crate) fn publish(&self, update: &SchemaDiffJobUpdateVm) {
+    pub fn publish(&self, update: &SchemaDiffJobUpdateVm) {
         for (_, observer) in &self.observers {
             observer(update);
         }
     }
 
     /// How many observers are registered (the `Set`'s `size`).
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.observers.len()
     }
 
     /// Whether no observer is registered.
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.observers.is_empty()
     }
 }
@@ -192,29 +192,29 @@ impl SchemaDiffJobBus {
 /// `connectionId` (the `dbSessionId` terminology); v1 configs (with
 /// `configId` keys) are rejected by the consumer — `useSchemaDiffSavedSetups.ts`
 /// (T409) — not by this shape.
-pub(crate) const SCHEMA_DIFF_CONFIG_JSON_VERSION: u32 = 2;
+pub const SCHEMA_DIFF_CONFIG_JSON_VERSION: u32 = 2;
 
 /// React `SchemaDiffConfigJson`: the clipboard export/import format of a
 /// saved schema-diff setup. Runtime session ids and generated plans are
 /// never part of it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SchemaDiffConfigJson {
-    pub(crate) version: u32,
-    pub(crate) source_connection_id: String,
-    pub(crate) target_connection_id: String,
-    pub(crate) tables: Vec<String>,
+pub struct SchemaDiffConfigJson {
+    pub version: u32,
+    pub source_connection_id: String,
+    pub target_connection_id: String,
+    pub tables: Vec<String>,
     /// Optional to keep v2 configs exported before target-only selection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) target_only_tables: Option<Vec<String>>,
+    pub target_only_tables: Option<Vec<String>>,
     /// Optional to keep v2 configs exported before unified object selection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) source_objects: Option<Vec<SchemaDiffObjectIdentityVm>>,
+    pub source_objects: Option<Vec<SchemaDiffObjectIdentityVm>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) target_objects: Option<Vec<SchemaDiffObjectIdentityVm>>,
-    pub(crate) allow_destructive: bool,
+    pub target_objects: Option<Vec<SchemaDiffObjectIdentityVm>>,
+    pub allow_destructive: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) include_indexes: Option<bool>,
+    pub include_indexes: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) require_rollback: Option<bool>,
+    pub require_rollback: Option<bool>,
 }

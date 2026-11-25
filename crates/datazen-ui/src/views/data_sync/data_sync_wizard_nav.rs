@@ -50,7 +50,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize};
 use crate::views::data_sync::use_data_sync_wizard_state::{WizardStep, WIZARD_STEPS};
 
 /// The back/next navigation.
-pub(crate) struct DataSyncWizardNav<S: 'static> {
+pub struct DataSyncWizardNav<S: 'static> {
     step_index: usize,
     busy: bool,
     can_next: bool,
@@ -60,7 +60,7 @@ pub(crate) struct DataSyncWizardNav<S: 'static> {
 }
 
 impl<S: 'static> DataSyncWizardNav<S> {
-    pub(crate) fn new(step_index: usize, busy: bool, can_next: bool, show_next: bool) -> Self {
+    pub fn new(step_index: usize, busy: bool, can_next: bool, show_next: bool) -> Self {
         Self {
             step_index,
             busy,
@@ -72,18 +72,18 @@ impl<S: 'static> DataSyncWizardNav<S> {
     }
 
     /// `onBack`.
-    pub(crate) fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_back = Some(Rc::new(f));
         self
     }
 
     /// `onNext`.
-    pub(crate) fn on_next(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_next(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_next = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut nav = row()
             .key("data-sync-wizard-nav")
@@ -134,16 +134,16 @@ impl<S: 'static> DataSyncWizardNav<S> {
 }
 
 /// The progress stepper: one chip per wizard step.
-pub(crate) struct DataSyncWizardStepper {
+pub struct DataSyncWizardStepper {
     step_index: usize,
 }
 
 impl DataSyncWizardStepper {
-    pub(crate) fn new(step_index: usize) -> Self {
+    pub fn new(step_index: usize) -> Self {
         Self { step_index }
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut chips = Vec::new();
         for (index, step) in WIZARD_STEPS.iter().enumerate() {

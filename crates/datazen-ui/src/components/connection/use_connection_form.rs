@@ -21,15 +21,15 @@ use crate::components::connection::tunnel_field_contracts::{
 mod config;
 mod meta;
 
-pub(crate) use config::{build_config as build_config_for_test, BuiltConfig, FormSnapshot};
-pub(crate) use meta::{ExistingConnection, ExistingHttpProxy, ExistingSsh, ExistingWebSocket, GroupInput};
+pub use config::{build_config as build_config_for_test, BuiltConfig, FormSnapshot};
+pub use meta::{ExistingConnection, ExistingHttpProxy, ExistingSsh, ExistingWebSocket, GroupInput};
 
 use config::{apply_type_defaults, build_config, capture, restore};
 use meta::{coerce_group, db_meta, sanitize_options, ConnectionMode, PRESET_DEVELOPMENT};
 
 /// React `TunnelSource`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TunnelSource {
+pub enum TunnelSource {
     None,
     Inline,
     Saved,
@@ -37,7 +37,7 @@ pub(crate) enum TunnelSource {
 
 /// The two commands the hook sends to the host, plus the read-only lookups.
 #[allow(dead_code)] // host port; consumer: the connection dialog (not wired).
-pub(crate) trait ConnectionFormHost {
+pub trait ConnectionFormHost {
     /// `connectionCommands.testConnection` — `Ok(server_version)` on success.
     fn test_connection(&mut self, config: &BuiltConfig) -> Result<String, String>;
     fn save_connection(&mut self, config: &BuiltConfig, clear_stored_credentials: bool);
@@ -60,7 +60,7 @@ pub(crate) trait ConnectionFormHost {
 
 /// `UseConnectionFormOptions` (host supplies the snapshot of existing rows).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ConnectionFormOptions {
+pub struct ConnectionFormOptions {
     pub edit_id: Option<String>,
     pub existing_connections: Vec<ExistingConnection>,
     pub default_group: Option<String>,
@@ -69,7 +69,7 @@ pub(crate) struct ConnectionFormOptions {
 /// The hook's whole observable state, mirroring the React form API.
 #[allow(dead_code)] // state slice; consumer: the connection dialog (not wired).
 #[derive(Clone, Debug)]
-pub(crate) struct ConnectionFormState {
+pub struct ConnectionFormState {
     pub edit_id: Option<String>,
     pub name: String,
     pub database_type: String,
@@ -193,7 +193,7 @@ impl Default for ConnectionFormState {
 
 impl ConnectionFormState {
     #[allow(dead_code)] // host API; consumer: the connection dialog (not wired).
-    pub(crate) fn new(options: &ConnectionFormOptions, host: &impl ConnectionFormHost) -> Self {
+    pub fn new(options: &ConnectionFormOptions, host: &impl ConnectionFormHost) -> Self {
         let mut state = Self::default();
         state.edit_id = options.edit_id.clone();
         state.group = coerce_group(match &options.default_group {
@@ -211,12 +211,12 @@ impl ConnectionFormState {
 
     /// `formVariant` from `DB_REGISTRY[databaseType].connectionForm`.
     #[allow(dead_code)] // derived VM; consumer: ConnectionFormBody (not wired).
-    pub(crate) fn form_variant(&self) -> &'static str {
+    pub fn form_variant(&self) -> &'static str {
         db_meta(&self.database_type).map_or("standard", |m| m.connection_form)
     }
 
     #[allow(dead_code)] // derived VM; consumer: ConnectionFormBody (not wired).
-    pub(crate) fn has_username(&self) -> bool {
+    pub fn has_username(&self) -> bool {
         db_meta(&self.database_type).is_some_and(|m| {
             !m.default_user.is_empty()
                 || (m.connection_form != "standard" && m.connection_form != "file")
@@ -224,17 +224,17 @@ impl ConnectionFormState {
     }
 
     #[allow(dead_code)] // derived VM; consumer: ConnectionFormBody (not wired).
-    pub(crate) fn supports_ssl(&self) -> bool {
+    pub fn supports_ssl(&self) -> bool {
         db_meta(&self.database_type).is_some_and(|m| m.supports_ssl)
     }
 
     #[allow(dead_code)] // derived VM; consumer: ConnectionFormBody (not wired).
-    pub(crate) fn supports_ssh(&self) -> bool {
+    pub fn supports_ssh(&self) -> bool {
         db_meta(&self.database_type).is_some_and(|m| m.supports_ssh)
     }
 
     #[allow(dead_code)] // derived VM; consumer: ConnectionFormBody (not wired).
-    pub(crate) fn effective_kind(&self) -> Option<TunnelKind> {
+    pub fn effective_kind(&self) -> Option<TunnelKind> {
         if self.tunnel_source == TunnelSource::Saved {
             self.saved_tunnel_kind.or(self.tunnel_kind)
         } else if self.tunnel_kind == Some(TunnelKind::Ssh) && !self.ssh_enabled {
@@ -245,17 +245,17 @@ impl ConnectionFormState {
     }
 
     #[allow(dead_code)] // derived VM; consumer: the tunnel editor (not wired).
-    pub(crate) fn saved_tunnel(&self) -> Option<(&str, &str)> {
+    pub fn saved_tunnel(&self) -> Option<(&str, &str)> {
         self.saved_tunnel_name.as_deref().map(|name| (self.tunnel_id.as_deref().unwrap_or(""), name))
     }
 
     #[allow(dead_code)] // derived VM; validation uses it (G3/P1-8).
-    pub(crate) fn tunnel_ref_missing(&self) -> bool {
+    pub fn tunnel_ref_missing(&self) -> bool {
         self.tunnel_id.is_some() && self.saved_tunnel_kind.is_none()
     }
 
     #[allow(dead_code)] // tunnel state machine; used by load/snapshot restore.
-    pub(crate) fn hydrate_tunnel(&mut self, id: Option<String>, kind: Option<TunnelKind>) {
+    pub fn hydrate_tunnel(&mut self, id: Option<String>, kind: Option<TunnelKind>) {
         self.hydrate_tunnel_named(id, kind, None);
     }
 
@@ -295,7 +295,7 @@ impl ConnectionFormState {
     }
 
     #[allow(dead_code)] // tunnel state machine; used by type defaults.
-    pub(crate) fn reset_tunnel(&mut self) {
+    pub fn reset_tunnel(&mut self) {
         self.hydrate_tunnel_named(None, None, None);
         self.last_inline_kind = None;
         self.ssh_host.clear();
@@ -327,7 +327,7 @@ impl ConnectionFormState {
 
     /// `sslOptions` from the hook (labelled with i18n keys via the host).
     #[allow(dead_code)] // derived VM; consumer: ConnectionFormBody (not wired).
-    pub(crate) fn ssl_options(&self, host: &impl ConnectionFormHost) -> Vec<(String, String)> {
+    pub fn ssl_options(&self, host: &impl ConnectionFormHost) -> Vec<(String, String)> {
         [
             ("disable", "Disable", "newConn.sslNone"),
             ("prefer", "Prefer", "newConn.sslPrefer"),
@@ -340,7 +340,7 @@ impl ConnectionFormState {
 
     /// React's `validate` — tunnel prologue plus driver/generic connection rules.
     #[allow(dead_code)] // host API; consumer: test/save commands (not wired).
-    pub(crate) fn validate(&mut self, host: &impl ConnectionFormHost) -> bool {
+    pub fn validate(&mut self, host: &impl ConnectionFormHost) -> bool {
         let mut errors = BTreeMap::new();
         if self.tunnel_ref_missing() {
             errors.insert("tunnelId".to_owned(), host.t("newConn.tunnelMissing"));
@@ -394,7 +394,7 @@ impl ConnectionFormState {
 
     /// `onTest` without async: the host's synchronous result becomes ok/err state.
     #[allow(dead_code)] // host API; consumer: the connection dialog (not wired).
-    pub(crate) fn on_test(&mut self, host: &mut impl ConnectionFormHost) {
+    pub fn on_test(&mut self, host: &mut impl ConnectionFormHost) {
         if !self.validate(host) {
             return;
         }
@@ -410,7 +410,7 @@ impl ConnectionFormState {
     }
 
     #[allow(dead_code)] // host API; consumer: the connection dialog (not wired).
-    pub(crate) fn on_save(&mut self, host: &mut impl ConnectionFormHost) {
+    pub fn on_save(&mut self, host: &mut impl ConnectionFormHost) {
         if !self.validate(host) {
             return;
         }
@@ -419,7 +419,7 @@ impl ConnectionFormState {
         host.on_after_save();
     }
 
-    pub(crate) fn handle_database_type_change(
+    pub fn handle_database_type_change(
         &mut self,
         new_type: &str,
         _host: &impl ConnectionFormHost,
@@ -574,7 +574,7 @@ impl ConnectionFormState {
 /// Every mutation the hook exposes, including the three commands.
 #[allow(dead_code)] // host API; consumer: the connection dialog (not wired).
 #[derive(Clone, Debug)]
-pub(crate) enum FormAction {
+pub enum FormAction {
     SetName(String),
     SetHost(String),
     SetPort(String),
@@ -625,7 +625,7 @@ pub(crate) enum FormAction {
 
 /// Apply one action to the host-owned state.
 #[allow(dead_code)] // host API; consumer: the connection dialog (not wired).
-pub(crate) fn step<H: ConnectionFormHost>(state: &mut ConnectionFormState, action: FormAction, host: &mut H) {
+pub fn step<H: ConnectionFormHost>(state: &mut ConnectionFormState, action: FormAction, host: &mut H) {
     match action {
         FormAction::SetName(v) => state.name = v,
         FormAction::SetHost(v) => state.host = v,

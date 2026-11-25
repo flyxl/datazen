@@ -37,18 +37,18 @@ use super::use_theme_sync::UseThemeSyncState;
 
 /// `useSettings()` — the composition mounted in every window.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct UseSettingsState {
+pub struct UseSettingsState {
     mounted: bool,
     /// `useSettingsSync`'s machine (T413): the subscribe lifecycle
     /// and the notification deliveries ride it.
-    pub(crate) settings_sync: UseSettingsSyncState,
+    pub settings_sync: UseSettingsSyncState,
     /// `useThemeSync`'s machine (T430): the three theme channels'
     /// subscribe lifecycles and the delivery decisions ride it.
-    pub(crate) theme_sync: UseThemeSyncState,
+    pub theme_sync: UseThemeSyncState,
 }
 
 impl UseSettingsState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -56,20 +56,20 @@ impl UseSettingsState {
     /// settings sync's subscribe is in flight from here (the host
     /// resolves it through the bus seam); the theme sync's three
     /// subscribes are in flight the same way (T430).
-    pub(crate) fn mount(&mut self) {
+    pub fn mount(&mut self) {
         self.mounted = true;
     }
 
     /// Whether the settings sync's effect has run (the composition's
     /// own flag; the subscription's resolution is
     /// [`Self::settings_sync`]'s).
-    pub(crate) fn settings_sync_mounted(&self) -> bool {
+    pub fn settings_sync_mounted(&self) -> bool {
         self.mounted
     }
 
     /// Whether the theme sync is live (`useThemeSync`'s effect has
     /// run — the machine's slots ride [`Self::theme_sync`]).
-    pub(crate) fn theme_sync_mounted(&self) -> bool {
+    pub fn theme_sync_mounted(&self) -> bool {
         self.mounted
     }
 }

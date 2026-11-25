@@ -64,13 +64,13 @@ fn range_days(range: HistoryRange) -> Option<i64> {
 
 /// React `rangeSinceIso`: the range's lower bound as RFC3339, or `None`
 /// for unbounded.
-pub(crate) fn range_since_iso(range: HistoryRange, now_ms: i64) -> Option<String> {
+pub fn range_since_iso(range: HistoryRange, now_ms: i64) -> Option<String> {
     range_days(range).map(|days| iso_from_epoch_millis(now_ms - days * 86_400_000))
 }
 
 /// React `buildHistoryArgs`: the `get_query_history_page` argument bag,
 /// sentinels and blanks dropped to `null`.
-pub(crate) fn build_history_args(state: &HistoryQueryState, limit: i64, now_ms: i64) -> serde_json::Value {
+pub fn build_history_args(state: &HistoryQueryState, limit: i64, now_ms: i64) -> serde_json::Value {
     let search = state.search.trim();
     let database = state.database.trim();
     let schema = state.schema.trim();
@@ -87,7 +87,7 @@ pub(crate) fn build_history_args(state: &HistoryQueryState, limit: i64, now_ms: 
 
 /// React `applyStatusFilter`: keep only successes / only failures /
 /// everything. Generic over the row type; `success_of` reads the flag.
-pub(crate) fn apply_status_filter<'a, T>(
+pub fn apply_status_filter<'a, T>(
     entries: &'a [T],
     status: HistoryStatus,
     success_of: impl Fn(&T) -> bool,
@@ -103,13 +103,13 @@ pub(crate) fn apply_status_filter<'a, T>(
 /// The dialog must not present a truncated page as a complete list — a
 /// user who searched for a query that fell outside the window would
 /// otherwise see "no matches" and conclude the query was never run.
-pub(crate) fn is_truncated(entries_len: usize, total: usize) -> bool {
+pub fn is_truncated(entries_len: usize, total: usize) -> bool {
     total > entries_len
 }
 
 /// React `truncationNotice`: the honest count line, or `None` when
 /// nothing is being hidden.
-pub(crate) fn truncation_notice(entries_len: usize, total: usize) -> Option<(usize, usize)> {
+pub fn truncation_notice(entries_len: usize, total: usize) -> Option<(usize, usize)> {
     is_truncated(entries_len, total).then_some((entries_len, total))
 }
 
@@ -128,7 +128,7 @@ fn terminate_statement(sql: &str) -> String {
 /// React `buildSqlExport`: render selected history rows as one `.sql`
 /// file. Rows are emitted newest-first with a header each, so
 /// re-importing the file preserves the order a human reads them in.
-pub(crate) fn build_sql_export(
+pub fn build_sql_export(
     entries: &[HistoryEntryVm],
     connection_name: Option<&str>,
 ) -> String {
@@ -154,7 +154,7 @@ pub(crate) fn build_sql_export(
 }
 
 /// React `exportFileName`: the export dialog's default file name.
-pub(crate) fn export_file_name(count: usize) -> String {
+pub fn export_file_name(count: usize) -> String {
     if count == 1 {
         "query.sql".to_owned()
     } else {
@@ -163,7 +163,7 @@ pub(crate) fn export_file_name(count: usize) -> String {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     fn entry(sql: &str) -> HistoryEntryVm {

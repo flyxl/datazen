@@ -71,19 +71,19 @@ const SORT_GLYPH: f32 = 16.0;
 
 /// `ColumnDef` from the React props.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Column {
+pub struct Column {
     /// React's list key (`key={col.id}`); Rune derives element keys from the
     /// column index, so this is kept for the port's parity only.
     #[allow(dead_code)]
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) ty: Option<String>,
+    pub id: String,
+    pub name: String,
+    pub ty: Option<String>,
 }
 
 // The view that builds columns from the schema lands in a later task.
 #[allow(dead_code)]
 impl Column {
-    pub(crate) fn new(id: impl Into<String>, name: impl Into<String>) -> Column {
+    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Column {
         Column {
             id: id.into(),
             name: name.into(),
@@ -91,7 +91,7 @@ impl Column {
         }
     }
 
-    pub(crate) fn ty(mut self, ty: impl Into<String>) -> Column {
+    pub fn ty(mut self, ty: impl Into<String>) -> Column {
         self.ty = Some(ty.into());
         self
     }
@@ -99,15 +99,15 @@ impl Column {
 
 /// `SortCondition` from the React props.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SortCondition {
-    pub(crate) column: String,
-    pub(crate) descending: bool,
+pub struct SortCondition {
+    pub column: String,
+    pub descending: bool,
 }
 
 // The view that hands the sorts down lands in a later task.
 #[allow(dead_code)]
 impl SortCondition {
-    pub(crate) fn new(column: impl Into<String>, descending: bool) -> SortCondition {
+    pub fn new(column: impl Into<String>, descending: bool) -> SortCondition {
         SortCondition {
             column: column.into(),
             descending,
@@ -129,7 +129,7 @@ type IndexFn<S> = Rc<dyn Fn(&mut S, usize)>;
 
 /// The header row. Build it with the columns and sorts the view owns, then hand the
 /// callbacks the sort, filter and resize events.
-pub(crate) struct TableHeader<S: 'static> {
+pub struct TableHeader<S: 'static> {
     key: String,
     columns: Vec<Column>,
     sorts: Vec<SortCondition>,
@@ -158,7 +158,7 @@ pub(crate) struct TableHeader<S: 'static> {
 // `tests/data_table_parts.rs` is the caller today.
 #[allow(dead_code)]
 impl<S: 'static> TableHeader<S> {
-    pub(crate) fn new(columns: Vec<Column>, sorts: Vec<SortCondition>) -> TableHeader<S> {
+    pub fn new(columns: Vec<Column>, sorts: Vec<SortCondition>) -> TableHeader<S> {
         TableHeader {
             key: "data-table-header".to_owned(),
             columns,
@@ -186,79 +186,79 @@ impl<S: 'static> TableHeader<S> {
     }
 
     /// Root key; the per-cell keys derive from it.
-    pub(crate) fn key(mut self, key: impl Into<String>) -> TableHeader<S> {
+    pub fn key(mut self, key: impl Into<String>) -> TableHeader<S> {
         self.key = key.into();
         self
     }
 
     /// Widths by column index (React `columnWidths`); a missing entry is 160pt.
-    pub(crate) fn column_widths(mut self, widths: Vec<f32>) -> TableHeader<S> {
+    pub fn column_widths(mut self, widths: Vec<f32>) -> TableHeader<S> {
         self.column_widths = Some(widths);
         self
     }
 
     /// How many leading columns stay pinned while the body scrolls sideways.
-    pub(crate) fn frozen_columns(mut self, frozen: usize) -> TableHeader<S> {
+    pub fn frozen_columns(mut self, frozen: usize) -> TableHeader<S> {
         self.frozen_columns = frozen;
         self
     }
 
     /// The `#` gutter (React `showRowNumbers`, default on).
-    pub(crate) fn show_row_numbers(mut self, show: bool) -> TableHeader<S> {
+    pub fn show_row_numbers(mut self, show: bool) -> TableHeader<S> {
         self.show_row_numbers = show;
         self
     }
 
     /// React `sortable`; off means a cell press does not sort.
-    pub(crate) fn sortable(mut self, sortable: bool) -> TableHeader<S> {
+    pub fn sortable(mut self, sortable: bool) -> TableHeader<S> {
         self.sortable = sortable;
         self
     }
 
     /// React `gridSemantics`: `role="row"` / `role="columnheader"` / `aria-sort`.
-    pub(crate) fn grid_semantics(mut self, grid: bool) -> TableHeader<S> {
+    pub fn grid_semantics(mut self, grid: bool) -> TableHeader<S> {
         self.grid_semantics = grid;
         self
     }
 
     /// The column being dragged for a reorder, if any (React `dragIndex`).
-    pub(crate) fn reorder_drag(mut self, drag: Option<usize>) -> TableHeader<S> {
+    pub fn reorder_drag(mut self, drag: Option<usize>) -> TableHeader<S> {
         self.reorder_drag = drag;
         self
     }
 
     /// The insertion column under the dragged one (React `dropIndex`).
-    pub(crate) fn reorder_drop(mut self, drop: Option<usize>) -> TableHeader<S> {
+    pub fn reorder_drop(mut self, drop: Option<usize>) -> TableHeader<S> {
         self.reorder_drop = drop;
         self
     }
 
     /// The column whose sort menu is open, if any.
-    pub(crate) fn sort_menu(mut self, open: Option<usize>) -> TableHeader<S> {
+    pub fn sort_menu(mut self, open: Option<usize>) -> TableHeader<S> {
         self.sort_menu = open;
         self
     }
 
     /// A cell press or one of the menu items.
-    pub(crate) fn on_sort(mut self, f: impl Fn(&mut S, &str, bool) + 'static) -> TableHeader<S> {
+    pub fn on_sort(mut self, f: impl Fn(&mut S, &str, bool) + 'static) -> TableHeader<S> {
         self.on_sort = Some(Rc::new(f));
         self
     }
 
     /// The menu's third item; also the third press of the sort cycle.
-    pub(crate) fn on_remove_sort(mut self, f: impl Fn(&mut S, &str) + 'static) -> TableHeader<S> {
+    pub fn on_remove_sort(mut self, f: impl Fn(&mut S, &str) + 'static) -> TableHeader<S> {
         self.on_remove_sort = Some(Rc::new(f));
         self
     }
 
     /// The per-cell filter button.
-    pub(crate) fn on_filter_column(mut self, f: impl Fn(&mut S, &str) + 'static) -> TableHeader<S> {
+    pub fn on_filter_column(mut self, f: impl Fn(&mut S, &str) + 'static) -> TableHeader<S> {
         self.on_filter_column = Some(Rc::new(f));
         self
     }
 
     /// The resize grip's press, with the column index and the pointer's window x.
-    pub(crate) fn on_resize_start(
+    pub fn on_resize_start(
         mut self,
         f: impl Fn(&mut S, usize, f32) + 'static,
     ) -> TableHeader<S> {
@@ -267,7 +267,7 @@ impl<S: 'static> TableHeader<S> {
     }
 
     /// Pointer travel while the grip is held, in window points.
-    pub(crate) fn on_resize_move(
+    pub fn on_resize_move(
         mut self,
         f: impl Fn(&mut S, usize, f32) + 'static,
     ) -> TableHeader<S> {
@@ -276,13 +276,13 @@ impl<S: 'static> TableHeader<S> {
     }
 
     /// The grip was released.
-    pub(crate) fn on_resize_end(mut self, f: impl Fn(&mut S) + 'static) -> TableHeader<S> {
+    pub fn on_resize_end(mut self, f: impl Fn(&mut S) + 'static) -> TableHeader<S> {
         self.on_resize_end = Some(Rc::new(f));
         self
     }
 
     /// A drag left the pressed cell (React `onDragStart`).
-    pub(crate) fn on_reorder_start(
+    pub fn on_reorder_start(
         mut self,
         f: impl Fn(&mut S, usize) + 'static,
     ) -> TableHeader<S> {
@@ -292,20 +292,20 @@ impl<S: 'static> TableHeader<S> {
 
     /// The column under the pointer (React `onDragOver`); hit-tested from the
     /// pressed cell's local drag position, so it can differ from the pressed column.
-    pub(crate) fn on_reorder_over(mut self, f: impl Fn(&mut S, usize) + 'static) -> TableHeader<S> {
+    pub fn on_reorder_over(mut self, f: impl Fn(&mut S, usize) + 'static) -> TableHeader<S> {
         self.on_reorder_over = Some(Rc::new(f));
         self
     }
 
     /// The pointer was released (React `onDrop` + `onDragEnd`); the app commits the
     /// move from its own `reorder_drag` / `reorder_drop` and clears both.
-    pub(crate) fn on_reorder_drop(mut self, f: impl Fn(&mut S) + 'static) -> TableHeader<S> {
+    pub fn on_reorder_drop(mut self, f: impl Fn(&mut S) + 'static) -> TableHeader<S> {
         self.on_reorder_drop = Some(Rc::new(f));
         self
     }
 
     /// The chevron under a column; the app opens that column's menu.
-    pub(crate) fn on_sort_menu_toggle(
+    pub fn on_sort_menu_toggle(
         mut self,
         f: impl Fn(&mut S, usize) + 'static,
     ) -> TableHeader<S> {
@@ -314,13 +314,13 @@ impl<S: 'static> TableHeader<S> {
     }
 
     /// The menu closed through Escape or an outside press.
-    pub(crate) fn on_sort_menu_close(mut self, f: impl Fn(&mut S) + 'static) -> TableHeader<S> {
+    pub fn on_sort_menu_close(mut self, f: impl Fn(&mut S) + 'static) -> TableHeader<S> {
         self.on_sort_menu_close = Some(Rc::new(f));
         self
     }
 
     /// Builds the header row. `layer` receives the open sort menu.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = crate::ui::kit::kit(dark);
         let c = &k.c;
         let TableHeader {

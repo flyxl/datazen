@@ -87,7 +87,7 @@ use crate::platform::export_plan::TablesExportRequest;
 /// shape).
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // the settings Update section (its consumer) lands with the settings track
-pub(crate) enum UpdateProgress {
+pub enum UpdateProgress {
     /// `{ phase: 'checking' }`.
     Checking,
     /// `{ phase: 'downloading'; downloaded; total | null }`.
@@ -106,7 +106,7 @@ pub(crate) enum UpdateProgress {
 impl UpdateProgress {
     /// The TS `phase` literal, verbatim.
     #[allow(dead_code)] // the settings Update section (its consumer) lands with the settings track
-    pub(crate) fn phase(&self) -> &'static str {
+    pub fn phase(&self) -> &'static str {
         match self {
             Self::Checking => "checking",
             Self::Downloading { .. } => "downloading",
@@ -121,7 +121,7 @@ impl UpdateProgress {
 /// update check / download-and-install run.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // the settings Update section (its consumer) lands with the settings track
-pub(crate) enum UpdateCheckResult {
+pub enum UpdateCheckResult {
     /// `{ status: 'upToDate' }`.
     UpToDate,
     /// `{ status: 'available'; version }`.
@@ -135,7 +135,7 @@ pub(crate) enum UpdateCheckResult {
 impl UpdateCheckResult {
     /// The TS `status` literal, verbatim.
     #[allow(dead_code)] // the settings Update section (its consumer) lands with the settings track
-    pub(crate) fn status(&self) -> &'static str {
+    pub fn status(&self) -> &'static str {
         match self {
             Self::UpToDate => "upToDate",
             Self::Available { .. } => "available",
@@ -153,7 +153,7 @@ impl UpdateCheckResult {
 /// needs to open a singleton or multi-instance window.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[allow(dead_code)] // the host window router binds these when its port lands
-pub(crate) struct OpenWindowOptions {
+pub struct OpenWindowOptions {
     /// `params?: Record<string, string>` — kept as ordered pairs, the
     /// only shape a Rust host can hand to a native window's URL/router
     /// without inventing a map order React never promised.
@@ -171,23 +171,23 @@ pub(crate) struct OpenWindowOptions {
 /// the whole event — React's object carries nothing else.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // the host window router binds these when its port lands
-pub(crate) struct WindowCloseEvent {
+pub struct WindowCloseEvent {
     default_prevented: bool,
 }
 
 impl WindowCloseEvent {
     /// A fresh event nobody has vetoed.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// React's `preventDefault()`: veto the close.
-    pub(crate) fn prevent_default(&mut self) {
+    pub fn prevent_default(&mut self) {
         self.default_prevented = true;
     }
 
     /// Whether any handler vetoed the close.
-    pub(crate) fn default_prevented(&self) -> bool {
+    pub fn default_prevented(&self) -> bool {
         self.default_prevented
     }
 }
@@ -202,7 +202,7 @@ impl WindowCloseEvent {
 /// (segment 4, pending); this local mirror is the same labelled
 /// placeholder the `export_plan` request mirror is.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TablesExportProgressEvent {
+pub struct TablesExportProgressEvent {
     pub table: String,
     pub rows_written: u64,
 }
@@ -219,7 +219,7 @@ pub(crate) struct TablesExportProgressEvent {
 /// hide the cancel button there), and a form without a streaming writer
 /// has no progress to report.
 #[allow(dead_code)] // the export dialogs (their consumer) wire this port
-pub(crate) trait TablesExporterPort {
+pub trait TablesExporterPort {
     /// `exportTables(request)` — `Promise<ExportTablesResult | null>` in
     /// React; the host drives the duration, the seam stays.
     fn export_tables(&mut self, request: &TablesExportRequest) -> Result<ExportTablesOutcome, String>;
@@ -252,7 +252,7 @@ pub(crate) trait TablesExporterPort {
 /// land (see the module docs); the host-settings slot lands with the
 /// settings track that owns the `AppSettings` mirror.
 #[derive(Clone)]
-pub(crate) struct PlatformBindings {
+pub struct PlatformBindings {
     /// The dual-flow export demonstration port (form-split F4, plan
     /// §3.3).
     pub tables_exporter: Option<Rc<RefCell<dyn TablesExporterPort>>>,
@@ -274,25 +274,25 @@ thread_local! {
 /// React `configurePlatform` (`contracts.ts:364-366`): install the
 /// platform ports — the app assembly root, before the first frame.
 /// A second call replaces the binding (tests rebind).
-pub(crate) fn configure_platform(next: PlatformBindings) {
+pub fn configure_platform(next: PlatformBindings) {
     BINDINGS.with(|slot| *slot.borrow_mut() = Some(next));
 }
 
 /// React `clearPlatform` (`contracts.ts:369-370`): drop the binding, so
 /// tests can exercise the unconfigured path.
-pub(crate) fn clear_platform() {
+pub fn clear_platform() {
     BINDINGS.with(|slot| *slot.borrow_mut() = None);
 }
 
 /// React `isPlatformConfigured` (`contracts.ts:372-374`).
-pub(crate) fn is_platform_configured() -> bool {
+pub fn is_platform_configured() -> bool {
     BINDINGS.with(|slot| slot.borrow().is_some())
 }
 
 /// React `requirePlatform` (`contracts.ts:379-391`): resolve the bindings
 /// or fail loudly (§7.4) — an unconfigured call must produce a locatable
 /// error, never silently degrade into a direct host connection.
-pub(crate) fn require_platform() -> Result<PlatformBindings, String> {
+pub fn require_platform() -> Result<PlatformBindings, String> {
     BINDINGS.with(|slot| {
         slot.borrow()
             .clone()
@@ -301,14 +301,14 @@ pub(crate) fn require_platform() -> Result<PlatformBindings, String> {
 }
 
 /// The §7.4 error text, verbatim from React.
-pub(crate) const PLATFORM_NOT_CONFIGURED: &str = "Platform ports have not been configured; check that the app assembly root ran configurePlatform().";
+pub const PLATFORM_NOT_CONFIGURED: &str = "Platform ports have not been configured; check that the app assembly root ran configurePlatform().";
 
 /// React `requireTablesExporter` (`contracts.ts:397-409`): the export
 /// port, or an explicit failure when no form bound one. Export is a
 /// user-triggered action, not an ambient read: an unbound exporter is a
 /// wiring gap worth failing loudly rather than degrading into a silently
 /// missing download.
-pub(crate) fn require_tables_exporter() -> Result<Rc<RefCell<dyn TablesExporterPort>>, String> {
+pub fn require_tables_exporter() -> Result<Rc<RefCell<dyn TablesExporterPort>>, String> {
     let bindings = require_platform()?;
     bindings
         .tables_exporter
@@ -316,17 +316,17 @@ pub(crate) fn require_tables_exporter() -> Result<Rc<RefCell<dyn TablesExporterP
 }
 
 /// The unbound-exporter error text, verbatim from React.
-pub(crate) const NO_TABLES_EXPORTER: &str = "No tables exporter has been bound; check that the app assembly root ran configurePlatform().";
+pub const NO_TABLES_EXPORTER: &str = "No tables exporter has been bound; check that the app assembly root ran configurePlatform().";
 
 /// React `requireCapabilities` (`contracts.ts:439-450`): the capability
 /// table, or the §7.4 failure while it is missing. Callers that must
 /// degrade before the table lands use `getPlatformOrNull` /
 /// [`is_platform_configured`] instead.
-pub(crate) fn require_capabilities() -> Result<&'static PlatformCapabilities, String> {
+pub fn require_capabilities() -> Result<&'static PlatformCapabilities, String> {
     require_platform()?
         .capabilities
         .ok_or_else(|| CAPABILITIES_NOT_PROVIDED.to_owned())
 }
 
 /// The missing-capability-table error text, verbatim from React.
-pub(crate) const CAPABILITIES_NOT_PROVIDED: &str = "Platform capabilities have not been provided yet (form-split F5); the consuming call site must not be reachable in this build.";
+pub const CAPABILITIES_NOT_PROVIDED: &str = "Platform capabilities have not been provided yet (form-split F5); the consuming call site must not be reachable in this build.";

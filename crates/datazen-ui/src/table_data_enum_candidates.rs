@@ -23,7 +23,7 @@ use crate::table_data_connection_state::TableState;
 
 /// Remember the candidates of one column (`setEnumCandidates`): the list
 /// is copied into the panel, so the caller may reuse its buffer.
-pub(crate) fn set_enum_candidates(ts: &mut TableState, column: &str, values: &[String]) {
+pub fn set_enum_candidates(ts: &mut TableState, column: &str, values: &[String]) {
     ts.enum_candidates
         .insert(column.to_owned(), values.to_vec());
 }
@@ -31,7 +31,7 @@ pub(crate) fn set_enum_candidates(ts: &mut TableState, column: &str, values: &[S
 /// Forget the candidates of the panel (`clearEnumCandidates` — page
 /// change, table change). Returns whether anything was dropped: React
 /// returns an empty `Partial` when the cache is already empty.
-pub(crate) fn clear_enum_candidates(ts: &mut TableState) -> bool {
+pub fn clear_enum_candidates(ts: &mut TableState) -> bool {
     if ts.enum_candidates.is_empty() {
         return false;
     }

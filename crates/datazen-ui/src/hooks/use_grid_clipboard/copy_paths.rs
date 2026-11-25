@@ -27,7 +27,7 @@ use super::GridClipboardHook;
 impl GridClipboardHook {
     /// The normalized main region of the selection, if there is one
     /// (`selectionRange`).
-    pub(crate) fn selection_range(&self, env: &GridClipboardEnv<'_>) -> Option<CellRange> {
+    pub fn selection_range(&self, env: &GridClipboardEnv<'_>) -> Option<CellRange> {
         (env.grid_selection.mode == GridSelectionMode::Cell)
             .then(|| normalize_selection_range(env.grid_selection, env.column_order))
             .flatten()
@@ -35,7 +35,7 @@ impl GridClipboardHook {
 
     /// Rows the row-level actions act on — derived, never written back
     /// into `selected_rows` (`coveredRows`).
-    pub(crate) fn covered_rows(
+    pub fn covered_rows(
         &self,
         env: &GridClipboardEnv<'_>,
     ) -> std::collections::HashSet<usize> {
@@ -167,7 +167,7 @@ impl GridClipboardHook {
 
     /// `handlers.buildCopyText`: the native `copy` gesture's text, with
     /// the source recorded.
-    pub(crate) fn build_copy_text(
+    pub fn build_copy_text(
         &mut self,
         env: &GridClipboardEnv<'_>,
         target: &GridCopyTarget,
@@ -178,7 +178,7 @@ impl GridClipboardHook {
     /// `handlers.onCopied`: the native path's feedback (that path
     /// writes the clipboard itself, so it needs the timer but not the
     /// write).
-    pub(crate) fn on_copied(&mut self, ok: bool, now_ms: i64) {
+    pub fn on_copied(&mut self, ok: bool, now_ms: i64) {
         self.native_copied = ok;
         self.native_clear_at_ms = None;
         if !ok {
@@ -192,7 +192,7 @@ impl GridClipboardHook {
     /// whose clipboard text is not what a paste reads back (DB-10): the
     /// rich flavor carries the `<table>`, the plain flavor — and the
     /// paste-back alignment source — is the TSV of the same cells.
-    pub(crate) fn copy_selected_cells_as(
+    pub fn copy_selected_cells_as(
         &mut self,
         env: &GridClipboardEnv<'_>,
         format: ClipboardFormat,
@@ -235,7 +235,7 @@ impl GridClipboardHook {
     /// the recorded payload a later "paste rows" verifies and turns into
     /// drafts. Cell mode acts on the rows the rectangle covers, row
     /// mode on the row set; both are `coveredRows`.
-    pub(crate) fn copy_rows_as_new_rows(
+    pub fn copy_rows_as_new_rows(
         &mut self,
         env: &GridClipboardEnv<'_>,
     ) -> Option<(u64, ClipboardCopyWrite)> {
@@ -250,7 +250,7 @@ impl GridClipboardHook {
     /// `copyRowsAsDrafts` (DBR-02, ⌘D): the clipboard-free variant —
     /// copy the covered rows straight into drafts. ⌘D means "duplicate
     /// now", so it must not depend on an asynchronous clipboard write.
-    pub(crate) fn copy_rows_as_drafts(&mut self, env: &GridClipboardEnv<'_>) -> bool {
+    pub fn copy_rows_as_drafts(&mut self, env: &GridClipboardEnv<'_>) -> bool {
         let Some(add_draft_rows) = env.add_draft_rows else {
             return false;
         };

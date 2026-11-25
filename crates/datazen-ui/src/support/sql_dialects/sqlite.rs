@@ -56,7 +56,7 @@ fn truncate_table_sql(quoted_name: &str) -> String {
 }
 
 /// `sqliteDialect` — double-quote table SQL.
-pub(crate) static SQLITE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static SQLITE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "sqlite",
     ddl: DialectDdl {
         table_ddl: table_ddl_query,

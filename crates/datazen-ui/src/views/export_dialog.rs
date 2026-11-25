@@ -42,7 +42,7 @@ const ROOT: &str = "content-view-export-dialog";
 /// One column offered by the picker.
 #[allow(dead_code)] // VM mirror; remove when the picker port lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExportColumn {
+pub struct ExportColumn {
     pub name: String,
     pub data_type: String,
     pub is_primary_key: bool,
@@ -51,7 +51,7 @@ pub(crate) struct ExportColumn {
 /// React `ExportScope`.
 #[allow(dead_code)] // VM surface; consumed by the host and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ExportScope {
+pub enum ExportScope {
     #[default]
     CurrentPage,
     Selected,
@@ -59,7 +59,7 @@ pub(crate) enum ExportScope {
 }
 
 impl ExportScope {
-    pub(crate) fn value(self) -> &'static str {
+    pub fn value(self) -> &'static str {
         match self {
             Self::CurrentPage => "current_page",
             Self::Selected => "selected",
@@ -67,7 +67,7 @@ impl ExportScope {
         }
     }
 
-    pub(crate) fn from_value(value: &str) -> Self {
+    pub fn from_value(value: &str) -> Self {
         match value {
             "selected" => Self::Selected,
             "entire_table" => Self::EntireTable,
@@ -83,7 +83,7 @@ impl ExportScope {
 /// React `status` state.
 #[allow(dead_code)] // VM surface; consumed by the result feed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ExportStatus {
+pub enum ExportStatus {
     #[default]
     Form,
     Exporting,
@@ -94,7 +94,7 @@ pub(crate) enum ExportStatus {
 /// One format option with its availability and i18n reason.
 #[allow(dead_code)] // option mirror; remove when exportDialogShared lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct FormatOption {
+pub struct FormatOption {
     pub format: DataFormat,
     pub disabled: bool,
     pub reason_key: Option<&'static str>,
@@ -103,7 +103,7 @@ pub(crate) struct FormatOption {
 /// The full view snapshot the host fills.
 #[allow(dead_code)] // VM surface; owned by the host until the panel store lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ExportVm {
+pub struct ExportVm {
     pub table_name: String,
     pub columns: Vec<ExportColumn>,
     pub rows: Vec<Vec<String>>,
@@ -131,7 +131,7 @@ pub(crate) struct ExportVm {
 
 impl ExportVm {
     /// React `allowEntire = !locked && supportsFullTableExport && dbSessionId`.
-    pub(crate) fn allow_entire(&self) -> bool {
+    pub fn allow_entire(&self) -> bool {
         self.capability != DataExportCapability::None
             && self.capability.supports_full_table()
             && self.db_session_id.as_ref().is_some_and(|id| !id.is_empty())
@@ -139,7 +139,7 @@ impl ExportVm {
 
     /// React's default-scope correction: a scope the driver cannot serve falls
     /// back to the page scope.
-    pub(crate) fn effective_scope(&self) -> ExportScope {
+    pub fn effective_scope(&self) -> ExportScope {
         let requested = self.default_scope.unwrap_or(self.scope);
         if requested == ExportScope::EntireTable && !self.allow_entire() {
             ExportScope::CurrentPage
@@ -154,7 +154,7 @@ impl ExportVm {
 
     /// React `buildExportFormatOptions` in the OBJECT option order. Disabled
     /// options stay visible with their reason (DBR-06).
-    pub(crate) fn format_options(&self) -> Vec<FormatOption> {
+    pub fn format_options(&self) -> Vec<FormatOption> {
         let formats = [
             DataFormat::Csv,
             DataFormat::Json,
@@ -190,7 +190,7 @@ impl ExportVm {
     }
 
     /// React `disabledFormatReasons`: each reason once, in option order.
-    pub(crate) fn disabled_format_reasons(&self) -> Vec<&'static str> {
+    pub fn disabled_format_reasons(&self) -> Vec<&'static str> {
         let mut reasons = Vec::new();
         for option in self.format_options() {
             if let Some(reason) = option.reason_key {
@@ -203,7 +203,7 @@ impl ExportVm {
     }
 
     /// React `buildExportScopeOptions` labels.
-    pub(crate) fn scope_labels(&self) -> Vec<(ExportScope, String, bool)> {
+    pub fn scope_labels(&self) -> Vec<(ExportScope, String, bool)> {
         let rows = self.rows.len().to_string();
         let selected = self.selected_rows.len().to_string();
         let rows_key = t("common.rows");
@@ -230,7 +230,7 @@ impl ExportVm {
     }
 
     /// React `rowCount`.
-    pub(crate) fn row_count(&self) -> u64 {
+    pub fn row_count(&self) -> u64 {
         match self.effective_scope() {
             ExportScope::EntireTable => self.total_rows.unwrap_or(self.rows.len() as u64),
             ExportScope::Selected if !self.selected_rows.is_empty() => self.selected_rows.len() as u64,
@@ -239,18 +239,18 @@ impl ExportVm {
     }
 
     /// React `exportLocked` and confirm disabled expression.
-    pub(crate) fn export_locked(&self) -> bool {
+    pub fn export_locked(&self) -> bool {
         self.capability == DataExportCapability::None
     }
 
-    pub(crate) fn export_disabled(&self) -> bool {
+    pub fn export_disabled(&self) -> bool {
         self.exporting
             || self.export_locked()
             || (!self.columns.is_empty() && self.selected_cols.is_empty())
     }
 
     #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
-    pub(crate) fn toggle_column(&mut self, name: &str) {
+    pub fn toggle_column(&mut self, name: &str) {
         if let Some(index) = self.selected_cols.iter().position(|item| item == name) {
             self.selected_cols.remove(index);
         } else {
@@ -259,23 +259,23 @@ impl ExportVm {
     }
 
     #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
-    pub(crate) fn select_all(&mut self) {
+    pub fn select_all(&mut self) {
         self.selected_cols = self.columns.iter().map(|column| column.name.clone()).collect();
     }
 
     #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
-    pub(crate) fn clear_all(&mut self) {
+    pub fn clear_all(&mut self) {
         self.selected_cols.clear();
     }
 
     #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
-    pub(crate) fn reset_default(&mut self) {
+    pub fn reset_default(&mut self) {
         self.select_all();
     }
 
     /// React's open effect: reset the form state, keeping the supplied columns.
     #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
-    pub(crate) fn reset_on_open(&mut self) {
+    pub fn reset_on_open(&mut self) {
         self.status = ExportStatus::Form;
         self.error.clear();
         self.cancelling = false;
@@ -286,7 +286,7 @@ impl ExportVm {
 
     /// React `handleExport` state transition before the host runs the command.
     #[allow(dead_code)] // consumer: the export-dialog host wiring (not landed); remove when wired.
-    pub(crate) fn begin_export(&mut self) {
+    pub fn begin_export(&mut self) {
         self.error.clear();
         self.exporting = true;
         self.status = ExportStatus::Exporting;
@@ -296,7 +296,7 @@ impl ExportVm {
 
     /// React's export answer branches.
     #[allow(dead_code)] // consumer: the export-dialog host result feed (not landed); remove when wired.
-    pub(crate) fn apply_result(&mut self, result: ExportResult) {
+    pub fn apply_result(&mut self, result: ExportResult) {
         self.exporting = false;
         match result {
             ExportResult::Success => self.status = ExportStatus::Success,
@@ -317,7 +317,7 @@ impl ExportVm {
 /// Host answer to a requested export.
 #[allow(dead_code)] // host port; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ExportResult {
+pub enum ExportResult {
     Success,
     Cancelled,
     Aborted { partial_deleted: bool },
@@ -327,7 +327,7 @@ pub(crate) enum ExportResult {
 /// Host calls the dialog emits.
 #[allow(dead_code)] // host port; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ExportAction {
+pub enum ExportAction {
     Close,
     SetFormat(DataFormat),
     SetScope(ExportScope),
@@ -355,7 +355,7 @@ fn emit<S: 'static>(on_action: &Option<ActionFn<S>>, action: ExportAction) -> im
 
 /// Render the export dialog into `layer`.
 #[allow(dead_code)] // consumer: content_view_dialogs slot (wired by T391).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ExportVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

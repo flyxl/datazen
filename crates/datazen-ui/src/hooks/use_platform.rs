@@ -43,7 +43,7 @@
 
 /// React `Platform` — the OS dimension, orthogonal to the form factor.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum Platform {
+pub enum Platform {
     Macos,
     Windows,
     Linux,
@@ -54,7 +54,7 @@ pub(crate) enum Platform {
 /// `platformFromUserAgent`: mac → macos, win → windows, linux →
 /// linux, else unknown (lowercased substring checks, the order
 /// verbatim).
-pub(crate) fn platform_from_user_agent(user_agent: &str) -> Platform {
+pub fn platform_from_user_agent(user_agent: &str) -> Platform {
     let ua = user_agent.to_lowercase();
     if ua.contains("mac") {
         Platform::Macos
@@ -70,7 +70,7 @@ pub(crate) fn platform_from_user_agent(user_agent: &str) -> Platform {
 /// The hook's state: the synchronous first frame plus the probe's
 /// cached answer.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct UsePlatformState {
+pub struct UsePlatformState {
     /// The current answer: the user-agent parse until the probe
     /// answers, the cached probe answer after (React's `platform`
     /// state).
@@ -83,32 +83,32 @@ pub(crate) struct UsePlatformState {
 impl UsePlatformState {
     /// React's mount: the synchronous user-agent seed (the first
     /// frame paints with it — the WebView2 ruling).
-    pub(crate) fn mount(&mut self, user_agent: &str) {
+    pub fn mount(&mut self, user_agent: &str) {
         self.platform = self.cached.unwrap_or_else(|| platform_from_user_agent(user_agent));
     }
 
     /// The hook's read.
-    pub(crate) fn platform(&self) -> Platform {
+    pub fn platform(&self) -> Platform {
         self.platform
     }
 
     /// `getPlatformSync()`: the cached answer when the probe already
     /// ran, else the user-agent parse (this read never consults the
     /// probe).
-    pub(crate) fn platform_sync(&self, user_agent: &str) -> Platform {
+    pub fn platform_sync(&self, user_agent: &str) -> Platform {
         self.cached.unwrap_or_else(|| platform_from_user_agent(user_agent))
     }
 
     /// The mount effect's probe: whether the host should run
     /// `getOsPlatform` (false when the cache already holds — the
     /// `if (cachedPlatform) return cachedPlatform` fast path).
-    pub(crate) fn begin_detect(&self) -> bool {
+    pub fn begin_detect(&self) -> bool {
         self.cached.is_none()
     }
 
     /// The probe answered (a failure is `None`: the user-agent parse
     /// caches in its place — `probed ?? platformFromUserAgent()`).
-    pub(crate) fn note_probed(&mut self, probed: Option<Platform>, user_agent: &str) {
+    pub fn note_probed(&mut self, probed: Option<Platform>, user_agent: &str) {
         let answer = probed.unwrap_or_else(|| platform_from_user_agent(user_agent));
         self.cached = Some(answer);
         self.platform = answer;

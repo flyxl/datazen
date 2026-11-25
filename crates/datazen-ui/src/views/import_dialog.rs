@@ -45,19 +45,19 @@ mod mapping;
 mod preview;
 mod steps;
 
-pub(crate) use mapping::{mapping_is_executable, plan_import_mapping};
+pub use mapping::{mapping_is_executable, plan_import_mapping};
 
 /// React `PREVIEW_ROWS` / `SAMPLE_ROWS`.
-pub(crate) const PREVIEW_ROWS: usize = 100;
-pub(crate) const SAMPLE_ROWS: usize = 5;
+pub const PREVIEW_ROWS: usize = 100;
+pub const SAMPLE_ROWS: usize = 5;
 /// React `max-w-3xl` (768pt), kept a little narrower for the 960pt window.
-pub(crate) const DIALOG_WIDTH: f32 = 720.0;
-pub(crate) const ROOT: &str = "content-view-import-dialog";
+pub const DIALOG_WIDTH: f32 = 720.0;
+pub const ROOT: &str = "content-view-import-dialog";
 
 /// React `detectImportFormat`: the file extension drives the format cluster.
 #[allow(dead_code)] // VM helper; consumed by the host feed and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ImportFormat {
+pub enum ImportFormat {
     #[default]
     Csv,
     Json,
@@ -65,7 +65,7 @@ pub(crate) enum ImportFormat {
 }
 
 impl ImportFormat {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Csv => "csv",
             Self::Json => "json",
@@ -73,7 +73,7 @@ impl ImportFormat {
         }
     }
 
-    pub(crate) fn detect(name: &str) -> Option<Self> {
+    pub fn detect(name: &str) -> Option<Self> {
         let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
         let ext = base.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase())?;
         match ext.as_str() {
@@ -89,21 +89,21 @@ impl ImportFormat {
 /// null (italic `NULL`), JSON object/array (`JSON.stringify`) and scalar text.
 #[allow(dead_code)] // VM mirror; consumed by the preview and the tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CellValue {
+pub enum CellValue {
     Null,
     Text(String),
     Json(String),
 }
 
 impl CellValue {
-    pub(crate) fn display(&self) -> String {
+    pub fn display(&self) -> String {
         match self {
             Self::Null => "NULL".to_owned(),
             Self::Text(value) | Self::Json(value) => value.clone(),
         }
     }
 
-    pub(crate) fn is_null(&self) -> bool {
+    pub fn is_null(&self) -> bool {
         matches!(self, Self::Null)
     }
 }
@@ -111,15 +111,15 @@ impl CellValue {
 /// React `ImportDiagnostic` (only the two kinds the wizard renders).
 #[allow(dead_code)] // VM mirror; consumed by the warnings and the tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ImportDiagnostic {
-    pub(crate) kind: DiagnosticKind,
-    pub(crate) column: String,
-    pub(crate) line: usize,
+pub struct ImportDiagnostic {
+    pub kind: DiagnosticKind,
+    pub column: String,
+    pub line: usize,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the warnings and the tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DiagnosticKind {
+pub enum DiagnosticKind {
     DuplicateColumn,
     RaggedRow,
 }
@@ -128,17 +128,17 @@ pub(crate) enum DiagnosticKind {
 /// order so a cell is `rows[r][c]` → `columns[c]`; the host feeds them that way.
 #[allow(dead_code)] // VM surface; supplied by the host parser.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ImportParseResult {
-    pub(crate) columns: Vec<String>,
-    pub(crate) rows: Vec<Vec<CellValue>>,
-    pub(crate) row_origins: Vec<usize>,
-    pub(crate) diagnostics: Vec<ImportDiagnostic>,
-    pub(crate) sheet_names: Vec<String>,
+pub struct ImportParseResult {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<CellValue>>,
+    pub row_origins: Vec<usize>,
+    pub diagnostics: Vec<ImportDiagnostic>,
+    pub sheet_names: Vec<String>,
 }
 
 impl ImportParseResult {
     /// React `parsed.rows.slice(0, SAMPLE_ROWS).map(row[source]).find(non-null)`.
-    pub(crate) fn sample(&self, column: usize) -> String {
+    pub fn sample(&self, column: usize) -> String {
         self.rows
             .iter()
             .take(SAMPLE_ROWS)
@@ -152,23 +152,23 @@ impl ImportParseResult {
 /// React `TargetColumnsState`; `error` is empty when there is no error.
 #[allow(dead_code)] // VM surface; supplied by the host schema feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TargetColumnsState {
-    pub(crate) columns: Option<Vec<TargetColumn>>,
-    pub(crate) loading: bool,
-    pub(crate) error: String,
+pub struct TargetColumnsState {
+    pub columns: Option<Vec<TargetColumn>>,
+    pub loading: bool,
+    pub error: String,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the mapping table and the tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TargetColumn {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
+pub struct TargetColumn {
+    pub name: String,
+    pub data_type: String,
 }
 
 /// React `ImportMappingMode`.
 #[allow(dead_code)] // VM surface; consumed by the planner and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum MappingMode {
+pub enum MappingMode {
     #[default]
     Auto,
     Name,
@@ -177,33 +177,33 @@ pub(crate) enum MappingMode {
 
 #[allow(dead_code)] // VM mirror; consumed by the mapping table and the tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct MappingEntry {
-    pub(crate) source: String,
-    pub(crate) target: Option<String>,
+pub struct MappingEntry {
+    pub source: String,
+    pub target: Option<String>,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the conflict warning and the tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct MappingConflict {
-    pub(crate) target: String,
-    pub(crate) sources: Vec<String>,
+pub struct MappingConflict {
+    pub target: String,
+    pub sources: Vec<String>,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the summary and the tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct MappingPlan {
-    pub(crate) entries: Vec<MappingEntry>,
-    pub(crate) conflicts: Vec<MappingConflict>,
-    pub(crate) unmapped: Vec<String>,
-    pub(crate) untargeted: Vec<String>,
+pub struct MappingPlan {
+    pub entries: Vec<MappingEntry>,
+    pub conflicts: Vec<MappingConflict>,
+    pub unmapped: Vec<String>,
+    pub untargeted: Vec<String>,
 }
 
 impl MappingPlan {
-    pub(crate) fn mapped_count(&self) -> usize {
+    pub fn mapped_count(&self) -> usize {
         self.entries.iter().filter(|e| e.target.is_some()).count()
     }
 
-    pub(crate) fn skipped_count(&self) -> usize {
+    pub fn skipped_count(&self) -> usize {
         self.entries.len() - self.mapped_count()
     }
 }
@@ -212,14 +212,14 @@ impl MappingPlan {
 /// `schema.name` in the label.
 #[allow(dead_code)] // VM mirror; consumed by the target select and the tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TableOption {
-    pub(crate) value: String,
-    pub(crate) label: String,
+pub struct TableOption {
+    pub value: String,
+    pub label: String,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by CSV options and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum Delimiter {
+pub enum Delimiter {
     #[default]
     Auto,
     Comma,
@@ -229,7 +229,7 @@ pub(crate) enum Delimiter {
 
 #[allow(dead_code)] // VM mirror; consumed by CSV options and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum EmptyUnquotedAs {
+pub enum EmptyUnquotedAs {
     #[default]
     Null,
     Empty,
@@ -237,7 +237,7 @@ pub(crate) enum EmptyUnquotedAs {
 
 #[allow(dead_code)] // VM mirror; consumed by execution settings and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum OnError {
+pub enum OnError {
     #[default]
     Stop,
     Skip,
@@ -245,7 +245,7 @@ pub(crate) enum OnError {
 
 #[allow(dead_code)] // VM mirror; consumed by execution settings and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum CommitMode {
+pub enum CommitMode {
     #[default]
     Transaction,
     Autocommit,
@@ -254,7 +254,7 @@ pub(crate) enum CommitMode {
 /// React `WizardPhase`.
 #[allow(dead_code)] // VM surface; consumed by the footer and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum WizardPhase {
+pub enum WizardPhase {
     #[default]
     Config,
     Running,
@@ -263,38 +263,38 @@ pub(crate) enum WizardPhase {
 
 #[allow(dead_code)] // VM mirror; consumed by the file row and the tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct LoadedFile {
-    pub(crate) name: String,
-    pub(crate) data_base64: String,
+pub struct LoadedFile {
+    pub name: String,
+    pub data_base64: String,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the progress banner and the tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ImportProgressMsg {
-    pub(crate) processed_rows: usize,
-    pub(crate) committed_rows: usize,
-    pub(crate) failed_rows: usize,
+pub struct ImportProgressMsg {
+    pub processed_rows: usize,
+    pub committed_rows: usize,
+    pub failed_rows: usize,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the result table and the tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RowFailure {
-    pub(crate) row_index: usize,
-    pub(crate) source_line: Option<usize>,
-    pub(crate) message: String,
+pub struct RowFailure {
+    pub row_index: usize,
+    pub source_line: Option<usize>,
+    pub message: String,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the stopped result and the tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StopInfo {
-    pub(crate) row_index: usize,
-    pub(crate) source_line: Option<usize>,
-    pub(crate) message: String,
+pub struct StopInfo {
+    pub row_index: usize,
+    pub source_line: Option<usize>,
+    pub message: String,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the result and the tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum RunStatus {
+pub enum RunStatus {
     #[default]
     Completed,
     Stopped,
@@ -303,18 +303,18 @@ pub(crate) enum RunStatus {
 
 #[allow(dead_code)] // VM mirror; consumed by the result section and the tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ImportRunResult {
-    pub(crate) status: RunStatus,
-    pub(crate) committed_rows: usize,
-    pub(crate) failed_rows: Vec<RowFailure>,
-    pub(crate) stopped_by: Option<StopInfo>,
+pub struct ImportRunResult {
+    pub status: RunStatus,
+    pub committed_rows: usize,
+    pub failed_rows: Vec<RowFailure>,
+    pub stopped_by: Option<StopInfo>,
 }
 
 /// Which Select currently owns the popup. React keeps that state inside each
 /// `Select`; Rune needs it from the caller, so the host stores one open id.
 #[allow(dead_code)] // VM surface; consumed by the selects and the tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) enum OpenSelect {
+pub enum OpenSelect {
     #[default]
     None,
     Encoding,
@@ -330,31 +330,31 @@ pub(crate) enum OpenSelect {
 /// The full view snapshot the host fills each frame.
 #[allow(dead_code)] // VM surface; owned by the host until the panel store lands.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ImportDialogVm {
-    pub(crate) file: Option<LoadedFile>,
-    pub(crate) encoding: String,
-    pub(crate) delimiter: Delimiter,
-    pub(crate) quote_char: String,
-    pub(crate) first_row_is_header: bool,
-    pub(crate) empty_unquoted_as: EmptyUnquotedAs,
-    pub(crate) sheet_name: Option<String>,
-    pub(crate) parsed: Option<ImportParseResult>,
-    pub(crate) parse_error_message: String,
-    pub(crate) local_error: String,
-    pub(crate) targets: TargetColumnsState,
-    pub(crate) target_table: String,
+pub struct ImportDialogVm {
+    pub file: Option<LoadedFile>,
+    pub encoding: String,
+    pub delimiter: Delimiter,
+    pub quote_char: String,
+    pub first_row_is_header: bool,
+    pub empty_unquoted_as: EmptyUnquotedAs,
+    pub sheet_name: Option<String>,
+    pub parsed: Option<ImportParseResult>,
+    pub parse_error_message: String,
+    pub local_error: String,
+    pub targets: TargetColumnsState,
+    pub target_table: String,
     /// Bound to the fallback text input when the host has no table options.
-    pub(crate) target_table_edit: TextEdit,
-    pub(crate) table_options: Vec<TableOption>,
-    pub(crate) mapping_mode: MappingMode,
-    pub(crate) overrides: Vec<(String, Option<String>)>,
-    pub(crate) on_error: OnError,
-    pub(crate) commit_mode: CommitMode,
-    pub(crate) phase: WizardPhase,
-    pub(crate) progress: Option<ImportProgressMsg>,
-    pub(crate) result: Option<ImportRunResult>,
-    pub(crate) refresh_failed: bool,
-    pub(crate) open_select: OpenSelect,
+    pub target_table_edit: TextEdit,
+    pub table_options: Vec<TableOption>,
+    pub mapping_mode: MappingMode,
+    pub overrides: Vec<(String, Option<String>)>,
+    pub on_error: OnError,
+    pub commit_mode: CommitMode,
+    pub phase: WizardPhase,
+    pub progress: Option<ImportProgressMsg>,
+    pub result: Option<ImportRunResult>,
+    pub refresh_failed: bool,
+    pub open_select: OpenSelect,
 }
 
 impl Default for ImportDialogVm {
@@ -389,12 +389,12 @@ impl Default for ImportDialogVm {
 
 impl ImportDialogVm {
     /// React `detectImportFormat(file.name)`.
-    pub(crate) fn format(&self) -> Option<ImportFormat> {
+    pub fn format(&self) -> Option<ImportFormat> {
         self.file.as_ref().and_then(|file| ImportFormat::detect(&file.name))
     }
 
     /// React `duplicates` / `ragged` diagnostics.
-    pub(crate) fn duplicates(&self) -> Vec<&ImportDiagnostic> {
+    pub fn duplicates(&self) -> Vec<&ImportDiagnostic> {
         self.parsed
             .iter()
             .flat_map(|parsed| parsed.diagnostics.iter())
@@ -402,7 +402,7 @@ impl ImportDialogVm {
             .collect()
     }
 
-    pub(crate) fn ragged(&self) -> Vec<&ImportDiagnostic> {
+    pub fn ragged(&self) -> Vec<&ImportDiagnostic> {
         self.parsed
             .iter()
             .flat_map(|parsed| parsed.diagnostics.iter())
@@ -411,12 +411,12 @@ impl ImportDialogVm {
     }
 
     /// A duplicate source column is a hard stop: mapping is keyed by name.
-    pub(crate) fn blocked_by_duplicates(&self) -> bool {
+    pub fn blocked_by_duplicates(&self) -> bool {
         !self.duplicates().is_empty()
     }
 
     /// React `planImportMapping` memo. The host supplies parsed/target data.
-    pub(crate) fn mapping_plan(&self) -> Option<MappingPlan> {
+    pub fn mapping_plan(&self) -> Option<MappingPlan> {
         let parsed = self.parsed.as_ref()?;
         if parsed.columns.is_empty() {
             return None;
@@ -433,7 +433,7 @@ impl ImportDialogVm {
 
     /// React `mappedPairs` (source, target) for every executable pair.
     #[allow(dead_code)] // host feed; consumed when the import pipeline is wired.
-    pub(crate) fn mapped_pairs(&self) -> Vec<(String, String)> {
+    pub fn mapped_pairs(&self) -> Vec<(String, String)> {
         self.mapping_plan()
             .map(|plan| {
                 plan.entries
@@ -445,7 +445,7 @@ impl ImportDialogVm {
     }
 
     /// Whether this source has an override; `None` inside means "don't import".
-    pub(crate) fn override_target(&self, source: &str) -> Option<Option<String>> {
+    pub fn override_target(&self, source: &str) -> Option<Option<String>> {
         self.overrides
             .iter()
             .find(|(name, _)| name == source)
@@ -453,7 +453,7 @@ impl ImportDialogVm {
     }
 
     /// React `canStart` — the single gate for the primary footer button.
-    pub(crate) fn can_start(&self) -> bool {
+    pub fn can_start(&self) -> bool {
         let plan = self.mapping_plan();
         self.phase == WizardPhase::Config
             && self.parsed.as_ref().is_some_and(|parsed| !parsed.rows.is_empty())
@@ -469,7 +469,7 @@ impl ImportDialogVm {
 /// owns every command (file open, schema read, import run) — none is faked.
 #[allow(dead_code)] // host port; remove when the host owns the full pipeline.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ImportAction {
+pub enum ImportAction {
     Close,
     PickFile,
     SetEncoding(String),
@@ -490,9 +490,9 @@ pub(crate) enum ImportAction {
     SetOpenSelect(OpenSelect),
 }
 
-pub(crate) type ImportActionFn<S> = Rc<dyn Fn(&mut S, ImportAction) + 'static>;
+pub type ImportActionFn<S> = Rc<dyn Fn(&mut S, ImportAction) + 'static>;
 /// Accessor for the host-owned VM (needed by the fallback target name input).
-pub(crate) type ImportVmFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut ImportDialogVm + 'static>;
+pub type ImportVmFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut ImportDialogVm + 'static>;
 
 fn emit<S: 'static>(on_action: &Option<ImportActionFn<S>>, action: ImportAction) -> impl Fn(&mut S) + Clone {
     let callback = on_action.clone();
@@ -507,7 +507,7 @@ fn emit<S: 'static>(on_action: &Option<ImportActionFn<S>>, action: ImportAction)
 /// an option label/value pair from the caller; the kit matches `current`
 /// against labels, so the matching label is derived from the wire value.
 #[allow(dead_code)] // rendering helper; delete with the host wiring.
-pub(crate) fn make_select<S: 'static>(
+pub fn make_select<S: 'static>(
     key: &str,
     labels: &[String],
     values: &[String],
@@ -558,7 +558,7 @@ pub(crate) fn make_select<S: 'static>(
 /// Render the import dialog into `layer`. The Dialog base supplies the
 /// full-window scrim/layer (T223 pattern), header and scrolling body.
 #[allow(dead_code)] // consumer: content_view_dialogs slot (host wiring not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ImportDialogVm,
     on_action: Option<ImportActionFn<S>>,
     vm_edit: Option<ImportVmFn<S>>,

@@ -34,12 +34,12 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 use crate::ui::toggle::Checkbox;
 
-pub(crate) const ROOT_KEY: &str = "structure-index-table";
-pub(crate) const EMPTY_KEY: &str = "structure-index-empty";
+pub const ROOT_KEY: &str = "structure-index-table";
+pub const EMPTY_KEY: &str = "structure-index-empty";
 
 /// React `suggestedIndexName` (exported from the same file).
 #[allow(dead_code)] // pure helper; remove when the structure host calls the shared port.
-pub(crate) fn suggested_index_name(table_name: &str, columns: &[String]) -> String {
+pub fn suggested_index_name(table_name: &str, columns: &[String]) -> String {
     let base = table_name.trim();
     let base = if base.is_empty() { "table" } else { base };
     if columns.is_empty() {
@@ -52,7 +52,7 @@ pub(crate) fn suggested_index_name(table_name: &str, columns: &[String]) -> Stri
 /// A patch to one index draft (`Partial<StructureIndexDraft>`).
 #[allow(dead_code)] // VM mirror; remove when the host owns the drafts.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum IndexPatch {
+pub enum IndexPatch {
     Name(String),
     Columns(Vec<String>),
     IsUnique(bool),
@@ -62,27 +62,27 @@ pub(crate) enum IndexPatch {
 /// Host-owned projection of the component props plus `sort` / `selected`.
 #[allow(dead_code)] // VM surface; remove when the host wires the table.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct StructureIndexTableVm {
-    pub(crate) caps: Option<StructureCapabilities>,
-    pub(crate) index_methods: Vec<String>,
-    pub(crate) column_names: Vec<String>,
-    pub(crate) table_name: String,
-    pub(crate) indexes: Vec<StructureIndexDraft>,
-    pub(crate) name_edits: Vec<TextEdit>,
-    pub(crate) sort: Option<(usize, SortDir)>,
-    pub(crate) selected: Option<String>,
-    pub(crate) open_method_for: Option<String>,
+pub struct StructureIndexTableVm {
+    pub caps: Option<StructureCapabilities>,
+    pub index_methods: Vec<String>,
+    pub column_names: Vec<String>,
+    pub table_name: String,
+    pub indexes: Vec<StructureIndexDraft>,
+    pub name_edits: Vec<TextEdit>,
+    pub sort: Option<(usize, SortDir)>,
+    pub selected: Option<String>,
+    pub open_method_for: Option<String>,
 }
 
 #[allow(dead_code)] // pure helpers; remove with the host.
 impl StructureIndexTableVm {
     /// React's `indexType` capability gate.
-    pub(crate) fn show_index_type(&self) -> bool {
+    pub fn show_index_type(&self) -> bool {
         cap_enabled(self.caps.as_ref(), StructureCapabilityFlag::IndexType)
     }
 
     /// React's `row_order` after the host-owned sort by name / columns / type.
-    pub(crate) fn row_order(&self) -> Vec<usize> {
+    pub fn row_order(&self) -> Vec<usize> {
         let mut order: Vec<usize> = (0..self.indexes.len()).collect();
         if let Some((column, dir)) = self.sort {
             order.sort_by(|&a, &b| {
@@ -104,7 +104,7 @@ impl StructureIndexTableVm {
 
     /// React's auto-name update rule: rename only while the current name is
     /// empty or still equals the previous suggestion.
-    pub(crate) fn column_patch(&self, index: &StructureIndexDraft, columns: Vec<String>) -> Vec<IndexPatch> {
+    pub fn column_patch(&self, index: &StructureIndexDraft, columns: Vec<String>) -> Vec<IndexPatch> {
         let previous = suggested_index_name(&self.table_name, &index.columns);
         let next = suggested_index_name(&self.table_name, &columns);
         let mut patches = vec![IndexPatch::Columns(columns)];
@@ -118,7 +118,7 @@ impl StructureIndexTableVm {
 /// Every intent the table emits.
 #[allow(dead_code)] // host port; remove when the host wires the table.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum StructureIndexAction {
+pub enum StructureIndexAction {
     Update { id: String, patch: IndexPatch },
     Remove(String),
     AddColumn { id: String, column: String },
@@ -128,7 +128,7 @@ pub(crate) enum StructureIndexAction {
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the table.
-pub(crate) type StructureIndexActionFn<S> = Rc<dyn Fn(&mut S, StructureIndexAction) + 'static>;
+pub type StructureIndexActionFn<S> = Rc<dyn Fn(&mut S, StructureIndexAction) + 'static>;
 
 fn emit<S: 'static>(
     on_action: &Option<StructureIndexActionFn<S>>,
@@ -152,7 +152,7 @@ fn disabled_title(caps: Option<&StructureCapabilities>, control: StructureCapabi
 
 /// Build the table into a single element.
 #[allow(dead_code)] // view entry; remove when the host wires the table.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &StructureIndexTableVm,
     on_action: &Option<StructureIndexActionFn<S>>,
     dark: bool,

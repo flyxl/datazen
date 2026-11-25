@@ -53,7 +53,7 @@ const HISTORY_BODY_MAX_HEIGHT: f32 = 416.0;
 /// React `MigrationOperation` (backend-client domain vocabulary).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable VM; drop when the migration-history view wires it.
-pub(crate) enum MigrationOperation {
+pub enum MigrationOperation {
     SchemaDiff,
     DataSync,
     DataTransfer,
@@ -61,7 +61,7 @@ pub(crate) enum MigrationOperation {
 
 #[allow(dead_code)] // reusable VM; drop when the migration-history view wires it.
 impl MigrationOperation {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::SchemaDiff => "schemaDiff",
             Self::DataSync => "dataSync",
@@ -73,21 +73,21 @@ impl MigrationOperation {
 /// The subset of React `MigrationRunRecord` this dialog actually renders.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable VM; drop when the migration-history view wires it.
-pub(crate) struct MigrationRunRecord {
-    pub(crate) id: String,
-    pub(crate) operation: MigrationOperation,
-    pub(crate) status: String,
-    pub(crate) outcome: String,
-    pub(crate) phase: String,
-    pub(crate) profile_id: Option<String>,
-    pub(crate) profile_revision: Option<String>,
-    pub(crate) started_at: String,
-    pub(crate) selected_count: u64,
-    pub(crate) committed_count: u64,
-    pub(crate) failed_count: u64,
-    pub(crate) conflict_count: u64,
-    pub(crate) rollback_outcome: String,
-    pub(crate) error_summary: Option<String>,
+pub struct MigrationRunRecord {
+    pub id: String,
+    pub operation: MigrationOperation,
+    pub status: String,
+    pub outcome: String,
+    pub phase: String,
+    pub profile_id: Option<String>,
+    pub profile_revision: Option<String>,
+    pub started_at: String,
+    pub selected_count: u64,
+    pub committed_count: u64,
+    pub failed_count: u64,
+    pub conflict_count: u64,
+    pub rollback_outcome: String,
+    pub error_summary: Option<String>,
 }
 
 /// React `rollbackDisplay(run)`: only a known Transfer outcome is localized
@@ -95,15 +95,15 @@ pub(crate) struct MigrationRunRecord {
 /// the raw historical string verbatim.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable VM; drop when the migration-history view wires it.
-pub(crate) struct RollbackDisplay {
-    pub(crate) label: String,
-    pub(crate) uncertain: bool,
-    pub(crate) localized: bool,
+pub struct RollbackDisplay {
+    pub label: String,
+    pub uncertain: bool,
+    pub localized: bool,
 }
 
 /// Port of React's `rollbackDisplay` closure.
 #[allow(dead_code)] // reusable helper; drop when the migration-history view wires it.
-pub(crate) fn rollback_display(run: &MigrationRunRecord) -> RollbackDisplay {
+pub fn rollback_display(run: &MigrationRunRecord) -> RollbackDisplay {
     if run.operation != MigrationOperation::DataTransfer {
         return RollbackDisplay {
             label: run.rollback_outcome.clone(),
@@ -141,7 +141,7 @@ type SelectAction<S> = Rc<dyn Fn(&mut S, String)>;
 
 /// Builder for the run-history trigger plus its dialog layer.
 #[allow(dead_code)] // reusable component; drop when the migration-history view wires it.
-pub(crate) struct MigrationRunHistoryDialog<S: 'static> {
+pub struct MigrationRunHistoryDialog<S: 'static> {
     operation: MigrationOperation,
     open: bool,
     open_epoch: u64,
@@ -157,7 +157,7 @@ pub(crate) struct MigrationRunHistoryDialog<S: 'static> {
 
 #[allow(dead_code)] // reusable component; drop when the migration-history view wires it.
 impl<S: 'static> MigrationRunHistoryDialog<S> {
-    pub(crate) fn new(operation: MigrationOperation) -> Self {
+    pub fn new(operation: MigrationOperation) -> Self {
         Self {
             operation,
             open: false,
@@ -173,47 +173,47 @@ impl<S: 'static> MigrationRunHistoryDialog<S> {
         }
     }
 
-    pub(crate) fn open(mut self, open: bool) -> Self {
+    pub fn open(mut self, open: bool) -> Self {
         self.open = open;
         self
     }
 
-    pub(crate) fn open_epoch(mut self, epoch: u64) -> Self {
+    pub fn open_epoch(mut self, epoch: u64) -> Self {
         self.open_epoch = epoch;
         self
     }
 
-    pub(crate) fn loading(mut self, loading: bool) -> Self {
+    pub fn loading(mut self, loading: bool) -> Self {
         self.loading = loading;
         self
     }
 
-    pub(crate) fn error(mut self, error: Option<String>) -> Self {
+    pub fn error(mut self, error: Option<String>) -> Self {
         self.error = error;
         self
     }
 
-    pub(crate) fn items(mut self, items: Vec<MigrationRunRecord>) -> Self {
+    pub fn items(mut self, items: Vec<MigrationRunRecord>) -> Self {
         self.items = items;
         self
     }
 
-    pub(crate) fn selected(mut self, id: Option<String>) -> Self {
+    pub fn selected(mut self, id: Option<String>) -> Self {
         self.selected_id = id;
         self
     }
 
-    pub(crate) fn on_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_select = Some(Rc::new(f));
         self
     }
@@ -221,14 +221,14 @@ impl<S: 'static> MigrationRunHistoryDialog<S> {
     /// Only meaningful for a Data Sync dialog; the host decides whether to
     /// accept. A refused reconciliation keeps the dialog open (React closes it
     /// only when `onReconcile` resolves true).
-    pub(crate) fn on_reconcile(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_reconcile(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_reconcile = Some(Rc::new(f));
         self
     }
 
     /// Return the trigger followed by the dialog's layer elements. Callers push
     /// the layer to the root view as siblings (the same shape as `modal_layer`).
-    pub(crate) fn build(self, dark: bool) -> Vec<El> {
+    pub fn build(self, dark: bool) -> Vec<El> {
         let k: &'static Kit = kit(dark);
         let mut out = Vec::new();
 

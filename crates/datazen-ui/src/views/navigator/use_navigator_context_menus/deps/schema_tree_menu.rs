@@ -10,7 +10,7 @@ use super::native_menu::MenuNode;
 
 /// React `SchemaTreeNodeKind`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SchemaTreeNodeKind {
+pub enum SchemaTreeNodeKind {
     Table,
     View,
     Database,
@@ -25,7 +25,7 @@ pub(crate) enum SchemaTreeNodeKind {
 }
 
 impl SchemaTreeNodeKind {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Table => "table",
             Self::View => "view",
@@ -45,7 +45,7 @@ impl SchemaTreeNodeKind {
 /// React `SchemaTreeContextMenuLabels` — caller-supplied (from `t()`); no
 /// hardcoded locale strings here, exactly as the React type demands.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SchemaTreeContextMenuLabels {
+pub struct SchemaTreeContextMenuLabels {
     pub open: String,
     pub open_structure: String,
     pub copy_name: String,
@@ -85,7 +85,7 @@ pub(crate) struct SchemaTreeContextMenuLabels {
 
 /// React `SchemaTreeContextMenuHandlers`, as action slots. Every slot
 /// optional; a handler that is not wired produces no item.
-pub(crate) struct SchemaTreeMenuSlots<A> {
+pub struct SchemaTreeMenuSlots<A> {
     pub on_open: Option<A>,
     pub on_open_structure: Option<A>,
     pub on_copy_name: Option<A>,
@@ -125,7 +125,7 @@ pub(crate) struct SchemaTreeMenuSlots<A> {
 impl<A> SchemaTreeMenuSlots<A> {
     /// Every handler absent — the base the handlers' functional updates
     /// spread over (React's object literal with only the wired keys).
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             on_open: None,
             on_open_structure: None,
@@ -166,7 +166,7 @@ impl<A> SchemaTreeMenuSlots<A> {
 /// React `isProductFeatureEnabled` — the three feature flags the migration
 /// tool items read. Injected so the builder stays pure.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ProductFeatures {
+pub struct ProductFeatures {
     pub data_transfer: bool,
     pub schema_diff: bool,
     pub data_sync: bool,
@@ -241,7 +241,7 @@ fn generate_sql_submenu<A: Clone>(
 }
 
 /// React `BuildSchemaTreeContextMenuArgs`.
-pub(crate) struct BuildSchemaTreeMenuArgs<'a, A> {
+pub struct BuildSchemaTreeMenuArgs<'a, A> {
     pub kind: SchemaTreeNodeKind,
     pub labels: &'a SchemaTreeContextMenuLabels,
     pub handlers: SchemaTreeMenuSlots<A>,
@@ -270,7 +270,7 @@ pub(crate) struct BuildSchemaTreeMenuArgs<'a, A> {
 }
 
 /// React `buildSchemaTreeContextMenuItems`.
-pub(crate) fn build_schema_tree_context_menu_items<A: Clone>(
+pub fn build_schema_tree_context_menu_items<A: Clone>(
     args: BuildSchemaTreeMenuArgs<'_, A>,
 ) -> Vec<MenuNode<A>> {
     let BuildSchemaTreeMenuArgs {

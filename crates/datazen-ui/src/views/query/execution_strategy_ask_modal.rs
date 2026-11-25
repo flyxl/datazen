@@ -31,35 +31,35 @@ use crate::i18n::t;
 use crate::ui::dialog::Dialog;
 use crate::ui::kit::kit;
 
-pub(crate) const DIALOG_KEY: &str = "execution-strategy-ask-modal";
-pub(crate) const DESC_KEY: &str = "execution-strategy-ask-desc";
-pub(crate) const CURRENT_KEY: &str = "execution-strategy-run-current";
-pub(crate) const ENTIRE_KEY: &str = "execution-strategy-run-entire";
-pub(crate) const CANCEL_KEY: &str = "execution-strategy-cancel";
+pub const DIALOG_KEY: &str = "execution-strategy-ask-modal";
+pub const DESC_KEY: &str = "execution-strategy-ask-desc";
+pub const CURRENT_KEY: &str = "execution-strategy-run-current";
+pub const ENTIRE_KEY: &str = "execution-strategy-run-entire";
+pub const CANCEL_KEY: &str = "execution-strategy-cancel";
 
 /// React `StatementTargetInfo`, reduced to what the modal reads.
 #[allow(dead_code)] // VM mirror; remove when the execution host owns the target.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct StatementTargetVm {
-    pub(crate) sql: String,
-    pub(crate) from_line: u32,
-    pub(crate) to_line: u32,
+pub struct StatementTargetVm {
+    pub sql: String,
+    pub from_line: u32,
+    pub to_line: u32,
 }
 
 /// React `ExecutionStrategyAskModalProps` as a cloneable VM.
 #[allow(dead_code)] // VM mirror; remove when the execution host owns the ask.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ExecutionStrategyAskVm {
-    pub(crate) open: bool,
-    pub(crate) current_statement: Option<StatementTargetVm>,
-    pub(crate) statement_count: u32,
-    pub(crate) entire_script: String,
+pub struct ExecutionStrategyAskVm {
+    pub open: bool,
+    pub current_statement: Option<StatementTargetVm>,
+    pub statement_count: u32,
+    pub entire_script: String,
 }
 
 /// React's `sql.length > 120 ? sql.slice(0, 120) + '…' : sql`. Rune counts
 /// scalar chars rather than UTF-16 units; the preview is display-only.
 #[allow(dead_code)] // pure helper; remove when the React helper is ported.
-pub(crate) fn preview(sql: &str) -> String {
+pub fn preview(sql: &str) -> String {
     if sql.chars().count() > 120 {
         let head: String = sql.chars().take(120).collect();
         format!("{head}…")
@@ -70,7 +70,7 @@ pub(crate) fn preview(sql: &str) -> String {
 
 /// React `t('query.executionStrategy.runCurrent', { from, to })`.
 #[allow(dead_code)] // pure helper; remove with the host.
-pub(crate) fn current_label(vm: &ExecutionStrategyAskVm) -> String {
+pub fn current_label(vm: &ExecutionStrategyAskVm) -> String {
     match &vm.current_statement {
         Some(current) => t("query.executionStrategy.runCurrent")
             .replace("{from}", &current.from_line.to_string())
@@ -81,21 +81,21 @@ pub(crate) fn current_label(vm: &ExecutionStrategyAskVm) -> String {
 
 /// React `t('query.executionStrategy.runEntire', { count })`.
 #[allow(dead_code)] // pure helper; remove with the host.
-pub(crate) fn entire_label(vm: &ExecutionStrategyAskVm) -> String {
+pub fn entire_label(vm: &ExecutionStrategyAskVm) -> String {
     t("query.executionStrategy.runEntire").replace("{count}", &vm.statement_count.to_string())
 }
 
 /// The three React callbacks, forwarded to the host.
 #[allow(dead_code)] // host port; remove when the execution host wires the modal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExecutionStrategyAction {
+pub enum ExecutionStrategyAction {
     ExecuteCurrent,
     ExecuteEntire,
     Cancel,
 }
 
 #[allow(dead_code)] // host port; remove when the execution host wires the modal.
-pub(crate) type ExecutionStrategyActionFn<S> = Rc<dyn Fn(&mut S, ExecutionStrategyAction) + 'static>;
+pub type ExecutionStrategyActionFn<S> = Rc<dyn Fn(&mut S, ExecutionStrategyAction) + 'static>;
 
 fn emit<S: 'static>(
     on_action: &Option<ExecutionStrategyActionFn<S>>,
@@ -165,7 +165,7 @@ fn option_card<S: 'static>(
 
 /// Render the modal into `layer`. A closed React `Dialog` mounts nothing.
 #[allow(dead_code)] // view entry; remove when the execution host wires it.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ExecutionStrategyAskVm,
     on_action: &Option<ExecutionStrategyActionFn<S>>,
     dark: bool,

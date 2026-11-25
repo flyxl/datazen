@@ -6,7 +6,7 @@ use super::sql::statement_ranges;
 
 #[allow(dead_code)] // VM mirror; consumed by the reducer and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum RiskClassification {
+pub enum RiskClassification {
     #[default]
     Read,
     Mutation,
@@ -25,7 +25,7 @@ impl RiskClassification {
 
 #[allow(dead_code)] // VM mirror; consumed by confirm i18n and tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FindingType {
+pub enum FindingType {
     Drop,
     Truncate,
     NoWhereUpdate,
@@ -34,35 +34,35 @@ pub(crate) enum FindingType {
 
 #[allow(dead_code)] // VM mirror; consumed by the reducer and tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct StatementRisk {
-    pub(crate) verb: Option<String>,
-    pub(crate) classification: RiskClassification,
-    pub(crate) has_top_level_where: bool,
-    pub(crate) strict_write: bool,
-    pub(crate) comment_hides_write_verb: bool,
-    pub(crate) findings: Vec<FindingType>,
+pub struct StatementRisk {
+    pub verb: Option<String>,
+    pub classification: RiskClassification,
+    pub has_top_level_where: bool,
+    pub strict_write: bool,
+    pub comment_hides_write_verb: bool,
+    pub findings: Vec<FindingType>,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the reducer and tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RiskMode {
-    pub(crate) read_only: bool,
-    pub(crate) safe_mode: bool,
-    pub(crate) is_production: bool,
-    pub(crate) confirm_dangerous: bool,
+pub struct RiskMode {
+    pub read_only: bool,
+    pub safe_mode: bool,
+    pub is_production: bool,
+    pub confirm_dangerous: bool,
 }
 
 #[allow(dead_code)] // VM mirror; consumed by the reducer and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RiskDecision {
-    pub(crate) classification: RiskClassification,
-    pub(crate) findings: Vec<FindingType>,
-    pub(crate) statements: Vec<StatementRisk>,
-    pub(crate) hard_blocked: bool,
-    pub(crate) hard_block_reason: Option<&'static str>,
-    pub(crate) needs_confirm: bool,
-    pub(crate) high_risk: bool,
-    pub(crate) confirm_reasons: Vec<&'static str>,
+pub struct RiskDecision {
+    pub classification: RiskClassification,
+    pub findings: Vec<FindingType>,
+    pub statements: Vec<StatementRisk>,
+    pub hard_blocked: bool,
+    pub hard_block_reason: Option<&'static str>,
+    pub needs_confirm: bool,
+    pub high_risk: bool,
+    pub confirm_reasons: Vec<&'static str>,
 }
 
 const WRITE_VERBS: &[&str] = &[
@@ -149,7 +149,7 @@ fn classify_statement(statement: &str, hidden: bool) -> StatementRisk {
 
 /// React `assessExecutionRisk` with the same branch order as the source.
 #[allow(dead_code)] // pure gate; consumed by the reducer and tests.
-pub(crate) fn assess(sql: &str, mode: &RiskMode) -> RiskDecision {
+pub fn assess(sql: &str, mode: &RiskMode) -> RiskDecision {
     let hidden = comment_hides_write(sql);
     let statements: Vec<StatementRisk> = statement_ranges(sql)
         .into_iter()

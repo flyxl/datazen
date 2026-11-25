@@ -110,7 +110,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 
 /// React's `AiChatMessage` role (`types/ai.ts:446`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AiChatRole {
+pub enum AiChatRole {
     System,
     User,
     Assistant,
@@ -123,7 +123,7 @@ pub(crate) enum AiChatRole {
 /// keys the list rows `${id}-${reference}`, and `score` because a later
 /// slice may sort or filter on it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AiMemoryReference {
+pub struct AiMemoryReference {
     pub reference: String,
     pub id: String,
     pub subject: String,
@@ -133,7 +133,7 @@ pub(crate) struct AiMemoryReference {
 }
 
 impl AiMemoryReference {
-    pub(crate) fn new(
+    pub fn new(
         reference: impl Into<String>,
         id: impl Into<String>,
         subject: impl Into<String>,
@@ -150,7 +150,7 @@ impl AiMemoryReference {
         }
     }
 
-    pub(crate) fn score(mut self, score: f64) -> Self {
+    pub fn score(mut self, score: f64) -> Self {
         self.score = score;
         self
     }
@@ -160,7 +160,7 @@ impl AiMemoryReference {
 /// fields `ChatBubble` reads are carried — `toolCalls`, `toolCallId`,
 /// `status` and `createdAt` belong to the panel / store slices.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AiChatMessage {
+pub struct AiChatMessage {
     pub id: Option<String>,
     pub role: AiChatRole,
     pub content: String,
@@ -171,7 +171,7 @@ pub(crate) struct AiChatMessage {
 }
 
 impl AiChatMessage {
-    pub(crate) fn new(role: AiChatRole, content: impl Into<String>) -> Self {
+    pub fn new(role: AiChatRole, content: impl Into<String>) -> Self {
         Self {
             id: None,
             role,
@@ -183,27 +183,27 @@ impl AiChatMessage {
         }
     }
 
-    pub(crate) fn id(mut self, id: impl Into<String>) -> Self {
+    pub fn id(mut self, id: impl Into<String>) -> Self {
         self.id = Some(id.into());
         self
     }
 
-    pub(crate) fn reasoning(mut self, reasoning: impl Into<String>) -> Self {
+    pub fn reasoning(mut self, reasoning: impl Into<String>) -> Self {
         self.reasoning = Some(reasoning.into());
         self
     }
 
-    pub(crate) fn questions(mut self, questions: Vec<AiQuestion>) -> Self {
+    pub fn questions(mut self, questions: Vec<AiQuestion>) -> Self {
         self.questions = questions;
         self
     }
 
-    pub(crate) fn cancelled(mut self, cancelled: bool) -> Self {
+    pub fn cancelled(mut self, cancelled: bool) -> Self {
         self.cancelled = cancelled;
         self
     }
 
-    pub(crate) fn memory_used(mut self, memory_used: Vec<AiMemoryReference>) -> Self {
+    pub fn memory_used(mut self, memory_used: Vec<AiMemoryReference>) -> Self {
         self.memory_used = memory_used;
         self
     }
@@ -218,7 +218,7 @@ impl AiChatMessage {
 /// starts `true`, the other sections start closed, and a citation jump
 /// opens the memory list.
 #[derive(Clone, Debug)]
-pub(crate) struct ChatBubbleState {
+pub struct ChatBubbleState {
     reasoning_open: bool,
     tool_collapsed: bool,
     memory_open: bool,
@@ -245,7 +245,7 @@ impl Default for ChatBubbleState {
 
 impl ChatBubbleState {
     /// The code-block state slots (one per fenced code segment).
-    pub(crate) fn code_blocks(&self) -> &[AiCodeBlockState] {
+    pub fn code_blocks(&self) -> &[AiCodeBlockState] {
         &self.code_blocks
     }
 
@@ -253,7 +253,7 @@ impl ChatBubbleState {
     /// `AiCodeBlock` events here (T167). A missing slot (a lagging seed)
     /// makes the event a no-op, matching the conservative default the
     /// render falls back to.
-    pub(crate) fn code_blocks_mut(&mut self) -> &mut [AiCodeBlockState] {
+    pub fn code_blocks_mut(&mut self) -> &mut [AiCodeBlockState] {
         &mut self.code_blocks
     }
 
@@ -263,7 +263,7 @@ impl ChatBubbleState {
     /// a slot's fullscreen / dialect / copy feedback belongs to its
     /// block alone (the `AiCodeBlock` docs), so slots are never reused
     /// across a re-split.
-    pub(crate) fn sync_code_blocks(&mut self, content: &str, sql_dialect: &str) {
+    pub fn sync_code_blocks(&mut self, content: &str, sql_dialect: &str) {
         let needed = crate::components::ai::ai_message_content::parse_message_segments(content)
             .iter()
             .filter(|segment| matches!(segment, crate::components::ai::ai_message_content::MessageSegment::Code { .. }))
@@ -274,32 +274,32 @@ impl ChatBubbleState {
         self.code_blocks.truncate(needed);
     }
 
-    pub(crate) fn reasoning_open(&self) -> bool {
+    pub fn reasoning_open(&self) -> bool {
         self.reasoning_open
     }
 
-    pub(crate) fn tool_collapsed(&self) -> bool {
+    pub fn tool_collapsed(&self) -> bool {
         self.tool_collapsed
     }
 
-    pub(crate) fn memory_open(&self) -> bool {
+    pub fn memory_open(&self) -> bool {
         self.memory_open
     }
 
     /// The reference the last citation jump selected, if any.
-    pub(crate) fn memory_focused(&self) -> Option<&str> {
+    pub fn memory_focused(&self) -> Option<&str> {
         self.memory_focused.as_deref()
     }
 
-    pub(crate) fn toggle_reasoning(&mut self) {
+    pub fn toggle_reasoning(&mut self) {
         self.reasoning_open = !self.reasoning_open;
     }
 
-    pub(crate) fn toggle_tool(&mut self) {
+    pub fn toggle_tool(&mut self) {
         self.tool_collapsed = !self.tool_collapsed;
     }
 
-    pub(crate) fn toggle_memory(&mut self) {
+    pub fn toggle_memory(&mut self) {
         self.memory_open = !self.memory_open;
     }
 
@@ -309,14 +309,14 @@ impl ChatBubbleState {
     /// `focus()` after a tick); Rune has neither, so the selection is the
     /// whole effect — the list renders the focused item selected, and a
     /// reference with no matching item simply selects nothing.
-    pub(crate) fn open_memory_citation(&mut self, reference: &str) {
+    pub fn open_memory_citation(&mut self, reference: &str) {
         self.memory_open = true;
         self.memory_focused = Some(reference.to_string());
     }
 
     /// React's `message.reasoning && …` gate: a missing or empty reasoning
     /// string shows no reasoning section.
-    pub(crate) fn has_reasoning(message: &AiChatMessage) -> bool {
+    pub fn has_reasoning(message: &AiChatMessage) -> bool {
         message
             .reasoning
             .as_deref()
@@ -326,25 +326,25 @@ impl ChatBubbleState {
     /// React's tool early return: a `tool` message with content renders
     /// only the collapsible toggle + content, none of the normal bubble.
     /// A tool message with empty content falls through to the normal path.
-    pub(crate) fn is_tool_bubble(message: &AiChatMessage) -> bool {
+    pub fn is_tool_bubble(message: &AiChatMessage) -> bool {
         message.role == AiChatRole::Tool && !message.content.is_empty()
     }
 
     /// React's `animate-pulse` gate: streaming, no content yet, but
     /// reasoning is already arriving.
-    pub(crate) fn is_pulsing(message: &AiChatMessage, is_streaming: bool) -> bool {
+    pub fn is_pulsing(message: &AiChatMessage, is_streaming: bool) -> bool {
         is_streaming && message.content.is_empty() && Self::has_reasoning(message)
     }
 
     /// React's `hasQuestions`: a non-user message that is not streaming and
     /// carries questions.
-    pub(crate) fn has_questions(message: &AiChatMessage, is_streaming: bool) -> bool {
+    pub fn has_questions(message: &AiChatMessage, is_streaming: bool) -> bool {
         message.role != AiChatRole::User && !is_streaming && !message.questions.is_empty()
     }
 
     /// React's remember-button gate: non-user, last assistant message, not
     /// streaming, has content, and the caller supplied `onRemember`.
-    pub(crate) fn show_remember(
+    pub fn show_remember(
         message: &AiChatMessage,
         is_streaming: bool,
         is_last_assistant: bool,
@@ -365,7 +365,7 @@ impl ChatBubbleState {
 /// submit — and the caller drives submit through
 /// [`QuestionBlockState::submit`], forwarding the formatted payload to
 /// `onAnswerQuestions`.
-pub(crate) struct ChatBubbleQuestions<'a, S: 'static> {
+pub struct ChatBubbleQuestions<'a, S: 'static> {
     state: &'a QuestionBlockState,
     on_toggle: Rc<dyn Fn(&mut S, &str, &str, bool)>,
     on_custom_edit: Rc<dyn for<'b, 'c> Fn(&'b mut S, &'c str) -> &'b mut TextEdit>,
@@ -377,7 +377,7 @@ pub(crate) struct ChatBubbleQuestions<'a, S: 'static> {
 /// placeholder, cancelled marker, and — for the last assistant message —
 /// S1's `QuestionBlock`. The caller owns the [`ChatBubbleState`] and wires
 /// the callbacks; the bubble itself keeps no state.
-pub(crate) struct ChatBubble<'a, S: 'static> {
+pub struct ChatBubble<'a, S: 'static> {
     message: &'a AiChatMessage,
     state: &'a ChatBubbleState,
     is_streaming: bool,
@@ -405,7 +405,7 @@ pub(crate) struct ChatBubble<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> ChatBubble<'a, S> {
-    pub(crate) fn new(message: &'a AiChatMessage, state: &'a ChatBubbleState) -> Self {
+    pub fn new(message: &'a AiChatMessage, state: &'a ChatBubbleState) -> Self {
         Self {
             message,
             state,
@@ -427,59 +427,59 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
         }
     }
 
-    pub(crate) fn streaming(mut self, is_streaming: bool) -> Self {
+    pub fn streaming(mut self, is_streaming: bool) -> Self {
         self.is_streaming = is_streaming;
         self
     }
 
-    pub(crate) fn last_assistant(mut self, is_last_assistant: bool) -> Self {
+    pub fn last_assistant(mut self, is_last_assistant: bool) -> Self {
         self.is_last_assistant = is_last_assistant;
         self
     }
 
     /// The SQL dialect for `AiMessageContent`'s code blocks (T169). Stored
     /// only until that slice lands.
-    pub(crate) fn sql_dialect(mut self, sql_dialect: impl Into<String>) -> Self {
+    pub fn sql_dialect(mut self, sql_dialect: impl Into<String>) -> Self {
         self.sql_dialect = Some(sql_dialect.into());
         self
     }
 
     /// `AiMessageContent`'s `onInsertSql` (T169). Stored only; nothing in
     /// this slice renders SQL or calls it.
-    pub(crate) fn on_insert_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_insert_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_insert_sql = Some(Rc::new(f));
         self
     }
 
     /// `AiMessageContent`'s `onRunCode` (T169). Stored only.
-    pub(crate) fn on_run_code(mut self, f: impl Fn(&mut S, &str, &str) + 'static) -> Self {
+    pub fn on_run_code(mut self, f: impl Fn(&mut S, &str, &str) + 'static) -> Self {
         self.on_run_code = Some(Rc::new(f));
         self
     }
 
     /// `AiMessageContent`'s `onNewQuery` (T169). Stored only.
-    pub(crate) fn on_new_query(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_new_query(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_new_query = Some(Rc::new(f));
         self
     }
 
     /// Called when the reasoning toggle is pressed; the caller drives
     /// [`ChatBubbleState::toggle_reasoning`].
-    pub(crate) fn on_toggle_reasoning(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_reasoning(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_reasoning = Some(Rc::new(f));
         self
     }
 
     /// Called when the tool-role toggle is pressed; the caller drives
     /// [`ChatBubbleState::toggle_tool`].
-    pub(crate) fn on_toggle_tool(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_tool(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_tool = Some(Rc::new(f));
         self
     }
 
     /// Called when the memory chip is pressed; the caller drives
     /// [`ChatBubbleState::toggle_memory`].
-    pub(crate) fn on_toggle_memory(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_memory(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_memory = Some(Rc::new(f));
         self
     }
@@ -488,14 +488,14 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
     /// citation inside the content is activated; the caller drives
     /// [`ChatBubbleState::open_memory_citation`]. No element calls this
     /// yet — the placeholder content has no links (see the module docs).
-    pub(crate) fn on_cite_memory(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_cite_memory(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_cite_memory = Some(Rc::new(f));
         self
     }
 
     /// Called with the message when the remember button is pressed; the
     /// caller owns memory creation / persistence.
-    pub(crate) fn on_remember(mut self, f: impl Fn(&mut S, &AiChatMessage) + 'static) -> Self {
+    pub fn on_remember(mut self, f: impl Fn(&mut S, &AiChatMessage) + 'static) -> Self {
         self.on_remember = Some(Rc::new(f));
         self
     }
@@ -505,7 +505,7 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
     /// content renders through `AiMessageContent` (the placeholder goes
     /// away); without it the placeholder stays, so un-wired callers
     /// keep the exact pre-T167 rendering.
-    pub(crate) fn code_wiring(mut self, wiring: AiMessageCodeWiring<S>) -> Self {
+    pub fn code_wiring(mut self, wiring: AiMessageCodeWiring<S>) -> Self {
         self.code_wiring = Some(wiring);
         self
     }
@@ -513,7 +513,7 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
     /// The host's clipboard write starter for a code segment's copy
     /// button (React's `navigator.clipboard`); without it the copy button
     /// renders but does nothing.
-    pub(crate) fn on_copy_code(
+    pub fn on_copy_code(
         mut self,
         f: impl Fn(&mut S, String, u64) + 'static,
     ) -> Self {
@@ -523,7 +523,7 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
 
     /// A markdown link press in the content (React's browser navigates
     /// the `href`; the host opens it).
-    pub(crate) fn on_open_link(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_open_link(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_open_link = Some(Rc::new(f));
         self
     }
@@ -532,7 +532,7 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
     /// block's state and the three callbacks its builder needs; submit
     /// should drive [`QuestionBlockState::submit`] and forward the payload
     /// to `onAnswerQuestions`.
-    pub(crate) fn with_questions(
+    pub fn with_questions(
         mut self,
         state: &'a QuestionBlockState,
         on_toggle: impl Fn(&mut S, &str, &str, bool) + 'static,
@@ -569,7 +569,7 @@ impl<'a, S: 'static> ChatBubble<'a, S> {
         )
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         if ChatBubbleState::is_tool_bubble(self.message) {
             return self.build_tool(dark);
         }

@@ -67,11 +67,11 @@ use crate::ui::kit::kit;
 
 /// How long the "copied" label stays before reverting — React's
 /// `COPIED_FEEDBACK_MS` (`QueryErrorPanel.tsx:7`).
-pub(crate) const COPIED_FEEDBACK_MS: u64 = 1500;
+pub const COPIED_FEEDBACK_MS: u64 = 1500;
 
 /// The panel. Build it with the message and the caller's copy-feedback
 /// state, then attach the optional actions.
-pub(crate) struct QueryErrorPanel<'a, S: 'static> {
+pub struct QueryErrorPanel<'a, S: 'static> {
     message: &'a str,
     copied: bool,
     on_diagnose: Option<Rc<dyn Fn(&mut S)>>,
@@ -83,7 +83,7 @@ pub(crate) struct QueryErrorPanel<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> QueryErrorPanel<'a, S> {
-    pub(crate) fn new(message: &'a str) -> Self {
+    pub fn new(message: &'a str) -> Self {
         Self {
             message,
             copied: false,
@@ -98,47 +98,47 @@ impl<'a, S: 'static> QueryErrorPanel<'a, S> {
 
     /// Show `common.copied` + the check glyph instead of `common.copy`:
     /// the caller's `copied_until > now` evaluation.
-    pub(crate) fn copied(mut self, copied: bool) -> Self {
+    pub fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
     }
 
     /// React's `onDiagnose` — the explain fallback.
-    pub(crate) fn on_diagnose(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_diagnose(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_diagnose = Some(Rc::new(f));
         self
     }
 
     /// React's `onExplain`.
-    pub(crate) fn on_explain(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_explain(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_explain = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_fix_sql(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_fix_sql(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_fix_sql = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_retry(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_retry(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_retry = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_ask_in_chat(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_ask_in_chat(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_ask_in_chat = Some(Rc::new(f));
         self
     }
 
     /// React's `onCopy`, invoked after the clipboard write and the wake.
-    pub(crate) fn on_copy_tx(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_copy_tx(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_copy = Some(Rc::new(f));
         self
     }
 
     /// The panel. React: `rounded-md border border-danger/20 bg-danger/10
     /// px-4 py-3`.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let c = &k.c;
 

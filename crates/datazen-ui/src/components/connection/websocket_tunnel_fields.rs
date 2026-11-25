@@ -34,7 +34,7 @@ use crate::ui::select::Select;
 
 const ROOT: &str = "new-conn-ws-fields";
 
-pub(crate) use super::tunnel_field_contracts::{
+pub use super::tunnel_field_contracts::{
     is_ws_url_valid, WebSocketTunnelFieldsValue as WebSocketValue, WsMode,
 };
 
@@ -45,7 +45,7 @@ type ModeFn<S> = Rc<dyn Fn(&mut S, WsMode) + 'static>;
 /// Builder for the ported field group. `S` owns the text edits and handles the
 /// mode change; no IPC or network call happens here.
 #[allow(dead_code)] // consumer: the tunnel settings editor (not wired); remove when wired.
-pub(crate) struct WebSocketTunnelFields<'a, S: 'static> {
+pub struct WebSocketTunnelFields<'a, S: 'static> {
     value: &'a WebSocketValue,
     url: EditFn<S>,
     timeout: EditFn<S>,
@@ -56,7 +56,7 @@ pub(crate) struct WebSocketTunnelFields<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: the tunnel settings editor (not wired); remove when wired.
 impl<'a, S: 'static> WebSocketTunnelFields<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         value: &'a WebSocketValue,
         url: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
         timeout: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
@@ -72,7 +72,7 @@ impl<'a, S: 'static> WebSocketTunnelFields<'a, S> {
         }
     }
 
-    pub(crate) fn mode_open(
+    pub fn mode_open(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut bool + 'static,
     ) -> Self {
@@ -80,12 +80,12 @@ impl<'a, S: 'static> WebSocketTunnelFields<'a, S> {
         self
     }
 
-    pub(crate) fn on_mode(mut self, f: impl Fn(&mut S, WsMode) + 'static) -> Self {
+    pub fn on_mode(mut self, f: impl Fn(&mut S, WsMode) + 'static) -> Self {
         self.on_mode = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let value = self.value;
         let mut root = col().key(ROOT).w_full().gap(12.0);

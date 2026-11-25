@@ -41,54 +41,54 @@ use crate::ui::kit::kit;
 
 /// React `h-12 min-h-[48px]` on the title row.
 #[allow(dead_code)] // geometric contract; remove when the host owns the row.
-pub(crate) const TITLE_ROW_HEIGHT: f32 = 48.0;
+pub const TITLE_ROW_HEIGHT: f32 = 48.0;
 /// React `py-1` + `h-6` on the search row.
 #[allow(dead_code)] // geometric contract; remove when the host owns the row.
-pub(crate) const SEARCH_ROW_HEIGHT: f32 = 32.0;
+pub const SEARCH_ROW_HEIGHT: f32 = 32.0;
 
 #[allow(dead_code)] // React testid; remove when the host owns the row.
-pub(crate) const TITLE_ROW_KEY: &str = "navigator-title-row";
+pub const TITLE_ROW_KEY: &str = "navigator-title-row";
 #[allow(dead_code)] // React testid; remove when the host owns the button.
-pub(crate) const NEW_CONNECTION_KEY: &str = "new-connection-button";
+pub const NEW_CONNECTION_KEY: &str = "new-connection-button";
 #[allow(dead_code)] // React testid; remove when the host owns the button.
-pub(crate) const REFRESH_KEY: &str = "navigator-refresh";
+pub const REFRESH_KEY: &str = "navigator-refresh";
 #[allow(dead_code)] // React testid; remove when the host owns the input.
-pub(crate) const SEARCH_INPUT_KEY: &str = "connection-search-input";
+pub const SEARCH_INPUT_KEY: &str = "connection-search-input";
 #[allow(dead_code)] // React testid; remove when the host owns the button.
-pub(crate) const SEARCH_VALUES_KEY: &str = "navigator-search-values";
+pub const SEARCH_VALUES_KEY: &str = "navigator-search-values";
 
 /// React's controlled `searchQuery` value.
 #[allow(dead_code)] // VM mirror; remove when the navigator host owns the query.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct NavigatorToolbarVm {
-    pub(crate) search_query: TextEdit,
+pub struct NavigatorToolbarVm {
+    pub search_query: TextEdit,
 }
 
 impl NavigatorToolbarVm {
     /// React's `searchQuery` string (trimmed-free, exactly as typed).
     #[allow(dead_code)] // VM helper; remove when the host owns the query.
-    pub(crate) fn search_text(&self) -> &str {
+    pub fn search_text(&self) -> &str {
         &self.search_query.text
     }
 }
 
 type Press<S> = Rc<dyn Fn(&mut S) + 'static>;
 #[allow(dead_code)] // text accessor; remove when the host owns the query.
-pub(crate) type QueryEditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
+pub type QueryEditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 
 /// Every React prop callback, kept as an injected host port. `new_connection`,
 /// `new_group` and `collapse_all` are required in React (always rendered,
 /// inert when unwired here); the rest are optional (mounted only when present).
 #[allow(dead_code)] // host port; remove when the navigator host wires the toolbar.
-pub(crate) struct NavigatorToolbarHostPort<S> {
-    pub(crate) on_new_connection: Option<Press<S>>,
-    pub(crate) on_new_group: Option<Press<S>>,
-    pub(crate) on_collapse_all: Option<Press<S>>,
-    pub(crate) on_export: Option<Press<S>>,
-    pub(crate) on_import: Option<Press<S>>,
-    pub(crate) on_refresh: Option<Press<S>>,
-    pub(crate) on_collapse_sidebar: Option<Press<S>>,
-    pub(crate) on_search_values: Option<Press<S>>,
+pub struct NavigatorToolbarHostPort<S> {
+    pub on_new_connection: Option<Press<S>>,
+    pub on_new_group: Option<Press<S>>,
+    pub on_collapse_all: Option<Press<S>>,
+    pub on_export: Option<Press<S>>,
+    pub on_import: Option<Press<S>>,
+    pub on_refresh: Option<Press<S>>,
+    pub on_collapse_sidebar: Option<Press<S>>,
+    pub on_search_values: Option<Press<S>>,
 }
 
 impl<S> Default for NavigatorToolbarHostPort<S> {
@@ -134,7 +134,7 @@ fn tool_button<S: 'static>(
 
 /// Build the two React sibling rows into `layer`.
 #[allow(dead_code)] // view entry; remove when the navigator host wires it.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &NavigatorToolbarVm,
     host: &NavigatorToolbarHostPort<S>,
     query_edit: Option<QueryEditFn<S>>,

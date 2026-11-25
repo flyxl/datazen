@@ -33,16 +33,16 @@ mod aborted;
 mod favorite;
 mod unclosed;
 
-pub(crate) use aborted::{ABORTED_KEY, DETAIL_KEY, ROLLBACK_KEY, SKIP_KEY};
-pub(crate) use favorite::{
+pub use aborted::{ABORTED_KEY, DETAIL_KEY, ROLLBACK_KEY, SKIP_KEY};
+pub use favorite::{
     CANCEL_KEY as FAVORITE_CANCEL_KEY, FAVORITE_KEY, SAVE_KEY, SQL_KEY, TITLE_INPUT_KEY,
 };
-pub(crate) use unclosed::{BODY_KEY, CANCEL_KEY, CONFIRM_KEY, UNCLOSED_KEY};
+pub use unclosed::{BODY_KEY, CANCEL_KEY, CONFIRM_KEY, UNCLOSED_KEY};
 
 /// React `QueryTransactionModalsProps` as a cloneable VM.
 #[allow(dead_code)] // VM mirror; remove when the query-panel host wires the modals.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct QueryTransactionModalsVm {
+pub struct QueryTransactionModalsVm {
     pub tx_unclosed_open: bool,
     pub tx_aborted_open: bool,
     pub tx_aborted_detail: Option<String>,
@@ -52,7 +52,7 @@ pub(crate) struct QueryTransactionModalsVm {
 /// React `FavoriteNameDialogProps` as a cloneable VM.
 #[allow(dead_code)] // VM mirror; remove when the query-panel host wires the dialog.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FavoriteNameDialogVm {
+pub struct FavoriteNameDialogVm {
     pub open: bool,
     pub favorite_name: TextEdit,
     pub favorite_dialog_sql: String,
@@ -71,7 +71,7 @@ impl Default for FavoriteNameDialogVm {
 /// Every callback the three modals ask the host to perform.
 #[allow(dead_code)] // host port; remove when the query-panel host wires the modals.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum QueryTransactionModalAction {
+pub enum QueryTransactionModalAction {
     ConfirmUnclosed,
     CancelUnclosed,
     AbortedRollback,
@@ -81,12 +81,12 @@ pub(crate) enum QueryTransactionModalAction {
 }
 
 #[allow(dead_code)] // host port; remove when the query-panel host wires the modals.
-pub(crate) type ModalActionFn<S> = Rc<dyn Fn(&mut S, QueryTransactionModalAction) + 'static>;
+pub type ModalActionFn<S> = Rc<dyn Fn(&mut S, QueryTransactionModalAction) + 'static>;
 
 /// The injected host port: actions plus the favorite-name text accessor the
 /// dialog needs for editing and Enter-to-save.
 #[allow(dead_code)] // host port; remove when the query-panel host wires the modals.
-pub(crate) struct QueryTransactionHostPort<S> {
+pub struct QueryTransactionHostPort<S> {
     pub on_action: Option<ModalActionFn<S>>,
     pub favorite_name_edit: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>>,
 }
@@ -102,7 +102,7 @@ impl<S> Default for QueryTransactionHostPort<S> {
 
 impl<S: 'static> QueryTransactionHostPort<S> {
     #[allow(dead_code)] // host port; remove when the query-panel host wires the modals.
-    pub(crate) fn emit(&self, state: &mut S, action: QueryTransactionModalAction) {
+    pub fn emit(&self, state: &mut S, action: QueryTransactionModalAction) {
         if let Some(on_action) = &self.on_action {
             on_action(state, action);
         }
@@ -144,7 +144,7 @@ fn footer_button<S: 'static>(
 
 /// Push the open dialogs into `layer`, in React's render order.
 #[allow(dead_code)] // view entry; remove when the query-panel host wires the modals.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &QueryTransactionModalsVm,
     favorite: Option<&FavoriteNameDialogVm>,
     host: &QueryTransactionHostPort<S>,
@@ -167,6 +167,6 @@ pub(crate) fn build<S: 'static>(
 /// The favorite dialog's Enter-to-save guard: React only saves when the title
 /// has a non-whitespace value.
 #[allow(dead_code)] // pure helper; remove with the favorite dialog.
-pub(crate) fn can_save_favorite(name: &str) -> bool {
+pub fn can_save_favorite(name: &str) -> bool {
     !name.trim().is_empty()
 }

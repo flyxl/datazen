@@ -66,7 +66,7 @@ use crate::ui::select::Select;
 /// `'inherit' | 'primaryKeyAsc' | 'primaryKeyDesc' | 'none'` union.
 #[allow(dead_code)] // ported base; remove when the table toolbar call site lands
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum DefaultOrderOverride {
+pub enum DefaultOrderOverride {
     /// Follow `settings.defaultTableSort`.
     #[default]
     Inherit,
@@ -86,7 +86,7 @@ impl DefaultOrderOverride {
     ];
 
     /// The value React stores (`tableData/types.ts`).
-    pub(crate) fn value(self) -> &'static str {
+    pub fn value(self) -> &'static str {
         match self {
             DefaultOrderOverride::Inherit => "inherit",
             DefaultOrderOverride::PrimaryKeyAsc => "primaryKeyAsc",
@@ -106,7 +106,7 @@ impl DefaultOrderOverride {
     }
 
     /// The stored value back to its choice; `None` for a value this union does not know.
-    pub(crate) fn from_value(value: &str) -> Option<DefaultOrderOverride> {
+    pub fn from_value(value: &str) -> Option<DefaultOrderOverride> {
         DefaultOrderOverride::ALL
             .into_iter()
             .find(|choice| choice.value() == value)
@@ -121,7 +121,7 @@ type Change = Box<dyn FnOnce(Select, bool) -> Select>;
 
 /// The default-order field and its visible label.
 #[allow(dead_code)] // ported base; remove when the table toolbar call site lands
-pub(crate) struct DefaultOrderSelect {
+pub struct DefaultOrderSelect {
     key: String,
     value: DefaultOrderOverride,
     primary_key_count: u32,
@@ -135,7 +135,7 @@ pub(crate) struct DefaultOrderSelect {
 #[allow(dead_code)] // ported base; remove when the table toolbar call site lands
 impl DefaultOrderSelect {
     /// `DefaultOrderSelect::new("table-order", DefaultOrderOverride::Inherit)`.
-    pub(crate) fn new(key: impl Into<String>, value: DefaultOrderOverride) -> DefaultOrderSelect {
+    pub fn new(key: impl Into<String>, value: DefaultOrderOverride) -> DefaultOrderSelect {
         DefaultOrderSelect {
             key: key.into(),
             value,
@@ -150,31 +150,31 @@ impl DefaultOrderSelect {
 
     /// The table's primary-key column count. More than one disables
     /// `primaryKeyDesc`, exactly as React's `composite` does.
-    pub(crate) fn primary_key_count(mut self, count: u32) -> Self {
+    pub fn primary_key_count(mut self, count: u32) -> Self {
         self.primary_key_count = count;
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// Whether the app's state has the listbox open.
-    pub(crate) fn open(mut self, open: bool) -> Self {
+    pub fn open(mut self, open: bool) -> Self {
         self.open = open;
         self
     }
 
     /// The trigger's press: open or close the listbox.
-    pub(crate) fn on_toggle<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.toggled = true;
         self.binds.push(Box::new(move |select: Select| select.on_toggle(f)));
         self
     }
 
     /// Presses outside and Escape close the listbox.
-    pub(crate) fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.binds
             .push(Box::new(move |select: Select| select.on_close(f)));
         self
@@ -182,7 +182,7 @@ impl DefaultOrderSelect {
 
     /// A choice, from the keyboard (Enter) or the pointer (a press on the row).
     /// `f(state, override)`; closing the listbox is the app's call.
-    pub(crate) fn on_change<S: 'static>(
+    pub fn on_change<S: 'static>(
         mut self,
         f: impl Fn(&mut S, DefaultOrderOverride) + Clone + 'static,
     ) -> Self {
@@ -204,7 +204,7 @@ impl DefaultOrderSelect {
 
     /// Builds the label and the select, pushing the listbox into `layer` while
     /// `open` (the same two-part build as `ui/select.rs`).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let key = self.key;
         let composite = self.primary_key_count > 1;
         // React greys the `primaryKeyDesc` row out for a composite key; the kit has no

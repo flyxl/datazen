@@ -63,7 +63,7 @@ use crate::table_data_dirty_index::{build_row_identity, row_identity_key, RowIde
 /// `AMBIGUOUS_ROW_IDENTITY_ERROR`: the refusal text the staging
 /// caller shows (React 12-13, verbatim; the message the port's
 /// consumers assert byte for byte).
-pub(crate) const AMBIGUOUS_ROW_IDENTITY_ERROR: &str =
+pub const AMBIGUOUS_ROW_IDENTITY_ERROR: &str =
     "Row identity is NULL, unstable, or ambiguous; UPDATE/DELETE was not staged.";
 
 /// `draftWriteColumns` (`lib/tableChanges.ts:79-81`, the T629
@@ -87,7 +87,7 @@ fn draft_write_columns(values: &HashMap<String, Value>) -> Vec<String> {
 /// `hasOwnProperty` on `currentValues` becomes the `HashMap`'s
 /// membership: a present `Value::Null` still overwrites (the property
 /// exists); an absent column keeps the row identity's own value.
-pub(crate) fn effective_pending_identity(
+pub fn effective_pending_identity(
     change: &PendingRowChange,
     pk_columns: &[ColumnSchema],
 ) -> Option<RowIdentity> {
@@ -111,7 +111,7 @@ pub(crate) fn effective_pending_identity(
 /// `rowIdentityIsUnique` (React 30-45): whether the identity belongs to
 /// exactly one row in the loaded set (its own index excluded — the
 /// caller's row never disqualifies itself).
-pub(crate) fn row_identity_is_unique(
+pub fn row_identity_is_unique(
     ts: &TableState,
     row_index: usize,
     identity: &RowIdentity,
@@ -133,7 +133,7 @@ pub(crate) fn row_identity_is_unique(
 /// staged change already owns the identity — including one whose own
 /// effective identity is broken (`true` there: an ambiguous sibling
 /// blocks staging the same way React's `: true` fallthrough does).
-pub(crate) fn has_pending_identity_collision(
+pub fn has_pending_identity_collision(
     ts: &TableState,
     own_key: Option<&str>,
     identity: &RowIdentity,
@@ -158,7 +158,7 @@ pub(crate) fn has_pending_identity_collision(
 /// association), then the identity's own key. `None` when the row has
 /// no stable identity, is not unique in the loaded set, or no staged
 /// change matches.
-pub(crate) fn find_pending_for_row(
+pub fn find_pending_for_row(
     ts: &TableState,
     row_index: usize,
     row: &HashMap<String, Value>,
@@ -187,7 +187,7 @@ pub(crate) fn find_pending_for_row(
 /// `overlayPendingRows` (React 82-92): the loaded rows with every
 /// uniquely-identified staged change's current values merged in —
 /// unchanged when there are no primary keys or nothing is staged.
-pub(crate) fn overlay_pending_rows(
+pub fn overlay_pending_rows(
     ts: &TableState,
     rows: &[HashMap<String, Value>],
 ) -> Vec<HashMap<String, Value>> {
@@ -222,7 +222,7 @@ pub(crate) fn overlay_pending_rows(
 /// same JSON shape with sorted keys everywhere (see
 /// [`change_to_json`]'s note), so two equal states always produce
 /// equal strings — the signature's whole contract.
-pub(crate) fn pending_changes_signature(
+pub fn pending_changes_signature(
     pending_changes: &HashMap<String, PendingRowChange>,
 ) -> String {
     let mut entries: Vec<(&String, &PendingRowChange)> = pending_changes.iter().collect();
@@ -274,7 +274,7 @@ fn value_map_to_json(map: &HashMap<String, Value>) -> Value {
 /// arbitrary order is a deliberate deviation the owning callers pin
 /// (the wire contract is the set, and the backend's own request order
 /// is the callers' business, T278/T294's).
-pub(crate) fn pending_changes_for_wire(
+pub fn pending_changes_for_wire(
     pending_changes: &HashMap<String, PendingRowChange>,
 ) -> Vec<PendingRowChange> {
     pending_changes
@@ -298,7 +298,7 @@ pub(crate) fn pending_changes_for_wire(
 /// edit (the normal state right after "+ row"), and a panel can hold
 /// edits without drafts. Every gate that used to ask
 /// `pendingChanges.size === 0` has to ask this instead.
-pub(crate) fn has_pending_work(ts: &TableState) -> bool {
+pub fn has_pending_work(ts: &TableState) -> bool {
     !ts.pending_changes.is_empty() || !ts.draft_inserts.is_empty()
 }
 
@@ -308,7 +308,7 @@ pub(crate) fn has_pending_work(ts: &TableState) -> bool {
 /// decides which row gets which auto-increment value, and the back end
 /// keeps the request order). The draft id never goes on the wire; the
 /// shape is exactly an existing row change's plus the marker.
-pub(crate) fn drafts_for_wire(ts: &TableState) -> Vec<PendingRowChange> {
+pub fn drafts_for_wire(ts: &TableState) -> Vec<PendingRowChange> {
     ts.draft_insert_order
         .iter()
         .filter_map(|draft_id| ts.draft_inserts.get(draft_id))
@@ -330,7 +330,7 @@ pub(crate) fn drafts_for_wire(ts: &TableState) -> Vec<PendingRowChange> {
 /// [`pending_changes_signature`] (kept untouched, its single-argument
 /// contract) and the draft part in creation order (for drafts the
 /// order *is* part of the intent).
-pub(crate) fn pending_work_signature(
+pub fn pending_work_signature(
     pending_changes: &HashMap<String, PendingRowChange>,
     draft_inserts: &HashMap<String, PendingInsert>,
     draft_insert_order: &[String],

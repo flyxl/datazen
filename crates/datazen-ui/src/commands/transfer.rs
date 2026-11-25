@@ -40,7 +40,7 @@ use serde_json::{Value, json};
 /// `TransferMode`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum TransferMode {
+pub enum TransferMode {
     Structure,
     Data,
     StructureAndData,
@@ -49,7 +49,7 @@ pub(crate) enum TransferMode {
 /// `WriteMode`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum WriteMode {
+pub enum WriteMode {
     Insert,
     TruncateInsert,
     DropCreateInsert,
@@ -57,7 +57,7 @@ pub(crate) enum WriteMode {
 
 /// `TransferMappingStatus`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum TransferMappingStatus {
+pub enum TransferMappingStatus {
     #[serde(rename = "MATCHED")]
     Matched,
     #[serde(rename = "CREATE_NEW")]
@@ -75,7 +75,7 @@ pub(crate) enum TransferMappingStatus {
 /// `TransferEndpoint`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferEndpoint {
+pub struct TransferEndpoint {
     pub db_session_id: String,
     pub database: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -85,7 +85,7 @@ pub(crate) struct TransferEndpoint {
 /// `TransferColumnMapping`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferColumnMapping {
+pub struct TransferColumnMapping {
     pub source_column: String,
     pub target_column: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -99,7 +99,7 @@ pub(crate) struct TransferColumnMapping {
 /// filter (`filters` carries the `FilterCondition` wire opaquely).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferSourceFilter {
+pub struct TransferSourceFilter {
     pub filters: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logic: Option<String>,
@@ -108,7 +108,7 @@ pub(crate) struct TransferSourceFilter {
 /// `TransferRecordsetBound`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferRecordsetBound {
+pub struct TransferRecordsetBound {
     /// Text stays lossless on the IPC boundary; the source driver
     /// binds it using the inspected column type.
     pub value: String,
@@ -119,7 +119,7 @@ pub(crate) struct TransferRecordsetBound {
 /// `TransferRecordsetTupleBound`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferRecordsetTupleBound {
+pub struct TransferRecordsetTupleBound {
     pub values: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inclusive: Option<bool>,
@@ -128,7 +128,7 @@ pub(crate) struct TransferRecordsetTupleBound {
 /// `TransferRecordsetTupleRange`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferRecordsetTupleRange {
+pub struct TransferRecordsetTupleRange {
     pub columns: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start: Option<TransferRecordsetTupleBound>,
@@ -140,7 +140,7 @@ pub(crate) struct TransferRecordsetTupleRange {
 /// a restart checkpoint.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferRecordset {
+pub struct TransferRecordset {
     /// Legacy scalar source column, retained for existing IPC and
     /// profiles.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,7 +159,7 @@ pub(crate) struct TransferRecordset {
 /// `TransferTableMapping`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferTableMapping {
+pub struct TransferTableMapping {
     pub source_table: String,
     pub target_table: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -180,7 +180,7 @@ pub(crate) struct TransferTableMapping {
 /// `TransferOptions`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferOptions {
+pub struct TransferOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub batch_size: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -194,7 +194,7 @@ pub(crate) struct TransferOptions {
 }
 
 /// `DEFAULT_TRANSFER_OPTIONS`, the literal verbatim.
-pub(crate) const DEFAULT_TRANSFER_OPTIONS: TransferOptions = TransferOptions {
+pub const DEFAULT_TRANSFER_OPTIONS: TransferOptions = TransferOptions {
     batch_size: Some(500),
     stop_on_error: Some(true),
     confirmed_destructive: Some(false),
@@ -203,7 +203,7 @@ pub(crate) const DEFAULT_TRANSFER_OPTIONS: TransferOptions = TransferOptions {
 
 /// The SQL artifact's text encoding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum TransferSqlEncoding {
+pub enum TransferSqlEncoding {
     #[serde(rename = "utf8")]
     Utf8,
     #[serde(rename = "utf8Bom")]
@@ -216,7 +216,7 @@ pub(crate) enum TransferSqlEncoding {
 
 /// The SQL artifact's compression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum TransferSqlCompression {
+pub enum TransferSqlCompression {
     #[serde(rename = "none")]
     None,
     #[serde(rename = "gzip")]
@@ -227,7 +227,7 @@ pub(crate) enum TransferSqlCompression {
 /// save dialog returns.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferSqlFileTarget {
+pub struct TransferSqlFileTarget {
     pub file_token: String,
     /// Registered SQL driver used to render the artifact; omitted
     /// means source dialect.
@@ -252,7 +252,7 @@ pub(crate) struct TransferSqlFileTarget {
 /// `TransferJob`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferJob {
+pub struct TransferJob {
     pub source: TransferEndpoint,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<TransferEndpoint>,
@@ -268,7 +268,7 @@ pub(crate) struct TransferJob {
 /// `TransferProfile`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferProfile {
+pub struct TransferProfile {
     pub version: u32,
     pub id: String,
     pub name: String,
@@ -306,7 +306,7 @@ pub(crate) struct TransferProfile {
 /// `TransferTableResult`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferTableResult {
+pub struct TransferTableResult {
     pub source_table: String,
     pub target_table: String,
     pub status: TransferMappingStatus,
@@ -336,7 +336,7 @@ pub(crate) struct TransferTableResult {
 /// `TransferDdlPreview`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferDdlPreview {
+pub struct TransferDdlPreview {
     pub source_table: String,
     pub target_table: String,
     pub ddl: String,
@@ -350,7 +350,7 @@ pub(crate) struct TransferDdlPreview {
 /// `TransferWritePlan`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferWritePlan {
+pub struct TransferWritePlan {
     pub source_table: String,
     pub target_table: String,
     pub write_mode: WriteMode,
@@ -367,7 +367,7 @@ pub(crate) struct TransferWritePlan {
 /// `TransferPreview`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferPreview {
+pub struct TransferPreview {
     pub plan_id: String,
     pub pairing_path: String,
     pub mode: TransferMode,
@@ -383,7 +383,7 @@ pub(crate) struct TransferPreview {
 /// `TransferTableExecution`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferTableExecution {
+pub struct TransferTableExecution {
     pub source_table: String,
     pub target_table: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -400,7 +400,7 @@ pub(crate) struct TransferTableExecution {
 /// `TransferExecutionResult`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferExecutionResult {
+pub struct TransferExecutionResult {
     pub tables: Vec<TransferTableExecution>,
     pub rows_inserted: u64,
     pub cancelled: bool,
@@ -413,7 +413,7 @@ pub(crate) struct TransferExecutionResult {
 /// `TransferRunSelection`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferRunSelection {
+pub struct TransferRunSelection {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_tables: Option<Vec<String>>,
 }
@@ -421,7 +421,7 @@ pub(crate) struct TransferRunSelection {
 /// `TransferRunOptions`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferRunOptions {
+pub struct TransferRunOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confirmed_destructive: Option<bool>,
 }
@@ -429,7 +429,7 @@ pub(crate) struct TransferRunOptions {
 /// `TransferRunRequest`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferRunRequest {
+pub struct TransferRunRequest {
     pub plan_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection: Option<TransferRunSelection>,
@@ -444,7 +444,7 @@ pub(crate) struct TransferRunRequest {
 /// `TransferPairingView`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferPairingView {
+pub struct TransferPairingView {
     pub path: String,
     pub supported: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -455,7 +455,7 @@ pub(crate) struct TransferPairingView {
 
 /// The legacy `invoke` commands (the desktop rail).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TransferMethod {
+pub enum TransferMethod {
     GetProfiles,
     SaveProfile,
     DeleteProfile,
@@ -470,7 +470,7 @@ pub(crate) enum TransferMethod {
 
 impl TransferMethod {
     /// The legacy command name.
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::GetProfiles => "get_transfer_profiles",
             Self::SaveProfile => "save_transfer_profile",
@@ -487,12 +487,12 @@ impl TransferMethod {
 }
 
 /// `getProfiles()`.
-pub(crate) fn get_profiles_request() -> (TransferMethod, Value) {
+pub fn get_profiles_request() -> (TransferMethod, Value) {
     (TransferMethod::GetProfiles, json!({}))
 }
 
 /// `saveProfile(profile)`.
-pub(crate) fn save_profile_request(profile: &TransferProfile) -> (TransferMethod, Value) {
+pub fn save_profile_request(profile: &TransferProfile) -> (TransferMethod, Value) {
     (
         TransferMethod::SaveProfile,
         json!({ "profile": profile }),
@@ -500,7 +500,7 @@ pub(crate) fn save_profile_request(profile: &TransferProfile) -> (TransferMethod
 }
 
 /// `deleteProfile(profileId)`.
-pub(crate) fn delete_profile_request(profile_id: &str) -> (TransferMethod, Value) {
+pub fn delete_profile_request(profile_id: &str) -> (TransferMethod, Value) {
     (
         TransferMethod::DeleteProfile,
         json!({ "profileId": profile_id }),
@@ -508,12 +508,12 @@ pub(crate) fn delete_profile_request(profile_id: &str) -> (TransferMethod, Value
 }
 
 /// `pickSqlFile()`.
-pub(crate) fn pick_sql_file_request() -> (TransferMethod, Value) {
+pub fn pick_sql_file_request() -> (TransferMethod, Value) {
     (TransferMethod::PickSqlFile, json!({}))
 }
 
 /// `classifyPair(sourceDatabaseType, targetDatabaseType)`.
-pub(crate) fn classify_pair_request(
+pub fn classify_pair_request(
     source_database_type: &str,
     target_database_type: &str,
 ) -> (TransferMethod, Value) {
@@ -527,7 +527,7 @@ pub(crate) fn classify_pair_request(
 }
 
 /// `inspect(…)`: the `?? null` spellings are the wire's.
-pub(crate) fn inspect_request(
+pub fn inspect_request(
     source_db_session_id: &str,
     target_db_session_id: &str,
     mode: TransferMode,
@@ -549,7 +549,7 @@ pub(crate) fn inspect_request(
 }
 
 /// `inspectSqlFile(…)`.
-pub(crate) fn inspect_sql_file_request(
+pub fn inspect_sql_file_request(
     source_db_session_id: &str,
     mode: TransferMode,
     source_database: Option<&str>,
@@ -571,13 +571,13 @@ pub(crate) fn inspect_sql_file_request(
 }
 
 /// `preview(job)`.
-pub(crate) fn preview_request(job: &TransferJob) -> (TransferMethod, Value) {
+pub fn preview_request(job: &TransferJob) -> (TransferMethod, Value) {
     (TransferMethod::Preview, json!({ "job": job }))
 }
 
 /// `execute(request, profile?)` — the profile spread is an ABSENT key
 /// without one (`{ request, ...(profile ? { profile } : {}) }`).
-pub(crate) fn execute_request(
+pub fn execute_request(
     request: &TransferRunRequest,
     profile: Option<&Value>,
 ) -> (TransferMethod, Value) {
@@ -589,7 +589,7 @@ pub(crate) fn execute_request(
 }
 
 /// `cancel(jobId)`.
-pub(crate) fn cancel_request(job_id: &str) -> (TransferMethod, Value) {
+pub fn cancel_request(job_id: &str) -> (TransferMethod, Value) {
     (TransferMethod::Cancel, json!({ "jobId": job_id }))
 }
 

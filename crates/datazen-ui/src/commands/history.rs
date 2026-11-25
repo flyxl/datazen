@@ -33,7 +33,7 @@ use crate::commands::ai::workflow::{AiSubmissionTokenVm, with_submission_token};
 /// `HistoryPurgeScope`: which history a purge touches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum HistoryPurgeScope {
+pub enum HistoryPurgeScope {
     Query,
     Workflow,
     All,
@@ -43,7 +43,7 @@ pub(crate) enum HistoryPurgeScope {
 /// v12 run history.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum MigrationOperation {
+pub enum MigrationOperation {
     SchemaDiff,
     DataSync,
     DataTransfer,
@@ -52,7 +52,7 @@ pub(crate) enum MigrationOperation {
 /// `MigrationRunStatus`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum MigrationRunStatus {
+pub enum MigrationRunStatus {
     Running,
     Completed,
     Failed,
@@ -64,7 +64,7 @@ pub(crate) enum MigrationRunStatus {
 /// defaults.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MigrationRunFilter {
+pub struct MigrationRunFilter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operation: Option<MigrationOperation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -78,7 +78,7 @@ pub(crate) struct MigrationRunFilter {
 /// `MigrationRunRecord`: one row of the v12 migration-run history.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MigrationRunRecord {
+pub struct MigrationRunRecord {
     pub id: String,
     pub operation: MigrationOperation,
     pub status: MigrationRunStatus,
@@ -102,7 +102,7 @@ pub(crate) struct MigrationRunRecord {
 /// `MigrationRunPage`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MigrationRunPage {
+pub struct MigrationRunPage {
     pub items: Vec<MigrationRunRecord>,
     pub total: u64,
     pub offset: u64,
@@ -112,7 +112,7 @@ pub(crate) struct MigrationRunPage {
 /// The history domain's wire names (the transport call each shaper
 /// rides; `queryAssetsClient` / `dataSyncClient`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HistoryMethod {
+pub enum HistoryMethod {
     /// The query-assets purge (token-carrying write face).
     PurgeHistory,
     /// The sync domain's run-history read face.
@@ -121,7 +121,7 @@ pub(crate) enum HistoryMethod {
 }
 
 impl HistoryMethod {
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::PurgeHistory => "purgeHistory",
             Self::ListMigrationRuns => "listMigrationRuns",
@@ -135,7 +135,7 @@ impl HistoryMethod {
 /// (`None`) purges the whole scope regardless of age; the host mints
 /// the `saveUserAsset` token first and passes it here. The receipt is
 /// the number of rows removed.
-pub(crate) fn purge_history_request(
+pub fn purge_history_request(
     scope: HistoryPurgeScope,
     retain_days: Option<u64>,
     token: &AiSubmissionTokenVm,
@@ -153,7 +153,7 @@ pub(crate) fn purge_history_request(
 /// `historyCommands.listMigrationRuns(filter, offset = 0, limit = 25)`:
 /// the run-history page read (the defaults are the wrapper's own —
 /// callers that omit them get exactly these).
-pub(crate) fn list_migration_runs_request(
+pub fn list_migration_runs_request(
     filter: &MigrationRunFilter,
     offset: u64,
     limit: u64,
@@ -167,12 +167,12 @@ pub(crate) fn list_migration_runs_request(
 /// `historyCommands.getMigrationRun(runId)`: one run; a miss and a
 /// cross-organization read are one indistinguishable 404 (the domain
 /// contract's own wording).
-pub(crate) fn get_migration_run_request(run_id: &str) -> (HistoryMethod, Value) {
+pub fn get_migration_run_request(run_id: &str) -> (HistoryMethod, Value) {
     (HistoryMethod::GetMigrationRun, json!({ "runId": run_id }))
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     fn token() -> AiSubmissionTokenVm {

@@ -10,9 +10,9 @@
 //! [`crate::relation_metadata`]; this shim re-exports the same contracts
 //! under the editor-side path, exactly like the React original.
 
-pub(crate) use crate::relation_metadata::identity::{
+pub use crate::relation_metadata::identity::{
     EditorRelationKey, EditorRelationKind, SqlRelationSourceKind,
 };
-pub(crate) use crate::relation_metadata::schema::{
+pub use crate::relation_metadata::schema::{
     EditorMetadataContext, EditorMetadataSnapshot, EditorRelationMetadata, EditorRelationRequest,
 };

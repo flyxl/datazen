@@ -68,13 +68,13 @@ use crate::views::schema_diff::use_schema_diff_unified_objects::UseSchemaDiffUni
 /// `useResizable({ direction: 'horizontal', initialSize: 200, minSize: 120,
 /// maxSize: 400, storageKey: 'schema-diff.table-list' })` — the table-list
 /// rail's width rule in one place: (initial, min, max).
-pub(crate) const TABLE_LIST_WIDTH: (f32, f32, f32) = (200.0, 120.0, 400.0);
+pub const TABLE_LIST_WIDTH: (f32, f32, f32) = (200.0, 120.0, 400.0);
 /// The resizable's storage key.
-pub(crate) const TABLE_LIST_WIDTH_KEY: &str = "schema-diff.table-list";
+pub const TABLE_LIST_WIDTH_KEY: &str = "schema-diff.table-list";
 
 /// `planHasDestructive(plan) ? confirmText.trim() : undefined` — the
 /// destructive-confirm text rides only when the plan is destructive.
-pub(crate) fn confirm_destructive_text(
+pub fn confirm_destructive_text(
     plan: &SchemaDiffPlanVm,
     confirm_text: &str,
 ) -> Option<String> {
@@ -88,80 +88,80 @@ pub(crate) fn confirm_destructive_text(
 /// The window's saved-setup hook state (the `useSchemaDiffSavedSetups`
 /// plain fields; the flows themselves are T411's pure functions).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SavedSetupState {
+pub struct SavedSetupState {
     /// `profiles` (the host delivers the list from `get_profiles_request`).
-    pub(crate) profiles: Vec<SchemaDiffProfileVm>,
+    pub profiles: Vec<SchemaDiffProfileVm>,
     /// `selectedProfileId` (`''` = the placeholder).
-    pub(crate) selected_profile_id: String,
+    pub selected_profile_id: String,
     /// `profileDialogOpen` / `profileName` / `profileError`.
-    pub(crate) save_open: bool,
-    pub(crate) save_name: String,
-    pub(crate) profile_error: Option<String>,
+    pub save_open: bool,
+    pub save_name: String,
+    pub profile_error: Option<String>,
     /// `importOpen` / `importText` / `importConfigError`.
-    pub(crate) import_open: bool,
-    pub(crate) import_text: String,
-    pub(crate) import_error: Option<String>,
+    pub import_open: bool,
+    pub import_text: String,
+    pub import_error: Option<String>,
     /// The pending-profile preservation ref (`pendingProfileRef`) —
     /// `Some` from `handleLoadProfile` until its endpoints settle.
-    pub(crate) pending_profile: Option<SchemaDiffProfileVm>,
+    pub pending_profile: Option<SchemaDiffProfileVm>,
     /// The pending-config preservation ref (`pendingConfigRef`).
-    pub(crate) pending_config: Option<crate::views::schema_diff::use_schema_diff_saved_setups::SchemaDiffConfigEndpointIdentity>,
+    pub pending_config: Option<crate::views::schema_diff::use_schema_diff_saved_setups::SchemaDiffConfigEndpointIdentity>,
 }
 
 /// The wizard window's whole state (the React component's hooks,
 /// composed).
-pub(crate) struct SchemaDiffWindowState {
+pub struct SchemaDiffWindowState {
     /// `step` (`'endpoints'` to start).
-    pub(crate) step: SchemaDiffWizardStep,
+    pub step: SchemaDiffWizardStep,
     /// `tablePicks` (the objects step's rows).
-    pub(crate) table_picks: Vec<SchemaDiffTablePickVm>,
+    pub table_picks: Vec<SchemaDiffTablePickVm>,
     /// `objectsLoading`.
-    pub(crate) objects_loading: bool,
+    pub objects_loading: bool,
     /// `unifiedObjects` (the T420 hook state).
-    pub(crate) unified: UseSchemaDiffUnifiedObjects,
+    pub unified: UseSchemaDiffUnifiedObjects,
     /// `diffs` (the compare step's artifacts).
-    pub(crate) diffs: Vec<TableSchemaDiffVm>,
+    pub diffs: Vec<TableSchemaDiffVm>,
     /// `plan`.
-    pub(crate) plan: Option<SchemaDiffPlanVm>,
+    pub plan: Option<SchemaDiffPlanVm>,
     /// `planMeta` (the prepare envelope).
-    pub(crate) plan_meta: Option<SchemaDiffPrepareEnvelopeVm>,
+    pub plan_meta: Option<SchemaDiffPrepareEnvelopeVm>,
     /// `selectedTable`.
-    pub(crate) selected_table: Option<String>,
+    pub selected_table: Option<String>,
     /// `allowDestructive` (`false`).
-    pub(crate) allow_destructive: bool,
+    pub allow_destructive: bool,
     /// `includeIndexes` (`true`).
-    pub(crate) include_indexes: bool,
+    pub include_indexes: bool,
     /// `requireRollback` (`false`).
-    pub(crate) require_rollback: bool,
+    pub require_rollback: bool,
     /// `useTransaction` (`true`).
-    pub(crate) use_transaction: bool,
+    pub use_transaction: bool,
     /// `confirmText` (`''`).
-    pub(crate) confirm_text: String,
+    pub confirm_text: String,
     /// `deployResult`.
-    pub(crate) deploy_result: Option<SchemaDiffDeployResultVm>,
+    pub deploy_result: Option<SchemaDiffDeployResultVm>,
     /// `loading` (the compare/plan/deploy in-flight flag).
-    pub(crate) loading: bool,
+    pub loading: bool,
     /// `error` (`''` = `None`).
-    pub(crate) error: Option<String>,
+    pub error: Option<String>,
     /// `clipboardFeedback` / `showClipboardFeedback` (the T372 hook).
-    pub(crate) clipboard: SchemaDiffClipboardFeedback,
+    pub clipboard: SchemaDiffClipboardFeedback,
     /// `limitationsOpen`.
-    pub(crate) limitations_open: bool,
+    pub limitations_open: bool,
     /// `typeOverrides`.
-    pub(crate) type_overrides: Vec<ColumnTypeOverrideVm>,
+    pub type_overrides: Vec<ColumnTypeOverrideVm>,
     /// `planAutoRequestedRef.current`.
-    pub(crate) plan_auto_requested: bool,
+    pub plan_auto_requested: bool,
     /// `tableListWidth` (the resizable's value; the host clamps to
     /// [`TABLE_LIST_WIDTH`]).
-    pub(crate) table_list_width: f32,
+    pub table_list_width: f32,
     /// `discoveryDiagnostic` (the root's `data-discovery-failure`).
-    pub(crate) discovery_diagnostic: String,
+    pub discovery_diagnostic: String,
     /// The endpoints hook state (T384).
-    pub(crate) endpoints: UseSchemaDiffEndpoints,
+    pub endpoints: UseSchemaDiffEndpoints,
     /// The job-tracking hook state (T391).
-    pub(crate) job_lifecycle: SchemaDiffJobLifecycle,
+    pub job_lifecycle: SchemaDiffJobLifecycle,
     /// The saved-setup hook's plain state.
-    pub(crate) saved_setups: SavedSetupState,
+    pub saved_setups: SavedSetupState,
 }
 
 impl Default for SchemaDiffWindowState {
@@ -174,7 +174,7 @@ impl SchemaDiffWindowState {
     /// React's start: every `useState` at its initial value, the hooks
     /// at theirs, and the table-list rail at the resizable's initial
     /// width.
-    pub(crate) fn new(prefill: MigrationWindowPrefill) -> Self {
+    pub fn new(prefill: MigrationWindowPrefill) -> Self {
         Self {
             step: SchemaDiffWizardStep::Endpoints,
             table_picks: Vec::new(),
@@ -207,12 +207,12 @@ impl SchemaDiffWindowState {
     // ---- the render-time derivations (React's useMemo bodies) -------------
 
     /// `selectedTables = enabledTableNames(tablePicks)`.
-    pub(crate) fn selected_tables(&self) -> Vec<String> {
+    pub fn selected_tables(&self) -> Vec<String> {
         enabled_table_names(&self.table_picks)
     }
 
     /// `tableHasDiff`: one `tableDiffHasChanges(diff)` per diff, by name.
-    pub(crate) fn table_has_diff(&self) -> HashMap<String, bool> {
+    pub fn table_has_diff(&self) -> HashMap<String, bool> {
         self.diffs
             .iter()
             .map(|diff| (diff.table.clone(), table_diff_has_changes(diff)))
@@ -220,14 +220,14 @@ impl SchemaDiffWindowState {
     }
 
     /// `selectedDiff = diffs.find(d => d.table === selectedTable) ?? null`.
-    pub(crate) fn selected_diff(&self) -> Option<&TableSchemaDiffVm> {
+    pub fn selected_diff(&self) -> Option<&TableSchemaDiffVm> {
         let selected = self.selected_table.as_deref()?;
         self.diffs.iter().find(|diff| diff.table == selected)
     }
 
     /// `targetLabel`: `` `${c.name} (${c.databaseType})` `` or the bare
     /// `targetId` when no connection is loaded.
-    pub(crate) fn target_label(&self) -> String {
+    pub fn target_label(&self) -> String {
         match self.endpoints.target_conn() {
             Some(conn) => format!("{} ({})", conn.name, conn.database_type),
             None => self.endpoints.target().id.clone(),
@@ -235,12 +235,12 @@ impl SchemaDiffWindowState {
     }
 
     /// `stepIndex = SCHEMA_DIFF_STEPS.indexOf(step)`.
-    pub(crate) fn step_index(&self) -> usize {
+    pub fn step_index(&self) -> usize {
         self.step.index_in(&SCHEMA_DIFF_STEPS).unwrap_or_default()
     }
 
     /// `selectedSavedProfile = profiles.find(p => p.id === selectedProfileId)`.
-    pub(crate) fn selected_saved_profile(&self) -> Option<&SchemaDiffProfileVm> {
+    pub fn selected_saved_profile(&self) -> Option<&SchemaDiffProfileVm> {
         let id = self.saved_setups.selected_profile_id.as_str();
         if id.is_empty() {
             return None;
@@ -250,7 +250,7 @@ impl SchemaDiffWindowState {
 
     /// `transactionRequired = plan?.statements.some(s =>
     /// s.requiresTransaction)` (`?? false`).
-    pub(crate) fn transaction_required(&self) -> bool {
+    pub fn transaction_required(&self) -> bool {
         self.plan.as_ref().is_some_and(|plan| {
             plan.statements.iter().any(|s| s.requires_transaction.unwrap_or(false))
         })
@@ -259,14 +259,14 @@ impl SchemaDiffWindowState {
     /// `transactionEnabled = transactionRequired || useTransaction` —
     /// the WINDOW's spelling (the deploy panel's own derivation differs;
     /// see `schema_diff_deploy_panel::deploy_readiness`).
-    pub(crate) fn transaction_enabled(&self) -> bool {
+    pub fn transaction_enabled(&self) -> bool {
         self.transaction_required() || self.use_transaction
     }
 
     /// `blockingRequirements`: only `Unsupported` blocks — `Backfill` is
     /// the plan being safe (a NOT NULL column added nullable), and
     /// counting it left the plan permanently undeployable.
-    pub(crate) fn blocking_requirements(&self) -> Vec<&PlanRequirementVm> {
+    pub fn blocking_requirements(&self) -> Vec<&PlanRequirementVm> {
         self.plan
             .as_ref()
             .map(|plan| {
@@ -279,7 +279,7 @@ impl SchemaDiffWindowState {
     }
 
     /// The window's `deployAllowed`, verbatim.
-    pub(crate) fn deploy_allowed(&self) -> bool {
+    pub fn deploy_allowed(&self) -> bool {
         let Some(plan) = self.plan.as_ref() else {
             return false;
         };
@@ -308,7 +308,7 @@ impl SchemaDiffWindowState {
     }
 
     /// The window's `canNext`, per step.
-    pub(crate) fn can_next(&self) -> bool {
+    pub fn can_next(&self) -> bool {
         match self.step {
             SchemaDiffWizardStep::Endpoints => {
                 let source = self.endpoints.source();
@@ -330,7 +330,7 @@ impl SchemaDiffWindowState {
 
     /// `clearEndpointError(message)`: the error clears only when it is
     /// exactly that message.
-    pub(crate) fn clear_endpoint_error(&mut self, message: &str) {
+    pub fn clear_endpoint_error(&mut self, message: &str) {
         if self.error.as_deref() == Some(message) {
             self.error = None;
         }
@@ -341,7 +341,7 @@ impl SchemaDiffWindowState {
     /// diff; the host supplies the old values); the gate is T411's
     /// preservation rule over the saved-setup pending refs. Returns
     /// whether the reset was skipped (preserved).
-    pub(crate) fn on_endpoints_changed(&mut self, previous: &EndpointSnapshot) -> bool {
+    pub fn on_endpoints_changed(&mut self, previous: &EndpointSnapshot) -> bool {
         // The rule reads the pending values as immutable snapshots while
         // consuming the refs; clone the snapshots out, then move the
         // refs (the T411 test call shape).
@@ -376,7 +376,7 @@ impl SchemaDiffWindowState {
     /// The selected-table fallback effect: nothing selected stays
     /// nothing; a still-listed selection survives; anything else falls
     /// back to the first selected table.
-    pub(crate) fn on_selected_tables_changed(&mut self, selected_tables: &[String]) {
+    pub fn on_selected_tables_changed(&mut self, selected_tables: &[String]) {
         if selected_tables.is_empty() {
             self.selected_table = None;
             return;
@@ -391,7 +391,7 @@ impl SchemaDiffWindowState {
     }
 
     /// `toggleTable(name)`: one row's enabled flag flips.
-    pub(crate) fn toggle_table(&mut self, name: &str) {
+    pub fn toggle_table(&mut self, name: &str) {
         for pick in &mut self.table_picks {
             if pick.name == name {
                 pick.enabled = !pick.enabled;
@@ -401,7 +401,7 @@ impl SchemaDiffWindowState {
 
     /// `handleTypeOverrideChange(table, column, targetType)`: the prior
     /// override for that cell is replaced, never duplicated.
-    pub(crate) fn set_type_override(&mut self, table: &str, column: &str, target_type: &str) {
+    pub fn set_type_override(&mut self, table: &str, column: &str, target_type: &str) {
         self.type_overrides
             .retain(|existing| !(existing.table == table && existing.column == column));
         self.type_overrides.push(ColumnTypeOverrideVm {
@@ -413,7 +413,7 @@ impl SchemaDiffWindowState {
 
     /// The plan-step auto-request gate: armed exactly once per visit
     /// (`planAutoRequestedRef`), and only while the plan is absent.
-    pub(crate) fn plan_auto_request_due(&self) -> bool {
+    pub fn plan_auto_request_due(&self) -> bool {
         self.step == SchemaDiffWizardStep::Plan
             && self.plan.is_none()
             && !self.loading
@@ -421,12 +421,12 @@ impl SchemaDiffWindowState {
     }
 
     /// The effect's arm half (`planAutoRequestedRef.current = true`).
-    pub(crate) fn arm_plan_auto_request(&mut self) {
+    pub fn arm_plan_auto_request(&mut self) {
         self.plan_auto_requested = true;
     }
 
     /// The effect's disarm half: leaving the plan step resets the ref.
-    pub(crate) fn sync_plan_auto_request(&mut self) {
+    pub fn sync_plan_auto_request(&mut self) {
         if self.step != SchemaDiffWizardStep::Plan {
             self.plan_auto_requested = false;
         }
@@ -434,7 +434,7 @@ impl SchemaDiffWindowState {
 
     /// The mount effect's gate: the limitations dialog opens when the
     /// dismissal pref has not been set (the pref read is the host's).
-    pub(crate) fn limitations_auto_open(&mut self, dismissed: bool) {
+    pub fn limitations_auto_open(&mut self, dismissed: bool) {
         if !dismissed {
             self.limitations_open = true;
         }
@@ -442,7 +442,7 @@ impl SchemaDiffWindowState {
 
     /// The job-restore effect hook (T402): only a locally-submitted
     /// job's deploy result is adopted.
-    pub(crate) fn adopt_restored_deploy_result(
+    pub fn adopt_restored_deploy_result(
         &mut self,
         restored: Option<SchemaDiffDeployResultVm>,
     ) {

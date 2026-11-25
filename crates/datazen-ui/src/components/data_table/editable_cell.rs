@@ -60,18 +60,18 @@ use crate::support::to_edit_string::{count_code_points, to_edit_string};
 /// string, and the resolved editor kind over the shell's fixed
 /// `hasCandidates: false`.
 #[derive(Clone, Debug)]
-pub(crate) struct EditableCellKind {
-    pub(crate) cell_type: CellType,
+pub struct EditableCellKind {
+    pub cell_type: CellType,
     /// `toEditString(value)` — the seed text the host's control starts
     /// from.
-    pub(crate) text: String,
-    pub(crate) kind: CellEditorKind,
+    pub text: String,
+    pub kind: CellEditorKind,
 }
 
 impl EditableCellKind {
     /// React 37-45. `data_type` is the column's type string; `value`
     /// the cell's current value.
-    pub(crate) fn of(value: &Value, data_type: &str) -> Self {
+    pub fn of(value: &Value, data_type: &str) -> Self {
         let cell_type = resolve_cell_type(Some(data_type), None);
         let text = to_edit_string(value);
         let kind = resolve_cell_editor_kind(crate::support::cell_editor_kind::CellEditorKindInput {
@@ -91,7 +91,7 @@ impl EditableCellKind {
 
 /// `EditableCell`: the compatibility shell — the kind derivation plus
 /// the T297 host seam.
-pub(crate) struct EditableCell<S: 'static> {
+pub struct EditableCell<S: 'static> {
     value: Value,
     data_type: String,
     panel_id: Option<String>,
@@ -101,7 +101,7 @@ pub(crate) struct EditableCell<S: 'static> {
 
 impl<S: 'static> EditableCell<S> {
     /// The shell over its props (`value`, `type`).
-    pub(crate) fn new(value: Value, data_type: impl Into<String>) -> Self {
+    pub fn new(value: Value, data_type: impl Into<String>) -> Self {
         Self {
             value,
             data_type: data_type.into(),
@@ -115,28 +115,28 @@ impl<S: 'static> EditableCell<S> {
     /// editor registers itself with the navigation guard under this
     /// id (05 §4.4) — without it, a re-read would take the draft with
     /// it. The host (T297) owns the registration; held here.
-    pub(crate) fn panel_id(mut self, panel_id: impl Into<String>) -> Self {
+    pub fn panel_id(mut self, panel_id: impl Into<String>) -> Self {
         self.panel_id = Some(panel_id.into());
         self
     }
 
     /// React `onCommit(next)` — the written value (the host's commit
     /// path; the DraftRow seam's `on_draft_cell_edit` lands here).
-    pub(crate) fn on_commit(mut self, f: impl Fn(&mut S, Value) + 'static) -> Self {
+    pub fn on_commit(mut self, f: impl Fn(&mut S, Value) + 'static) -> Self {
         self.on_commit = Some(Rc::new(f));
         self
     }
 
     /// React `onCancel()` — the editor's escape (the DraftRow seam's
     /// `on_draft_cell_edit_cancel`).
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
 
     /// The shell: the kind derivation plus the T297 host seam (see
     /// the module docs — the host mounts the per-type controls).
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let derived = EditableCellKind::of(&self.value, &self.data_type);
         // React 48-59 mounts the host with `columnName: ""`, `nullable`
         // always true, and `originalValue: value`. The seam carries the

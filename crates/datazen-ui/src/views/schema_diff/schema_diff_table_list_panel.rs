@@ -59,7 +59,7 @@ type SelectFn<S> = Rc<dyn Fn(&mut S, String) + 'static>;
 
 /// The table list rail builder, generic over the owning state `S` (the
 /// ported-dialog pattern).
-pub(crate) struct SchemaDiffTableListPanel<'a, S: 'static> {
+pub struct SchemaDiffTableListPanel<'a, S: 'static> {
     tables: &'a [String],
     selected_table: Option<&'a str>,
     table_has_diff: Option<&'a HashMap<String, bool>>,
@@ -69,7 +69,7 @@ pub(crate) struct SchemaDiffTableListPanel<'a, S: 'static> {
 
 impl<'a, S: 'static> SchemaDiffTableListPanel<'a, S> {
     /// React's `tables` / `selectedTable` props.
-    pub(crate) fn new(tables: &'a [String], selected_table: Option<&'a str>) -> Self {
+    pub fn new(tables: &'a [String], selected_table: Option<&'a str>) -> Self {
         Self {
             tables,
             selected_table,
@@ -81,26 +81,26 @@ impl<'a, S: 'static> SchemaDiffTableListPanel<'a, S> {
 
     /// React's optional `tableHasDiff` map (`undefined` renders neither
     /// badge nor hint).
-    pub(crate) fn table_has_diff(mut self, map: Option<&'a HashMap<String, bool>>) -> Self {
+    pub fn table_has_diff(mut self, map: Option<&'a HashMap<String, bool>>) -> Self {
         self.table_has_diff = map;
         self
     }
 
     /// React's `className="flex-none" style={{ width }}` composition from
     /// the compare step: the rail's fixed width in points.
-    pub(crate) fn width(mut self, width: f32) -> Self {
+    pub fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
         self
     }
 
     /// React's `onSelect(table)`.
-    pub(crate) fn on_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_select = Some(Rc::new(f));
         self
     }
 
     /// Paint the rail (React's bordered column).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         // React `flex-none` is the default here (no shrink along the rail).
         let mut panel = col()

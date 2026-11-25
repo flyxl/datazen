@@ -10,7 +10,7 @@ use super::model::{
 /// Which namespace strategy a driver uses for `database`.
 #[allow(dead_code)] // VM mirror; supplied by the driver registry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NamespaceEnsure {
+pub enum NamespaceEnsure {
     DefaultSql,
     Postgresql,
     PathHierarchy,
@@ -19,7 +19,7 @@ pub(crate) enum NamespaceEnsure {
 /// A path-hierarchy database pin split into root + namespace path.
 #[allow(dead_code)] // VM mirror; supplied by `splitPathHierarchyDatabasePin`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PathPin {
+pub struct PathPin {
     pub root: String,
     pub namespace_path: Vec<String>,
 }
@@ -29,7 +29,7 @@ pub(crate) struct PathPin {
 /// possibly stale id the target carries. Without a target, the sidebar context
 /// is used verbatim.
 #[allow(dead_code)] // pure rule; consumed by the status/process openers and tests.
-pub(crate) fn resolve_open_target(
+pub fn resolve_open_target(
     target: Option<&OpenTargetVm>,
     sidebar: Option<&ConnectionContextVm>,
     live_sessions: &BTreeMap<String, String>,
@@ -54,7 +54,7 @@ pub(crate) fn resolve_open_target(
 /// schema knowledge (null) keeps the legacy name+database match. The arrow's
 /// subTab/targetColumn are applied only when a subTab was supplied.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn select_table(
+pub fn select_table(
     ctx: Option<&ConnectionContextVm>,
     panels: &[PanelVm],
     schema_views: &[super::model::PanelVm],
@@ -143,7 +143,7 @@ fn base_panel(ctx: &ConnectionContextVm, kind: PanelKind, prefix: &str) -> Panel
 /// React's generic "reuse by kind, else add" handler (objects / privileges /
 /// create-table). `id_prefix` mirrors `nextPanelId`'s argument.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn open_by_kind(
+pub fn open_by_kind(
     ctx: Option<&ConnectionContextVm>,
     panels: &[PanelVm],
     kind: PanelKind,
@@ -161,7 +161,7 @@ pub(crate) fn open_by_kind(
 /// React `handleEditTableStructure`: reuse the table panel and force
 /// `subTab: structure, structureEditing: true`, else add one so configured.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn edit_table_structure(
+pub fn edit_table_structure(
     ctx: Option<&ConnectionContextVm>,
     panels: &[PanelVm],
     name: &str,
@@ -195,7 +195,7 @@ pub(crate) fn edit_table_structure(
 /// React `handleOpenStructure`: with the structure editor enabled this becomes
 /// the edit handler; otherwise it opens the read-only structure subTab.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn open_structure(
+pub fn open_structure(
     ctx: Option<&ConnectionContextVm>,
     panels: &[PanelVm],
     name: &str,
@@ -228,7 +228,7 @@ pub(crate) fn open_structure(
 /// the current/initial selection. A reused diagram is re-bound to a new
 /// database only for an explicit target or a focus-less (toolbar) invocation.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn open_er_diagram(
+pub fn open_er_diagram(
     ctx: Option<&ConnectionContextVm>,
     panels: &[PanelVm],
     active_panel_id: Option<&str>,
@@ -283,7 +283,7 @@ pub(crate) fn open_er_diagram(
 /// name, schema, signature, target schema/name, database), so overloads and
 /// trigger targets never share a tab.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn open_db_object(
+pub fn open_db_object(
     ctx: Option<&ConnectionContextVm>,
     panels: &[PanelVm],
     kind: &str,
@@ -326,7 +326,7 @@ pub(crate) fn open_db_object(
 /// React `handleOpenServerStatus` / `handleOpenProcessList`: unique per
 /// connection across ALL panels (not just this sidebar's).
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn open_connection_panel(
+pub fn open_connection_panel(
     ctx: Option<&ConnectionContextVm>,
     all_panels: &[PanelVm],
     kind: PanelKind,
@@ -348,7 +348,7 @@ pub(crate) fn open_connection_panel(
 /// A path-hierarchy driver splits the pin into root (bound database) plus the
 /// whole root-first namespace path. A title is derived when none is supplied.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn new_query(
+pub fn new_query(
     ctx: Option<&ConnectionContextVm>,
     initial_sql: Option<&str>,
     target_database: Option<&str>,
@@ -405,14 +405,14 @@ pub(crate) fn new_query(
 /// tab carrying the spec's initial SQL.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TableActionRoute {
+pub enum TableActionRoute {
     Ignore,
     OpenData,
     OpenQuery,
 }
 
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn table_action_route(
+pub fn table_action_route(
     ctx: Option<&ConnectionContextVm>,
     input_connection_id: &str,
     open_data: bool,
@@ -428,7 +428,7 @@ pub(crate) fn table_action_route(
 /// React's pending-intent guards: a pending request is consumed only when its
 /// connection id matches the live sidebar context.
 #[allow(dead_code)] // pure guard; remove with the host wiring.
-pub(crate) fn pending_matches(ctx: Option<&ConnectionContextVm>, pending_connection_id: Option<&str>) -> bool {
+pub fn pending_matches(ctx: Option<&ConnectionContextVm>, pending_connection_id: Option<&str>) -> bool {
     match (ctx, pending_connection_id) {
         (Some(ctx), Some(pending)) => !pending.is_empty() && ctx.connection_id == pending,
         _ => false,

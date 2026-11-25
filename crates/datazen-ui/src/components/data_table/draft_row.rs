@@ -66,21 +66,21 @@ use crate::ui::kit::kit;
 /// React `editing: { draftId: string; column: string } | null` — the
 /// draft cell the editor is open on.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DraftCellEditing {
-    pub(crate) draft_id: String,
-    pub(crate) column: String,
+pub struct DraftCellEditing {
+    pub draft_id: String,
+    pub column: String,
 }
 
 /// React `onDraftCellEdit`'s value argument: `None` is the `undefined`
 /// that **clears** the column (the editor's empty commit — React 138's
 /// `committed === null` translation, "do not write it"); `Some(Value::Null)`
 /// is an explicit NULL write; anything else writes the value.
-pub(crate) type DraftCellEdit = Option<serde_json::Value>;
+pub type DraftCellEdit = Option<serde_json::Value>;
 
 /// The three states of one cell's write intent (React 121:
 /// `data-draft-state`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DraftCellState {
+pub enum DraftCellState {
     /// The column is not written at all — the cell shows the DEFAULT
     /// placeholder.
     Default,
@@ -102,7 +102,7 @@ fn draft_state(written: Option<&serde_json::Value>) -> DraftCellState {
 /// One new-row draft row (DB-04). `S` is the host state the callbacks
 /// run against.
 #[allow(dead_code)] // ported base; remove when the VirtualBody call site lands
-pub(crate) struct DraftRow<S: 'static> {
+pub struct DraftRow<S: 'static> {
     key: String,
     draft: PendingInsert,
     columns: Vec<Column>,
@@ -126,7 +126,7 @@ impl<S: 'static> DraftRow<S> {
     /// `row_start` is React's `vRow.start` (the `style.top`); `vRow.key`
     /// and `vRow.index` never reach the markup and stay with the
     /// virtualizer.
-    pub(crate) fn new(
+    pub fn new(
         key: impl Into<String>,
         draft: PendingInsert,
         row_start: f32,
@@ -151,27 +151,27 @@ impl<S: 'static> DraftRow<S> {
     }
 
     /// React `columns` — the grid's own column list, in order.
-    pub(crate) fn columns(mut self, columns: Vec<Column>) -> Self {
+    pub fn columns(mut self, columns: Vec<Column>) -> Self {
         self.columns = columns;
         self
     }
 
     /// React `columnWidths` — one width per column; a missing entry (or
     /// the whole list) falls back to React's 160.
-    pub(crate) fn column_widths(mut self, widths: Option<Vec<f32>>) -> Self {
+    pub fn column_widths(mut self, widths: Option<Vec<f32>>) -> Self {
         self.column_widths = widths;
         self
     }
 
     /// React `editing` — the draft cell the editor is open on.
-    pub(crate) fn editing(mut self, editing: Option<DraftCellEditing>) -> Self {
+    pub fn editing(mut self, editing: Option<DraftCellEditing>) -> Self {
         self.editing = editing;
         self
     }
 
     /// React `cellSelectionEnabled` — while on, the row and its lead
     /// cell carry the ARIA grid roles; while off, no role at all.
-    pub(crate) fn cell_selection_enabled(mut self, enabled: bool) -> Self {
+    pub fn cell_selection_enabled(mut self, enabled: bool) -> Self {
         self.cell_selection_enabled = enabled;
         self
     }
@@ -179,14 +179,14 @@ impl<S: 'static> DraftRow<S> {
     /// React `presentationPlanByColumn` — only a **written** cell consults
     /// its plan (the DEFAULT placeholder and the editing stand-in never
     /// see one; React 30–35).
-    pub(crate) fn presentation_plans(mut self, plans: HashMap<String, CellPresentationVm>) -> Self {
+    pub fn presentation_plans(mut self, plans: HashMap<String, CellPresentationVm>) -> Self {
         self.presentation_plans = plans;
         self
     }
 
     /// React `onDraftCellEdit(draftId, column, value)` — the commit seam
     /// T278's `EditableCell` lands on.
-    pub(crate) fn on_draft_cell_edit(
+    pub fn on_draft_cell_edit(
         mut self,
         f: impl Fn(&mut S, &str, &str, DraftCellEdit) + 'static,
     ) -> Self {
@@ -196,7 +196,7 @@ impl<S: 'static> DraftRow<S> {
 
     /// React `onDraftCellEditStart(draftId, column)` — the cell's
     /// double-press.
-    pub(crate) fn on_draft_cell_edit_start(
+    pub fn on_draft_cell_edit_start(
         mut self,
         f: impl Fn(&mut S, &str, &str) + 'static,
     ) -> Self {
@@ -206,27 +206,27 @@ impl<S: 'static> DraftRow<S> {
 
     /// React `onDraftCellEditCancel` — the editor's escape; wired with
     /// T278's editor.
-    pub(crate) fn on_draft_cell_edit_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_draft_cell_edit_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_draft_cell_edit_cancel = Some(Rc::new(f));
         self
     }
 
     /// React `onDraftRowRemove(draftId)` — the `×`.
-    pub(crate) fn on_draft_row_remove(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_draft_row_remove(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_draft_row_remove = Some(Rc::new(f));
         self
     }
 
     /// React `onDraftRowActivate(draftId)` — any press that reaches the
     /// row itself (React: the click that bubbles out of the cells).
-    pub(crate) fn on_draft_row_activate(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_draft_row_activate(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_draft_row_activate = Some(Rc::new(f));
         self
     }
 
     /// Paint the row: the lead cell (badge + discard), then one cell per
     /// column in the grid's order.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let Self {
             key,

@@ -5,7 +5,7 @@
 /// reduced to the renderable shapes (the host keeps the original payload).
 #[allow(dead_code)] // VM mirror; consumed by the grid and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum GridValue {
+pub enum GridValue {
     Null,
     Text(String),
     Number(String),
@@ -20,7 +20,7 @@ impl GridValue {
     /// The text the grid cell shows. NULL is rendered by the caller as an
     /// italic `NULL` marker; here it is the empty string (React's cellText).
     #[allow(dead_code)] // pure helper; consumed by the grid and tests.
-    pub(crate) fn cell_text(&self) -> String {
+    pub fn cell_text(&self) -> String {
         match self {
             Self::Null => String::new(),
             Self::Text(value) | Self::Number(value) | Self::Json(value) => value.clone(),
@@ -36,14 +36,14 @@ impl GridValue {
 
     /// The emphasized cell text used for the grid (NULL keeps a visible token).
     #[allow(dead_code)] // pure helper; consumed by the grid and tests.
-    pub(crate) fn display(&self) -> String {
+    pub fn display(&self) -> String {
         match self {
             Self::Null => "NULL".to_owned(),
             _ => self.cell_text(),
         }
     }
 
-    pub(crate) fn is_null(&self) -> bool {
+    pub fn is_null(&self) -> bool {
         matches!(self, Self::Null)
     }
 }
@@ -51,7 +51,7 @@ impl GridValue {
 /// React `ResultFindOperator`.
 #[allow(dead_code)] // VM mirror; consumed by the find bar and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum FindOperator {
+pub enum FindOperator {
     #[default]
     Contains,
     NotContains,
@@ -62,16 +62,16 @@ pub(crate) enum FindOperator {
 /// React `ResultFindQuery` / `EMPTY_RESULT_FIND_QUERY`.
 #[allow(dead_code)] // VM mirror; consumed by the find bar and tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FindQuery {
-    pub(crate) needle: String,
-    pub(crate) column: Option<String>,
-    pub(crate) operator: FindOperator,
-    pub(crate) match_case: bool,
+pub struct FindQuery {
+    pub needle: String,
+    pub column: Option<String>,
+    pub operator: FindOperator,
+    pub match_case: bool,
 }
 
 impl FindQuery {
     #[allow(dead_code)] // fixture helper; consumed by the tests.
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self::default()
     }
 }
@@ -93,7 +93,7 @@ fn cell_matches(value: &GridValue, needle: &str, operator: FindOperator, match_c
 
 /// React `filterResultRows`: original row indexes that match the query.
 #[allow(dead_code)] // pure helper; consumed by the grid and tests.
-pub(crate) fn filter_rows(
+pub fn filter_rows(
     rows: &[Vec<GridValue>],
     columns: &[String],
     query: &FindQuery,
@@ -129,7 +129,7 @@ pub(crate) fn filter_rows(
 /// cell text. Case-sensitive folds neither side; case-insensitive folds both
 /// for the search but splices at the original offsets.
 #[allow(dead_code)] // pure helper; consumed by the plan builder and tests.
-pub(crate) fn replace_text(text: &str, query: &FindQuery, replacement: &str) -> String {
+pub fn replace_text(text: &str, query: &FindQuery, replacement: &str) -> String {
     if query.match_case {
         return text.split(query.needle.as_str()).collect::<Vec<_>>().join(replacement);
     }
@@ -152,7 +152,7 @@ pub(crate) fn replace_text(text: &str, query: &FindQuery, replacement: &str) -> 
 
 /// React `planResultReplacements`: only matching cells change, row-first.
 #[allow(dead_code)] // pure helper; consumed by the find bar and tests.
-pub(crate) fn plan_replacements(
+pub fn plan_replacements(
     rows: &[Vec<GridValue>],
     columns: &[String],
     query: &FindQuery,

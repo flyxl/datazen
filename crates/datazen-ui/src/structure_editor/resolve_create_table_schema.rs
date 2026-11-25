@@ -18,14 +18,14 @@
 //! `resolve_create_table_schema_from_meta` unchanged.
 
 /// `namespaceEnsure` value that selects the PostgreSQL-schema branch.
-pub(crate) const NAMESPACE_POSTGRESQL: &str = "postgresql";
+pub const NAMESPACE_POSTGRESQL: &str = "postgresql";
 /// React's fallback when the meta has no `namespaceEnsure` and the dialect is
 /// not PostgreSQL.
-pub(crate) const NAMESPACE_DEFAULT_SQL: &str = "default-sql";
+pub const NAMESPACE_DEFAULT_SQL: &str = "default-sql";
 /// `databaseFieldType` value that makes the qualifier `null`.
-pub(crate) const DATABASE_FIELD_PATH: &str = "path";
+pub const DATABASE_FIELD_PATH: &str = "path";
 /// React's fallback PG schema namespace.
-pub(crate) const DEFAULT_PG_SCHEMA: &str = "public";
+pub const DEFAULT_PG_SCHEMA: &str = "public";
 
 /// The subset of `DatabaseTypeMeta` this resolver reads. React types both
 /// fields as required/optional union strings; `Option<String>` preserves the
@@ -34,9 +34,9 @@ pub(crate) const DEFAULT_PG_SCHEMA: &str = "public";
 // delete this allow when both land.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct CreateTableSchemaMeta {
-    pub(crate) namespace_ensure: Option<String>,
-    pub(crate) database_field_type: Option<String>,
+pub struct CreateTableSchemaMeta {
+    pub namespace_ensure: Option<String>,
+    pub database_field_type: Option<String>,
 }
 
 impl CreateTableSchemaMeta {
@@ -44,7 +44,7 @@ impl CreateTableSchemaMeta {
     // consumers: the future structure-editor view and its driver-meta adapter;
     // delete this allow when both land.
     #[allow(dead_code)]
-    pub(crate) fn new(namespace_ensure: Option<&str>, database_field_type: Option<&str>) -> Self {
+    pub fn new(namespace_ensure: Option<&str>, database_field_type: Option<&str>) -> Self {
         Self {
             namespace_ensure: namespace_ensure.map(str::to_owned),
             database_field_type: database_field_type.map(str::to_owned),
@@ -57,16 +57,16 @@ impl CreateTableSchemaMeta {
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ResolveCreateTableSchemaParams {
-    pub(crate) current_database: Option<String>,
-    pub(crate) context_schema: Option<String>,
+pub struct ResolveCreateTableSchemaParams {
+    pub current_database: Option<String>,
+    pub context_schema: Option<String>,
 }
 
 impl ResolveCreateTableSchemaParams {
     /// Convenience constructor over borrowed strings.
     // consumers: the future structure-editor view; delete this allow when it lands.
     #[allow(dead_code)]
-    pub(crate) fn new(current_database: Option<&str>, context_schema: Option<&str>) -> Self {
+    pub fn new(current_database: Option<&str>, context_schema: Option<&str>) -> Self {
         Self {
             current_database: current_database.map(str::to_owned),
             context_schema: context_schema.map(str::to_owned),
@@ -78,7 +78,7 @@ impl ResolveCreateTableSchemaParams {
 // consumers: resolve_create_table_schema and the future structure-editor view;
 // delete this allow when both are gone.
 #[allow(dead_code)]
-pub(crate) fn resolve_create_table_schema_from_meta(
+pub fn resolve_create_table_schema_from_meta(
     meta: Option<&CreateTableSchemaMeta>,
     database_type: &str,
     params: &ResolveCreateTableSchemaParams,
@@ -129,7 +129,7 @@ pub(crate) fn resolve_create_table_schema_from_meta(
 /// the removal stage).
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn resolve_create_table_schema(
+pub fn resolve_create_table_schema(
     database_type: &str,
     params: &ResolveCreateTableSchemaParams,
     mut meta_resolver: impl FnMut(&str) -> Option<CreateTableSchemaMeta>,

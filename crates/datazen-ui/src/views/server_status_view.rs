@@ -45,30 +45,30 @@ mod format;
 mod overview;
 mod tables;
 
-pub(crate) use format::{
+pub use format::{
     AUTO_REFRESH_OPTIONS, DETAIL_ORDER, format_byte_rate, format_bytes, format_clock, format_rate,
     format_uptime, format_value, label_for_key, latest_series_value, metric_label_key, number_from,
 };
-pub(crate) use overview::{
+pub use overview::{
     chart_cards, chart_point_count, metric_cards, to_chart_point_count, ChartCardVm, MetricCardVm,
 };
-pub(crate) use tables::detail_rows;
+pub use tables::detail_rows;
 
 use overview::build as build_dashboard;
 use tables::{details, variables};
 
 const ROOT: &str = "server-status-view";
-pub(crate) const LAST_UPDATED_KEY: &str = "server-status-last-updated";
-pub(crate) const REFRESH_KEY: &str = "server-dashboard-refresh";
-pub(crate) const TABS_KEY: &str = "server-view";
-pub(crate) const LOADING_KEY: &str = "server-status-loading";
-pub(crate) const ERROR_KEY: &str = "server-status-error";
-pub(crate) const EMPTY_KEY: &str = "server-status-empty";
+pub const LAST_UPDATED_KEY: &str = "server-status-last-updated";
+pub const REFRESH_KEY: &str = "server-dashboard-refresh";
+pub const TABS_KEY: &str = "server-view";
+pub const LOADING_KEY: &str = "server-status-loading";
+pub const ERROR_KEY: &str = "server-status-error";
+pub const EMPTY_KEY: &str = "server-status-empty";
 
 /// React `StatusRecord` value: string | number | boolean | null.
 #[allow(dead_code)] // VM mirror; supplied by the host snapshot feed.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum StatusValue {
+pub enum StatusValue {
     Str(String),
     Num(f64),
     Bool(bool),
@@ -84,7 +84,7 @@ impl Default for StatusValue {
 impl StatusValue {
     /// React `value == null || value === ''` — rendered as an em dash.
     #[allow(dead_code)] // pure helper; consumed by card/detail building.
-    pub(crate) fn is_absent(&self) -> bool {
+    pub fn is_absent(&self) -> bool {
         match self {
             Self::Null => true,
             Self::Str(value) => value.is_empty(),
@@ -94,7 +94,7 @@ impl StatusValue {
 
     /// React `String(value)` for display.
     #[allow(dead_code)] // pure helper; consumed by card/detail building.
-    pub(crate) fn display(&self) -> String {
+    pub fn display(&self) -> String {
         match self {
             Self::Str(value) => value.clone(),
             Self::Num(value) => {
@@ -113,14 +113,14 @@ impl StatusValue {
 /// React `StatusVariable` / `TrendPoint`.
 #[allow(dead_code)] // VM mirror; supplied by the host snapshot feed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StatusVariableVm {
+pub struct StatusVariableVm {
     pub name: String,
     pub value: Option<String>,
 }
 
 #[allow(dead_code)] // VM mirror; supplied by the host snapshot feed.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TrendPointVm {
+pub struct TrendPointVm {
     pub t: i64,
     pub v: f64,
 }
@@ -128,7 +128,7 @@ pub(crate) struct TrendPointVm {
 /// React `viewTab` union.
 #[allow(dead_code)] // VM mirror; consumed by the tab strip and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ViewTab {
+pub enum ViewTab {
     #[default]
     Dashboard,
     Variables,
@@ -138,7 +138,7 @@ pub(crate) enum ViewTab {
 impl ViewTab {
     /// Narrow React's bare `Tabs` string through `SUB_TABS.find(...)`.
     #[allow(dead_code)] // pure helper; consumed by the tab change handler.
-    pub(crate) fn from_id(id: &str) -> Option<Self> {
+    pub fn from_id(id: &str) -> Option<Self> {
         match id {
             "dashboard" => Some(Self::Dashboard),
             "variables" => Some(Self::Variables),
@@ -148,7 +148,7 @@ impl ViewTab {
     }
 
     #[allow(dead_code)] // pure helper; consumed by the tab strip.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Dashboard => "dashboard",
             Self::Variables => "variables",
@@ -160,7 +160,7 @@ impl ViewTab {
 /// The full view snapshot the host fills each frame.
 #[allow(dead_code)] // VM surface; owned by the connection-page host.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ServerStatusVm {
+pub struct ServerStatusVm {
     pub db_session_id: String,
     pub connection_name: String,
     /// Whether `initialData.status` was present (React's `!initialData?.status`
@@ -183,7 +183,7 @@ pub(crate) struct ServerStatusVm {
 /// Every host intent the view can emit.
 #[allow(dead_code)] // host port; remove when the connection host wires the panel.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ServerStatusAction {
+pub enum ServerStatusAction {
     /// Initial/session load and auto poll (`manual = false`).
     Load { db_session_id: String, manual: bool },
     /// Manual refresh from the toolbar button.
@@ -206,7 +206,7 @@ fn emit<S: 'static>(on_action: &Option<ActionFn<S>>, action: ServerStatusAction)
 
 /// Build the view into one `El`.
 #[allow(dead_code)] // view entry; remove when the connection host wires the panel.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ServerStatusVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

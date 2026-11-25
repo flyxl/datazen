@@ -60,7 +60,7 @@ use crate::ui::toggle::Checkbox;
 /// is a separate extension point and is always `None` in this port).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; consumed by build and the tests
-pub(crate) enum FormVariant {
+pub enum FormVariant {
     File,
     Index,
     Standard,
@@ -68,7 +68,7 @@ pub(crate) enum FormVariant {
 
 #[allow(dead_code)] // reusable VM surface
 impl FormVariant {
-    pub(crate) fn from_value(value: &str) -> Self {
+    pub fn from_value(value: &str) -> Self {
         match value {
             "file" => FormVariant::File,
             "index" => FormVariant::Index,
@@ -76,7 +76,7 @@ impl FormVariant {
         }
     }
 
-    pub(crate) fn value(self) -> &'static str {
+    pub fn value(self) -> &'static str {
         match self {
             FormVariant::File => "file",
             FormVariant::Index => "index",
@@ -88,7 +88,7 @@ impl FormVariant {
 /// Minimal stand-in for `PRESET_GROUP_OPTIONS` (`lib/connectionGroups.ts`).
 /// Removal stage: import the ported `connectionGroups` constants instead.
 #[allow(dead_code)] // reusable VM data; consumed by this module's build
-pub(crate) const PRESET_GROUPS: [(&str, &str); 3] = [
+pub const PRESET_GROUPS: [(&str, &str); 3] = [
     ("preset:production", "newConn.groupProd"),
     ("preset:development", "newConn.groupDev"),
     ("preset:testing", "newConn.groupTest"),
@@ -97,7 +97,7 @@ pub(crate) const PRESET_GROUPS: [(&str, &str); 3] = [
 /// Minimal stand-in for `DB_REGISTRY` (`lib/databaseTypes.ts`) option labels.
 /// Removal stage: derive from the ported `DB_REGISTRY` instead.
 #[allow(dead_code)] // reusable VM data; consumed by FormBodyVm::default
-pub(crate) const DEFAULT_DB_TYPES: [(&str, &str); 5] = [
+pub const DEFAULT_DB_TYPES: [(&str, &str); 5] = [
     ("postgresql", "PostgreSQL"),
     ("mysql", "MySQL"),
     ("sqlite", "SQLite"),
@@ -110,7 +110,7 @@ pub(crate) const DEFAULT_DB_TYPES: [(&str, &str); 5] = [
 /// stay local and never collide with that namespace.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; wired by later callers/tests
-pub(crate) enum FormSelect {
+pub enum FormSelect {
     DbType,
     Group,
 }
@@ -120,7 +120,7 @@ pub(crate) enum FormSelect {
 /// in its `S`; this snapshot drives one render.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable VM surface; wired by later callers/tests
-pub(crate) struct FormBodyVm {
+pub struct FormBodyVm {
     pub name: TextEdit,
     pub form_variant: FormVariant,
     /// React `variant === 'window'`.
@@ -197,7 +197,7 @@ impl Default for FormBodyVm {
 /// input is routed directly through the [`ConnectionFormBody::on_vm`] accessor.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; wired by later callers/tests
-pub(crate) enum FormAction {
+pub enum FormAction {
     DatabaseType(String),
     Group(String),
     ClearStoredCredentials(bool),
@@ -305,7 +305,7 @@ fn field_block(
 /// Builder for the ported component. The caller owns `S`; this struct holds a
 /// VM snapshot plus the two ports back into `S`.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct ConnectionFormBody<S: 'static> {
+pub struct ConnectionFormBody<S: 'static> {
     vm: FormBodyVm,
     on_vm: Option<VmFn<S>>,
     on_action: Option<ActionFn<S>>,
@@ -315,7 +315,7 @@ pub(crate) struct ConnectionFormBody<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl<S: 'static> ConnectionFormBody<S> {
-    pub(crate) fn new(vm: FormBodyVm) -> Self {
+    pub fn new(vm: FormBodyVm) -> Self {
         ConnectionFormBody {
             vm,
             on_vm: None,
@@ -326,7 +326,7 @@ impl<S: 'static> ConnectionFormBody<S> {
 
     /// Accessor for the mutable VM in `S`. Without it every text field is
     /// inert (see [`input_field`]).
-    pub(crate) fn on_vm(
+    pub fn on_vm(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut FormBodyVm + 'static,
     ) -> Self {
@@ -334,7 +334,7 @@ impl<S: 'static> ConnectionFormBody<S> {
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, FormAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, FormAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
@@ -342,7 +342,7 @@ impl<S: 'static> ConnectionFormBody<S> {
     /// Forward `FileConnectionFields` presses (path browse and ADB flow) to the
     /// host, which owns the injected [`crate::components::connection::file_connection_fields::FileFieldsPort`].
     #[allow(dead_code)] // wired by the connection form host (not landed).
-    pub(crate) fn on_file_fields(
+    pub fn on_file_fields(
         mut self,
         f: impl Fn(&mut S, FileFieldsAction) + 'static,
     ) -> Self {
@@ -351,7 +351,7 @@ impl<S: 'static> ConnectionFormBody<S> {
     }
 
     /// Builds the whole body, pushing any open select listboxes into `layer`.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let ConnectionFormBody { vm, on_vm, on_action, on_file_fields } = self;
         let k = kit(dark);
         let name_edit = field_edit(on_vm.as_ref(), |vm| &mut vm.name);

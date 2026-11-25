@@ -43,18 +43,18 @@ use crate::hooks::virtual_table_helpers::{max_scroll_offset, VirtualRow, OVERSCA
 /// The virtualizer's configured dimensions — the React options that
 /// survive the loss of the DOM ref.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct VirtualTableOptions {
+pub struct VirtualTableOptions {
     /// `count` — `rows.length`.
-    pub(crate) row_count: usize,
+    pub row_count: usize,
     /// `estimateSize()` — the uniform row height (px).
-    pub(crate) row_height: f32,
+    pub row_height: f32,
     /// `overscan` — rows rendered beyond each viewport edge.
-    pub(crate) overscan: usize,
+    pub overscan: usize,
 }
 
 /// `useVirtualTable`'s state, embeddable in the host's `S`.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct UseVirtualTable {
+pub struct UseVirtualTable {
     options: VirtualTableOptions,
     /// The scroll container's `clientHeight`, as last reported.
     viewport: f32,
@@ -79,7 +79,7 @@ impl Default for UseVirtualTable {
 impl UseVirtualTable {
     /// `useVirtualTable({ rows, rowHeight })` — the default-overscan
     /// construction.
-    pub(crate) fn new(rows_len: usize, row_height: f32) -> Self {
+    pub fn new(rows_len: usize, row_height: f32) -> Self {
         Self {
             options: VirtualTableOptions {
                 row_count: rows_len,
@@ -92,38 +92,38 @@ impl UseVirtualTable {
 
     /// `useVirtualTable({ ..., overscan })` — the explicit-overscan
     /// construction (`VirtualBody` passes 12).
-    pub(crate) fn with_overscan(mut self, overscan: usize) -> Self {
+    pub fn with_overscan(mut self, overscan: usize) -> Self {
         self.options.overscan = overscan;
         self
     }
 
     /// The rows array was replaced (`count` follows `rows.length`).
-    pub(crate) fn set_rows_len(&mut self, rows_len: usize) {
+    pub fn set_rows_len(&mut self, rows_len: usize) {
         self.options.row_count = rows_len;
     }
 
     /// The row height changed (`estimateSize` re-measured).
-    pub(crate) fn set_row_height(&mut self, row_height: f32) {
+    pub fn set_row_height(&mut self, row_height: f32) {
         self.options.row_height = row_height;
     }
 
     /// The scroll container mounted or resized: its `clientHeight`.
-    pub(crate) fn note_viewport(&mut self, viewport: f32) {
+    pub fn note_viewport(&mut self, viewport: f32) {
         self.viewport = viewport;
     }
 
     /// `onScroll`: the container's live `scrollTop`.
-    pub(crate) fn on_scroll(&mut self, offset: f32) {
+    pub fn on_scroll(&mut self, offset: f32) {
         self.offset = offset;
     }
 
     /// The container's live `scrollTop`, as last reported.
-    pub(crate) fn offset(&self) -> f32 {
+    pub fn offset(&self) -> f32 {
         self.offset
     }
 
     /// The container's `clientHeight`, as last reported.
-    pub(crate) fn viewport(&self) -> f32 {
+    pub fn viewport(&self) -> f32 {
         self.viewport
     }
 
@@ -131,7 +131,7 @@ impl UseVirtualTable {
     /// viewport with overscan on both edges. A list with no rows, an
     /// unmeasured (or empty) viewport, or a zero row height mounts
     /// nothing.
-    pub(crate) fn virtual_rows(&self) -> Vec<VirtualRow> {
+    pub fn virtual_rows(&self) -> Vec<VirtualRow> {
         let viewport = self.viewport;
         if self.options.row_count == 0 || viewport <= 0.0 || self.options.row_height <= 0.0 {
             return Vec::new();
@@ -152,7 +152,7 @@ impl UseVirtualTable {
 
     /// `getTotalSize()`: the spacer's height — the full extent of the
     /// list, not just the mounted window.
-    pub(crate) fn total_height(&self) -> f32 {
+    pub fn total_height(&self) -> f32 {
         self.options.row_count as f32 * self.options.row_height
     }
 
@@ -165,7 +165,7 @@ impl UseVirtualTable {
     /// host should apply to bring `index` to the viewport's top,
     /// clamped so the scroll cannot pass the last row. `None` when
     /// the content already fits — there is nothing to scroll to.
-    pub(crate) fn scroll_to_row(&self, index: usize) -> Option<f32> {
+    pub fn scroll_to_row(&self, index: usize) -> Option<f32> {
         let viewport = self.viewport;
         let max = self.max_offset(viewport);
         if max <= 0.0 {
@@ -177,7 +177,7 @@ impl UseVirtualTable {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     /// 1000 rows of 10px: the shared fixture. `viewport` 100px shows

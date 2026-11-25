@@ -35,14 +35,14 @@ use rune_kit::{Kit, Placement};
 use crate::ui::tooltip::Tooltip;
 
 /// The close grace (`scheduleClose`'s `setTimeout(…, 120)`).
-pub(crate) const SETTING_HINT_CLOSE_DELAY_MS: u32 = 120;
+pub const SETTING_HINT_CLOSE_DELAY_MS: u32 = 120;
 
 /// The viewport margin every clamp respects (the React `8`s).
-pub(crate) const SETTING_HINT_MARGIN: f32 = 8.0;
+pub const SETTING_HINT_MARGIN: f32 = 8.0;
 
 /// `SettingHint({ label, text })`'s interaction state.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SettingHintState {
+pub struct SettingHintState {
     /// `open`: the tooltip is shown.
     open: bool,
     /// A close is scheduled (the 120 ms grace is running).
@@ -55,31 +55,31 @@ pub(crate) struct SettingHintState {
 impl SettingHintState {
     /// `show` (mouse enter / focus on the trigger): cancel any
     /// pending close and open.
-    pub(crate) fn show(&mut self) {
+    pub fn show(&mut self) {
         self.pending_close = false;
         self.open = true;
     }
 
     /// `cancelClose` (mouse enter on the tooltip itself): the grace
     /// stops.
-    pub(crate) fn cancel_close(&mut self) {
+    pub fn cancel_close(&mut self) {
         self.pending_close = false;
     }
 
     /// `scheduleClose` (mouse leave / blur): restart the grace.
-    pub(crate) fn schedule_close(&mut self) {
+    pub fn schedule_close(&mut self) {
         self.pending_close = false; // clearTimeout(current)
         self.pending_close = true;
     }
 
     /// The trigger gained focus (React `onFocus` → `show`).
-    pub(crate) fn focus(&mut self) {
+    pub fn focus(&mut self) {
         self.trigger_focused = true;
         self.show();
     }
 
     /// The trigger lost focus (React `onBlur` → `scheduleClose`).
-    pub(crate) fn blur(&mut self) {
+    pub fn blur(&mut self) {
         self.trigger_focused = false;
         self.schedule_close();
     }
@@ -87,7 +87,7 @@ impl SettingHintState {
     /// The timer fired: close unless the trigger still holds focus
     /// (the React callback's `activeElement` check — a focus retained
     /// through the grace keeps the tooltip open).
-    pub(crate) fn on_close_timeout(&mut self) {
+    pub fn on_close_timeout(&mut self) {
         if !self.pending_close {
             return;
         }
@@ -98,36 +98,36 @@ impl SettingHintState {
     }
 
     /// The Escape dismissal (`dismiss`).
-    pub(crate) fn escape(&mut self) {
+    pub fn escape(&mut self) {
         self.open = false;
         self.pending_close = false;
     }
 
     /// Whether the tooltip is shown.
-    pub(crate) fn is_open(&self) -> bool {
+    pub fn is_open(&self) -> bool {
         self.open
     }
 }
 
 /// The trigger's on-screen rectangle (CSS pixels / points).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct HintRect {
-    pub(crate) left: f32,
-    pub(crate) top: f32,
-    pub(crate) bottom: f32,
+pub struct HintRect {
+    pub left: f32,
+    pub top: f32,
+    pub bottom: f32,
 }
 
 /// The tooltip's measured size.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct HintSize {
-    pub(crate) width: f32,
-    pub(crate) height: f32,
+pub struct HintSize {
+    pub width: f32,
+    pub height: f32,
 }
 
 /// `place()`: above the trigger first (`rect.top - height - 8`), the
 /// 8pt-margin clamp left/right; below (`rect.bottom + 8`) when above
 /// would leave the margin; the clamp again top/bottom.
-pub(crate) fn place_hint(trigger: HintRect, tooltip: HintSize, viewport: HintSize) -> (f32, f32) {
+pub fn place_hint(trigger: HintRect, tooltip: HintSize, viewport: HintSize) -> (f32, f32) {
     let m = SETTING_HINT_MARGIN;
     let above_top = trigger.top - tooltip.height - m;
     let left = trigger.left.max(m).min((viewport.width - tooltip.width - m).max(m));
@@ -137,7 +137,7 @@ pub(crate) fn place_hint(trigger: HintRect, tooltip: HintSize, viewport: HintSiz
 }
 
 /// The `SettingHint` view: the "?" trigger plus its tooltip.
-pub(crate) struct SettingHint {
+pub struct SettingHint {
     key: String,
     label: String,
     text: String,
@@ -146,19 +146,19 @@ pub(crate) struct SettingHint {
 
 impl SettingHint {
     /// `SettingHint({ label, text })` with the element key.
-    pub(crate) fn new(key: impl Into<String>, label: impl Into<String>, text: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, label: impl Into<String>, text: impl Into<String>) -> Self {
         Self { key: key.into(), label: label.into(), text: text.into(), open: false }
     }
 
     /// The open flag from [`SettingHintState`].
-    pub(crate) fn open(mut self, open: bool) -> Self {
+    pub fn open(mut self, open: bool) -> Self {
         self.open = open;
         self
     }
 
     /// Build the trigger row; the tooltip pushes into `layer` while
     /// open (the kit's portal).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let mark = row()
             .key(format!("{}-mark", self.key))
             .size(16.0, 16.0)

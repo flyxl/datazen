@@ -69,12 +69,12 @@
 #![allow(dead_code)]
 
 // The gate decision (React `shouldShowOnboarding`).
-pub(crate) mod gate;
+pub mod gate;
 // The versioned payload + revision const (React `OnboardingState` /
 // `ONBOARDING_VERSION` / `completedOnboardingState`).
-pub(crate) mod state;
+pub mod state;
 
 #[allow(unused_imports)] // the onboarding window host (the exit-persistence seam) is the production consumer
-pub(crate) use gate::should_show_onboarding;
+pub use gate::should_show_onboarding;
 #[allow(unused_imports)] // the onboarding window host (the exit-persistence seam) is the production consumer
-pub(crate) use state::{OnboardingState, ONBOARDING_VERSION, completed_onboarding_state};
+pub use state::{OnboardingState, ONBOARDING_VERSION, completed_onboarding_state};

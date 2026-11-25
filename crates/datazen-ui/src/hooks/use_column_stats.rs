@@ -48,7 +48,7 @@ use crate::components::data_table::column_stats_dialog::{
 // ---------------------------------------------------------------------------
 
 /// The table half of a stats target: identity + the quoting style.
-pub(crate) struct ColumnStatsTable<'a> {
+pub struct ColumnStatsTable<'a> {
     /// The connection's database type (identity; the registry seam
     /// resolves the quote char below).
     pub database_type: &'a str,
@@ -64,7 +64,7 @@ pub(crate) struct ColumnStatsTable<'a> {
 /// everywhere; `AVG(text)` does not exist in PostgreSQL and would fail
 /// the whole single statement — one non-aggregable column must not cost
 /// the other five values.
-pub(crate) const AVERAGABLE_TYPES: &[&str] = &[
+pub const AVERAGABLE_TYPES: &[&str] = &[
     "bigint",
     "bigserial",
     "decimal",
@@ -98,7 +98,7 @@ fn is_averagable_base(base: &str) -> bool {
 /// suffix cut — decides, but the first word decides too: `double
 /// precision` (PG) and `int unsigned` (MySQL) are numeric families
 /// written in two words.
-pub(crate) fn is_averagable_type(data_type: Option<&str>) -> bool {
+pub fn is_averagable_type(data_type: Option<&str>) -> bool {
     let Some(data_type) = data_type else { return false };
     let base = data_type.trim().to_lowercase();
     let base = base.split('(').next().unwrap_or_default().trim();
@@ -139,7 +139,7 @@ const AVGLESS_ALIASES: [&str; 5] =
 /// — one round trip, computed server-side. Aliases stay unquoted
 /// snake_case (valid bare identifiers everywhere; the row is parsed by
 /// position).
-pub(crate) fn build_column_stats_sql(
+pub fn build_column_stats_sql(
     table: &ColumnStatsTable<'_>,
     column: &str,
     include_avg: bool,
@@ -200,7 +200,7 @@ fn to_stats_value(value: Option<&serde_json::Value>) -> StatsValue {
 /// `parseColumnStatsRow`: parse the single aggregate row by the position
 /// [`build_column_stats_sql`] projected it in. A missing row part reads
 /// as `None` — the dialog renders an honest "—", never a wrong number.
-pub(crate) fn parse_column_stats_row(
+pub fn parse_column_stats_row(
     row: Option<&[serde_json::Value]>,
     include_avg: bool,
 ) -> ColumnStats {
@@ -231,7 +231,7 @@ pub(crate) fn parse_column_stats_row(
 // ---------------------------------------------------------------------------
 
 /// React `ColumnStatsRequest`: the stats target plus the routing.
-pub(crate) struct ColumnStatsRequest<'a> {
+pub struct ColumnStatsRequest<'a> {
     pub table: ColumnStatsTable<'a>,
     /// The connection's runtime database session.
     pub db_session_id: &'a str,
@@ -243,7 +243,7 @@ pub(crate) struct ColumnStatsRequest<'a> {
 /// The stream call [`ColumnStatsHook::open`] asks the host to run (the
 /// `executeQueryStream` seam's exact arguments).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnStatsStream {
+pub struct ColumnStatsStream {
     /// The machine-generated aggregate statement.
     pub sql: String,
     /// Whether `AVG` was included.
@@ -263,7 +263,7 @@ pub(crate) struct ColumnStatsStream {
 
 /// The useColumnStats lifecycle (the revision-guarded state machine).
 #[derive(Default)]
-pub(crate) struct ColumnStatsHook {
+pub struct ColumnStatsHook {
     state: ColumnStatsState,
     /// The revision of the latest `open` (React's `revisionRef`).
     revision: u64,
@@ -275,12 +275,12 @@ pub(crate) struct ColumnStatsHook {
 }
 
 impl ColumnStatsHook {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The current state (the dialog's render source).
-    pub(crate) fn state(&self) -> &ColumnStatsState {
+    pub fn state(&self) -> &ColumnStatsState {
         &self.state
     }
 
@@ -288,7 +288,7 @@ impl ColumnStatsHook {
     /// retire any previous request, and enter loading. The returned
     /// stream is the host's to run; every answer it produces must be fed
     /// back with the revision it belongs to.
-    pub(crate) fn open(
+    pub fn open(
         &mut self,
         request: &ColumnStatsRequest<'_>,
         column: &str,
@@ -319,7 +319,7 @@ impl ColumnStatsHook {
     /// The stream's `rows` event (every other event type is ignored —
     /// `event.type !== 'rows'` returns): the first row makes the state
     /// ready, parsed by position. A stale revision lands nothing.
-    pub(crate) fn on_rows(&mut self, revision: u64, rows: &[Vec<serde_json::Value>]) {
+    pub fn on_rows(&mut self, revision: u64, rows: &[Vec<serde_json::Value>]) {
         if revision != self.revision {
             return;
         }
@@ -338,7 +338,7 @@ impl ColumnStatsHook {
     /// The stream's completion (the `.then` arm): without a ready row it
     /// is an error the user should see — the server's own contract says
     /// an aggregate always answers one.
-    pub(crate) fn on_stream_done(&mut self, revision: u64) {
+    pub fn on_stream_done(&mut self, revision: u64) {
         if revision != self.revision {
             return;
         }
@@ -354,7 +354,7 @@ impl ColumnStatsHook {
     }
 
     /// The stream's rejection (the `.catch` arm): the error message.
-    pub(crate) fn on_stream_error(&mut self, revision: u64, message: &str) {
+    pub fn on_stream_error(&mut self, revision: u64, message: &str) {
         if revision != self.revision {
             return;
         }
@@ -368,7 +368,7 @@ impl ColumnStatsHook {
 
     /// `dismiss`: retire the request (a late answer reopens nothing) and
     /// return to idle.
-    pub(crate) fn dismiss(&mut self) {
+    pub fn dismiss(&mut self) {
         self.revision += 1;
         self.resolved = false;
         self.state = ColumnStatsState::default();

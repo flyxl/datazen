@@ -46,18 +46,18 @@ use crate::components::sql_editor::snippets::types::SqlSnippetItem;
 
 /// Statement-level snippets are the point of the feature; keep them
 /// visible.
-pub(crate) const BOOST_STATEMENT_CONTEXT: i32 = 5;
+pub const BOOST_STATEMENT_CONTEXT: i32 = 5;
 /// Inside a table or column position the user wants identifiers, not
 /// templates.
-pub(crate) const BOOST_IDENTIFIER_CONTEXT: i32 = -6;
+pub const BOOST_IDENTIFIER_CONTEXT: i32 = -6;
 
 /// `SnippetCompletionOptions`: the library (defaults to the builtins)
 /// and the `descriptionKey` translator (defaults to echoing the key).
-pub(crate) struct SnippetCompletionOptions<'a> {
-    pub(crate) snippets: Option<&'a [SqlSnippetItem]>,
+pub struct SnippetCompletionOptions<'a> {
+    pub snippets: Option<&'a [SqlSnippetItem]>,
     /// Resolves `descriptionKey` to display text; defaults to echoing
     /// the key.
-    pub(crate) translate: Option<&'a dyn Fn(&str) -> String>,
+    pub translate: Option<&'a dyn Fn(&str) -> String>,
 }
 
 impl Default for SnippetCompletionOptions<'_> {
@@ -70,37 +70,37 @@ impl Default for SnippetCompletionOptions<'_> {
 /// apply-template); `boost` is applied per-context by the source, not
 /// by the builder.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SnippetCompletion {
-    pub(crate) label: String,
-    pub(crate) detail: String,
-    pub(crate) completion_type: &'static str,
+pub struct SnippetCompletion {
+    pub label: String,
+    pub detail: String,
+    pub completion_type: &'static str,
     /// `snippetCompletion(template)`'s apply payload.
-    pub(crate) template: String,
+    pub template: String,
 }
 
 /// One `{ item, completion }` pair of `buildSnippetCompletions`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SnippetBuildPair {
-    pub(crate) item: SqlSnippetItem,
-    pub(crate) completion: SnippetCompletion,
+pub struct SnippetBuildPair {
+    pub item: SqlSnippetItem,
+    pub completion: SnippetCompletion,
 }
 
 /// One offered option: the completion plus its context boost.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SnippetSourceOption {
-    pub(crate) completion: SnippetCompletion,
-    pub(crate) boost: i32,
+pub struct SnippetSourceOption {
+    pub completion: SnippetCompletion,
+    pub boost: i32,
 }
 
 /// The source's answer (the CodeMirror `CompletionResult`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SnippetSourceResult {
-    pub(crate) from: usize,
-    pub(crate) options: Vec<SnippetSourceOption>,
+pub struct SnippetSourceResult {
+    pub from: usize,
+    pub options: Vec<SnippetSourceOption>,
 }
 
 /// Build the `Completion[]` projection of a snippet library.
-pub(crate) fn build_snippet_completions(
+pub fn build_snippet_completions(
     options: &SnippetCompletionOptions<'_>,
 ) -> Vec<SnippetBuildPair> {
     let snippets = options.snippets.unwrap_or(builtin_sql_snippets());
@@ -121,7 +121,7 @@ pub(crate) fn build_snippet_completions(
 }
 
 /// The `validFor` pattern `^[A-Za-z_][A-Za-z0-9_*]*$`.
-pub(crate) fn snippet_completion_valid_for(word: &str) -> bool {
+pub fn snippet_completion_valid_for(word: &str) -> bool {
     let b = word.as_bytes();
     match b.first() {
         Some(&c) if c.is_ascii_alphabetic() || c == b'_' => {}
@@ -182,7 +182,7 @@ fn after_qualifier_dot(text_before: &str) -> bool {
 /// The source body: `createSnippetCompletionSource(options)` applied
 /// to a context. `text_before` is `state.sliceDoc(0, pos)`;
 /// `explicit` is the CodeMirror explicit-request flag.
-pub(crate) fn snippet_completion_source(
+pub fn snippet_completion_source(
     options: &SnippetCompletionOptions<'_>,
     text_before: &str,
     explicit: bool,

@@ -146,7 +146,7 @@ fn tree_node<S: 'static>(
 
 /// The central tree region (by-user or by-object), with empty/error banners.
 #[allow(dead_code)] // view entry point; consumer: the privilege host (not wired).
-pub(crate) fn privilege_tree<S: 'static>(
+pub fn privilege_tree<S: 'static>(
     vm: &PrivilegeVm,
     dark: bool,
     host: &PrivilegeHostPort<S>,

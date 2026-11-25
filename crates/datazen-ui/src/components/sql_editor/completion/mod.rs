@@ -35,11 +35,11 @@
 //!   (T084); when that task lands it absorbs the list and the
 //!   `needs_quoting` rule verbatim.
 
-pub(crate) mod schema_completion;
-pub(crate) mod semantic_model;
+pub mod schema_completion;
+pub mod semantic_model;
 
 #[allow(unused_imports)] // consumers land with the workspace view wiring
-pub(crate) use schema_completion::{
+pub use schema_completion::{
     RelatedTableBoost, SchemaCompletionItem, SchemaCompletionKind, SchemaCompletionOptions,
     SchemaCompletionResult, SHORT_PREFIX_COLUMN_CAP, SHORT_PREFIX_LEN, SqlCompletionDialect,
     SqlToken, SqlTokenKind, all_columns_from_editor_schema, column_completions_from_relation,
@@ -48,7 +48,7 @@ pub(crate) use schema_completion::{
     resolve_schema_dot_completions,
 };
 #[allow(unused_imports)] // consumers land with the workspace view wiring
-pub(crate) use semantic_model::{
+pub use semantic_model::{
     find_scope_at_cursor, get_scope_chain, list_visible_relations, resolve_relation,
     RelationResolveResult, SqlCteBinding, SqlCursorIntent, SqlCursorIntentKind, SqlProjectionAlias,
     SqlRelationBinding, SqlScope, SqlScopeKind, SqlSemanticModel, SqlTextRange,

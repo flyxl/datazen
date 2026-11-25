@@ -47,7 +47,7 @@ fn operation_allowed(operation: DataSyncOperation, options: &SyncOptions) -> boo
 /// aliased in `commands/sync.ts`): one generated statement of the
 /// reviewed selection (the SQL preview face).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DataSyncSqlStatement {
+pub struct DataSyncSqlStatement {
     pub table: String,
     pub operation: DataSyncOperation,
     pub sql: String,
@@ -58,14 +58,14 @@ pub(crate) struct DataSyncSqlStatement {
 
 /// The operation filter of the preview toolbar: all, or one operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum OpFilter {
+pub enum OpFilter {
     #[default]
     All,
     Op(DataSyncOperation),
 }
 
 /// React `filterStatementsByOp`: the filter itself.
-pub(crate) fn filter_statements_by_op(
+pub fn filter_statements_by_op(
     statements: &[DataSyncSqlStatement],
     op_filter: OpFilter,
 ) -> Vec<DataSyncSqlStatement> {
@@ -82,7 +82,7 @@ pub(crate) fn filter_statements_by_op(
 /// React `statementsToPreviewText`: the filtered statements joined on
 /// newlines, `previewSql || sql` per statement, with the empty-filter
 /// placeholder.
-pub(crate) fn statements_to_preview_text(
+pub fn statements_to_preview_text(
     statements: &[DataSyncSqlStatement],
     op_filter: OpFilter,
 ) -> String {
@@ -105,7 +105,7 @@ pub(crate) fn statements_to_preview_text(
 
 /// React `buildClientSqlPreview`: the no-wire fallback — one comment
 /// line per selected, allowed, non-unchanged row of every matched table.
-pub(crate) fn build_client_sql_preview(
+pub fn build_client_sql_preview(
     tables: &[DataSyncTableResult],
     options: &SyncOptions,
 ) -> String {
@@ -160,4 +160,4 @@ pub(crate) fn build_client_sql_preview(
 
 /// React's `row.selected` reads in this file walk `DataSyncRowChange`;
 /// the re-export keeps the helper's signature honest for future callers.
-pub(crate) type PreviewRow = DataSyncRowChange;
+pub type PreviewRow = DataSyncRowChange;

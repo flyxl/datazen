@@ -22,30 +22,30 @@
 //! | `fkCellText.ts` (T405)               | `fk_cell_text`              |
 //! | `editors/activeEditor.ts` (T405)     | `editors::active_editor`    |
 
-pub(crate) mod cell_renderer;
-pub(crate) mod column_presentation_dialog;
-pub(crate) mod column_presentation_dialog_state;
-pub(crate) mod column_presentation_dialog_view;
-pub(crate) mod column_presentation_plan;
-pub(crate) mod column_presentation_rules;
-pub(crate) mod column_presentation_validation;
-pub(crate) mod column_stats_dialog;
-pub(crate) mod data_export_dialog;
-pub(crate) mod data_export_dialog_options;
-pub(crate) mod data_table;
-pub(crate) mod data_table_selection_bar;
-pub(crate) mod data_table_vm;
-pub(crate) mod default_order_select;
-pub(crate) mod detail_panel;
-pub(crate) mod detail_panel_toggle;
-pub(crate) mod dirty_cell_text;
-pub(crate) mod draft_row;
+pub mod cell_renderer;
+pub mod column_presentation_dialog;
+pub mod column_presentation_dialog_state;
+pub mod column_presentation_dialog_view;
+pub mod column_presentation_plan;
+pub mod column_presentation_rules;
+pub mod column_presentation_validation;
+pub mod column_stats_dialog;
+pub mod data_export_dialog;
+pub mod data_export_dialog_options;
+pub mod data_table;
+pub mod data_table_selection_bar;
+pub mod data_table_vm;
+pub mod default_order_select;
+pub mod detail_panel;
+pub mod detail_panel_toggle;
+pub mod dirty_cell_text;
+pub mod draft_row;
 // T278: the old editor's compatibility shell (the kind derivation + the
 // T297 host seam).
-pub(crate) mod editable_cell;
-pub(crate) mod editors;
-pub(crate) mod fk_cell_text;
-pub(crate) mod grid_keyboard_hints;
-pub(crate) mod pagination;
-pub(crate) mod quick_look_dialog;
-pub(crate) mod table_header;
+pub mod editable_cell;
+pub mod editors;
+pub mod fk_cell_text;
+pub mod grid_keyboard_hints;
+pub mod pagination;
+pub mod quick_look_dialog;
+pub mod table_header;

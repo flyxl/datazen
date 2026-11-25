@@ -54,7 +54,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize};
 /// the `queryExecActions` state machine).
 #[allow(dead_code)] // wired with the editor host task that owns executions
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum QueryPhase {
+pub enum QueryPhase {
     #[default]
     Idle,
     Running,
@@ -87,7 +87,7 @@ impl QueryPhase {
 /// React's `CancelCapability` union.
 #[allow(dead_code)] // wired with the editor host task
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum CancelCapability {
+pub enum CancelCapability {
     Supported,
     Unsupported,
     #[default]
@@ -98,7 +98,7 @@ pub(crate) enum CancelCapability {
 /// control).
 #[allow(dead_code)] // wired with the editor host task
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum CancelActionState {
+pub enum CancelActionState {
     Available,
     Requested,
     #[default]
@@ -111,7 +111,7 @@ pub(crate) enum CancelActionState {
 /// never appear here).
 #[allow(dead_code)] // wired with the editor host task
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct QueryExecutionStatusVm {
+pub struct QueryExecutionStatusVm {
     pub phase: QueryPhase,
     pub cancel_capability: CancelCapability,
     pub cancel_state: CancelActionState,
@@ -122,7 +122,7 @@ pub(crate) struct QueryExecutionStatusVm {
 
 /// The status strip. Stateless: the host derives the VM and owns the cancel
 /// path; `on_cancel` fires only while the button is enabled.
-pub(crate) struct QueryExecutionStatus<S: 'static> {
+pub struct QueryExecutionStatus<S: 'static> {
     vm: QueryExecutionStatusVm,
     show_cancel: bool,
     on_cancel: Option<Rc<dyn Fn(&mut S) + 'static>>,
@@ -137,7 +137,7 @@ impl<S: 'static> Default for QueryExecutionStatus<S> {
 #[allow(dead_code)] // reachable only through `build`
 impl<S: 'static> QueryExecutionStatus<S> {
     #[allow(dead_code)] // wired with the editor host task
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             vm: QueryExecutionStatusVm::default(),
             show_cancel: true,
@@ -147,27 +147,27 @@ impl<S: 'static> QueryExecutionStatus<S> {
 
     /// The view-model slice to render.
     #[allow(dead_code)] // wired with the editor host task
-    pub(crate) fn vm(mut self, vm: QueryExecutionStatusVm) -> Self {
+    pub fn vm(mut self, vm: QueryExecutionStatusVm) -> Self {
         self.vm = vm;
         self
     }
 
     /// React's `showCancel` prop (default true).
     #[allow(dead_code)] // wired with the editor host task
-    pub(crate) fn show_cancel(mut self, show: bool) -> Self {
+    pub fn show_cancel(mut self, show: bool) -> Self {
         self.show_cancel = show;
         self
     }
 
     /// React's `onCancel` prop.
     #[allow(dead_code)] // wired with the editor host task
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
 
     /// The strip, or `None` when React renders `null` (the `idle` phase).
-    pub(crate) fn build(self, dark: bool) -> Option<El> {
+    pub fn build(self, dark: bool) -> Option<El> {
         if self.vm.phase == QueryPhase::Idle {
             return None;
         }

@@ -65,7 +65,7 @@ use crate::views::settings::settings_ui::{setting_row, toggle_row, ToggleRow as 
 
 /// `DefaultTableSort` (`types/settings.ts`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DefaultTableSort {
+pub enum DefaultTableSort {
     PrimaryKeyAsc,
     PrimaryKeyDesc,
     None,
@@ -73,7 +73,7 @@ pub(crate) enum DefaultTableSort {
 
 impl DefaultTableSort {
     /// The wire spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::PrimaryKeyAsc => "primaryKeyAsc",
             Self::PrimaryKeyDesc => "primaryKeyDesc",
@@ -82,7 +82,7 @@ impl DefaultTableSort {
     }
 
     /// `isDefaultTableSort`.
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "primaryKeyAsc" => Some(Self::PrimaryKeyAsc),
             "primaryKeyDesc" => Some(Self::PrimaryKeyDesc),
@@ -92,7 +92,7 @@ impl DefaultTableSort {
     }
 
     /// `DEFAULT_SORTS`, in declaration order.
-    pub(crate) const ALL: [Self; 3] = [Self::PrimaryKeyAsc, Self::PrimaryKeyDesc, Self::None];
+    pub const ALL: [Self; 3] = [Self::PrimaryKeyAsc, Self::PrimaryKeyDesc, Self::None];
 
     /// The option label's i18n key.
     fn label_key(self) -> &'static str {
@@ -106,7 +106,7 @@ impl DefaultTableSort {
 
 /// `GridDensity` (`types/settings.ts`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GridDensity {
+pub enum GridDensity {
     Compact,
     Standard,
     Relaxed,
@@ -114,7 +114,7 @@ pub(crate) enum GridDensity {
 
 impl GridDensity {
     /// The wire spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Compact => "compact",
             Self::Standard => "standard",
@@ -123,7 +123,7 @@ impl GridDensity {
     }
 
     /// `isGridDensity`.
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "compact" => Some(Self::Compact),
             "standard" => Some(Self::Standard),
@@ -133,7 +133,7 @@ impl GridDensity {
     }
 
     /// `GRID_DENSITIES`, in declaration order.
-    pub(crate) const ALL: [Self; 3] = [Self::Compact, Self::Standard, Self::Relaxed];
+    pub const ALL: [Self; 3] = [Self::Compact, Self::Standard, Self::Relaxed];
 
     /// The option label's i18n key.
     fn label_key(self) -> &'static str {
@@ -151,7 +151,7 @@ fn row_count_modes() -> [RowCountMode; 4] {
 }
 
 /// `isRowCountMode` (the count-strategy enum's own vocabulary).
-pub(crate) fn is_row_count_mode(value: &str) -> bool {
+pub fn is_row_count_mode(value: &str) -> bool {
     matches!(
         value,
         "auto" | "exact" | "estimated" | "none"
@@ -189,7 +189,7 @@ fn row_count_mode_label_key(mode: RowCountMode) -> &'static str {
 /// The threshold input's commit rule: `Number(v)`, the finite and
 /// `>= 0` guards, `Math.round` — `None` refuses the edit (nothing
 /// fires).
-pub(crate) fn parse_threshold(text: &str) -> Option<u64> {
+pub fn parse_threshold(text: &str) -> Option<u64> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return None;
@@ -203,7 +203,7 @@ pub(crate) fn parse_threshold(text: &str) -> Option<u64> {
 
 /// Which of the section's selects is open (one at a time).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TableDataSelect {
+pub enum TableDataSelect {
     RowCountMode,
     DefaultTableSort,
     GridDensity,
@@ -211,7 +211,7 @@ pub(crate) enum TableDataSelect {
 
 /// The section's settings mirror (the store fields it renders).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TableDataSettings {
+pub struct TableDataSettings {
     pub row_count_mode: RowCountMode,
     pub row_count_estimate_threshold: u64,
     pub default_table_sort: DefaultTableSort,
@@ -242,7 +242,7 @@ impl Default for TableDataSettings {
 
 /// The `updateSettings` payloads (the T390 `SettingsField` shape).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TableDataField {
+pub enum TableDataField {
     RowCountMode(RowCountMode),
     RowCountEstimateThreshold(u64),
     DefaultTableSort(DefaultTableSort),
@@ -254,14 +254,14 @@ pub(crate) enum TableDataField {
 
 /// The section's state.
 #[derive(Clone, PartialEq)]
-pub(crate) struct TableDataSettingsState {
+pub struct TableDataSettingsState {
     /// The settings mirror (the store's slice).
-    pub(crate) settings: TableDataSettings,
+    pub settings: TableDataSettings,
     /// The threshold input's draft (the controlled `<input type=
     /// "number">`'s text).
-    pub(crate) threshold_edit: TextEdit,
+    pub threshold_edit: TextEdit,
     /// The open select (one at a time).
-    pub(crate) open_select: Option<TableDataSelect>,
+    pub open_select: Option<TableDataSelect>,
 }
 
 impl std::fmt::Debug for TableDataSettingsState {
@@ -275,7 +275,7 @@ impl std::fmt::Debug for TableDataSettingsState {
 }
 
 impl TableDataSettingsState {
-    pub(crate) fn new(settings: &TableDataSettings) -> Self {
+    pub fn new(settings: &TableDataSettings) -> Self {
         Self {
             settings: settings.clone(),
             threshold_edit: TextEdit::new(settings.row_count_estimate_threshold.to_string()),
@@ -284,7 +284,7 @@ impl TableDataSettingsState {
     }
 
     /// The store's next read (the settings prop's flow-back).
-    pub(crate) fn resync(&mut self, settings: &TableDataSettings) {
+    pub fn resync(&mut self, settings: &TableDataSettings) {
         self.settings = settings.clone();
         self.threshold_edit = TextEdit::new(settings.row_count_estimate_threshold.to_string());
     }
@@ -292,12 +292,12 @@ impl TableDataSettingsState {
     /// Whether the threshold row renders (the `auto`-only rule: the
     /// other modes do not read it, and a field that does nothing is
     /// worse than no field).
-    pub(crate) fn threshold_visible(&self) -> bool {
+    pub fn threshold_visible(&self) -> bool {
         self.settings.row_count_mode == RowCountMode::Auto
     }
 
     /// The trigger's press: open, or close when already open.
-    pub(crate) fn toggle_select(&mut self, which: TableDataSelect) {
+    pub fn toggle_select(&mut self, which: TableDataSelect) {
         self.open_select = if self.open_select == Some(which) {
             None
         } else {
@@ -306,14 +306,14 @@ impl TableDataSettingsState {
     }
 
     /// The listbox's dismissal.
-    pub(crate) fn close_select(&mut self) {
+    pub fn close_select(&mut self) {
         self.open_select = None;
     }
 }
 
 /// `TableDataSettingsSection()`: the section over the state, the
 /// threshold draft's lens and the host's update slot.
-pub(crate) struct TableDataSettingsSection<'a, S: 'static> {
+pub struct TableDataSettingsSection<'a, S: 'static> {
     state: &'a TableDataSettingsState,
     dark: bool,
     section_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TableDataSettingsState>,
@@ -326,7 +326,7 @@ pub(crate) struct TableDataSettingsSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> TableDataSettingsSection<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a TableDataSettingsState,
         dark: bool,
         section_edit: impl for<'b> Fn(&'b mut S) -> &'b mut TableDataSettingsState + 'static,
@@ -343,7 +343,7 @@ impl<'a, S: 'static> TableDataSettingsSection<'a, S> {
     }
 
     /// The `updateSettings` slot.
-    pub(crate) fn on_update_field(
+    pub fn on_update_field(
         mut self,
         f: impl Fn(&mut S, TableDataField) + 'static,
     ) -> Self {
@@ -352,7 +352,7 @@ impl<'a, S: 'static> TableDataSettingsSection<'a, S> {
     }
 
     /// The delegated `<ValuePresentationSettingsSection />` (T474).
-    pub(crate) fn value_presentation_section(mut self, section: Option<El>) -> Self {
+    pub fn value_presentation_section(mut self, section: Option<El>) -> Self {
         self.value_presentation_section = section;
         self
     }
@@ -392,7 +392,7 @@ impl<'a, S: 'static> TableDataSettingsSection<'a, S> {
     }
 
     /// The section (the React fragment of rows).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let mut body = col()
             .key("table-data-settings-section")

@@ -33,7 +33,7 @@ use super::filter_connector_toggle::FilterConnector;
 /// The value of a filter condition, shaped like the React operator's value
 /// control: none, one literal, a pair (`between`), or a token list (`in`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum FilterValue {
+pub enum FilterValue {
     None,
     Single(String),
     Pair(String, String),
@@ -43,7 +43,7 @@ pub(crate) enum FilterValue {
 /// A filter condition in the shape the chip renders. `operator` is the React
 /// operator id (`eq`, `between`, …); its label is `filter.<operator>`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FilterCondition {
+pub struct FilterCondition {
     pub column: String,
     pub operator: &'static str,
     pub value: FilterValue,
@@ -51,7 +51,7 @@ pub(crate) struct FilterCondition {
 }
 
 impl FilterCondition {
-    pub(crate) fn new(
+    pub fn new(
         column: impl Into<String>,
         operator: &'static str,
         value: FilterValue,
@@ -64,7 +64,7 @@ impl FilterCondition {
         }
     }
 
-    pub(crate) fn connector(mut self, connector: Option<FilterConnector>) -> Self {
+    pub fn connector(mut self, connector: Option<FilterConnector>) -> Self {
         self.connector = connector;
         self
     }
@@ -74,11 +74,11 @@ impl FilterCondition {
 ///
 /// The single definition lives in T216's `filter_labels` module; the chip keeps
 /// this thin re-export so its callers and tests do not change.
-pub(crate) fn condition_summary(filter: &FilterCondition) -> String {
+pub fn condition_summary(filter: &FilterCondition) -> String {
     super::filter_labels::condition_summary(filter)
 }
 
-pub(crate) struct FilterConditionChip {
+pub struct FilterConditionChip {
     key: String,
     condition: FilterCondition,
     disabled: bool,
@@ -87,7 +87,7 @@ pub(crate) struct FilterConditionChip {
 }
 
 impl FilterConditionChip {
-    pub(crate) fn new(key: impl Into<String>, condition: FilterCondition) -> FilterConditionChip {
+    pub fn new(key: impl Into<String>, condition: FilterCondition) -> FilterConditionChip {
         FilterConditionChip {
             key: key.into(),
             condition,
@@ -97,13 +97,13 @@ impl FilterConditionChip {
         }
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// Called when the summary is pressed (React `onEdit`).
-    pub(crate) fn on_edit<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_edit<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.edit = Some(Box::new(move |e: El| e.on_press(f)));
         self
     }
@@ -113,7 +113,7 @@ impl FilterConditionChip {
     /// React's native `<button>` also fires on Enter; Rune presses a focused
     /// button with Space only (Return passes buttons by), so the row carries an
     /// explicit Enter handler to keep the two activations at parity.
-    pub(crate) fn on_remove<S: 'static>(mut self, f: impl Fn(&mut S) + Clone + 'static) -> Self {
+    pub fn on_remove<S: 'static>(mut self, f: impl Fn(&mut S) + Clone + 'static) -> Self {
         self.remove = Some(Box::new(move |e: El| {
             let key_f = f.clone();
             e.on_press(f)
@@ -129,7 +129,7 @@ impl FilterConditionChip {
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let label = condition_summary(&self.condition);
         let accent = k.c.text_accent;

@@ -72,11 +72,11 @@ use crate::commands::schema_diff::runner::{
 use crate::commands::schema_diff::{dialect_supports_transactional_ddl, export_plan_sql};
 
 /// The plan actions' and errors' i18n keys (the React literals).
-pub(crate) const KEY_TABLE_REQUIRED: &str = "schemaDiff.tableRequired";
-pub(crate) const KEY_SELECTION_REQUIRED: &str = "schemaDiff.selectionRequired";
-pub(crate) const KEY_CROSS_DIALECT_BLOCKED: &str = "schemaDiff.crossDialectObjectBlocked";
-pub(crate) const KEY_CLIPBOARD_FAILED: &str = "schemaDiff.clipboardFailed";
-pub(crate) const KEY_REPREPARE_ON_STALE_PLAN: &str = "migrationJob.reprepareOnStalePlan";
+pub const KEY_TABLE_REQUIRED: &str = "schemaDiff.tableRequired";
+pub const KEY_SELECTION_REQUIRED: &str = "schemaDiff.selectionRequired";
+pub const KEY_CROSS_DIALECT_BLOCKED: &str = "schemaDiff.crossDialectObjectBlocked";
+pub const KEY_CLIPBOARD_FAILED: &str = "schemaDiff.clipboardFailed";
+pub const KEY_REPREPARE_ON_STALE_PLAN: &str = "migrationJob.reprepareOnStalePlan";
 
 /// `value || undefined` for the schema strings: a blank (empty/whitespace)
 /// reads as absent.
@@ -86,18 +86,18 @@ fn blank_to_none(value: &str) -> Option<String> {
 }
 
 /// The copy-summary join: `diffs.map(formatSchemaDiffText).join('\n\n')`.
-pub(crate) fn copy_summary_text(diffs: &[TableSchemaDiffVm]) -> String {
+pub fn copy_summary_text(diffs: &[TableSchemaDiffVm]) -> String {
     diffs.iter().map(format_schema_diff_text).collect::<Vec<_>>().join("\n\n")
 }
 
 /// The copy-SQL payload: `exportPlanSql(plan)`.
-pub(crate) fn copy_sql_text(plan: &SchemaDiffPlanVm) -> String {
+pub fn copy_sql_text(plan: &SchemaDiffPlanVm) -> String {
     export_plan_sql(plan)
 }
 
 /// One clipboard attempt's adoption: the feedback kind on success, the
 /// clipboard-failed error on failure (React's `catch {}` arms).
-pub(crate) enum ClipboardOutcome {
+pub enum ClipboardOutcome {
     /// `showClipboardFeedback(kind)`.
     Shown(SchemaDiffFeedbackKind),
     /// `setError(t('schemaDiff.clipboardFailed'))`.
@@ -109,7 +109,7 @@ pub(crate) enum ClipboardOutcome {
 /// `loadSourceTables`'s begin: the validation gate first (a failed
 /// validation returns without touching state), then the two clears and
 /// the loading flag. Returns whether the discovery walk should start.
-pub(crate) fn begin_load_source_tables(state: &mut SchemaDiffWindowState) -> bool {
+pub fn begin_load_source_tables(state: &mut SchemaDiffWindowState) -> bool {
     if state.endpoints.validate().is_err() {
         return false;
     }
@@ -122,7 +122,7 @@ pub(crate) fn begin_load_source_tables(state: &mut SchemaDiffWindowState) -> boo
 /// `loadSourceTables`'s finish (the `finally` clears the loading flag on
 /// every path): the picks land, or the error + diagnostic land and the
 /// picks clear.
-pub(crate) fn finish_load_source_tables(
+pub fn finish_load_source_tables(
     state: &mut SchemaDiffWindowState,
     outcome: Result<Vec<SchemaDiffTablePickVm>, (String, String)>,
 ) {
@@ -142,7 +142,7 @@ pub(crate) fn finish_load_source_tables(
 /// One compare unit: the target-only stub (all diff arrays empty) or
 /// the `compareTableSchemas` request for a paired table.
 #[derive(Debug)]
-pub(crate) enum CompareJob {
+pub enum CompareJob {
     /// A `target-only` pick's stub diff — pushed without an IPC.
     TargetOnlyStub(TableSchemaDiffVm),
     /// `schemaDiffCommands.compareTableSchemas(...)`'s request.
@@ -156,7 +156,7 @@ pub(crate) enum CompareJob {
 /// `runCompare`'s begin: the four artifact clears, then the validation
 /// gate, then the selected-empty gate. Returns the compare units to
 /// run (the selected picks in order) or the refusal's error key.
-pub(crate) fn begin_run_compare(
+pub fn begin_run_compare(
     state: &mut SchemaDiffWindowState,
     source_db_session_id: String,
     target_db_session_id: String,
@@ -207,7 +207,7 @@ pub(crate) fn begin_run_compare(
 /// `runCompare`'s finish: the diffs land in pick order and the first
 /// selected name becomes the selected table (`selected[0]?.name`), or
 /// the error lands.
-pub(crate) fn finish_run_compare(
+pub fn finish_run_compare(
     state: &mut SchemaDiffWindowState,
     outcome: Result<Vec<TableSchemaDiffVm>, String>,
 ) {
@@ -231,7 +231,7 @@ pub(crate) fn finish_run_compare(
 /// selection gate (no tables, no target-only tables and no objects of
 /// either side → `schemaDiff.selectionRequired`), then the endpoint
 /// validation. Returns whether the plan build should continue.
-pub(crate) fn begin_build_plan(state: &mut SchemaDiffWindowState) -> Result<(), &'static str> {
+pub fn begin_build_plan(state: &mut SchemaDiffWindowState) -> Result<(), &'static str> {
     state.error = None;
     state.deploy_result = None;
     let source_tables = enabled_source_table_names(&state.table_picks);
@@ -252,7 +252,7 @@ pub(crate) fn begin_build_plan(state: &mut SchemaDiffWindowState) -> Result<(), 
 /// The plan shape to build: the plain table plan or the unified plan
 /// (any object selection rides the unified call, exactly React's
 /// condition on the two object lists).
-pub(crate) enum PlanShape {
+pub enum PlanShape {
     Plain(PreparePlanParamsVm),
     Unified(PrepareUnifiedParamsVm),
 }
@@ -272,7 +272,7 @@ pub(crate) enum PlanShape {
 ///
 /// `handleApplyTypeOverrides` is the `overrides` argument with the
 /// window's current list.
-pub(crate) fn build_plan_params(
+pub fn build_plan_params(
     state: &SchemaDiffWindowState,
     source_db_session_id: &str,
     target_db_session_id: &str,
@@ -336,7 +336,7 @@ pub(crate) fn build_plan_params(
 /// `useTransaction` checkbox adopts the target dialect's transactional
 /// DDL support, and the confirm text clears. The error branch keeps
 /// the previous artifacts (React only `setError`s).
-pub(crate) fn finish_build_plan(
+pub fn finish_build_plan(
     state: &mut SchemaDiffWindowState,
     outcome: Result<SchemaDiffPrepareEnvelopeVm, String>,
 ) {
@@ -361,7 +361,7 @@ pub(crate) fn finish_build_plan(
 /// `|| null` (`Some(None)` on the wire), the profile reference is the
 /// selected saved profile's `{ id, revision: updatedAt }`, and the
 /// plan id / selection revision come from the prepare envelope.
-pub(crate) fn build_deploy_params(
+pub fn build_deploy_params(
     state: &SchemaDiffWindowState,
     target_db_session_id: &str,
 ) -> ExecuteDeployParamsVm {
@@ -394,7 +394,7 @@ pub(crate) fn build_deploy_params(
 /// `handleDeploy`'s outcomes: the receipt, the plain error, or the
 /// stale-plan branch (`isStalePlanError` — the T376 classifier — which
 /// re-arms the wizard by clearing the plan and the result).
-pub(crate) enum DeployOutcome {
+pub enum DeployOutcome {
     Receipt(SchemaDiffDeployResultVm),
     Failed(String),
     /// `isStalePlanError(e)`: `migrationJob.reprepareOnStalePlan`, the
@@ -403,7 +403,7 @@ pub(crate) enum DeployOutcome {
 }
 
 /// `handleDeploy`'s finish.
-pub(crate) fn finish_deploy(state: &mut SchemaDiffWindowState, outcome: DeployOutcome) {
+pub fn finish_deploy(state: &mut SchemaDiffWindowState, outcome: DeployOutcome) {
     match outcome {
         DeployOutcome::Receipt(result) => state.deploy_result = Some(result),
         DeployOutcome::Failed(message) => state.error = Some(message),
@@ -422,7 +422,7 @@ pub(crate) fn finish_deploy(state: &mut SchemaDiffWindowState, outcome: DeployOu
 /// running the compare (or the discovery load) resolves into either
 /// the step advance or the stay.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum GoNextDecision {
+pub enum GoNextDecision {
     /// `SCHEMA_DIFF_STEPS[stepIndex + 1]` is absent: nothing to do.
     NoNextStep,
     /// The objects step's cross-dialect gate refused:
@@ -448,7 +448,7 @@ pub(crate) enum GoNextDecision {
 }
 
 /// `goNext`, the gate cascade verbatim.
-pub(crate) fn go_next_decision(state: &SchemaDiffWindowState) -> GoNextDecision {
+pub fn go_next_decision(state: &SchemaDiffWindowState) -> GoNextDecision {
     let step_index = state.step_index();
     let next = SCHEMA_DIFF_STEPS.get(step_index + 1).copied();
 
@@ -484,7 +484,7 @@ pub(crate) fn go_next_decision(state: &SchemaDiffWindowState) -> GoNextDecision 
 }
 
 /// `goBack`: the previous step, or nothing on the first step.
-pub(crate) fn go_back_step(state: &SchemaDiffWindowState) -> Option<SchemaDiffWizardStep> {
+pub fn go_back_step(state: &SchemaDiffWindowState) -> Option<SchemaDiffWizardStep> {
     let step_index = state.step_index();
     if step_index == 0 {
         return None;
@@ -495,7 +495,7 @@ pub(crate) fn go_back_step(state: &SchemaDiffWindowState) -> Option<SchemaDiffWi
 // ---- the unified-object toggle ----------------------------------------------
 
 /// `toggleUnifiedObject(side)(object)`.
-pub(crate) fn toggle_unified_object(
+pub fn toggle_unified_object(
     state: &mut SchemaDiffWindowState,
     side: ObjectSide,
     object: &SchemaDiffObjectIdentityVm,
@@ -504,7 +504,7 @@ pub(crate) fn toggle_unified_object(
 }
 
 /// The selection steps' clear-both action (`selectAll(false)` twice).
-pub(crate) fn clear_object_selections(state: &mut SchemaDiffWindowState) {
+pub fn clear_object_selections(state: &mut SchemaDiffWindowState) {
     state.unified.select_all(ObjectSide::Source, false);
     state.unified.select_all(ObjectSide::Target, false);
 }
@@ -512,7 +512,7 @@ pub(crate) fn clear_object_selections(state: &mut SchemaDiffWindowState) {
 // ---- the saved-setup quick state adoptions ----------------------------------
 
 /// `setSelectedProfileId`.
-pub(crate) fn set_selected_profile(setups: &mut SavedSetupState, id: impl Into<String>) {
+pub fn set_selected_profile(setups: &mut SavedSetupState, id: impl Into<String>) {
     setups.selected_profile_id = id.into();
 }
 

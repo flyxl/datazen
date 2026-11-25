@@ -20,7 +20,7 @@ use rune::{col, row, text, Color, Cx, El};
 use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
-pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col()
         .key("value-search-tool")
         .w_full()
@@ -168,7 +168,7 @@ pub(crate) fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool)
 
 /// The transfer tool: pair the two tables' columns; unmapped columns are
 /// listed explicitly.
-pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
+pub fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
     let mut section = col()
         .key("transfer-tool")
         .w_full()
@@ -414,7 +414,7 @@ pub(crate) fn transfer_tool(state: &AppState, theme: tok::Theme) -> El {
 }
 
 /// The structure comparison. Step 1: the objects, same names marked.
-pub(crate) fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
+pub fn compare_tool(state: &AppState, theme: tok::Theme) -> El {
     let objects = state
         .workspace
         .compare_objects(&state.compare_source, &state.compare_target)

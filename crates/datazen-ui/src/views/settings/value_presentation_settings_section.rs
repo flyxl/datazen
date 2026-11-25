@@ -106,7 +106,7 @@ const TEXT_SM_MEDIUM: TextStyle = TextStyle::new(14.0, 500.0);
 
 /// Which of the section's selects is open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SectionSelect {
+pub enum SectionSelect {
     Format,
     TimeZone,
     PreviewSource,
@@ -114,7 +114,7 @@ pub(crate) enum SectionSelect {
 
 /// The editing target: `'new'` or `{ index }`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EditingRule {
+pub enum EditingRule {
     New,
     Index(usize),
 }
@@ -123,20 +123,20 @@ pub(crate) enum EditingRule {
 /// against the fresh authoritative read (T11: only the dirty
 /// paths).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SavePlan {
+pub struct SavePlan {
     /// Write the global switch + options (the `withTimestampRenderer`
     /// path).
-    pub(crate) format_dirty: bool,
+    pub format_dirty: bool,
     /// Write the rule list (the `withValuePresentationRules` path).
-    pub(crate) rules_dirty: bool,
-    pub(crate) enabled: bool,
-    pub(crate) options: TimestampOptions,
-    pub(crate) rules: Vec<ValuePresentationRule>,
+    pub rules_dirty: bool,
+    pub enabled: bool,
+    pub options: TimestampOptions,
+    pub rules: Vec<ValuePresentationRule>,
 }
 
 impl SavePlan {
     /// The updater body: apply the dirty paths over `fresh`.
-    pub(crate) fn apply(&self, fresh: &StoredValuePresentationSettings) -> StoredValuePresentationSettings {
+    pub fn apply(&self, fresh: &StoredValuePresentationSettings) -> StoredValuePresentationSettings {
         let mut next = fresh.clone();
         if self.format_dirty {
             let options_value =
@@ -152,29 +152,29 @@ impl SavePlan {
 
 /// The section's state.
 #[derive(Clone, PartialEq)]
-pub(crate) struct ValuePresentationSettingsSectionState {
+pub struct ValuePresentationSettingsSectionState {
     /// The store's last reported value (the is-dirty reference).
-    pub(crate) stored: StoredValuePresentationSettings,
+    pub stored: StoredValuePresentationSettings,
     /// `appliedStoredJson` — the baseline the draft last synced
     /// from (the per-path dirty checks read it, never the live
     /// store: the live value may be another window's fresh write).
     applied_stored_json: String,
-    pub(crate) draft: TimestampDisplayDraft,
-    pub(crate) iana_name: TextEdit,
+    pub draft: TimestampDisplayDraft,
+    pub iana_name: TextEdit,
     /// T11: another window saved while edits were pending — prompt
     /// only, never overwrite.
-    pub(crate) external_update: bool,
-    pub(crate) error: Option<String>,
-    pub(crate) saved: bool,
-    pub(crate) saving: bool,
-    pub(crate) preview_interpretation: InterpretationChoice,
-    pub(crate) rules_open: bool,
+    pub external_update: bool,
+    pub error: Option<String>,
+    pub saved: bool,
+    pub saving: bool,
+    pub preview_interpretation: InterpretationChoice,
+    pub rules_open: bool,
     /// The rule drafts (T08): saved with the panel draft.
-    pub(crate) rule_drafts: Vec<ValuePresentationRule>,
-    pub(crate) editing_rule: Option<EditingRule>,
+    pub rule_drafts: Vec<ValuePresentationRule>,
+    pub editing_rule: Option<EditingRule>,
     /// The inline editor's state (T469), re-armed per edit.
-    pub(crate) editor: ValuePresentationRuleEditorState,
-    pub(crate) open_select: Option<SectionSelect>,
+    pub editor: ValuePresentationRuleEditorState,
+    pub open_select: Option<SectionSelect>,
 }
 
 fn stored_to_json(stored: &StoredValuePresentationSettings) -> String {
@@ -196,7 +196,7 @@ fn iana_text_of(draft: &TimestampDisplayDraft) -> String {
 
 impl ValuePresentationSettingsSectionState {
     /// The mount: the store's first read initializes the draft.
-    pub(crate) fn new(stored: &StoredValuePresentationSettings) -> Self {
+    pub fn new(stored: &StoredValuePresentationSettings) -> Self {
         let draft = draft_from_stored(stored);
         let iana = iana_text_of(&draft);
         Self {
@@ -220,7 +220,7 @@ impl ValuePresentationSettingsSectionState {
     /// The store's answer (the T11 effect): a change with pending
     /// edits on a path only prompts; a change the draft already
     /// echoes rebuilds it and advances the baseline.
-    pub(crate) fn note_stored(&mut self, stored: &StoredValuePresentationSettings) {
+    pub fn note_stored(&mut self, stored: &StoredValuePresentationSettings) {
         self.stored = stored.clone();
         let json = stored_to_json(stored);
         if json == self.applied_stored_json {
@@ -255,7 +255,7 @@ impl ValuePresentationSettingsSectionState {
 
     /// `optionsToSave`: the draft's options with the IANA name read
     /// live from the input (trimmed).
-    pub(crate) fn options_to_save(&self) -> TimestampOptions {
+    pub fn options_to_save(&self) -> TimestampOptions {
         let mut options = self.draft.options.clone();
         if matches!(options.display_time_zone, TimeZoneSpec::Iana { .. }) {
             options.display_time_zone = TimeZoneSpec::Iana {
@@ -270,7 +270,7 @@ impl ValuePresentationSettingsSectionState {
     }
 
     /// The IANA name is syntactically invalid (the format error).
-    pub(crate) fn iana_format_invalid(&self) -> bool {
+    pub fn iana_format_invalid(&self) -> bool {
         let name = self.iana_trimmed();
         matches!(self.draft.options.display_time_zone, TimeZoneSpec::Iana { .. })
             && !name.is_empty()
@@ -278,7 +278,7 @@ impl ValuePresentationSettingsSectionState {
     }
 
     /// The IANA name is well-formed but unknown (the zone error).
-    pub(crate) fn iana_unknown(&self) -> bool {
+    pub fn iana_unknown(&self) -> bool {
         let name = self.iana_trimmed();
         matches!(self.draft.options.display_time_zone, TimeZoneSpec::Iana { .. })
             && !name.is_empty()
@@ -295,7 +295,7 @@ impl ValuePresentationSettingsSectionState {
     }
 
     /// `isDirty` — against the CURRENT saved value.
-    pub(crate) fn is_dirty(&self) -> bool {
+    pub fn is_dirty(&self) -> bool {
         let saved = self.saved_draft();
         self.draft.enabled != saved.enabled
             || self.options_to_save() != saved.options
@@ -304,17 +304,17 @@ impl ValuePresentationSettingsSectionState {
 
     // The edits (each `setSaved(false)` where React does).
 
-    pub(crate) fn set_enabled(&mut self, enabled: bool) {
+    pub fn set_enabled(&mut self, enabled: bool) {
         self.draft.enabled = enabled;
         self.saved = false;
     }
 
-    pub(crate) fn set_format(&mut self, format: FormatSerde) {
+    pub fn set_format(&mut self, format: FormatSerde) {
         self.draft.options.format = format;
         self.saved = false;
     }
 
-    pub(crate) fn set_time_zone_kind(&mut self, kind: TimeZoneKindChoice) {
+    pub fn set_time_zone_kind(&mut self, kind: TimeZoneKindChoice) {
         self.draft.options.display_time_zone = match kind {
             TimeZoneKindChoice::Iana => TimeZoneSpec::Iana {
                 name: self.iana_trimmed().to_owned(),
@@ -327,19 +327,19 @@ impl ValuePresentationSettingsSectionState {
 
     /// The IANA input's edit (the `setSaved(false)` rides the kit's
     /// change event).
-    pub(crate) fn iana_edit_landed(&mut self) {
+    pub fn iana_edit_landed(&mut self) {
         self.saved = false;
     }
 
-    pub(crate) fn set_preview_interpretation(&mut self, interpretation: InterpretationChoice) {
+    pub fn set_preview_interpretation(&mut self, interpretation: InterpretationChoice) {
         self.preview_interpretation = interpretation;
     }
 
-    pub(crate) fn toggle_rules_open(&mut self) {
+    pub fn toggle_rules_open(&mut self) {
         self.rules_open = !self.rules_open;
     }
 
-    pub(crate) fn toggle_select(&mut self, which: SectionSelect) {
+    pub fn toggle_select(&mut self, which: SectionSelect) {
         self.open_select = if self.open_select == Some(which) {
             None
         } else {
@@ -347,14 +347,14 @@ impl ValuePresentationSettingsSectionState {
         };
     }
 
-    pub(crate) fn close_select(&mut self) {
+    pub fn close_select(&mut self) {
         self.open_select = None;
     }
 
     // The rule list (T08).
 
     /// `setEditingRule`.
-    pub(crate) fn set_editing_rule(&mut self, editing: Option<EditingRule>) {
+    pub fn set_editing_rule(&mut self, editing: Option<EditingRule>) {
         if let Some(EditingRule::Index(index)) = editing {
             let initial = self.rule_drafts.get(index);
             self.editor = ValuePresentationRuleEditorState::new(initial);
@@ -365,7 +365,7 @@ impl ValuePresentationSettingsSectionState {
     }
 
     /// `handleRuleSave`: append (new) or replace at the index.
-    pub(crate) fn save_rule_draft(&mut self, rule: ValuePresentationRule) {
+    pub fn save_rule_draft(&mut self, rule: ValuePresentationRule) {
         match self.editing_rule {
             Some(EditingRule::New) => self.rule_drafts.push(rule),
             Some(EditingRule::Index(index)) => {
@@ -381,21 +381,21 @@ impl ValuePresentationSettingsSectionState {
 
     /// The delete (React's inline filter — no `setSaved(false)`,
     /// verbatim).
-    pub(crate) fn delete_rule(&mut self, index: usize) {
+    pub fn delete_rule(&mut self, index: usize) {
         if index < self.rule_drafts.len() {
             self.rule_drafts.remove(index);
         }
     }
 
     /// The enable toggle (verbatim: no `setSaved(false)`).
-    pub(crate) fn toggle_rule_enabled(&mut self, index: usize) {
+    pub fn toggle_rule_enabled(&mut self, index: usize) {
         if let Some(rule) = self.rule_drafts.get_mut(index) {
             rule.enabled = !rule.enabled;
         }
     }
 
     /// `moveRule(index, direction)` — the bounds-checked swap.
-    pub(crate) fn move_rule(&mut self, index: usize, direction: i8) {
+    pub fn move_rule(&mut self, index: usize, direction: i8) {
         let target = index as i64 + direction as i64;
         if target < 0 || target >= self.rule_drafts.len() as i64 {
             return;
@@ -406,12 +406,12 @@ impl ValuePresentationSettingsSectionState {
     }
 
     /// The add button's gate: no edit in flight and under the cap.
-    pub(crate) fn rules_add_gate(&self) -> bool {
+    pub fn rules_add_gate(&self) -> bool {
         self.editing_rule.is_none() && self.rule_drafts.len() < MAX_VALUE_PRESENTATION_RULES
     }
 
     /// The editor's `otherNames` (the list minus the edited row).
-    pub(crate) fn editing_other_names(&self) -> Vec<String> {
+    pub fn editing_other_names(&self) -> Vec<String> {
         self.rule_drafts
             .iter()
             .enumerate()
@@ -482,7 +482,7 @@ impl ValuePresentationSettingsSectionState {
     /// `handleSave`'s decision half: the three gates, the defensive
     /// rule re-validation, then the plan. `None` = refused (the
     /// error is set).
-    pub(crate) fn begin_save(
+    pub fn begin_save(
         &mut self,
         contribution: Option<&Rc<dyn ValuePresentationContribution>>,
     ) -> Option<SavePlan> {
@@ -528,7 +528,7 @@ impl ValuePresentationSettingsSectionState {
 
     /// The save's success (the store's answer lands separately
     /// through `note_stored`).
-    pub(crate) fn note_save_ok(&mut self) {
+    pub fn note_save_ok(&mut self) {
         self.saving = false;
         self.saved = true;
         self.external_update = false;
@@ -536,7 +536,7 @@ impl ValuePresentationSettingsSectionState {
 
     /// The save's failure: the old configuration stays live, the
     /// draft survives, never shown as saved.
-    pub(crate) fn note_save_error(&mut self) {
+    pub fn note_save_error(&mut self) {
         self.saving = false;
         self.saved = false;
         self.error = Some(t("settings.valuePresentation.saveFailed").to_owned());
@@ -544,7 +544,7 @@ impl ValuePresentationSettingsSectionState {
 
     /// `handleReset` — also the external-update prompt's "reload
     /// saved settings" (the same operation).
-    pub(crate) fn reset_to_stored(&mut self) {
+    pub fn reset_to_stored(&mut self) {
         let next = draft_from_stored(&self.stored);
         self.iana_name.text = iana_text_of(&next);
         self.draft = next;
@@ -556,7 +556,7 @@ impl ValuePresentationSettingsSectionState {
     }
 
     /// The preview over the current options-to-save.
-    pub(crate) fn preview(
+    pub fn preview(
         &self,
         contribution: Option<Rc<dyn ValuePresentationContribution>>,
         environment: PresentationEnvironment<'_>,
@@ -570,7 +570,7 @@ impl ValuePresentationSettingsSectionState {
     }
 
     /// The saved marker's face: `saved && !isDirty`.
-    pub(crate) fn shows_saved(&self) -> bool {
+    pub fn shows_saved(&self) -> bool {
         self.saved && !self.is_dirty()
     }
 }
@@ -654,7 +654,7 @@ fn choice_select<S: 'static>(
 
 /// `ValuePresentationSettingsSection()`: the panel over the state,
 /// the state lens and the host's save slot.
-pub(crate) struct ValuePresentationSettingsSection<'a, S: 'static> {
+pub struct ValuePresentationSettingsSection<'a, S: 'static> {
     state: &'a ValuePresentationSettingsSectionState,
     dark: bool,
     section_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut ValuePresentationSettingsSectionState>,
@@ -670,7 +670,7 @@ pub(crate) struct ValuePresentationSettingsSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> ValuePresentationSettingsSection<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a ValuePresentationSettingsSectionState,
         dark: bool,
         section_edit: impl for<'b> Fn(&'b mut S) -> &'b mut ValuePresentationSettingsSectionState + 'static,
@@ -689,13 +689,13 @@ impl<'a, S: 'static> ValuePresentationSettingsSection<'a, S> {
 
     /// `updateValuePresentationSettings(updater)` — the host runs
     /// the rail.
-    pub(crate) fn on_save(mut self, f: impl Fn(&mut S, SavePlan) + 'static) -> Self {
+    pub fn on_save(mut self, f: impl Fn(&mut S, SavePlan) + 'static) -> Self {
         self.on_save = Some(Rc::new(f));
         self
     }
 
     /// The section (the border-top tail fragment).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let section_edit = &self.section_edit;
         let dark = self.dark;

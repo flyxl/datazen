@@ -12,12 +12,12 @@
 //! snapshot and apply the actions. Per-item allow annotations carry that stage.
 
 mod logic;
-pub(crate) mod draft_rows;
+pub mod draft_rows;
 mod view;
 
-pub(crate) use logic::*;
+pub use logic::*;
 #[allow(unused_imports)] // host/test seam; consumer: the table host + tests; drop when wired.
-pub(crate) use view::build;
+pub use view::build;
 
 use std::collections::BTreeMap;
 use rune_kit::SortDir;
@@ -25,16 +25,16 @@ use rune_kit::SortDir;
 /// One result column (React `ColumnSchema`).
 #[allow(dead_code)] // VM mirror; supplied by the host result feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ColumnMeta {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
-    pub(crate) nullable: bool,
+pub struct ColumnMeta {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
 }
 
 /// A cell as the grid presents it.
 #[allow(dead_code)] // VM mirror; supplied by the host result feed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CellValue {
+pub enum CellValue {
     Null,
     Text(String),
     Number(String),
@@ -45,7 +45,7 @@ pub(crate) enum CellValue {
 
 impl CellValue {
     #[allow(dead_code)] // pure helper; consumed by the grid and tests.
-    pub(crate) fn display(&self) -> String {
+    pub fn display(&self) -> String {
         match self {
             Self::Null => "NULL".to_owned(),
             Self::Text(value) | Self::Number(value) | Self::Json(value) => value.clone(),
@@ -58,32 +58,32 @@ impl CellValue {
 /// One staged cell change (`DirtyCell` in React).
 #[allow(dead_code)] // VM mirror; consumed by the dirty index and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DirtyCell {
-    pub(crate) column: String,
-    pub(crate) original: CellValue,
-    pub(crate) next: CellValue,
+pub struct DirtyCell {
+    pub column: String,
+    pub original: CellValue,
+    pub next: CellValue,
 }
 
 /// One dirty row entry.
 #[allow(dead_code)] // VM mirror; consumed by the grid and pending bar.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DirtyRow {
-    pub(crate) cells: Vec<DirtyCell>,
-    pub(crate) deleted: bool,
+pub struct DirtyRow {
+    pub cells: Vec<DirtyCell>,
+    pub deleted: bool,
 }
 
 /// One insert draft row (React `draftInserts`).
 #[allow(dead_code)] // VM mirror; consumed by insert actions and tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DraftRow {
-    pub(crate) id: String,
-    pub(crate) values: BTreeMap<String, CellValue>,
+pub struct DraftRow {
+    pub id: String,
+    pub values: BTreeMap<String, CellValue>,
 }
 
 /// Why a cell cannot be edited (React `CellReadOnlyReason`).
 #[allow(dead_code)] // VM mirror; supplied by the mount point.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ReadOnlyReason {
+pub enum ReadOnlyReason {
     #[default]
     ConnectionReadOnly,
     DriverCapability,
@@ -100,45 +100,45 @@ pub(crate) enum ReadOnlyReason {
 /// Host-owned projection of the table panel snapshot.
 #[allow(dead_code)] // VM surface; owned by the table host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct TableViewVm {
-    pub(crate) columns: Vec<ColumnMeta>,
-    pub(crate) rows: Vec<Vec<CellValue>>,
-    pub(crate) visible_columns: Option<Vec<String>>,
-    pub(crate) column_order: Option<Vec<String>>,
-    pub(crate) sort: Option<(usize, SortDir)>,
-    pub(crate) highlighted_row: Option<usize>,
-    pub(crate) editing_cell: Option<(usize, String)>,
+pub struct TableViewVm {
+    pub columns: Vec<ColumnMeta>,
+    pub rows: Vec<Vec<CellValue>>,
+    pub visible_columns: Option<Vec<String>>,
+    pub column_order: Option<Vec<String>>,
+    pub sort: Option<(usize, SortDir)>,
+    pub highlighted_row: Option<usize>,
+    pub editing_cell: Option<(usize, String)>,
     /// Whether the editor currently holds an invalid draft (navigation guard).
-    pub(crate) invalid_draft: bool,
-    pub(crate) dirty: BTreeMap<usize, DirtyRow>,
-    pub(crate) drafts: Vec<DraftRow>,
-    pub(crate) active_draft: Option<String>,
-    pub(crate) insert_notice: Option<String>,
-    pub(crate) inserted_row: Option<usize>,
-    pub(crate) read_only: bool,
-    pub(crate) read_only_reason: Option<ReadOnlyReason>,
-    pub(crate) has_primary_key: bool,
-    pub(crate) safe_mode: bool,
-    pub(crate) confirm_on_delete: bool,
-    pub(crate) driver_type: Option<String>,
+    pub invalid_draft: bool,
+    pub dirty: BTreeMap<usize, DirtyRow>,
+    pub drafts: Vec<DraftRow>,
+    pub active_draft: Option<String>,
+    pub insert_notice: Option<String>,
+    pub inserted_row: Option<usize>,
+    pub read_only: bool,
+    pub read_only_reason: Option<ReadOnlyReason>,
+    pub has_primary_key: bool,
+    pub safe_mode: bool,
+    pub confirm_on_delete: bool,
+    pub driver_type: Option<String>,
     /// Operators the driver declares; empty means "shared set" in React.
-    pub(crate) declared_operators: Vec<String>,
-    pub(crate) like_case_insensitive: bool,
-    pub(crate) raw_where_supported: bool,
-    pub(crate) error: Option<String>,
-    pub(crate) has_work: bool,
-    pub(crate) quick_look: Option<(usize, String)>,
-    pub(crate) quick_look_editable: bool,
-    pub(crate) show_read_only_tip: Option<ReadOnlyReason>,
+    pub declared_operators: Vec<String>,
+    pub like_case_insensitive: bool,
+    pub raw_where_supported: bool,
+    pub error: Option<String>,
+    pub has_work: bool,
+    pub quick_look: Option<(usize, String)>,
+    pub quick_look_editable: bool,
+    pub show_read_only_tip: Option<ReadOnlyReason>,
     /// The 3000ms read-only-tip deadline, on the host clock (no own timer).
-    pub(crate) read_only_tip_until: Option<f64>,
-    pub(crate) now: f64,
+    pub read_only_tip_until: Option<f64>,
+    pub now: f64,
 }
 
 /// Every host intent this view can emit.
 #[allow(dead_code)] // host port; removed with the table host wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TableViewAction {
+pub enum TableViewAction {
     Load,
     Reload,
     Retry,
@@ -166,4 +166,4 @@ pub(crate) enum TableViewAction {
     EditInSql,
 }
 
-pub(crate) type ActionFn<S> = std::rc::Rc<dyn Fn(&mut S, TableViewAction) + 'static>;
+pub type ActionFn<S> = std::rc::Rc<dyn Fn(&mut S, TableViewAction) + 'static>;

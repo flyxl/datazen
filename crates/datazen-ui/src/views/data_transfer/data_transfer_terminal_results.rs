@@ -92,7 +92,7 @@ use crate::views::data_transfer::data_transfer_attached_jobs::JobState;
 /// React `isMigrationJobInFlight` (`lib/migrationJobVerdict.ts:151-153`):
 /// true while the Job is still queued or running.
 #[allow(dead_code)] // T561 replaces this placeholder; wired by this slice's tests meanwhile
-pub(crate) fn is_migration_job_in_flight(state: &JobState) -> bool {
+pub fn is_migration_job_in_flight(state: &JobState) -> bool {
     matches!(state, JobState::Queued | JobState::Running)
 }
 
@@ -102,7 +102,7 @@ pub(crate) fn is_migration_job_in_flight(state: &JobState) -> bool {
 /// takes `EffectOutcome | string | null` and matches on the literal
 /// spellings.
 #[allow(dead_code)] // T561 replaces this placeholder; wired by this slice's tests meanwhile
-pub(crate) struct MigrationJobVerdictInput<'a> {
+pub struct MigrationJobVerdictInput<'a> {
     pub state: JobState,
     pub effect_outcome: Option<&'a str>,
     pub cancel_requested: bool,
@@ -252,7 +252,7 @@ fn pick_severity(
 /// React `deriveMigrationJobVerdict` (`lib/migrationJobVerdict.ts:241-278`),
 /// line for line: folds the raw Job verdict into the state a user is shown.
 #[allow(dead_code)] // T561 replaces this placeholder; wired by this slice's tests meanwhile
-pub(crate) fn derive_migration_job_verdict(
+pub fn derive_migration_job_verdict(
     input: &MigrationJobVerdictInput<'_>,
 ) -> MigrationJobVerdict {
     let boundaries = input.commit_boundaries.unwrap_or(&[]);
@@ -322,7 +322,7 @@ pub(crate) fn derive_migration_job_verdict(
 /// spellings. `created_at` / `updated_at` are numeric `Timestamp`s.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) struct TerminalJobView {
+pub struct TerminalJobView {
     pub job_id: String,
     pub kind: String,
     pub state: JobState,
@@ -339,7 +339,7 @@ pub(crate) struct TerminalJobView {
 /// bounded, stable recovery receipt.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) struct JobRecoveryResult {
+pub struct JobRecoveryResult {
     pub verdict: String,
     pub resume_through: Option<u64>,
     pub reason_code: Option<String>,
@@ -350,7 +350,7 @@ pub(crate) struct JobRecoveryResult {
 /// never reach this strip).
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) struct TerminalJobDetails {
+pub struct TerminalJobDetails {
     pub job: TerminalJobView,
     pub plan_id: Option<String>,
     pub plan_digest: Option<String>,
@@ -363,7 +363,7 @@ pub(crate) struct TerminalJobDetails {
 /// newest `dataTransferApply` by `createdAt` (numeric `Timestamp`
 /// comparison; a tie keeps the earlier job, as React's strict `>` does).
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) fn latest_apply_job(jobs: &[TerminalJobView]) -> Option<&TerminalJobView> {
+pub fn latest_apply_job(jobs: &[TerminalJobView]) -> Option<&TerminalJobView> {
     jobs.iter()
         .filter(|job| job.kind == "dataTransferApply")
         .reduce(|latest, job| if job.created_at > latest.created_at { job } else { latest })
@@ -373,7 +373,7 @@ pub(crate) fn latest_apply_job(jobs: &[TerminalJobView]) -> Option<&TerminalJobV
 /// the latest apply job, unless it is still in flight, excluded by
 /// `excludeJobId`, or `hide` is set. `None` renders nothing.
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) fn terminal_job<'a>(
+pub fn terminal_job<'a>(
     jobs: &'a [TerminalJobView],
     exclude_job_id: Option<&str>,
     hide: bool,
@@ -399,7 +399,7 @@ pub(crate) fn terminal_job<'a>(
 /// lives in the app's state `S`; the host drives it.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) struct TerminalResultsState {
+pub struct TerminalResultsState {
     /// React's `loaded`: `{ jobId, details } | null`.
     pub loaded: Option<(String, TerminalJobDetails)>,
     /// React's `failedJobId`: `string | null`.
@@ -414,7 +414,7 @@ impl TerminalResultsState {
     /// terminal job becomes another job or moves on (`updatedAt`
     /// changes), or when it goes away — and then starts the new
     /// `getDetails` fetch.
-    pub(crate) fn begin_load(&mut self) {
+    pub fn begin_load(&mut self) {
         self.loaded = None;
         self.failed_job_id = None;
     }
@@ -430,7 +430,7 @@ impl TerminalResultsState {
     /// * `Ok(details)` with `details.job.jobId !== captured.jobId` or the
     ///   details' job still in flight — the exact same failed branch.
     /// * Otherwise `loaded = (captured.jobId, details)`.
-    pub(crate) fn finish_load(
+    pub fn finish_load(
         &mut self,
         captured: &TerminalJobView,
         current: Option<&TerminalJobView>,
@@ -467,7 +467,7 @@ impl TerminalResultsState {
 /// verdict panel's copied-feedback deadline (React's `useCopyFeedback`
 /// hook, reached through `MigrationJobVerdictPanel`).
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
-pub(crate) struct DataTransferTerminalResults<S: 'static> {
+pub struct DataTransferTerminalResults<S: 'static> {
     jobs: Vec<TerminalJobView>,
     exclude_job_id: Option<String>,
     hide: bool,
@@ -480,7 +480,7 @@ pub(crate) struct DataTransferTerminalResults<S: 'static> {
 #[allow(dead_code)] // reusable component; wired by the Data Transfer window track
 impl<S: 'static> DataTransferTerminalResults<S> {
     /// React's props: `jobs`, `excludeJobId`, `hide`.
-    pub(crate) fn new(
+    pub fn new(
         jobs: Vec<TerminalJobView>,
         exclude_job_id: Option<String>,
         hide: bool,
@@ -498,20 +498,20 @@ impl<S: 'static> DataTransferTerminalResults<S> {
 
     /// The `loaded` `useState` snapshot as of this frame (the host copies
     /// it out of [`TerminalResultsState`] each render).
-    pub(crate) fn loaded(mut self, loaded: Option<(String, TerminalJobDetails)>) -> Self {
+    pub fn loaded(mut self, loaded: Option<(String, TerminalJobDetails)>) -> Self {
         self.loaded = loaded;
         self
     }
 
     /// The `failedJobId` `useState` snapshot as of this frame.
-    pub(crate) fn failed_job_id(mut self, failed_job_id: Option<String>) -> Self {
+    pub fn failed_job_id(mut self, failed_job_id: Option<String>) -> Self {
         self.failed_job_id = failed_job_id;
         self
     }
 
     /// Whether the verdict panel's transient "已复制" feedback is visible
     /// this frame (`now < copied_until`, computed by the host).
-    pub(crate) fn copied(mut self, copied: bool) -> Self {
+    pub fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
     }
@@ -519,14 +519,14 @@ impl<S: 'static> DataTransferTerminalResults<S> {
     /// The verdict panel's `useCopyFeedback` deadline write, forwarded
     /// from the host. Without it the panel's error copy button renders but
     /// does nothing, like a React panel whose hook never resolves.
-    pub(crate) fn on_copy_tx(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_copy_tx(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_copy = Some(Rc::new(f));
         self
     }
 
     /// Builds the strip, or `el()` (nothing) when there is no terminal job
     /// — React's early `return null`.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let Some(terminal) = terminal_job(&self.jobs, self.exclude_job_id.as_deref(), self.hide)
         else {

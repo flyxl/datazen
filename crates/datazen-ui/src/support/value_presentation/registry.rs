@@ -21,13 +21,13 @@ use crate::support::value_presentation::contracts::ValuePresentationContribution
 /// came from (an id re-registered afterwards is a *different* registration
 /// the old handle must not touch).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct RegistrationHandle {
+pub struct RegistrationHandle {
     token: u64,
 }
 
 /// A subscription release handle with the same single-ownership semantics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SubscriptionHandle {
+pub struct SubscriptionHandle {
     token: u64,
 }
 
@@ -45,7 +45,7 @@ struct Listener {
 /// The value-presentation set registry (React
 /// `ValuePresentationRegistryImpl`).
 #[derive(Default)]
-pub(crate) struct ValuePresentationRegistry {
+pub struct ValuePresentationRegistry {
     registrations: Vec<Registration>,
     listeners: Vec<Listener>,
     revision_counter: u64,
@@ -53,13 +53,13 @@ pub(crate) struct ValuePresentationRegistry {
 }
 
 impl ValuePresentationRegistry {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// Register a contribution; a duplicate id is an error (never an
     /// overwrite). On success returns the release handle.
-    pub(crate) fn register(
+    pub fn register(
         &mut self,
         contribution: Rc<dyn ValuePresentationContribution>,
     ) -> Result<RegistrationHandle, String> {
@@ -80,7 +80,7 @@ impl ValuePresentationRegistry {
 
     /// Explicitly unregister by id; unknown ids are a no-op (no
     /// notification, no revision bump).
-    pub(crate) fn unregister(&mut self, id: &str) {
+    pub fn unregister(&mut self, id: &str) {
         if let Some(position) =
             self.registrations.iter().position(|registration| registration.id == id)
         {
@@ -91,7 +91,7 @@ impl ValuePresentationRegistry {
 
     /// Release one registration via its handle: removes the registration
     /// only if the handle's token still owns it (silent no-op otherwise).
-    pub(crate) fn release(&mut self, handle: RegistrationHandle) {
+    pub fn release(&mut self, handle: RegistrationHandle) {
         if let Some(position) = self
             .registrations
             .iter()
@@ -102,7 +102,7 @@ impl ValuePresentationRegistry {
         }
     }
 
-    pub(crate) fn get(&self, id: &str) -> Option<Rc<dyn ValuePresentationContribution>> {
+    pub fn get(&self, id: &str) -> Option<Rc<dyn ValuePresentationContribution>> {
         self.registrations
             .iter()
             .find(|registration| registration.id == id)
@@ -110,7 +110,7 @@ impl ValuePresentationRegistry {
     }
 
     /// All contributions in registration order.
-    pub(crate) fn list(&self) -> Vec<Rc<dyn ValuePresentationContribution>> {
+    pub fn list(&self) -> Vec<Rc<dyn ValuePresentationContribution>> {
         self.registrations
             .iter()
             .map(|registration| Rc::clone(&registration.contribution))
@@ -118,20 +118,20 @@ impl ValuePresentationRegistry {
     }
 
     /// Subscribe to register/unregister changes; the handle unsubscribes.
-    pub(crate) fn subscribe(&mut self, callback: Box<dyn Fn()>) -> SubscriptionHandle {
+    pub fn subscribe(&mut self, callback: Box<dyn Fn()>) -> SubscriptionHandle {
         self.next_token += 1;
         let token = self.next_token;
         self.listeners.push(Listener { token, callback });
         SubscriptionHandle { token }
     }
 
-    pub(crate) fn unsubscribe(&mut self, handle: SubscriptionHandle) {
+    pub fn unsubscribe(&mut self, handle: SubscriptionHandle) {
         self.listeners.retain(|listener| listener.token != handle.token);
     }
 
     /// The contribution revision: bumped on every successful
     /// register/unregister; stable when nothing changed.
-    pub(crate) fn revision(&self) -> u64 {
+    pub fn revision(&self) -> u64 {
         self.revision_counter
     }
 

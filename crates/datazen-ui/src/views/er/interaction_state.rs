@@ -16,17 +16,17 @@ use crate::views::er::graph::{ErEdge, ErNode, ErPosition};
 /// A position the user dragged a node to.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct PinnedPosition {
+pub struct PinnedPosition {
     pub x: f32,
     pub y: f32,
 }
 
 /// Opacity of an edge that is not related to the hovered table.
-pub(crate) const HOVER_DIM_OPACITY: f32 = 0.15;
+pub const HOVER_DIM_OPACITY: f32 = 0.15;
 /// Stroke width of an edge that is related to the hovered table.
-pub(crate) const HOVER_EMPHASIS_WIDTH: f32 = 2.5;
+pub const HOVER_EMPHASIS_WIDTH: f32 = 2.5;
 /// Draw order for emphasised edges, so they sit above the dimmed ones.
-pub(crate) const HOVER_EMPHASIS_Z_INDEX: i32 = 1000;
+pub const HOVER_EMPHASIS_Z_INDEX: i32 = 1000;
 
 /// Re-apply hand-placed positions over a fresh layout.
 ///
@@ -36,7 +36,7 @@ pub(crate) const HOVER_EMPHASIS_Z_INDEX: i32 = 1000;
 /// it would throw away every hand-placed node each time. A pin for a table
 /// that is no longer on the canvas is simply ignored.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
-pub(crate) fn apply_pinned_positions(
+pub fn apply_pinned_positions(
     nodes: &[ErNode],
     pinned: &HashMap<String, PinnedPosition>,
 ) -> Vec<ErNode> {
@@ -58,7 +58,7 @@ pub(crate) fn apply_pinned_positions(
 /// Returns `None` when nothing is hovered, so callers can skip the styling
 /// work entirely rather than dimming everything.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
-pub(crate) fn hovered_neighbourhood(
+pub fn hovered_neighbourhood(
     edges: &[ErEdge],
     hovered: Option<&str>,
 ) -> Option<HashSet<String>> {
@@ -80,7 +80,7 @@ pub(crate) fn hovered_neighbourhood(
 /// A node the search already dimmed stays dimmed: hovering must not un-dim
 /// what an earlier pass darkened.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
-pub(crate) fn apply_hover_to_nodes(
+pub fn apply_hover_to_nodes(
     nodes: &[ErNode],
     neighbourhood: Option<&HashSet<String>>,
 ) -> Vec<ErNode> {
@@ -107,7 +107,7 @@ pub(crate) fn apply_hover_to_nodes(
 /// Styling the edge already had (its stroke, say) is preserved — only the
 /// hover fields are touched.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
-pub(crate) fn apply_hover_to_edges(edges: &[ErEdge], hovered: Option<&str>) -> Vec<ErEdge> {
+pub fn apply_hover_to_edges(edges: &[ErEdge], hovered: Option<&str>) -> Vec<ErEdge> {
     let Some(hovered) = hovered else {
         return edges.to_vec();
     };

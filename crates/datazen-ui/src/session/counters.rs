@@ -30,7 +30,7 @@ const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 /// value keeps them distinct instead of stringifying up front.
 #[allow(dead_code)] // foundation API; consumers land with the session controllers
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum CounterInput {
+pub enum CounterInput {
     /// A JSON number. Only a non-negative safe integer survives.
     Number(f64),
     /// A decimal string — the encoding Rust actually emits (CM-01).
@@ -41,7 +41,7 @@ pub(crate) enum CounterInput {
 /// React function throws, preserved verbatim by [`CounterError::as_str`].
 #[allow(dead_code)] // foundation API; consumers land with the session controllers
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CounterError {
+pub enum CounterError {
     /// A number that is not a safe integer (`Unsafe counter encoding`).
     Unsafe,
     /// A value that is not one or more ASCII digits (`Invalid counter
@@ -51,7 +51,7 @@ pub(crate) enum CounterError {
 
 #[allow(dead_code)] // diagnostic surface of the reusable error
 impl CounterError {
-    pub(crate) fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Unsafe => "Unsafe counter encoding",
             Self::Invalid => "Invalid counter encoding",
@@ -73,13 +73,13 @@ impl std::error::Error for CounterError {}
 /// counter with `collect_str`; the React facade only *nominally* types this as
 /// a number.
 #[allow(dead_code)] // foundation API; consumers land with the session controllers
-pub(crate) type Counter = String;
+pub type Counter = String;
 
 /// A non-negative integer of arbitrary size, stored in canonical decimal form
 /// (no leading zeros, `"0"` for zero). This is the React `bigint`.
 #[allow(dead_code)] // foundation API; consumers land with the session controllers
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct BigCounter(String);
+pub struct BigCounter(String);
 
 #[allow(dead_code)] // canonicalisation and display of the reusable big integer
 impl BigCounter {
@@ -91,7 +91,7 @@ impl BigCounter {
     }
 
     /// The canonical decimal form — exactly what goes back on the wire.
-    pub(crate) fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         &self.0
     }
 }
@@ -119,7 +119,7 @@ fn is_safe_integer(value: f64) -> bool {
 
 /// `counterValue`: narrow a wire counter to a big integer, or explain why it
 /// cannot be trusted.
-pub(crate) fn counter_value(input: CounterInput) -> Result<BigCounter, CounterError> {
+pub fn counter_value(input: CounterInput) -> Result<BigCounter, CounterError> {
     match input {
         CounterInput::Number(value) => {
             if !is_safe_integer(value) {
@@ -151,7 +151,7 @@ pub(crate) fn counter_value(input: CounterInput) -> Result<BigCounter, CounterEr
 /// with the runtime epoch it was bound to. Both are opaque ids (`Id` in TS).
 #[allow(dead_code)] // foundation API; consumers land with the session controllers
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SessionHandle {
+pub struct SessionHandle {
     pub db_session_id: String,
     pub runtime_epoch: String,
 }
@@ -159,7 +159,7 @@ pub(crate) struct SessionHandle {
 /// `sameHandle`: both handles must exist and agree on both the session id and
 /// the runtime epoch. A missing handle (`null` on the React side) is never
 /// equal to anything, not even another missing handle.
-pub(crate) fn same_handle(a: Option<&SessionHandle>, b: Option<&SessionHandle>) -> bool {
+pub fn same_handle(a: Option<&SessionHandle>, b: Option<&SessionHandle>) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => {
             a.db_session_id == b.db_session_id && a.runtime_epoch == b.runtime_epoch
@@ -170,6 +170,6 @@ pub(crate) fn same_handle(a: Option<&SessionHandle>, b: Option<&SessionHandle>) 
 
 /// `wireCounter`: the decimal string a Rust counter travels as. The input is a
 /// big integer (React `bigint`); the output is the wire `Counter`.
-pub(crate) fn wire_counter(value: &BigCounter) -> Counter {
+pub fn wire_counter(value: &BigCounter) -> Counter {
     value.as_str().to_owned()
 }

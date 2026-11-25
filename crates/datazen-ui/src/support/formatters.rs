@@ -45,7 +45,7 @@ fn has_zone_designator(value: &str) -> bool {
 
 /// JS `String(number)`: an integral float prints without `.0`, and a float
 /// outside the exactly-representable integer range keeps serde's own text.
-pub(crate) fn number_text(number: &serde_json::Number) -> String {
+pub fn number_text(number: &serde_json::Number) -> String {
     if let Some(integer) = number.as_i64() {
         return integer.to_string();
     }
@@ -87,7 +87,7 @@ fn js_array_element_text(value: &Value) -> String {
 /// milliseconds; zone-less strings are returned verbatim; zoned strings are
 /// normalised to `YYYY-MM-DDTHH:MM:SS.sssZ`; everything else falls back to
 /// its textual form.
-pub(crate) fn format_timestamp(value: &Value) -> String {
+pub fn format_timestamp(value: &Value) -> String {
     match value {
         Value::Null => "NULL".to_owned(),
         Value::Bool(flag) => flag.to_string(),
@@ -122,7 +122,7 @@ pub(crate) fn format_timestamp(value: &Value) -> String {
 
 /// `formatCell` from React: nullish → `NULL`, booleans are lower-case, and
 /// structured values become JSON text.
-pub(crate) fn format_cell(value: &Value) -> String {
+pub fn format_cell(value: &Value) -> String {
     match value {
         Value::Null => "NULL".to_owned(),
         Value::Bool(flag) => flag.to_string(),
@@ -137,7 +137,7 @@ pub(crate) fn format_cell(value: &Value) -> String {
 /// but renders it in the supplied UTC offset (the production wrapper passes
 /// the local offset), and returns an unparseable input unchanged. Locale
 /// ordering is left to the i18n track.
-pub(crate) fn format_last_connected(iso: Option<&str>) -> String {
+pub fn format_last_connected(iso: Option<&str>) -> String {
     let Some(text) = iso.filter(|text| !text.is_empty()) else {
         return t("conn.neverConnected").to_owned();
     };
@@ -158,7 +158,7 @@ pub(crate) fn format_last_connected(iso: Option<&str>) -> String {
 
 /// Testable core of [`format_last_connected`]: `offset_seconds` is the
 /// caller's offset east of UTC (`+08:00` is `28_800`).
-pub(crate) fn format_last_connected_with_offset(iso: Option<&str>, offset_seconds: i32) -> String {
+pub fn format_last_connected_with_offset(iso: Option<&str>, offset_seconds: i32) -> String {
     let Some(text) = iso.filter(|text| !text.is_empty()) else {
         return t("conn.neverConnected").to_owned();
     };
@@ -177,7 +177,7 @@ pub(crate) fn format_last_connected_with_offset(iso: Option<&str>, offset_second
 /// Accepts `YYYY-MM-DD` with an optional `T`/space time, optional seconds and
 /// fraction, then a `Z` or `±HH:MM`/`±HHMM` offset. Returns `None` when the
 /// text has no zone or is not a calendar date.
-pub(crate) fn parse_zoned_instant(text: &str) -> Option<i64> {
+pub fn parse_zoned_instant(text: &str) -> Option<i64> {
     let mut input = text.trim();
     let (offset_minutes, zoned) = if let Some(rest) = input.strip_suffix(['Z', 'z']) {
         input = rest;
@@ -271,7 +271,7 @@ fn split_offset(text: &str) -> Option<(&str, i32)> {
 
 /// `YYYY-MM-DDTHH:MM:SS.sssZ` for an epoch-milliseconds instant
 /// (JS `new Date(ms).toISOString()`, the exact shape).
-pub(crate) fn iso_from_epoch_millis(millis: i64) -> String {
+pub fn iso_from_epoch_millis(millis: i64) -> String {
     let (year, month, day, hour, minute, second) = civil_from_epoch(millis);
     format!(
         "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis_rem:03}Z",

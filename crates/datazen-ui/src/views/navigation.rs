@@ -68,7 +68,7 @@ thread_local! {
 /// `focus_selected` row; `active_descendant` names that same mounted row, and a
 /// layout-time watcher scrolls it back into view after an external selection
 /// change, even when no key or pointer event triggered the rebuild.
-pub(crate) fn navigator_connections_tree(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn navigator_connections_tree(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let filter = state.navigator_filter.text.trim().to_lowercase();
     let visible = state.visible_connections();
     let matches = |c: &ConnectionProfile| {
@@ -273,7 +273,7 @@ fn connection_group_header(
 
 /// The navigator panel: Databases title bar, filter input, connections tree,
 /// object tree and session actions.
-pub(crate) fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let width = state.navigator_width() as f32;
 
     // React's `navigator-title-row` holds the Databases label and the new
@@ -370,7 +370,7 @@ fn navigator_actions(state: &AppState, theme: tok::Theme) -> El {
 /// The object tree below the connections tree: catalog branches (database →
 /// schema → category) and leaves (table/view) with indent and icons, narrowed by
 /// the navigator filter.
-pub(crate) fn object_tree(state: &AppState, theme: tok::Theme) -> El {
+pub fn object_tree(state: &AppState, theme: tok::Theme) -> El {
     let catalog = state.catalog();
     let filter = state.navigator_filter.text.trim().to_lowercase();
     let mut rows: Vec<El> = Vec::new();
@@ -465,7 +465,7 @@ pub(crate) fn object_tree(state: &AppState, theme: tok::Theme) -> El {
     tree
 }
 
-pub(crate) fn er_button(state: &AppState, theme: tok::Theme) -> El {
+pub fn er_button(state: &AppState, theme: tok::Theme) -> El {
     if !state.session_open() {
         return row().key("er-button-absent").h(0.0);
     }
@@ -473,7 +473,7 @@ pub(crate) fn er_button(state: &AppState, theme: tok::Theme) -> El {
         .on_press(|state: &mut AppState| state.open_er())
 }
 
-pub(crate) fn refresh_button(state: &AppState, theme: tok::Theme) -> El {
+pub fn refresh_button(state: &AppState, theme: tok::Theme) -> El {
     if !state.session_open() {
         return row().key("tree-refresh-absent").h(0.0);
     }
@@ -486,7 +486,7 @@ pub(crate) fn refresh_button(state: &AppState, theme: tok::Theme) -> El {
     .on_press(|state: &mut AppState| state.refresh_catalog())
 }
 
-pub(crate) fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
+pub fn disconnect_button(state: &AppState, theme: tok::Theme) -> El {
     if !state.session_open() {
         return row().key("disconnect-absent").h(0.0);
     }

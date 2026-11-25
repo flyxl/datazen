@@ -18,4 +18,4 @@
 //! bridge fetch, the real window manager) at compile time.
 
 /// `IS_DESKTOP_BUILD`: this build is the desktop form.
-pub(crate) const IS_DESKTOP_BUILD: bool = true;
+pub const IS_DESKTOP_BUILD: bool = true;

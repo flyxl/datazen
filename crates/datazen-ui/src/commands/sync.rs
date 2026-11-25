@@ -20,5 +20,5 @@
 //! [`runner`] (the selection folding, the submit→poll→resolve
 //! machines, the staging).
 
-pub(crate) mod runner;
-pub(crate) mod wire;
+pub mod runner;
+pub mod wire;

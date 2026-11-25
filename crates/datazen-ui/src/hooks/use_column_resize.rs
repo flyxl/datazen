@@ -45,36 +45,36 @@
 use std::collections::BTreeMap;
 
 /// The untyped fallback width (React `DEFAULT_COL_WIDTH`).
-pub(crate) const DEFAULT_COL_WIDTH: f32 = 150.0;
+pub const DEFAULT_COL_WIDTH: f32 = 150.0;
 /// The drag floor (React `MIN_COL_WIDTH`).
-pub(crate) const MIN_COL_WIDTH: f32 = 60.0;
+pub const MIN_COL_WIDTH: f32 = 60.0;
 /// The measurement clamp (React `MAX_COL_WIDTH`).
-pub(crate) const MAX_COL_WIDTH: f32 = 400.0;
+pub const MAX_COL_WIDTH: f32 = 400.0;
 /// Header char width estimate (React `HEADER_CHAR_PX`).
-pub(crate) const HEADER_CHAR_PX: f32 = 6.5;
+pub const HEADER_CHAR_PX: f32 = 6.5;
 /// Data char width estimate (React `DATA_CHAR_PX`).
-pub(crate) const DATA_CHAR_PX: f32 = 7.5;
+pub const DATA_CHAR_PX: f32 = 7.5;
 /// Cell horizontal padding (React `CELL_PADDING`).
-pub(crate) const CELL_PADDING: f32 = 24.0;
+pub const CELL_PADDING: f32 = 24.0;
 /// Header content gap (React `HEADER_CONTENT_GAP`).
-pub(crate) const HEADER_CONTENT_GAP: f32 = 8.0;
+pub const HEADER_CONTENT_GAP: f32 = 8.0;
 /// How many rows the data sample measures (React `SAMPLE_ROWS`).
-pub(crate) const SAMPLE_ROWS: usize = 20;
+pub const SAMPLE_ROWS: usize = 20;
 /// The always-present sort menu button's reservation.
-pub(crate) const SORT_CONTROL_WIDTH: f32 = 24.0;
+pub const SORT_CONTROL_WIDTH: f32 = 24.0;
 /// The multi-sort position badge's extra width.
-pub(crate) const SORT_BADGE_EXTRA_WIDTH: f32 = 24.0;
+pub const SORT_BADGE_EXTRA_WIDTH: f32 = 24.0;
 
 /// One column's inputs for the width heuristic (React
 /// `{ name, type? }`).
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ColumnWidthInput<'a> {
+pub struct ColumnWidthInput<'a> {
     pub name: &'a str,
     pub data_type: Option<&'a str>,
 }
 
 impl<'a> ColumnWidthInput<'a> {
-    pub(crate) fn new(name: &'a str, data_type: Option<&'a str>) -> Self {
+    pub fn new(name: &'a str, data_type: Option<&'a str>) -> Self {
         Self { name, data_type }
     }
 }
@@ -82,13 +82,13 @@ impl<'a> ColumnWidthInput<'a> {
 /// A sort the header shows (React `{ column, descending? }`; only the
 /// column name matters for widths).
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ColumnSortSpec<'a> {
+pub struct ColumnSortSpec<'a> {
     pub column: &'a str,
     pub descending: Option<bool>,
 }
 
 /// `computeInitialColumnWidths` — the pure width heuristic, verbatim.
-pub(crate) fn compute_initial_column_widths(
+pub fn compute_initial_column_widths(
     columns: &[ColumnWidthInput<'_>],
     rows: &[Vec<serde_json::Value>],
 ) -> Vec<f32> {
@@ -164,7 +164,7 @@ fn cell_display(cell: &serde_json::Value) -> Option<String> {
 /// `useColumnResize`'s options (React `UseColumnResizeOptions`; the
 /// commit callback is [`ColumnResizeDrag::on_end`]'s return — the host
 /// persists what it hands back).
-pub(crate) struct ColumnResizeOptions<'a> {
+pub struct ColumnResizeOptions<'a> {
     /// Column definitions for smart width calculation.
     pub columns: Option<&'a [ColumnWidthInput<'a>]>,
     /// First page of rows for data-aware width calculation.
@@ -182,7 +182,7 @@ pub(crate) struct ColumnResizeOptions<'a> {
 impl<'a> ColumnResizeOptions<'a> {
     /// React's defaults: `defaultWidth = 150`, `minWidth = 60`, no
     /// columns, no rows, no persisted widths.
-    pub(crate) fn new(count: usize) -> Self {
+    pub fn new(count: usize) -> Self {
         Self {
             columns: None,
             rows: &[],
@@ -204,14 +204,14 @@ struct SmartCache {
 /// The hook's state: the dragged widths by name and by position, plus
 /// the signature-keyed smart cache.
 #[derive(Default)]
-pub(crate) struct ColumnResizeState {
+pub struct ColumnResizeState {
     resized_by_name: BTreeMap<String, f32>,
     resized_by_index: BTreeMap<usize, f32>,
     smart: Option<SmartCache>,
 }
 
 impl ColumnResizeState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -239,7 +239,7 @@ impl ColumnResizeState {
     /// dragged widths applied — by name when the columns carry names
     /// (`resized ?? persisted ?? smart ?? default`), by position
     /// otherwise.
-    pub(crate) fn column_widths(&mut self, opts: &ColumnResizeOptions<'_>) -> Vec<f32> {
+    pub fn column_widths(&mut self, opts: &ColumnResizeOptions<'_>) -> Vec<f32> {
         // Compute (or hit the cache for) the smart widths first, then
         // read the dragged maps — the two borrows never overlap.
         let smart: Option<Vec<f32>> =
@@ -274,7 +274,7 @@ impl ColumnResizeState {
     /// `onResizeStart(colIndex, startX)`: the drag's fixed inputs. The
     /// host feeds each pointer move into [`ColumnResizeDrag::on_move`]
     /// and the release into [`ColumnResizeDrag::on_end`].
-    pub(crate) fn begin_drag(
+    pub fn begin_drag(
         &mut self,
         opts: &ColumnResizeOptions<'_>,
         col_index: usize,
@@ -296,7 +296,7 @@ impl ColumnResizeState {
 
 /// One drag in flight (React's `onMove`/`onUp` closures over
 /// `colIndex`, `startX`, `startWidth` and the column's name).
-pub(crate) struct ColumnResizeDrag {
+pub struct ColumnResizeDrag {
     col_index: usize,
     name: Option<String>,
     start_x: f32,
@@ -308,7 +308,7 @@ impl ColumnResizeDrag {
     /// The `pointermove` handler: `max(minWidth, startWidth + delta)`,
     /// filed under the column's name when it has one, else by position
     /// (the drag still works, it just cannot survive a reorder).
-    pub(crate) fn on_move(&self, state: &mut ColumnResizeState, client_x: f32) {
+    pub fn on_move(&self, state: &mut ColumnResizeState, client_x: f32) {
         let delta = client_x - self.start_x;
         let next = (self.start_width + delta).max(self.min_width);
         if let Some(name) = &self.name {
@@ -322,7 +322,7 @@ impl ColumnResizeDrag {
     /// — the host files them under the table's identity (DB-12). `None`
     /// when there are no columns to key by (React never fires
     /// `onWidthsCommit` without names).
-    pub(crate) fn on_end(
+    pub fn on_end(
         &self,
         state: &ColumnResizeState,
         opts: &ColumnResizeOptions<'_>,
@@ -347,7 +347,7 @@ impl ColumnResizeDrag {
 /// `adjustWidthsForSort`: a single-column sort uses the same adaptive
 /// control as the unsorted header (no change); a multi-column sort adds
 /// the position badge width beside the control for each sorted column.
-pub(crate) fn adjust_widths_for_sort(
+pub fn adjust_widths_for_sort(
     widths: &[f32],
     columns: &[ColumnWidthInput<'_>],
     sorts: &[ColumnSortSpec<'_>],

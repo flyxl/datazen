@@ -48,7 +48,7 @@ use std::collections::{HashMap, HashSet};
 /// React `TableType` (`types/connection.ts:98`) — the relation kinds the
 /// catalog lists.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TableTypeVm {
+pub enum TableTypeVm {
     Table,
     View,
     MaterializedView,
@@ -57,7 +57,7 @@ pub(crate) enum TableTypeVm {
 
 impl TableTypeVm {
     /// The wire spelling (`relation.kind`).
-    pub(crate) fn wire_str(self) -> &'static str {
+    pub fn wire_str(self) -> &'static str {
         match self {
             Self::Table => "table",
             Self::View => "view",
@@ -70,18 +70,18 @@ impl TableTypeVm {
 /// React `TableInfo` (`types/connection.ts:113`) — one `listTables` row.
 /// `row_count` is part of the wire shape; the pairing never reads it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TableInfoVm {
-    pub(crate) name: String,
+pub struct TableInfoVm {
+    pub name: String,
     /// `schema?: string | null` — null on the wire for schema-less engines.
-    pub(crate) schema: Option<String>,
-    pub(crate) table_type: TableTypeVm,
-    pub(crate) row_count: Option<u64>,
+    pub schema: Option<String>,
+    pub table_type: TableTypeVm,
+    pub row_count: Option<u64>,
 }
 
 /// React `SchemaDiffTablePick['origin']` — the stable UI identity for
 /// source/target metadata rows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TablePickOriginVm {
+pub enum TablePickOriginVm {
     Both,
     SourceOnly,
     TargetOnly,
@@ -89,7 +89,7 @@ pub(crate) enum TablePickOriginVm {
 
 impl TablePickOriginVm {
     /// The React literal spellings.
-    pub(crate) fn wire_str(self) -> &'static str {
+    pub fn wire_str(self) -> &'static str {
         match self {
             Self::Both => "both",
             Self::SourceOnly => "source-only",
@@ -100,14 +100,14 @@ impl TablePickOriginVm {
 
 /// React `SchemaDiffTablePick` (`schemaDiffTableNames.ts:41`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SchemaDiffTablePickVm {
-    pub(crate) name: String,
-    pub(crate) enabled: bool,
-    pub(crate) origin: TablePickOriginVm,
+pub struct SchemaDiffTablePickVm {
+    pub name: String,
+    pub enabled: bool,
+    pub origin: TablePickOriginVm,
     /// The exact selector used when reading the source endpoint.
-    pub(crate) source_name: Option<String>,
+    pub source_name: Option<String>,
     /// The exact selector used when reading the target endpoint.
-    pub(crate) target_name: Option<String>,
+    pub target_name: Option<String>,
 }
 
 /// `table.schema?.trim()` — trimmed, and the falsy results (`null`,
@@ -123,7 +123,7 @@ fn trimmed_schema(schema: &Option<String>) -> Option<&str> {
 /// tables of the active schema reach the pairing. `active_schema` keeps
 /// React's `string | undefined` truthiness — `''` is no filter at all, and
 /// a relation without a (non-empty) schema passes every filter.
-pub(crate) fn filter_tables_for_schema<'a>(
+pub fn filter_tables_for_schema<'a>(
     tables: &'a [TableInfoVm],
     active_schema: &str,
 ) -> Vec<&'a TableInfoVm> {
@@ -150,7 +150,7 @@ pub(crate) fn filter_tables_for_schema<'a>(
 /// React `qualifySchemaDiffTableName` (`schemaDiffTableNames.ts:18`): the
 /// table identifier passed to Schema Diff IPC — schema-qualified when the
 /// schema is set and is (or there is no) active schema.
-pub(crate) fn qualify_schema_diff_table_name(
+pub fn qualify_schema_diff_table_name(
     table: &TableInfoVm,
     active_schema: &str,
 ) -> String {
@@ -165,7 +165,7 @@ pub(crate) fn qualify_schema_diff_table_name(
 /// React `mergeSchemaDiffTablePicks` (`schemaDiffTableNames.ts:74`): merge
 /// the two endpoint inventories using the relation name in the selected
 /// schema as the logical identity (see the module docs for the rules).
-pub(crate) fn merge_schema_diff_table_picks(
+pub fn merge_schema_diff_table_picks(
     source_tables: &[TableInfoVm],
     target_tables: &[TableInfoVm],
     source_schema: &str,
@@ -230,7 +230,7 @@ pub(crate) fn merge_schema_diff_table_picks(
 /// added` / `extraOnTarget ?? removed` prefer the explicit fields over
 /// the legacy aliases. Production consumer: the wizard window's
 /// `tableHasDiff` map (T309, `schema_diff_window::state`).
-pub(crate) fn table_diff_has_changes(diff: &crate::components::schema::schema_diff_panel::TableSchemaDiffVm) -> bool {
+pub fn table_diff_has_changes(diff: &crate::components::schema::schema_diff_panel::TableSchemaDiffVm) -> bool {
     if diff.target_only {
         return true;
     }
@@ -245,13 +245,13 @@ pub(crate) fn table_diff_has_changes(diff: &crate::components::schema::schema_di
 }
 
 /// React `enabledTableNames`: the enabled picks' bare names.
-pub(crate) fn enabled_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
+pub fn enabled_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
     picks.iter().filter(|row| row.enabled).map(|row| row.name.clone()).collect()
 }
 
 /// React `enabledSourceTableNames`: enabled non-target-only picks, by
 /// their exact source selector (`sourceName ?? name`).
-pub(crate) fn enabled_source_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
+pub fn enabled_source_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
     picks
         .iter()
         .filter(|row| row.enabled && row.origin != TablePickOriginVm::TargetOnly)
@@ -261,7 +261,7 @@ pub(crate) fn enabled_source_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec
 
 /// React `enabledTargetOnlyTableNames`: enabled target-only picks, by
 /// their exact target selector (`targetName ?? name`).
-pub(crate) fn enabled_target_only_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
+pub fn enabled_target_only_table_names(picks: &[SchemaDiffTablePickVm]) -> Vec<String> {
     picks
         .iter()
         .filter(|row| row.enabled && row.origin == TablePickOriginVm::TargetOnly)
@@ -269,7 +269,7 @@ pub(crate) fn enabled_target_only_table_names(picks: &[SchemaDiffTablePickVm]) -
         .collect()
 }
 
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     fn table(schema: Option<&str>, name: &str) -> TableInfoVm {

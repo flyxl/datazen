@@ -78,11 +78,11 @@ use crate::support::value_presentation::value_presentation_rules::{
 /// A column input for plan building (React `PresentationPlanColumn`): the
 /// host's minimal metadata, independent of the grid's column model.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct PresentationPlanColumn<'a> {
-    pub(crate) name: &'a str,
-    pub(crate) data_type: Option<&'a str>,
-    pub(crate) cell_type: Option<CellType>,
-    pub(crate) hints: Option<&'a CellTypeHints>,
+pub struct PresentationPlanColumn<'a> {
+    pub name: &'a str,
+    pub data_type: Option<&'a str>,
+    pub cell_type: Option<CellType>,
+    pub hints: Option<&'a CellTypeHints>,
 }
 
 /// The semantic-kind mapping table (React's verbatim):
@@ -90,7 +90,7 @@ pub(crate) struct PresentationPlanColumn<'a> {
 /// number → number; text / enum / uuid → text; bool / json / bytes /
 /// unknown → other. A missing cellType resolves through
 /// [`resolve_cell_type`].
-pub(crate) fn resolve_presentation_semantic_kind(
+pub fn resolve_presentation_semantic_kind(
     column: &PresentationPlanColumn<'_>,
 ) -> SemanticKind {
     let cell_type = column
@@ -119,7 +119,7 @@ pub(crate) fn resolve_presentation_semantic_kind(
 }
 
 /// Column input + full source → the column context prepare receives.
-pub(crate) fn build_presentation_column_context<'a>(
+pub fn build_presentation_column_context<'a>(
     column: &PresentationPlanColumn<'a>,
     source: Option<ColumnSource<'a>>,
 ) -> PresentationColumnContext<'a> {
@@ -140,7 +140,7 @@ pub(crate) fn build_presentation_column_context<'a>(
 /// table, column])` — no case folding (driver identifier semantics are
 /// preserved); missing fields are null and empty strings stay distinct
 /// from them (design §6, BUG-004 lesson).
-pub(crate) fn column_override_key(source: &ColumnSource<'_>) -> String {
+pub fn column_override_key(source: &ColumnSource<'_>) -> String {
     let parts = json!([
         source.connection_id,
         source.database,
@@ -157,9 +157,9 @@ pub(crate) fn column_override_key(source: &ColumnSource<'_>) -> String {
 
 /// An owned environment snapshot (React's `PresentationEnvironment`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PresentationEnvironmentSnapshot {
-    pub(crate) locale: String,
-    pub(crate) local_time_zone: String,
+pub struct PresentationEnvironmentSnapshot {
+    pub locale: String,
+    pub local_time_zone: String,
 }
 
 impl PresentationEnvironmentSnapshot {
@@ -176,7 +176,7 @@ impl PresentationEnvironmentSnapshot {
 /// navigator and passes the app locale explicitly). The local time zone
 /// comes from `iana-time-zone` (React's Intl resolvedOptions), never
 /// empty.
-pub(crate) fn resolve_presentation_environment(
+pub fn resolve_presentation_environment(
     locale: Option<&str>,
 ) -> PresentationEnvironmentSnapshot {
     let locale = match locale {
@@ -199,20 +199,20 @@ pub(crate) fn resolve_presentation_environment(
 /// deps are the base object's identity; equal content is the ownership
 /// world's faithful stand-in — an equal base yields an equal merge).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ValuePresentationSnapshot {
-    pub(crate) revision: u64,
-    pub(crate) environment: PresentationEnvironmentSnapshot,
-    pub(crate) configs: BTreeMap<String, VersionedPresentationConfig>,
-    pub(crate) enabled_renderer_ids: Vec<String>,
-    pub(crate) overrides: BTreeMap<String, ColumnPresentationOverride>,
-    pub(crate) rules: Vec<ValuePresentationRule>,
+pub struct ValuePresentationSnapshot {
+    pub revision: u64,
+    pub environment: PresentationEnvironmentSnapshot,
+    pub configs: BTreeMap<String, VersionedPresentationConfig>,
+    pub enabled_renderer_ids: Vec<String>,
+    pub overrides: BTreeMap<String, ColumnPresentationOverride>,
+    pub rules: Vec<ValuePresentationRule>,
 }
 
 impl ValuePresentationSnapshot {
     /// The default snapshot (revision 0, all collections empty): the
     /// loading state — temporal columns answer `disabled` and render with
     /// the default display.
-    pub(crate) fn default_snapshot(
+    pub fn default_snapshot(
         environment: PresentationEnvironmentSnapshot,
     ) -> Self {
         Self {
@@ -232,7 +232,7 @@ impl ValuePresentationSnapshot {
 
 /// A plan's status.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ColumnPresentationStatus {
+pub enum ColumnPresentationStatus {
     Ready,
     Default,
     Raw,
@@ -244,7 +244,7 @@ pub(crate) enum ColumnPresentationStatus {
 }
 
 /// The stable present-fallback reason for each non-ready status.
-pub(crate) fn fallback_presentation_reason(status: ColumnPresentationStatus) -> &'static str {
+pub fn fallback_presentation_reason(status: ColumnPresentationStatus) -> &'static str {
     match status {
         // Ready always carries a prepared presenter; defensive parity with
         // React's error value.
@@ -261,21 +261,21 @@ pub(crate) fn fallback_presentation_reason(status: ColumnPresentationStatus) -> 
 
 /// One column's presentation plan: prepare's outcome plus the unified
 /// present entry point.
-pub(crate) struct ColumnPresentationPlan {
-    pub(crate) column_name: String,
-    pub(crate) column: PresentationColumnContext<'static>,
-    pub(crate) status: ColumnPresentationStatus,
-    pub(crate) renderer_id: Option<String>,
-    pub(crate) reason: Option<&'static str>,
+pub struct ColumnPresentationPlan {
+    pub column_name: String,
+    pub column: PresentationColumnContext<'static>,
+    pub status: ColumnPresentationStatus,
+    pub renderer_id: Option<String>,
+    pub reason: Option<&'static str>,
     /// The matching global rule's name (source hint, PRD §3.3).
-    pub(crate) matched_rule_name: Option<String>,
-    pub(crate) prepared: Option<Box<dyn PreparedPresentation>>,
+    pub matched_rule_name: Option<String>,
+    pub prepared: Option<Box<dyn PreparedPresentation>>,
 }
 
 impl ColumnPresentationPlan {
     /// Present one value: ready plans delegate to the prepared presenter;
     /// every other status answers its stable fallback reason.
-    pub(crate) fn present(&self, value: &serde_json::Value) -> PresentationResult {
+    pub fn present(&self, value: &serde_json::Value) -> PresentationResult {
         match &self.prepared {
             Some(prepared) => prepared.present(value),
             None => PresentationResult::unchanged(self.reason.unwrap_or("plan-error")),
@@ -284,12 +284,12 @@ impl ColumnPresentationPlan {
 }
 
 /// `build_column_presentation_plans`' input.
-pub(crate) struct BuildColumnPresentationPlansInput<'a> {
-    pub(crate) columns: Vec<PresentationPlanColumn<'a>>,
+pub struct BuildColumnPresentationPlansInput<'a> {
+    pub columns: Vec<PresentationPlanColumn<'a>>,
     /// The table identity; absent for query-result columns (overrides
     /// unavailable).
-    pub(crate) source: Option<ColumnSource<'a>>,
-    pub(crate) snapshot: &'a ValuePresentationSnapshot,
+    pub source: Option<ColumnSource<'a>>,
+    pub snapshot: &'a ValuePresentationSnapshot,
 }
 
 fn make_fallback_plan(
@@ -541,7 +541,7 @@ fn build_one_column_plan(
 /// Build plans for every column, in input order. Empty input → empty
 /// output; duplicate names produce independent plans (no dedup, no
 /// error).
-pub(crate) fn build_column_presentation_plans(
+pub fn build_column_presentation_plans(
     input: &BuildColumnPresentationPlansInput<'_>,
     registry: &ValuePresentationRegistry,
 ) -> Vec<ColumnPresentationPlan> {
@@ -558,20 +558,20 @@ pub(crate) fn build_column_presentation_plans(
 
 /// `columnsRevision` — a number or a string (React's `number | string`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ColumnsRevision {
+pub enum ColumnsRevision {
     Number(u64),
     Text(String),
 }
 
 /// `compute_presentation_plan_cache_key`'s input.
-pub(crate) struct PresentationPlanCacheKeyInput<'a> {
-    pub(crate) source: Option<ColumnSource<'a>>,
-    pub(crate) columns: Vec<PresentationPlanColumn<'a>>,
-    pub(crate) config_revision: u64,
-    pub(crate) contribution_revision: u64,
-    pub(crate) locale: &'a str,
-    pub(crate) local_time_zone: &'a str,
-    pub(crate) columns_revision: Option<ColumnsRevision>,
+pub struct PresentationPlanCacheKeyInput<'a> {
+    pub source: Option<ColumnSource<'a>>,
+    pub columns: Vec<PresentationPlanColumn<'a>>,
+    pub config_revision: u64,
+    pub contribution_revision: u64,
+    pub locale: &'a str,
+    pub local_time_zone: &'a str,
+    pub columns_revision: Option<ColumnsRevision>,
 }
 
 /// The plan cache key: a stable compact-JSON string covering every
@@ -580,7 +580,7 @@ pub(crate) struct PresentationPlanCacheKeyInput<'a> {
 /// revision, locale, local time zone and (when given) the columns
 /// revision. Rules share the config revision (one save bumps one
 /// revision), so they add no factor of their own.
-pub(crate) fn compute_presentation_plan_cache_key(
+pub fn compute_presentation_plan_cache_key(
     input: &PresentationPlanCacheKeyInput<'_>,
 ) -> String {
     let source_part = match input.source {
@@ -635,7 +635,7 @@ fn semantic_kind_str(kind: SemanticKind) -> &'static str {
 /// A registry handle the plan builder can share with callers that also
 /// need to register (kept for API symmetry with React's default-parameter
 /// form).
-pub(crate) fn registry_with_timestamp() -> ValuePresentationRegistry {
+pub fn registry_with_timestamp() -> ValuePresentationRegistry {
     let mut registry = ValuePresentationRegistry::new();
     let _ = registry.register(crate::support::value_presentation::timestamp_contribution::timestamp_contribution());
     registry

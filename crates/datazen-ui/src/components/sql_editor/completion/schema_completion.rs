@@ -55,7 +55,7 @@ use super::semantic_model::{
 /// SELECT-column extractor reads token streams; the scanner itself is its
 /// own ledger task.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SqlTokenKind {
+pub enum SqlTokenKind {
     Whitespace,
     Semicolon,
     LineComment,
@@ -73,7 +73,7 @@ pub(crate) enum SqlTokenKind {
 
 /// One scanner token. `paren_depth` is the nesting depth the token sits at.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SqlToken {
+pub struct SqlToken {
     pub kind: SqlTokenKind,
     pub text: String,
     pub paren_depth: u32,
@@ -81,7 +81,7 @@ pub(crate) struct SqlToken {
 
 impl SqlToken {
     /// Shorthand for an `Other` token at depth 0.
-    pub(crate) fn word(text: &str) -> Self {
+    pub fn word(text: &str) -> Self {
         Self {
             kind: SqlTokenKind::Other,
             text: text.to_string(),
@@ -90,7 +90,7 @@ impl SqlToken {
     }
 
     /// Shorthand for a `Whitespace` token at depth 0.
-    pub(crate) fn space() -> Self {
+    pub fn space() -> Self {
         Self {
             kind: SqlTokenKind::Whitespace,
             text: " ".to_string(),
@@ -105,7 +105,7 @@ impl SqlToken {
 
 /// The `Completion.type` values the schema sources produce.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SchemaCompletionKind {
+pub enum SchemaCompletionKind {
     /// Columns (`'property'`).
     Property,
     /// Tables and schemas (`'type'`).
@@ -119,7 +119,7 @@ pub(crate) enum SchemaCompletionKind {
 /// replacement text (qualifier-prefixed when the policy asks); `boost`
 /// ranks without excluding.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SchemaCompletionItem {
+pub struct SchemaCompletionItem {
     pub label: String,
     pub filter_text: Option<String>,
     pub kind: SchemaCompletionKind,
@@ -137,14 +137,14 @@ pub(crate) struct SchemaCompletionItem {
 /// (`SqlDialectAdapter`'s completion-facing half, over a resolved
 /// `SqlDialectProfile`). One value per dialect id; clone-cheap.
 #[derive(Clone, Debug)]
-pub(crate) struct SqlCompletionDialect {
+pub struct SqlCompletionDialect {
     profile: SqlDialectProfile,
 }
 
 impl SqlCompletionDialect {
     /// `getDialectAdapter(dialectId)` — unknown ids resolve to `standard`,
     /// the React fallback.
-    pub(crate) fn for_dialect_id(dialect_id: &str) -> Self {
+    pub fn for_dialect_id(dialect_id: &str) -> Self {
         Self {
             profile: resolve_dialect_profile(dialect_id, None),
         }
@@ -152,19 +152,19 @@ impl SqlCompletionDialect {
 
     /// `adapter.quoteIdentifier(name)` — wrap in the dialect's quote style,
     /// escaping the closer.
-    pub(crate) fn quote_identifier(&self, name: &str) -> String {
+    pub fn quote_identifier(&self, name: &str) -> String {
         identifier_quoting::wrap_quoted(name, self.profile.quote_style)
     }
 
     /// `adapter.foldUnquotedIdentifier(name)` — fold the way the dialect's
     /// parser folds unquoted identifiers.
-    pub(crate) fn fold_unquoted_identifier(&self, name: &str) -> String {
+    pub fn fold_unquoted_identifier(&self, name: &str) -> String {
         fold_identifier(name, &self.profile)
     }
 
     /// `adapter.compareIdentifiers(a, b)` — equality after folding both
     /// sides.
-    pub(crate) fn compare_identifiers(&self, a: &str, b: &str) -> bool {
+    pub fn compare_identifiers(&self, a: &str, b: &str) -> bool {
         self.fold_unquoted_identifier(a) == self.fold_unquoted_identifier(b)
     }
 
@@ -173,7 +173,7 @@ impl SqlCompletionDialect {
     /// `identifier_quoting` module by T083): empty and non-plain names
     /// quote, reserved words quote (the dialect's extras included), and a
     /// fold case that would change the spelling quotes.
-    pub(crate) fn should_quote_identifier(&self, name: &str) -> bool {
+    pub fn should_quote_identifier(&self, name: &str) -> bool {
         identifier_quoting::needs_quoting(
             name,
             self.profile.quote_style,
@@ -191,10 +191,10 @@ impl SqlCompletionDialect {
 /// prefix. CodeMirror renders at most `maxRenderedOptions` (50); 300 gives
 /// the fuzzy matcher headroom while bounding object construction and
 /// quote/dialect work.
-pub(crate) const SHORT_PREFIX_COLUMN_CAP: usize = 300;
+pub const SHORT_PREFIX_COLUMN_CAP: usize = 300;
 
 /// Prefix length at/below which the cap applies (implicit typing only).
-pub(crate) const SHORT_PREFIX_LEN: usize = 2;
+pub const SHORT_PREFIX_LEN: usize = 2;
 
 /* -------------------------------------------------------------------------- */
 /*  Pure helpers                                                              */
@@ -204,14 +204,14 @@ pub(crate) const SHORT_PREFIX_LEN: usize = 2;
 /// Cheap pre-filter (prefix/substring, case-insensitive) — the precise
 /// fuzzy ranking still happens inside the completion popup on the
 /// truncated set.
-pub(crate) fn matches_short_prefix(col_name: &str, prefix: &str) -> bool {
+pub fn matches_short_prefix(col_name: &str, prefix: &str) -> bool {
     let lower = col_name.to_lowercase();
     lower.starts_with(prefix) || lower.contains(prefix)
 }
 
 /// `formatColumnDetail`: `dataType · PK · nullable · comment`, skipping
 /// absent parts.
-pub(crate) fn format_column_detail(col: &ColumnSchema) -> String {
+pub fn format_column_detail(col: &ColumnSchema) -> String {
     let mut parts = vec![col.data_type.clone()];
     if col.is_primary_key {
         parts.push("PK".to_string());
@@ -228,7 +228,7 @@ pub(crate) fn format_column_detail(col: &ColumnSchema) -> String {
 /// One related-table boost entry: how much to boost a table the statement
 /// already mentions a relative of, via which relation, from which origin.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RelatedTableBoost {
+pub struct RelatedTableBoost {
     pub boost: i32,
     pub via: String,
     pub origin: String,
@@ -254,7 +254,7 @@ fn relation_kind_text(kind: EditorRelationKind) -> &'static str {
 /// - `Both`: unquoted + quoted for safe identifiers, quoted for
 ///   reserved/special.
 /// - `Always`: every column quoted.
-pub(crate) fn column_completions_from_relation(
+pub fn column_completions_from_relation(
     rel: &EditorRelationMetadata,
     qualifier_prefix: &str,
     dialect: &SqlCompletionDialect,
@@ -349,7 +349,7 @@ pub(crate) fn column_completions_from_relation(
 /// (database) namespace segment compares equal. A related table outranks
 /// an unrelated one without excluding it — the ranking never removes a
 /// valid choice.
-pub(crate) fn relation_completions_from_snapshot(
+pub fn relation_completions_from_snapshot(
     metadata: &EditorMetadataSnapshot,
     dialect: &SqlCompletionDialect,
     qualifier_parts: &[String],
@@ -403,7 +403,7 @@ pub(crate) fn relation_completions_from_snapshot(
 /// Find the snapshot key for a completion label by matching the quoted
 /// relation name. Used to deduplicate filtered vs. remaining relation
 /// completions.
-pub(crate) fn relation_key_from_label(
+pub fn relation_key_from_label(
     label: &str,
     dialect: &SqlCompletionDialect,
     snapshot: &EditorMetadataSnapshot,
@@ -428,7 +428,7 @@ pub(crate) fn relation_key_from_label(
 /// Deduplicates by (folded label, folded qualifier, quotedness) so columns
 /// appearing in multiple tables are listed once per table (the qualifier
 /// differs) while identical columns within one table never duplicate.
-pub(crate) fn all_columns_from_snapshot(
+pub fn all_columns_from_snapshot(
     snapshot: &EditorMetadataSnapshot,
     include_table_prefix: bool,
     dialect: &SqlCompletionDialect,
@@ -503,7 +503,7 @@ pub(crate) fn all_columns_from_snapshot(
 /// skipping functions (identifier followed by `(`), `AS` aliases and
 /// expression keywords. Returns bare column names, unquoted and
 /// fold-cased to lowercase for case-insensitive comparison.
-pub(crate) fn extract_select_columns(tokens: &[SqlToken]) -> Vec<String> {
+pub fn extract_select_columns(tokens: &[SqlToken]) -> Vec<String> {
     if tokens.is_empty() {
         return Vec::new();
     }
@@ -656,7 +656,7 @@ pub(crate) fn extract_select_columns(tokens: &[SqlToken]) -> Vec<String> {
 /// Filter snapshot relations to only those containing ALL of the given
 /// column names (case-insensitive). Empty when the column list is empty or
 /// no table matches every column.
-pub(crate) fn filter_relations_by_columns<'a>(
+pub fn filter_relations_by_columns<'a>(
     snapshot: &'a EditorMetadataSnapshot,
     select_columns: &[String],
     dialect: &SqlCompletionDialect,
@@ -693,7 +693,7 @@ pub(crate) fn filter_relations_by_columns<'a>(
 /// optional (adapter → `dialect_id`, default `standard`; `schema` → the
 /// editor schema tree; `quotePolicy`/`includeTablePrefix` defaults
 /// `'unquoted'`/`true`; `prefixHint`/`relatedTableBoosts` optional).
-pub(crate) struct SchemaCompletionOptions<'a> {
+pub struct SchemaCompletionOptions<'a> {
     pub model: &'a SqlSemanticModel,
     pub snapshot: &'a EditorMetadataSnapshot,
     /// `adapter?: SqlDialectAdapter` — a dialect id resolved through the
@@ -712,7 +712,7 @@ pub(crate) struct SchemaCompletionOptions<'a> {
 
 impl<'a> SchemaCompletionOptions<'a> {
     /// React's field defaults.
-    pub(crate) fn new(
+    pub fn new(
         model: &'a SqlSemanticModel,
         snapshot: &'a EditorMetadataSnapshot,
     ) -> Self {
@@ -753,7 +753,7 @@ fn match_relation<'a>(
 /// qualifiers only) a deep search below the current database hoist.
 /// Returns `None` when the qualifier addresses no namespace node — the
 /// caller keeps its previous behavior, no guessing.
-pub(crate) fn resolve_schema_dot_completions(
+pub fn resolve_schema_dot_completions(
     qualifier_parts: &[String],
     schema: Option<&SqlNamespace>,
     dialect: &SqlCompletionDialect,
@@ -884,7 +884,7 @@ fn find_namespace_branch<'a>(
 /// ambiguous or unresolved, or the resolved relation is a CTE/subquery or
 /// carries no metadata (an empty hit must NOT short-circuit the caller's
 /// schema-tree fallback — it means "no columns known", not "resolved").
-pub(crate) fn resolve_alias_dot_completions(
+pub fn resolve_alias_dot_completions(
     qualifier_parts: &[String],
     model: &SqlSemanticModel,
     snapshot: &EditorMetadataSnapshot,
@@ -1023,7 +1023,7 @@ fn relation_completions_from_editor_schema(
 /// FROM clause AND the metadata snapshot is empty. A short (≤2 chars)
 /// `prefix_hint` pre-filters and truncates so deleting down to a short
 /// prefix does not build items for the whole database.
-pub(crate) fn all_columns_from_editor_schema(
+pub fn all_columns_from_editor_schema(
     schema: &SqlNamespace,
     include_table_prefix: bool,
     dialect: &SqlCompletionDialect,
@@ -1164,7 +1164,7 @@ pub(crate) fn all_columns_from_editor_schema(
 /// 3. `projection` → aliases plus the visible relations' columns, falling
 ///    back to all columns from the snapshot, then from the schema tree.
 /// 4. Anything else → relation completions from the snapshot.
-pub(crate) fn produce_schema_completions(options: &SchemaCompletionOptions<'_>) -> Vec<SchemaCompletionItem> {
+pub fn produce_schema_completions(options: &SchemaCompletionOptions<'_>) -> Vec<SchemaCompletionItem> {
     let dialect = SqlCompletionDialect::for_dialect_id(options.dialect_id);
     let dialect_id = options.dialect_id;
     let intent = &options.model.cursor_intent;
@@ -1409,7 +1409,7 @@ fn fold_name_segment(
 /// character must match to keep the popup alive
 /// (`/^[A-Za-z_$"][\w$"']*$/`).
 #[derive(Clone, Debug)]
-pub(crate) struct SchemaCompletionResult {
+pub struct SchemaCompletionResult {
     pub from: usize,
     pub options: Vec<SchemaCompletionItem>,
 }
@@ -1417,7 +1417,7 @@ pub(crate) struct SchemaCompletionResult {
 /// `validFor` — hand-rolled, the regex's exact semantics: the first
 /// character is a letter, `_`, `$` or `"`; every later character
 /// additionally allows digits and `'`.
-pub(crate) fn completion_valid_for(text: &str) -> bool {
+pub fn completion_valid_for(text: &str) -> bool {
     let mut chars = text.chars();
     let Some(first) = chars.next() else {
         return false;
@@ -1434,7 +1434,7 @@ pub(crate) fn completion_valid_for(text: &str) -> bool {
 /// `createSchemaCompletionSource`: wrap `produceSchemaCompletions` as a
 /// completion source — one `()`-callable producing the result, `None`
 /// when there is nothing to offer (CodeMirror's "no popup").
-pub(crate) fn create_schema_completion_source(
+pub fn create_schema_completion_source(
     options: &SchemaCompletionOptions<'_>,
 ) -> Option<SchemaCompletionResult> {
     let completions = produce_schema_completions(options);

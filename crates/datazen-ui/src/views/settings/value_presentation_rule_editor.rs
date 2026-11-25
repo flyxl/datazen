@@ -97,13 +97,13 @@ const TEXT_XS: TextStyle = TextStyle::new(12.0, 400.0);
 /// `PatternMode` — an exact whole-string match or a restricted
 /// regex.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PatternMode {
+pub enum PatternMode {
     Exact,
     Regex,
 }
 
 impl PatternMode {
-    pub(crate) fn as_wire(self) -> &'static str {
+    pub fn as_wire(self) -> &'static str {
         match self {
             PatternMode::Exact => "exact",
             PatternMode::Regex => "regex",
@@ -111,7 +111,7 @@ impl PatternMode {
     }
 
     /// `isPatternMode(value)`.
-    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+    pub fn from_wire(value: &str) -> Option<Self> {
         match value {
             "exact" => Some(PatternMode::Exact),
             "regex" => Some(PatternMode::Regex),
@@ -124,7 +124,7 @@ impl PatternMode {
 /// vocabulary (the rule's own kind folds unix-seconds and
 /// unix-milliseconds into one `unix` kind with a unit).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InterpretationChoice {
+pub enum InterpretationChoice {
     Native,
     UnixSeconds,
     UnixMilliseconds,
@@ -132,7 +132,7 @@ pub(crate) enum InterpretationChoice {
 }
 
 impl InterpretationChoice {
-    pub(crate) fn as_wire(self) -> &'static str {
+    pub fn as_wire(self) -> &'static str {
         match self {
             InterpretationChoice::Native => "native",
             InterpretationChoice::UnixSeconds => "unix-seconds",
@@ -142,7 +142,7 @@ impl InterpretationChoice {
     }
 
     /// `isInterpretationChoice(value)`.
-    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+    pub fn from_wire(value: &str) -> Option<Self> {
         match value {
             "native" => Some(InterpretationChoice::Native),
             "unix-seconds" => Some(InterpretationChoice::UnixSeconds),
@@ -155,14 +155,14 @@ impl InterpretationChoice {
 
 /// The display time zone vocabulary (`'local' | 'utc' | 'iana'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TimeZoneKindChoice {
+pub enum TimeZoneKindChoice {
     Local,
     Utc,
     Iana,
 }
 
 impl TimeZoneKindChoice {
-    pub(crate) fn as_wire(self) -> &'static str {
+    pub fn as_wire(self) -> &'static str {
         match self {
             TimeZoneKindChoice::Local => "local",
             TimeZoneKindChoice::Utc => "utc",
@@ -171,7 +171,7 @@ impl TimeZoneKindChoice {
     }
 
     /// `isTimeZoneKindChoice(value)`.
-    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+    pub fn from_wire(value: &str) -> Option<Self> {
         match value {
             "local" => Some(TimeZoneKindChoice::Local),
             "utc" => Some(TimeZoneKindChoice::Utc),
@@ -184,7 +184,7 @@ impl TimeZoneKindChoice {
 /// `SourceTimeZoneChoice` — the source zone adds the "no override"
 /// arm.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SourceTimeZoneChoice {
+pub enum SourceTimeZoneChoice {
     None,
     Local,
     Utc,
@@ -192,7 +192,7 @@ pub(crate) enum SourceTimeZoneChoice {
 }
 
 impl SourceTimeZoneChoice {
-    pub(crate) fn as_wire(self) -> &'static str {
+    pub fn as_wire(self) -> &'static str {
         match self {
             SourceTimeZoneChoice::None => "none",
             SourceTimeZoneChoice::Local => "local",
@@ -202,7 +202,7 @@ impl SourceTimeZoneChoice {
     }
 
     /// `isSourceTimeZoneChoice(value)`.
-    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+    pub fn from_wire(value: &str) -> Option<Self> {
         match value {
             "none" => Some(SourceTimeZoneChoice::None),
             "local" => Some(SourceTimeZoneChoice::Local),
@@ -214,7 +214,7 @@ impl SourceTimeZoneChoice {
 }
 
 /// `FormatSerde`'s wire vocabulary (`'iso' | 'iso-tz' | 'locale'`).
-pub(crate) fn format_as_wire(format: FormatSerde) -> &'static str {
+pub fn format_as_wire(format: FormatSerde) -> &'static str {
     match format {
         FormatSerde::Iso => "iso",
         FormatSerde::IsoTz => "iso-tz",
@@ -223,7 +223,7 @@ pub(crate) fn format_as_wire(format: FormatSerde) -> &'static str {
 }
 
 /// `isTimestampOutputFormat(value)`.
-pub(crate) fn format_from_wire(value: &str) -> Option<FormatSerde> {
+pub fn format_from_wire(value: &str) -> Option<FormatSerde> {
     match value {
         "iso" => Some(FormatSerde::Iso),
         "iso-tz" => Some(FormatSerde::IsoTz),
@@ -235,40 +235,40 @@ pub(crate) fn format_from_wire(value: &str) -> Option<FormatSerde> {
 /// `RuleFormState` — the local draft (React's plain-string fields
 /// are the `TextEdit`s the kit edits in place).
 #[derive(Clone, PartialEq)]
-pub(crate) struct RuleFormState {
-    pub(crate) name: TextEdit,
-    pub(crate) enabled: bool,
-    pub(crate) connection_id: TextEdit,
-    pub(crate) database: TextEdit,
-    pub(crate) namespace: TextEdit,
-    pub(crate) table_mode: PatternMode,
-    pub(crate) table_value: TextEdit,
-    pub(crate) table_ignore_case: bool,
-    pub(crate) column_mode: PatternMode,
-    pub(crate) column_value: TextEdit,
-    pub(crate) column_ignore_case: bool,
-    pub(crate) type_mode: PatternMode,
-    pub(crate) type_value: TextEdit,
-    pub(crate) type_ignore_case: bool,
-    pub(crate) interpretation: InterpretationChoice,
-    pub(crate) format: FormatSerde,
-    pub(crate) display_time_zone_kind: TimeZoneKindChoice,
-    pub(crate) display_iana_name: TextEdit,
-    pub(crate) source_time_zone_kind: SourceTimeZoneChoice,
-    pub(crate) source_iana_name: TextEdit,
-    pub(crate) sample_value: TextEdit,
-    pub(crate) sample_column: TextEdit,
-    pub(crate) sample_type: TextEdit,
-    pub(crate) sample_connection: TextEdit,
-    pub(crate) sample_database: TextEdit,
-    pub(crate) sample_namespace: TextEdit,
-    pub(crate) sample_table: TextEdit,
+pub struct RuleFormState {
+    pub name: TextEdit,
+    pub enabled: bool,
+    pub connection_id: TextEdit,
+    pub database: TextEdit,
+    pub namespace: TextEdit,
+    pub table_mode: PatternMode,
+    pub table_value: TextEdit,
+    pub table_ignore_case: bool,
+    pub column_mode: PatternMode,
+    pub column_value: TextEdit,
+    pub column_ignore_case: bool,
+    pub type_mode: PatternMode,
+    pub type_value: TextEdit,
+    pub type_ignore_case: bool,
+    pub interpretation: InterpretationChoice,
+    pub format: FormatSerde,
+    pub display_time_zone_kind: TimeZoneKindChoice,
+    pub display_iana_name: TextEdit,
+    pub source_time_zone_kind: SourceTimeZoneChoice,
+    pub source_iana_name: TextEdit,
+    pub sample_value: TextEdit,
+    pub sample_column: TextEdit,
+    pub sample_type: TextEdit,
+    pub sample_connection: TextEdit,
+    pub sample_database: TextEdit,
+    pub sample_namespace: TextEdit,
+    pub sample_table: TextEdit,
 }
 
 impl RuleFormState {
     /// `DEFAULT_FORM` with the column pattern defaulting to regex
     /// (the others default to exact).
-    pub(crate) fn default_form() -> Self {
+    pub fn default_form() -> Self {
         Self {
             name: TextEdit::default(),
             enabled: true,
@@ -327,7 +327,7 @@ fn pattern_fields(
 }
 
 /// `formFromRule(rule)`.
-pub(crate) fn form_from_rule(rule: &ValuePresentationRule) -> RuleFormState {
+pub fn form_from_rule(rule: &ValuePresentationRule) -> RuleFormState {
     let r#match = &rule.r#match;
     let options = &rule.options;
     let (table_mode, table_value, table_ignore_case) =
@@ -387,7 +387,7 @@ pub(crate) fn form_from_rule(rule: &ValuePresentationRule) -> RuleFormState {
 /// `patternInput(mode, value, ignoreCase)` — `None` for a blank
 /// value; the trimmed exact value or the trimmed regex source with
 /// `'i'` only when ignore-case is on.
-pub(crate) fn pattern_input(
+pub fn pattern_input(
     mode: PatternMode,
     value: &str,
     ignore_case: bool,
@@ -406,7 +406,7 @@ pub(crate) fn pattern_input(
 }
 
 /// `timeZoneSpec(kind, ianaName)` — the trimmed IANA name.
-pub(crate) fn time_zone_spec(kind: TimeZoneKindChoice, iana_name: &str) -> TimeZoneSpec {
+pub fn time_zone_spec(kind: TimeZoneKindChoice, iana_name: &str) -> TimeZoneSpec {
     match kind {
         TimeZoneKindChoice::Iana => TimeZoneSpec::Iana { name: iana_name.trim().to_owned() },
         TimeZoneKindChoice::Local => TimeZoneSpec::Local,
@@ -426,7 +426,7 @@ fn trim_opt(value: &str) -> Option<&str> {
 
 /// `formToRuleInput(form)` — the form assembled into the unknown
 /// JSON the single validator reads.
-pub(crate) fn form_to_rule_input(form: &RuleFormState) -> Value {
+pub fn form_to_rule_input(form: &RuleFormState) -> Value {
     let mut rule_match = json!({});
     if let Some(connection) = trim_opt(&form.connection_id.text) {
         rule_match["connectionId"] = json!(connection);
@@ -491,7 +491,7 @@ pub(crate) fn form_to_rule_input(form: &RuleFormState) -> Value {
 
 /// `RuleSamplePreview`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum RuleSamplePreview {
+pub enum RuleSamplePreview {
     /// The sample inputs are blank — configuring stays allowed.
     NoSample,
     /// No contribution is registered for the rule's renderer.
@@ -505,22 +505,22 @@ pub(crate) enum RuleSamplePreview {
 }
 
 /// `computeRuleSamplePreview`'s inputs.
-pub(crate) struct RuleSampleInput<'a> {
-    pub(crate) rule: &'a ValuePresentationRule,
-    pub(crate) sample_value: &'a str,
-    pub(crate) sample_column: &'a str,
-    pub(crate) sample_type_name: Option<&'a str>,
-    pub(crate) sample_connection_id: Option<&'a str>,
-    pub(crate) sample_database: Option<&'a str>,
-    pub(crate) sample_namespace: Option<&'a str>,
-    pub(crate) sample_table: Option<&'a str>,
-    pub(crate) contribution: Option<Rc<dyn ValuePresentationContribution>>,
-    pub(crate) environment: PresentationEnvironment<'a>,
+pub struct RuleSampleInput<'a> {
+    pub rule: &'a ValuePresentationRule,
+    pub sample_value: &'a str,
+    pub sample_column: &'a str,
+    pub sample_type_name: Option<&'a str>,
+    pub sample_connection_id: Option<&'a str>,
+    pub sample_database: Option<&'a str>,
+    pub sample_namespace: Option<&'a str>,
+    pub sample_table: Option<&'a str>,
+    pub contribution: Option<Rc<dyn ValuePresentationContribution>>,
+    pub environment: PresentationEnvironment<'a>,
 }
 
 /// `computeRuleSamplePreview` — the sample preview runs the same
 /// road as the runtime (the contribution's prepare / present).
-pub(crate) fn compute_rule_sample_preview(input: &RuleSampleInput<'_>) -> RuleSamplePreview {
+pub fn compute_rule_sample_preview(input: &RuleSampleInput<'_>) -> RuleSamplePreview {
     let value = input.sample_value.trim();
     let column = input.sample_column.trim();
     if value.is_empty() || column.is_empty() {
@@ -589,7 +589,7 @@ pub(crate) fn compute_rule_sample_preview(input: &RuleSampleInput<'_>) -> RuleSa
 /// only through its on_toggle; the scrim closes through
 /// on_close; a choose closes too).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EditorSelect {
+pub enum EditorSelect {
     TableMode,
     ColumnMode,
     TypeMode,
@@ -601,15 +601,15 @@ pub(crate) enum EditorSelect {
 
 /// The editor's state.
 #[derive(Clone, PartialEq)]
-pub(crate) struct ValuePresentationRuleEditorState {
+pub struct ValuePresentationRuleEditorState {
     /// `null` = a new rule; `Some` = editing it (the title and the
     /// form's initial value).
-    pub(crate) initial_rule: Option<ValuePresentationRule>,
-    pub(crate) form: RuleFormState,
+    pub initial_rule: Option<ValuePresentationRule>,
+    pub form: RuleFormState,
     /// The inline error (the save's refusal sentence).
-    pub(crate) error: Option<String>,
+    pub error: Option<String>,
     /// The open select (None = all closed).
-    pub(crate) open_select: Option<EditorSelect>,
+    pub open_select: Option<EditorSelect>,
 }
 
 impl Default for ValuePresentationRuleEditorState {
@@ -638,7 +638,7 @@ impl std::fmt::Debug for ValuePresentationRuleEditorState {
 impl ValuePresentationRuleEditorState {
     /// `useState(() => initialRule === null ? DEFAULT_FORM :
     /// formFromRule(initialRule))`.
-    pub(crate) fn new(initial_rule: Option<&ValuePresentationRule>) -> Self {
+    pub fn new(initial_rule: Option<&ValuePresentationRule>) -> Self {
         Self {
             initial_rule: initial_rule.cloned(),
             form: match initial_rule {
@@ -650,18 +650,18 @@ impl ValuePresentationRuleEditorState {
     }
 
     /// `update(patch)`'s error half — every landed edit clears it.
-    pub(crate) fn edit_landed(&mut self) {
+    pub fn edit_landed(&mut self) {
         self.error = None;
     }
 
     /// The title: new vs edit.
-    pub(crate) fn is_new(&self) -> bool {
+    pub fn is_new(&self) -> bool {
         self.initial_rule.is_none()
     }
 
     /// `showSourceTimeZone` — the source zone only exists for the
     /// string-interpretation kinds.
-    pub(crate) fn show_source_time_zone(&self) -> bool {
+    pub fn show_source_time_zone(&self) -> bool {
         matches!(
             self.form.interpretation,
             InterpretationChoice::Native | InterpretationChoice::Text
@@ -670,12 +670,12 @@ impl ValuePresentationRuleEditorState {
 
     /// The `useMemo`'s validation — the form assembled and run
     /// through the single validator.
-    pub(crate) fn validated(&self) -> ValuePresentationRuleValidation {
+    pub fn validated(&self) -> ValuePresentationRuleValidation {
         validate_value_presentation_rule(&form_to_rule_input(&self.form))
     }
 
     /// The `useMemo`'s sample preview over the validated rule.
-    pub(crate) fn sample_preview(
+    pub fn sample_preview(
         &self,
         contribution: Option<Rc<dyn ValuePresentationContribution>>,
         environment: PresentationEnvironment<'_>,
@@ -700,7 +700,7 @@ impl ValuePresentationRuleEditorState {
     /// `handleSaveRule`: the problems sentence (an invalid rule),
     /// the duplicate-name check, then the validated rule for the
     /// `onSave` slot.
-    pub(crate) fn begin_save(
+    pub fn begin_save(
         &mut self,
         other_names: &[String],
     ) -> Option<ValuePresentationRule> {
@@ -733,63 +733,63 @@ impl ValuePresentationRuleEditorState {
     // The choice / checkbox edits (`update(patch)`).
 
     /// The enabled checkbox.
-    pub(crate) fn set_enabled(&mut self, enabled: bool) {
+    pub fn set_enabled(&mut self, enabled: bool) {
         self.form.enabled = enabled;
         self.edit_landed();
     }
 
-    pub(crate) fn set_table_mode(&mut self, mode: PatternMode) {
+    pub fn set_table_mode(&mut self, mode: PatternMode) {
         self.form.table_mode = mode;
         self.edit_landed();
     }
 
-    pub(crate) fn set_table_ignore_case(&mut self, ignore_case: bool) {
+    pub fn set_table_ignore_case(&mut self, ignore_case: bool) {
         self.form.table_ignore_case = ignore_case;
         self.edit_landed();
     }
 
-    pub(crate) fn set_column_mode(&mut self, mode: PatternMode) {
+    pub fn set_column_mode(&mut self, mode: PatternMode) {
         self.form.column_mode = mode;
         self.edit_landed();
     }
 
-    pub(crate) fn set_column_ignore_case(&mut self, ignore_case: bool) {
+    pub fn set_column_ignore_case(&mut self, ignore_case: bool) {
         self.form.column_ignore_case = ignore_case;
         self.edit_landed();
     }
 
-    pub(crate) fn set_type_mode(&mut self, mode: PatternMode) {
+    pub fn set_type_mode(&mut self, mode: PatternMode) {
         self.form.type_mode = mode;
         self.edit_landed();
     }
 
-    pub(crate) fn set_type_ignore_case(&mut self, ignore_case: bool) {
+    pub fn set_type_ignore_case(&mut self, ignore_case: bool) {
         self.form.type_ignore_case = ignore_case;
         self.edit_landed();
     }
 
-    pub(crate) fn set_interpretation(&mut self, interpretation: InterpretationChoice) {
+    pub fn set_interpretation(&mut self, interpretation: InterpretationChoice) {
         self.form.interpretation = interpretation;
         self.edit_landed();
     }
 
-    pub(crate) fn set_format(&mut self, format: FormatSerde) {
+    pub fn set_format(&mut self, format: FormatSerde) {
         self.form.format = format;
         self.edit_landed();
     }
 
-    pub(crate) fn set_display_time_zone_kind(&mut self, kind: TimeZoneKindChoice) {
+    pub fn set_display_time_zone_kind(&mut self, kind: TimeZoneKindChoice) {
         self.form.display_time_zone_kind = kind;
         self.edit_landed();
     }
 
-    pub(crate) fn set_source_time_zone_kind(&mut self, kind: SourceTimeZoneChoice) {
+    pub fn set_source_time_zone_kind(&mut self, kind: SourceTimeZoneChoice) {
         self.form.source_time_zone_kind = kind;
         self.edit_landed();
     }
 
     /// The kit select contract's toggle.
-    pub(crate) fn toggle_select(&mut self, which: EditorSelect) {
+    pub fn toggle_select(&mut self, which: EditorSelect) {
         self.open_select = if self.open_select == Some(which) {
             None
         } else {
@@ -798,7 +798,7 @@ impl ValuePresentationRuleEditorState {
     }
 
     /// The kit select contract's close (scrim + choose).
-    pub(crate) fn close_select(&mut self) {
+    pub fn close_select(&mut self) {
         self.open_select = None;
     }
 }
@@ -888,7 +888,7 @@ fn choice_select<S: 'static>(
 /// `ValuePresentationRuleEditor({ initialRule, otherNames,
 /// contribution, environment, onSave, onCancel })`: the form over
 /// the state, the state lens and the host's action slots.
-pub(crate) struct ValuePresentationRuleEditor<'a, S: 'static> {
+pub struct ValuePresentationRuleEditor<'a, S: 'static> {
     state: &'a ValuePresentationRuleEditorState,
     dark: bool,
     editor_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut ValuePresentationRuleEditorState>,
@@ -905,7 +905,7 @@ pub(crate) struct ValuePresentationRuleEditor<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> ValuePresentationRuleEditor<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a ValuePresentationRuleEditorState,
         dark: bool,
         editor_edit: impl for<'b> Fn(&'b mut S) -> &'b mut ValuePresentationRuleEditorState + 'static,
@@ -925,25 +925,25 @@ impl<'a, S: 'static> ValuePresentationRuleEditor<'a, S> {
     }
 
     /// `otherNames` — the duplicate-name check's vocabulary.
-    pub(crate) fn with_other_names(mut self, names: Vec<String>) -> Self {
+    pub fn with_other_names(mut self, names: Vec<String>) -> Self {
         self.other_names = names;
         self
     }
 
     /// `onSave(rule)` — the validated rule back to the panel.
-    pub(crate) fn on_save(mut self, f: impl Fn(&mut S, ValuePresentationRule) + 'static) -> Self {
+    pub fn on_save(mut self, f: impl Fn(&mut S, ValuePresentationRule) + 'static) -> Self {
         self.on_save = Some(Rc::new(f));
         self
     }
 
     /// `onCancel`.
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
 
     /// The form card.
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let editor_edit = &self.editor_edit;
         let dark = self.dark;

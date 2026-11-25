@@ -18,13 +18,13 @@ use crate::structure_editor::{StatementRisk, StructureChangeMode, StructureChang
 /// Row estimate at or above this threshold triggers an online DDL warning.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) const LARGE_TABLE_ROW_THRESHOLD: u64 = 100_000;
+pub const LARGE_TABLE_ROW_THRESHOLD: u64 = 100_000;
 
 /// Port of `planHasRiskyAlter(plan)`: any statement with a destructive or
 /// rewrite risk. Additive-only plans stay false.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn plan_has_risky_alter(plan: &StructureChangePlan) -> bool {
+pub fn plan_has_risky_alter(plan: &StructureChangePlan) -> bool {
     plan.statements
         .iter()
         .any(|statement| statement.risk.is_risky())
@@ -34,7 +34,7 @@ pub(crate) fn plan_has_risky_alter(plan: &StructureChangePlan) -> bool {
 /// are false; the threshold is inclusive.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn is_large_table_estimate(rows: Option<u64>) -> bool {
+pub fn is_large_table_estimate(rows: Option<u64>) -> bool {
     rows.is_some_and(|rows| rows >= LARGE_TABLE_ROW_THRESHOLD)
 }
 
@@ -42,7 +42,7 @@ pub(crate) fn is_large_table_estimate(rows: Option<u64>) -> bool {
 /// risky statement or a large row estimate confirms.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn should_confirm_alter_apply(
+pub fn should_confirm_alter_apply(
     mode: StructureChangeMode,
     plan: &StructureChangePlan,
     estimated_rows: Option<u64>,
@@ -61,7 +61,7 @@ pub(crate) fn should_confirm_alter_apply(
 /// the zh-CN text and the placeholders are replaced with the exact values.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn build_alter_apply_warning_message(
+pub fn build_alter_apply_warning_message(
     plan: &StructureChangePlan,
     estimated_rows: Option<u64>,
 ) -> String {

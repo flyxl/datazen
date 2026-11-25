@@ -14,7 +14,7 @@ use super::{StructureColumnDraft, StructureEditorUiConfig, StructureIndexDraft};
 /// Port of `emptyColumnDraft(defaultType)`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn empty_column_draft(default_type: &str) -> StructureColumnDraft {
+pub fn empty_column_draft(default_type: &str) -> StructureColumnDraft {
     StructureColumnDraft {
         id: new_column_id(),
         name: String::new(),
@@ -31,7 +31,7 @@ pub(crate) fn empty_column_draft(default_type: &str) -> StructureColumnDraft {
 /// Port of `emptyIndexDraft(defaultMethod)`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn empty_index_draft(default_method: &str) -> StructureIndexDraft {
+pub fn empty_index_draft(default_method: &str) -> StructureIndexDraft {
     StructureIndexDraft {
         id: new_index_id(),
         name: String::new(),
@@ -48,7 +48,7 @@ pub(crate) fn empty_index_draft(default_method: &str) -> StructureIndexDraft {
 /// Port of `defaultCreateColumns(uiConfig)`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn default_create_columns(
+pub fn default_create_columns(
     ui_config: &StructureEditorUiConfig,
 ) -> Vec<StructureColumnDraft> {
     let mut first = empty_column_draft(&ui_config.default_column_type);

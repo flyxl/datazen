@@ -24,12 +24,12 @@ use super::column_presentation_dialog::{
 /// `ColumnPresentationOverrideProblem` 同形：`path` 指向输入内的位置，
 /// `''` 为根）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ValidationProblem {
-    pub(crate) path: String,
-    pub(crate) message: String,
+pub struct ValidationProblem {
+    pub path: String,
+    pub message: String,
 }
 
-pub(crate) fn problem(path: impl Into<String>, message: impl Into<String>) -> ValidationProblem {
+pub fn problem(path: impl Into<String>, message: impl Into<String>) -> ValidationProblem {
     ValidationProblem {
         path: path.into(),
         message: message.into(),
@@ -175,7 +175,7 @@ fn read_interpretation(
 
 /// 完整结构验证（`unknown` 入参）。成功返回重建的规范
 /// `TimestampOptions`（只含已识别字段）；失败返回全部路径化问题。
-pub(crate) fn validate_timestamp_options(
+pub fn validate_timestamp_options(
     input: &Value,
 ) -> Result<TimestampOptions, Vec<ValidationProblem>> {
     let mut problems: Vec<ValidationProblem> = Vec::new();
@@ -249,7 +249,7 @@ pub(crate) fn validate_timestamp_options(
 /// 外的任何字段；`custom` 只接受时间展示器 `datazen.timestamp`，
 /// 其 options 经 [`validate_timestamp_options`] 校验，问题路径以
 /// `options.` 为前缀。
-pub(crate) fn validate_column_presentation_override(
+pub fn validate_column_presentation_override(
     input: &Value,
 ) -> Result<ColumnPresentationOverride, Vec<ValidationProblem>> {
     let mut problems: Vec<ValidationProblem> = Vec::new();

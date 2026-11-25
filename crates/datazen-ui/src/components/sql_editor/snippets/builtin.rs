@@ -25,7 +25,7 @@ use crate::components::sql_editor::snippets::types::SqlSnippetItem;
 // consumers: the completion source (T359) and the settings card's
 // import/export collision check; delete this allow when they land.
 #[allow(dead_code)]
-pub(crate) fn builtin_sql_snippets() -> &'static [SqlSnippetItem] {
+pub fn builtin_sql_snippets() -> &'static [SqlSnippetItem] {
     fn item(id: &str, prefix: &str, description_key: &str, template: &str) -> SqlSnippetItem {
         SqlSnippetItem {
             id: id.to_owned(),

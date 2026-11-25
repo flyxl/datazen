@@ -25,38 +25,38 @@ use rune_kit::Kit;
 use crate::icons::ICON_TABLE;
 use crate::ui::kit::kit;
 
-pub(crate) const ROOT_KEY: &str = "table-no-primary-key-tip";
-pub(crate) const TEXT_KEY: &str = "table-no-primary-key-text";
-pub(crate) const ACTION_KEY: &str = "table-no-primary-key-edit-in-sql";
+pub const ROOT_KEY: &str = "table-no-primary-key-tip";
+pub const TEXT_KEY: &str = "table-no-primary-key-text";
+pub const ACTION_KEY: &str = "table-no-primary-key-edit-in-sql";
 
 /// React `TableNoPrimaryKeyTipAction` (label already translated by the host).
 #[allow(dead_code)] // VM mirror; remove when the host wires the tip.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct NoPkAction {
-    pub(crate) label: String,
+pub struct NoPkAction {
+    pub label: String,
 }
 
 /// React props: the message and the optional action slot.
 #[allow(dead_code)] // VM mirror; remove when the host wires the tip.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct NoPrimaryKeyTipVm {
-    pub(crate) message: String,
-    pub(crate) action: Option<NoPkAction>,
+pub struct NoPrimaryKeyTipVm {
+    pub message: String,
+    pub action: Option<NoPkAction>,
 }
 
 /// The sole optional React callback (`action.onClick`).
 #[allow(dead_code)] // host port; remove when the host wires the tip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NoPkTipAction {
+pub enum NoPkTipAction {
     EditInSql,
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the tip.
-pub(crate) type NoPkTipActionFn<S> = Rc<dyn Fn(&mut S, NoPkTipAction) + 'static>;
+pub type NoPkTipActionFn<S> = Rc<dyn Fn(&mut S, NoPkTipAction) + 'static>;
 
 /// Build the tip into `layer`.
 #[allow(dead_code)] // view entry; remove when the host wires the tip.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &NoPrimaryKeyTipVm,
     on_action: &Option<NoPkTipActionFn<S>>,
     dark: bool,

@@ -54,7 +54,7 @@ use crate::table_data_dirty_index::{build_row_identity, row_identity_key, RowIde
 
 /// React `CommitStatementResult['operation']` (`tableChanges.ts:150`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CommitOperation {
+pub enum CommitOperation {
     Insert,
     Update,
     Delete,
@@ -63,7 +63,7 @@ pub(crate) enum CommitOperation {
 /// React `CommitStatementResult` (`tableChanges.ts:150`): one statement
 /// the commit reported.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CommitStatementResult {
+pub struct CommitStatementResult {
     pub operation: CommitOperation,
     pub row_identity: RowIdentity,
     pub affected_rows: u64,
@@ -72,7 +72,7 @@ pub(crate) struct CommitStatementResult {
 /// React `InsertLocation` (`tableChanges.ts:176`): where the inserted
 /// row ended up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InsertStatus {
+pub enum InsertStatus {
     /// The new row was found on the refreshed page.
     Located,
     /// The commit succeeded but the new row could not be located; the
@@ -86,7 +86,7 @@ pub(crate) enum InsertStatus {
 /// React `InsertLocationResult`: the status plus the located row's
 /// identity key (`None` when the row could not be located).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct InsertLocationResult {
+pub struct InsertLocationResult {
     pub status: InsertStatus,
     pub key: Option<String>,
 }
@@ -192,7 +192,7 @@ fn comparable_max(
 /// * `refreshed_rows` — the rows of the page after the refresh;
 /// * `primary_key_columns` — the table's primary key columns;
 /// * `statements` — the statements the commit reported.
-pub(crate) fn locate_inserted_row(
+pub fn locate_inserted_row(
     previous_rows: &[HashMap<String, Value>],
     refreshed_rows: &[HashMap<String, Value>],
     primary_key_columns: &[ColumnSchema],

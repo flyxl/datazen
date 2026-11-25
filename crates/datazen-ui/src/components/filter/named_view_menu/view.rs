@@ -33,7 +33,7 @@ fn bind<S: 'static>(f: &Option<EditFn<S>>) -> Option<EditFn<S>> {
 /// Builder for the ported component. The host keeps [`NamedViewVm`] in `S`;
 /// text drafts are bound through accessors so Rune can route keystrokes.
 #[allow(dead_code)] // consumer: the filter table view (not landed).
-pub(crate) struct NamedViewMenu<'a, S: 'static> {
+pub struct NamedViewMenu<'a, S: 'static> {
     vm: &'a NamedViewVm,
     name_edit: Option<EditFn<S>>,
     rename_edit: Option<EditFn<S>>,
@@ -42,7 +42,7 @@ pub(crate) struct NamedViewMenu<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: the filter table view (not landed).
 impl<'a, S: 'static> NamedViewMenu<'a, S> {
-    pub(crate) fn new(vm: &'a NamedViewVm) -> Self {
+    pub fn new(vm: &'a NamedViewVm) -> Self {
         Self {
             vm,
             name_edit: None,
@@ -51,7 +51,7 @@ impl<'a, S: 'static> NamedViewMenu<'a, S> {
         }
     }
 
-    pub(crate) fn on_name_edit(
+    pub fn on_name_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -59,7 +59,7 @@ impl<'a, S: 'static> NamedViewMenu<'a, S> {
         self
     }
 
-    pub(crate) fn on_rename_edit(
+    pub fn on_rename_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -67,12 +67,12 @@ impl<'a, S: 'static> NamedViewMenu<'a, S> {
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, NamedViewAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, NamedViewAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let vm = self.vm;
         let trigger_label = t("filter.view.savedViews");

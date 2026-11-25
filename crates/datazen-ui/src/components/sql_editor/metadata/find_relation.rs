@@ -51,7 +51,7 @@ fn now_ms() -> i64 {
 /// Find a relation's metadata: snapshot tiers 1-3, then the schema-tree
 /// synthesis. `snapshot` and `schema_tree` are both optional and
 /// independently skippable, exactly like the React parameters.
-pub(crate) fn find_relation_metadata(
+pub fn find_relation_metadata(
     snapshot: Option<&EditorMetadataSnapshot>,
     relation: &QualifiedRelationId,
     dialect_id: &str,
@@ -141,7 +141,7 @@ fn synthesize_from_tree(
 /// Depth-first search for a table leaf keyed by `table_name`
 /// (case-insensitive), returning its column names. A key that matches but
 /// names a nested namespace does not match — only table leaves resolve.
-pub(crate) fn extract_columns_from_schema<'a>(
+pub fn extract_columns_from_schema<'a>(
     schema: &'a SqlNamespace,
     table_name: &str,
 ) -> Option<&'a [String]> {

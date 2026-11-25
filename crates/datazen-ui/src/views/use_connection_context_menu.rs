@@ -17,14 +17,14 @@
 
 mod menu;
 
-pub(crate) use menu::{
+pub use menu::{
     build_menu, entry_ids, FeatureFlags, MenuArgs, MenuEntry, MenuKind,
 };
 
 /// The hook's capability inputs (driver meta + saved connection + safe mode).
 #[allow(dead_code)] // VM mirror; supplied by the host.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ContextMetaVm {
+pub struct ContextMetaVm {
     pub driver_read_only: bool,
     pub saved_read_only: bool,
     /// `canOpenStructureEditor(meta)` from the host capability layer.
@@ -38,7 +38,7 @@ pub(crate) struct ContextMetaVm {
 /// The flags the hook passes into the menu builder.
 #[allow(dead_code)] // VM mirror; consumed by the builder and tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ContextFlags {
+pub struct ContextFlags {
     pub read_only: bool,
     pub show_open_structure: bool,
     pub show_er_focus: bool,
@@ -53,7 +53,7 @@ pub(crate) struct ContextFlags {
 /// capability, ER focus defaults on, table export is suppressed and batch
 /// export follows the driver's full-table capability.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn derive_context_flags(meta: &ContextMetaVm) -> ContextFlags {
+pub fn derive_context_flags(meta: &ContextMetaVm) -> ContextFlags {
     let read_only = meta.driver_read_only || meta.saved_read_only;
     ContextFlags {
         read_only,
@@ -73,7 +73,7 @@ pub(crate) fn derive_context_flags(meta: &ContextMetaVm) -> ContextFlags {
 /// React `showExport` for a concrete kind: tables always suppress the single
 /// export; other kinds follow `supportsAnyExport`.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn show_export_for_kind(meta: &ContextMetaVm, kind: MenuKind) -> Option<bool> {
+pub fn show_export_for_kind(meta: &ContextMetaVm, kind: MenuKind) -> Option<bool> {
     if kind == MenuKind::Table {
         Some(false)
     } else {
@@ -84,7 +84,7 @@ pub(crate) fn show_export_for_kind(meta: &ContextMetaVm, kind: MenuKind) -> Opti
 /// React `useConnectionContextMenu.ts:327`: tables always suppress batch
 /// export; other kinds follow `supportsFullTableExport`.
 #[allow(dead_code)] // pure rule; remove with the host wiring.
-pub(crate) fn show_batch_export_for_kind(meta: &ContextMetaVm, kind: MenuKind) -> Option<bool> {
+pub fn show_batch_export_for_kind(meta: &ContextMetaVm, kind: MenuKind) -> Option<bool> {
     if kind == MenuKind::Table {
         Some(false)
     } else {
@@ -96,12 +96,12 @@ pub(crate) fn show_batch_export_for_kind(meta: &ContextMetaVm, kind: MenuKind) -
 /// as `quoted`; the dialect's `getTruncateTableSql` falls back to the standard
 /// statement, and DROP is chosen by node kind.
 #[allow(dead_code)] // pure helper; remove with the host wiring.
-pub(crate) fn truncate_sql(quoted: &str, dialect_sql: Option<String>) -> String {
+pub fn truncate_sql(quoted: &str, dialect_sql: Option<String>) -> String {
     dialect_sql.unwrap_or_else(|| format!("TRUNCATE TABLE {quoted}"))
 }
 
 #[allow(dead_code)] // pure helper; remove with the host wiring.
-pub(crate) fn drop_sql(quoted: &str, is_view: bool) -> String {
+pub fn drop_sql(quoted: &str, is_view: bool) -> String {
     if is_view {
         format!("DROP VIEW {quoted}")
     } else {
@@ -112,6 +112,6 @@ pub(crate) fn drop_sql(quoted: &str, is_view: bool) -> String {
 /// React's `confirmAndRun` gate: the dialog must be approved before any SQL is
 /// executed; a decline is a no-op. The host performs the actual query.
 #[allow(dead_code)] // pure guard; remove with the host wiring.
-pub(crate) fn may_run_dangerous(read_only: bool, safe_mode: bool, approved: bool) -> bool {
+pub fn may_run_dangerous(read_only: bool, safe_mode: bool, approved: bool) -> bool {
     !read_only && !safe_mode && approved
 }

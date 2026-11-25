@@ -72,7 +72,7 @@ type NameFn<S> = Rc<dyn Fn(&mut S, String) + 'static>;
 
 /// React `ExecutionStep`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SchemaDiffExecutionStep {
+pub enum SchemaDiffExecutionStep {
     Compare,
     Plan,
     Deploy,
@@ -81,10 +81,10 @@ pub(crate) enum SchemaDiffExecutionStep {
 /// React `ClipboardFeedback` — the clipboard-feedback hook's canonical
 /// enum (T372), re-exported for the wizard track (the `null` arm is
 /// `Option::None` at the call site).
-pub(crate) use crate::views::schema_diff::use_schema_diff_clipboard_feedback::SchemaDiffFeedbackKind as SchemaDiffClipboardFeedback;
+pub use crate::views::schema_diff::use_schema_diff_clipboard_feedback::SchemaDiffFeedbackKind as SchemaDiffClipboardFeedback;
 
 /// The execution panels builder, generic over the owning state `S`.
-pub(crate) struct SchemaDiffExecutionPanels<'a, S: 'static> {
+pub struct SchemaDiffExecutionPanels<'a, S: 'static> {
     step: SchemaDiffExecutionStep,
     loading: bool,
     diffs: &'a [TableSchemaDiffVm],
@@ -122,7 +122,7 @@ impl<'a, S: 'static> SchemaDiffExecutionPanels<'a, S> {
     /// React's core props: the step, the loading flag, the diffs, the
     /// selected table state and the plan-side inputs.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         step: SchemaDiffExecutionStep,
         loading: bool,
         diffs: &'a [TableSchemaDiffVm],
@@ -169,13 +169,13 @@ impl<'a, S: 'static> SchemaDiffExecutionPanels<'a, S> {
 
     /// React's `tableHasDiff` (the rail's badges; `undefined` renders none,
 /// and the compare step passes it only when diffs exist).
-    pub(crate) fn table_has_diff(mut self, map: Option<&'a HashMap<String, bool>>) -> Self {
+    pub fn table_has_diff(mut self, map: Option<&'a HashMap<String, bool>>) -> Self {
         self.table_has_diff = map;
         self
     }
 
     /// React's `clipboardFeedback`.
-    pub(crate) fn clipboard_feedback(
+    pub fn clipboard_feedback(
         mut self,
         feedback: Option<SchemaDiffClipboardFeedback>,
     ) -> Self {
@@ -184,7 +184,7 @@ impl<'a, S: 'static> SchemaDiffExecutionPanels<'a, S> {
     }
 
     /// React's `planActions` slot (a host-built element).
-    pub(crate) fn plan_actions(mut self, actions: Option<El>) -> Self {
+    pub fn plan_actions(mut self, actions: Option<El>) -> Self {
         self.plan_actions = actions;
         self
     }
@@ -193,7 +193,7 @@ impl<'a, S: 'static> SchemaDiffExecutionPanels<'a, S> {
     /// `useTransaction` / `requireRollback` / `confirmText` /
     /// `deployResult` (the plan and deploy tabs' threading).
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn review_inputs(
+    pub fn review_inputs(
         mut self,
         allow_destructive: bool,
         include_indexes: bool,
@@ -215,7 +215,7 @@ impl<'a, S: 'static> SchemaDiffExecutionPanels<'a, S> {
 
     /// React's `typeOverrides` and the host-mirrored edit slots (the plan
     /// panel's contract).
-    pub(crate) fn type_overrides(
+    pub fn type_overrides(
         mut self,
         overrides: &'a [ColumnTypeOverrideVm],
         edits: Option<&'a HashMap<String, TextEdit>>,
@@ -226,43 +226,43 @@ impl<'a, S: 'static> SchemaDiffExecutionPanels<'a, S> {
     }
 
     /// React's `onSelectTable`.
-    pub(crate) fn on_select_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_select_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_select_table = Some(Rc::new(f));
         self
     }
 
     /// React's `onCopySummary`.
-    pub(crate) fn on_copy_summary(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy_summary(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_summary = Some(Rc::new(f));
         self
     }
 
     /// React's `onRegenerate`.
-    pub(crate) fn on_regenerate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_regenerate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_regenerate = Some(Rc::new(f));
         self
     }
 
     /// React's `onAllowDestructiveChange`.
-    pub(crate) fn on_allow_destructive(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_allow_destructive(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_allow_destructive = Some(Rc::new(f));
         self
     }
 
     /// React's `onIncludeIndexesChange`.
-    pub(crate) fn on_include_indexes(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_include_indexes(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_include_indexes = Some(Rc::new(f));
         self
     }
 
     /// React's `onApplyTypeOverrides`.
-    pub(crate) fn on_apply_type_overrides(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_apply_type_overrides(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_apply_type_overrides = Some(Rc::new(f));
         self
     }
 
     /// React's `onTypeOverrideChange` landing (the plan panel's contract).
-    pub(crate) fn on_override_edit(
+    pub fn on_override_edit(
         mut self,
         f: impl for<'b, 'c> Fn(&'b mut S, &'c str, &'c str, &'c str) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -271,20 +271,20 @@ impl<'a, S: 'static> SchemaDiffExecutionPanels<'a, S> {
     }
 
     /// React's `onUseTransactionChange`.
-    pub(crate) fn on_use_transaction(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_use_transaction(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_use_transaction = Some(Rc::new(f));
         self
     }
 
     /// React's `onRequireRollbackChange`.
-    pub(crate) fn on_require_rollback(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_require_rollback(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_require_rollback = Some(Rc::new(f));
         self
     }
 
     /// The confirm input's edit projection (React's
     /// `onConfirmTextChange`).
-    pub(crate) fn on_confirm_edit(
+    pub fn on_confirm_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -293,13 +293,13 @@ impl<'a, S: 'static> SchemaDiffExecutionPanels<'a, S> {
     }
 
     /// React's `onDeploy`.
-    pub(crate) fn on_deploy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_deploy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_deploy = Some(Rc::new(f));
         self
     }
 
     /// Paint the active step's surface.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         match self.step {
             SchemaDiffExecutionStep::Compare => self.compare_step(dark),
             SchemaDiffExecutionStep::Plan => self.plan_step(dark),

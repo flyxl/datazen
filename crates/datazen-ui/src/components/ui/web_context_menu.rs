@@ -88,7 +88,7 @@ use crate::ui::kit::kit;
 /// `Separator` is a predefined kind in React's contract (it renders as a
 /// separator row, see [`is_separator`]); the edit commands are the rest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PredefinedEdit {
+pub enum PredefinedEdit {
     Separator,
     Cut,
     Copy,
@@ -100,7 +100,7 @@ pub(crate) enum PredefinedEdit {
 
 impl PredefinedEdit {
     /// The React name of the predefined item (`item.item`).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             PredefinedEdit::Separator => "Separator",
             PredefinedEdit::Cut => "Cut",
@@ -115,7 +115,7 @@ impl PredefinedEdit {
     /// React's `COMMANDS` map (`lib/runPredefinedEdit.ts`): the
     /// `document.execCommand` id each predefined edit maps onto. `Separator`
     /// has no command (React returns before looking one up).
-    pub(crate) fn command(self) -> Option<&'static str> {
+    pub fn command(self) -> Option<&'static str> {
         match self {
             PredefinedEdit::Separator => None,
             PredefinedEdit::Cut => Some("cut"),
@@ -129,7 +129,7 @@ impl PredefinedEdit {
 }
 
 /// A plain item's action (`() => void | Promise<void>` in React).
-pub(crate) type NativeAction = Rc<dyn Fn()>;
+pub type NativeAction = Rc<dyn Fn()>;
 
 impl std::fmt::Debug for NativeMenuItemDef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -167,7 +167,7 @@ impl std::fmt::Debug for NativeMenuItemDef {
 /// store clone React's items arrays get by sharing (`Rc` around the
 /// action); `Debug` drops the closure, see the manual impl below.
 #[derive(Clone)]
-pub(crate) enum NativeMenuItemDef {
+pub enum NativeMenuItemDef {
     /// `kind: 'item'` — `id`, `label`, optional `shortcut` and `enabled`,
     /// and the `action` that runs when the row is chosen.
     Item {
@@ -194,7 +194,7 @@ pub(crate) enum NativeMenuItemDef {
 
 /// React's `isSeparator` (`WebContextMenu.tsx:18`): separators are both the
 /// explicit kind and the predefined `Separator`.
-pub(crate) fn is_separator(item: &NativeMenuItemDef) -> bool {
+pub fn is_separator(item: &NativeMenuItemDef) -> bool {
     matches!(item, NativeMenuItemDef::Separator { .. })
         || matches!(
             item,
@@ -208,7 +208,7 @@ pub(crate) fn is_separator(item: &NativeMenuItemDef) -> bool {
 impl NativeMenuItemDef {
     /// A plain item or submenu is enabled unless it says otherwise; the
     /// other kinds render no disabled state in React.
-    pub(crate) fn enabled(&self) -> bool {
+    pub fn enabled(&self) -> bool {
         match self {
             NativeMenuItemDef::Item { enabled, .. } => *enabled != Some(false),
             _ => true,
@@ -217,7 +217,7 @@ impl NativeMenuItemDef {
 
     /// The React item id a submenu resolves to: `item.id ?? 'sub-{index}'`
     /// (`WebContextMenu.tsx:65`, `:202`).
-    pub(crate) fn submenu_id(&self, index: usize) -> Option<String> {
+    pub fn submenu_id(&self, index: usize) -> Option<String> {
         match self {
             NativeMenuItemDef::Submenu { id, .. } => {
                 Some(id.clone().unwrap_or_else(|| format!("sub-{index}")))
@@ -228,7 +228,7 @@ impl NativeMenuItemDef {
 
     /// React's `itemLabel` (`WebContextMenu.tsx:22`): the item or submenu
     /// `label`, or the predefined `text ?? item`. Separators have none.
-    pub(crate) fn item_label(&self) -> Option<String> {
+    pub fn item_label(&self) -> Option<String> {
         match self {
             NativeMenuItemDef::Item { label, .. } => Some(label.clone()),
             NativeMenuItemDef::Submenu { label, .. } => Some(label.clone()),
@@ -240,7 +240,7 @@ impl NativeMenuItemDef {
     }
 
     /// The submenu's children, for the submenu panel.
-    pub(crate) fn submenu_items(&self) -> Option<&[NativeMenuItemDef]> {
+    pub fn submenu_items(&self) -> Option<&[NativeMenuItemDef]> {
         match self {
             NativeMenuItemDef::Submenu { items, .. } => Some(items),
             _ => None,
@@ -251,7 +251,7 @@ impl NativeMenuItemDef {
 /// `normalizeNativeMenuItems` (`nativeContextMenu.ts:37`): recursively drop
 /// empty submenus, then leading, trailing and duplicate separators.
 /// Disabled items are kept.
-pub(crate) fn normalize_native_menu_items(items: Vec<NativeMenuItemDef>) -> Vec<NativeMenuItemDef> {
+pub fn normalize_native_menu_items(items: Vec<NativeMenuItemDef>) -> Vec<NativeMenuItemDef> {
     let filtered: Vec<NativeMenuItemDef> = items
         .into_iter()
         .filter_map(|mut def| {
@@ -284,7 +284,7 @@ pub(crate) fn normalize_native_menu_items(items: Vec<NativeMenuItemDef>) -> Vec<
 
 /// The padding the position math keeps between a panel and the viewport
 /// (`CONTEXT_MENU_PAD`, `contextMenuPosition.ts:23`).
-pub(crate) const CONTEXT_MENU_PAD: f32 = 8.0;
+pub const CONTEXT_MENU_PAD: f32 = 8.0;
 
 /// React's `clamp` (`contextMenuPosition.ts:25`): when `max < min` the min
 /// wins (a viewport smaller than the menu), otherwise the ordinary clamp.
@@ -298,7 +298,7 @@ fn clamp(n: f32, min: f32, max: f32) -> f32 {
 /// `positionRootMenu` (`contextMenuPosition.ts:34`): place the root menu at
 /// the cursor, flipping left and up when it would overflow the viewport,
 /// then clamping to the padded viewport.
-pub(crate) fn position_root_menu(
+pub fn position_root_menu(
     cursor: (f32, f32),
     menu: (f32, f32),
     viewport: (f32, f32),
@@ -324,7 +324,7 @@ pub(crate) fn position_root_menu(
 /// Which side of its trigger a submenu landed on
 /// (`positionSubmenu`'s `side`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SubmenuSide {
+pub enum SubmenuSide {
     Right,
     Left,
 }
@@ -333,7 +333,7 @@ pub(crate) enum SubmenuSide {
 /// its parent item, preferring the right side and flipping only when the
 /// right side clips and the left has more room; vertically aligned to the
 /// item, then clamped.
-pub(crate) fn position_submenu(
+pub fn position_submenu(
     item: (f32, f32, f32, f32),
     submenu: (f32, f32),
     viewport: (f32, f32),
@@ -370,7 +370,7 @@ pub(crate) fn position_submenu(
 /// rows, the trigger's rect, and where the panel is drawn
 /// (`WebContextMenu.tsx:126`).
 #[derive(Clone, Debug)]
-pub(crate) struct OpenSubmenu {
+pub struct OpenSubmenu {
     pub id: String,
     pub items: Vec<NativeMenuItemDef>,
     /// `(left, top, width, height)` of the trigger row.
@@ -384,7 +384,7 @@ pub(crate) struct OpenSubmenu {
 /// `x`, `y`, `items`) plus the component's own root-position and submenu
 /// state, with the panel sizes the layout effects measure.
 #[derive(Debug, Default)]
-pub(crate) struct WebContextMenuState {
+pub struct WebContextMenuState {
     pub open: bool,
     pub x: f32,
     pub y: f32,
@@ -405,7 +405,7 @@ impl WebContextMenuState {
     /// The store's `show` (`contextMenuStore.ts:19`): normalize, and an
     /// empty result keeps the menu closed rather than opening an empty
     /// panel; a real menu opens at the cursor.
-    pub(crate) fn show(&mut self, items: Vec<NativeMenuItemDef>, pos: (f32, f32)) {
+    pub fn show(&mut self, items: Vec<NativeMenuItemDef>, pos: (f32, f32)) {
         let normalized = normalize_native_menu_items(items);
         if normalized.is_empty() {
             self.open = false;
@@ -423,7 +423,7 @@ impl WebContextMenuState {
 
     /// The store's `hide` (`contextMenuStore.ts:27`): `open: false` and the
     /// items go; the submenu closes with the host (`useLayoutEffect`).
-    pub(crate) fn hide(&mut self) {
+    pub fn hide(&mut self) {
         self.open = false;
         self.items.clear();
         self.submenu = None;
@@ -432,7 +432,7 @@ impl WebContextMenuState {
     /// The first layout effect (`WebContextMenu.tsx:133`): where the root
     /// panel sits — the cursor, flipped and clamped against the measured
     /// menu size and the viewport.
-    pub(crate) fn root_position(&self) -> (f32, f32) {
+    pub fn root_position(&self) -> (f32, f32) {
         position_root_menu(
             (self.x, self.y),
             self.menu_size,
@@ -444,7 +444,7 @@ impl WebContextMenuState {
     /// The second layout effect (`WebContextMenu.tsx:150`): refine the open
     /// submenu's position against the measured submenu size, but only when
     /// the refined position actually differs (React's `setSub` guard).
-    pub(crate) fn refine_submenu(&mut self) {
+    pub fn refine_submenu(&mut self) {
         let Some(sub) = self.submenu.as_mut() else {
             return;
         };
@@ -463,7 +463,7 @@ impl WebContextMenuState {
     /// any open submenu; a known submenu def opens beside the given rect
     /// (positioned at `(rect.right, rect.top)` until refined); an unknown
     /// id closes it.
-    pub(crate) fn on_item_enter(&mut self, id: &str, item_rect: (f32, f32, f32, f32)) {
+    pub fn on_item_enter(&mut self, id: &str, item_rect: (f32, f32, f32, f32)) {
         if id.is_empty() {
             self.submenu = None;
             return;
@@ -496,7 +496,7 @@ impl WebContextMenuState {
 /// nothing, exactly React's `null`.
 ///
 /// `S` is the host state the callbacks mutate; `dark` is taken per mount.
-pub(crate) struct WebContextMenuHost<'a, S: 'static> {
+pub struct WebContextMenuHost<'a, S: 'static> {
     state: &'a WebContextMenuState,
     /// The accessor into the host state, like
     /// `AdminCreateDialog::host_mut`: hide and submenu-open mutations run
@@ -512,7 +512,7 @@ pub(crate) struct WebContextMenuHost<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> WebContextMenuHost<'a, S> {
-    pub(crate) fn new(state: &'a WebContextMenuState) -> Self {
+    pub fn new(state: &'a WebContextMenuState) -> Self {
         Self {
             state,
             host: None,
@@ -523,13 +523,13 @@ impl<'a, S: 'static> WebContextMenuHost<'a, S> {
 
     /// The state accessor, so presses can hide and open submenus without
     /// the component owning the host state.
-    pub(crate) fn host_mut(mut self, f: impl Fn(&mut S) -> &mut WebContextMenuState + 'static) -> Self {
+    pub fn host_mut(mut self, f: impl Fn(&mut S) -> &mut WebContextMenuState + 'static) -> Self {
         self.host = Some(Rc::new(f));
         self
     }
 
     /// The predefined-command channel (React's `document.execCommand`).
-    pub(crate) fn on_predefined(
+    pub fn on_predefined(
         mut self,
         f: impl Fn(&mut S, PredefinedEdit) + 'static,
     ) -> Self {
@@ -539,7 +539,7 @@ impl<'a, S: 'static> WebContextMenuHost<'a, S> {
 
     /// The submenu-open channel: resolve the trigger's rect and run
     /// `on_item_enter` (React reads the rect off the DOM element).
-    pub(crate) fn on_open_submenu(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_open_submenu(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_open_submenu = Some(Rc::new(f));
         self
     }
@@ -547,7 +547,7 @@ impl<'a, S: 'static> WebContextMenuHost<'a, S> {
     /// Mount the open menu onto the overlay list: the dismissal surface,
     /// then the root panel, then the open submenu (later siblings paint on
     /// top). Closed mounts nothing.
-    pub(crate) fn mount(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn mount(self, dark: bool, layer: &mut Vec<El>) {
         if !self.state.open {
             return;
         }

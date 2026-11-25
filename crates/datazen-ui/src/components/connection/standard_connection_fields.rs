@@ -26,7 +26,7 @@ type EditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 /// The subset of `ConnectionFormState` this component reads.
 #[allow(dead_code)] // contract mirror; remove when the shared form-state port lands.
 #[derive(Clone, Copy)]
-pub(crate) struct StandardFieldsValue<'a> {
+pub struct StandardFieldsValue<'a> {
     pub host: &'a TextEdit,
     pub port: &'a TextEdit,
     pub database: &'a TextEdit,
@@ -40,7 +40,7 @@ pub(crate) struct StandardFieldsValue<'a> {
 
 /// Builder for the ported field group.
 #[allow(dead_code)] // consumer: ConnectionFormBody (this wave).
-pub(crate) struct StandardConnectionFields<'a, S: 'static> {
+pub struct StandardConnectionFields<'a, S: 'static> {
     value: StandardFieldsValue<'a>,
     host: Option<EditFn<S>>,
     port: Option<EditFn<S>>,
@@ -54,7 +54,7 @@ pub(crate) struct StandardConnectionFields<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: ConnectionFormBody (this wave).
 impl<'a, S: 'static> StandardConnectionFields<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         value: StandardFieldsValue<'a>,
         host: Option<EditFn<S>>,
         port: Option<EditFn<S>>,
@@ -76,17 +76,17 @@ impl<'a, S: 'static> StandardConnectionFields<'a, S> {
     }
 
     /// React's `databaseField` prop.
-    pub(crate) fn database_field(mut self, field: Option<El>) -> Self {
+    pub fn database_field(mut self, field: Option<El>) -> Self {
         self.database_field = field;
         self
     }
 
-    pub(crate) fn host_placeholder(mut self, value: &str) -> Self {
+    pub fn host_placeholder(mut self, value: &str) -> Self {
         self.host_placeholder = value.to_owned();
         self
     }
 
-    pub(crate) fn database_placeholder(mut self, value: Option<&str>) -> Self {
+    pub fn database_placeholder(mut self, value: Option<&str>) -> Self {
         self.database_placeholder = value.map(str::to_owned);
         self
     }
@@ -153,7 +153,7 @@ impl<'a, S: 'static> StandardConnectionFields<'a, S> {
     }
 
     /// Build the fields in React order, ready to be appended to the form grid.
-    pub(crate) fn build(self, dark: bool) -> Vec<El> {
+    pub fn build(self, dark: bool) -> Vec<El> {
         let mut out = Vec::new();
         out.push(self.field(
             "new-conn-host",

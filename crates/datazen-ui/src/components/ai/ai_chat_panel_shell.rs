@@ -90,7 +90,7 @@ use crate::ui::kit::kit;
 /// caller owns the [`AiChatPanelState`] and passes `&state` each frame;
 /// presses call back through the `panel_mut` accessor into the state
 /// machine.
-pub(crate) struct AiChatPanel<'a, S: 'static> {
+pub struct AiChatPanel<'a, S: 'static> {
     state: &'a AiChatPanelState,
     panel: Option<Rc<dyn Fn(&mut S) -> &mut AiChatPanelState>>,
     on_insert_sql: Option<Rc<dyn Fn(&mut S, &str)>>,
@@ -102,7 +102,7 @@ pub(crate) struct AiChatPanel<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> AiChatPanel<'a, S> {
-    pub(crate) fn new(state: &'a AiChatPanelState) -> Self {
+    pub fn new(state: &'a AiChatPanelState) -> Self {
         Self {
             state,
             panel: None,
@@ -118,7 +118,7 @@ impl<'a, S: 'static> AiChatPanel<'a, S> {
     /// The state accessor every child callback drives, e.g.
     /// `|state| &mut state.panel`. One accessor wires the whole panel;
     /// the host-owned props stay separate pass-through callbacks below.
-    pub(crate) fn panel_mut(
+    pub fn panel_mut(
         mut self,
         f: impl Fn(&mut S) -> &mut AiChatPanelState + 'static,
     ) -> Self {
@@ -128,45 +128,45 @@ impl<'a, S: 'static> AiChatPanel<'a, S> {
 
     /// `AiMessageContent`'s `onInsertSql` prop (T169). Stored only
     /// until that slice lands; passed through to the message list.
-    pub(crate) fn on_insert_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_insert_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_insert_sql = Some(Rc::new(f));
         self
     }
 
     /// `AiMessageContent`'s `onRunCode` prop (T169). Stored only.
-    pub(crate) fn on_run_code(mut self, f: impl Fn(&mut S, &str, &str) + 'static) -> Self {
+    pub fn on_run_code(mut self, f: impl Fn(&mut S, &str, &str) + 'static) -> Self {
         self.on_run_code = Some(Rc::new(f));
         self
     }
 
     /// `AiMessageContent`'s `onNewQuery` prop (T169). Stored only.
-    pub(crate) fn on_new_query(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_new_query(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_new_query = Some(Rc::new(f));
         self
     }
 
     /// Called when the AI help button is pressed; the caller owns
     /// `openDocsWindow('context')`.
-    pub(crate) fn on_open_ai_help(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_ai_help(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_ai_help = Some(Rc::new(f));
         self
     }
 
     /// Called when the workflow help button is pressed; the caller
     /// owns `openDocsWindow('workflows')`.
-    pub(crate) fn on_open_workflow_help(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_workflow_help(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_workflow_help = Some(Rc::new(f));
         self
     }
 
     /// Called when the unconfigured view's settings button is pressed;
     /// the caller owns `openSettingsWindow('ai')`.
-    pub(crate) fn on_open_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_settings = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         if !self.state.is_configured() {
             return self.unconfigured(dark);
         }

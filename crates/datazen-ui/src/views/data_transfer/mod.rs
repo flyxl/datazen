@@ -18,61 +18,61 @@
 //! | `TransferJobResultPanel.tsx` | `transfer_job_result_panel` | T246 |
 //! | `TransferMappingStep.tsx` | `transfer_mapping_step` | T267 |
 
-pub(crate) mod column_mapping_editor;
-pub(crate) mod column_mapping_row;
-pub(crate) mod data_transfer_attached_jobs;
-pub(crate) mod data_transfer_terminal_results;
-pub(crate) mod data_transfer_window;
-pub(crate) mod data_transfer_window_state;
-pub(crate) mod mapping_gate_notice;
-pub(crate) mod recordset_editor;
-pub(crate) mod source_filter_editor;
-pub(crate) mod transfer_execute_confirm_dialog;
-pub(crate) mod transfer_job_result_panel;
-pub(crate) mod transfer_job_run;
-pub(crate) mod transfer_limitation_keys;
-pub(crate) mod transfer_mapping_step;
-pub(crate) mod transfer_pairing_note;
-pub(crate) mod transfer_mapping_view;
-pub(crate) mod transfer_pairing_vm;
+pub mod column_mapping_editor;
+pub mod column_mapping_row;
+pub mod data_transfer_attached_jobs;
+pub mod data_transfer_terminal_results;
+pub mod data_transfer_window;
+pub mod data_transfer_window_state;
+pub mod mapping_gate_notice;
+pub mod recordset_editor;
+pub mod source_filter_editor;
+pub mod transfer_execute_confirm_dialog;
+pub mod transfer_job_result_panel;
+pub mod transfer_job_run;
+pub mod transfer_limitation_keys;
+pub mod transfer_mapping_step;
+pub mod transfer_pairing_note;
+pub mod transfer_mapping_view;
+pub mod transfer_pairing_vm;
 
 #[allow(unused_imports)] // the editor shell (T023-S2) is the production consumer
-pub(crate) use column_mapping_editor::{
+pub use column_mapping_editor::{
     ColumnMappingEditor, ColumnMappingEditorState,
 };
 #[allow(unused_imports)] // the Data Transfer window track is the production consumer
-pub(crate) use data_transfer_attached_jobs::{
+pub use data_transfer_attached_jobs::{
     active_attached_jobs, cancel_sent, cancel_unknown, job_counter_or_zero,
     job_state_label, progress_counts_text, read_job_counter, AttachedJob,
     AttachedJobsState, DataTransferAttachedJobs, JobCounter, JobProgress, JobState,
 };
 #[allow(unused_imports)] // the Data Transfer window track is the production consumer
-pub(crate) use data_transfer_terminal_results::{
+pub use data_transfer_terminal_results::{
     derive_migration_job_verdict, is_migration_job_in_flight, latest_apply_job, terminal_job,
     DataTransferTerminalResults, JobRecoveryResult, MigrationJobVerdictInput,
     TerminalJobDetails, TerminalJobView, TerminalResultsState,
 };
 #[allow(unused_imports)] // T305 replaces this placeholder module with the real port
-pub(crate) use transfer_mapping_view::{
+pub use transfer_mapping_view::{
     auto_match_column_mappings, clear_unmapped_column_mappings, mapping_gate_allows_advance,
     mapping_gate_block_reason, normalize_column_mappings, show_create_new_toggle,
     show_target_type, unmapped_target_columns, ColumnMappingTablePatch, TransferMappingStatus,
     TransferTableVm,
 };
 #[allow(unused_imports)] // the Data Transfer window wiring task is the consumer
-pub(crate) use transfer_mapping_step::{
+pub use transfer_mapping_step::{
     enabled_tables, selection_correction, seed_editor_state, selected_table, structure_mode,
     TransferMappingStep,
 };
 #[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
-pub(crate) use transfer_pairing_vm::{
+pub use transfer_pairing_vm::{
     is_transfer_target_supported, is_verified_migration_pair, normalize_driver_id,
     normalize_sync_family, pick_prefill_database, resolve_default_database,
     resolve_transfer_pairing, sync_category, MigrationWindowPrefill, SyncCategory,
     TransferPairingResult, TransferPath,
 };
 #[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
-pub(crate) use data_transfer_window_state::{
+pub use data_transfer_window_state::{
     ConnectionOption, DdlKind, DedicatedSessionVm, NARROW_STEPS, SqlFileCompression,
     SqlFileEncoding, TransferConnectionVm, TransferDdlPreviewVm, TransferDestinationMode,
     TransferEndpointVm, TransferJobVm, TransferMode, TransferOptionsVm, TransferPreviewVm,
@@ -81,36 +81,36 @@ pub(crate) use data_transfer_window_state::{
     DataTransferWindowVm, WriteMode, STEPS, DEFAULT_TRANSFER_OPTIONS,
 };
 #[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
-pub(crate) use data_transfer_window::{
+pub use data_transfer_window::{
     DataTransferWindow, DataTransferWindowEdits, MigrationJobsHydration,
 };
 #[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
-pub(crate) use mapping_gate_notice::MappingGateNotice;
+pub use mapping_gate_notice::MappingGateNotice;
 #[allow(unused_imports)] // the mapping editors (T023 shell + T336) are the production consumers
-pub(crate) use source_filter_editor::{
+pub use source_filter_editor::{
     rebuild_filter, SourceFilterEditor, SourceFilterSelect, StructuredSourceFilter, ValueDrafts,
     OPERATORS,
 };
 
 #[allow(unused_imports)] // the Data Transfer window is the production consumer
-pub(crate) use transfer_execute_confirm_dialog::TransferExecuteConfirmDialog;
+pub use transfer_execute_confirm_dialog::TransferExecuteConfirmDialog;
 #[allow(unused_imports)] // the Data Transfer window wiring is the production consumer
-pub(crate) use transfer_job_result_panel::{
+pub use transfer_job_result_panel::{
     active_progress, plan_info, TransferJobResultPanel,
 };
 #[allow(unused_imports)] // the Data Transfer window (T147) is the production consumer
-pub(crate) use transfer_job_run::{
+pub use transfer_job_run::{
     classify_transfer_run_failure, is_ambiguous_apply_submission_error, TransferApplyInput,
     TransferApplyJobViewVm, TransferApplyRequestVm, TransferJobRunVm, TransferPrepareJobViewVm,
     TransferRunFailure, TransferRunFailureKind, TransferRunPhase,
 };
 #[allow(unused_imports)] // the editor shell (T023-S2) is the production consumer
-pub(crate) use column_mapping_row::{
+pub use column_mapping_row::{
     is_unmapped, target_options, ColumnMappingPatch, ColumnMappingRow, ColumnMappingRowVm,
     TargetOption, TransferColumnMapping,
 };
 #[allow(unused_imports)] // the editor shell (T023-S2) is the production consumer
-pub(crate) use recordset_editor::{
+pub use recordset_editor::{
     apply_bound_update, apply_tuple_bound_update, default_order, effective_order,
     enable_recordset, format_limit, order_options, parse_limit, BoundName,
     RecordsetBoundPatch, RecordsetEditor, RecordsetEditorVm, RecordsetHost, RecordsetPatch,

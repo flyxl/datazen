@@ -14,7 +14,7 @@
 /// Only rows at or below the hidden depth lose the level: a connection a
 /// search moved up to depth 0 keeps announcing level 1 — there is no
 /// announced parent left to hide it under.
-pub(crate) fn searched_row_levels(
+pub fn searched_row_levels(
     painted: usize,
     first_hidden_depth: usize,
     searching: bool,
@@ -30,6 +30,6 @@ pub(crate) fn searched_row_levels(
 
 /// React `effectiveExpanded`: a forced expand is what a search does — every
 /// match must be reachable without a second keystroke.
-pub(crate) fn effective_expanded(own_expanded: bool, force_expand: bool) -> bool {
+pub fn effective_expanded(own_expanded: bool, force_expand: bool) -> bool {
     own_expanded || force_expand
 }

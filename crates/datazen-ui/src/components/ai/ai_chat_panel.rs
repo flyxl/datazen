@@ -91,7 +91,7 @@ use crate::ui::kit::kit;
 ///
 /// `split('/')` on `""` yields one empty segment in both JS and Rust, so the
 /// empty name falls through to the as-is branch in both.
-pub(crate) fn format_mcp_tool_display_name(qualified_name: &str) -> String {
+pub fn format_mcp_tool_display_name(qualified_name: &str) -> String {
     let parts: Vec<&str> = qualified_name.split('/').collect();
     if parts.len() >= 3 {
         parts[2..].join("/")
@@ -105,7 +105,7 @@ pub(crate) fn format_mcp_tool_display_name(qualified_name: &str) -> String {
 /// [`has_snapshot_content`]; the rows are kept whole so a later slice can
 /// show them without re-fetching.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct AiChatResultPreview {
+pub struct AiChatResultPreview {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<Value>>,
 }
@@ -114,7 +114,7 @@ pub(crate) struct AiChatResultPreview {
 /// facts the panel freezes on send. All fields are optional; a missing field
 /// is a field the user removed or the host never supplied.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct AiChatContextSnapshot {
+pub struct AiChatContextSnapshot {
     pub editor_sql: Option<String>,
     pub selection: Option<String>,
     pub last_error: Option<String>,
@@ -123,7 +123,7 @@ pub(crate) struct AiChatContextSnapshot {
 
 /// React's `hasSnapshotContent` (951–962): any field non-empty after trimming
 /// counts, and a result preview counts when it has columns or rows.
-pub(crate) fn has_snapshot_content(snapshot: Option<&AiChatContextSnapshot>) -> bool {
+pub fn has_snapshot_content(snapshot: Option<&AiChatContextSnapshot>) -> bool {
     let Some(snapshot) = snapshot else {
         return false;
     };
@@ -150,14 +150,14 @@ pub(crate) fn has_snapshot_content(snapshot: Option<&AiChatContextSnapshot>) -> 
 /// React renders this inline in the panel (`AiChatPanel.tsx:964-990`) with the
 /// caller passing `label`, `testId` and `onRemove`. The chip keeps that shape:
 /// the panel (a later slice) maps `testId` back to the snapshot field.
-pub(crate) struct AutoContextChip<S: 'static> {
+pub struct AutoContextChip<S: 'static> {
     label: String,
     test_id: String,
     on_remove: Option<Rc<dyn Fn(&mut S, &str)>>,
 }
 
 impl<S: 'static> AutoContextChip<S> {
-    pub(crate) fn new(label: impl Into<String>, test_id: impl Into<String>) -> Self {
+    pub fn new(label: impl Into<String>, test_id: impl Into<String>) -> Self {
         Self {
             label: label.into(),
             test_id: test_id.into(),
@@ -167,12 +167,12 @@ impl<S: 'static> AutoContextChip<S> {
 
     /// Called with the chip's `testId` when the X is pressed; the caller maps
     /// it back to the snapshot field it removes.
-    pub(crate) fn on_remove(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_remove(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_remove = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let label = self.label.clone();
         // React's aria-label template, verbatim: the label is already
@@ -229,13 +229,13 @@ impl<S: 'static> AutoContextChip<S> {
 
 /// One answer option of a question (`AiQuestionOption`, `types/ai.ts:180`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiQuestionOption {
+pub struct AiQuestionOption {
     pub id: String,
     pub label: String,
 }
 
 impl AiQuestionOption {
-    pub(crate) fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             label: label.into(),
@@ -245,7 +245,7 @@ impl AiQuestionOption {
 
 /// One assistant question (`AiQuestion`, `types/ai.ts:185`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiQuestion {
+pub struct AiQuestion {
     pub id: String,
     pub prompt: String,
     pub options: Vec<AiQuestionOption>,
@@ -253,7 +253,7 @@ pub(crate) struct AiQuestion {
 }
 
 impl AiQuestion {
-    pub(crate) fn new(id: impl Into<String>, prompt: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<String>, prompt: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             prompt: prompt.into(),
@@ -262,12 +262,12 @@ impl AiQuestion {
         }
     }
 
-    pub(crate) fn option(mut self, id: impl Into<String>, label: impl Into<String>) -> Self {
+    pub fn option(mut self, id: impl Into<String>, label: impl Into<String>) -> Self {
         self.options.push(AiQuestionOption::new(id, label));
         self
     }
 
-    pub(crate) fn allow_multiple(mut self, allow_multiple: bool) -> Self {
+    pub fn allow_multiple(mut self, allow_multiple: bool) -> Self {
         self.allow_multiple = allow_multiple;
         self
     }
@@ -277,7 +277,7 @@ impl AiQuestion {
 /// a single-select answer is the option id or free text, a multi-select
 /// answer is the list of chosen option ids.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Answer {
+pub enum Answer {
     Single(String),
     Multiple(Vec<String>),
 }
@@ -290,7 +290,7 @@ pub(crate) enum Answer {
 /// Behaviour mirrors `QuestionBlock`'s React hooks exactly; see
 /// [`QuestionBlockState::toggle`] and [`QuestionBlockState::submit`].
 #[derive(Clone, Debug, Default)]
-pub(crate) struct QuestionBlockState {
+pub struct QuestionBlockState {
     answers: HashMap<String, Answer>,
     submitted: bool,
     payload: Option<String>,
@@ -303,7 +303,7 @@ pub(crate) struct QuestionBlockState {
 
 impl QuestionBlockState {
     /// React's initial answers: `[]` for multi-select, `''` otherwise.
-    pub(crate) fn new(questions: &[AiQuestion]) -> Self {
+    pub fn new(questions: &[AiQuestion]) -> Self {
         let mut state = Self::default();
         for question in questions {
             state.answers.insert(
@@ -325,23 +325,23 @@ impl QuestionBlockState {
     }
 
     /// The current answer for a question, if the question is known.
-    pub(crate) fn answer(&self, question_id: &str) -> Option<&Answer> {
+    pub fn answer(&self, question_id: &str) -> Option<&Answer> {
         self.answers.get(question_id)
     }
 
     /// Whether the block was submitted (React's `submitted` state).
-    pub(crate) fn submitted(&self) -> bool {
+    pub fn submitted(&self) -> bool {
         self.submitted
     }
 
     /// The formatted payload of the submit, if one happened.
-    pub(crate) fn payload(&self) -> Option<&str> {
+    pub fn payload(&self) -> Option<&str> {
         self.payload.as_deref()
     }
 
     /// The custom-text draft for a question, for tests and for the field's
     /// edit accessor.
-    pub(crate) fn custom_text(&self, question_id: &str) -> &str {
+    pub fn custom_text(&self, question_id: &str) -> &str {
         self.custom
             .get(question_id)
             .map(|edit| edit.text.as_str())
@@ -354,7 +354,7 @@ impl QuestionBlockState {
     /// Pressing an option also clears the custom draft, matching React's
     /// derived input value (the input shows `''` once the answer is an
     /// option id or a list).
-    pub(crate) fn toggle(&mut self, question_id: &str, option_id: &str, allow_multiple: bool) {
+    pub fn toggle(&mut self, question_id: &str, option_id: &str, allow_multiple: bool) {
         if allow_multiple {
             match self.answers.entry(question_id.to_string()) {
                 std::collections::hash_map::Entry::Occupied(mut entry) => match entry.get_mut() {
@@ -412,7 +412,7 @@ impl QuestionBlockState {
 
     /// The edit accessor the custom-text field binds: returns the question's
     /// draft buffer, mirroring its current text into the answer first.
-    pub(crate) fn custom_edit(&mut self, question_id: &str) -> &mut TextEdit {
+    pub fn custom_edit(&mut self, question_id: &str) -> &mut TextEdit {
         self.sync_custom(question_id);
         self.custom
             .entry(question_id.to_string())
@@ -427,7 +427,7 @@ impl QuestionBlockState {
     /// Drafts are synced first (see the module docs): without this, a custom
     /// answer typed since the last accessor call would be missing from the
     /// payload.
-    pub(crate) fn submit(&mut self, questions: &[AiQuestion]) -> Option<String> {
+    pub fn submit(&mut self, questions: &[AiQuestion]) -> Option<String> {
         for question in questions {
             self.sync_custom(&question.id);
         }
@@ -443,7 +443,7 @@ impl QuestionBlockState {
     /// that names no option (free text, or a stale id) formats as itself.
     /// Empty answers — an empty multi list, or a blank-or-whitespace single
     /// string — are skipped; all empty yields `None`.
-    pub(crate) fn format_submission(
+    pub fn format_submission(
         questions: &[AiQuestion],
         answers: &HashMap<String, Answer>,
     ) -> Option<String> {
@@ -493,7 +493,7 @@ impl QuestionBlockState {
 /// question with option toggle buttons, a custom-answer text field, and a
 /// submit button. The caller owns the [`QuestionBlockState`] and wires the
 /// three callbacks; the block itself keeps no state.
-pub(crate) struct QuestionBlock<'a, S: 'static> {
+pub struct QuestionBlock<'a, S: 'static> {
     questions: Vec<AiQuestion>,
     state: &'a QuestionBlockState,
     on_toggle: Option<Rc<dyn Fn(&mut S, &str, &str, bool)>>,
@@ -502,7 +502,7 @@ pub(crate) struct QuestionBlock<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> QuestionBlock<'a, S> {
-    pub(crate) fn new(questions: Vec<AiQuestion>, state: &'a QuestionBlockState) -> Self {
+    pub fn new(questions: Vec<AiQuestion>, state: &'a QuestionBlockState) -> Self {
         Self {
             questions,
             state,
@@ -515,7 +515,7 @@ impl<'a, S: 'static> QuestionBlock<'a, S> {
     /// Called with `(question id, option id, allow_multiple)` when an option
     /// button is pressed; the caller drives
     /// [`QuestionBlockState::toggle`].
-    pub(crate) fn on_toggle(mut self, f: impl Fn(&mut S, &str, &str, bool) + 'static) -> Self {
+    pub fn on_toggle(mut self, f: impl Fn(&mut S, &str, &str, bool) + 'static) -> Self {
         self.on_toggle = Some(Rc::new(f));
         self
     }
@@ -523,7 +523,7 @@ impl<'a, S: 'static> QuestionBlock<'a, S> {
     /// The per-question edit accessor for the custom-answer fields, e.g.
     /// `|state, id| state.block.custom_edit(id)`; see
     /// [`QuestionBlockState::custom_edit`].
-    pub(crate) fn on_custom_edit(
+    pub fn on_custom_edit(
         mut self,
         f: impl for<'b, 'c> Fn(&'b mut S, &'c str) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -533,7 +533,7 @@ impl<'a, S: 'static> QuestionBlock<'a, S> {
 
     /// Called when the submit button is pressed; the caller drives
     /// [`QuestionBlockState::submit`] with the same questions.
-    pub(crate) fn on_submit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_submit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_submit = Some(Rc::new(f));
         self
     }
@@ -546,7 +546,7 @@ impl<'a, S: 'static> QuestionBlock<'a, S> {
         }
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         // React returns null once submitted; the Rune shell keeps the key
         // with no children so the parent's slot stays stable, folding away
         // over successive frames (see the module docs) rather than

@@ -102,7 +102,7 @@ fn method_name(method: IndexMethod) -> &'static str {
 
 /// `postgresqlDialect` — double-quote table SQL, no truncate override,
 /// no row-limit declaration (the standard trailing `LIMIT n`).
-pub(crate) static POSTGRESQL_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static POSTGRESQL_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "postgresql",
     ddl: DialectDdl {
         table_ddl: table_ddl_query,

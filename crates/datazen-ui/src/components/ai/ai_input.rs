@@ -61,7 +61,7 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 
 /// React's `itemKey`: `<kind>:<id>`.
-pub(crate) fn item_key(item: &ContextItem) -> String {
+pub fn item_key(item: &ContextItem) -> String {
     format!("{:?}:{}", item.kind, item.id)
 }
 
@@ -69,7 +69,7 @@ pub(crate) fn item_key(item: &ContextItem) -> String {
 /// just before the caret ends in an `@`-word. `caret` is a byte offset into
 /// `text` (rune's `TextEdit::focus`). A bare trailing `@` matches too — the
 /// capture is empty, the picker opens on the unfiltered list.
-pub(crate) fn at_query(text: &str, caret: usize) -> Option<String> {
+pub fn at_query(text: &str, caret: usize) -> Option<String> {
     let head = &text[..caret.min(text.len())];
     let mut word = String::new();
     for ch in head.chars().rev() {
@@ -87,7 +87,7 @@ pub(crate) fn at_query(text: &str, caret: usize) -> Option<String> {
 /// The state the host owns for one input (the React local state plus the
 /// controlled value): the draft, the context chips, and the `@` picker flags.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct AiInputState {
+pub struct AiInputState {
     input: TextEdit,
     items: Vec<ContextItem>,
     /// Whether the `@` picker is open (React's `showPicker`).
@@ -95,61 +95,61 @@ pub(crate) struct AiInputState {
 }
 
 impl AiInputState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The draft buffer, for the field's edit binding.
-    pub(crate) fn input(&self) -> &TextEdit {
+    pub fn input(&self) -> &TextEdit {
         &self.input
     }
 
     /// The draft buffer, mutable, for the edit accessor.
-    pub(crate) fn input_edit(&mut self) -> &mut TextEdit {
+    pub fn input_edit(&mut self) -> &mut TextEdit {
         &mut self.input
     }
 
     /// The draft text (React's `value`).
-    pub(crate) fn text(&self) -> &str {
+    pub fn text(&self) -> &str {
         &self.input.text
     }
 
     /// Replace the draft (React's controlled value write).
-    pub(crate) fn set_text(&mut self, value: impl Into<String>) {
+    pub fn set_text(&mut self, value: impl Into<String>) {
         self.input = TextEdit::new(value.into());
     }
 
     /// Place the caret (React's `selectionStart`): an empty selection at the
     /// byte offset. The `@` trigger reads it.
-    pub(crate) fn set_caret(&mut self, byte: usize) {
+    pub fn set_caret(&mut self, byte: usize) {
         self.input.anchor = byte;
         self.input.focus = byte;
     }
 
     /// The context chips (React's `contextItems`).
-    pub(crate) fn items(&self) -> &[ContextItem] {
+    pub fn items(&self) -> &[ContextItem] {
         &self.items
     }
 
     /// React's `onContextItemsChange` write end: replace the chips.
-    pub(crate) fn set_items(&mut self, items: Vec<ContextItem>) {
+    pub fn set_items(&mut self, items: Vec<ContextItem>) {
         self.items = items;
     }
 
     /// React's `showPicker`.
-    pub(crate) fn picker_open(&self) -> bool {
+    pub fn picker_open(&self) -> bool {
         self.picker_open
     }
 
     /// React's `setShowPicker(false)` (a pick, an Escape, a click-away).
-    pub(crate) fn close_picker(&mut self) {
+    pub fn close_picker(&mut self) {
         self.picker_open = false;
     }
 
     /// React's `handleChange` picker arm: the `@` query at the caret, or
     /// None — which also closes the picker, exactly as the React else-branch
     /// (`setShowPicker(false); setPickerQuery('')`) does.
-    pub(crate) fn sync_picker(&mut self) -> Option<String> {
+    pub fn sync_picker(&mut self) -> Option<String> {
         let query = at_query(&self.input.text, self.input.focus);
         self.picker_open = query.is_some();
         query
@@ -159,12 +159,12 @@ impl AiInputState {
     /// and chips present, Backspace (or Delete on an empty draft) drops the
     /// last chip instead of touching the text. Answers whether a pop
     /// happened; the caller (the field's key handler) consumes the key.
-    pub(crate) fn pop_token_conditions(&self) -> bool {
+    pub fn pop_token_conditions(&self) -> bool {
         !self.items.is_empty() && self.input.anchor == 0 && self.input.focus == 0
     }
 
     /// Drop the last chip (React's `contextItems.slice(0, -1)`).
-    pub(crate) fn pop_token(&mut self) -> Option<Vec<ContextItem>> {
+    pub fn pop_token(&mut self) -> Option<Vec<ContextItem>> {
         if self.items.is_empty() {
             return None;
         }
@@ -176,7 +176,7 @@ impl AiInputState {
     /// rewrite the draft so the `@`-word that opened the picker disappears
     /// (the text before the last `@` joins the text after the caret with its
     /// leading blanks stripped; an all-blank result becomes empty).
-    pub(crate) fn apply_pick(&mut self, item: ContextItem) {
+    pub fn apply_pick(&mut self, item: ContextItem) {
         if !self
             .items
             .iter()
@@ -203,7 +203,7 @@ impl AiInputState {
 
 /// The input. Renders the state; every interaction is a callback that
 /// mutates `S`.
-pub(crate) struct AiInput<'a, S: 'static> {
+pub struct AiInput<'a, S: 'static> {
     state: &'a AiInputState,
     placeholder: Option<String>,
     disabled: bool,
@@ -217,7 +217,7 @@ pub(crate) struct AiInput<'a, S: 'static> {
 
 impl<'a, S: 'static> AiInput<'a, S> {
     #[allow(dead_code)] // reusable component; wired by the chat/NL2SQL host tasks
-    pub(crate) fn new(state: &'a AiInputState) -> Self {
+    pub fn new(state: &'a AiInputState) -> Self {
         Self {
             state,
             placeholder: None,
@@ -233,28 +233,28 @@ impl<'a, S: 'static> AiInput<'a, S> {
 
     /// React's `placeholder` prop.
     #[allow(dead_code)] // reusable component; wired by the chat/NL2SQL host tasks
-    pub(crate) fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.placeholder = Some(placeholder.into());
         self
     }
 
     /// React's `disabled` prop.
     #[allow(dead_code)] // reusable component; wired by the chat/NL2SQL host tasks
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// React's `isLoading` prop.
     #[allow(dead_code)] // reusable component; wired by the chat/NL2SQL host tasks
-    pub(crate) fn loading(mut self, loading: bool) -> Self {
+    pub fn loading(mut self, loading: bool) -> Self {
         self.loading = loading;
         self
     }
 
     /// React's `hideSubmit` prop.
     #[allow(dead_code)] // reusable component; wired by the chat/NL2SQL host tasks
-    pub(crate) fn hide_submit(mut self, hide: bool) -> Self {
+    pub fn hide_submit(mut self, hide: bool) -> Self {
         self.hide_submit = hide;
         self
     }
@@ -265,7 +265,7 @@ impl<'a, S: 'static> AiInput<'a, S> {
     /// (React's `handleKeyDown` — the `@` picker's keyboard forwarding
     /// arrives with T217).
     #[allow(dead_code)] // reusable component; wired by the chat/NL2SQL host tasks
-    pub(crate) fn state_access(
+    pub fn state_access(
         mut self,
         access: impl for<'b> Fn(&'b mut S) -> &'b mut AiInputState + Clone + 'static,
     ) -> Self {
@@ -275,14 +275,14 @@ impl<'a, S: 'static> AiInput<'a, S> {
 
     /// React's `onSubmit`.
     #[allow(dead_code)] // reusable component; wired by the chat/NL2SQL host tasks
-    pub(crate) fn on_submit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_submit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_submit = Some(Rc::new(f));
         self
     }
 
     /// React's `onStop`.
     #[allow(dead_code)] // reusable component; wired by the chat/NL2SQL host tasks
-    pub(crate) fn on_stop(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_stop(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_stop = Some(Rc::new(f));
         self
     }
@@ -290,7 +290,7 @@ impl<'a, S: 'static> AiInput<'a, S> {
     /// React's `onContextItemsChange`: present means the `@` machinery is
     /// live (React's `hasContext`).
     #[allow(dead_code)] // reusable component; wired by the chat/NL2SQL host tasks
-    pub(crate) fn on_items_change(
+    pub fn on_items_change(
         mut self,
         f: impl Fn(&mut S, Vec<ContextItem>) + 'static,
     ) -> Self {
@@ -308,7 +308,7 @@ impl<'a, S: 'static> AiInput<'a, S> {
     /// live. (The kit keeps the drawn hint inside its text-input state, out
     /// of the elements API, so tests assert the ternary here.)
     #[allow(dead_code)] // asserted by tests; the drawn hint itself is not observable
-    pub(crate) fn placeholder_text(&self) -> Option<String> {
+    pub fn placeholder_text(&self) -> Option<String> {
         let has_context = self.on_items_change.is_some();
         if !self.state.items.is_empty() || !self.state.text().is_empty() {
             return None;
@@ -321,7 +321,7 @@ impl<'a, S: 'static> AiInput<'a, S> {
     }
 
     /// The input, mounted (React renders it unconditionally).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let state = self.state;
 

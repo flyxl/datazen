@@ -47,7 +47,7 @@ const BLOB_TYPE_KEYWORDS: [&str; 5] = ["blob", "binary", "bytea", "image", "raw"
 /// React's `isBlobType`: whether a column *type name* reads as binary (a
 /// substring test against [`BLOB_TYPE_KEYWORDS`]; the caller lowercases the
 /// name first, exactly as `DetailPanel.tsx` does).
-pub(crate) fn is_blob_type(type_name: &str) -> bool {
+pub fn is_blob_type(type_name: &str) -> bool {
     BLOB_TYPE_KEYWORDS.iter().any(|keyword| type_name.contains(keyword))
 }
 
@@ -55,7 +55,7 @@ pub(crate) fn is_blob_type(type_name: &str) -> bool {
 /// array is one outright; a string only when it parses as JSON and starts
 /// with `{` or `[` (a bare `5` in a text column is a string, not JSON);
 /// `null`/`undefined`/numbers/booleans are not.
-pub(crate) fn is_json_value(value: &Value) -> bool {
+pub fn is_json_value(value: &Value) -> bool {
     match value {
         Value::Null => false,
         // JavaScript's `typeof v === 'object'`: arrays and objects.
@@ -76,7 +76,7 @@ pub(crate) fn is_json_value(value: &Value) -> bool {
 /// parsed result is not an object/array). A non-JSON value must return
 /// `None` rather than the input so the caller's `pretty ?? formatCell(value)`
 /// chain stays honest.
-pub(crate) fn pretty_json(value: &Value) -> Option<String> {
+pub fn pretty_json(value: &Value) -> Option<String> {
     let parsed = match value {
         Value::Null => return None,
         Value::Object(_) | Value::Array(_) => value.clone(),

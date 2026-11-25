@@ -137,7 +137,7 @@ use crate::i18n::t;
 /// the panel's explicit `'auto'` + `'user'` memory default (see the
 /// props comment at `AiChatPanel.tsx:108–112`).
 #[derive(Clone, Debug)]
-pub(crate) struct AiChatPanelState {
+pub struct AiChatPanelState {
     db_session_id: String,
     database: Option<String>,
     database_type: Option<String>,
@@ -174,7 +174,7 @@ impl AiChatPanelState {
     /// so no welcome line renders until [`AiChatPanelState::ensure_session`]
     /// first runs — even though the list state's own default is
     /// `has_session: true` for its standalone tests.
-    pub(crate) fn new(db_session_id: impl Into<String>) -> Self {
+    pub fn new(db_session_id: impl Into<String>) -> Self {
         let mut state = Self {
             db_session_id: db_session_id.into(),
             database: None,
@@ -206,104 +206,104 @@ impl AiChatPanelState {
         state
     }
 
-    pub(crate) fn db_session_id(&self) -> &str {
+    pub fn db_session_id(&self) -> &str {
         &self.db_session_id
     }
 
-    pub(crate) fn database(&self) -> Option<&str> {
+    pub fn database(&self) -> Option<&str> {
         self.database.as_deref()
     }
 
-    pub(crate) fn database_type(&self) -> Option<&str> {
+    pub fn database_type(&self) -> Option<&str> {
         self.database_type.as_deref()
     }
 
-    pub(crate) fn sql_dialect(&self) -> Option<&str> {
+    pub fn sql_dialect(&self) -> Option<&str> {
         self.sql_dialect.as_deref()
     }
 
-    pub(crate) fn connection_id(&self) -> Option<&str> {
+    pub fn connection_id(&self) -> Option<&str> {
         self.connection_id.as_deref()
     }
 
-    pub(crate) fn editor_session_id(&self) -> Option<&str> {
+    pub fn editor_session_id(&self) -> Option<&str> {
         self.editor_session_id.as_deref()
     }
 
-    pub(crate) fn memory_scope(&self) -> AiMemoryScope {
+    pub fn memory_scope(&self) -> AiMemoryScope {
         self.memory_scope
     }
 
-    pub(crate) fn memory_enabled(&self) -> bool {
+    pub fn memory_enabled(&self) -> bool {
         self.memory_enabled
     }
 
-    pub(crate) fn kv_key_name(&self) -> Option<&str> {
+    pub fn kv_key_name(&self) -> Option<&str> {
         self.kv_key_name.as_deref()
     }
 
-    pub(crate) fn is_configured(&self) -> bool {
+    pub fn is_configured(&self) -> bool {
         self.is_configured
     }
 
     /// The live session key, `None` until [`AiChatPanelState::ensure_session`]
     /// first runs (`chatSession` is `undefined` before `initChat`).
-    pub(crate) fn session_key(&self) -> Option<&str> {
+    pub fn session_key(&self) -> Option<&str> {
         self.session_key.as_deref()
     }
 
-    pub(crate) fn request_id(&self) -> Option<&str> {
+    pub fn request_id(&self) -> Option<&str> {
         self.request_id.as_deref()
     }
 
-    pub(crate) fn header(&self) -> &AiChatHeaderState {
+    pub fn header(&self) -> &AiChatHeaderState {
         &self.header
     }
 
-    pub(crate) fn list(&self) -> &AiChatMessageListState {
+    pub fn list(&self) -> &AiChatMessageListState {
         &self.list
     }
 
-    pub(crate) fn area(&self) -> &AiChatInputAreaState {
+    pub fn area(&self) -> &AiChatInputAreaState {
         &self.area
     }
 
-    pub(crate) fn header_mut(&mut self) -> &mut AiChatHeaderState {
+    pub fn header_mut(&mut self) -> &mut AiChatHeaderState {
         &mut self.header
     }
 
-    pub(crate) fn list_mut(&mut self) -> &mut AiChatMessageListState {
+    pub fn list_mut(&mut self) -> &mut AiChatMessageListState {
         &mut self.list
     }
 
-    pub(crate) fn area_mut(&mut self) -> &mut AiChatInputAreaState {
+    pub fn area_mut(&mut self) -> &mut AiChatInputAreaState {
         &mut self.area
     }
 
-    pub(crate) fn sent_messages(&self) -> &[AiSentMessage] {
+    pub fn sent_messages(&self) -> &[AiSentMessage] {
         &self.sent_messages
     }
 
-    pub(crate) fn consumed_draft_ids(&self) -> &[String] {
+    pub fn consumed_draft_ids(&self) -> &[String] {
         &self.consumed_draft_ids
     }
 
-    pub(crate) fn cancelled_request_ids(&self) -> &[String] {
+    pub fn cancelled_request_ids(&self) -> &[String] {
         &self.cancelled_request_ids
     }
 
-    pub(crate) fn memory_create_requests(&self) -> &[AiMemoryCreateRequest] {
+    pub fn memory_create_requests(&self) -> &[AiMemoryCreateRequest] {
         &self.memory_create_requests
     }
 
-    pub(crate) fn clear_chat_presses(&self) -> u32 {
+    pub fn clear_chat_presses(&self) -> u32 {
         self.clear_chat_presses
     }
 
     /// The effective memory mode: the prop wins, else
     /// `memoryModeFor(settings.memory)` — `'auto'` while the memory
     /// switch is on, `'off'` while it is off.
-    pub(crate) fn effective_memory_mode(&self) -> AiMemoryMode {
+    pub fn effective_memory_mode(&self) -> AiMemoryMode {
         match self.memory_mode {
             Some(mode) => mode,
             None => {
@@ -319,7 +319,7 @@ impl AiChatPanelState {
     // -- Props: the host writes these; the template reset lives on the
     // writes React's `useEffect([connectionId, databaseType])` watches. --
 
-    pub(crate) fn set_database(&mut self, database: Option<String>) {
+    pub fn set_database(&mut self, database: Option<String>) {
         self.database = database;
     }
 
@@ -327,7 +327,7 @@ impl AiChatPanelState {
     /// connection or database-type change returns to automatic default
     /// selection instead of carrying a stale pick. A database change
     /// alone does not reset — it is not in the effect's deps.
-    pub(crate) fn set_connection_id(&mut self, connection_id: Option<String>) {
+    pub fn set_connection_id(&mut self, connection_id: Option<String>) {
         if self.connection_id != connection_id {
             self.connection_id = connection_id;
             self.header.choose_template("");
@@ -336,7 +336,7 @@ impl AiChatPanelState {
         }
     }
 
-    pub(crate) fn set_database_type(&mut self, database_type: Option<String>) {
+    pub fn set_database_type(&mut self, database_type: Option<String>) {
         if self.database_type != database_type {
             self.database_type = database_type;
             self.header.choose_template("");
@@ -345,7 +345,7 @@ impl AiChatPanelState {
         }
     }
 
-    pub(crate) fn set_sql_dialect(&mut self, sql_dialect: Option<String>) {
+    pub fn set_sql_dialect(&mut self, sql_dialect: Option<String>) {
         // T167: the list state's code-block slots seed from this dialect
         // when their message arrives, so the seed value follows the
         // change (React's `useState(sqlDialect)` seed at mount).
@@ -357,42 +357,42 @@ impl AiChatPanelState {
         self.sql_dialect = sql_dialect;
     }
 
-    pub(crate) fn set_editor_session_id(&mut self, editor_session_id: Option<String>) {
+    pub fn set_editor_session_id(&mut self, editor_session_id: Option<String>) {
         self.editor_session_id = editor_session_id;
     }
 
-    pub(crate) fn set_memory_mode(&mut self, memory_mode: Option<AiMemoryMode>) {
+    pub fn set_memory_mode(&mut self, memory_mode: Option<AiMemoryMode>) {
         self.memory_mode = memory_mode;
     }
 
-    pub(crate) fn set_memory_scope(&mut self, memory_scope: AiMemoryScope) {
+    pub fn set_memory_scope(&mut self, memory_scope: AiMemoryScope) {
         self.memory_scope = memory_scope;
     }
 
-    pub(crate) fn set_memory_enabled(&mut self, memory_enabled: bool) {
+    pub fn set_memory_enabled(&mut self, memory_enabled: bool) {
         self.memory_enabled = memory_enabled;
     }
 
     /// The host-owned KV context (`kvContext` prop): the key name the
     /// chip shows and the block `composeKvAiMessage` appends. The area
     /// only carries the key name; the block lives here with the send.
-    pub(crate) fn set_kv_context(&mut self, key_name: Option<String>, block: Option<String>) {
+    pub fn set_kv_context(&mut self, key_name: Option<String>, block: Option<String>) {
         self.kv_key_name = key_name.clone();
         self.kv_block = block;
         self.area.set_kv_key_name(key_name);
     }
 
-    pub(crate) fn set_is_configured(&mut self, is_configured: bool) {
+    pub fn set_is_configured(&mut self, is_configured: bool) {
         self.is_configured = is_configured;
     }
 
     /// The in-flight run's request id, for `handleStop` / unmount
     /// cancel. Seeded by the host; the VM never invents one.
-    pub(crate) fn set_request_id(&mut self, request_id: Option<String>) {
+    pub fn set_request_id(&mut self, request_id: Option<String>) {
         self.request_id = request_id;
     }
 
-    pub(crate) fn set_session_history_open(&mut self, open: bool) {
+    pub fn set_session_history_open(&mut self, open: bool) {
         self.header.set_session_history_open(open);
     }
 
@@ -403,7 +403,7 @@ impl AiChatPanelState {
     /// JS `||` is first-non-empty, so an empty connection id falls
     /// through to the db session id, and an empty db session id to
     /// `'default'`.
-    pub(crate) fn desired_session_key(&self) -> String {
+    pub fn desired_session_key(&self) -> String {
         let owner = first_non_empty([
             self.connection_id.as_deref(),
             Some(self.db_session_id.as_str()),
@@ -419,7 +419,7 @@ impl AiChatPanelState {
     /// switch the conversation when the persisted `connectionId` is
     /// the key's owner; a real connection change re-keys it. Returns
     /// whether a fresh session started.
-    pub(crate) fn ensure_session(&mut self) -> bool {
+    pub fn ensure_session(&mut self) -> bool {
         let desired = self.desired_session_key();
         if self.session_key.as_deref() == Some(desired.as_str()) {
             return false;
@@ -459,7 +459,7 @@ impl AiChatPanelState {
     /// deleted otherwise — an empty string deletes, exactly as JS
     /// `if (autoContext?.editorSql)` does). The snapshot itself goes
     /// `null` when nothing with content is left.
-    pub(crate) fn sync_auto_context(&mut self, next: Option<&AiChatContextSnapshot>) {
+    pub fn sync_auto_context(&mut self, next: Option<&AiChatContextSnapshot>) {
         let previous = self.previous_auto_context.clone();
         self.previous_auto_context = next.cloned();
         let mut current = self.area.snapshot().cloned().unwrap_or_default();
@@ -523,7 +523,7 @@ impl AiChatPanelState {
     /// recorded only when not streaming — a streaming prefill defers
     /// the ack, and the processed mark means the effect's early return
     /// skips it on later runs, exactly as React's does.
-    pub(crate) fn handle_draft_request(&mut self, draft: Option<&AiPendingDraft>) {
+    pub fn handle_draft_request(&mut self, draft: Option<&AiPendingDraft>) {
         let Some(draft) = draft else {
             return;
         };
@@ -549,7 +549,7 @@ impl AiChatPanelState {
     /// Consume the focus request a prefill or a conflict resolution
     /// left behind: the host focuses `ai-input-text` (the S5 field
     /// key) when this returns `true`.
-    pub(crate) fn take_focus_input_request(&mut self) -> bool {
+    pub fn take_focus_input_request(&mut self) -> bool {
         std::mem::take(&mut self.focus_input_requested)
     }
 
@@ -557,7 +557,7 @@ impl AiChatPanelState {
     /// pending draft, replace or append the input, switch to the chat
     /// tab, and ack the request id. Returns the acked id, or `None`
     /// when no conflict was pending.
-    pub(crate) fn resolve_conflict(&mut self, strategy: ConflictResolution) -> Option<String> {
+    pub fn resolve_conflict(&mut self, strategy: ConflictResolution) -> Option<String> {
         let request_id = self.area.resolve_conflict(strategy)?;
         self.header.set_tab(AiChatTab::Chat);
         self.focus_input_requested = true;
@@ -566,7 +566,7 @@ impl AiChatPanelState {
     }
 
     /// React's `dismissConflict` (`AiChatPanel.tsx:291–293`).
-    pub(crate) fn dismiss_conflict(&mut self) {
+    pub fn dismiss_conflict(&mut self) {
         self.area.dismiss_conflict();
     }
 
@@ -579,7 +579,7 @@ impl AiChatPanelState {
     /// input, the snapshot and the context items. The store round-trip
     /// is the outbox: `sent_messages` is what the host sends once
     /// T088 lands.
-    pub(crate) fn send(&mut self) -> Option<AiSentMessage> {
+    pub fn send(&mut self) -> Option<AiSentMessage> {
         let raw = self.area.submit()?;
         let composed = match (
             self.kv_key_name
@@ -626,7 +626,7 @@ impl AiChatPanelState {
     /// a plain message — no snapshot, no template, no KV composition.
     /// Returns the recorded send, or `None` when the block has no
     /// non-empty answer (or the message index is unknown).
-    pub(crate) fn send_answers(&mut self, index: usize) -> Option<AiSentMessage> {
+    pub fn send_answers(&mut self, index: usize) -> Option<AiSentMessage> {
         let questions = self.list.messages().get(index)?.questions.clone();
         let payload = self
             .list_mut()
@@ -651,7 +651,7 @@ impl AiChatPanelState {
     /// React's `handleStop` (`AiChatPanel.tsx:366–369`, BUG-01):
     /// `cancelChat(chatSession?.requestId ?? undefined)`. The VM
     /// records the receipt only when a run is actually in flight.
-    pub(crate) fn stop(&mut self) {
+    pub fn stop(&mut self) {
         self.cancel_in_flight();
     }
 
@@ -659,7 +659,7 @@ impl AiChatPanelState {
     /// switching pane / connection, cancels the in-flight run the
     /// panel started, so a hidden stream cannot keep consuming tokens.
     /// Same receipt as [`AiChatPanelState::stop`].
-    pub(crate) fn cancel_in_flight(&mut self) {
+    pub fn cancel_in_flight(&mut self) {
         if let Some(request_id) = self.request_id.clone() {
             self.cancelled_request_ids.push(request_id);
         }
@@ -669,7 +669,7 @@ impl AiChatPanelState {
     /// messages, stop the stream, drop the stream fields, the session
     /// memory, the loaded skills, the egress summary and the candidate
     /// notice, and forget the request id.
-    pub(crate) fn clear_chat(&mut self) {
+    pub fn clear_chat(&mut self) {
         self.clear_chat_presses += 1;
         self.list.set_messages(Vec::new());
         self.list.set_streaming(false);
@@ -698,7 +698,7 @@ impl AiChatPanelState {
     /// notice shows. Returns whether a request was recorded. A host
     /// failure is reported back through
     /// [`AiChatPanelState::report_remember_failed`].
-    pub(crate) fn handle_remember(&mut self, message: &AiChatMessage) -> bool {
+    pub fn handle_remember(&mut self, message: &AiChatMessage) -> bool {
         let content = message.content.trim();
         if content.is_empty() {
             return false;
@@ -740,7 +740,7 @@ impl AiChatPanelState {
 
     /// The `catch` branch of `handleRemember`: the command failed, so
     /// the `chat.rememberFailed` notice shows instead.
-    pub(crate) fn report_remember_failed(&mut self) {
+    pub fn report_remember_failed(&mut self) {
         self.list
             .set_remember_notice(Some(t("chat.rememberFailed").to_string()));
     }

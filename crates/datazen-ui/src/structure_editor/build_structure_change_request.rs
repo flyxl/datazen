@@ -13,20 +13,20 @@ use super::{
 /// Mirror of `BuildStructureChangeRequestParams`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) struct BuildStructureChangeRequestParams {
-    pub(crate) mode: StructureChangeMode,
-    pub(crate) table: String,
-    pub(crate) schema: Option<String>,
-    pub(crate) original_columns: Vec<StructureColumnDraft>,
-    pub(crate) current_columns: Vec<StructureColumnDraft>,
-    pub(crate) original_indexes: Vec<StructureIndexDraft>,
-    pub(crate) current_indexes: Vec<StructureIndexDraft>,
+pub struct BuildStructureChangeRequestParams {
+    pub mode: StructureChangeMode,
+    pub table: String,
+    pub schema: Option<String>,
+    pub original_columns: Vec<StructureColumnDraft>,
+    pub current_columns: Vec<StructureColumnDraft>,
+    pub original_indexes: Vec<StructureIndexDraft>,
+    pub current_indexes: Vec<StructureIndexDraft>,
 }
 
 /// Port of `buildStructureChangeRequest(params)`.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn build_structure_change_request(
+pub fn build_structure_change_request(
     params: BuildStructureChangeRequestParams,
 ) -> StructureChangeRequest {
     // `params.currentColumns.filter((c) => c.name.trim())` — a string is

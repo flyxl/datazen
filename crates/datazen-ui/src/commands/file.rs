@@ -51,16 +51,16 @@ use serde_json::Value;
 /// The wire `ColumnInfo` (`../types` re-exports backend-client's; the
 /// Rust face is the driver-api crate's) — one shape, not a second
 /// mirror.
-pub(crate) use datazen_driver_api::ColumnInfo;
+pub use datazen_driver_api::ColumnInfo;
 
 /// One shaped legacy command: the `legacyInvoke` name plus its payload
 /// (the `backup.rs` / `driver.rs` shaper shape).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FileCommandRequest {
+pub struct FileCommandRequest {
     /// The legacy command name.
-    pub(crate) command: &'static str,
+    pub command: &'static str,
     /// The exact args object the React wrapper passes.
-    pub(crate) value: Value,
+    pub value: Value,
 }
 
 impl FileCommandRequest {
@@ -73,7 +73,7 @@ impl FileCommandRequest {
 /// read happen atomically on the host).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct OpenedTextFile {
+pub struct OpenedTextFile {
     pub file_name: String,
     pub content: String,
 }
@@ -82,7 +82,7 @@ pub(crate) struct OpenedTextFile {
 /// basename + base64, no path.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct OpenedBinaryFile {
+pub struct OpenedBinaryFile {
     pub file_name: String,
     pub data_base64: String,
 }
@@ -92,7 +92,7 @@ pub(crate) struct OpenedBinaryFile {
 /// `fileCommands.saveTextWithDialog(contents, defaultFileName,
 /// filterName, extensions)`: save UTF-8 text via the native save
 /// dialog. The receipt is `false` when the dialog was dismissed.
-pub(crate) fn save_text_with_dialog_request(
+pub fn save_text_with_dialog_request(
     contents: &str,
     default_file_name: &str,
     filter_name: &str,
@@ -111,7 +111,7 @@ pub(crate) fn save_text_with_dialog_request(
 
 /// `fileCommands.saveBase64WithDialog(dataBase64, defaultFileName,
 /// filterName, extensions)`: save base64-decoded bytes the same way.
-pub(crate) fn save_base64_with_dialog_request(
+pub fn save_base64_with_dialog_request(
     data_base64: &str,
     default_file_name: &str,
     filter_name: &str,
@@ -132,7 +132,7 @@ pub(crate) fn save_base64_with_dialog_request(
 /// binary file via the native open dialog; the receipt is
 /// [`OpenedBinaryFile`] or `null` when cancelled. §7.1 declares no
 /// binary-open capability, so this stays a transport call.
-pub(crate) fn open_base64_with_dialog_request(
+pub fn open_base64_with_dialog_request(
     filter_name: &str,
     extensions: &[&str],
 ) -> FileCommandRequest {
@@ -146,7 +146,7 @@ pub(crate) fn open_base64_with_dialog_request(
 
 /// `fileCommands.openTextWithDialog(filterName, extensions)`: open a
 /// text file; the receipt is [`OpenedTextFile`] or `null`.
-pub(crate) fn open_text_with_dialog_request(
+pub fn open_text_with_dialog_request(
     filter_name: &str,
     extensions: &[&str],
 ) -> FileCommandRequest {
@@ -160,7 +160,7 @@ pub(crate) fn open_text_with_dialog_request(
 /// extensions)`: open a save dialog and keep an opaque write session
 /// (the path never returns to the UI). The receipt is the session
 /// token, or `null` if the user cancelled.
-pub(crate) fn begin_save_with_dialog_request(
+pub fn begin_save_with_dialog_request(
     default_file_name: &str,
     filter_name: &str,
     extensions: &[&str],
@@ -177,7 +177,7 @@ pub(crate) fn begin_save_with_dialog_request(
 
 /// `fileCommands.appendSaveText(token, chunk)`: append one text chunk
 /// to the write session.
-pub(crate) fn append_save_text_request(token: &str, chunk: &str) -> FileCommandRequest {
+pub fn append_save_text_request(token: &str, chunk: &str) -> FileCommandRequest {
     FileCommandRequest::native(
         "append_save_text",
         serde_json::json!({ "token": token, "chunk": chunk }),
@@ -185,7 +185,7 @@ pub(crate) fn append_save_text_request(token: &str, chunk: &str) -> FileCommandR
 }
 
 /// `fileCommands.finishSave(token)`: close and flush the write session.
-pub(crate) fn finish_save_request(token: &str) -> FileCommandRequest {
+pub fn finish_save_request(token: &str) -> FileCommandRequest {
     FileCommandRequest::native("finish_save", serde_json::json!({ "token": token }))
 }
 
@@ -193,7 +193,7 @@ pub(crate) fn finish_save_request(token: &str) -> FileCommandRequest {
 /// in-progress `.datazen-part` sibling is removed and the picked path
 /// left untouched (DBR-06). The receipt says whether the partial file
 /// was really deleted, so the UI can report it honestly.
-pub(crate) fn abort_save_request(token: &str) -> FileCommandRequest {
+pub fn abort_save_request(token: &str) -> FileCommandRequest {
     FileCommandRequest::native("abort_save", serde_json::json!({ "token": token }))
 }
 
@@ -201,7 +201,7 @@ pub(crate) fn abort_save_request(token: &str) -> FileCommandRequest {
 /// tables to a single file or ZIP entirely on the Rust side (it opens
 /// its own native save dialog); whole tables are never buffered in the
 /// UI. The receipt is [`ExportTablesResult`] or `null`.
-pub(crate) fn export_tables_stream_request(request: &ExportTablesWire) -> FileCommandRequest {
+pub fn export_tables_stream_request(request: &ExportTablesWire) -> FileCommandRequest {
     FileCommandRequest::native(
         "export_tables_stream",
         serde_json::json!({ "request": request }),
@@ -213,7 +213,7 @@ pub(crate) fn export_tables_stream_request(request: &ExportTablesWire) -> FileCo
 /// `ExportMode`: what goes into the output files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ExportMode {
+pub enum ExportMode {
     StructureOnly,
     DataOnly,
     DataAndStructure,
@@ -222,7 +222,7 @@ pub(crate) enum ExportMode {
 /// `ExportDataFormat`: the data files' format.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ExportDataFormat {
+pub enum ExportDataFormat {
     Csv,
     Tsv,
     Json,
@@ -236,7 +236,7 @@ pub(crate) enum ExportDataFormat {
 /// `ExportOutputMode`: one file or a ZIP per table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum ExportOutputMode {
+pub enum ExportOutputMode {
     Single,
     Zip,
 }
@@ -252,7 +252,7 @@ pub(crate) enum ExportOutputMode {
 /// carry).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub(crate) enum ExportTableSource {
+pub enum ExportTableSource {
     /// The named table as a SELECT.
     Table,
     /// One statement the backend streams (filtered export).
@@ -265,7 +265,7 @@ pub(crate) enum ExportTableSource {
 /// `ExportTableInput`: one table in an export request.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ExportTableWire {
+pub struct ExportTableWire {
     pub table_name: String,
     /// Schema the table lives in (PostgreSQL family); resolved per
     /// table. Absent when `None` (JS drops `undefined`).
@@ -286,7 +286,7 @@ pub(crate) struct ExportTableWire {
 /// on the wire (the React test pins `payload.request.dbSessionId`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ExportTablesWire {
+pub struct ExportTablesWire {
     /// Runtime db session id.
     pub db_session_id: String,
     /// Opaque per-run cancellation token, carried only by SQL-path
@@ -317,7 +317,7 @@ pub(crate) struct ExportTablesWire {
 /// pins why they must stay: the frontend's `'Saved' in result` checks
 /// would never match a lowercased tag.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExportTablesResult {
+pub enum ExportTablesResult {
     /// `n` files written.
     Saved(u64),
     /// The native save dialog was dismissed — a normal exit, not an
@@ -360,14 +360,14 @@ impl<'de> Deserialize<'de> for ExportTablesResult {
 
 /// The `batch-export-progress` subscription name (`onExportProgress`
 /// rides the EventChannel port — form-split F6 prep, R6 burn).
-pub(crate) const EXPORT_PROGRESS_EVENT: &str = "batch-export-progress";
+pub const EXPORT_PROGRESS_EVENT: &str = "batch-export-progress";
 
 /// Progress emitted by the Rust exporter while streaming a table to
 /// disk. The EventChannel rail delivers the **raw** payload (no Tauri
 /// envelope — the React test's pin), so this decodes it as-is.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ExportProgressEvent {
+pub struct ExportProgressEvent {
     /// Table currently being streamed.
     pub table: String,
     /// Cumulative row count written for *this* table so far.
@@ -375,7 +375,7 @@ pub(crate) struct ExportProgressEvent {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
     use serde_json::json;
 

@@ -37,40 +37,40 @@ use crate::structure_editor::{
 /// Host-owned projection of one panel (`stores/panelStore.Panel`).
 #[allow(dead_code)] // VM mirror; supplied by the panel store.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct WorkspacePanelVm {
-    pub(crate) id: String,
-    pub(crate) connection_id: String,
-    pub(crate) db_session_id: String,
-    pub(crate) connection_name: String,
-    pub(crate) database_type: String,
+pub struct WorkspacePanelVm {
+    pub id: String,
+    pub connection_id: String,
+    pub db_session_id: String,
+    pub connection_name: String,
+    pub database_type: String,
     /// Redis-style panels own their target database (`dbName` in React).
-    pub(crate) db_name: Option<String>,
+    pub db_name: Option<String>,
 }
 
 /// React `ConnectionContext` (`stores/panelStore`).
 #[allow(dead_code)] // VM mirror; returned to the host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct WorkspaceConnectionContextVm {
-    pub(crate) connection_id: String,
-    pub(crate) db_session_id: String,
-    pub(crate) connection_name: String,
-    pub(crate) database_type: String,
+pub struct WorkspaceConnectionContextVm {
+    pub connection_id: String,
+    pub db_session_id: String,
+    pub connection_name: String,
+    pub database_type: String,
 }
 
 /// One active-connection entry, including the status the connecting guard reads.
 #[allow(dead_code)] // VM mirror; supplied by the active-connection store.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WorkspaceActiveEntryVm {
-    pub(crate) connection_id: String,
+pub struct WorkspaceActiveEntryVm {
+    pub connection_id: String,
     /// Empty while connecting or errored (React `dbSessionId: string`).
-    pub(crate) db_session_id: Option<String>,
-    pub(crate) status: String,
+    pub db_session_id: Option<String>,
+    pub status: String,
 }
 
 /// React `DatabaseTypeMeta.connectionView`.
 #[allow(dead_code)] // VM mirror; supplied by the driver-meta map.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MetaConnectionViewVm {
+pub enum MetaConnectionViewVm {
     Sql,
     Keyvalue,
     Document,
@@ -79,7 +79,7 @@ pub(crate) enum MetaConnectionViewVm {
 /// React `DataExportCapability` from `lib/exportCapability.ts`.
 #[allow(dead_code)] // VM mirror; supplied by the driver-meta map.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum DataExportCapabilityVm {
+pub enum DataExportCapabilityVm {
     None,
     LoadedOnly,
     #[default]
@@ -89,7 +89,7 @@ pub(crate) enum DataExportCapabilityVm {
 impl DataExportCapabilityVm {
     /// Exact React string values of the capability union.
     #[allow(dead_code)] // pure helper; drop with the host wiring.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",
             Self::LoadedOnly => "loaded_only",
@@ -102,14 +102,14 @@ impl DataExportCapabilityVm {
 /// React's `!== false` / `=== true` / `=== undefined` distinctions intact.
 #[allow(dead_code)] // VM mirror; supplied by the host's DB_REGISTRY projection.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DatabaseTypeMetaVm {
-    pub(crate) is_key_value: bool,
-    pub(crate) connection_view: MetaConnectionViewVm,
-    pub(crate) structure_editor_enabled: Option<bool>,
-    pub(crate) supports_sql: Option<bool>,
-    pub(crate) is_read_only: bool,
-    pub(crate) supports_er_diagram: Option<bool>,
-    pub(crate) export_scope: DataExportCapabilityVm,
+pub struct DatabaseTypeMetaVm {
+    pub is_key_value: bool,
+    pub connection_view: MetaConnectionViewVm,
+    pub structure_editor_enabled: Option<bool>,
+    pub supports_sql: Option<bool>,
+    pub is_read_only: bool,
+    pub supports_er_diagram: Option<bool>,
+    pub export_scope: DataExportCapabilityVm,
 }
 
 impl DatabaseTypeMetaVm {
@@ -137,7 +137,7 @@ impl DatabaseTypeMetaVm {
 
 /// `canOpenStructureEditor(dbMeta)` — the shared predicate, not a copy.
 #[allow(dead_code)] // pure capability gate; drop when the host wires the menu.
-pub(crate) fn can_open(meta: Option<&DatabaseTypeMetaVm>) -> bool {
+pub fn can_open(meta: Option<&DatabaseTypeMetaVm>) -> bool {
     match meta {
         None => false,
         Some(meta) => can_open_structure_editor(Some(&meta.to_structure_meta())),
@@ -146,7 +146,7 @@ pub(crate) fn can_open(meta: Option<&DatabaseTypeMetaVm>) -> bool {
 
 /// `canOpenStructureEditor(dbMeta) && dbMeta?.readOnly !== true`.
 #[allow(dead_code)] // pure capability gate; drop when the host wires the menu.
-pub(crate) fn show_structure_editor(meta: Option<&DatabaseTypeMetaVm>) -> bool {
+pub fn show_structure_editor(meta: Option<&DatabaseTypeMetaVm>) -> bool {
     match meta {
         None => false,
         Some(meta) => can_open(Some(meta)) && !meta.is_read_only,
@@ -155,26 +155,26 @@ pub(crate) fn show_structure_editor(meta: Option<&DatabaseTypeMetaVm>) -> bool {
 
 /// `resolveExportScope(dbMeta)`: absent metadata defaults to `full_table`.
 #[allow(dead_code)] // pure capability gate; drop when the host wires export.
-pub(crate) fn resolve_export_scope(meta: Option<&DatabaseTypeMetaVm>) -> DataExportCapabilityVm {
+pub fn resolve_export_scope(meta: Option<&DatabaseTypeMetaVm>) -> DataExportCapabilityVm {
     meta.map_or(DataExportCapabilityVm::FullTable, |meta| meta.export_scope)
 }
 
 /// `supportsFullTableExport(capability)` — the whole-table export is the only
 /// capability that permits a batch export.
 #[allow(dead_code)] // pure capability gate; drop when the host wires export.
-pub(crate) fn supports_full_table_export(scope: DataExportCapabilityVm) -> bool {
+pub fn supports_full_table_export(scope: DataExportCapabilityVm) -> bool {
     scope == DataExportCapabilityVm::FullTable
 }
 
 /// `toolbarDbMeta?.isKeyValue === true` (note: toolbar meta, not panel meta).
 #[allow(dead_code)] // pure capability gate; drop when the host wires the toolbar.
-pub(crate) fn is_kv_panel(meta: Option<&DatabaseTypeMetaVm>) -> bool {
+pub fn is_kv_panel(meta: Option<&DatabaseTypeMetaVm>) -> bool {
     meta.is_some_and(|meta| meta.is_key_value)
 }
 
 /// `!isKvPanel && toolbarDbMeta?.supportsSQL !== false && !!toolbarDbType`.
 #[allow(dead_code)] // pure toolbar guard; drop when the host wires the toolbar.
-pub(crate) fn show_new_query(meta: Option<&DatabaseTypeMetaVm>, has_toolbar_type: bool) -> bool {
+pub fn show_new_query(meta: Option<&DatabaseTypeMetaVm>, has_toolbar_type: bool) -> bool {
     !is_kv_panel(meta)
         && meta.map_or(true, |meta| meta.supports_sql != Some(false))
         && has_toolbar_type
@@ -182,7 +182,7 @@ pub(crate) fn show_new_query(meta: Option<&DatabaseTypeMetaVm>, has_toolbar_type
 
 /// `!isKvPanel && canOpenStructureEditor(toolbarDbMeta) && readOnly !== true && !!toolbarDbType`.
 #[allow(dead_code)] // pure toolbar guard; drop when the host wires the toolbar.
-pub(crate) fn show_new_table(meta: Option<&DatabaseTypeMetaVm>, has_toolbar_type: bool) -> bool {
+pub fn show_new_table(meta: Option<&DatabaseTypeMetaVm>, has_toolbar_type: bool) -> bool {
     !is_kv_panel(meta)
         && can_open(meta)
         && meta.map_or(true, |meta| !meta.is_read_only)
@@ -191,7 +191,7 @@ pub(crate) fn show_new_table(meta: Option<&DatabaseTypeMetaVm>, has_toolbar_type
 
 /// `!isKvPanel && toolbarDbMeta?.supportsErDiagram !== false && !!toolbarDbType`.
 #[allow(dead_code)] // pure toolbar guard; drop when the host wires the toolbar.
-pub(crate) fn show_er_diagram_toolbar(
+pub fn show_er_diagram_toolbar(
     meta: Option<&DatabaseTypeMetaVm>,
     has_toolbar_type: bool,
 ) -> bool {
@@ -202,7 +202,7 @@ pub(crate) fn show_er_diagram_toolbar(
 
 /// `!isKvPanel && toolbarDbMeta?.readOnly !== true && !!toolbarDbType`.
 #[allow(dead_code)] // pure toolbar guard; drop when the host wires the toolbar.
-pub(crate) fn show_objects_toolbar(
+pub fn show_objects_toolbar(
     meta: Option<&DatabaseTypeMetaVm>,
     has_toolbar_type: bool,
 ) -> bool {
@@ -214,59 +214,59 @@ pub(crate) fn show_objects_toolbar(
 /// React `connectingEntry`'s trimmed shape.
 #[allow(dead_code)] // VM mirror; returned to the host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConnectingEntryVm {
-    pub(crate) status: String,
-    pub(crate) connection_id: String,
-    pub(crate) db_session_id: Option<String>,
+pub struct ConnectingEntryVm {
+    pub status: String,
+    pub connection_id: String,
+    pub db_session_id: Option<String>,
 }
 
 /// The hook's full host-owned state (one zustand snapshot per store).
 #[allow(dead_code)] // VM surface; owned by the connection host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct WorkspaceMetaInputsVm {
-    pub(crate) active_panel: Option<WorkspacePanelVm>,
-    pub(crate) saved_connections: Vec<SavedConnection>,
-    pub(crate) active_connections: Vec<WorkspaceActiveEntryVm>,
+pub struct WorkspaceMetaInputsVm {
+    pub active_panel: Option<WorkspacePanelVm>,
+    pub saved_connections: Vec<SavedConnection>,
+    pub active_connections: Vec<WorkspaceActiveEntryVm>,
     /// `useSchemaStore.activeDbSessionId`.
-    pub(crate) store_active_db_session_id: Option<String>,
+    pub store_active_db_session_id: Option<String>,
     /// `useConnectionSchemaField(panel?.dbSessionId ?? '', 'currentDatabase')`.
-    pub(crate) current_database: Option<String>,
-    pub(crate) all_panels: Vec<WorkspacePanelVm>,
+    pub current_database: Option<String>,
+    pub all_panels: Vec<WorkspacePanelVm>,
     /// Host projection of `DB_REGISTRY`, keyed by database type.
-    pub(crate) db_meta: BTreeMap<String, DatabaseTypeMetaVm>,
+    pub db_meta: BTreeMap<String, DatabaseTypeMetaVm>,
 }
 
 /// The exact field set of React `ConnectionWorkspaceMeta` (snake_case here).
 #[allow(dead_code)] // VM surface; consumed by ContentView's host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct WorkspaceMetaVm {
-    pub(crate) conn_ctx: Option<WorkspaceConnectionContextVm>,
-    pub(crate) sidebar_conn_ctx: Option<WorkspaceConnectionContextVm>,
-    pub(crate) initial_database: Option<String>,
-    pub(crate) database_type: Option<String>,
-    pub(crate) db_session_id: String,
-    pub(crate) connection_id: String,
-    pub(crate) connection_name: String,
-    pub(crate) has_saved_connections: bool,
-    pub(crate) toolbar_db_type: Option<String>,
-    pub(crate) show_structure_editor: bool,
-    pub(crate) export_scope: DataExportCapabilityVm,
-    pub(crate) batch_export_supported: bool,
-    pub(crate) is_kv_panel: bool,
-    pub(crate) show_new_query: bool,
-    pub(crate) show_new_table: bool,
-    pub(crate) show_er_diagram_toolbar: bool,
-    pub(crate) show_objects_toolbar: bool,
-    pub(crate) connecting_entry: Option<ConnectingEntryVm>,
-    pub(crate) connecting_name: Option<String>,
-    pub(crate) connecting_db_type: Option<String>,
-    pub(crate) recent_panels: Vec<WorkspacePanelVm>,
-    pub(crate) status_database: Option<String>,
+pub struct WorkspaceMetaVm {
+    pub conn_ctx: Option<WorkspaceConnectionContextVm>,
+    pub sidebar_conn_ctx: Option<WorkspaceConnectionContextVm>,
+    pub initial_database: Option<String>,
+    pub database_type: Option<String>,
+    pub db_session_id: String,
+    pub connection_id: String,
+    pub connection_name: String,
+    pub has_saved_connections: bool,
+    pub toolbar_db_type: Option<String>,
+    pub show_structure_editor: bool,
+    pub export_scope: DataExportCapabilityVm,
+    pub batch_export_supported: bool,
+    pub is_kv_panel: bool,
+    pub show_new_query: bool,
+    pub show_new_table: bool,
+    pub show_er_diagram_toolbar: bool,
+    pub show_objects_toolbar: bool,
+    pub connecting_entry: Option<ConnectingEntryVm>,
+    pub connecting_name: Option<String>,
+    pub connecting_db_type: Option<String>,
+    pub recent_panels: Vec<WorkspacePanelVm>,
+    pub status_database: Option<String>,
 }
 
 /// React's `connCtx`: null without an active panel, otherwise a straight copy.
 #[allow(dead_code)] // pure derivation; drop when the host wires the contexts.
-pub(crate) fn derive_conn_ctx(
+pub fn derive_conn_ctx(
     active_panel: Option<&WorkspacePanelVm>,
 ) -> Option<WorkspaceConnectionContextVm> {
     active_panel.map(|panel| WorkspaceConnectionContextVm {
@@ -281,7 +281,7 @@ pub(crate) fn derive_conn_ctx(
 /// through the shared `resolveConnectionContext`; a miss (or no session id)
 /// falls back to `connCtx`.
 #[allow(dead_code)] // pure derivation; drop when the host wires the contexts.
-pub(crate) fn derive_sidebar_conn_ctx(
+pub fn derive_sidebar_conn_ctx(
     inputs: &WorkspaceMetaInputsVm,
     conn_ctx: Option<&WorkspaceConnectionContextVm>,
 ) -> Option<WorkspaceConnectionContextVm> {
@@ -318,7 +318,7 @@ pub(crate) fn derive_sidebar_conn_ctx(
 /// React's `initialDatabase`: sidebar connection id first, then the panel's;
 /// no id at all means `undefined`.
 #[allow(dead_code)] // pure derivation; drop when the host wires the dialogs.
-pub(crate) fn resolve_initial_database(
+pub fn resolve_initial_database(
     inputs: &WorkspaceMetaInputsVm,
     sidebar_ctx: Option<&WorkspaceConnectionContextVm>,
 ) -> Option<String> {
@@ -341,7 +341,7 @@ pub(crate) fn resolve_initial_database(
 
 /// React's `toolbarDbType`: the panel's own type beats the sidebar context's.
 #[allow(dead_code)] // pure derivation; drop when the host wires the toolbar.
-pub(crate) fn resolve_toolbar_db_type(
+pub fn resolve_toolbar_db_type(
     inputs: &WorkspaceMetaInputsVm,
     sidebar_ctx: Option<&WorkspaceConnectionContextVm>,
 ) -> Option<String> {
@@ -355,7 +355,7 @@ pub(crate) fn resolve_toolbar_db_type(
 /// React's `connectingEntry`: only while no panel is active; the first active
 /// entry with status `connecting` in store order.
 #[allow(dead_code)] // pure derivation; drop when the host wires the landing view.
-pub(crate) fn resolve_connecting_entry(
+pub fn resolve_connecting_entry(
     inputs: &WorkspaceMetaInputsVm,
 ) -> Option<ConnectingEntryVm> {
     if inputs.active_panel.is_some() {
@@ -374,7 +374,7 @@ pub(crate) fn resolve_connecting_entry(
 
 /// React's `recentPanels`: panels of the sidebar connection, last six first.
 #[allow(dead_code)] // pure derivation; drop when the host wires the tabs.
-pub(crate) fn recent_panels(
+pub fn recent_panels(
     inputs: &WorkspaceMetaInputsVm,
     sidebar_ctx: Option<&WorkspaceConnectionContextVm>,
 ) -> Vec<WorkspacePanelVm> {
@@ -394,7 +394,7 @@ pub(crate) fn recent_panels(
 /// React's `statusDatabase`: a KV panel owns its target database even when the
 /// schema store still points somewhere else; `dbName ?? currentDatabase`.
 #[allow(dead_code)] // pure derivation; drop when the host wires the status bar.
-pub(crate) fn resolve_status_database(
+pub fn resolve_status_database(
     inputs: &WorkspaceMetaInputsVm,
     panel_meta: Option<&DatabaseTypeMetaVm>,
 ) -> Option<String> {
@@ -409,7 +409,7 @@ pub(crate) fn resolve_status_database(
 /// The hook's single derivation. Every field comes from the inputs above;
 /// calling it twice with the same inputs gives an equal VM.
 #[allow(dead_code)] // pure derivation; drop when the connection host wires it.
-pub(crate) fn derive_workspace_meta(inputs: &WorkspaceMetaInputsVm) -> WorkspaceMetaVm {
+pub fn derive_workspace_meta(inputs: &WorkspaceMetaInputsVm) -> WorkspaceMetaVm {
     let database_type = inputs.active_panel.as_ref().map(|panel| panel.database_type.clone());
     let conn_ctx = derive_conn_ctx(inputs.active_panel.as_ref());
     let sidebar_conn_ctx = derive_sidebar_conn_ctx(inputs, conn_ctx.as_ref());

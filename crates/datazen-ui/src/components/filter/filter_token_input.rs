@@ -40,7 +40,7 @@ type CompleteFn<S> = Rc<dyn Fn(&mut S)>;
 
 /// Builder for the ported token input.
 #[allow(dead_code)] // consumer: FilterConditionEditor (this wave).
-pub(crate) struct FilterTokenInput<'a, S: 'static> {
+pub struct FilterTokenInput<'a, S: 'static> {
     key: String,
     tokens: Vec<String>,
     draft: &'a TextEdit,
@@ -54,7 +54,7 @@ pub(crate) struct FilterTokenInput<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: FilterConditionEditor (this wave).
 impl<'a, S: 'static> FilterTokenInput<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         key: impl Into<String>,
         tokens: Vec<String>,
         draft: &'a TextEdit,
@@ -73,35 +73,35 @@ impl<'a, S: 'static> FilterTokenInput<'a, S> {
         }
     }
 
-    pub(crate) fn placeholder(mut self, value: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, value: impl Into<String>) -> Self {
         self.placeholder = value.into();
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// React `removeLabel`: the chip remove button's accessible name.
-    pub(crate) fn remove_label(mut self, label: impl Into<String>) -> Self {
+    pub fn remove_label(mut self, label: impl Into<String>) -> Self {
         self.remove_label = label.into();
         self
     }
 
     /// React `onCommit(tokens)`: called with the complete next token list.
-    pub(crate) fn on_commit(mut self, f: impl Fn(&mut S, Vec<String>) + 'static) -> Self {
+    pub fn on_commit(mut self, f: impl Fn(&mut S, Vec<String>) + 'static) -> Self {
         self.on_commit = Some(Rc::new(f));
         self
     }
 
     /// React `onEnterComplete`: called only after a non-empty Enter commit.
-    pub(crate) fn on_enter_complete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_enter_complete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_enter_complete = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let bind = self.bind;
         let commit = self.on_commit.clone();

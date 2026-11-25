@@ -31,7 +31,7 @@
 /// The forwarded options (React `PasteCompartmentOptions`; the callbacks
 /// are the host's seams — the enhanced EP invokes them when a drop
 /// lands).
-pub(crate) struct PasteCompartmentOptions<'a> {
+pub struct PasteCompartmentOptions<'a> {
     /// The connection the editor edits (cross-connection drop
     /// validation's input).
     pub connection_id: Option<&'a str>,
@@ -41,7 +41,7 @@ pub(crate) struct PasteCompartmentOptions<'a> {
 
 /// What the paste compartment holds after the factory ran.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum PasteCompartmentPayload {
+pub enum PasteCompartmentPayload {
     /// The base alone: the multiple-selections machine (T320's seam)
     /// mounted, the enhanced EP absent or non-implementing — the
     /// community shape.
@@ -61,7 +61,7 @@ pub(crate) enum PasteCompartmentPayload {
 /// base plus the enhanced EP's half. `enhanced_registered` is whether a
 /// privileged EP implementing `createPasteExtensions` is present (the
 /// registry lookup T335 owns; the host answers it).
-pub(crate) fn create_paste_extensions(
+pub fn create_paste_extensions(
     opts: Option<&PasteCompartmentOptions<'_>>,
     enhanced_registered: bool,
 ) -> PasteCompartmentPayload {

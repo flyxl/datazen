@@ -18,9 +18,9 @@
 
 /// One shaped transport call (command name + payload).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DriverCommandRequest {
-    pub(crate) command: &'static str,
-    pub(crate) value: serde_json::Value,
+pub struct DriverCommandRequest {
+    pub command: &'static str,
+    pub value: serde_json::Value,
 }
 
 impl DriverCommandRequest {
@@ -32,7 +32,7 @@ impl DriverCommandRequest {
 /// React `ExecuteDriverCommandRequest` — the execute face's bag (the
 /// optional halves are the F1 database pin and the F7 schema).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ExecuteDriverCommand {
+pub struct ExecuteDriverCommand {
     /// Runtime db session id (required for session-bound commands).
     pub db_session_id: Option<String>,
     pub driver_type: Option<String>,
@@ -48,7 +48,7 @@ pub(crate) struct ExecuteDriverCommand {
 
 impl ExecuteDriverCommand {
     /// The `{ request }` wire bag `execute` sends.
-    pub(crate) fn wire(&self) -> serde_json::Value {
+    pub fn wire(&self) -> serde_json::Value {
         serde_json::json!({ "request": self })
     }
 }
@@ -78,7 +78,7 @@ impl serde::Serialize for ExecuteDriverCommand {
 }
 
 /// `driverCommands.getConnectionCommands(dbSessionId)`.
-pub(crate) fn get_connection_commands_request(db_session_id: &str) -> DriverCommandRequest {
+pub fn get_connection_commands_request(db_session_id: &str) -> DriverCommandRequest {
     DriverCommandRequest::native(
         "get_connection_commands",
         serde_json::json!({ "dbSessionId": db_session_id }),
@@ -86,19 +86,19 @@ pub(crate) fn get_connection_commands_request(db_session_id: &str) -> DriverComm
 }
 
 /// `driverCommands.getDriverCommands(driverType)`.
-pub(crate) fn get_driver_commands_request(driver_type: &str) -> DriverCommandRequest {
+pub fn get_driver_commands_request(driver_type: &str) -> DriverCommandRequest {
     DriverCommandRequest::native("get_driver_commands", serde_json::json!({ "driverType": driver_type }))
 }
 
 /// `driverCommands.execute(request)` → `execute_driver_command` with
 /// the `{ request }` bag (the receipt is `{ data }`).
-pub(crate) fn execute_request(request: &ExecuteDriverCommand) -> DriverCommandRequest {
+pub fn execute_request(request: &ExecuteDriverCommand) -> DriverCommandRequest {
     DriverCommandRequest::native("execute_driver_command", request.wire())
 }
 
 /// The stream face's caller options (the parts the channel edge does
 /// not carry).
-pub(crate) struct ExecuteDriverCommandStream<'a> {
+pub struct ExecuteDriverCommandStream<'a> {
     pub db_session_id: &'a str,
     pub command: &'a str,
     pub input: serde_json::Value,
@@ -115,7 +115,7 @@ pub(crate) struct ExecuteDriverCommandStream<'a> {
 /// optional database/schema to null (the stream face always sends the
 /// keys), `applyResultLimit`/`recordHistory` ride beside the bag, and
 /// `onEvent` is the host's channel edge (named in the payload).
-pub(crate) fn execute_stream_request(stream: &ExecuteDriverCommandStream<'_>) -> DriverCommandRequest {
+pub fn execute_stream_request(stream: &ExecuteDriverCommandStream<'_>) -> DriverCommandRequest {
     DriverCommandRequest::native(
         "execute_driver_command_stream",
         serde_json::json!({

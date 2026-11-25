@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 /// The presentation semantics of a column
 /// (React `PresentationColumnContext['semanticKind']`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SemanticKind {
+pub enum SemanticKind {
     Instant,
     LocalDatetime,
     Date,
@@ -44,34 +44,34 @@ pub(crate) enum SemanticKind {
 
 /// A value's source location (host-owned identity, no credentials).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnSource<'a> {
-    pub(crate) connection_id: &'a str,
-    pub(crate) database: Option<&'a str>,
-    pub(crate) namespace: Option<&'a str>,
-    pub(crate) table: &'a str,
-    pub(crate) column: &'a str,
+pub struct ColumnSource<'a> {
+    pub connection_id: &'a str,
+    pub database: Option<&'a str>,
+    pub namespace: Option<&'a str>,
+    pub table: &'a str,
+    pub column: &'a str,
 }
 
 /// The column context a plan is prepared for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct PresentationColumnContext<'a> {
-    pub(crate) column_name: &'a str,
-    pub(crate) database_type_name: Option<&'a str>,
-    pub(crate) semantic_kind: SemanticKind,
-    pub(crate) source: Option<ColumnSource<'a>>,
+pub struct PresentationColumnContext<'a> {
+    pub column_name: &'a str,
+    pub database_type_name: Option<&'a str>,
+    pub semantic_kind: SemanticKind,
+    pub source: Option<ColumnSource<'a>>,
 }
 
 /// The environment snapshot (no implicit machine defaults).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct PresentationEnvironment<'a> {
-    pub(crate) locale: &'a str,
-    pub(crate) local_time_zone: &'a str,
+pub struct PresentationEnvironment<'a> {
+    pub locale: &'a str,
+    pub local_time_zone: &'a str,
 }
 
 /// The presentation result: text output, or an explicit fallback (illegal
 /// values fall back; they are not extension errors).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PresentationResult {
+pub enum PresentationResult {
     Text {
         text: String,
         interpretation: Option<String>,
@@ -83,23 +83,23 @@ pub(crate) enum PresentationResult {
 
 impl PresentationResult {
     /// React's `unchanged(reason)` helper.
-    pub(crate) fn unchanged(reason: &str) -> Self {
+    pub fn unchanged(reason: &str) -> Self {
         PresentationResult::Unchanged { reason: Some(reason.to_string()) }
     }
 }
 
 /// A pathed config-validation problem (path points into the JSON input).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConfigValidationProblem {
-    pub(crate) path: String,
-    pub(crate) message: String,
+pub struct ConfigValidationProblem {
+    pub path: String,
+    pub message: String,
 }
 
 /// The validate-config contract: the validated JSON-serializable config on
 /// success; every pathed problem on failure — never a panic, never a
 /// partial config.
 #[derive(Debug, PartialEq)]
-pub(crate) enum ConfigValidationResult {
+pub enum ConfigValidationResult {
     Ok(serde_json::Value),
     Err(Vec<ConfigValidationProblem>),
 }
@@ -107,16 +107,16 @@ pub(crate) enum ConfigValidationResult {
 /// A validated, versioned config snapshot. `config_version` must equal the
 /// contribution's declared version.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct VersionedPresentationConfig {
-    pub(crate) config_version: u32,
-    pub(crate) config: serde_json::Value,
+pub struct VersionedPresentationConfig {
+    pub config_version: u32,
+    pub config: serde_json::Value,
 }
 
 /// A table-column override (design §5): only the display mode; `custom`'s
 /// options are raw JSON the target renderer validates.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "lowercase")]
-pub(crate) enum ColumnPresentationOverride {
+pub enum ColumnPresentationOverride {
     Inherit,
     Raw,
     Custom {
@@ -128,21 +128,21 @@ pub(crate) enum ColumnPresentationOverride {
 
 /// `prepare`'s input: an immutable snapshot the host assembles.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct PresentationPrepareInput<'a> {
-    pub(crate) config: &'a VersionedPresentationConfig,
-    pub(crate) column_override: Option<&'a ColumnPresentationOverride>,
-    pub(crate) column: PresentationColumnContext<'a>,
-    pub(crate) environment: PresentationEnvironment<'a>,
+pub struct PresentationPrepareInput<'a> {
+    pub config: &'a VersionedPresentationConfig,
+    pub column_override: Option<&'a ColumnPresentationOverride>,
+    pub column: PresentationColumnContext<'a>,
+    pub environment: PresentationEnvironment<'a>,
 }
 
 /// The process-internal presenter `prepare` produces (never persisted).
-pub(crate) trait PreparedPresentation {
+pub trait PreparedPresentation {
     fn present(&self, value: &serde_json::Value) -> PresentationResult;
 }
 
 /// A field-presentation contribution. The id follows
 /// `provider.presenter` (e.g. `datazen.timestamp`).
-pub(crate) trait ValuePresentationContribution {
+pub trait ValuePresentationContribution {
     fn id(&self) -> &str;
     fn config_version(&self) -> u32;
     fn validate_config(&self, input: &serde_json::Value) -> ConfigValidationResult;

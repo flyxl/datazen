@@ -62,15 +62,15 @@ struct SelectBinds {
 
 /// One column: its title, an optional fixed width and the alignment of its cells.
 #[derive(Clone, Debug)]
-pub(crate) struct Column {
-    pub(crate) title: String,
+pub struct Column {
+    pub title: String,
     /// `None` takes an equal share of what the fixed columns leave.
-    pub(crate) width: Option<f32>,
-    pub(crate) align: Align,
+    pub width: Option<f32>,
+    pub align: Align,
 }
 
 impl Column {
-    pub(crate) fn new(title: impl Into<String>) -> Column {
+    pub fn new(title: impl Into<String>) -> Column {
         Column {
             title: title.into(),
             width: None,
@@ -79,32 +79,32 @@ impl Column {
     }
 
     /// A fixed width; columns without one share the rest equally.
-    pub(crate) fn width(mut self, width: f32) -> Column {
+    pub fn width(mut self, width: f32) -> Column {
         self.width = Some(width);
         self
     }
 
-    pub(crate) fn align(mut self, align: Align) -> Column {
+    pub fn align(mut self, align: Align) -> Column {
         self.align = align;
         self
     }
 
     /// A numeric column: cells hug the right edge.
-    pub(crate) fn end(self) -> Column {
+    pub fn end(self) -> Column {
         self.align(Align::End)
     }
 }
 
 /// One cell's content. `mono` and `muted` follow the kit table's cell variants.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CellValue {
-    pub(crate) text: String,
-    pub(crate) mono: bool,
-    pub(crate) muted: bool,
+pub struct CellValue {
+    pub text: String,
+    pub mono: bool,
+    pub muted: bool,
 }
 
 impl CellValue {
-    pub(crate) fn new(text: impl Into<String>) -> CellValue {
+    pub fn new(text: impl Into<String>) -> CellValue {
         CellValue {
             text: text.into(),
             mono: false,
@@ -112,12 +112,12 @@ impl CellValue {
         }
     }
 
-    pub(crate) fn mono(mut self) -> CellValue {
+    pub fn mono(mut self) -> CellValue {
         self.mono = true;
         self
     }
 
-    pub(crate) fn muted(mut self) -> CellValue {
+    pub fn muted(mut self) -> CellValue {
         self.muted = true;
         self
     }
@@ -144,14 +144,14 @@ impl From<&String> for CellValue {
 /// A row: its cells and an optional app key. The element key stays positional
 /// (`<key>-row-<i>`); the app key is what `row_key` hands back.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Row {
-    pub(crate) key: Option<String>,
-    pub(crate) cells: Vec<CellValue>,
+pub struct Row {
+    pub key: Option<String>,
+    pub cells: Vec<CellValue>,
 }
 
 impl Row {
     /// A key the app can use to match a rendered row to its data (`DataTable::row_key`).
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Row {
+    pub fn key(mut self, key: impl Into<String>) -> Row {
         self.key = Some(key.into());
         self
     }
@@ -182,7 +182,7 @@ impl From<Vec<&str>> for Row {
 }
 
 /// A table over rows the view owns: a sticky header, sorted rows, a selected row.
-pub(crate) struct DataTable<'a> {
+pub struct DataTable<'a> {
     key: String,
     columns: &'a [Column],
     rows: Vec<Row>,
@@ -197,7 +197,7 @@ pub(crate) struct DataTable<'a> {
 }
 
 impl<'a> DataTable<'a> {
-    pub(crate) fn new(key: impl Into<String>, columns: &'a [Column]) -> DataTable<'a> {
+    pub fn new(key: impl Into<String>, columns: &'a [Column]) -> DataTable<'a> {
         DataTable {
             key: key.into(),
             columns,
@@ -214,51 +214,51 @@ impl<'a> DataTable<'a> {
     }
 
     /// The rows to show, already in the app's base order (the table sorts a copy).
-    pub(crate) fn rows<R: Into<Row>>(mut self, rows: impl IntoIterator<Item = R>) -> DataTable<'a> {
+    pub fn rows<R: Into<Row>>(mut self, rows: impl IntoIterator<Item = R>) -> DataTable<'a> {
         self.rows = rows.into_iter().map(Into::into).collect();
         self
     }
 
     /// The sort shown in the header and applied to the rows: column index and direction.
-    pub(crate) fn sort(mut self, column: usize, dir: SortDir) -> DataTable<'a> {
+    pub fn sort(mut self, column: usize, dir: SortDir) -> DataTable<'a> {
         self.sort = Some((column, dir));
         self
     }
 
     /// The rendered-order index of the selected row: it gets the selection fill.
-    pub(crate) fn selected(mut self, selected: Option<usize>) -> DataTable<'a> {
+    pub fn selected(mut self, selected: Option<usize>) -> DataTable<'a> {
         self.selected = selected;
         self
     }
 
     /// Replaces the empty state's text (defaults to `dataTable.empty`).
-    pub(crate) fn empty_text(mut self, empty_text: impl Into<String>) -> DataTable<'a> {
+    pub fn empty_text(mut self, empty_text: impl Into<String>) -> DataTable<'a> {
         self.empty_text = Some(empty_text.into());
         self
     }
 
     /// A fixed height. Without it the table grows with its rows, or fills the parent when
     /// `grow` is set.
-    pub(crate) fn height(mut self, height: f32) -> DataTable<'a> {
+    pub fn height(mut self, height: f32) -> DataTable<'a> {
         self.height = Some(height);
         self
     }
 
     /// Take the parent's remaining height; the body scrolls inside it.
-    pub(crate) fn grow(mut self) -> DataTable<'a> {
+    pub fn grow(mut self) -> DataTable<'a> {
         self.grow = true;
         self
     }
 
     /// The accessible name.
-    pub(crate) fn label(mut self, label: impl Into<String>) -> DataTable<'a> {
+    pub fn label(mut self, label: impl Into<String>) -> DataTable<'a> {
         self.label = Some(label.into());
         self
     }
 
     /// A row press (select and focus) and the focus movement keys. `f(state, row)` receives
     /// the rendered row index of the row that was pressed or focused.
-    pub(crate) fn on_select<S: 'static>(
+    pub fn on_select<S: 'static>(
         mut self,
         f: impl Fn(&mut S, usize) + 'static,
     ) -> DataTable<'a> {
@@ -322,7 +322,7 @@ impl<'a> DataTable<'a> {
 
     /// Enter, Space and a double press activate a row: `f(state, row)` receives the rendered
     /// row index that has focus (or was double-pressed).
-    pub(crate) fn on_activate<S: 'static>(
+    pub fn on_activate<S: 'static>(
         mut self,
         f: impl Fn(&mut S, usize) + 'static,
     ) -> DataTable<'a> {
@@ -347,13 +347,13 @@ impl<'a> DataTable<'a> {
     }
 
     /// The app key of the row at this rendered index, when the row was given one.
-    pub(crate) fn row_key(&self, rendered: usize) -> Option<&str> {
+    pub fn row_key(&self, rendered: usize) -> Option<&str> {
         let source = order(&self.rows, self.sort).get(rendered).copied()?;
         self.rows.get(source)?.key.as_deref()
     }
 
     /// Builds the table for one appearance.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let DataTable {
             key,
             columns,

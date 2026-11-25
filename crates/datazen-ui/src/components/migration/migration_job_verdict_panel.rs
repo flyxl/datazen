@@ -84,7 +84,7 @@ use crate::ui::copyable::CopyableError;
 /// React `VerdictSeverity = 'ok' | 'partial' | 'uncertain' | 'failed'`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) enum VerdictSeverity {
+pub enum VerdictSeverity {
     Ok,
     #[default]
     Partial,
@@ -95,7 +95,7 @@ pub(crate) enum VerdictSeverity {
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
 impl VerdictSeverity {
     /// Exact `data-severity` value from React.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Ok => "ok",
             Self::Partial => "partial",
@@ -105,7 +105,7 @@ impl VerdictSeverity {
     }
 
     /// Exact i18n key from React's `severityKey()`.
-    pub(crate) fn key(self) -> &'static str {
+    pub fn key(self) -> &'static str {
         match self {
             Self::Ok => "migration.verdict.ok",
             Self::Partial => "migration.verdict.partial",
@@ -119,7 +119,7 @@ impl VerdictSeverity {
 /// actually stopped. "Cancel requested" is never "cancelled".
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) enum CancelDisposition {
+pub enum CancelDisposition {
     #[default]
     None,
     NotStarted,
@@ -133,7 +133,7 @@ pub(crate) enum CancelDisposition {
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
 impl CancelDisposition {
     /// Exact `data-cancel-disposition` value / key segment from React.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",
             Self::NotStarted => "notStarted",
@@ -146,7 +146,7 @@ impl CancelDisposition {
     }
 
     /// Exact i18n key from React's `cancelDispositionKey()`.
-    pub(crate) fn key(self) -> &'static str {
+    pub fn key(self) -> &'static str {
         match self {
             Self::None => "migration.cancel.none",
             Self::NotStarted => "migration.cancel.notStarted",
@@ -162,7 +162,7 @@ impl CancelDisposition {
 /// React `UncertaintyReason`. `None` returns no badge at all.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) enum UncertaintyReason {
+pub enum UncertaintyReason {
     #[default]
     None,
     NoCheckpoint,
@@ -175,7 +175,7 @@ pub(crate) enum UncertaintyReason {
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
 impl UncertaintyReason {
     /// Exact `data-uncertainty` value from React.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::None => "none",
             Self::NoCheckpoint => "noCheckpoint",
@@ -187,7 +187,7 @@ impl UncertaintyReason {
     }
 
     /// Exact i18n key from React's `uncertaintyKey()`; `None` mounts no badge.
-    pub(crate) fn key(self) -> Option<&'static str> {
+    pub fn key(self) -> Option<&'static str> {
         match self {
             Self::None => None,
             Self::NoCheckpoint => Some("migration.uncertainty.noCheckpoint"),
@@ -202,7 +202,7 @@ impl UncertaintyReason {
 /// The presentation model React receives as `MigrationJobVerdict`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) struct MigrationJobVerdict {
+pub struct MigrationJobVerdict {
     pub severity: VerdictSeverity,
     pub cancel_disposition: CancelDisposition,
     pub completed: bool,
@@ -217,7 +217,7 @@ pub(crate) struct MigrationJobVerdict {
 /// as zero (see [`read_job_counter`]).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) struct JobProgress {
+pub struct JobProgress {
     pub read: Option<String>,
     pub converted: Option<String>,
     pub attempted: Option<String>,
@@ -231,7 +231,7 @@ const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 /// Mirror of React `readJobCounter`: accepts only a non-negative decimal string
 /// that is a safe integer, otherwise `None` (React returns `null`).
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) fn read_job_counter(value: &Option<String>) -> Option<u64> {
+pub fn read_job_counter(value: &Option<String>) -> Option<u64> {
     let raw = value.as_ref()?;
     let trimmed = raw.trim();
     if trimmed.is_empty() || !trimmed.bytes().all(|b| b.is_ascii_digit()) {
@@ -243,7 +243,7 @@ pub(crate) fn read_job_counter(value: &Option<String>) -> Option<u64> {
 
 /// Mirror of React `sumJobCounters`: `None` when *any* bucket is unreadable.
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) fn sum_job_counters(values: &[Option<String>]) -> Option<u64> {
+pub fn sum_job_counters(values: &[Option<String>]) -> Option<u64> {
     let mut total = 0u64;
     for value in values {
         total = total.checked_add(read_job_counter(value)?)?;
@@ -255,7 +255,7 @@ pub(crate) fn sum_job_counters(values: &[Option<String>]) -> Option<u64> {
 /// "verified"; an empty list is shown as unverified, never as committed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) struct CommitBoundary {
+pub struct CommitBoundary {
     pub stage_id: String,
     pub committed_at: String,
     pub evidence: Vec<String>,
@@ -266,7 +266,7 @@ pub(crate) struct CommitBoundary {
 /// support ticket can name the exact plan this verdict belongs to.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) struct PlanInfo {
+pub struct PlanInfo {
     pub plan_id: Option<String>,
     pub plan_digest: Option<String>,
     pub selection_revision: Option<u64>,
@@ -277,7 +277,7 @@ pub(crate) struct PlanInfo {
 /// `t()` with the exact React keys).
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) struct VerdictPanelVm {
+pub struct VerdictPanelVm {
     pub verdict: MigrationJobVerdict,
     pub progress: Option<JobProgress>,
     pub commit_boundaries: Vec<CommitBoundary>,
@@ -320,7 +320,7 @@ type CopyCallback<S> = Rc<dyn Fn(&mut S, &mut Tx)>;
 /// Builder for the verdict panel. `S` is the host state that owns the copied
 /// feedback deadline (mirroring React's `useCopyFeedback` hook).
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
-pub(crate) struct MigrationJobVerdictPanel<S: 'static> {
+pub struct MigrationJobVerdictPanel<S: 'static> {
     vm: VerdictPanelVm,
     copied: bool,
     on_copy: Option<CopyCallback<S>>,
@@ -328,7 +328,7 @@ pub(crate) struct MigrationJobVerdictPanel<S: 'static> {
 
 #[allow(dead_code)] // T106: consumed by the migration job view; remove when wired.
 impl<S: 'static> MigrationJobVerdictPanel<S> {
-    pub(crate) fn new(vm: VerdictPanelVm) -> Self {
+    pub fn new(vm: VerdictPanelVm) -> Self {
         Self {
             vm,
             copied: false,
@@ -338,7 +338,7 @@ impl<S: 'static> MigrationJobVerdictPanel<S> {
 
     /// Whether the transient "已复制" feedback is visible this frame. The host
     /// computes this as `now < copied_until`.
-    pub(crate) fn copied(mut self, copied: bool) -> Self {
+    pub fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
     }
@@ -346,12 +346,12 @@ impl<S: 'static> MigrationJobVerdictPanel<S> {
     /// React `useCopyFeedback`'s deadline write: record
     /// `copied_until = tx.clock() + 1.5` in host state. The control itself
     /// copies the message and schedules the real 1500ms runtime wake.
-    pub(crate) fn on_copy_tx(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_copy_tx(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_copy = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k: &'static Kit = crate::ui::kit::kit(dark);
         let Self {
             vm,

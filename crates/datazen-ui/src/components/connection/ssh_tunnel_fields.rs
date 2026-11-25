@@ -33,14 +33,14 @@ use crate::ui::label::Label;
 use crate::ui::path_input::PathInput;
 use crate::ui::toggle::Checkbox;
 
-pub(crate) use super::tunnel_field_contracts::{
+pub use super::tunnel_field_contracts::{
     SshAuthMethod, SshTunnelFieldsValue as SshFieldsState,
 };
 
 /// Discrete presses the editor asks the host to apply.
 #[allow(dead_code)] // VM surface; consumer: the connection form host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SshAction {
+pub enum SshAction {
     SetEnabled(bool),
     SetAuth(SshAuthMethod),
     SetJumpEnabled(bool),
@@ -138,7 +138,7 @@ fn auth_row<S: 'static>(
 
 /// Builder for the ported field group.
 #[allow(dead_code)] // consumer: ConnectionFormBody / tunnel settings (not wired).
-pub(crate) struct SshTunnelFields<'a, S: 'static> {
+pub struct SshTunnelFields<'a, S: 'static> {
     state: &'a SshFieldsState,
     supports_ssh: bool,
     show_enable_toggle: bool,
@@ -148,7 +148,7 @@ pub(crate) struct SshTunnelFields<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: ConnectionFormBody / tunnel settings (not wired).
 impl<'a, S: 'static> SshTunnelFields<'a, S> {
-    pub(crate) fn new(state: &'a SshFieldsState, supports_ssh: bool) -> Self {
+    pub fn new(state: &'a SshFieldsState, supports_ssh: bool) -> Self {
         Self {
             state,
             supports_ssh,
@@ -158,12 +158,12 @@ impl<'a, S: 'static> SshTunnelFields<'a, S> {
         }
     }
 
-    pub(crate) fn show_enable_toggle(mut self, show: bool) -> Self {
+    pub fn show_enable_toggle(mut self, show: bool) -> Self {
         self.show_enable_toggle = show;
         self
     }
 
-    pub(crate) fn on_vm(
+    pub fn on_vm(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut SshFieldsState + 'static,
     ) -> Self {
@@ -171,12 +171,12 @@ impl<'a, S: 'static> SshTunnelFields<'a, S> {
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, SshAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, SshAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         if !self.supports_ssh {
             return el().key("new-conn-ssh-fields-hidden").a11y_hidden();

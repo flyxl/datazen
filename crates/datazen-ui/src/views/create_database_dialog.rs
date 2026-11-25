@@ -35,7 +35,7 @@ use crate::ui::kit::kit;
 /// Which create dialog a shared action belongs to.
 #[allow(dead_code)] // shared by both create dialogs; remove when the admin component lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CreateDialogKind {
+pub enum CreateDialogKind {
     Database,
     Schema,
 }
@@ -44,7 +44,7 @@ pub(crate) enum CreateDialogKind {
 /// owns `dbSessionId`, `command` and the optional target database.
 #[allow(dead_code)] // host port; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum AdminCreateAction {
+pub enum AdminCreateAction {
     Close,
     Execute { kind: CreateDialogKind, name: String },
     Created { kind: CreateDialogKind, name: String },
@@ -53,7 +53,7 @@ pub(crate) enum AdminCreateAction {
 /// The three `useState` values of `AdminCreateDialog`.
 #[allow(dead_code)] // shared form state; remove when the admin component lands.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct AdminCreateState {
+pub struct AdminCreateState {
     pub name: TextEdit,
     pub running: bool,
     pub error: String,
@@ -62,13 +62,13 @@ pub(crate) struct AdminCreateState {
 impl AdminCreateState {
     /// React `resetForm`.
     #[allow(dead_code)] // consumer: the dialog host result feed (not landed); remove when it wires.
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.name = TextEdit::new(String::new());
         self.error.clear();
     }
 
     /// React `handleCreate` prologue: an empty name emits no command at all.
-    pub(crate) fn begin(&mut self) -> Option<String> {
+    pub fn begin(&mut self) -> Option<String> {
         let name = self.name.text.trim().to_owned();
         if name.is_empty() {
             return None;
@@ -81,7 +81,7 @@ impl AdminCreateState {
     /// Resolve a host answer. Success resets the form and emits the post-success
     /// side effect plus close, in React's order; failure only sets the error.
     #[allow(dead_code)] // consumer: the dialog host result feed (not landed); remove when it wires.
-    pub(crate) fn apply_result(
+    pub fn apply_result(
         &mut self,
         result: Result<(), String>,
         kind: CreateDialogKind,
@@ -106,7 +106,7 @@ impl AdminCreateState {
 
 /// The exact wrapper values from React `CreateDatabaseDialog`.
 #[allow(dead_code)] // wrapper config; consumed by the slot composition.
-pub(crate) const DB_SPEC: AdminCreateSpec = AdminCreateSpec {
+pub const DB_SPEC: AdminCreateSpec = AdminCreateSpec {
     key: "content-view-create-database-dialog",
     title_key: "common.createDatabase",
     name_label_key: "createDb.name",
@@ -117,7 +117,7 @@ pub(crate) const DB_SPEC: AdminCreateSpec = AdminCreateSpec {
 /// The wrapper's configuration — the only difference between the two dialogs.
 #[allow(dead_code)] // shared config; remove when the admin component lands.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct AdminCreateSpec {
+pub struct AdminCreateSpec {
     pub key: &'static str,
     pub title_key: &'static str,
     pub name_label_key: &'static str,
@@ -199,7 +199,7 @@ fn render<S: 'static>(
 
 /// Editable entry point: the host owns the form state in `S`.
 #[allow(dead_code)] // consumer: standalone dialog tests and the eventual host wiring.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     state: &AdminCreateState,
     spec: AdminCreateSpec,
     state_edit: impl Fn(&mut S) -> &mut AdminCreateState + 'static,
@@ -243,7 +243,7 @@ pub(crate) fn build<S: 'static>(
 /// state slice, so the field is a bound display of the supplied snapshot and
 /// confirm still routes to the same action. Remove when the host owns the form.
 #[allow(dead_code)] // consumer: content_view_dialogs slot; remove when the host wires real form state.
-pub(crate) fn build_snapshot<S: 'static>(
+pub fn build_snapshot<S: 'static>(
     state: &AdminCreateState,
     spec: AdminCreateSpec,
     context: Option<&str>,

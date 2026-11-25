@@ -23,7 +23,7 @@ use rune::{
 };
 
 impl AppState {
-    pub(crate) fn outbound_fk_of_focus(&self) -> Option<(datazen_ui_api::ForeignKeySpec, usize)> {
+    pub fn outbound_fk_of_focus(&self) -> Option<(datazen_ui_api::ForeignKeySpec, usize)> {
         let table = self.grid.table_label().to_owned();
         let column = self.grid.column_name(self.grid.focus().1)?.to_owned();
         let keys = self
@@ -40,7 +40,7 @@ impl AppState {
 
     /// Open the referenced table filtered on the focused cell's value (T5).
     /// A4: pushes an FK breadcrumb so the origin can be restored.
-    pub(crate) fn go_to_referenced_row(&mut self) {
+    pub fn go_to_referenced_row(&mut self) {
         let table = self.grid.table_label().to_owned();
         let not_ready = match self.structures.get(&table) {
             None | Some(StructureState { loading: true, .. }) => {
@@ -71,7 +71,7 @@ impl AppState {
     /// (E3) — the scan walks the whole catalog and never belongs on the
     /// frame loop. A host that declines keeps the synchronous read: the
     /// demo process has none, and the honest refusal names the live host.
-    pub(crate) fn load_inbound_refs(&mut self) {
+    pub fn load_inbound_refs(&mut self) {
         let table = self.grid.table_label().to_owned();
         let generation = self.next_inbound_generation();
         let job = AdapterJob::InboundRefs { generation, table: table.clone() };
@@ -99,20 +99,20 @@ impl AppState {
 
     /// Bump and return the next inbound generation (E3). Every ask starts
     /// one, so a delivery from a scan the state has moved past is dropped.
-    pub(crate) fn next_inbound_generation(&mut self) -> u32 {
+    pub fn next_inbound_generation(&mut self) -> u32 {
         self.inbound_generation += 1;
         self.inbound_generation
     }
 
     /// Hide the inbound list.
-    pub(crate) fn close_inbound_refs(&mut self) {
+    pub fn close_inbound_refs(&mut self) {
         self.inbound_refs = None;
         self.fk_error = None;
     }
 
     /// Open a referencing table filtered on the focused row's value of the
     /// referenced column (T5). A4: pushes an FK breadcrumb.
-    pub(crate) fn locate_inbound_ref(&mut self, index: usize) {
+    pub fn locate_inbound_ref(&mut self, index: usize) {
         let Some(list) = self.inbound_refs.as_ref() else { return };
         let Some(reference) = list.get(index).cloned() else { return };
         let Some(referenced_index) = (0..self.grid.cols)
@@ -132,7 +132,7 @@ impl AppState {
     }
 
     /// A4: capture the current table context as an FK breadcrumb step.
-    pub(crate) fn push_fk_breadcrumb(&mut self, label: String) {
+    pub fn push_fk_breadcrumb(&mut self, label: String) {
         if !self.grid.has_page() {
             return;
         }
@@ -147,7 +147,7 @@ impl AppState {
     }
 
     /// A4: navigate back to a breadcrumb step, restoring its table/filter context.
-    pub(crate) fn navigate_fk_breadcrumb(&mut self, index: usize) {
+    pub fn navigate_fk_breadcrumb(&mut self, index: usize) {
         if index >= self.fk_breadcrumbs.len() {
             return;
         }
@@ -164,7 +164,7 @@ impl AppState {
     /// Open a table with a filter preset (T4/T5 share this): the tab's own
     /// open resets the filter, so the filter lands after it and the page
     /// re-reads.
-    pub(crate) fn open_table_with_filter(&mut self, table: &str, column: &str, value: &str) {
+    pub fn open_table_with_filter(&mut self, table: &str, column: &str, value: &str) {
         self.active = Section::Workspace;
         self.open_table_tab(table);
         self.filter = Some(ColumnFilter { column: column.to_owned(), contains: value.to_owned() });
@@ -177,11 +177,11 @@ impl AppState {
     /// are the React vocabulary's (`ValueSearchMode`).
     const VALUE_SEARCH_MODES: [&'static str; 5] =
         ["contains", "notContains", "exact", "prefix", "suffix"];
-    pub(crate) fn value_search_mode(&self) -> &'static str {
+    pub fn value_search_mode(&self) -> &'static str {
         Self::VALUE_SEARCH_MODES
             [(self.value_search_mode as usize) % Self::VALUE_SEARCH_MODES.len()]
     }
-    pub(crate) fn cycle_value_search_mode(&mut self) {
+    pub fn cycle_value_search_mode(&mut self) {
         self.value_search_mode =
             (self.value_search_mode + 1) % Self::VALUE_SEARCH_MODES.len() as u32;
     }
@@ -189,7 +189,7 @@ impl AppState {
     /// Start a value search over the live session (T4): one job for the
     /// whole scan. The demo process has no live session and the memory port
     /// has no scan — the honest refusal names both.
-    pub(crate) fn begin_value_search(&mut self) {
+    pub fn begin_value_search(&mut self) {
         let value = self.value_search_value.text.trim().to_owned();
         if value.is_empty() {
             self.value_search_error = Some("a value is required".into());
@@ -219,21 +219,21 @@ impl AppState {
 
     /// Cancel the running search: the generation moves past it, so the
     /// scan's delivery lands nowhere.
-    pub(crate) fn cancel_value_search(&mut self) {
+    pub fn cancel_value_search(&mut self) {
         if self.value_search_loading.is_some() {
             let _ = self.next_value_search_generation();
             self.value_search_loading = None;
             self.value_search_error = Some("the search was cancelled".into());
         }
     }
-    pub(crate) fn next_value_search_generation(&mut self) -> u32 {
+    pub fn next_value_search_generation(&mut self) -> u32 {
         self.value_search_generation += 1;
         self.value_search_generation
     }
 
     /// Open the hit's table with a filter on the hit's column (T4): the
     /// locate intent the React dialog answers with.
-    pub(crate) fn locate_value_search_hit(&mut self, index: usize) {
+    pub fn locate_value_search_hit(&mut self, index: usize) {
         let Some(hit) = self.value_search_hits.get(index).cloned() else { return };
         let value = self.value_search_query.clone();
         self.open_table_with_filter(&hit.table, &hit.column, &value);

@@ -77,3 +77,2847 @@ parley = { version = "0.12", default-features = false, features = ["std", "compl
 
 [lints]
 workspace = true
+
+[[test]]
+name = "active_connection_store"
+path = "tests/active_connection_store.rs"
+
+[[test]]
+name = "active_connection_store_audit"
+path = "tests/active_connection_store_audit.rs"
+
+[[test]]
+name = "active_editor"
+path = "tests/active_editor.rs"
+
+[[test]]
+name = "active_editor_audit"
+path = "tests/active_editor_audit.rs"
+
+[[test]]
+name = "add_to_dashboard_dialog_audit"
+path = "tests/add_to_dashboard_dialog_audit.rs"
+
+[[test]]
+name = "admin_create_dialog"
+path = "tests/admin_create_dialog.rs"
+
+[[test]]
+name = "admin_create_dialog_audit"
+path = "tests/admin_create_dialog_audit.rs"
+
+[[test]]
+name = "admin_schema_fields"
+path = "tests/admin_schema_fields.rs"
+
+[[test]]
+name = "ai_chat_panel"
+path = "tests/ai_chat_panel.rs"
+
+[[test]]
+name = "ai_chat_panel_audit"
+path = "tests/ai_chat_panel_audit.rs"
+
+[[test]]
+name = "ai_chat_panel_bubble"
+path = "tests/ai_chat_panel_bubble.rs"
+
+[[test]]
+name = "ai_chat_panel_bubble_audit"
+path = "tests/ai_chat_panel_bubble_audit.rs"
+
+[[test]]
+name = "ai_chat_panel_header"
+path = "tests/ai_chat_panel_header.rs"
+
+[[test]]
+name = "ai_chat_panel_header_audit"
+path = "tests/ai_chat_panel_header_audit.rs"
+
+[[test]]
+name = "ai_chat_panel_input_area"
+path = "tests/ai_chat_panel_input_area.rs"
+
+[[test]]
+name = "ai_chat_panel_input_area_audit"
+path = "tests/ai_chat_panel_input_area_audit.rs"
+
+[[test]]
+name = "ai_chat_panel_input_area_state"
+path = "tests/ai_chat_panel_input_area_state.rs"
+
+[[test]]
+name = "ai_chat_panel_message_list"
+path = "tests/ai_chat_panel_message_list.rs"
+
+[[test]]
+name = "ai_chat_panel_message_list_audit"
+path = "tests/ai_chat_panel_message_list_audit.rs"
+
+[[test]]
+name = "ai_chat_panel_section"
+path = "tests/ai_chat_panel_section.rs"
+
+[[test]]
+name = "ai_chat_panel_section_audit"
+path = "tests/ai_chat_panel_section_audit.rs"
+
+[[test]]
+name = "ai_chat_panel_shell"
+path = "tests/ai_chat_panel_shell.rs"
+
+[[test]]
+name = "ai_chat_panel_shell_audit"
+path = "tests/ai_chat_panel_shell_audit.rs"
+
+[[test]]
+name = "ai_code_block"
+path = "tests/ai_code_block.rs"
+
+[[test]]
+name = "ai_code_block_audit"
+path = "tests/ai_code_block_audit.rs"
+
+[[test]]
+name = "ai_commands_audit"
+path = "tests/ai_commands_audit.rs"
+
+[[test]]
+name = "ai_context_settings_audit"
+path = "tests/ai_context_settings_audit.rs"
+
+[[test]]
+name = "ai_editor_grant_hook_audit"
+path = "tests/ai_editor_grant_hook_audit.rs"
+
+[[test]]
+name = "ai_egress_notice"
+path = "tests/ai_egress_notice.rs"
+
+[[test]]
+name = "ai_egress_notice_audit"
+path = "tests/ai_egress_notice_audit.rs"
+
+[[test]]
+name = "ai_input"
+path = "tests/ai_input.rs"
+
+[[test]]
+name = "ai_input_audit"
+path = "tests/ai_input_audit.rs"
+
+[[test]]
+name = "ai_message_content"
+path = "tests/ai_message_content.rs"
+
+[[test]]
+name = "ai_message_content_audit"
+path = "tests/ai_message_content_audit.rs"
+
+[[test]]
+name = "ai_provider_step_audit"
+path = "tests/ai_provider_step_audit.rs"
+
+[[test]]
+name = "ai_session_history_audit"
+path = "tests/ai_session_history_audit.rs"
+
+[[test]]
+name = "ai_settings_section_audit"
+path = "tests/ai_settings_section_audit.rs"
+
+[[test]]
+name = "ai_store_assist"
+path = "tests/ai_store_assist.rs"
+
+[[test]]
+name = "ai_store_assist_audit"
+path = "tests/ai_store_assist_audit.rs"
+
+[[test]]
+name = "ai_store_chat"
+path = "tests/ai_store_chat.rs"
+
+[[test]]
+name = "ai_store_chat_audit"
+path = "tests/ai_store_chat_audit.rs"
+
+[[test]]
+name = "ai_store_config"
+path = "tests/ai_store_config.rs"
+
+[[test]]
+name = "ai_store_config_audit"
+path = "tests/ai_store_config_audit.rs"
+
+[[test]]
+name = "ai_store_rest"
+path = "tests/ai_store_rest.rs"
+
+[[test]]
+name = "ai_store_rest_audit"
+path = "tests/ai_store_rest_audit.rs"
+
+[[test]]
+name = "ai_tool_bridge_section_audit"
+path = "tests/ai_tool_bridge_section_audit.rs"
+
+[[test]]
+name = "ai_write_proposal_host"
+path = "tests/ai_write_proposal_host.rs"
+
+[[test]]
+name = "ai_write_proposal_host_audit"
+path = "tests/ai_write_proposal_host_audit.rs"
+
+[[test]]
+name = "app_entry"
+path = "tests/app_entry.rs"
+
+[[test]]
+name = "app_entry_audit"
+path = "tests/app_entry_audit.rs"
+
+[[test]]
+name = "app_root"
+path = "tests/app_root.rs"
+
+[[test]]
+name = "appearance_section_audit"
+path = "tests/appearance_section_audit.rs"
+
+[[test]]
+name = "area_chart_renderer"
+path = "tests/area_chart_renderer.rs"
+
+[[test]]
+name = "backup_window"
+path = "tests/backup_window.rs"
+
+[[test]]
+name = "backup_window_audit"
+path = "tests/backup_window_audit.rs"
+
+[[test]]
+name = "backup_window_state"
+path = "tests/backup_window_state.rs"
+
+[[test]]
+name = "backup_window_state_audit"
+path = "tests/backup_window_state_audit.rs"
+
+[[test]]
+name = "banner"
+path = "tests/banner.rs"
+
+[[test]]
+name = "banner_audit"
+path = "tests/banner_audit.rs"
+
+[[test]]
+name = "bar_chart_renderer"
+path = "tests/bar_chart_renderer.rs"
+
+[[test]]
+name = "base_geometry"
+path = "tests/base_geometry.rs"
+
+[[test]]
+name = "batch_export_audit"
+path = "tests/batch_export_audit.rs"
+
+[[test]]
+name = "batch_export_dialog"
+path = "tests/batch_export_dialog.rs"
+
+[[test]]
+name = "batch_export_retest"
+path = "tests/batch_export_retest.rs"
+
+[[test]]
+name = "binary_viewer"
+path = "tests/binary_viewer.rs"
+
+[[test]]
+name = "blob_tables_exporter"
+path = "tests/blob_tables_exporter.rs"
+
+[[test]]
+name = "blob_tables_exporter_audit"
+path = "tests/blob_tables_exporter_audit.rs"
+
+[[test]]
+name = "blob_tables_exporter_emission"
+path = "tests/blob_tables_exporter_emission.rs"
+
+[[test]]
+name = "blob_tables_exporter_emission_audit"
+path = "tests/blob_tables_exporter_emission_audit.rs"
+
+[[test]]
+name = "bootstrap"
+path = "tests/bootstrap.rs"
+
+[[test]]
+name = "brand_sidebar_audit"
+path = "tests/brand_sidebar_audit.rs"
+
+[[test]]
+name = "card_list_audit"
+path = "tests/card_list_audit.rs"
+
+[[test]]
+name = "cell_editor_host"
+path = "tests/cell_editor_host.rs"
+
+[[test]]
+name = "cell_editor_host_audit"
+path = "tests/cell_editor_host_audit.rs"
+
+[[test]]
+name = "cell_renderer"
+path = "tests/cell_renderer.rs"
+
+[[test]]
+name = "cell_renderer_audit"
+path = "tests/cell_renderer_audit.rs"
+
+[[test]]
+name = "chart_canvas"
+path = "tests/chart_canvas.rs"
+
+[[test]]
+name = "chart_canvas_audit"
+path = "tests/chart_canvas_audit.rs"
+
+[[test]]
+name = "chart_export"
+path = "tests/chart_export.rs"
+
+[[test]]
+name = "chart_export_audit"
+path = "tests/chart_export_audit.rs"
+
+[[test]]
+name = "chart_field_inference"
+path = "tests/chart_field_inference.rs"
+
+[[test]]
+name = "chart_field_inference_audit"
+path = "tests/chart_field_inference_audit.rs"
+
+[[test]]
+name = "chart_format"
+path = "tests/chart_format.rs"
+
+[[test]]
+name = "chart_format_audit"
+path = "tests/chart_format_audit.rs"
+
+[[test]]
+name = "chart_post_query_view"
+path = "tests/chart_post_query_view.rs"
+
+[[test]]
+name = "chart_post_query_view_audit"
+path = "tests/chart_post_query_view_audit.rs"
+
+[[test]]
+name = "chart_recommend_audit"
+path = "tests/chart_recommend_audit.rs"
+
+[[test]]
+name = "chart_toolbar"
+path = "tests/chart_toolbar.rs"
+
+[[test]]
+name = "chart_transform_audit"
+path = "tests/chart_transform_audit.rs"
+
+[[test]]
+name = "chart_view"
+path = "tests/chart_view.rs"
+
+[[test]]
+name = "chart_view_audit"
+path = "tests/chart_view_audit.rs"
+
+[[test]]
+name = "chart_widget_tile_audit"
+path = "tests/chart_widget_tile_audit.rs"
+
+[[test]]
+name = "choice_extra"
+path = "tests/choice_extra.rs"
+
+[[test]]
+name = "chrome_fix_audit"
+path = "tests/chrome_fix_audit.rs"
+
+[[test]]
+name = "chrome_metrics"
+path = "tests/chrome_metrics.rs"
+
+[[test]]
+name = "chrome_parts"
+path = "tests/chrome_parts.rs"
+
+[[test]]
+name = "chrome_parts_audit"
+path = "tests/chrome_parts_audit.rs"
+
+[[test]]
+name = "column_mapping_editor"
+path = "tests/column_mapping_editor.rs"
+
+[[test]]
+name = "column_mapping_editor_audit"
+path = "tests/column_mapping_editor_audit.rs"
+
+[[test]]
+name = "column_mapping_row"
+path = "tests/column_mapping_row.rs"
+
+[[test]]
+name = "column_mapping_row_audit"
+path = "tests/column_mapping_row_audit.rs"
+
+[[test]]
+name = "column_overrides"
+path = "tests/column_overrides.rs"
+
+[[test]]
+name = "column_presentation"
+path = "tests/column_presentation.rs"
+
+[[test]]
+name = "column_presentation_dialog"
+path = "tests/column_presentation_dialog.rs"
+
+[[test]]
+name = "column_presentation_dialog_audit"
+path = "tests/column_presentation_dialog_audit.rs"
+
+[[test]]
+name = "column_presentation_dialog_s2"
+path = "tests/column_presentation_dialog_s2.rs"
+
+[[test]]
+name = "column_presentation_dialog_s2_audit"
+path = "tests/column_presentation_dialog_s2_audit.rs"
+
+[[test]]
+name = "column_presentation_session"
+path = "tests/column_presentation_session.rs"
+
+[[test]]
+name = "column_stats_audit"
+path = "tests/column_stats_audit.rs"
+
+[[test]]
+name = "column_stats_dialog"
+path = "tests/column_stats_dialog.rs"
+
+[[test]]
+name = "commands_adb"
+path = "tests/commands_adb.rs"
+
+[[test]]
+name = "commands_backup_audit"
+path = "tests/commands_backup_audit.rs"
+
+[[test]]
+name = "commands_connection_audit"
+path = "tests/commands_connection_audit.rs"
+
+[[test]]
+name = "commands_dashboard_audit"
+path = "tests/commands_dashboard_audit.rs"
+
+[[test]]
+name = "commands_database_audit"
+path = "tests/commands_database_audit.rs"
+
+[[test]]
+name = "commands_driver_audit"
+path = "tests/commands_driver_audit.rs"
+
+[[test]]
+name = "commands_schema_diff"
+path = "tests/commands_schema_diff.rs"
+
+[[test]]
+name = "compare_summary"
+path = "tests/compare_summary.rs"
+
+[[test]]
+name = "compare_summary_audit"
+path = "tests/compare_summary_audit.rs"
+
+[[test]]
+name = "components"
+path = "tests/components.rs"
+
+[[test]]
+name = "confirm_dialog_hook_audit"
+path = "tests/confirm_dialog_hook_audit.rs"
+
+[[test]]
+name = "connection_advanced_audit"
+path = "tests/connection_advanced_audit.rs"
+
+[[test]]
+name = "connection_advanced_settings"
+path = "tests/connection_advanced_settings.rs"
+
+[[test]]
+name = "connection_ai_notes"
+path = "tests/connection_ai_notes.rs"
+
+[[test]]
+name = "connection_card_list"
+path = "tests/connection_card_list.rs"
+
+[[test]]
+name = "connection_form_audit"
+path = "tests/connection_form_audit.rs"
+
+[[test]]
+name = "connection_form_parts"
+path = "tests/connection_form_parts.rs"
+
+[[test]]
+name = "connection_home_audit"
+path = "tests/connection_home_audit.rs"
+
+[[test]]
+name = "connection_navigator_tree"
+path = "tests/connection_navigator_tree.rs"
+
+[[test]]
+name = "connection_navigator_tree_audit"
+path = "tests/connection_navigator_tree_audit.rs"
+
+[[test]]
+name = "connection_page"
+path = "tests/connection_page.rs"
+
+[[test]]
+name = "connection_page_audit"
+path = "tests/connection_page_audit.rs"
+
+[[test]]
+name = "connection_share_audit"
+path = "tests/connection_share_audit.rs"
+
+[[test]]
+name = "connection_share_dialog"
+path = "tests/connection_share_dialog.rs"
+
+[[test]]
+name = "connection_share_host"
+path = "tests/connection_share_host.rs"
+
+[[test]]
+name = "connection_share_host_audit"
+path = "tests/connection_share_host_audit.rs"
+
+[[test]]
+name = "connection_store"
+path = "tests/connection_store.rs"
+
+[[test]]
+name = "connection_store_audit"
+path = "tests/connection_store_audit.rs"
+
+[[test]]
+name = "connection_workspace_home"
+path = "tests/connection_workspace_home.rs"
+
+[[test]]
+name = "content_bar_audit"
+path = "tests/content_bar_audit.rs"
+
+[[test]]
+name = "content_bar_ports"
+path = "tests/content_bar_ports.rs"
+
+[[test]]
+name = "content_view"
+path = "tests/content_view.rs"
+
+[[test]]
+name = "content_view_audit"
+path = "tests/content_view_audit.rs"
+
+[[test]]
+name = "content_view_dialogs"
+path = "tests/content_view_dialogs.rs"
+
+[[test]]
+name = "content_view_dialogs_audit"
+path = "tests/content_view_dialogs_audit.rs"
+
+[[test]]
+name = "content_view_drawers"
+path = "tests/content_view_drawers.rs"
+
+[[test]]
+name = "content_view_drawers_audit"
+path = "tests/content_view_drawers_audit.rs"
+
+[[test]]
+name = "context_menu_store"
+path = "tests/context_menu_store.rs"
+
+[[test]]
+name = "context_menu_store_audit"
+path = "tests/context_menu_store_audit.rs"
+
+[[test]]
+name = "context_picker"
+path = "tests/context_picker.rs"
+
+[[test]]
+name = "context_picker_audit"
+path = "tests/context_picker_audit.rs"
+
+[[test]]
+name = "copy_button"
+path = "tests/copy_button.rs"
+
+[[test]]
+name = "copyable"
+path = "tests/copyable.rs"
+
+[[test]]
+name = "copyable_timer_audit"
+path = "tests/copyable_timer_audit.rs"
+
+[[test]]
+name = "counters"
+path = "tests/counters.rs"
+
+[[test]]
+name = "counters_audit"
+path = "tests/counters_audit.rs"
+
+[[test]]
+name = "create_db_schema_dialogs"
+path = "tests/create_db_schema_dialogs.rs"
+
+[[test]]
+name = "create_db_schema_dialogs_audit"
+path = "tests/create_db_schema_dialogs_audit.rs"
+
+[[test]]
+name = "create_paste_extensions_audit"
+path = "tests/create_paste_extensions_audit.rs"
+
+[[test]]
+name = "create_user_dialog"
+path = "tests/create_user_dialog.rs"
+
+[[test]]
+name = "create_user_dialog_audit"
+path = "tests/create_user_dialog_audit.rs"
+
+[[test]]
+name = "dashboard_panel_audit"
+path = "tests/dashboard_panel_audit.rs"
+
+[[test]]
+name = "dashboard_store_audit"
+path = "tests/dashboard_store_audit.rs"
+
+[[test]]
+name = "data_cleanup_section_audit"
+path = "tests/data_cleanup_section_audit.rs"
+
+[[test]]
+name = "data_export_dialog_audit"
+path = "tests/data_export_dialog_audit.rs"
+
+[[test]]
+name = "data_sync_client_sql_preview"
+path = "tests/data_sync_client_sql_preview.rs"
+
+[[test]]
+name = "data_sync_client_sql_preview_audit"
+path = "tests/data_sync_client_sql_preview_audit.rs"
+
+[[test]]
+name = "data_sync_compare_step"
+path = "tests/data_sync_compare_step.rs"
+
+[[test]]
+name = "data_sync_compare_step_audit"
+path = "tests/data_sync_compare_step_audit.rs"
+
+[[test]]
+name = "data_sync_dialogs"
+path = "tests/data_sync_dialogs.rs"
+
+[[test]]
+name = "data_sync_dialogs_audit"
+path = "tests/data_sync_dialogs_audit.rs"
+
+[[test]]
+name = "data_sync_endpoint_step"
+path = "tests/data_sync_endpoint_step.rs"
+
+[[test]]
+name = "data_sync_endpoint_step_audit"
+path = "tests/data_sync_endpoint_step_audit.rs"
+
+[[test]]
+name = "data_sync_job_status_panel"
+path = "tests/data_sync_job_status_panel.rs"
+
+[[test]]
+name = "data_sync_job_status_panel_audit"
+path = "tests/data_sync_job_status_panel_audit.rs"
+
+[[test]]
+name = "data_sync_objects_step"
+path = "tests/data_sync_objects_step.rs"
+
+[[test]]
+name = "data_sync_objects_step_audit"
+path = "tests/data_sync_objects_step_audit.rs"
+
+[[test]]
+name = "data_sync_options_bar"
+path = "tests/data_sync_options_bar.rs"
+
+[[test]]
+name = "data_sync_options_bar_audit"
+path = "tests/data_sync_options_bar_audit.rs"
+
+[[test]]
+name = "data_sync_options_step"
+path = "tests/data_sync_options_step.rs"
+
+[[test]]
+name = "data_sync_options_step_audit"
+path = "tests/data_sync_options_step_audit.rs"
+
+[[test]]
+name = "data_sync_preview_step"
+path = "tests/data_sync_preview_step.rs"
+
+[[test]]
+name = "data_sync_preview_step_audit"
+path = "tests/data_sync_preview_step_audit.rs"
+
+[[test]]
+name = "data_sync_recordset_editor"
+path = "tests/data_sync_recordset_editor.rs"
+
+[[test]]
+name = "data_sync_recordset_editor_audit"
+path = "tests/data_sync_recordset_editor_audit.rs"
+
+[[test]]
+name = "data_sync_result_step"
+path = "tests/data_sync_result_step.rs"
+
+[[test]]
+name = "data_sync_result_step_audit"
+path = "tests/data_sync_result_step_audit.rs"
+
+[[test]]
+name = "data_sync_sql_preview"
+path = "tests/data_sync_sql_preview.rs"
+
+[[test]]
+name = "data_sync_sql_preview_audit"
+path = "tests/data_sync_sql_preview_audit.rs"
+
+[[test]]
+name = "data_sync_types"
+path = "tests/data_sync_types.rs"
+
+[[test]]
+name = "data_sync_utils"
+path = "tests/data_sync_utils.rs"
+
+[[test]]
+name = "data_sync_utils_audit"
+path = "tests/data_sync_utils_audit.rs"
+
+[[test]]
+name = "data_sync_window"
+path = "tests/data_sync_window.rs"
+
+[[test]]
+name = "data_sync_window_audit"
+path = "tests/data_sync_window_audit.rs"
+
+[[test]]
+name = "data_sync_wizard_nav"
+path = "tests/data_sync_wizard_nav.rs"
+
+[[test]]
+name = "data_sync_wizard_nav_audit"
+path = "tests/data_sync_wizard_nav_audit.rs"
+
+[[test]]
+name = "data_table_parts"
+path = "tests/data_table_parts.rs"
+
+[[test]]
+name = "data_table_parts_audit"
+path = "tests/data_table_parts_audit.rs"
+
+[[test]]
+name = "data_table_ports_audit"
+path = "tests/data_table_ports_audit.rs"
+
+[[test]]
+name = "data_table_selection_audit"
+path = "tests/data_table_selection_audit.rs"
+
+[[test]]
+name = "data_table_selection_bar"
+path = "tests/data_table_selection_bar.rs"
+
+[[test]]
+name = "data_table_selects"
+path = "tests/data_table_selects.rs"
+
+[[test]]
+name = "data_table_shell_audit"
+path = "tests/data_table_shell_audit.rs"
+
+[[test]]
+name = "data_transfer_attached_jobs"
+path = "tests/data_transfer_attached_jobs.rs"
+
+[[test]]
+name = "data_transfer_attached_jobs_audit"
+path = "tests/data_transfer_attached_jobs_audit.rs"
+
+[[test]]
+name = "data_transfer_execute_confirm_dialog"
+path = "tests/data_transfer_execute_confirm_dialog.rs"
+
+[[test]]
+name = "data_transfer_execute_confirm_dialog_audit"
+path = "tests/data_transfer_execute_confirm_dialog_audit.rs"
+
+[[test]]
+name = "data_transfer_terminal_results"
+path = "tests/data_transfer_terminal_results.rs"
+
+[[test]]
+name = "data_transfer_terminal_results_audit"
+path = "tests/data_transfer_terminal_results_audit.rs"
+
+[[test]]
+name = "data_transfer_window"
+path = "tests/data_transfer_window.rs"
+
+[[test]]
+name = "data_transfer_window_audit"
+path = "tests/data_transfer_window_audit.rs"
+
+[[test]]
+name = "data_transfer_window_state"
+path = "tests/data_transfer_window_state.rs"
+
+[[test]]
+name = "data_transfer_window_state_audit"
+path = "tests/data_transfer_window_state_audit.rs"
+
+[[test]]
+name = "database_object_view"
+path = "tests/database_object_view.rs"
+
+[[test]]
+name = "database_object_view_audit"
+path = "tests/database_object_view_audit.rs"
+
+[[test]]
+name = "database_value_search_dialog"
+path = "tests/database_value_search_dialog.rs"
+
+[[test]]
+name = "db_type_badge"
+path = "tests/db_type_badge.rs"
+
+[[test]]
+name = "ddl_view"
+path = "tests/ddl_view.rs"
+
+[[test]]
+name = "ddl_view_audit"
+path = "tests/ddl_view_audit.rs"
+
+[[test]]
+name = "detail_panel"
+path = "tests/detail_panel.rs"
+
+[[test]]
+name = "detail_panel_audit"
+path = "tests/detail_panel_audit.rs"
+
+[[test]]
+name = "diagnosis_panel"
+path = "tests/diagnosis_panel.rs"
+
+[[test]]
+name = "diagnosis_panel_audit"
+path = "tests/diagnosis_panel_audit.rs"
+
+[[test]]
+name = "dialog"
+path = "tests/dialog.rs"
+
+[[test]]
+name = "dirty_cell_text"
+path = "tests/dirty_cell_text.rs"
+
+[[test]]
+name = "dirty_cell_text_audit"
+path = "tests/dirty_cell_text_audit.rs"
+
+[[test]]
+name = "document_connection_view"
+path = "tests/document_connection_view.rs"
+
+[[test]]
+name = "document_connection_view_audit"
+path = "tests/document_connection_view_audit.rs"
+
+[[test]]
+name = "done_step_audit"
+path = "tests/done_step_audit.rs"
+
+[[test]]
+name = "draft_row"
+path = "tests/draft_row.rs"
+
+[[test]]
+name = "draft_row_audit"
+path = "tests/draft_row_audit.rs"
+
+[[test]]
+name = "driver_settings_section_audit"
+path = "tests/driver_settings_section_audit.rs"
+
+[[test]]
+name = "editable_cell"
+path = "tests/editable_cell.rs"
+
+[[test]]
+name = "editable_cell_audit"
+path = "tests/editable_cell_audit.rs"
+
+[[test]]
+name = "editor_selection_store"
+path = "tests/editor_selection_store.rs"
+
+[[test]]
+name = "editor_selection_store_audit"
+path = "tests/editor_selection_store_audit.rs"
+
+[[test]]
+name = "editor_session_controller"
+path = "tests/editor_session_controller.rs"
+
+[[test]]
+name = "editor_session_controller_audit"
+path = "tests/editor_session_controller_audit.rs"
+
+[[test]]
+name = "er_build_er_graph"
+path = "tests/er_build_er_graph.rs"
+
+[[test]]
+name = "er_diagram_view"
+path = "tests/er_diagram_view.rs"
+
+[[test]]
+name = "er_diagram_view_audit"
+path = "tests/er_diagram_view_audit.rs"
+
+[[test]]
+name = "er_interaction_state"
+path = "tests/er_interaction_state.rs"
+
+[[test]]
+name = "er_layout_er_graph"
+path = "tests/er_layout_er_graph.rs"
+
+[[test]]
+name = "er_legend_audit"
+path = "tests/er_legend_audit.rs"
+
+[[test]]
+name = "er_node_audit"
+path = "tests/er_node_audit.rs"
+
+[[test]]
+name = "er_node_metrics"
+path = "tests/er_node_metrics.rs"
+
+[[test]]
+name = "er_relation_legend"
+path = "tests/er_relation_legend.rs"
+
+[[test]]
+name = "er_table_node"
+path = "tests/er_table_node.rs"
+
+[[test]]
+name = "error_boundary"
+path = "tests/error_boundary.rs"
+
+[[test]]
+name = "exec_sql_audit"
+path = "tests/exec_sql_audit.rs"
+
+[[test]]
+name = "execute_sql_file_dialog"
+path = "tests/execute_sql_file_dialog.rs"
+
+[[test]]
+name = "execution_projection"
+path = "tests/execution_projection.rs"
+
+[[test]]
+name = "execution_projection_audit"
+path = "tests/execution_projection_audit.rs"
+
+[[test]]
+name = "execution_projection_retest"
+path = "tests/execution_projection_retest.rs"
+
+[[test]]
+name = "execution_strategy_ask_modal"
+path = "tests/execution_strategy_ask_modal.rs"
+
+[[test]]
+name = "execution_strategy_ask_modal_audit"
+path = "tests/execution_strategy_ask_modal_audit.rs"
+
+[[test]]
+name = "execution_strategy_select"
+path = "tests/execution_strategy_select.rs"
+
+[[test]]
+name = "execution_strategy_select_audit"
+path = "tests/execution_strategy_select_audit.rs"
+
+[[test]]
+name = "execution_summary_card"
+path = "tests/execution_summary_card.rs"
+
+[[test]]
+name = "explain_panel"
+path = "tests/explain_panel.rs"
+
+[[test]]
+name = "explain_panel_audit"
+path = "tests/explain_panel_audit.rs"
+
+[[test]]
+name = "explain_plan_audit"
+path = "tests/explain_plan_audit.rs"
+
+[[test]]
+name = "explain_plan_tree"
+path = "tests/explain_plan_tree.rs"
+
+[[test]]
+name = "export_column_picker"
+path = "tests/export_column_picker.rs"
+
+[[test]]
+name = "export_dialog"
+path = "tests/export_dialog.rs"
+
+[[test]]
+name = "export_dialog_audit"
+path = "tests/export_dialog_audit.rs"
+
+[[test]]
+name = "export_plan"
+path = "tests/export_plan.rs"
+
+[[test]]
+name = "export_plan_audit"
+path = "tests/export_plan_audit.rs"
+
+[[test]]
+name = "export_success_panel"
+path = "tests/export_success_panel.rs"
+
+[[test]]
+name = "export_success_panel_audit"
+path = "tests/export_success_panel_audit.rs"
+
+[[test]]
+name = "field_kit"
+path = "tests/field_kit.rs"
+
+[[test]]
+name = "field_kit_audit"
+path = "tests/field_kit_audit.rs"
+
+[[test]]
+name = "file_connection_fields"
+path = "tests/file_connection_fields.rs"
+
+[[test]]
+name = "file_connection_fields_audit"
+path = "tests/file_connection_fields_audit.rs"
+
+[[test]]
+name = "filter_bar"
+path = "tests/filter_bar.rs"
+
+[[test]]
+name = "filter_bar_audit"
+path = "tests/filter_bar_audit.rs"
+
+[[test]]
+name = "filter_condition_editor"
+path = "tests/filter_condition_editor.rs"
+
+[[test]]
+name = "filter_condition_editor_audit"
+path = "tests/filter_condition_editor_audit.rs"
+
+[[test]]
+name = "filter_contracts_audit"
+path = "tests/filter_contracts_audit.rs"
+
+[[test]]
+name = "filter_editor"
+path = "tests/filter_editor.rs"
+
+[[test]]
+name = "filter_editor_audit"
+path = "tests/filter_editor_audit.rs"
+
+[[test]]
+name = "filter_fixes"
+path = "tests/filter_fixes.rs"
+
+[[test]]
+name = "filter_parts"
+path = "tests/filter_parts.rs"
+
+[[test]]
+name = "filter_parts_audit"
+path = "tests/filter_parts_audit.rs"
+
+[[test]]
+name = "filter_sql_preview"
+path = "tests/filter_sql_preview.rs"
+
+[[test]]
+name = "filter_sql_preview_audit"
+path = "tests/filter_sql_preview_audit.rs"
+
+[[test]]
+name = "filter_token_value_audit"
+path = "tests/filter_token_value_audit.rs"
+
+[[test]]
+name = "filter_token_value_input"
+path = "tests/filter_token_value_input.rs"
+
+[[test]]
+name = "filter_types_labels"
+path = "tests/filter_types_labels.rs"
+
+[[test]]
+name = "fk_cell_text"
+path = "tests/fk_cell_text.rs"
+
+[[test]]
+name = "fk_cell_text_audit"
+path = "tests/fk_cell_text_audit.rs"
+
+[[test]]
+name = "fk_navigation_store"
+path = "tests/fk_navigation_store.rs"
+
+[[test]]
+name = "fk_navigation_store_audit"
+path = "tests/fk_navigation_store_audit.rs"
+
+[[test]]
+name = "fold_compartment_audit"
+path = "tests/fold_compartment_audit.rs"
+
+[[test]]
+name = "foreign_keys_view"
+path = "tests/foreign_keys_view.rs"
+
+[[test]]
+name = "foreign_keys_view_audit"
+path = "tests/foreign_keys_view_audit.rs"
+
+[[test]]
+name = "format_editor_document_audit"
+path = "tests/format_editor_document_audit.rs"
+
+[[test]]
+name = "generated_driver_surface"
+path = "tests/generated_driver_surface.rs"
+
+[[test]]
+name = "global_object_search"
+path = "tests/global_object_search.rs"
+
+[[test]]
+name = "global_object_search_audit"
+path = "tests/global_object_search_audit.rs"
+
+[[test]]
+name = "global_query_history_audit"
+path = "tests/global_query_history_audit.rs"
+
+[[test]]
+name = "global_query_history_dialog"
+path = "tests/global_query_history_dialog.rs"
+
+[[test]]
+name = "grant_state"
+path = "tests/grant_state.rs"
+
+[[test]]
+name = "grant_state_audit"
+path = "tests/grant_state_audit.rs"
+
+[[test]]
+name = "history_components"
+path = "tests/history_components.rs"
+
+[[test]]
+name = "history_components_audit"
+path = "tests/history_components_audit.rs"
+
+[[test]]
+name = "home_hero_promo"
+path = "tests/home_hero_promo.rs"
+
+[[test]]
+name = "home_hero_promo_audit"
+path = "tests/home_hero_promo_audit.rs"
+
+[[test]]
+name = "host_jobs"
+path = "tests/host_jobs.rs"
+
+[[test]]
+name = "i18n_batch3_audit"
+path = "tests/i18n_batch3_audit.rs"
+
+[[test]]
+name = "i18n_sweep"
+path = "tests/i18n_sweep.rs"
+
+[[test]]
+name = "i18n_usage"
+path = "tests/i18n_usage.rs"
+
+[[test]]
+name = "i18n_usage_audit"
+path = "tests/i18n_usage_audit.rs"
+
+[[test]]
+name = "icon_registry"
+path = "tests/icon_registry.rs"
+
+[[test]]
+name = "import_dialog"
+path = "tests/import_dialog.rs"
+
+[[test]]
+name = "import_dialog_audit"
+path = "tests/import_dialog_audit.rs"
+
+[[test]]
+name = "import_step_audit"
+path = "tests/import_step_audit.rs"
+
+[[test]]
+name = "index_entry"
+path = "tests/index_entry.rs"
+
+[[test]]
+name = "index_entry_audit"
+path = "tests/index_entry_audit.rs"
+
+[[test]]
+name = "index_surface"
+path = "tests/index_surface.rs"
+
+[[test]]
+name = "indexes_view"
+path = "tests/indexes_view.rs"
+
+[[test]]
+name = "indexes_view_audit"
+path = "tests/indexes_view_audit.rs"
+
+[[test]]
+name = "install_language_pack_dialog_audit"
+path = "tests/install_language_pack_dialog_audit.rs"
+
+[[test]]
+name = "install_wapp_dialog"
+path = "tests/install_wapp_dialog.rs"
+
+[[test]]
+name = "io_tools"
+path = "tests/io_tools.rs"
+
+[[test]]
+name = "json_viewer"
+path = "tests/json_viewer.rs"
+
+[[test]]
+name = "language_pack_store"
+path = "tests/language_pack_store.rs"
+
+[[test]]
+name = "language_pack_store_audit"
+path = "tests/language_pack_store_audit.rs"
+
+[[test]]
+name = "line_chart_renderer"
+path = "tests/line_chart_renderer.rs"
+
+[[test]]
+name = "locale_domain_loading"
+path = "tests/locale_domain_loading.rs"
+
+[[test]]
+name = "locale_domain_loading_audit"
+path = "tests/locale_domain_loading_audit.rs"
+
+[[test]]
+name = "log_scale_tooltip"
+path = "tests/log_scale_tooltip.rs"
+
+[[test]]
+name = "main_page"
+path = "tests/main_page.rs"
+
+[[test]]
+name = "manual_connection_step_audit"
+path = "tests/manual_connection_step_audit.rs"
+
+[[test]]
+name = "mapping_gate_notice"
+path = "tests/mapping_gate_notice.rs"
+
+[[test]]
+name = "mapping_gate_notice_audit"
+path = "tests/mapping_gate_notice_audit.rs"
+
+[[test]]
+name = "mapping_panel"
+path = "tests/mapping_panel.rs"
+
+[[test]]
+name = "mapping_panel_audit"
+path = "tests/mapping_panel_audit.rs"
+
+[[test]]
+name = "mapping_view"
+path = "tests/mapping_view.rs"
+
+[[test]]
+name = "mapping_view_audit"
+path = "tests/mapping_view_audit.rs"
+
+[[test]]
+name = "mcp_approval_host"
+path = "tests/mcp_approval_host.rs"
+
+[[test]]
+name = "mcp_approval_host_audit"
+path = "tests/mcp_approval_host_audit.rs"
+
+[[test]]
+name = "mcp_client_section_audit"
+path = "tests/mcp_client_section_audit.rs"
+
+[[test]]
+name = "mcp_settings_section_audit"
+path = "tests/mcp_settings_section_audit.rs"
+
+[[test]]
+name = "memory_section_audit"
+path = "tests/memory_section_audit.rs"
+
+[[test]]
+name = "menu_bar_audit"
+path = "tests/menu_bar_audit.rs"
+
+[[test]]
+name = "menus"
+path = "tests/menus.rs"
+
+[[test]]
+name = "menus_audit"
+path = "tests/menus_audit.rs"
+
+[[test]]
+name = "menus_merge_reaudit"
+path = "tests/menus_merge_reaudit.rs"
+
+[[test]]
+name = "metadata_cache"
+path = "tests/metadata_cache.rs"
+
+[[test]]
+name = "metadata_cache_retest"
+path = "tests/metadata_cache_retest.rs"
+
+[[test]]
+name = "migration_endpoints_audit"
+path = "tests/migration_endpoints_audit.rs"
+
+[[test]]
+name = "migration_endpoints_bar"
+path = "tests/migration_endpoints_bar.rs"
+
+[[test]]
+name = "migration_endpoints_retest"
+path = "tests/migration_endpoints_retest.rs"
+
+[[test]]
+name = "migration_failure_audit"
+path = "tests/migration_failure_audit.rs"
+
+[[test]]
+name = "migration_failure_notice"
+path = "tests/migration_failure_notice.rs"
+
+[[test]]
+name = "migration_job_verdict"
+path = "tests/migration_job_verdict.rs"
+
+[[test]]
+name = "migration_job_verdict_audit"
+path = "tests/migration_job_verdict_audit.rs"
+
+[[test]]
+name = "migration_run_history"
+path = "tests/migration_run_history.rs"
+
+[[test]]
+name = "migration_run_history_audit"
+path = "tests/migration_run_history_audit.rs"
+
+[[test]]
+name = "model_profile_dialog_audit"
+path = "tests/model_profile_dialog_audit.rs"
+
+[[test]]
+name = "model_profile_form_audit"
+path = "tests/model_profile_form_audit.rs"
+
+[[test]]
+name = "model_profile_list_item_audit"
+path = "tests/model_profile_list_item_audit.rs"
+
+[[test]]
+name = "monitor_schedule_authorization_audit"
+path = "tests/monitor_schedule_authorization_audit.rs"
+
+[[test]]
+name = "multi_cursor_escape_audit"
+path = "tests/multi_cursor_escape_audit.rs"
+
+[[test]]
+name = "named_view_menu"
+path = "tests/named_view_menu.rs"
+
+[[test]]
+name = "named_view_menu_audit"
+path = "tests/named_view_menu_audit.rs"
+
+[[test]]
+name = "navigator_build_flat_rows"
+path = "tests/navigator_build_flat_rows.rs"
+
+[[test]]
+name = "navigator_connection_drag"
+path = "tests/navigator_connection_drag.rs"
+
+[[test]]
+name = "navigator_context_menus"
+path = "tests/navigator_context_menus.rs"
+
+[[test]]
+name = "navigator_db_state"
+path = "tests/navigator_db_state.rs"
+
+[[test]]
+name = "navigator_kv_db_counts"
+path = "tests/navigator_kv_db_counts.rs"
+
+[[test]]
+name = "navigator_toolbar"
+path = "tests/navigator_toolbar.rs"
+
+[[test]]
+name = "navigator_toolbar_audit"
+path = "tests/navigator_toolbar_audit.rs"
+
+[[test]]
+name = "navigator_tree_row"
+path = "tests/navigator_tree_row.rs"
+
+[[test]]
+name = "navigator_tree_row_aria"
+path = "tests/navigator_tree_row_aria.rs"
+
+[[test]]
+name = "navigator_tree_row_audit"
+path = "tests/navigator_tree_row_audit.rs"
+
+[[test]]
+name = "navigator_utils"
+path = "tests/navigator_utils.rs"
+
+[[test]]
+name = "new_connection_dialog"
+path = "tests/new_connection_dialog.rs"
+
+[[test]]
+name = "new_dialog_audit"
+path = "tests/new_dialog_audit.rs"
+
+[[test]]
+name = "nl2_sql_panel"
+path = "tests/nl2_sql_panel.rs"
+
+[[test]]
+name = "nl2_sql_panel_audit"
+path = "tests/nl2_sql_panel_audit.rs"
+
+[[test]]
+name = "nl_filter_input"
+path = "tests/nl_filter_input.rs"
+
+[[test]]
+name = "nl_filter_input_audit"
+path = "tests/nl_filter_input_audit.rs"
+
+[[test]]
+name = "object_browser"
+path = "tests/object_browser.rs"
+
+[[test]]
+name = "object_browser_audit"
+path = "tests/object_browser_audit.rs"
+
+[[test]]
+name = "object_filter_audit"
+path = "tests/object_filter_audit.rs"
+
+[[test]]
+name = "object_filter_save_tunnel"
+path = "tests/object_filter_save_tunnel.rs"
+
+[[test]]
+name = "onboarding_gate"
+path = "tests/onboarding_gate.rs"
+
+[[test]]
+name = "onboarding_window_audit"
+path = "tests/onboarding_window_audit.rs"
+
+[[test]]
+name = "onboarding_wizard_audit"
+path = "tests/onboarding_wizard_audit.rs"
+
+[[test]]
+name = "overlay"
+path = "tests/overlay.rs"
+
+[[test]]
+name = "overlay_audit"
+path = "tests/overlay_audit.rs"
+
+[[test]]
+name = "overlay_merge_reaudit"
+path = "tests/overlay_merge_reaudit.rs"
+
+[[test]]
+name = "overlay_retest"
+path = "tests/overlay_retest.rs"
+
+[[test]]
+name = "page_unload"
+path = "tests/page_unload.rs"
+
+[[test]]
+name = "page_unload_audit"
+path = "tests/page_unload_audit.rs"
+
+[[test]]
+name = "pane_identity"
+path = "tests/pane_identity.rs"
+
+[[test]]
+name = "pane_identity_audit"
+path = "tests/pane_identity_audit.rs"
+
+[[test]]
+name = "panel_close_notifier"
+path = "tests/panel_close_notifier.rs"
+
+[[test]]
+name = "panel_close_notifier_audit"
+path = "tests/panel_close_notifier_audit.rs"
+
+[[test]]
+name = "panel_content_renderer"
+path = "tests/panel_content_renderer.rs"
+
+[[test]]
+name = "panel_tab_bar"
+path = "tests/panel_tab_bar.rs"
+
+[[test]]
+name = "panel_tab_bar_audit"
+path = "tests/panel_tab_bar_audit.rs"
+
+[[test]]
+name = "pending_plan_dialog"
+path = "tests/pending_plan_dialog.rs"
+
+[[test]]
+name = "pending_plan_dialog_audit"
+path = "tests/pending_plan_dialog_audit.rs"
+
+[[test]]
+name = "pie_chart_renderer"
+path = "tests/pie_chart_renderer.rs"
+
+[[test]]
+name = "platform_capabilities"
+path = "tests/platform_capabilities.rs"
+
+[[test]]
+name = "platform_capabilities_audit"
+path = "tests/platform_capabilities_audit.rs"
+
+[[test]]
+name = "platform_contracts"
+path = "tests/platform_contracts.rs"
+
+[[test]]
+name = "platform_contracts_audit"
+path = "tests/platform_contracts_audit.rs"
+
+[[test]]
+name = "platform_env"
+path = "tests/platform_env.rs"
+
+[[test]]
+name = "platform_env_audit"
+path = "tests/platform_env_audit.rs"
+
+[[test]]
+name = "platform_web"
+path = "tests/platform_web.rs"
+
+[[test]]
+name = "platform_web_audit"
+path = "tests/platform_web_audit.rs"
+
+[[test]]
+name = "platform_web_stub"
+path = "tests/platform_web_stub.rs"
+
+[[test]]
+name = "platform_web_stub_audit"
+path = "tests/platform_web_stub_audit.rs"
+
+[[test]]
+name = "presentation_plan"
+path = "tests/presentation_plan.rs"
+
+[[test]]
+name = "privilege_selector"
+path = "tests/privilege_selector.rs"
+
+[[test]]
+name = "privilege_view"
+path = "tests/privilege_view.rs"
+
+[[test]]
+name = "process_list_view"
+path = "tests/process_list_view.rs"
+
+[[test]]
+name = "process_list_view_audit"
+path = "tests/process_list_view_audit.rs"
+
+[[test]]
+name = "progress_log_s1"
+path = "tests/progress_log_s1.rs"
+
+[[test]]
+name = "progress_log_s1_audit"
+path = "tests/progress_log_s1_audit.rs"
+
+[[test]]
+name = "progress_log_s2"
+path = "tests/progress_log_s2.rs"
+
+[[test]]
+name = "progress_log_s2_audit"
+path = "tests/progress_log_s2_audit.rs"
+
+[[test]]
+name = "prompt_settings_section_audit"
+path = "tests/prompt_settings_section_audit.rs"
+
+[[test]]
+name = "query_artifact_export"
+path = "tests/query_artifact_export.rs"
+
+[[test]]
+name = "query_artifact_export_audit"
+path = "tests/query_artifact_export_audit.rs"
+
+[[test]]
+name = "query_builder_host_adapter"
+path = "tests/query_builder_host_adapter.rs"
+
+[[test]]
+name = "query_context_and_error"
+path = "tests/query_context_and_error.rs"
+
+[[test]]
+name = "query_context_and_error_audit"
+path = "tests/query_context_and_error_audit.rs"
+
+[[test]]
+name = "query_editor_section"
+path = "tests/query_editor_section.rs"
+
+[[test]]
+name = "query_editor_section_audit"
+path = "tests/query_editor_section_audit.rs"
+
+[[test]]
+name = "query_execution_gate"
+path = "tests/query_execution_gate.rs"
+
+[[test]]
+name = "query_execution_gate_audit"
+path = "tests/query_execution_gate_audit.rs"
+
+[[test]]
+name = "query_execution_status"
+path = "tests/query_execution_status.rs"
+
+[[test]]
+name = "query_execution_status_audit"
+path = "tests/query_execution_status_audit.rs"
+
+[[test]]
+name = "query_panel"
+path = "tests/query_panel.rs"
+
+[[test]]
+name = "query_panel_audit"
+path = "tests/query_panel_audit.rs"
+
+[[test]]
+name = "query_panel_session"
+path = "tests/query_panel_session.rs"
+
+[[test]]
+name = "query_panel_session_audit"
+path = "tests/query_panel_session_audit.rs"
+
+[[test]]
+name = "query_panel_session_root"
+path = "tests/query_panel_session_root.rs"
+
+[[test]]
+name = "query_panel_session_root_audit"
+path = "tests/query_panel_session_root_audit.rs"
+
+[[test]]
+name = "query_results"
+path = "tests/query_results.rs"
+
+[[test]]
+name = "query_run_request_store"
+path = "tests/query_run_request_store.rs"
+
+[[test]]
+name = "query_run_request_store_audit"
+path = "tests/query_run_request_store_audit.rs"
+
+[[test]]
+name = "query_sidebar_section"
+path = "tests/query_sidebar_section.rs"
+
+[[test]]
+name = "query_sidebar_section_audit"
+path = "tests/query_sidebar_section_audit.rs"
+
+[[test]]
+name = "query_transaction_modals"
+path = "tests/query_transaction_modals.rs"
+
+[[test]]
+name = "query_workspace"
+path = "tests/query_workspace.rs"
+
+[[test]]
+name = "rail_modals"
+path = "tests/rail_modals.rs"
+
+[[test]]
+name = "recent_queries_list"
+path = "tests/recent_queries_list.rs"
+
+[[test]]
+name = "recent_queries_list_audit"
+path = "tests/recent_queries_list_audit.rs"
+
+[[test]]
+name = "recordset_editor"
+path = "tests/recordset_editor.rs"
+
+[[test]]
+name = "recordset_editor_audit"
+path = "tests/recordset_editor_audit.rs"
+
+[[test]]
+name = "refresh_completion_button"
+path = "tests/refresh_completion_button.rs"
+
+[[test]]
+name = "refresh_completion_button_audit"
+path = "tests/refresh_completion_button_audit.rs"
+
+[[test]]
+name = "relation_prediction_ports"
+path = "tests/relation_prediction_ports.rs"
+
+[[test]]
+name = "result_find_bar"
+path = "tests/result_find_bar.rs"
+
+[[test]]
+name = "result_table_view"
+path = "tests/result_table_view.rs"
+
+[[test]]
+name = "result_table_view_audit"
+path = "tests/result_table_view_audit.rs"
+
+[[test]]
+name = "result_workspace"
+path = "tests/result_workspace.rs"
+
+[[test]]
+name = "result_workspace_audit"
+path = "tests/result_workspace_audit.rs"
+
+[[test]]
+name = "run_editor_explain"
+path = "tests/run_editor_explain.rs"
+
+[[test]]
+name = "run_editor_explain_audit"
+path = "tests/run_editor_explain_audit.rs"
+
+[[test]]
+name = "run_editor_query"
+path = "tests/run_editor_query.rs"
+
+[[test]]
+name = "run_editor_query_audit"
+path = "tests/run_editor_query_audit.rs"
+
+[[test]]
+name = "run_history_drawer_audit"
+path = "tests/run_history_drawer_audit.rs"
+
+[[test]]
+name = "running_execution_close_host"
+path = "tests/running_execution_close_host.rs"
+
+[[test]]
+name = "sample_step_audit"
+path = "tests/sample_step_audit.rs"
+
+[[test]]
+name = "scatter_chart_renderer"
+path = "tests/scatter_chart_renderer.rs"
+
+[[test]]
+name = "schema_completion"
+path = "tests/schema_completion.rs"
+
+[[test]]
+name = "schema_diff_audit"
+path = "tests/schema_diff_audit.rs"
+
+[[test]]
+name = "schema_diff_deploy_panel_audit"
+path = "tests/schema_diff_deploy_panel_audit.rs"
+
+[[test]]
+name = "schema_diff_execution_panels_audit"
+path = "tests/schema_diff_execution_panels_audit.rs"
+
+[[test]]
+name = "schema_diff_job_status_panel_audit"
+path = "tests/schema_diff_job_status_panel_audit.rs"
+
+[[test]]
+name = "schema_diff_limitation_keys"
+path = "tests/schema_diff_limitation_keys.rs"
+
+[[test]]
+name = "schema_diff_object_discovery"
+path = "tests/schema_diff_object_discovery.rs"
+
+[[test]]
+name = "schema_diff_object_identity"
+path = "tests/schema_diff_object_identity.rs"
+
+[[test]]
+name = "schema_diff_objects_step_audit"
+path = "tests/schema_diff_objects_step_audit.rs"
+
+[[test]]
+name = "schema_diff_panel"
+path = "tests/schema_diff_panel.rs"
+
+[[test]]
+name = "schema_diff_plan_panel_audit"
+path = "tests/schema_diff_plan_panel_audit.rs"
+
+[[test]]
+name = "schema_diff_right_panel_audit"
+path = "tests/schema_diff_right_panel_audit.rs"
+
+[[test]]
+name = "schema_diff_saved_setup_dialogs_audit"
+path = "tests/schema_diff_saved_setup_dialogs_audit.rs"
+
+[[test]]
+name = "schema_diff_selection_steps_audit"
+path = "tests/schema_diff_selection_steps_audit.rs"
+
+[[test]]
+name = "schema_diff_table_list_panel_audit"
+path = "tests/schema_diff_table_list_panel_audit.rs"
+
+[[test]]
+name = "schema_diff_table_names"
+path = "tests/schema_diff_table_names.rs"
+
+[[test]]
+name = "schema_diff_unified_objects_picker_audit"
+path = "tests/schema_diff_unified_objects_picker_audit.rs"
+
+[[test]]
+name = "schema_metadata_keys"
+path = "tests/schema_metadata_keys.rs"
+
+[[test]]
+name = "schema_metadata_keys_audit"
+path = "tests/schema_metadata_keys_audit.rs"
+
+[[test]]
+name = "schema_request_tracker"
+path = "tests/schema_request_tracker.rs"
+
+[[test]]
+name = "schema_request_tracker_audit"
+path = "tests/schema_request_tracker_audit.rs"
+
+[[test]]
+name = "select_values"
+path = "tests/select_values.rs"
+
+[[test]]
+name = "server_status_view"
+path = "tests/server_status_view.rs"
+
+[[test]]
+name = "session_cancel"
+path = "tests/session_cancel.rs"
+
+[[test]]
+name = "session_cancel_audit"
+path = "tests/session_cancel_audit.rs"
+
+[[test]]
+name = "session_prompts"
+path = "tests/session_prompts.rs"
+
+[[test]]
+name = "session_prompts_audit"
+path = "tests/session_prompts_audit.rs"
+
+[[test]]
+name = "set_value_date_dialog"
+path = "tests/set_value_date_dialog.rs"
+
+[[test]]
+name = "settings"
+path = "tests/settings.rs"
+
+[[test]]
+name = "settings_content_audit"
+path = "tests/settings_content_audit.rs"
+
+[[test]]
+name = "settings_export"
+path = "tests/settings_export.rs"
+
+[[test]]
+name = "settings_export_audit"
+path = "tests/settings_export_audit.rs"
+
+[[test]]
+name = "shell_grid"
+path = "tests/shell_grid.rs"
+
+[[test]]
+name = "shell_parity"
+path = "tests/shell_parity.rs"
+
+[[test]]
+name = "shell_parity_audit"
+path = "tests/shell_parity_audit.rs"
+
+[[test]]
+name = "shortcut_audit"
+path = "tests/shortcut_audit.rs"
+
+[[test]]
+name = "shortcut_footer"
+path = "tests/shortcut_footer.rs"
+
+[[test]]
+name = "skills_section_audit"
+path = "tests/skills_section_audit.rs"
+
+[[test]]
+name = "snippet_menu_button"
+path = "tests/snippet_menu_button.rs"
+
+[[test]]
+name = "source_filter_editor"
+path = "tests/source_filter_editor.rs"
+
+[[test]]
+name = "source_filter_editor_audit"
+path = "tests/source_filter_editor_audit.rs"
+
+[[test]]
+name = "sql_code_block"
+path = "tests/sql_code_block.rs"
+
+[[test]]
+name = "sql_code_block_audit"
+path = "tests/sql_code_block_audit.rs"
+
+[[test]]
+name = "sql_dialect_identifier_quoting_audit"
+path = "tests/sql_dialect_identifier_quoting_audit.rs"
+
+[[test]]
+name = "sql_dialect_parameter_policy_audit"
+path = "tests/sql_dialect_parameter_policy_audit.rs"
+
+[[test]]
+name = "sql_dialect_strategies"
+path = "tests/sql_dialect_strategies.rs"
+
+[[test]]
+name = "sql_dialects_audit"
+path = "tests/sql_dialects_audit.rs"
+
+[[test]]
+name = "sql_editor_component"
+path = "tests/sql_editor_component.rs"
+
+[[test]]
+name = "sql_editor_context_menu_audit"
+path = "tests/sql_editor_context_menu_audit.rs"
+
+[[test]]
+name = "sql_editor_extensions_audit"
+path = "tests/sql_editor_extensions_audit.rs"
+
+[[test]]
+name = "sql_editor_metadata"
+path = "tests/sql_editor_metadata.rs"
+
+[[test]]
+name = "sql_snippets_card_audit"
+path = "tests/sql_snippets_card_audit.rs"
+
+[[test]]
+name = "sql_syntax_preview"
+path = "tests/sql_syntax_preview.rs"
+
+[[test]]
+name = "sql_syntax_preview_audit"
+path = "tests/sql_syntax_preview_audit.rs"
+
+[[test]]
+name = "ssh_fields_audit"
+path = "tests/ssh_fields_audit.rs"
+
+[[test]]
+name = "ssh_standard_fields"
+path = "tests/ssh_standard_fields.rs"
+
+[[test]]
+name = "stream_registry"
+path = "tests/stream_registry.rs"
+
+[[test]]
+name = "stream_registry_audit"
+path = "tests/stream_registry_audit.rs"
+
+[[test]]
+name = "structure_column_table"
+path = "tests/structure_column_table.rs"
+
+[[test]]
+name = "structure_editor_audit"
+path = "tests/structure_editor_audit.rs"
+
+[[test]]
+name = "structure_editor_create_schema"
+path = "tests/structure_editor_create_schema.rs"
+
+[[test]]
+name = "structure_editor_create_schema_audit"
+path = "tests/structure_editor_create_schema_audit.rs"
+
+[[test]]
+name = "structure_editor_defaults"
+path = "tests/structure_editor_defaults.rs"
+
+[[test]]
+name = "structure_editor_helpers"
+path = "tests/structure_editor_helpers.rs"
+
+[[test]]
+name = "structure_editor_t085_audit"
+path = "tests/structure_editor_t085_audit.rs"
+
+[[test]]
+name = "structure_editor_types"
+path = "tests/structure_editor_types.rs"
+
+[[test]]
+name = "structure_editor_types_audit"
+path = "tests/structure_editor_types_audit.rs"
+
+[[test]]
+name = "structure_er"
+path = "tests/structure_er.rs"
+
+[[test]]
+name = "structure_index_audit"
+path = "tests/structure_index_audit.rs"
+
+[[test]]
+name = "structure_index_table"
+path = "tests/structure_index_table.rs"
+
+[[test]]
+name = "structure_jobs"
+path = "tests/structure_jobs.rs"
+
+[[test]]
+name = "structure_plan_preview"
+path = "tests/structure_plan_preview.rs"
+
+[[test]]
+name = "structure_view"
+path = "tests/structure_view.rs"
+
+[[test]]
+name = "support"
+path = "tests/support.rs"
+
+[[test]]
+name = "support_layer_audit"
+path = "tests/support_layer_audit.rs"
+
+[[test]]
+name = "sync_transfer"
+path = "tests/sync_transfer.rs"
+
+[[test]]
+name = "t063_audit"
+path = "tests/t063_audit.rs"
+
+[[test]]
+name = "t064_audit"
+path = "tests/t064_audit.rs"
+
+[[test]]
+name = "t076_tester"
+path = "tests/t076_tester.rs"
+
+[[test]]
+name = "t078_tester"
+path = "tests/t078_tester.rs"
+
+[[test]]
+name = "t087_tester"
+path = "tests/t087_tester.rs"
+
+[[test]]
+name = "t089_tester"
+path = "tests/t089_tester.rs"
+
+[[test]]
+name = "t091_tester"
+path = "tests/t091_tester.rs"
+
+[[test]]
+name = "table"
+path = "tests/table.rs"
+
+[[test]]
+name = "table_audit"
+path = "tests/table_audit.rs"
+
+[[test]]
+name = "table_banners_audit"
+path = "tests/table_banners_audit.rs"
+
+[[test]]
+name = "table_clipboard_status"
+path = "tests/table_clipboard_status.rs"
+
+[[test]]
+name = "table_column_filter"
+path = "tests/table_column_filter.rs"
+
+[[test]]
+name = "table_column_filter_audit"
+path = "tests/table_column_filter_audit.rs"
+
+[[test]]
+name = "table_data_connection_state"
+path = "tests/table_data_connection_state.rs"
+
+[[test]]
+name = "table_data_connection_state_audit"
+path = "tests/table_data_connection_state_audit.rs"
+
+[[test]]
+name = "table_data_count_strategy"
+path = "tests/table_data_count_strategy.rs"
+
+[[test]]
+name = "table_data_count_strategy_audit"
+path = "tests/table_data_count_strategy_audit.rs"
+
+[[test]]
+name = "table_data_dirty_index"
+path = "tests/table_data_dirty_index.rs"
+
+[[test]]
+name = "table_data_dirty_index_audit"
+path = "tests/table_data_dirty_index_audit.rs"
+
+[[test]]
+name = "table_data_draft_inserts"
+path = "tests/table_data_draft_inserts.rs"
+
+[[test]]
+name = "table_data_draft_inserts_audit"
+path = "tests/table_data_draft_inserts_audit.rs"
+
+[[test]]
+name = "table_data_filter_utils"
+path = "tests/table_data_filter_utils.rs"
+
+[[test]]
+name = "table_data_filter_utils_audit"
+path = "tests/table_data_filter_utils_audit.rs"
+
+[[test]]
+name = "table_data_grid_selection"
+path = "tests/table_data_grid_selection.rs"
+
+[[test]]
+name = "table_data_grid_selection_audit"
+path = "tests/table_data_grid_selection_audit.rs"
+
+[[test]]
+name = "table_data_insert_location"
+path = "tests/table_data_insert_location.rs"
+
+[[test]]
+name = "table_data_insert_location_audit"
+path = "tests/table_data_insert_location_audit.rs"
+
+[[test]]
+name = "table_data_panel_seed"
+path = "tests/table_data_panel_seed.rs"
+
+[[test]]
+name = "table_data_panel_seed_audit"
+path = "tests/table_data_panel_seed_audit.rs"
+
+[[test]]
+name = "table_data_pending_changes"
+path = "tests/table_data_pending_changes.rs"
+
+[[test]]
+name = "table_data_pending_changes_audit"
+path = "tests/table_data_pending_changes_audit.rs"
+
+[[test]]
+name = "table_data_pending_edit_actions"
+path = "tests/table_data_pending_edit_actions.rs"
+
+[[test]]
+name = "table_data_pending_edit_actions_audit"
+path = "tests/table_data_pending_edit_actions_audit.rs"
+
+[[test]]
+name = "table_data_settings_section_audit"
+path = "tests/table_data_settings_section_audit.rs"
+
+[[test]]
+name = "table_draft_rows"
+path = "tests/table_draft_rows.rs"
+
+[[test]]
+name = "table_draft_rows_audit"
+path = "tests/table_draft_rows_audit.rs"
+
+[[test]]
+name = "table_editing"
+path = "tests/table_editing.rs"
+
+[[test]]
+name = "table_editing_audit"
+path = "tests/table_editing_audit.rs"
+
+[[test]]
+name = "table_filter_toolbar"
+path = "tests/table_filter_toolbar.rs"
+
+[[test]]
+name = "table_fk_breadcrumb"
+path = "tests/table_fk_breadcrumb.rs"
+
+[[test]]
+name = "table_fk_error_banner"
+path = "tests/table_fk_error_banner.rs"
+
+[[test]]
+name = "table_foreign_key_navigation"
+path = "tests/table_foreign_key_navigation.rs"
+
+[[test]]
+name = "table_load_error_state"
+path = "tests/table_load_error_state.rs"
+
+[[test]]
+name = "table_no_primary_key_tip"
+path = "tests/table_no_primary_key_tip.rs"
+
+[[test]]
+name = "table_pending_changes_bar"
+path = "tests/table_pending_changes_bar.rs"
+
+[[test]]
+name = "table_read_only_tip"
+path = "tests/table_read_only_tip.rs"
+
+[[test]]
+name = "table_session"
+path = "tests/table_session.rs"
+
+[[test]]
+name = "table_session_audit"
+path = "tests/table_session_audit.rs"
+
+[[test]]
+name = "table_status_banners"
+path = "tests/table_status_banners.rs"
+
+[[test]]
+name = "table_structure_editor"
+path = "tests/table_structure_editor.rs"
+
+[[test]]
+name = "table_structure_editor_audit"
+path = "tests/table_structure_editor_audit.rs"
+
+[[test]]
+name = "table_toolbar"
+path = "tests/table_toolbar.rs"
+
+[[test]]
+name = "table_view"
+path = "tests/table_view.rs"
+
+[[test]]
+name = "table_view_clipboard"
+path = "tests/table_view_clipboard.rs"
+
+[[test]]
+name = "target_claim"
+path = "tests/target_claim.rs"
+
+[[test]]
+name = "target_claim_audit"
+path = "tests/target_claim_audit.rs"
+
+[[test]]
+name = "target_command"
+path = "tests/target_command.rs"
+
+[[test]]
+name = "target_command_audit"
+path = "tests/target_command_audit.rs"
+
+[[test]]
+name = "temporal_input"
+path = "tests/temporal_input.rs"
+
+[[test]]
+name = "temporal_input_audit"
+path = "tests/temporal_input_audit.rs"
+
+[[test]]
+name = "temporal_math"
+path = "tests/temporal_math.rs"
+
+[[test]]
+name = "theme_toggle"
+path = "tests/theme_toggle.rs"
+
+[[test]]
+name = "theme_toggle_audit"
+path = "tests/theme_toggle_audit.rs"
+
+[[test]]
+name = "themed_icon"
+path = "tests/themed_icon.rs"
+
+[[test]]
+name = "themed_icon_audit"
+path = "tests/themed_icon_audit.rs"
+
+[[test]]
+name = "timestamp_config"
+path = "tests/timestamp_config.rs"
+
+[[test]]
+name = "timestamp_contribution"
+path = "tests/timestamp_contribution.rs"
+
+[[test]]
+name = "timestamp_format"
+path = "tests/timestamp_format.rs"
+
+[[test]]
+name = "tokens"
+path = "tests/tokens.rs"
+
+[[test]]
+name = "tooltip_text"
+path = "tests/tooltip_text.rs"
+
+[[test]]
+name = "tooltip_text_audit"
+path = "tests/tooltip_text_audit.rs"
+
+[[test]]
+name = "transfer_job_result_panel"
+path = "tests/transfer_job_result_panel.rs"
+
+[[test]]
+name = "transfer_job_result_panel_audit"
+path = "tests/transfer_job_result_panel_audit.rs"
+
+[[test]]
+name = "transfer_job_run"
+path = "tests/transfer_job_run.rs"
+
+[[test]]
+name = "transfer_job_run_audit"
+path = "tests/transfer_job_run_audit.rs"
+
+[[test]]
+name = "transfer_mapping_step"
+path = "tests/transfer_mapping_step.rs"
+
+[[test]]
+name = "transfer_mapping_step_audit"
+path = "tests/transfer_mapping_step_audit.rs"
+
+[[test]]
+name = "transfer_mapping_view"
+path = "tests/transfer_mapping_view.rs"
+
+[[test]]
+name = "transfer_mapping_view_audit"
+path = "tests/transfer_mapping_view_audit.rs"
+
+[[test]]
+name = "tree"
+path = "tests/tree.rs"
+
+[[test]]
+name = "tree_audit"
+path = "tests/tree_audit.rs"
+
+[[test]]
+name = "tree_rowmath_audit"
+path = "tests/tree_rowmath_audit.rs"
+
+[[test]]
+name = "tree_status_dot"
+path = "tests/tree_status_dot.rs"
+
+[[test]]
+name = "tree_status_dot_audit"
+path = "tests/tree_status_dot_audit.rs"
+
+[[test]]
+name = "tunnel_contracts"
+path = "tests/tunnel_contracts.rs"
+
+[[test]]
+name = "tunnel_contracts_audit"
+path = "tests/tunnel_contracts_audit.rs"
+
+[[test]]
+name = "tunnel_fields"
+path = "tests/tunnel_fields.rs"
+
+[[test]]
+name = "tunnel_fields_audit"
+path = "tests/tunnel_fields_audit.rs"
+
+[[test]]
+name = "ui_store"
+path = "tests/ui_store.rs"
+
+[[test]]
+name = "ui_store_audit"
+path = "tests/ui_store_audit.rs"
+
+[[test]]
+name = "use_column_presentation_session_hook_audit"
+path = "tests/use_column_presentation_session_hook_audit.rs"
+
+[[test]]
+name = "use_column_resize_audit"
+path = "tests/use_column_resize_audit.rs"
+
+[[test]]
+name = "use_column_stats_audit"
+path = "tests/use_column_stats_audit.rs"
+
+[[test]]
+name = "use_compact_toolbar_audit"
+path = "tests/use_compact_toolbar_audit.rs"
+
+[[test]]
+name = "use_connection_command_audit"
+path = "tests/use_connection_command_audit.rs"
+
+[[test]]
+name = "use_connection_context_menu"
+path = "tests/use_connection_context_menu.rs"
+
+[[test]]
+name = "use_connection_form"
+path = "tests/use_connection_form.rs"
+
+[[test]]
+name = "use_connection_import"
+path = "tests/use_connection_import.rs"
+
+[[test]]
+name = "use_connection_import_audit"
+path = "tests/use_connection_import_audit.rs"
+
+[[test]]
+name = "use_connection_tabs"
+path = "tests/use_connection_tabs.rs"
+
+[[test]]
+name = "use_connection_workspace_meta"
+path = "tests/use_connection_workspace_meta.rs"
+
+[[test]]
+name = "use_connection_workspace_meta_audit"
+path = "tests/use_connection_workspace_meta_audit.rs"
+
+[[test]]
+name = "use_data_sync_feedback"
+path = "tests/use_data_sync_feedback.rs"
+
+[[test]]
+name = "use_data_sync_feedback_audit"
+path = "tests/use_data_sync_feedback_audit.rs"
+
+[[test]]
+name = "use_data_sync_wizard_state"
+path = "tests/use_data_sync_wizard_state.rs"
+
+[[test]]
+name = "use_data_sync_wizard_state_audit"
+path = "tests/use_data_sync_wizard_state_audit.rs"
+
+[[test]]
+name = "use_detected_import_source"
+path = "tests/use_detected_import_source.rs"
+
+[[test]]
+name = "use_dirty_index"
+path = "tests/use_dirty_index.rs"
+
+[[test]]
+name = "use_dirty_index_audit"
+path = "tests/use_dirty_index_audit.rs"
+
+[[test]]
+name = "use_fk_navigation_shortcuts_audit"
+path = "tests/use_fk_navigation_shortcuts_audit.rs"
+
+[[test]]
+name = "use_form_audit"
+path = "tests/use_form_audit.rs"
+
+[[test]]
+name = "use_grid_clipboard"
+path = "tests/use_grid_clipboard.rs"
+
+[[test]]
+name = "use_kv_db_counts"
+path = "tests/use_kv_db_counts.rs"
+
+[[test]]
+name = "use_kv_slot_actions"
+path = "tests/use_kv_slot_actions.rs"
+
+[[test]]
+name = "use_kv_workspace_slots"
+path = "tests/use_kv_workspace_slots.rs"
+
+[[test]]
+name = "use_model_profile_draft"
+path = "tests/use_model_profile_draft.rs"
+
+[[test]]
+name = "use_named_view_menu"
+path = "tests/use_named_view_menu.rs"
+
+[[test]]
+name = "use_named_view_menu_audit"
+path = "tests/use_named_view_menu_audit.rs"
+
+[[test]]
+name = "use_panel_handlers"
+path = "tests/use_panel_handlers.rs"
+
+[[test]]
+name = "use_schema_diff_clipboard_feedback"
+path = "tests/use_schema_diff_clipboard_feedback.rs"
+
+[[test]]
+name = "use_schema_diff_job_lifecycle"
+path = "tests/use_schema_diff_job_lifecycle.rs"
+
+[[test]]
+name = "use_table_actions"
+path = "tests/use_table_actions.rs"
+
+[[test]]
+name = "use_tunnel_form_state"
+path = "tests/use_tunnel_form_state.rs"
+
+[[test]]
+name = "use_tunnel_form_state_audit"
+path = "tests/use_tunnel_form_state_audit.rs"
+
+[[test]]
+name = "value_presentation_rules"
+path = "tests/value_presentation_rules.rs"
+
+[[test]]
+name = "value_presentation_save"
+path = "tests/value_presentation_save.rs"
+
+[[test]]
+name = "value_search_audit"
+path = "tests/value_search_audit.rs"
+
+[[test]]
+name = "viewer_audit"
+path = "tests/viewer_audit.rs"
+
+[[test]]
+name = "wapp_icon_audit"
+path = "tests/wapp_icon_audit.rs"
+
+[[test]]
+name = "wapp_management_page"
+path = "tests/wapp_management_page.rs"
+
+[[test]]
+name = "wapp_page_shell_audit"
+path = "tests/wapp_page_shell_audit.rs"
+
+[[test]]
+name = "web_context_menu"
+path = "tests/web_context_menu.rs"
+
+[[test]]
+name = "web_context_menu_audit"
+path = "tests/web_context_menu_audit.rs"
+
+[[test]]
+name = "websocket_axis"
+path = "tests/websocket_axis.rs"
+
+[[test]]
+name = "welcome_step_audit"
+path = "tests/welcome_step_audit.rs"
+
+[[test]]
+name = "widget_editor_drawer_audit"
+path = "tests/widget_editor_drawer_audit.rs"
+
+[[test]]
+name = "widgets"
+path = "tests/widgets.rs"
+
+[[test]]
+name = "widgets_audit_t0_11"
+path = "tests/widgets_audit_t0_11.rs"
+
+[[test]]
+name = "window_chrome_fallback"
+path = "tests/window_chrome_fallback.rs"
+
+[[test]]
+name = "window_chrome_fallback_audit"
+path = "tests/window_chrome_fallback_audit.rs"
+
+[[test]]
+name = "wizard_footer_audit"
+path = "tests/wizard_footer_audit.rs"
+
+[[test]]
+name = "wizard_state"
+path = "tests/wizard_state.rs"
+
+[[test]]
+name = "workflow_action_bar"
+path = "tests/workflow_action_bar.rs"
+
+[[test]]
+name = "workflow_draft_convert"
+path = "tests/workflow_draft_convert.rs"
+
+[[test]]
+name = "workflow_execution_panel"
+path = "tests/workflow_execution_panel.rs"
+
+[[test]]
+name = "workflow_form"
+path = "tests/workflow_form.rs"
+
+[[test]]
+name = "workflow_history_section"
+path = "tests/workflow_history_section.rs"
+
+[[test]]
+name = "workflow_page"
+path = "tests/workflow_page.rs"
+
+[[test]]
+name = "workflow_step_result_utils"
+path = "tests/workflow_step_result_utils.rs"
+
+[[test]]
+name = "workflow_yaml_editor"
+path = "tests/workflow_yaml_editor.rs"
+
+[[test]]
+name = "workspace_default_cards_audit"
+path = "tests/workspace_default_cards_audit.rs"
+
+[[test]]
+name = "workspace_mode_sidebar"
+path = "tests/workspace_mode_sidebar.rs"
+
+[[test]]
+name = "workspace_mode_sidebar_audit"
+path = "tests/workspace_mode_sidebar_audit.rs"
+
+[[test]]
+name = "workspace_navigator_audit"
+path = "tests/workspace_navigator_audit.rs"
+
+[[test]]
+name = "workspace_pages"
+path = "tests/workspace_pages.rs"
+
+[[test]]
+name = "workspace_panel_state_store"
+path = "tests/workspace_panel_state_store.rs"
+
+[[test]]
+name = "workspace_panel_state_store_audit"
+path = "tests/workspace_panel_state_store_audit.rs"
+
+[[test]]
+name = "workspace_tab_bar_audit"
+path = "tests/workspace_tab_bar_audit.rs"
+
+[[test]]
+name = "workspace_tabs"
+path = "tests/workspace_tabs.rs"
+
+[[test]]
+name = "workspace_tabs_store"
+path = "tests/workspace_tabs_store.rs"
+
+[[test]]
+name = "workspace_tabs_store_audit"
+path = "tests/workspace_tabs_store_audit.rs"
+
+[[test]]
+name = "workspace_view_audit"
+path = "tests/workspace_view_audit.rs"
+
+[[test]]
+name = "ws_axis_audit"
+path = "tests/ws_axis_audit.rs"

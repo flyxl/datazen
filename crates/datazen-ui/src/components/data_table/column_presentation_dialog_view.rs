@@ -126,7 +126,7 @@ fn source_time_zone_value(kind: SourceTimeZoneChoice) -> &'static str {
 }
 
 /// The column-presentation dialog panel.
-pub(crate) struct ColumnPresentationDialog<'a, S: 'static> {
+pub struct ColumnPresentationDialog<'a, S: 'static> {
     state: &'a ColumnPresentationDialogState,
     snapshot: Option<&'a ValuePresentationSnapshot>,
     registry: Option<&'a ValuePresentationRegistry>,
@@ -136,7 +136,7 @@ pub(crate) struct ColumnPresentationDialog<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> ColumnPresentationDialog<'a, S> {
-    pub(crate) fn new(state: &'a ColumnPresentationDialogState) -> Self {
+    pub fn new(state: &'a ColumnPresentationDialogState) -> Self {
         Self {
             state,
             snapshot: None,
@@ -148,7 +148,7 @@ impl<'a, S: 'static> ColumnPresentationDialog<'a, S> {
     }
 
     /// The snapshot the dialog derives from (host-owned, passed per frame).
-    pub(crate) fn snapshot(mut self, snapshot: &'a ValuePresentationSnapshot) -> Self {
+    pub fn snapshot(mut self, snapshot: &'a ValuePresentationSnapshot) -> Self {
         self.snapshot = Some(snapshot);
         self
     }
@@ -156,7 +156,7 @@ impl<'a, S: 'static> ColumnPresentationDialog<'a, S> {
     /// The registry the dialog reads the contribution from (host-owned,
     /// passed per frame; a fresh one each render is what makes the T11
     /// missing notice appear/disappear while the panel is open).
-    pub(crate) fn registry(mut self, registry: &'a ValuePresentationRegistry) -> Self {
+    pub fn registry(mut self, registry: &'a ValuePresentationRegistry) -> Self {
         self.registry = Some(registry);
         self
     }
@@ -164,21 +164,21 @@ impl<'a, S: 'static> ColumnPresentationDialog<'a, S> {
     /// The timestamp engine's `present` (T253/T209/T274 wiring); `None`
     /// means `ready` previews fall back to `plan-error` (see the plan
     /// module header).
-    pub(crate) fn presenter(mut self, presenter: TimestampPresenter) -> Self {
+    pub fn presenter(mut self, presenter: TimestampPresenter) -> Self {
         self.presenter = Some(presenter);
         self
     }
 
     /// The platform's IANA known-name check (S1's seam); defaults to
     /// fail-closed (`|_| false`).
-    pub(crate) fn is_known_time_zone(mut self, check: Rc<dyn Fn(&str) -> bool>) -> Self {
+    pub fn is_known_time_zone(mut self, check: Rc<dyn Fn(&str) -> bool>) -> Self {
         self.is_known_time_zone = check;
         self
     }
 
     /// The state accessor every button and field drives, e.g.
     /// `|state| &mut state.column_presentation_dialog`.
-    pub(crate) fn host_mut(
+    pub fn host_mut(
         mut self,
         f: impl Fn(&mut S) -> &mut ColumnPresentationDialogState + 'static,
     ) -> Self {
@@ -189,7 +189,7 @@ impl<'a, S: 'static> ColumnPresentationDialog<'a, S> {
     /// Renders the dialog into `layer`. Nothing is pushed when the dialog
     /// is closed, when no host accessor was given, or when the snapshot /
     /// registry was not supplied (see the module docs).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         let state = self.state;
         if !state.is_open() {
             return;

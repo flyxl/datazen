@@ -9,7 +9,7 @@ impl EditorSessionController {
 
     /// Resolution of an `IssueToken` effect.
     #[allow(dead_code)] // host result feed; remove with the host executor.
-    pub(crate) fn on_token(
+    pub fn on_token(
         &mut self,
         call_id: u64,
         result: Result<SubmissionToken, SessionError>,
@@ -122,7 +122,7 @@ impl EditorSessionController {
 
     /// Resolution of an `Open` effect.
     #[allow(dead_code)] // host result feed; remove with the host executor.
-    pub(crate) fn on_open(
+    pub fn on_open(
         &mut self,
         call_id: u64,
         result: Result<OpenSessionReceipt, SessionError>,
@@ -184,7 +184,7 @@ impl EditorSessionController {
 
     /// Resolution of an `Execute` effect.
     #[allow(dead_code)] // host result feed; remove with the host executor.
-    pub(crate) fn on_execute(
+    pub fn on_execute(
         &mut self,
         call_id: u64,
         result: Result<ExecutionReceipt, SessionError>,
@@ -214,7 +214,7 @@ impl EditorSessionController {
 
     /// Resolution of a `SetContext` effect.
     #[allow(dead_code)] // host result feed; remove with the host executor.
-    pub(crate) fn on_set_context(
+    pub fn on_set_context(
         &mut self,
         call_id: u64,
         result: Result<ContextChangeReceipt, SessionError>,
@@ -272,7 +272,7 @@ impl EditorSessionController {
     /// Resolution of a `Close` effect. Routes to the close operation, the
     /// setContext replacement cleanup or the page-unload closer.
     #[allow(dead_code)] // host result feed; remove with the host executor.
-    pub(crate) fn on_close(
+    pub fn on_close(
         &mut self,
         call_id: u64,
         result: Result<CloseReceipt, SessionError>,
@@ -312,7 +312,7 @@ impl EditorSessionController {
 
     /// Resolution of a `GetExecution` effect.
     #[allow(dead_code)] // host result feed; remove with the host executor.
-    pub(crate) fn on_get_execution(
+    pub fn on_get_execution(
         &mut self,
         call_id: u64,
         result: Result<ExecutionView, SessionError>,
@@ -338,7 +338,7 @@ impl EditorSessionController {
 
     /// Resolution of a `GetSession` effect (`refresh`).
     #[allow(dead_code)] // host result feed; remove with the host executor.
-    pub(crate) fn on_get_session(
+    pub fn on_get_session(
         &mut self,
         call_id: u64,
         result: Result<SessionView, SessionError>,
@@ -361,7 +361,7 @@ impl EditorSessionController {
 
     /// Resolution of `Detach`/`Attach` — both feed `acceptSession`.
     #[allow(dead_code)] // host result feed; remove with the host executor.
-    pub(crate) fn on_attachment(
+    pub fn on_attachment(
         &mut self,
         call_id: u64,
         result: Result<SessionView, SessionError>,
@@ -382,7 +382,7 @@ impl EditorSessionController {
 
     /// Resolution of a `Cancel` effect.
     #[allow(dead_code)] // host result feed; remove with the host executor.
-    pub(crate) fn on_cancel(
+    pub fn on_cancel(
         &mut self,
         call_id: u64,
         result: Result<CancelReceipt, SessionError>,

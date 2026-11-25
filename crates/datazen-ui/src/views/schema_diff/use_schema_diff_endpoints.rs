@@ -50,7 +50,7 @@ use crate::views::schema_diff::schema_diff_endpoint_helpers::{
 
 /// The side an endpoint is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EndpointSide {
+pub enum EndpointSide {
     Source,
     Target,
 }
@@ -58,38 +58,38 @@ pub(crate) enum EndpointSide {
 /// The connection face the hook reads (the `ConnectionConfig` fields
 /// it inspects).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct EndpointConnection {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) database_type: String,
+pub struct EndpointConnection {
+    pub id: String,
+    pub name: String,
+    pub database_type: String,
     /// The configured database (the discovery's preferred pick).
-    pub(crate) database: Option<String>,
+    pub database: Option<String>,
     /// The configured schema (the catalog's preferred pick).
-    pub(crate) schema: Option<String>,
+    pub schema: Option<String>,
 }
 
 /// `DB_REGISTRY[type]`'s two flags the catalog gate reads
 /// (`supportsTables` / `supportsSQL`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct EndpointDbMeta {
-    pub(crate) supports_tables: bool,
-    pub(crate) supports_sql: bool,
+pub struct EndpointDbMeta {
+    pub supports_tables: bool,
+    pub supports_sql: bool,
 }
 
 /// One side's endpoint state.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct EndpointSideState {
-    pub(crate) id: String,
-    pub(crate) database: String,
-    pub(crate) schema: String,
-    pub(crate) databases: Vec<String>,
-    pub(crate) schemas: Vec<String>,
-    pub(crate) session: Option<DedicatedSideSession>,
+pub struct EndpointSideState {
+    pub id: String,
+    pub database: String,
+    pub schema: String,
+    pub databases: Vec<String>,
+    pub schemas: Vec<String>,
+    pub session: Option<DedicatedSideSession>,
 }
 
 /// `validateEndpoints`'s refusals, as the i18n keys React reports.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EndpointValidation {
+pub enum EndpointValidation {
     SelectBoth,
     CannotSameDb,
     SelectDbRequired,
@@ -97,14 +97,14 @@ pub(crate) enum EndpointValidation {
 
 /// A discovery answer's identity (the owner gate).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DiscoveryToken {
-    pub(crate) side: EndpointSide,
-    pub(crate) connection_id: String,
-    pub(crate) epoch: u64,
+pub struct DiscoveryToken {
+    pub side: EndpointSide,
+    pub connection_id: String,
+    pub epoch: u64,
 }
 
 /// `useSchemaDiffEndpoints(options)`'s state machine.
-pub(crate) struct UseSchemaDiffEndpoints {
+pub struct UseSchemaDiffEndpoints {
     connections: Vec<EndpointConnection>,
     /// Increments on every connections load — the discovery owner
     /// gate's `connections` identity.
@@ -120,7 +120,7 @@ pub(crate) struct UseSchemaDiffEndpoints {
 impl UseSchemaDiffEndpoints {
     /// `useSchemaDiffEndpoints()` — with the URL prefill the mount
     /// read (`readMigrationPrefillFromUrl` is the host's seam).
-    pub(crate) fn new(prefill: MigrationWindowPrefill) -> Self {
+    pub fn new(prefill: MigrationWindowPrefill) -> Self {
         Self {
             connections: Vec::new(),
             epoch: 0,
@@ -153,30 +153,30 @@ impl UseSchemaDiffEndpoints {
     }
 
     /// `connections` / `sourceConn` / `targetConn`.
-    pub(crate) fn connections(&self) -> &[EndpointConnection] {
+    pub fn connections(&self) -> &[EndpointConnection] {
         &self.connections
     }
 
-    pub(crate) fn source_conn(&self) -> Option<&EndpointConnection> {
+    pub fn source_conn(&self) -> Option<&EndpointConnection> {
         self.connections.iter().find(|c| c.id == self.source.id)
     }
 
-    pub(crate) fn target_conn(&self) -> Option<&EndpointConnection> {
+    pub fn target_conn(&self) -> Option<&EndpointConnection> {
         self.connections.iter().find(|c| c.id == self.target.id)
     }
 
     /// `sourceId`/`targetId` and the sides.
-    pub(crate) fn source(&self) -> &EndpointSideState {
+    pub fn source(&self) -> &EndpointSideState {
         &self.source
     }
 
-    pub(crate) fn target(&self) -> &EndpointSideState {
+    pub fn target(&self) -> &EndpointSideState {
         &self.target
     }
 
     /// `connOptions` (both sides share it): `{ value, label }` pairs,
     /// the label `"{name} ({databaseType})"`.
-    pub(crate) fn conn_options(&self) -> Vec<(String, String)> {
+    pub fn conn_options(&self) -> Vec<(String, String)> {
         self.connections
             .iter()
             .map(|c| (c.id.clone(), format!("{} ({})", c.name, c.database_type)))
@@ -184,7 +184,7 @@ impl UseSchemaDiffEndpoints {
     }
 
     /// `isCrossDialect`.
-    pub(crate) fn is_cross_dialect(&self) -> bool {
+    pub fn is_cross_dialect(&self) -> bool {
         match (self.source_conn(), self.target_conn()) {
             (Some(source), Some(target)) => source.database_type != target.database_type,
             _ => false,
@@ -196,7 +196,7 @@ impl UseSchemaDiffEndpoints {
     /// the discovery tokens the host should read for the sides that
     /// have an id (an id-less side clears instead —
     /// [`select_side`] does that).
-    pub(crate) fn on_connections(&mut self, connections: Vec<EndpointConnection>) -> &mut Self {
+    pub fn on_connections(&mut self, connections: Vec<EndpointConnection>) -> &mut Self {
         self.connections = connections;
         self.epoch += 1;
         self
@@ -205,7 +205,7 @@ impl UseSchemaDiffEndpoints {
     /// The mount's prefill effect: apply the connection ids once the
     /// connections are loaded (the URL ids survive when they name a
     /// known connection).
-    pub(crate) fn apply_connection_prefill(&mut self) {
+    pub fn apply_connection_prefill(&mut self) {
         let _ = &self.connections;
         if let Some(source_id) = self.prefill.source_id.clone() {
             if self.connections.iter().any(|c| c.id == source_id) {
@@ -224,7 +224,7 @@ impl UseSchemaDiffEndpoints {
     /// `datazen:connection-closed`: drop the side session whose
     /// `dbSessionId` matches (the release is the host's
     /// ref-counted seam).
-    pub(crate) fn on_connection_closed(&mut self, db_session_id: &str) {
+    pub fn on_connection_closed(&mut self, db_session_id: &str) {
         for side in [EndpointSide::Source, EndpointSide::Target] {
             let state = self.side_mut(side);
             if state.session.as_ref().is_some_and(|s| s.db_session_id == db_session_id) {
@@ -236,7 +236,7 @@ impl UseSchemaDiffEndpoints {
     /// `setSourceId`/`setTargetId`: set the id. An empty id clears
     /// the whole side (the discovery effect's first branch); a
     /// non-empty id returns the discovery token the host reads with.
-    pub(crate) fn select_side(
+    pub fn select_side(
         &mut self,
         side: EndpointSide,
         id: impl Into<String>,
@@ -260,7 +260,7 @@ impl UseSchemaDiffEndpoints {
 
     /// A pending discovery error to clear on the next successful
     /// answer (the `clearDiscoveryError` callback pair).
-    pub(crate) fn take_discovery_error(&mut self, side: EndpointSide) -> Option<String> {
+    pub fn take_discovery_error(&mut self, side: EndpointSide) -> Option<String> {
         self.discovery_error_slot(side).take()
     }
 
@@ -271,7 +271,7 @@ impl UseSchemaDiffEndpoints {
     /// `databaseDiscovery.{side}:{code}` message (an unknown code is
     /// `unknown`). Returns the message to report, when the answer
     /// published.
-    pub(crate) fn on_databases(
+    pub fn on_databases(
         &mut self,
         token: &DiscoveryToken,
         answer: Result<Vec<String>, Option<String>>,
@@ -322,19 +322,19 @@ impl UseSchemaDiffEndpoints {
 
     /// `setSourceDatabase`/`setTargetDatabase` (the picks the select
     /// reports; the session effect notices the change itself).
-    pub(crate) fn select_database(&mut self, side: EndpointSide, database: impl Into<String>) {
+    pub fn select_database(&mut self, side: EndpointSide, database: impl Into<String>) {
         self.side_mut(side).database = database.into();
     }
 
     /// `setSourceSchema`/`setTargetSchema`.
-    pub(crate) fn select_schema(&mut self, side: EndpointSide, schema: impl Into<String>) {
+    pub fn select_schema(&mut self, side: EndpointSide, schema: impl Into<String>) {
         self.side_mut(side).schema = schema.into();
     }
 
     /// `sessionDatabaseOverride(connection, catalog)`: SQLite's
     /// `main` is a catalog alias — passing it as a connection
     /// override would open a different file named `main`.
-    pub(crate) fn session_database_override(
+    pub fn session_database_override(
         connection: Option<&EndpointConnection>,
         catalog: &str,
     ) -> Option<String> {
@@ -347,7 +347,7 @@ impl UseSchemaDiffEndpoints {
     /// Whether the side's session is fresh for its current endpoint
     /// (the session effect's mismatch test, and `ensureConnected`'s
     /// fast path gate).
-    pub(crate) fn session_is_fresh(&self, side: EndpointSide) -> bool {
+    pub fn session_is_fresh(&self, side: EndpointSide) -> bool {
         let state = self.side(side);
         state.session.as_ref().is_some_and(|session| {
             session.connection_id == state.id && session.database == state.database
@@ -358,7 +358,7 @@ impl UseSchemaDiffEndpoints {
     /// (`DB_REGISTRY[type]?.supportsTables === true &&
     /// supportsSQL === true` — an absent meta refuses), and the
     /// session is fresh for the endpoint.
-    pub(crate) fn catalog_ready(
+    pub fn catalog_ready(
         &self,
         side: EndpointSide,
         meta: impl Fn(&str) -> Option<EndpointDbMeta>,
@@ -375,7 +375,7 @@ impl UseSchemaDiffEndpoints {
 
     /// `listCatalog` answered: install the schemas (the prefill pick
     /// over the configured-then-default resolution).
-    pub(crate) fn on_catalog(&mut self, side: EndpointSide, schemas: Vec<String>) {
+    pub fn on_catalog(&mut self, side: EndpointSide, schemas: Vec<String>) {
         let configured = self
             .side(side)
             .id
@@ -409,7 +409,7 @@ impl UseSchemaDiffEndpoints {
 
     /// A catalog read failed: the schemas clear (no error message —
     /// the React `catch` only resets).
-    pub(crate) fn on_catalog_error(&mut self, side: EndpointSide) {
+    pub fn on_catalog_error(&mut self, side: EndpointSide) {
         let state = self.side_mut(side);
         state.schemas.clear();
         state.schema.clear();
@@ -417,12 +417,12 @@ impl UseSchemaDiffEndpoints {
 
     /// `handleSwap`: swap the ten endpoint fields (ids, databases,
     /// schemas, the picks, the sessions) side for side.
-    pub(crate) fn swap(&mut self) {
+    pub fn swap(&mut self) {
         std::mem::swap(&mut self.source, &mut self.target);
     }
 
     /// `isSameEndpoint()`.
-    pub(crate) fn is_same_endpoint(&self) -> bool {
+    pub fn is_same_endpoint(&self) -> bool {
         is_same_endpoint_identity(
             &EndpointIdentity {
                 connection_id: self.source.id.clone(),
@@ -439,7 +439,7 @@ impl UseSchemaDiffEndpoints {
 
     /// `validateEndpoints()`: `Ok` when both connections are picked,
     /// they are not the same place, and both databases are named.
-    pub(crate) fn validate(&self) -> Result<(), EndpointValidation> {
+    pub fn validate(&self) -> Result<(), EndpointValidation> {
         if self.source.id.is_empty() || self.target.id.is_empty() {
             return Err(EndpointValidation::SelectBoth);
         }

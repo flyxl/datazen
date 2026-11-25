@@ -46,7 +46,7 @@ use crate::views::settings::value_presentation_rule_editor::InterpretationChoice
 
 /// The global default time options' initial value: native
 /// interpretation, UTC-dispatched ISO, following the local zone.
-pub(crate) const DEFAULT_TIMESTAMP_OPTIONS: TimestampOptions = TimestampOptions {
+pub const DEFAULT_TIMESTAMP_OPTIONS: TimestampOptions = TimestampOptions {
     interpretation: TimestampInterpretation::Native,
     format: FormatSerde::Iso,
     display_time_zone: TimeZoneSpec::Local,
@@ -56,15 +56,15 @@ pub(crate) const DEFAULT_TIMESTAMP_OPTIONS: TimestampOptions = TimestampOptions 
 /// The panel draft: the switch + the global default options (the
 /// interpretation stays native — see the section header's ruling 2).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TimestampDisplayDraft {
-    pub(crate) enabled: bool,
-    pub(crate) options: TimestampOptions,
+pub struct TimestampDisplayDraft {
+    pub enabled: bool,
+    pub options: TimestampOptions,
 }
 
 /// `draftFromStored(stored)`: no entry → the default-off face; an
 /// entry with illegal options keeps the switch and falls the
 /// options back to the default.
-pub(crate) fn draft_from_stored(stored: &StoredValuePresentationSettings) -> TimestampDisplayDraft {
+pub fn draft_from_stored(stored: &StoredValuePresentationSettings) -> TimestampDisplayDraft {
     let Some(entry) = stored.renderers.get(TIMESTAMP_CONTRIBUTION_ID) else {
         return TimestampDisplayDraft { enabled: false, options: DEFAULT_TIMESTAMP_OPTIONS };
     };
@@ -78,13 +78,13 @@ pub(crate) fn draft_from_stored(stored: &StoredValuePresentationSettings) -> Tim
 }
 
 /// One PRD §4 double-anchor sample.
-pub(crate) struct PreviewSample {
-    pub(crate) value: Value,
-    pub(crate) semantic_kind: SemanticKind,
+pub struct PreviewSample {
+    pub value: Value,
+    pub semantic_kind: SemanticKind,
 }
 
 /// `previewSampleFor(preview)`.
-pub(crate) fn preview_sample_for(preview: InterpretationChoice) -> PreviewSample {
+pub fn preview_sample_for(preview: InterpretationChoice) -> PreviewSample {
     match preview {
         InterpretationChoice::Native => PreviewSample {
             value: json!("2026-01-15T14:30:00Z"),
@@ -109,7 +109,7 @@ pub(crate) fn preview_sample_for(preview: InterpretationChoice) -> PreviewSample
 /// is replaced — a unix preview carries no source zone (the
 /// validator forbids it), a text preview borrows the draft's source
 /// zone defaulting to UTC (preview-only, never saved).
-pub(crate) fn build_preview_options(
+pub fn build_preview_options(
     draft: &TimestampOptions,
     preview: InterpretationChoice,
 ) -> TimestampOptions {
@@ -147,7 +147,7 @@ pub(crate) fn build_preview_options(
 
 /// `TimestampPreviewResult`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum TimestampPreviewResult {
+pub enum TimestampPreviewResult {
     /// The contribution is not registered.
     Unavailable { sample: Value },
     /// The configuration is illegal (the pathed problems).
@@ -160,7 +160,7 @@ pub(crate) enum TimestampPreviewResult {
 
 /// `computeTimestampPreview` — the same road as the runtime: the
 /// contribution's validateConfig → prepare → present.
-pub(crate) fn compute_timestamp_preview(
+pub fn compute_timestamp_preview(
     contribution: Option<&std::rc::Rc<dyn ValuePresentationContribution>>,
     options: &TimestampOptions,
     preview: InterpretationChoice,
@@ -209,7 +209,7 @@ pub(crate) fn compute_timestamp_preview(
 }
 
 /// `formatPreviewSample(value)`.
-pub(crate) fn format_preview_sample(value: &Value) -> String {
+pub fn format_preview_sample(value: &Value) -> String {
     if let Some(text) = value.as_str() {
         return text.to_owned();
     }

@@ -42,13 +42,13 @@ use crate::views::er::layout_er_graph::{
 };
 
 /// A declared constraint should shape the diagram more than an inference does.
-pub(crate) const DECLARED_WEIGHT: f32 = 2.0;
+pub const DECLARED_WEIGHT: f32 = 2.0;
 const PREDICTED_WEIGHT: f32 = 1.0;
 
 /// One edge per ordered pair of tables — all the engine needs to rank and
 /// order them.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct LayoutEdge {
+pub struct LayoutEdge {
     pub source: String,
     pub target: String,
     pub weight: f32,
@@ -76,7 +76,7 @@ fn edge_weight(edge: &ErEdge) -> f32 {
 /// The result is sorted by `(source, target)`: the engine's own bookkeeping
 /// depends on insertion order, and a canonical order is what makes the layout
 /// deterministic and arrival-order independent.
-pub(crate) fn layout_edges(nodes: &[ErNode], edges: &[ErEdge]) -> Vec<LayoutEdge> {
+pub fn layout_edges(nodes: &[ErNode], edges: &[ErEdge]) -> Vec<LayoutEdge> {
     let known: HashSet<&str> = nodes.iter().map(|node| node.id.as_str()).collect();
     let mut by_pair: BTreeMap<(&str, &str), f32> = BTreeMap::new();
     for edge in edges {
@@ -110,7 +110,7 @@ pub(crate) fn layout_edges(nodes: &[ErNode], edges: &[ErEdge]) -> Vec<LayoutEdge
 
 /// The layered engine's answer, or the reason it refused to give one.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum LayeredFailure {
+pub enum LayeredFailure {
     /// The topological pass fell short or a centre came out non-finite; the
     /// caller must fall back to the grid rather than draw half a ranking.
     Unranks,
@@ -119,7 +119,7 @@ pub(crate) enum LayeredFailure {
 /// Centres produced by the layered engine, keyed by node id. The React source
 /// throws when dagre cannot order the input; here the same contract is a
 /// `Result`, and the caller degrades exactly as React does.
-pub(crate) fn layered_centres(
+pub fn layered_centres(
     nodes: &[ErNode],
     edges: &[ErEdge],
     options: &ErLayoutOptions,
@@ -315,7 +315,7 @@ pub(crate) fn layered_centres(
 /// with its edges, when the layout fails. Rows use the tallest node so
 /// nothing overlaps, which is the one thing the old grid got wrong. Centres,
 /// like the layered engine's — the caller converts to corners.
-pub(crate) fn grid_centres(nodes: &[ErNode]) -> HashMap<String, (f32, f32)> {
+pub fn grid_centres(nodes: &[ErNode]) -> HashMap<String, (f32, f32)> {
     let mut widest = 0.0f32;
     let mut tallest = 0.0f32;
     for node in nodes {

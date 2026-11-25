@@ -42,25 +42,25 @@
 /// `driverSettings[extensionId]` (a JSON object; the flag reader
 /// tolerates anything else exactly as JS's `bag?.[key]` yields
 /// undefined). Re-exported at its pre-T335 path.
-pub(crate) use super::pro_compartments::ProSettingsBag;
+pub use super::pro_compartments::ProSettingsBag;
 
 /// `proSettingFlag` (proCompartments.ts, its definition home since T335;
 /// re-exported at its pre-T335 path): read a boolean setting, falling
 /// back when the key is absent **or non-boolean** — only a real boolean
 /// switches, so settings corruption degrades to the documented default
 /// instead of silently disabling a feature.
-pub(crate) use super::pro_compartments::pro_setting_flag;
+pub use super::pro_compartments::pro_setting_flag;
 
 /// `foldSettingEnabled`: read the `codeFolding` flag off the shared bag.
 /// The fallback is `true` — folding is the common case, and a corrupted
 /// bag should not remove it.
-pub(crate) fn fold_setting_enabled(pro_settings: Option<&ProSettingsBag>) -> bool {
+pub fn fold_setting_enabled(pro_settings: Option<&ProSettingsBag>) -> bool {
     pro_setting_flag(pro_settings, "codeFolding", true)
 }
 
 /// What the `fold` compartment slot holds after the host's decision.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum FoldCompartmentPayload {
+pub enum FoldCompartmentPayload {
     /// Folding is switched off: the slot reconfigures to **empty** (it
     /// stays mounted — `[]`, not an unmount — so flipping back on is an
     /// ordinary reconfigure). No bag is forwarded: the extension sees
@@ -76,7 +76,7 @@ pub(crate) enum FoldCompartmentPayload {
 /// `createFoldCompartmentExtensions`: build the `fold` compartment
 /// payload. There is deliberately one flag with one value — the
 /// `codeFolding` key on the shared bag.
-pub(crate) fn create_fold_compartment_extensions(
+pub fn create_fold_compartment_extensions(
     pro_settings: Option<&ProSettingsBag>,
 ) -> FoldCompartmentPayload {
     if !fold_setting_enabled(pro_settings) {

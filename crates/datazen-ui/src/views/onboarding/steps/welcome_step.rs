@@ -86,7 +86,7 @@ use crate::views::onboarding::onboarding_wizard::{Entry, ImportApp};
 type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 
 /// React `max-w-[640px]` (640px → 480pt): the step column's cap.
-pub(crate) const STEP_MAX_W: f32 = 480.0;
+pub const STEP_MAX_W: f32 = 480.0;
 
 /// React `max-w-[56ch]` on the subtitle: 56 × the "0" advance (≈ 0.5em at
 /// 13.5px → 6.75px) ≈ 378px → 283.5pt. Approximate by construction — the
@@ -97,7 +97,7 @@ const SUBTITLE_MAX_W: f32 = 283.5;
 /// (`components/connection/ConnectionShareDialog.tsx:17`): the five
 /// clients' display names. The ConnectionShareDialog port (the import
 /// track, T177/T306) absorbs this map with the `ImportApp` seam type.
-pub(crate) fn import_app_label(app: ImportApp) -> &'static str {
+pub fn import_app_label(app: ImportApp) -> &'static str {
     match app {
         ImportApp::Dbx => "DBX",
         ImportApp::Navicat => "Navicat",
@@ -109,7 +109,7 @@ pub(crate) fn import_app_label(app: ImportApp) -> &'static str {
 
 /// The journey's welcome screen: the heading, the subtitle and the three
 /// stacked entry cards. Stateless — every prop arrives per frame.
-pub(crate) struct WelcomeStep<S: 'static> {
+pub struct WelcomeStep<S: 'static> {
     /// `detectedApp` — the first client config found on this machine
     /// (`None`: nothing detected, or detection not finished yet).
     detected_app: Option<ImportApp>,
@@ -128,7 +128,7 @@ impl<S: 'static> WelcomeStep<S> {
     /// React's mount on S0: `selectedEntry` is the machine's `state.entry`
     /// (the fresh journey's `manual`), nothing detected yet, no actions
     /// wired until the host hands its dispatches over.
-    pub(crate) fn new(selected_entry: Entry) -> Self {
+    pub fn new(selected_entry: Entry) -> Self {
         Self {
             detected_app: None,
             selected_entry,
@@ -140,31 +140,31 @@ impl<S: 'static> WelcomeStep<S> {
 
     /// `detectedApp` — the detected client whose config seeds the import
     /// card's sub-line.
-    pub(crate) fn detected_app(mut self, app: ImportApp) -> Self {
+    pub fn detected_app(mut self, app: ImportApp) -> Self {
         self.detected_app = Some(app);
         self
     }
 
     /// `selectedEntry`.
-    pub(crate) fn selected_entry(mut self, entry: Entry) -> Self {
+    pub fn selected_entry(mut self, entry: Entry) -> Self {
         self.selected_entry = entry;
         self
     }
 
     /// `onImport` → the host's `ENTER_IMPORT` dispatch.
-    pub(crate) fn on_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_import = Some(Rc::new(f));
         self
     }
 
     /// `onManual` → the host's `ENTER_MANUAL` dispatch.
-    pub(crate) fn on_manual(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_manual(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_manual = Some(Rc::new(f));
         self
     }
 
     /// `onSample` → the host's `ENTER_SAMPLE` dispatch.
-    pub(crate) fn on_sample(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_sample(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_sample = Some(Rc::new(f));
         self
     }
@@ -172,7 +172,7 @@ impl<S: 'static> WelcomeStep<S> {
     /// Paint the step. `dark` drives the kit tokens (and the cards'
     /// fixed-dark gradient pair, which the light theme replaces with the
     /// flat surface fill).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
 
         col()

@@ -59,7 +59,7 @@ use crate::ui::palette::{ai_amber_border, ai_amber_fill, ai_amber_text};
 /// only the kind; id and name travel with it so a wiring can hand its
 /// real items over (path/database stay with their consumers).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ContextItem {
+pub struct ContextItem {
     pub kind: ContextKind,
     pub id: String,
     pub name: String,
@@ -67,7 +67,7 @@ pub(crate) struct ContextItem {
 
 /// `ContextKind` (`types/index.ts:224`): a file, a directory, or a table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ContextKind {
+pub enum ContextKind {
     File,
     Dir,
     Table,
@@ -76,7 +76,7 @@ pub(crate) enum ContextKind {
 /// The notice. Build it with the context items, the host summary and the
 /// database label, plus the settings value; `build` returns `None` when
 /// React would render nothing.
-pub(crate) struct AiEgressNotice<'a> {
+pub struct AiEgressNotice<'a> {
     context_items: &'a [ContextItem],
     egress_summary: Option<&'a str>,
     database: Option<&'a str>,
@@ -84,7 +84,7 @@ pub(crate) struct AiEgressNotice<'a> {
 }
 
 impl<'a> AiEgressNotice<'a> {
-    pub(crate) fn new(
+    pub fn new(
         context_items: &'a [ContextItem],
         egress_summary: Option<&'a str>,
         database: Option<&'a str>,
@@ -99,14 +99,14 @@ impl<'a> AiEgressNotice<'a> {
 
     /// The settings store's `aiStrictEgress` (default `true`): only an
     /// explicit `false` relaxes the notice.
-    pub(crate) fn strict_egress(mut self, strict: bool) -> Self {
+    pub fn strict_egress(mut self, strict: bool) -> Self {
         self.strict_egress = strict;
         self
     }
 
     /// React's `contextFiles` filter (`AiEgressNotice.tsx:16`): the
     /// items whose kind is a file or a directory.
-    pub(crate) fn context_files(&self) -> Vec<&'a ContextItem> {
+    pub fn context_files(&self) -> Vec<&'a ContextItem> {
         self.context_items
             .iter()
             .filter(|item| matches!(item.kind, ContextKind::File | ContextKind::Dir))
@@ -143,7 +143,7 @@ impl<'a> AiEgressNotice<'a> {
 
     /// The notice, or `None` when every condition is off
     /// (`!showRelaxed && !showContext && !showSummary`).
-    pub(crate) fn build(self, dark: bool) -> Option<El> {
+    pub fn build(self, dark: bool) -> Option<El> {
         let summary = self.summary_text();
         let database = self.database_label();
         let messages = self.messages();

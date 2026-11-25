@@ -124,37 +124,37 @@ use rune_kit::Kit;
 // ---- Keys -------------------------------------------------------------------
 
 /// Root, recharts' `<AreaChart>` frame.
-pub(crate) const ROOT_KEY: &str = "area-chart";
+pub const ROOT_KEY: &str = "area-chart";
 /// The Y-axis + plot stack row.
-pub(crate) const PLOT_ROW_KEY: &str = "area-chart-plot-row";
+pub const PLOT_ROW_KEY: &str = "area-chart-plot-row";
 /// The plot itself — every canvas and the hit layer share its rect.
-pub(crate) const PLOT_KEY: &str = "area-chart-plot";
+pub const PLOT_KEY: &str = "area-chart-plot";
 /// The `CartesianGrid` canvas.
-pub(crate) const GRID_KEY: &str = "area-chart-grid";
+pub const GRID_KEY: &str = "area-chart-grid";
 /// The axis frame canvas (recharts' axis lines).
-pub(crate) const AXES_KEY: &str = "area-chart-axes";
+pub const AXES_KEY: &str = "area-chart-axes";
 /// One canvas per series: `area-chart-series-{key}`.
-pub(crate) const SERIES_KEY_PREFIX: &str = "area-chart-series-";
+pub const SERIES_KEY_PREFIX: &str = "area-chart-series-";
 /// The hovered row's `activeDot`s, one per visible series.
-pub(crate) const DOTS_KEY: &str = "area-chart-active-dots";
+pub const DOTS_KEY: &str = "area-chart-active-dots";
 /// The pointer/press layer over the plot.
-pub(crate) const HIT_ZONE_KEY: &str = "area-chart-hit-zone";
+pub const HIT_ZONE_KEY: &str = "area-chart-hit-zone";
 /// One hit cell per data row: `area-chart-hit-{i}`.
-pub(crate) const HIT_CELL_PREFIX: &str = "area-chart-hit-";
+pub const HIT_CELL_PREFIX: &str = "area-chart-hit-";
 /// The Y-axis label column.
-pub(crate) const Y_AXIS_KEY: &str = "area-chart-yaxis";
+pub const Y_AXIS_KEY: &str = "area-chart-yaxis";
 /// The X-axis label row.
-pub(crate) const X_AXIS_KEY: &str = "area-chart-xaxis";
+pub const X_AXIS_KEY: &str = "area-chart-xaxis";
 /// The legend (multiSeries only).
-pub(crate) const LEGEND_KEY: &str = "area-chart-legend";
+pub const LEGEND_KEY: &str = "area-chart-legend";
 /// One entry per series: `area-chart-legend-item-{key}` (+ `-swatch-`/`-label-`).
-pub(crate) const LEGEND_ITEM_PREFIX: &str = "area-chart-legend-item-";
+pub const LEGEND_ITEM_PREFIX: &str = "area-chart-legend-item-";
 /// The swatch of legend entry `{key}`.
-pub(crate) const LEGEND_SWATCH_PREFIX: &str = "area-chart-legend-swatch-";
+pub const LEGEND_SWATCH_PREFIX: &str = "area-chart-legend-swatch-";
 /// The label of legend entry `{key}` (dims to 0.35 when hidden).
-pub(crate) const LEGEND_LABEL_PREFIX: &str = "area-chart-legend-label-";
+pub const LEGEND_LABEL_PREFIX: &str = "area-chart-legend-label-";
 /// The plain (non-log) `<Tooltip>` content box.
-pub(crate) const TOOLTIP_KEY: &str = "area-chart-tooltip";
+pub const TOOLTIP_KEY: &str = "area-chart-tooltip";
 
 // recharts defaults / React literals, verbatim.
 /// recharts' default `YAxis width`.
@@ -209,8 +209,8 @@ fn js_number(s: &str) -> f64 {
 
 /// JS `String(n)` for the representable forms. Shared with the bar engine
 /// (T192) — the plain-tooltip and `LabelList` value displays read the same
-/// coercion, so the slice is `pub(crate)` and both engines import it.
-pub(crate) fn js_string(n: f64) -> String {
+/// coercion, so the slice is `pub` and both engines import it.
+pub fn js_string(n: f64) -> String {
     if n.is_nan() {
         "NaN".to_string()
     } else if n.is_infinite() {
@@ -231,7 +231,7 @@ pub(crate) fn js_string(n: f64) -> String {
 /// a NaN parse is null), null → null. Shared with the bar engine (T192):
 /// `computeLogScaleHint`/`mapToLogScale` are one seam family, so the bar
 /// engine reads series slots through the same coercion rather than forking it.
-pub(crate) fn to_number(v: &ChartValue) -> Option<f64> {
+pub fn to_number(v: &ChartValue) -> Option<f64> {
     match v {
         ChartValue::Number(n) => Some(*n),
         ChartValue::Text(s) => {
@@ -256,17 +256,17 @@ fn finite_coercion(v: Option<&ChartValue>) -> Option<f64> {
 
 /// Mirror of `LogScaleHint` (`{ use, domainMin }`).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct LogScaleHint {
+pub struct LogScaleHint {
     /// React `use`.
-    pub(crate) use_log: bool,
+    pub use_log: bool,
     /// React `domainMin`.
-    pub(crate) domain_min: f64,
+    pub domain_min: f64,
 }
 
 /// `transform.ts`'s `computeLogScaleHint`, arm by arm (the module docs own the
 /// full-file attribution to T182): two-plus series, no negatives, a positive
 /// max, and a >10x max/min-positive spread.
-pub(crate) fn compute_log_scale_hint(
+pub fn compute_log_scale_hint(
     data: &[ChartDataPoint],
     series_keys: &[String],
 ) -> LogScaleHint {
@@ -313,7 +313,7 @@ pub(crate) fn compute_log_scale_hint(
 /// under `__orig__${key}` (the slot T136's tooltip reads), and rewrite the
 /// slot as `log10(max(v, domainMin))` — with JS `Math.max` NaN semantics
 /// preserved.
-pub(crate) fn map_to_log_scale(
+pub fn map_to_log_scale(
     data: &[ChartDataPoint],
     series_keys: &[String],
     domain_min: f64,
@@ -341,7 +341,7 @@ pub(crate) fn map_to_log_scale(
 
 /// `colors.ts`'s `STROKE_DASH_PATTERNS` as on/off point lengths (`undefined`
 /// is solid).
-pub(crate) const STROKE_DASH_PATTERNS: [Option<&'static [f32]>; 6] = [
+pub const STROKE_DASH_PATTERNS: [Option<&'static [f32]>; 6] = [
     None,                          // undefined — solid
     Some(&[8.0, 4.0]),             // '8 4' dashed
     Some(&[2.0, 4.0]),             // '2 4' dotted
@@ -379,7 +379,7 @@ fn series_too_close(
 
 /// `seriesOverlap.ts`'s `buildOverlapDashMap`, line by line (T153 owns the
 /// file): `None` = solid; overlapping pairs get patterns cycled from solid.
-pub(crate) fn build_overlap_dash_map(
+pub fn build_overlap_dash_map(
     data: &[ChartDataPoint],
     y_axes: &[String],
 ) -> BTreeMap<String, Option<&'static [f32]>> {
@@ -447,14 +447,14 @@ pub(crate) fn build_overlap_dash_map(
 /// (T079 ports the file; tests and callers wire their own). The defaults are
 /// lean line-by-line slices that keep React's arm structure.
 #[derive(Clone)]
-pub(crate) struct FormatSeams {
+pub struct FormatSeams {
     /// `formatCompact` — the Y tick formatter (and `logTickFormatter`'s inner
     /// call) plus the tooltip values.
-    pub(crate) format_compact: Rc<dyn Fn(f64) -> String>,
+    pub format_compact: Rc<dyn Fn(f64) -> String>,
     /// `formatAxisTick` — the categorical X tick formatter.
-    pub(crate) format_axis_tick: Rc<dyn Fn(&ChartValue) -> String>,
+    pub format_axis_tick: Rc<dyn Fn(&ChartValue) -> String>,
     /// `formatEpochMs` — the time-domain X tick formatter.
-    pub(crate) format_epoch_ms: Rc<dyn Fn(f64) -> String>,
+    pub format_epoch_ms: Rc<dyn Fn(f64) -> String>,
 }
 
 impl Default for FormatSeams {
@@ -561,8 +561,8 @@ fn lean_format_axis_tick(v: &ChartValue) -> String {
 /// "series colours are data, chrome is CSS variables" split React's file
 /// documents, read from kit semantic colours so no new raw colour is spelled.
 /// Shared with the bar engine (T192): both engines' `colors[i % colors.length]`
-/// read the same five-colour kit palette, so the slice is `pub(crate)`.
-pub(crate) fn series_palette(k: &Kit) -> [rune::Color; 5] {
+/// read the same five-colour kit palette, so the slice is `pub`.
+pub fn series_palette(k: &Kit) -> [rune::Color; 5] {
     [
         k.c.info.fg,
         k.c.success.fg,
@@ -576,65 +576,65 @@ pub(crate) fn series_palette(k: &Kit) -> [rune::Color; 5] {
 
 /// One Y axis tick: the axis-space value and its formatted label.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct YTick {
-    pub(crate) value: f64,
-    pub(crate) label: String,
+pub struct YTick {
+    pub value: f64,
+    pub label: String,
 }
 
 /// One X axis tick: the data row whose band shows it, and its label.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct XTick {
-    pub(crate) row: usize,
-    pub(crate) label: String,
+pub struct XTick {
+    pub row: usize,
+    pub label: String,
 }
 
 /// One series' paint plan.
 #[derive(Clone, Debug)]
-pub(crate) struct SeriesPlan {
+pub struct SeriesPlan {
     /// React `dataKey`.
-    pub(crate) key: String,
+    pub key: String,
     /// `colors[i % colors.length]`.
-    pub(crate) color: rune::Color,
+    pub color: rune::Color,
     /// `dashMap[yKey]` (the on/off lengths, `None` = solid).
-    pub(crate) dash: Option<&'static [f32]>,
+    pub dash: Option<&'static [f32]>,
     /// `hiddenSeries.has(yKey)`.
-    pub(crate) hidden: bool,
+    pub hidden: bool,
     /// Plot fractions per data row (`None` = the row has no drawable point —
     /// recharts' gap on null/NaN).
-    pub(crate) points: Vec<Option<[f32; 2]>>,
+    pub points: Vec<Option<[f32; 2]>>,
 }
 
 /// Everything one frame of the engine paints, computed before any element:
 /// the memoised pipeline of the React component (logHint → chartData →
 /// dashMap → geometry), observable without a runtime.
 #[derive(Clone, Debug)]
-pub(crate) struct AreaChartPlan {
+pub struct AreaChartPlan {
     /// `chartData`: `mapToLogScale`'s output when `log_hint.use_log`, else the
     /// input.
-    pub(crate) chart_data: Vec<ChartDataPoint>,
-    pub(crate) log_hint: LogScaleHint,
+    pub chart_data: Vec<ChartDataPoint>,
+    pub log_hint: LogScaleHint,
     /// `config.xAxis ?? '__index'`.
-    pub(crate) x_key: String,
+    pub x_key: String,
     /// `config.yAxes.length > 1` (the legend gate).
-    pub(crate) multi_series: bool,
-    pub(crate) series: Vec<SeriesPlan>,
-    pub(crate) y_domain: [f64; 2],
+    pub multi_series: bool,
+    pub series: Vec<SeriesPlan>,
+    pub y_domain: [f64; 2],
     /// Top first (the first is the domain max).
-    pub(crate) y_ticks: Vec<YTick>,
-    pub(crate) x_ticks: Vec<XTick>,
-    pub(crate) row_count: usize,
+    pub y_ticks: Vec<YTick>,
+    pub x_ticks: Vec<XTick>,
+    pub row_count: usize,
     /// Vertical grid line fractions (the X tick positions).
-    pub(crate) grid_xs: Vec<f32>,
+    pub grid_xs: Vec<f32>,
     /// Horizontal grid line fractions, top first (the Y tick positions).
-    pub(crate) grid_ys: Vec<f32>,
+    pub grid_ys: Vec<f32>,
 }
 
 /// The recharts default domain, lean: `[0, max]` for non-negative data,
 /// `[min, 0]` for non-positive, `[min, max]` across zero; flat data widens by
 /// one; no data is an honest `[0, 1]` frame. Shared with the bar engine
 /// (T192): both charts ride recharts' default Y domain, so the slice is
-/// `pub(crate)` and the bar engine imports it instead of forking it.
-pub(crate) fn lean_y_domain(values: &[f64]) -> [f64; 2] {
+/// `pub` and the bar engine imports it instead of forking it.
+pub fn lean_y_domain(values: &[f64]) -> [f64; 2] {
     if values.is_empty() {
         return [0.0, 1.0];
     }
@@ -746,7 +746,7 @@ fn x_tick_plan(
 
 /// The engine's whole plan for one frame: the React component's memo chain
 /// (`logHint` → `chartData` → `dashMap` → `<Area>` geometry), as pure data.
-pub(crate) fn area_chart_plan(
+pub fn area_chart_plan(
     data: &[ChartDataPoint],
     config: &ChartConfig,
     hidden: &BTreeSet<String>,
@@ -857,7 +857,7 @@ fn dist(a: [f32; 2], b: [f32; 2]) -> f32 {
 /// Cut a polyline into the dash pattern's on-runs: the port of SVG
 /// `strokeDasharray` (Rune strokes have no dash of their own), so the overlap
 /// patterns actually paint.
-pub(crate) fn dashed_segments(points: &[[f32; 2]], pattern: &[f32]) -> Vec<Vec<[f32; 2]>> {
+pub fn dashed_segments(points: &[[f32; 2]], pattern: &[f32]) -> Vec<Vec<[f32; 2]>> {
     let pattern: Vec<f32> = pattern.iter().copied().filter(|l| *l > 0.0).collect();
     let mut out = Vec::new();
     if pattern.is_empty() || points.len() < 2 {
@@ -1102,13 +1102,13 @@ struct EngineState {
 /// factory that clones one engine per build keeps the user's toggles and
 /// hover across frames — the component's retained state.
 #[derive(Clone)]
-pub(crate) struct AreaChartRenderer {
+pub struct AreaChartRenderer {
     state: Rc<RefCell<EngineState>>,
     seams: FormatSeams,
 }
 
 impl AreaChartRenderer {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             state: Rc::new(RefCell::new(EngineState::default())),
             seams: FormatSeams::default(),
@@ -1116,35 +1116,35 @@ impl AreaChartRenderer {
     }
 
     /// Wire the T079 `formatCompact` port (or a test probe).
-    pub(crate) fn format_compact(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
+    pub fn format_compact(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
         self.seams.format_compact = f;
         self
     }
 
     /// Wire the T079 `formatAxisTick` port (or a test probe).
-    pub(crate) fn format_axis_tick(mut self, f: Rc<dyn Fn(&ChartValue) -> String>) -> Self {
+    pub fn format_axis_tick(mut self, f: Rc<dyn Fn(&ChartValue) -> String>) -> Self {
         self.seams.format_axis_tick = f;
         self
     }
 
     /// Wire the T079 `formatEpochMs` port (or a test probe).
-    pub(crate) fn format_epoch_ms(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
+    pub fn format_epoch_ms(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
         self.seams.format_epoch_ms = f;
         self
     }
 
     /// React `hiddenSeries`, as the engine keeps it.
-    pub(crate) fn hidden_series(&self) -> BTreeSet<String> {
+    pub fn hidden_series(&self) -> BTreeSet<String> {
         self.state.borrow().hidden.clone()
     }
 
     /// recharts' `activeTooltipIndex`, as the engine keeps it.
-    pub(crate) fn hovered_row(&self) -> Option<usize> {
+    pub fn hovered_row(&self) -> Option<usize> {
         self.state.borrow().hovered
     }
 
     /// React `toggleSeries`: insert-or-remove in the hidden set.
-    pub(crate) fn toggle_series(&self, data_key: &str) {
+    pub fn toggle_series(&self, data_key: &str) {
         let mut state = self.state.borrow_mut();
         if !state.hidden.remove(data_key) {
             state.hidden.insert(data_key.to_string());
@@ -1162,7 +1162,7 @@ impl Default for AreaChartRenderer {
 /// engine (cloned per build, sharing its state), every other type keeps the
 /// honest placeholder. This is the wiring the chart-view track passes to
 /// `ChartCanvas::renderer_factory`.
-pub(crate) fn renderer_factory<S: 'static>(
+pub fn renderer_factory<S: 'static>(
     engine: AreaChartRenderer,
 ) -> impl Fn(ChartType) -> Box<dyn ChartRenderer<S> + 'static> {
     move |chart_type| match chart_type {

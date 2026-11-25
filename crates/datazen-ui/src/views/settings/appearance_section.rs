@@ -59,19 +59,19 @@ use crate::views::settings::ai_settings_section::section_title;
 
 /// The sentinel option value representing the built-in default theme
 /// (packId = null).
-pub(crate) const BUILTIN_PACK_VALUE: &str = "__builtin__";
+pub const BUILTIN_PACK_VALUE: &str = "__builtin__";
 
 /// `WAPP_THEME_PACK_PREFIX` (`wapp:`).
-pub(crate) const WAPP_THEME_PACK_PREFIX: &str = "wapp:";
+pub const WAPP_THEME_PACK_PREFIX: &str = "wapp:";
 
 /// `encodeWappThemePackId` (carried until T633 absorbs it).
-pub(crate) fn encode_wapp_theme_pack_id(wapp_id: &str, theme_id: &str) -> String {
+pub fn encode_wapp_theme_pack_id(wapp_id: &str, theme_id: &str) -> String {
     format!("{WAPP_THEME_PACK_PREFIX}{wapp_id}:{theme_id}")
 }
 
 /// `parseWappThemePackId` (carried): strict — the prefix, a separator
 /// beyond position 0, and a non-empty theme id, else `None`.
-pub(crate) fn parse_wapp_theme_pack_id(pack_id: Option<&str>) -> Option<(String, String)> {
+pub fn parse_wapp_theme_pack_id(pack_id: Option<&str>) -> Option<(String, String)> {
     let rest = pack_id?.strip_prefix(WAPP_THEME_PACK_PREFIX)?;
     let sep = rest.find(':')?;
     if sep == 0 || sep == rest.len() - 1 {
@@ -82,7 +82,7 @@ pub(crate) fn parse_wapp_theme_pack_id(pack_id: Option<&str>) -> Option<(String,
 
 /// React `ThemeMode` (`'light' | 'dark' | 'system'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ThemeMode {
+pub enum ThemeMode {
     Light,
     Dark,
     System,
@@ -90,7 +90,7 @@ pub(crate) enum ThemeMode {
 
 impl ThemeMode {
     /// The wire spelling (the settings contract's value).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Light => "light",
             Self::Dark => "dark",
@@ -108,12 +108,12 @@ impl ThemeMode {
     }
 
     /// React's `MODE_OPTIONS`, in declaration order.
-    pub(crate) const MODES: [ThemeMode; 3] = [Self::Light, Self::Dark, Self::System];
+    pub const MODES: [ThemeMode; 3] = [Self::Light, Self::Dark, Self::System];
 }
 
 /// React `ThemePreference` (`{ mode, packId }`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ThemePreference {
+pub struct ThemePreference {
     pub mode: ThemeMode,
     /// `None` is the built-in default.
     pub pack_id: Option<String>,
@@ -129,14 +129,14 @@ impl Default for ThemePreference {
 /// One theme a wapp contributes (the `WappSummary.themes` entry's
 /// visible half).
 #[derive(Clone, Debug)]
-pub(crate) struct AppearanceWappTheme {
+pub struct AppearanceWappTheme {
     pub id: String,
     pub name: String,
 }
 
 /// One wapp row (the fields the theme options read).
 #[derive(Clone, Debug)]
-pub(crate) struct AppearanceWappVm {
+pub struct AppearanceWappVm {
     pub id: String,
     pub enabled: bool,
     pub themes: Vec<AppearanceWappTheme>,
@@ -144,14 +144,14 @@ pub(crate) struct AppearanceWappVm {
 
 /// One flattened theme option (React `ThemeOption`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ThemeOption {
+pub struct ThemeOption {
     pub pack_id: String,
     pub label: String,
 }
 
 /// `collectThemeOptions`: flatten **enabled** wapps into a single
 /// theme-option list — a disabled wapp's themes are not switchable.
-pub(crate) fn collect_theme_options(wapps: &[AppearanceWappVm]) -> Vec<ThemeOption> {
+pub fn collect_theme_options(wapps: &[AppearanceWappVm]) -> Vec<ThemeOption> {
     wapps
         .iter()
         .filter(|wapp| wapp.enabled)
@@ -167,7 +167,7 @@ pub(crate) fn collect_theme_options(wapps: &[AppearanceWappVm]) -> Vec<ThemeOpti
 /// What a pack choice resolved to (`handleThemeChange`'s halves, the
 /// no-op guard applied).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PackChoice {
+pub enum PackChoice {
     /// The builtin sentinel — `packId = null`.
     Builtin,
     /// A wapp theme's encoded pack id.
@@ -177,7 +177,7 @@ pub(crate) enum PackChoice {
 /// Resolve a pick against the active preference (the guard, pure):
 /// `None` when the pick equals the active pack (the sentinel while
 /// builtin included) — nothing to apply.
-pub(crate) fn resolve_pack_choice(value: &str, active: &ThemePreference) -> Option<PackChoice> {
+pub fn resolve_pack_choice(value: &str, active: &ThemePreference) -> Option<PackChoice> {
     let pack_id: Option<&str> = if value == BUILTIN_PACK_VALUE { None } else { Some(value) };
     if pack_id == active.pack_id.as_deref() {
         return None;
@@ -189,7 +189,7 @@ pub(crate) fn resolve_pack_choice(value: &str, active: &ThemePreference) -> Opti
 }
 
 /// The appearance section (React `AppearanceSection`).
-pub(crate) struct AppearanceSection<'a, S: 'static> {
+pub struct AppearanceSection<'a, S: 'static> {
     key: &'a str,
     theme: &'a ThemePreference,
     wapps: &'a [AppearanceWappVm],
@@ -204,7 +204,7 @@ pub(crate) struct AppearanceSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> AppearanceSection<'a, S> {
-    pub(crate) fn new(theme: &'a ThemePreference, wapps: &'a [AppearanceWappVm]) -> Self {
+    pub fn new(theme: &'a ThemePreference, wapps: &'a [AppearanceWappVm]) -> Self {
         Self {
             key: "appearance-section",
             theme,
@@ -218,28 +218,28 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
     }
 
     /// The apply error line (`updateSettings`' rejection message).
-    pub(crate) fn error(mut self, error: Option<&'a str>) -> Self {
+    pub fn error(mut self, error: Option<&'a str>) -> Self {
         self.error = error;
         self
     }
 
     /// A mode choice (`handleModeChange`: the pack is kept — the host
     /// writes `{...theme, mode}`).
-    pub(crate) fn on_mode_change(mut self, f: impl Fn(&mut S, ThemeMode) + 'static) -> Self {
+    pub fn on_mode_change(mut self, f: impl Fn(&mut S, ThemeMode) + 'static) -> Self {
         self.on_mode_change = Some(Rc::new(f));
         self
     }
 
     /// A pack choice (`handleThemeChange`'s resolved half — the guard
     /// already ran; `Unchanged` never reaches the host).
-    pub(crate) fn on_pack_change(mut self, f: impl Fn(&mut S, PackChoice) + 'static) -> Self {
+    pub fn on_pack_change(mut self, f: impl Fn(&mut S, PackChoice) + 'static) -> Self {
         self.on_pack_change = Some(Rc::new(f));
         self
     }
 
     /// The listbox plumbing: which of the two selects is open (None
     /// closed; 0 the scheme, 1 the pack) and the setter.
-    pub(crate) fn listbox(
+    pub fn listbox(
         mut self,
         open: impl Fn(&S) -> Option<usize> + 'static,
         set_open: impl Fn(&mut S, Option<usize>) + 'static,
@@ -250,7 +250,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
     }
 
     /// Build the section (tooltips land in `layer`).
-    pub(crate) fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let key = self.key;
 

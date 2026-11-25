@@ -24,7 +24,7 @@ use rune::{
 
 impl AppState {
     /// The import wizard's step 1: a source is required to move on.
-    pub(crate) fn import_next(&mut self) {
+    pub fn import_next(&mut self) {
         if self.import_source.text.trim().is_empty() {
             self.import_error = Some("a source is required".into());
             return;
@@ -34,7 +34,7 @@ impl AppState {
     }
 
     /// Step 2: a target table is required to finish.
-    pub(crate) fn import_finish(&mut self) {
+    pub fn import_finish(&mut self) {
         if self.import_target.text.trim().is_empty() {
             self.import_error = Some("a target table is required".into());
             return;
@@ -42,7 +42,7 @@ impl AppState {
         self.import_error = None;
         self.import_step = 2;
     }
-    pub(crate) fn import_back(&mut self) {
+    pub fn import_back(&mut self) {
         self.import_step = 0;
         self.import_error = None;
     }
@@ -50,7 +50,7 @@ impl AppState {
     /// T2: the backup's save path is picked first; the answer in
     /// `backup_answered` starts the job (or cancels, or falls back to the
     /// default directory when no dialog could show).
-    pub(crate) fn begin_backup_form(&mut self, tx: &mut Tx) {
+    pub fn begin_backup_form(&mut self, tx: &mut Tx) {
         let options = FileDialogOptions {
             title: "Backup the live database".into(),
             file_name: Some("datazen-backup.sql".into()),
@@ -63,7 +63,7 @@ impl AppState {
     }
 
     /// The save dialog's answer for a backup (T2).
-    pub(crate) fn backup_answered(&mut self, result: FileDialogResult) {
+    pub fn backup_answered(&mut self, result: FileDialogResult) {
         let (path, notice) = match result {
             Ok(Some(path)) => (Some(path.display().to_string()), None),
             Ok(None) => {
@@ -98,7 +98,7 @@ impl AppState {
 
     /// Stop the backup and pull the stopped snapshot. The host's job first
     /// (N11); the memory port's stop stays the fallback's.
-    pub(crate) fn stop_backup(&mut self) {
+    pub fn stop_backup(&mut self) {
         let Some(job) = self.backup_job else { return };
         let stopped = match self.desktop.stop_host_job(job) {
             Ok(()) => Ok(()),
@@ -113,24 +113,24 @@ impl AppState {
             Err(error) => self.backup_error = Some(error),
         }
     }
-    pub(crate) fn refresh_backup_progress(&mut self) {
+    pub fn refresh_backup_progress(&mut self) {
         if let Some(job) = self.backup_job {
             self.backup_snapshot = self.job_progress(job);
         }
     }
-    pub(crate) fn set_tool(&mut self, tool: Tool) {
+    pub fn set_tool(&mut self, tool: Tool) {
         self.tool = tool;
     }
-    pub(crate) fn cycle_compare_source(&mut self) {
+    pub fn cycle_compare_source(&mut self) {
         self.compare_source = next_connection(&self.workspace, &self.compare_source);
     }
-    pub(crate) fn cycle_compare_target(&mut self) {
+    pub fn cycle_compare_target(&mut self) {
         self.compare_target = next_connection(&self.workspace, &self.compare_target);
     }
 
     /// D8: apply the plan through the port. A failure keeps the plan (the
     /// difference is still there), and so does the error.
-    pub(crate) fn apply_compare_plan(&mut self) {
+    pub fn apply_compare_plan(&mut self) {
         let plan = match self.workspace.compare_plan(&self.compare_source, &self.compare_target) {
             Ok(plan) => plan,
             Err(error) => {
@@ -150,14 +150,14 @@ impl AppState {
             }
         }
     }
-    pub(crate) fn refresh_compare_progress(&mut self) {
+    pub fn refresh_compare_progress(&mut self) {
         if let Some(job) = self.compare_job {
             self.compare_snapshot = self.workspace.job_progress(job);
         }
     }
 
     /// The columns of a table (its ColumnSpec names).
-    pub(crate) fn table_columns_of(&self, table: &str) -> Vec<String> {
+    pub fn table_columns_of(&self, table: &str) -> Vec<String> {
         self.workspace
             .table_columns(table)
             .unwrap_or_default()
@@ -165,7 +165,7 @@ impl AppState {
             .map(|column| column.name)
             .collect()
     }
-    pub(crate) fn cycle_transfer_table(&mut self, side: bool) {
+    pub fn cycle_transfer_table(&mut self, side: bool) {
         let tables = self.workspace.connection_tables("local");
         let current = if side { &self.transfer_left } else { &self.transfer_right };
         let next = match tables.iter().position(|name| name == current) {
@@ -180,7 +180,7 @@ impl AppState {
         self.transfer_pair_left = self.table_columns_of(&self.transfer_left).first().cloned().unwrap_or_default();
         self.transfer_pair_right = self.table_columns_of(&self.transfer_right).first().cloned().unwrap_or_default();
     }
-    pub(crate) fn cycle_transfer_pair_column(&mut self, side: bool) {
+    pub fn cycle_transfer_pair_column(&mut self, side: bool) {
         let (table, current) = if side {
             (&self.transfer_left, self.transfer_pair_left.clone())
         } else {
@@ -200,7 +200,7 @@ impl AppState {
 
     /// Pair the two picked columns. A column that already appears in a pair —
     /// a duplicate name — cannot pair again.
-    pub(crate) fn pair_transfer_columns(&mut self) {
+    pub fn pair_transfer_columns(&mut self) {
         let left = self.transfer_pair_left.clone();
         let right = self.transfer_pair_right.clone();
         if left.is_empty() || right.is_empty() {
@@ -217,13 +217,13 @@ impl AppState {
     }
 
     /// Open the confirmation row. Cancelling it leaves no job.
-    pub(crate) fn begin_transfer_confirm(&mut self) {
+    pub fn begin_transfer_confirm(&mut self) {
         self.transfer_confirming = true;
     }
-    pub(crate) fn cancel_transfer(&mut self) {
+    pub fn cancel_transfer(&mut self) {
         self.transfer_confirming = false;
     }
-    pub(crate) fn confirm_transfer(&mut self) {
+    pub fn confirm_transfer(&mut self) {
         self.transfer_confirming = false;
         let pairs = self.transfer_pairs.clone();
         match self.workspace.run_transfer(&pairs) {
@@ -238,13 +238,13 @@ impl AppState {
             }
         }
     }
-    pub(crate) fn refresh_transfer_progress(&mut self) {
+    pub fn refresh_transfer_progress(&mut self) {
         if let Some(job) = self.transfer_job {
             self.transfer_snapshot = self.workspace.job_progress(job);
         }
     }
     /// The left table's columns not yet paired.
-    pub(crate) fn transfer_unmapped(&self, side: bool) -> Vec<String> {
+    pub fn transfer_unmapped(&self, side: bool) -> Vec<String> {
         let (table, used_left): (String, Vec<String>) = if side {
             (self.transfer_left.clone(), self.transfer_pairs.iter().map(|(l, _)| l.clone()).collect())
         } else {
@@ -257,30 +257,30 @@ impl AppState {
     }
 
     /// Cycle the sync source through the connections.
-    pub(crate) fn cycle_sync_source(&mut self) {
+    pub fn cycle_sync_source(&mut self) {
         self.sync_source = next_connection(&self.workspace, &self.sync_source);
     }
-    pub(crate) fn cycle_sync_target(&mut self) {
+    pub fn cycle_sync_target(&mut self) {
         self.sync_target = next_connection(&self.workspace, &self.sync_target);
     }
-    pub(crate) fn toggle_sync_table(&mut self, table: &str) {
+    pub fn toggle_sync_table(&mut self, table: &str) {
         if !self.sync_tables.insert(table.to_owned()) {
             self.sync_tables.remove(table);
         }
     }
-    pub(crate) fn sync_select_all(&mut self) {
+    pub fn sync_select_all(&mut self) {
         self.sync_tables = self
             .workspace
             .connection_tables(&self.sync_source)
             .into_iter()
             .collect();
     }
-    pub(crate) fn sync_clear_tables(&mut self) {
+    pub fn sync_clear_tables(&mut self) {
         self.sync_tables.clear();
     }
 
     /// Step 2 done: at least one table must be picked.
-    pub(crate) fn sync_next_tables(&mut self) {
+    pub fn sync_next_tables(&mut self) {
         if self.sync_tables.is_empty() {
             self.sync_error = Some("pick at least one table".into());
             return;
@@ -290,16 +290,16 @@ impl AppState {
     }
 
     /// The sync options' labels, in order.
-    pub(crate) const SYNC_OPTION_LABELS: [&'static str; 3] =
+    pub const SYNC_OPTION_LABELS: [&'static str; 3] =
         ["Create missing tables", "Drop extra tables", "Copy data"];
-    pub(crate) fn toggle_sync_option(&mut self, index: usize) {
+    pub fn toggle_sync_option(&mut self, index: usize) {
         if let Some(option) = self.sync_options.get_mut(index) {
             *option = !*option;
         }
     }
 
     /// D5: run the sync. No selected tables, no job.
-    pub(crate) fn sync_run(&mut self) {
+    pub fn sync_run(&mut self) {
         let source = self.sync_source.clone();
         let target = self.sync_target.clone();
         let tables: Vec<String> = self.sync_tables.iter().cloned().collect();
@@ -315,14 +315,14 @@ impl AppState {
             }
         }
     }
-    pub(crate) fn refresh_sync_progress(&mut self) {
+    pub fn refresh_sync_progress(&mut self) {
         if let Some(job) = self.sync_job {
             self.sync_snapshot = self.workspace.job_progress(job);
         }
     }
 
     /// Step 3 done: build the read-only preview of the first picked table.
-    pub(crate) fn sync_show_preview(&mut self) {
+    pub fn sync_show_preview(&mut self) {
         let Some(table) = self.sync_tables.iter().next().cloned() else {
             self.sync_error = Some("pick at least one table".into());
             return;
@@ -342,7 +342,7 @@ impl AppState {
     }
 
     /// Step 1 done: the port validates the two endpoints.
-    pub(crate) fn sync_next_endpoints(&mut self) {
+    pub fn sync_next_endpoints(&mut self) {
         let source = self.sync_source.clone();
         let target = self.sync_target.clone();
         match self.workspace.sync_endpoints(&source, &target) {

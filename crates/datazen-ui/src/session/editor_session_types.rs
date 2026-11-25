@@ -7,7 +7,7 @@ use crate::session::counters::Counter;
 /// `NamespaceTarget` — the database/catalog/schema resolution of a session.
 #[allow(dead_code)] // DTO mirror; consumed by the host effect executor. Remove when a view drives the controller.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub(crate) struct NamespaceTarget {
+pub struct NamespaceTarget {
     pub database: Option<String>,
     pub catalog: Option<String>,
     pub schema: Option<String>,
@@ -17,7 +17,7 @@ pub(crate) struct NamespaceTarget {
 /// `ObjectTarget` — a single addressable object inside a namespace.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub(crate) struct ObjectTarget {
+pub struct ObjectTarget {
     pub kind: String,
     pub name: String,
     pub signature: Option<String>,
@@ -26,7 +26,7 @@ pub(crate) struct ObjectTarget {
 /// `ExecutionTarget` — what an execution runs against (no `backendId`).
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExecutionTarget {
+pub struct ExecutionTarget {
     pub connection_id: String,
     pub namespace: NamespaceTarget,
     pub object: Option<ObjectTarget>,
@@ -35,7 +35,7 @@ pub(crate) struct ExecutionTarget {
 /// `OwnerRef` — editor owners own a pane-local `editorSessionId`.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum OwnerRef {
+pub enum OwnerRef {
     Editor { client_instance_id: String, editor_session_id: String },
     Job { job_id: String, stage_id: String },
     WorkflowBlock { job_id: String, block_id: String },
@@ -44,7 +44,7 @@ pub(crate) enum OwnerRef {
 
 impl OwnerRef {
     /// React `owner.kind === 'editor' && ... && owner.editorSessionId === ...`.
-    pub(crate) fn same_editor_session(&self, other: &Self) -> bool {
+    pub fn same_editor_session(&self, other: &Self) -> bool {
         matches!(
             (self, other),
             (
@@ -59,7 +59,7 @@ impl OwnerRef {
 /// in `ensureSession`; `is_lost_or_closed` is the `openNewSession` gate.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SessionState {
+pub enum SessionState {
     New,
     Opening,
     Ready,
@@ -71,13 +71,13 @@ pub(crate) enum SessionState {
 }
 
 impl SessionState {
-    pub(crate) fn refuses_reuse(self) -> bool {
+    pub fn refuses_reuse(self) -> bool {
         matches!(self, Self::Lost | Self::Closed | Self::Closing)
     }
-    pub(crate) fn is_lost_or_closed(self) -> bool {
+    pub fn is_lost_or_closed(self) -> bool {
         matches!(self, Self::Lost | Self::Closed)
     }
-    pub(crate) fn from_close(state: CloseState) -> Self {
+    pub fn from_close(state: CloseState) -> Self {
         match state {
             CloseState::Closing => Self::Closing,
             CloseState::Closed => Self::Closed,
@@ -89,7 +89,7 @@ impl SessionState {
 /// `ContextConfidence` of an observed session context.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ContextConfidence {
+pub enum ContextConfidence {
     Confirmed,
     Partial,
     Unknown,
@@ -98,7 +98,7 @@ pub(crate) enum ContextConfidence {
 /// `TransactionState` of an observed session context.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TransactionState {
+pub enum TransactionState {
     None,
     Active,
     Aborted,
@@ -109,7 +109,7 @@ pub(crate) enum TransactionState {
 /// `SessionContext` — the context an operation actually ran in.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SessionContext {
+pub struct SessionContext {
     pub namespace: NamespaceTarget,
     pub search_path: Option<Vec<String>>,
     pub effective_identity: Option<String>,
@@ -121,7 +121,7 @@ pub(crate) struct SessionContext {
 /// `AttachmentState`.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AttachmentState {
+pub enum AttachmentState {
     Attached,
     Detached,
     Expired,
@@ -130,7 +130,7 @@ pub(crate) enum AttachmentState {
 /// `SessionView` — the snapshot the controller publishes.
 #[allow(dead_code)] // main observable state; remove when the view consumes it directly.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SessionView {
+pub struct SessionView {
     pub handle: SessionHandle,
     pub connection_id: String,
     pub config_revision: Counter,
@@ -147,7 +147,7 @@ pub(crate) struct SessionView {
 /// `ExecutionState` of an execution receipt/view.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExecutionState {
+pub enum ExecutionState {
     Queued,
     Running,
     CancelRequested,
@@ -159,7 +159,7 @@ pub(crate) enum ExecutionState {
 /// `ExecutionReceipt` — acceptance, not statement success.
 #[allow(dead_code)] // active execution receipt; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExecutionReceipt {
+pub struct ExecutionReceipt {
     pub execution_id: String,
     pub stream_id: String,
     pub state: ExecutionState,
@@ -168,7 +168,7 @@ pub(crate) struct ExecutionReceipt {
 /// `ExecutionErrorCode` — a namespace disjoint from `ApiError.code`.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExecutionErrorCode {
+pub enum ExecutionErrorCode {
     SqlError,
     ProtocolError,
     Cancelled,
@@ -181,7 +181,7 @@ pub(crate) enum ExecutionErrorCode {
 /// Minimal `ExecutionView`: `getExecution` only reads `errorCode`.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExecutionView {
+pub struct ExecutionView {
     pub execution_id: String,
     pub error_code: Option<ExecutionErrorCode>,
 }
@@ -189,7 +189,7 @@ pub(crate) struct ExecutionView {
 /// `SubmissionToken` — the host-issued idempotency key every mutating call carries.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SubmissionToken {
+pub struct SubmissionToken {
     pub idempotency_key: String,
     pub expires_at: i64,
 }
@@ -197,7 +197,7 @@ pub(crate) struct SubmissionToken {
 /// `OpenSessionReceipt`.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct OpenSessionReceipt {
+pub struct OpenSessionReceipt {
     pub session: SessionView,
     pub attachment_token: String,
 }
@@ -205,7 +205,7 @@ pub(crate) struct OpenSessionReceipt {
 /// `ContextChangeReceipt` — a non-null `replacedSessionId` means a replacement.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ContextChangeReceipt {
+pub struct ContextChangeReceipt {
     pub session: SessionView,
     pub replaced_session_id: Option<String>,
     pub attachment_token: Option<String>,
@@ -214,7 +214,7 @@ pub(crate) struct ContextChangeReceipt {
 /// Terminal state carried by a `CloseReceipt`.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CloseState {
+pub enum CloseState {
     Closing,
     Closed,
     Lost,
@@ -223,7 +223,7 @@ pub(crate) enum CloseState {
 /// `CloseReceipt` (only the fields the controller reads).
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CloseReceipt {
+pub struct CloseReceipt {
     pub db_session_id: String,
     pub state: CloseState,
 }
@@ -231,21 +231,21 @@ pub(crate) struct CloseReceipt {
 /// `CancelReceipt` (only the field the controller reads).
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CancelReceipt {
+pub struct CancelReceipt {
     pub execution_id: String,
 }
 
 /// `PlatformIdentity` — what `getPlatformIdentity` yields.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PlatformIdentity {
+pub struct PlatformIdentity {
     pub client_instance_id: String,
 }
 
 /// `CommandCall` — opaque driver command (`input` stays a string here).
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CommandCall {
+pub struct CommandCall {
     pub command: String,
     pub input: String,
 }
@@ -253,7 +253,7 @@ pub(crate) struct CommandCall {
 /// `CloseMode`.
 #[allow(dead_code)] // DTO mirror; remove with the controller-driven view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CloseMode {
+pub enum CloseMode {
     RequireNoTransaction,
     RollbackAndClose,
 }
@@ -261,14 +261,14 @@ pub(crate) enum CloseMode {
 /// Request structs (field-for-field with the `backend-client` request types).
 #[allow(dead_code)] // request mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct OpenSessionRequest {
+pub struct OpenSessionRequest {
     pub initial_target: ExecutionTarget,
     pub owner: OwnerRef,
     pub idempotency_key: String,
 }
 #[allow(dead_code)] // request mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExecuteRequest {
+pub struct ExecuteRequest {
     pub handle: SessionHandle,
     pub expected_context_revision: Counter,
     pub call: CommandCall,
@@ -276,7 +276,7 @@ pub(crate) struct ExecuteRequest {
 }
 #[allow(dead_code)] // request mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SetContextRequest {
+pub struct SetContextRequest {
     pub handle: SessionHandle,
     pub expected_context_revision: Counter,
     pub desired: NamespaceTarget,
@@ -284,7 +284,7 @@ pub(crate) struct SetContextRequest {
 }
 #[allow(dead_code)] // request mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TokenContext {
+pub struct TokenContext {
     pub connection_id: String,
     pub owner: OwnerRef,
 }
@@ -293,7 +293,7 @@ pub(crate) struct TokenContext {
 /// `acceptSessionError`; `Other` covers the rest verbatim.
 #[allow(dead_code)] // error mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ApiErrorCode {
+pub enum ApiErrorCode {
     SessionLost,
     SessionNotFound,
     RuntimeEpochMismatch,
@@ -301,7 +301,7 @@ pub(crate) enum ApiErrorCode {
 }
 
 impl ApiErrorCode {
-    pub(crate) fn is_session_error(&self) -> bool {
+    pub fn is_session_error(&self) -> bool {
         matches!(self, Self::SessionLost | Self::SessionNotFound | Self::RuntimeEpochMismatch)
     }
 }
@@ -309,14 +309,14 @@ impl ApiErrorCode {
 /// `ApiError` — the host maps a rejection into this shape before calling `on_*`.
 #[allow(dead_code)] // error mirror; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SessionError {
+pub struct SessionError {
     pub code: ApiErrorCode,
     pub message: String,
 }
 
 impl SessionError {
     #[allow(dead_code)] // mirrors the explicit `new ApiError('SessionLost', ...)` in ensureSession.
-    pub(crate) fn session_lost(message: impl Into<String>) -> Self {
+    pub fn session_lost(message: impl Into<String>) -> Self {
         Self { code: ApiErrorCode::SessionLost, message: message.into() }
     }
 }
@@ -324,7 +324,7 @@ impl SessionError {
 /// The host-injected client. Effects describe the call; the host executes it
 /// against this port and reports the outcome with the matching `on_*` method.
 #[allow(dead_code)] // host executor contract; remove when the app wires the port.
-pub(crate) trait SessionPort {
+pub trait SessionPort {
     fn issue_submission_token(
         &self,
         operation: &str,
@@ -374,7 +374,7 @@ pub(crate) trait SessionPort {
 /// Why a `close` is being emitted; decides how its result is handled.
 #[allow(dead_code)] // effect discriminator; remove with the host executor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ClosePurpose {
+pub enum ClosePurpose {
     /// The queued `close()` operation: rebind session state and publish.
     Operation,
     /// `releaseReplacedSession`: idempotent cleanup, swallow every outcome.
@@ -387,7 +387,7 @@ pub(crate) enum ClosePurpose {
 /// React injected async client calls plus the page-unload listeners.
 #[allow(dead_code)] // emitted work; remove when the host executor lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SessionEffect {
+pub enum SessionEffect {
     IssueToken { call_id: u64, operation: String, handle: Option<SessionHandle>, context: TokenContext },
     Open { call_id: u64, request: OpenSessionRequest, token: SubmissionToken },
     Execute { call_id: u64, request: ExecuteRequest, token: SubmissionToken },
@@ -405,4 +405,4 @@ pub(crate) enum SessionEffect {
 
 // Re-export the shared handle type so consumers need a single import path.
 #[allow(unused_imports)]
-pub(crate) use crate::session::counters::SessionHandle;
+pub use crate::session::counters::SessionHandle;

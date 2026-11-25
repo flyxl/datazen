@@ -16,13 +16,13 @@ use super::state::OnboardingState;
 /// The gate never consults `version` — re-onboarding after a journey
 /// revision bump is a backend migration concern (the persisted version only
 /// records which revision the user last saw).
-pub(crate) fn should_show_onboarding(state: Option<&OnboardingState>) -> bool {
+pub fn should_show_onboarding(state: Option<&OnboardingState>) -> bool {
     let Some(state) = state else { return false };
     !state.completed
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[doc(hidden)]  // exposed for integration tests
+pub mod tests {
     use super::*;
     use super::super::state::{ONBOARDING_VERSION, completed_onboarding_state};
 

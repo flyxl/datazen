@@ -31,7 +31,7 @@ const DISABLED_KEY: &str = "structEditor.capDisabled";
 /// React `mode: 'create' | 'alter'`.
 #[allow(dead_code)] // VM mirror; consumed by the capability gates and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum EditorMode {
+pub enum EditorMode {
     #[default]
     Create,
     Alter,
@@ -40,7 +40,7 @@ pub(crate) enum EditorMode {
 /// One `StructureCapabilityFlag` the table gates on.
 #[allow(dead_code)] // VM mirror; consumed by cap_enabled and tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Capability {
+pub enum Capability {
     CreateTable,
     AddColumn,
     RenameColumn,
@@ -57,23 +57,23 @@ pub(crate) enum Capability {
 /// React `StructureCapabilities` reduced to the flags this table reads.
 #[allow(dead_code)] // VM surface; supplied by the driver capability feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct StructureCapabilities {
-    pub(crate) create_table: bool,
-    pub(crate) add_column: bool,
-    pub(crate) rename_column: bool,
-    pub(crate) alter_type: bool,
-    pub(crate) alter_nullability: bool,
-    pub(crate) alter_default: bool,
-    pub(crate) alter_primary_key: bool,
-    pub(crate) create_index: bool,
-    pub(crate) comment: bool,
-    pub(crate) drop_column: bool,
-    pub(crate) reorder_column: bool,
+pub struct StructureCapabilities {
+    pub create_table: bool,
+    pub add_column: bool,
+    pub rename_column: bool,
+    pub alter_type: bool,
+    pub alter_nullability: bool,
+    pub alter_default: bool,
+    pub alter_primary_key: bool,
+    pub create_index: bool,
+    pub comment: bool,
+    pub drop_column: bool,
+    pub reorder_column: bool,
 }
 
 /// React `capEnabled(caps, control)`.
 #[allow(dead_code)] // pure helper; consumed by the gates and tests.
-pub(crate) fn cap_enabled(caps: Option<&StructureCapabilities>, control: Capability) -> bool {
+pub fn cap_enabled(caps: Option<&StructureCapabilities>, control: Capability) -> bool {
     let Some(caps) = caps else { return false };
     match control {
         Capability::CreateTable => caps.create_table,
@@ -92,14 +92,14 @@ pub(crate) fn cap_enabled(caps: Option<&StructureCapabilities>, control: Capabil
 
 /// React `controlDisabledKey` (always `structEditor.capDisabled`).
 #[allow(dead_code)] // pure helper; consumed by disabled tooltips and tests.
-pub(crate) fn control_disabled_key() -> &'static str {
+pub fn control_disabled_key() -> &'static str {
     DISABLED_KEY
 }
 
 /// One editable cell's field, for the host's `TextEdit` accessor.
 #[allow(dead_code)] // host seam; removed with the structure host wiring.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ColumnField {
+pub enum ColumnField {
     Name,
     DataType,
     DefaultValue,
@@ -109,7 +109,7 @@ pub(crate) enum ColumnField {
 /// One staged patch, mirroring React's `Partial<StructureColumnDraft>` writes.
 #[allow(dead_code)] // host port; removed with the structure host wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ColumnPatch {
+pub enum ColumnPatch {
     Name(String),
     DataType(String),
     Nullable(bool),
@@ -122,38 +122,38 @@ pub(crate) enum ColumnPatch {
 /// One `StructureColumnDraft` row.
 #[allow(dead_code)] // VM mirror; supplied by the structure editor host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ColumnDraft {
-    pub(crate) id: String,
-    pub(crate) name: TextEdit,
-    pub(crate) data_type: TextEdit,
-    pub(crate) nullable: bool,
-    pub(crate) is_primary_key: bool,
-    pub(crate) is_unique: bool,
-    pub(crate) default_value: TextEdit,
-    pub(crate) comment: TextEdit,
+pub struct ColumnDraft {
+    pub id: String,
+    pub name: TextEdit,
+    pub data_type: TextEdit,
+    pub nullable: bool,
+    pub is_primary_key: bool,
+    pub is_unique: bool,
+    pub default_value: TextEdit,
+    pub comment: TextEdit,
 }
 
 /// React `StructureEditorUiConfig` subset this table reads.
 #[allow(dead_code)] // VM surface; supplied by the driver metadata.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct UiConfig {
-    pub(crate) show_comment: bool,
-    pub(crate) column_types: Vec<String>,
-    pub(crate) default_column_type: String,
+pub struct UiConfig {
+    pub show_comment: bool,
+    pub column_types: Vec<String>,
+    pub default_column_type: String,
 }
 
 /// Full view snapshot for one table.
 #[allow(dead_code)] // VM surface; owned by the structure editor host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct StructureColumnTableVm {
-    pub(crate) mode: EditorMode,
-    pub(crate) caps: Option<StructureCapabilities>,
-    pub(crate) ui_config: UiConfig,
-    pub(crate) columns: Vec<ColumnDraft>,
-    pub(crate) original_ids: BTreeSet<String>,
-    pub(crate) reorder_enabled: bool,
-    pub(crate) drag_idx: Option<usize>,
-    pub(crate) sort: Option<(usize, SortDir)>,
+pub struct StructureColumnTableVm {
+    pub mode: EditorMode,
+    pub caps: Option<StructureCapabilities>,
+    pub ui_config: UiConfig,
+    pub columns: Vec<ColumnDraft>,
+    pub original_ids: BTreeSet<String>,
+    pub reorder_enabled: bool,
+    pub drag_idx: Option<usize>,
+    pub sort: Option<(usize, SortDir)>,
 }
 
 impl StructureColumnTableVm {
@@ -183,7 +183,7 @@ impl StructureColumnTableVm {
 
     /// React's rendered row order after the host-owned sort.
     #[allow(dead_code)] // pure helper; consumed by the table and tests.
-    pub(crate) fn row_order(&self) -> Vec<usize> {
+    pub fn row_order(&self) -> Vec<usize> {
         let mut order: Vec<usize> = (0..self.columns.len()).collect();
         if let Some((column, dir)) = self.sort {
             order.sort_by(|&a, &b| {
@@ -209,7 +209,7 @@ impl StructureColumnTableVm {
 /// Every intent the table emits.
 #[allow(dead_code)] // host port; removed with the structure host wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum StructureColumnAction {
+pub enum StructureColumnAction {
     Update { id: String, patch: ColumnPatch },
     Remove(String),
     Select(usize),
@@ -236,7 +236,7 @@ fn emit<S: 'static>(
 
 /// Build the table into one column.
 #[allow(dead_code)] // consumer: the structure editor host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &StructureColumnTableVm,
     edits: Option<EditFn<S>>,
     on_action: Option<ActionFn<S>>,

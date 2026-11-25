@@ -77,7 +77,7 @@ const TEXT_SM: TextStyle = TextStyle::new(14.0, 400.0);
 /// at render time (the effect must not depend on the `t` function's
 /// identity — the React file's own note).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DialogError {
+pub enum DialogError {
     Message(String),
     Key(&'static str),
 }
@@ -85,7 +85,7 @@ pub(crate) enum DialogError {
 impl DialogError {
     /// `toDialogError(e, fallbackKey)`: the transport's own words
     /// when it has any, the fallback key otherwise.
-    pub(crate) fn classify(error: &str, fallback_key: &'static str) -> Self {
+    pub fn classify(error: &str, fallback_key: &'static str) -> Self {
         if !error.is_empty() {
             Self::Message(error.to_owned())
         } else {
@@ -95,7 +95,7 @@ impl DialogError {
 
     /// The rendered text (`'key' in error ? t(error.key) :
     /// error.message`).
-    pub(crate) fn text(&self) -> &str {
+    pub fn text(&self) -> &str {
         match self {
             Self::Message(message) => message,
             Self::Key(key) => t(key),
@@ -105,19 +105,19 @@ impl DialogError {
 
 /// The dialog's state.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TunnelDeleteDialogState {
-    pub(crate) open: bool,
+pub struct TunnelDeleteDialogState {
+    pub open: bool,
     /// The tunnel under deletion (`None` = closed / none).
-    pub(crate) tunnel: Option<crate::commands::tunnel::SavedTunnelSummary>,
+    pub tunnel: Option<crate::commands::tunnel::SavedTunnelSummary>,
     /// The usage read's answer.
-    pub(crate) usage: Option<TunnelUsage>,
+    pub usage: Option<TunnelUsage>,
     /// The usage read in flight.
-    pub(crate) loading: bool,
+    pub loading: bool,
     /// The confirm in flight (disables everything but rendering).
-    pub(crate) busy: bool,
-    pub(crate) error: Option<DialogError>,
+    pub busy: bool,
+    pub error: Option<DialogError>,
     /// The rollback note (`{restored}` / `{failed}`).
-    pub(crate) note: Option<String>,
+    pub note: Option<String>,
 }
 
 impl TunnelDeleteDialogState {
@@ -125,7 +125,7 @@ impl TunnelDeleteDialogState {
     /// resets the run and arms the usage read; closing (or an idless
     /// open) leaves nothing to read. Answers whether the host
     /// should run `getTunnelUsage`.
-    pub(crate) fn open_changed(
+    pub fn open_changed(
         &mut self,
         open: bool,
         tunnel: Option<&crate::commands::tunnel::SavedTunnelSummary>,
@@ -144,14 +144,14 @@ impl TunnelDeleteDialogState {
     }
 
     /// The tunnel id under deletion.
-    pub(crate) fn tunnel_id(&self) -> Option<&str> {
+    pub fn tunnel_id(&self) -> Option<&str> {
         self.tunnel.as_ref().map(|t| t.id.as_str())
     }
 
     /// The usage read's answer (the `cancelled` guard: a closed or
     /// retargeted dialog's late answer never lands; the `finally`
     /// clears the loading either way for the live one).
-    pub(crate) fn note_usage(&mut self, usage: TunnelUsage) -> bool {
+    pub fn note_usage(&mut self, usage: TunnelUsage) -> bool {
         if !self.open || self.tunnel.is_none() {
             return false;
         }
@@ -161,7 +161,7 @@ impl TunnelDeleteDialogState {
     }
 
     /// The usage read's failure.
-    pub(crate) fn note_usage_error(&mut self, error: &str) -> bool {
+    pub fn note_usage_error(&mut self, error: &str) -> bool {
         if !self.open || self.tunnel.is_none() {
             return false;
         }
@@ -171,13 +171,13 @@ impl TunnelDeleteDialogState {
     }
 
     /// `handleConfirm`'s gate: `if (!tunnelId || busy) return`.
-    pub(crate) fn confirm_gate(&self) -> bool {
+    pub fn confirm_gate(&self) -> bool {
         self.tunnel.is_some() && !self.busy
     }
 
     /// The confirm's head: busy arms, the previous error and note
     /// clear.
-    pub(crate) fn begin_confirm(&mut self) {
+    pub fn begin_confirm(&mut self) {
         self.busy = true;
         self.error = None;
         self.note = None;
@@ -188,7 +188,7 @@ impl TunnelDeleteDialogState {
     /// the unbind error and the rollback note when references got
     /// stuck; a `delete-failed` one raises the delete error. The
     /// `finally` clears busy in every arm that stays open.
-    pub(crate) fn note_confirm_outcome(&mut self, outcome: &DeleteTunnelOutcome) -> bool {
+    pub fn note_confirm_outcome(&mut self, outcome: &DeleteTunnelOutcome) -> bool {
         match outcome {
             DeleteTunnelOutcome::Deleted { .. } => {
                 // `onClose(); return;` — the finally still clears busy
@@ -226,13 +226,13 @@ impl TunnelDeleteDialogState {
     }
 
     /// The confirm's throw arm (`catch (e)`).
-    pub(crate) fn note_confirm_error(&mut self, error: &str) {
+    pub fn note_confirm_error(&mut self, error: &str) {
         self.error = Some(DialogError::classify(error, "settings.tunnels.delete.failed"));
         self.busy = false;
     }
 
     /// The affected connection names (`usage?.connectionNames ?? []`).
-    pub(crate) fn affected_names(&self) -> &[String] {
+    pub fn affected_names(&self) -> &[String] {
         self.usage.as_ref().map(|u| u.connection_names.as_slice()).unwrap_or(&[])
     }
 }
@@ -240,7 +240,7 @@ impl TunnelDeleteDialogState {
 /// `TunnelDeleteDialog({ open, tunnel, onClose, onConfirm })`: the
 /// dialog over the state, the state lens and the host's action
 /// slots.
-pub(crate) struct TunnelDeleteDialog<'a, S: 'static> {
+pub struct TunnelDeleteDialog<'a, S: 'static> {
     state: &'a TunnelDeleteDialogState,
     dark: bool,
     dialog_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TunnelDeleteDialogState>,
@@ -251,7 +251,7 @@ pub(crate) struct TunnelDeleteDialog<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> TunnelDeleteDialog<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a TunnelDeleteDialogState,
         dark: bool,
         dialog_edit: impl for<'b> Fn(&'b mut S) -> &'b mut TunnelDeleteDialogState + 'static,
@@ -266,20 +266,20 @@ impl<'a, S: 'static> TunnelDeleteDialog<'a, S> {
     }
 
     /// `onClose` (a no-op while busy — the dialog's dismissal rule).
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// `onConfirm(id)`: the host runs the deletion and answers
     /// through the note methods.
-    pub(crate) fn on_confirm(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_confirm(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_confirm = Some(Rc::new(f));
         self
     }
 
     /// The dialog (nothing when closed).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) {
         let state = self.state;
         if !state.open {
             return;

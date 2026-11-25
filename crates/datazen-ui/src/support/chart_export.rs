@@ -72,7 +72,7 @@ use rune::FileDialogOptions;
 /// The one DOM→PNG / DOM→SVG option set, mirroring React's
 /// `ElementExportOptions`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ElementExportOptions {
+pub struct ElementExportOptions {
     /// Background painted behind the element; defaults to the chart surface
     /// colour ([`chart_background`]).
     pub background_color: Option<String>,
@@ -84,7 +84,7 @@ pub(crate) struct ElementExportOptions {
 /// The resolved options handed to the PNG capture: the background is always
 /// present, the quality only when the caller set one explicitly.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PngCaptureOptions {
+pub struct PngCaptureOptions {
     pub background_color: String,
     pub quality: Option<f64>,
 }
@@ -92,7 +92,7 @@ pub(crate) struct PngCaptureOptions {
 /// A PNG payload ready for the save dialog: base64 bytes plus the file name
 /// the dialog must suggest.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PngSaveRequest {
+pub struct PngSaveRequest {
     pub base64: String,
     pub file_name: String,
 }
@@ -100,28 +100,28 @@ pub(crate) struct PngSaveRequest {
 /// An SVG payload ready for the save dialog: decoded SVG text plus the file
 /// name the dialog must suggest.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SvgSaveRequest {
+pub struct SvgSaveRequest {
     pub svg_text: String,
     pub file_name: String,
 }
 
 /// Filter name for the PNG save dialog (React `'PNG'`).
-pub(crate) const PNG_FILTER_NAME: &str = "PNG";
+pub const PNG_FILTER_NAME: &str = "PNG";
 /// Extensions for the PNG save dialog (React `['png']`).
-pub(crate) const PNG_EXTENSIONS: &[&str] = &["png"];
+pub const PNG_EXTENSIONS: &[&str] = &["png"];
 /// Filter name for the SVG save dialog (React `'SVG'`).
-pub(crate) const SVG_FILTER_NAME: &str = "SVG";
+pub const SVG_FILTER_NAME: &str = "SVG";
 /// Extensions for the SVG save dialog (React `['svg']`).
-pub(crate) const SVG_EXTENSIONS: &[&str] = &["svg"];
+pub const SVG_EXTENSIONS: &[&str] = &["svg"];
 
 /// Chart surface colour, dark theme (`--c-surface` in `themes.css`).
-pub(crate) const CHART_SURFACE_DARK: &str = "#0b0e14";
+pub const CHART_SURFACE_DARK: &str = "#0b0e14";
 /// Chart surface colour, light theme (`--c-surface` in `themes.css`).
-pub(crate) const CHART_SURFACE_LIGHT: &str = "#f6f8fb";
+pub const CHART_SURFACE_LIGHT: &str = "#f6f8fb";
 
 /// The chart surface colour for the current theme — the Rune-side stand-in
 /// for `readCssColor('--c-surface', '#0b0e14')` (see the module docs).
-pub(crate) fn chart_background(dark: bool) -> &'static str {
+pub fn chart_background(dark: bool) -> &'static str {
     if dark {
         CHART_SURFACE_DARK
     } else {
@@ -132,7 +132,7 @@ pub(crate) fn chart_background(dark: bool) -> &'static str {
 /// The background the capture paints: the caller's colour, or the chart
 /// surface when none was given. An explicit empty string passes through —
 /// React's `??` only fills `null`/`undefined`, not `""`.
-pub(crate) fn resolve_background(options: &ElementExportOptions, dark: bool) -> String {
+pub fn resolve_background(options: &ElementExportOptions, dark: bool) -> String {
     match &options.background_color {
         Some(color) => color.clone(),
         None => chart_background(dark).to_owned(),
@@ -141,7 +141,7 @@ pub(crate) fn resolve_background(options: &ElementExportOptions, dark: bool) -> 
 
 /// Resolve the PNG capture options: background always filled, quality carried
 /// only when explicitly set.
-pub(crate) fn resolve_png_capture_options(
+pub fn resolve_png_capture_options(
     options: &ElementExportOptions,
     dark: bool,
 ) -> PngCaptureOptions {
@@ -152,12 +152,12 @@ pub(crate) fn resolve_png_capture_options(
 }
 
 /// The file name the PNG save dialog suggests (`{filename}.png`).
-pub(crate) fn png_file_name(filename: &str) -> String {
+pub fn png_file_name(filename: &str) -> String {
     format!("{filename}.png")
 }
 
 /// The file name the SVG save dialog suggests (`{filename}.svg`).
-pub(crate) fn svg_file_name(filename: &str) -> String {
+pub fn svg_file_name(filename: &str) -> String {
     format!("{filename}.svg")
 }
 
@@ -165,7 +165,7 @@ pub(crate) fn svg_file_name(filename: &str) -> String {
 /// comma — exactly React's `dataUrl.split(',')[1]`. A data URL with no comma
 /// is returned verbatim. (Base64 never contains `,`, so real captures never
 /// hit the multi-comma case; the `[1]` index is pinned for parity anyway.)
-pub(crate) fn png_base64_from_data_url(data_url: &str) -> &str {
+pub fn png_base64_from_data_url(data_url: &str) -> &str {
     match data_url.split(',').nth(1) {
         Some(base64) => base64,
         None => data_url,
@@ -173,7 +173,7 @@ pub(crate) fn png_base64_from_data_url(data_url: &str) -> &str {
 }
 
 /// Build the PNG save request from a capture data URL.
-pub(crate) fn png_save_request(data_url: &str, filename: &str) -> PngSaveRequest {
+pub fn png_save_request(data_url: &str, filename: &str) -> PngSaveRequest {
     PngSaveRequest {
         base64: png_base64_from_data_url(data_url).to_owned(),
         file_name: png_file_name(filename),
@@ -183,7 +183,7 @@ pub(crate) fn png_save_request(data_url: &str, filename: &str) -> PngSaveRequest
 /// Why an SVG data URL could not be decoded. React's `atob` /
 /// `decodeURIComponent` throw here; this module reports instead.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SvgDecodeError {
+pub enum SvgDecodeError {
     /// The base64 payload is not valid standard base64 (`atob` throws).
     InvalidBase64,
     /// A `%` escape is malformed (`decodeURIComponent` throws).
@@ -250,7 +250,7 @@ fn percent_decode_to_bytes(input: &str) -> Result<Vec<u8>, SvgDecodeError> {
 /// 2. `data:image/svg+xml,…` → percent-decode the part after the first comma
 ///    (JS `decodeURIComponent`);
 /// 3. anything else → the input verbatim.
-pub(crate) fn decode_svg_data_url(data_url: &str) -> Result<String, SvgDecodeError> {
+pub fn decode_svg_data_url(data_url: &str) -> Result<String, SvgDecodeError> {
     const BASE64_PREFIX: &str = "data:image/svg+xml;base64,";
     const PLAIN_PREFIX: &str = "data:image/svg+xml,";
     if let Some(payload) = data_url.strip_prefix(BASE64_PREFIX) {
@@ -272,7 +272,7 @@ pub(crate) fn decode_svg_data_url(data_url: &str) -> Result<String, SvgDecodeErr
 }
 
 /// Build the SVG save request from a capture data URL.
-pub(crate) fn svg_save_request(
+pub fn svg_save_request(
     data_url: &str,
     filename: &str,
 ) -> Result<SvgSaveRequest, SvgDecodeError> {
@@ -287,7 +287,7 @@ pub(crate) fn svg_save_request(
 /// `<svg>` — means no save request and no dialog, mirroring the React early
 /// return. This is deliberately a different entry point from
 /// [`svg_save_request`]: see the module docs.
-pub(crate) fn chart_svg_save_request(
+pub fn chart_svg_save_request(
     serialized_svg: Option<&str>,
     filename: &str,
 ) -> Option<SvgSaveRequest> {
@@ -315,14 +315,14 @@ fn save_dialog_options(
 
 impl PngSaveRequest {
     /// The save-dialog options for this request.
-    pub(crate) fn dialog_options(&self) -> FileDialogOptions {
+    pub fn dialog_options(&self) -> FileDialogOptions {
         save_dialog_options(&self.file_name, PNG_FILTER_NAME, PNG_EXTENSIONS)
     }
 }
 
 impl SvgSaveRequest {
     /// The save-dialog options for this request.
-    pub(crate) fn dialog_options(&self) -> FileDialogOptions {
+    pub fn dialog_options(&self) -> FileDialogOptions {
         save_dialog_options(&self.file_name, SVG_FILTER_NAME, SVG_EXTENSIONS)
     }
 }

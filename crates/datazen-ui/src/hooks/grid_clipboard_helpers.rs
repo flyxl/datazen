@@ -42,36 +42,36 @@ use crate::table_data_connection_state::CellCoord;
 // ── Limits (lib/gridClipboard.ts) ─────────────────────────────────────────────
 
 /// Bytes of source text above which a paste is refused outright.
-pub(crate) const GRID_PASTE_MAX_BYTES: usize = 10 * 1024 * 1024;
+pub const GRID_PASTE_MAX_BYTES: usize = 10 * 1024 * 1024;
 /// Cells above which a paste is refused outright.
-pub(crate) const GRID_PASTE_MAX_CELLS: usize = 100_000;
+pub const GRID_PASTE_MAX_CELLS: usize = 100_000;
 /// Above this cell count the caller asks for confirmation; below it runs silently.
-pub(crate) const GRID_PASTE_CONFIRM_CELLS: usize = 2_000;
+pub const GRID_PASTE_CONFIRM_CELLS: usize = 2_000;
 /// Cells written per state patch; a larger paste is chunked so a frame stays under ~200ms.
-pub(crate) const GRID_PASTE_CHUNK_CELLS: usize = 5_000;
+pub const GRID_PASTE_CHUNK_CELLS: usize = 5_000;
 
 // ── PasteProblem (lib/gridErrors.ts, carried until T525) ─────────────────────
 
 /// The problem codes this port raises. Carried as `&'static str` — the
 /// React side's closed string union, one table with the back end's
 /// message prefixes (see `crates/datazen/src/table_editing`).
-pub(crate) mod paste_code {
-    pub(crate) const EMPTY: &str = "grid.paste.empty";
-    pub(crate) const TOO_LARGE: &str = "grid.paste.tooLarge";
-    pub(crate) const RAGGED_ROW: &str = "grid.paste.raggedRow";
-    pub(crate) const UNCLOSED_QUOTE: &str = "grid.paste.unclosedQuote";
-    pub(crate) const OUT_OF_BOUNDS: &str = "grid.paste.outOfBounds";
-    pub(crate) const NO_WRITABLE_CELL: &str = "grid.paste.noWritableCell";
-    pub(crate) const NOT_NULL_EMPTY: &str = "grid.paste.notNullEmpty";
-    pub(crate) const IDENTITY_CHANGED: &str = "grid.paste.identityChanged";
-    pub(crate) const CROSS_TABLE: &str = "grid.paste.crossTable";
-    pub(crate) const COLUMN_MISMATCH: &str = "grid.paste.columnMismatch";
-    pub(crate) const CLIPBOARD_WRITE_FAILED: &str = "grid.clipboard.writeFailed";
-    pub(crate) const CLIPBOARD_READ_FAILED: &str = "grid.clipboard.readFailed";
-    pub(crate) const CELL_READ_ONLY: &str = "grid.cell.readOnly";
-    pub(crate) const PASTE_ROWS_NOT_ROW_DATA: &str = "grid.pasteRows.notRowData";
-    pub(crate) const PASTE_ROWS_NO_WRITABLE_COLUMN: &str = "grid.pasteRows.noWritableColumn";
-    pub(crate) const CELL_AMBIGUOUS_IDENTITY: &str = "grid.cell.ambiguousIdentity";
+pub mod paste_code {
+    pub const EMPTY: &str = "grid.paste.empty";
+    pub const TOO_LARGE: &str = "grid.paste.tooLarge";
+    pub const RAGGED_ROW: &str = "grid.paste.raggedRow";
+    pub const UNCLOSED_QUOTE: &str = "grid.paste.unclosedQuote";
+    pub const OUT_OF_BOUNDS: &str = "grid.paste.outOfBounds";
+    pub const NO_WRITABLE_CELL: &str = "grid.paste.noWritableCell";
+    pub const NOT_NULL_EMPTY: &str = "grid.paste.notNullEmpty";
+    pub const IDENTITY_CHANGED: &str = "grid.paste.identityChanged";
+    pub const CROSS_TABLE: &str = "grid.paste.crossTable";
+    pub const COLUMN_MISMATCH: &str = "grid.paste.columnMismatch";
+    pub const CLIPBOARD_WRITE_FAILED: &str = "grid.clipboard.writeFailed";
+    pub const CLIPBOARD_READ_FAILED: &str = "grid.clipboard.readFailed";
+    pub const CELL_READ_ONLY: &str = "grid.cell.readOnly";
+    pub const PASTE_ROWS_NOT_ROW_DATA: &str = "grid.pasteRows.notRowData";
+    pub const PASTE_ROWS_NO_WRITABLE_COLUMN: &str = "grid.pasteRows.noWritableColumn";
+    pub const CELL_AMBIGUOUS_IDENTITY: &str = "grid.cell.ambiguousIdentity";
 }
 
 /// One structured problem of a paste plan (`PasteProblem`,
@@ -79,7 +79,7 @@ pub(crate) mod paste_code {
 /// carried directly, never parsed back out of a message. `detail` never
 /// carries a cell value — pasted content is user data and stays local.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PasteProblem {
+pub struct PasteProblem {
     /// The `grid.*` code (see [`paste_code`]).
     pub code: &'static str,
     /// 0-based clipboard-matrix row; `None` for a whole-batch problem.
@@ -92,7 +92,7 @@ pub(crate) struct PasteProblem {
 
 impl PasteProblem {
     /// `PasteProblem`'s object literal: row/column default to `null`.
-    pub(crate) fn new(code: &'static str) -> Self {
+    pub fn new(code: &'static str) -> Self {
         Self { code, row: None, column: None, detail: None }
     }
 }
@@ -102,7 +102,7 @@ impl PasteProblem {
 /// Delimiters the parser understands. Tab wins because that is what
 /// spreadsheets emit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ClipboardDelimiter {
+pub enum ClipboardDelimiter {
     Tab,
     Comma,
     Semicolon,
@@ -126,7 +126,7 @@ impl ClipboardDelimiter {
 /// worlds; the lib layering that kept them apart in TS is a module
 /// boundary, not a type boundary).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct GridClipboardRange {
+pub struct GridClipboardRange {
     pub top_row: usize,
     pub bottom_row: usize,
     pub left_column: String,
@@ -134,12 +134,12 @@ pub(crate) struct GridClipboardRange {
 }
 
 /// The paste anchor: the cell a paste lands on (`GridClipboardAnchor`).
-pub(crate) type GridClipboardAnchor = CellCoord;
+pub type GridClipboardAnchor = CellCoord;
 
 /// A parsed two-dimensional block plus the per-cell quoting that carries
 /// NULL semantics (`ClipboardMatrix`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ClipboardMatrix {
+pub struct ClipboardMatrix {
     /// Cell text: quotes stripped, `""` restored to `"`. At least one row,
     /// all rows equal width.
     pub cells: Vec<Vec<String>>,
@@ -156,7 +156,7 @@ pub(crate) struct ClipboardMatrix {
 /// `ClipboardParseResult`: the refusal is structured and total — an
 /// empty, oversized or ragged block never yields partial output.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ClipboardParseResult {
+pub enum ClipboardParseResult {
     Ok {
         matrix: ClipboardMatrix,
         problems: Vec<PasteProblem>,
@@ -178,7 +178,7 @@ pub(crate) enum ClipboardParseResult {
 /// Sniff the delimiter **outside quotes**: tab > comma > semicolon. When
 /// none occurs the block is one column — deliberately **not** a comma,
 /// because guessing one would shred a single-cell value containing one.
-pub(crate) fn sniff_clipboard_delimiter(text: &str) -> ClipboardDelimiter {
+pub fn sniff_clipboard_delimiter(text: &str) -> ClipboardDelimiter {
     let (mut tabs, mut commas, mut semicolons) = (0usize, 0usize, 0usize);
     let mut in_quotes = false;
     let mut chars = text.chars().peekable();
@@ -325,7 +325,7 @@ fn scan_block(text: &str, delimiter: ClipboardDelimiter) -> (Vec<Vec<String>>, V
 /// Parse clipboard text into a rectangular block (RFC 4180 style
 /// quoting). An unclosed quote is **not** a refusal: everything after it
 /// becomes one cell, and the caller is told so.
-pub(crate) fn parse_clipboard_matrix(text: &str) -> ClipboardParseResult {
+pub fn parse_clipboard_matrix(text: &str) -> ClipboardParseResult {
     let byte_length = text.len();
     // Empty means "nothing here", not "no visible character": a block of
     // unquoted empty fields (`'\t'`, `';'`) writes NULLs and is a good
@@ -401,7 +401,7 @@ pub(crate) fn parse_clipboard_matrix(text: &str) -> ClipboardParseResult {
 /// The coordinates arrive in row-major order; the function groups them
 /// into rows and never walks a rectangle itself. A missing cell reads
 /// as `Value::Null` (React's `?? null`).
-pub(crate) fn build_selection_matrix(
+pub fn build_selection_matrix(
     rows: &[std::collections::HashMap<String, Value>],
     coords: &[CellCoord],
 ) -> Vec<Vec<Value>> {
@@ -428,7 +428,7 @@ pub(crate) fn build_selection_matrix(
 /// `row_indices` must come from `rows_covered_by_selection`; a caller
 /// recomputing a row set here would create the second source of truth
 /// the contracts forbid.
-pub(crate) fn build_rows_matrix(
+pub fn build_rows_matrix(
     rows: &[std::collections::HashMap<String, Value>],
     column_order: &[String],
     row_indices: &[usize],
@@ -455,7 +455,7 @@ pub(crate) fn build_rows_matrix(
 
 /// The formats the one serializer speaks (DB-03's three + DB-10's three).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ClipboardFormat {
+pub enum ClipboardFormat {
     Tsv,
     Csv,
     Json,
@@ -469,7 +469,7 @@ pub(crate) enum ClipboardFormat {
 /// one. `null_literal`: default `''`. `json_objects` / `json_indent`
 /// shape the `json` flavor.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SerializeCellsOptions<'a> {
+pub struct SerializeCellsOptions<'a> {
     pub format: Option<ClipboardFormat>,
     /// Column names, in the order of the selection.
     pub column_names: &'a [String],
@@ -523,7 +523,7 @@ fn escape_delimited(text: &str, delimiter: char) -> String {
 
 /// Positional row + column names → named record (`null` for a missing
 /// cell).
-pub(crate) fn row_to_named_record(
+pub fn row_to_named_record(
     column_names: &[String],
     row: &[Value],
 ) -> serde_json::Map<String, Value> {
@@ -539,7 +539,7 @@ pub(crate) fn row_to_named_record(
 
 /// Escape one HTML text node: `&`, `<` and `>` (DB-10). Quotes are not
 /// escaped — the value never lands in an attribute.
-pub(crate) fn escape_html_cell(text: &str) -> String {
+pub fn escape_html_cell(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
         match ch {
@@ -555,7 +555,7 @@ pub(crate) fn escape_html_cell(text: &str) -> String {
 /// Escape one Markdown table cell (DB-10): a pipe would end the cell, a
 /// line break would end the **row**. `\|` and `<br>` are what GitHub and
 /// Notion both render back into the original characters.
-pub(crate) fn escape_markdown_cell_text(text: &str) -> String {
+pub fn escape_markdown_cell_text(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(ch) = chars.next() {
@@ -594,7 +594,7 @@ fn table_width(rows: &[Vec<Value>], column_names: &[String]) -> usize {
 /// Positional matrix → clipboard text. **The one serializer** (DB-03 §5
 /// Step 9): every copy/export path delegates here so no second escaping
 /// strategy can drift from it.
-pub(crate) fn serialize_cells(rows: &[Vec<Value>], options: &SerializeCellsOptions) -> String {
+pub fn serialize_cells(rows: &[Vec<Value>], options: &SerializeCellsOptions) -> String {
     let format = options.format.unwrap_or(ClipboardFormat::Tsv);
     let column_names = options.column_names;
     let null_literal = options.null_literal.unwrap_or("");

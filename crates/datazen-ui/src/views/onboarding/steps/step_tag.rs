@@ -44,7 +44,7 @@ fn tag_text_style() -> TextStyle {
 
 /// One `StepTag`: the accent pill label above a step's heading. Purely
 /// presentational — the label is the caller's translated step label.
-pub(crate) fn step_tag(k: &Kit, label: &str) -> El {
+pub fn step_tag(k: &Kit, label: &str) -> El {
     row()
         .key("onboarding-step-tag")
         .mb(12.0) // React mb-4 (16px)

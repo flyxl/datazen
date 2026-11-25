@@ -30,7 +30,7 @@ use std::rc::Rc;
 
 /// `ShortcutDef.scope`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ShortcutScope {
+pub enum ShortcutScope {
     Global,
     Editor,
     Table,
@@ -38,19 +38,19 @@ pub(crate) enum ShortcutScope {
 
 /// `ShortcutDef`: one registered shortcut.
 #[derive(Clone)]
-pub(crate) struct ShortcutDef {
+pub struct ShortcutDef {
     /// The key spec: `mod+shift+alt+key`, e.g. `"mod+k"`,
     /// `"shift+enter"`, `"escape"`.
-    pub(crate) key: String,
-    pub(crate) scope: ShortcutScope,
-    pub(crate) action: Rc<dyn Fn()>,
-    pub(crate) description: String,
+    pub key: String,
+    pub scope: ShortcutScope,
+    pub action: Rc<dyn Fn()>,
+    pub description: String,
 }
 
 impl ShortcutDef {
     /// `ShortcutDef` with a no-op action (tests and declarative
     /// registries).
-    pub(crate) fn new(key: &str, scope: ShortcutScope, description: &str) -> Self {
+    pub fn new(key: &str, scope: ShortcutScope, description: &str) -> Self {
         Self {
             key: key.to_owned(),
             scope,
@@ -62,19 +62,19 @@ impl ShortcutDef {
 
 /// The keydown event as the resolver reads it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ShortcutEvent {
+pub struct ShortcutEvent {
     /// `e.metaKey || e.ctrlKey`.
-    pub(crate) mod_: bool,
-    pub(crate) shift: bool,
-    pub(crate) alt: bool,
+    pub mod_: bool,
+    pub shift: bool,
+    pub alt: bool,
     /// `e.key.toLowerCase()`.
-    pub(crate) key: String,
+    pub key: String,
     /// The target is an input, a textarea, or contenteditable.
-    pub(crate) in_field: bool,
+    pub in_field: bool,
 }
 
 /// `matchShortcut(def, ctx)`: whether the spec matches the event.
-pub(crate) fn match_shortcut(def: &str, ctx: &ShortcutEvent) -> bool {
+pub fn match_shortcut(def: &str, ctx: &ShortcutEvent) -> bool {
     let mut needs_mod = false;
     let mut needs_shift = false;
     let mut needs_alt = false;
@@ -109,7 +109,7 @@ pub(crate) fn match_shortcut(def: &str, ctx: &ShortcutEvent) -> bool {
 /// The handler: the first shortcut that passes its scope gate and
 /// matches fires (the host preventDefaults and calls the action);
 /// `None` means the event is not the registry's.
-pub(crate) fn resolve_shortcut(
+pub fn resolve_shortcut(
     shortcuts: &[ShortcutDef],
     event: &ShortcutEvent,
 ) -> Option<Rc<dyn Fn()>> {

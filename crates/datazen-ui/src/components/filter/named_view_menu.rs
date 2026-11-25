@@ -37,7 +37,7 @@ use super::filter_operators::filter_operator_meta;
 /// React `MenuState`.
 #[allow(dead_code)] // VM surface; consumer: the filter table view (not landed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MenuState {
+pub enum MenuState {
     Idle,
     Loading,
     List,
@@ -48,7 +48,7 @@ pub(crate) enum MenuState {
 
 #[allow(dead_code)] // matches React's `data-state`; delete with the host view.
 impl MenuState {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             MenuState::Idle => "idle",
             MenuState::Loading => "loading",
@@ -59,7 +59,7 @@ impl MenuState {
         }
     }
 
-    pub(crate) fn is_open(self) -> bool {
+    pub fn is_open(self) -> bool {
         self != MenuState::Idle
     }
 }
@@ -67,7 +67,7 @@ impl MenuState {
 /// React `NamedViewScope`.
 #[allow(dead_code)] // DTO stand-in; delete when the backend-client DTO lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct NamedViewScope {
+pub struct NamedViewScope {
     pub connection_id: String,
     pub database: Option<String>,
     pub schema: Option<String>,
@@ -78,28 +78,28 @@ pub(crate) struct NamedViewScope {
 /// know the host's operator union, per `namedViews.ts`).
 #[allow(dead_code)] // DTO stand-in; delete when the backend-client DTO lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ViewFilter {
+pub struct ViewFilter {
     pub column: String,
     pub operator: String,
 }
 
 #[allow(dead_code)] // DTO stand-in; delete when the backend-client DTO lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ViewSort {
+pub struct ViewSort {
     pub column: String,
     pub descending: bool,
 }
 
 #[allow(dead_code)] // DTO stand-in; delete when the backend-client DTO lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FilterLogic {
+pub enum FilterLogic {
     And,
     Or,
 }
 
 #[allow(dead_code)] // matches React's logic strings; delete with the DTO.
 impl FilterLogic {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             FilterLogic::And => "and",
             FilterLogic::Or => "or",
@@ -110,7 +110,7 @@ impl FilterLogic {
 /// React `NamedView` (the fields the menu reads/writes).
 #[allow(dead_code)] // DTO stand-in; delete when the backend-client DTO lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct NamedView {
+pub struct NamedView {
     pub id: String,
     pub name: String,
     pub scope: NamedViewScope,
@@ -124,7 +124,7 @@ pub(crate) struct NamedView {
 /// The applied (and optionally draft) table state a view is taken from.
 #[allow(dead_code)] // VM surface; delete with the host view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ViewState {
+pub struct ViewState {
     pub filters: Vec<ViewFilter>,
     pub filter_logic: FilterLogic,
     pub sorts: Vec<ViewSort>,
@@ -134,7 +134,7 @@ pub(crate) struct ViewState {
 /// The complete observable state of the menu.
 #[allow(dead_code)] // VM surface; delete with the host view.
 #[derive(Clone, Debug)]
-pub(crate) struct NamedViewVm {
+pub struct NamedViewVm {
     pub state: MenuState,
     pub scope: NamedViewScope,
     pub views: Vec<NamedView>,
@@ -153,23 +153,23 @@ pub(crate) struct NamedViewVm {
 
 /// Trim a name and collapse every run of whitespace into one space.
 #[allow(dead_code)] // helper; delete when namedViews.ts is ported.
-pub(crate) fn normalize_view_name(name: &str) -> String {
+pub fn normalize_view_name(name: &str) -> String {
     name.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[allow(dead_code)] // helper; delete when namedViews.ts is ported.
-pub(crate) fn normalized_name_key(name: &str) -> String {
+pub fn normalized_name_key(name: &str) -> String {
     normalize_view_name(name).to_lowercase()
 }
 
 #[allow(dead_code)] // helper; delete when namedViews.ts is ported.
-pub(crate) fn view_names_equal(left: &str, right: &str) -> bool {
+pub fn view_names_equal(left: &str, right: &str) -> bool {
     normalized_name_key(left) == normalized_name_key(right)
 }
 
 /// The tagged, collision-free identity of a scope.
 #[allow(dead_code)] // helper; delete when namedViews.ts is ported.
-pub(crate) fn scope_key(scope: &NamedViewScope) -> String {
+pub fn scope_key(scope: &NamedViewScope) -> String {
     let part = |value: &Option<String>| match value {
         None => "n:".to_owned(),
         Some(text) => format!("s:{text}"),
@@ -185,7 +185,7 @@ pub(crate) fn scope_key(scope: &NamedViewScope) -> String {
 
 /// Default view first, then by normalized name, raw name and id.
 #[allow(dead_code)] // helper; delete when namedViews.ts is ported.
-pub(crate) fn sort_named_views(views: &[NamedView]) -> Vec<NamedView> {
+pub fn sort_named_views(views: &[NamedView]) -> Vec<NamedView> {
     let mut sorted = views.to_vec();
     sorted.sort_by(|a, b| {
         if a.is_default != b.is_default {
@@ -210,7 +210,7 @@ fn contains_name(taken: &[String], name: &str) -> bool {
 
 /// `"Users"`, `"Users (2)"`, … for a name an import must not duplicate.
 #[allow(dead_code)] // helper; delete when namedViews.ts is ported.
-pub(crate) fn resolve_import_name(name: &str, taken: &[String]) -> String {
+pub fn resolve_import_name(name: &str, taken: &[String]) -> String {
     let base = normalize_view_name(name);
     if base.is_empty() || !contains_name(taken, &base) {
         return base;
@@ -226,12 +226,12 @@ pub(crate) fn resolve_import_name(name: &str, taken: &[String]) -> String {
 
 /// What reading a view's filters found.
 #[allow(dead_code)] // helper; delete when namedViews.ts is ported.
-pub(crate) struct FilterReadout {
+pub struct FilterReadout {
     pub unknown_operators: Vec<String>,
 }
 
 #[allow(dead_code)] // helper; delete when namedViews.ts is ported.
-pub(crate) fn read_view_filters(filters: &[ViewFilter]) -> FilterReadout {
+pub fn read_view_filters(filters: &[ViewFilter]) -> FilterReadout {
     let mut unknown = Vec::new();
     for condition in filters {
         if filter_operator_meta(&condition.operator).is_none() && !unknown.contains(&condition.operator) {
@@ -245,7 +245,7 @@ pub(crate) fn read_view_filters(filters: &[ViewFilter]) -> FilterReadout {
 
 /// A view of this state — a new view carries an empty id for the host to mint.
 #[allow(dead_code)] // helper; delete when namedViews.ts is ported.
-pub(crate) fn view_from_state(
+pub fn view_from_state(
     scope: &NamedViewScope,
     state: &ViewState,
     name: &str,
@@ -284,7 +284,7 @@ fn replace_in_list(views: &mut Vec<NamedView>, saved: &NamedView) {
 /// What the menu asks its host to do. No command is performed by the widget.
 #[allow(dead_code)] // VM surface; consumer: the host toolbar (not landed).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum NamedViewEffect {
+pub enum NamedViewEffect {
     List(NamedViewScope),
     Save(NamedView),
     Remove(String),
@@ -305,7 +305,7 @@ pub(crate) enum NamedViewEffect {
 /// A user intent. The view binds these to kit presses and field keys.
 #[allow(dead_code)] // VM surface; consumer: the host toolbar (not landed).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum NamedViewAction {
+pub enum NamedViewAction {
     Trigger,
     Retry,
     SaveAs,
@@ -346,7 +346,7 @@ fn is_name_taken(vm: &NamedViewVm, name: &str) -> bool {
 /// Apply one action. Returns the effects the host must perform; the VM already
 /// holds every synchronous transition so the next frame paints the new state.
 #[allow(dead_code)] // state machine; consumer: the host toolbar (not landed).
-pub(crate) fn step(vm: &mut NamedViewVm, action: NamedViewAction) -> Vec<NamedViewEffect> {
+pub fn step(vm: &mut NamedViewVm, action: NamedViewAction) -> Vec<NamedViewEffect> {
     match action {
         NamedViewAction::Trigger => {
             if vm.state.is_open() {
@@ -517,14 +517,14 @@ fn close(vm: &mut NamedViewVm) {
 
 /// The list command answered.
 #[allow(dead_code)] // host result hook; delete with the host view.
-pub(crate) fn on_list(vm: &mut NamedViewVm, views: Vec<NamedView>) {
+pub fn on_list(vm: &mut NamedViewVm, views: Vec<NamedView>) {
     vm.views = sort_named_views(&views);
     vm.state = MenuState::List;
 }
 
 /// A save command answered.
 #[allow(dead_code)] // host result hook; delete with the host view.
-pub(crate) fn on_save(vm: &mut NamedViewVm, saved: NamedView) {
+pub fn on_save(vm: &mut NamedViewVm, saved: NamedView) {
     replace_in_list(&mut vm.views, &saved);
     vm.state = MenuState::List;
     vm.error.clear();
@@ -532,14 +532,14 @@ pub(crate) fn on_save(vm: &mut NamedViewVm, saved: NamedView) {
 
 /// A remove command answered.
 #[allow(dead_code)] // host result hook; delete with the host view.
-pub(crate) fn on_remove(vm: &mut NamedViewVm, remaining: Vec<NamedView>) {
+pub fn on_remove(vm: &mut NamedViewVm, remaining: Vec<NamedView>) {
     vm.views = sort_named_views(&remaining);
     vm.state = MenuState::List;
 }
 
 /// A command failed.
 #[allow(dead_code)] // host result hook; delete with the host view.
-pub(crate) fn on_error(vm: &mut NamedViewVm, message: String) {
+pub fn on_error(vm: &mut NamedViewVm, message: String) {
     let classified = if message.contains("grid.view.nameExists") {
         t("filter.view.errorNameExists").to_owned()
     } else {
@@ -551,7 +551,7 @@ pub(crate) fn on_error(vm: &mut NamedViewVm, message: String) {
 
 /// An import file was read: dedupe names and report what the host must save.
 #[allow(dead_code)] // host result hook; delete with the host view.
-pub(crate) fn on_import(vm: &mut NamedViewVm, incoming: Vec<NamedView>) -> Vec<NamedViewEffect> {
+pub fn on_import(vm: &mut NamedViewVm, incoming: Vec<NamedView>) -> Vec<NamedViewEffect> {
     let mut taken: Vec<String> = scoped(vm).into_iter().map(|view| view.name).collect();
     let mut effects = Vec::new();
     let mut imported = 0usize;
@@ -586,7 +586,7 @@ pub(crate) fn on_import(vm: &mut NamedViewVm, incoming: Vec<NamedView>) -> Vec<N
 
 mod view;
 
-pub(crate) use view::NamedViewMenu;
+pub use view::NamedViewMenu;
 
 // Leftover L1 (removal stage): when the filter table view mounts this menu,
 // keep the VM in its state slice, bind the two text accessors and translate the

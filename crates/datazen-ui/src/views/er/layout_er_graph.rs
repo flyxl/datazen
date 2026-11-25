@@ -36,29 +36,29 @@ use crate::views::er::graph::{ErEdge, ErNode, ErPosition};
 use crate::views::er::layout_layers::{grid_centres, layered_centres};
 
 /// Gap between nodes in the same rank.
-pub(crate) const NODE_SEP: f32 = 40.0;
+pub const NODE_SEP: f32 = 40.0;
 /// Gap between ranks — the band each layer occupies.
-pub(crate) const RANK_SEP: f32 = 110.0;
+pub const RANK_SEP: f32 = 110.0;
 /// Gap between edges sharing a rank span.
 ///
 /// The React source hands this to dagre's edge routing; the Rune canvas draws
 /// its own edge paths between node handles, so the engine reserves no route
 /// space — the constant documents the shared configuration.
-pub(crate) const EDGE_SEP: f32 = 20.0;
+pub const EDGE_SEP: f32 = 20.0;
 /// Padding around the whole graph, so nothing sits on the canvas edge.
-pub(crate) const ER_LAYOUT_MARGIN: f32 = 24.0;
+pub const ER_LAYOUT_MARGIN: f32 = 24.0;
 
 /// `LR` (default) puts referenced tables to the right; `TB` puts them below.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ErLayoutDirection {
+pub enum ErLayoutDirection {
     LR,
     TB,
 }
 
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ErLayoutOptions {
+pub struct ErLayoutOptions {
     pub direction: Option<ErLayoutDirection>,
 }
 
@@ -74,7 +74,7 @@ pub(crate) struct ErLayoutOptions {
 /// being dropped or stacked at the origin. A node the engine could not place
 /// keeps the position it arrived with.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
-pub(crate) fn layout_er_graph(
+pub fn layout_er_graph(
     nodes: &[ErNode],
     edges: &[ErEdge],
     options: ErLayoutOptions,
@@ -108,12 +108,12 @@ pub(crate) fn layout_er_graph(
 
 /// [`layout_er_graph`] with the default left-to-right direction.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
-pub(crate) fn layout_er_graph_default(nodes: &[ErNode], edges: &[ErEdge]) -> Vec<ErNode> {
+pub fn layout_er_graph_default(nodes: &[ErNode], edges: &[ErEdge]) -> Vec<ErNode> {
     layout_er_graph(nodes, edges, ErLayoutOptions::default())
 }
 
 /// React's `ErPosition` helper for tests and hosts: whole-point corners.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
-pub(crate) fn corner_of(node: &ErNode) -> ErPosition {
+pub fn corner_of(node: &ErNode) -> ErPosition {
     node.position
 }

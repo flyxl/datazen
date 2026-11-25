@@ -13,7 +13,7 @@ use crate::i18n::t;
 use crate::ui::confirm_dialog::ConfirmKind;
 
 /// `confirmOptionsFor` (the cell-paste dialog).
-pub(crate) fn cell_paste_confirm_options(
+pub fn cell_paste_confirm_options(
     env: &GridClipboardEnv<'_>,
     plan: &PastePlan,
 ) -> ConfirmOptionsVm {
@@ -76,7 +76,7 @@ pub(crate) fn cell_paste_confirm_options(
 
 /// The "paste rows" cross-table dialog (built inline in React's
 /// `pasteRowsAsDrafts`): the column-mapping summary first (PRD 5.1).
-pub(crate) fn rows_paste_confirm_options(
+pub fn rows_paste_confirm_options(
     env: &GridClipboardEnv<'_>,
     payload: &RowCopyPayload,
     matched_source: &[&str],

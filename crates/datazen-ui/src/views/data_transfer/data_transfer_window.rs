@@ -116,7 +116,7 @@ use crate::views::data_transfer::data_transfer_window_state::{
 /// the host owns these next to the Vm and keeps the two in sync (see
 /// the Backup window's module docs — the same contract).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataTransferWindowEdits {
+pub struct DataTransferWindowEdits {
     pub profile_name: TextEdit,
     pub batch_size: TextEdit,
     pub sql_file_database: TextEdit,
@@ -125,7 +125,7 @@ pub(crate) struct DataTransferWindowEdits {
 
 impl DataTransferWindowEdits {
     /// Fresh edits from the Vm's current text.
-    pub(crate) fn new(vm: &DataTransferWindowVm) -> Self {
+    pub fn new(vm: &DataTransferWindowVm) -> Self {
         Self {
             profile_name: TextEdit::new(vm.profile_name.clone()),
             batch_size: TextEdit::new(vm.batch_size_edit.clone()),
@@ -136,7 +136,7 @@ impl DataTransferWindowEdits {
 
     /// Copy the edits' current text into the Vm. The host calls this
     /// before reading a Vm text field.
-    pub(crate) fn sync_into_vm(&self, vm: &mut DataTransferWindowVm) {
+    pub fn sync_into_vm(&self, vm: &mut DataTransferWindowVm) {
         vm.profile_name = self.profile_name.text.clone();
         vm.batch_size_edit = self.batch_size.text.clone();
         vm.sql_file_database = self.sql_file_database.text.clone();
@@ -145,7 +145,7 @@ impl DataTransferWindowEdits {
 
     /// Copy the Vm's current text into the edits. The host calls this
     /// after a host-driven reset of a Vm text field.
-    pub(crate) fn reset_from_vm(&mut self, vm: &DataTransferWindowVm) {
+    pub fn reset_from_vm(&mut self, vm: &DataTransferWindowVm) {
         self.profile_name.replace_text(vm.profile_name.clone());
         self.batch_size.replace_text(vm.batch_size_edit.clone());
         self.sql_file_database.replace_text(vm.sql_file_database.clone());
@@ -161,7 +161,7 @@ impl DataTransferWindowEdits {
 /// renders: the job-center strips' input, fed by the host (the hook is
 /// segment-2's T564).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct MigrationJobsHydration {
+pub struct MigrationJobsHydration {
     /// React `migrationJobs.hydration?.activeJobs ?? []`.
     pub active_jobs: Vec<AttachedJob>,
     /// React `migrationJobs.hydration?.jobs ?? []`.
@@ -179,7 +179,7 @@ pub(crate) struct MigrationJobsHydration {
 
 /// The Data Transfer window. `S` is the host state that owns the Vm,
 /// the edits, and the async middle; every press calls back into it.
-pub(crate) struct DataTransferWindow<'a, S: 'static> {
+pub struct DataTransferWindow<'a, S: 'static> {
     vm: DataTransferWindowVm,
     edits: &'a DataTransferWindowEdits,
     dark: bool,
@@ -221,7 +221,7 @@ fn no_op_unit<S: 'static>() -> Rc<dyn Fn(&mut S)> {
 }
 
 impl<'a, S: 'static> DataTransferWindow<'a, S> {
-    pub(crate) fn new(vm: DataTransferWindowVm, edits: &'a DataTransferWindowEdits) -> Self {
+    pub fn new(vm: DataTransferWindowVm, edits: &'a DataTransferWindowEdits) -> Self {
         Self {
             vm,
             edits,
@@ -254,105 +254,105 @@ impl<'a, S: 'static> DataTransferWindow<'a, S> {
 
     /// React `jobRun.applyView?.jobId` (React 1097, 1101) and the
     /// terminal strip's `hide={jobRun.phase !== 'idle'}` (React 1104).
-    pub(crate) fn run_view(mut self, exclude_job_id: Option<String>, terminal_hide: bool) -> Self {
+    pub fn run_view(mut self, exclude_job_id: Option<String>, terminal_hide: bool) -> Self {
         self.exclude_job_id = exclude_job_id;
         self.terminal_hide = terminal_hide;
         self
     }
 
     /// The job-center strips' input (React 1085-1105).
-    pub(crate) fn hydration(mut self, hydration: MigrationJobsHydration) -> Self {
+    pub fn hydration(mut self, hydration: MigrationJobsHydration) -> Self {
         self.hydration = hydration;
         self
     }
 
     /// React `saveCurrentProfile` (the profile save button).
-    pub(crate) fn on_profile_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_profile_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_profile_save = Some(Rc::new(f));
         self
     }
 
     /// React `loadSelectedProfile` (the profile load button).
-    pub(crate) fn on_profile_load(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_profile_load(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_profile_load = Some(Rc::new(f));
         self
     }
 
     /// React `setDestinationMode('database')` (React 1196).
-    pub(crate) fn on_destination_database(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_destination_database(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_destination_database = Some(Rc::new(f));
         self
     }
 
     /// React `chooseSqlFile` (the save dialog round trip).
-    pub(crate) fn on_choose_sql_file(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_choose_sql_file(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_choose_sql_file = Some(Rc::new(f));
         self
     }
 
     /// React `goNext` (the footer's Next).
-    pub(crate) fn on_next(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_next(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_next = Some(Rc::new(f));
         self
     }
 
     /// React `goBack` (the footer's Back).
-    pub(crate) fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_back = Some(Rc::new(f));
         self
     }
 
     /// React `handleExecuteClick` (the Execute button).
-    pub(crate) fn on_execute(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_execute(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_execute = Some(Rc::new(f));
         self
     }
 
     /// React `handleCancel` (the Cancel button).
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
 
     /// React `handleReReviewPlan` (the result step's re-review).
-    pub(crate) fn on_re_review(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_re_review(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_re_review = Some(Rc::new(f));
         self
     }
 
     /// React `runPreview({ quiet: true })` from the error card (React 1591).
-    pub(crate) fn on_retry_preview(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_retry_preview(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_retry_preview = Some(Rc::new(f));
         self
     }
 
     /// React `runInspect` from the empty state (React 1530).
-    pub(crate) fn on_reinspect(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_reinspect(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_reinspect = Some(Rc::new(f));
         self
     }
 
     /// React `navigator.clipboard.writeText(ddlValue)` (React 1659): the
     /// host copies the DDL value for the named table.
-    pub(crate) fn on_copy_ddl(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_copy_ddl(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_copy_ddl = Some(Rc::new(f));
         self
     }
 
     /// React `setLimitationsOpen(false)` (React 1865).
-    pub(crate) fn on_dismiss_limitations(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss_limitations(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_dismiss_limitations = Some(Rc::new(f));
         self
     }
 
     /// React `setExecuteConfirmOpen(false)` (React 1877).
-    pub(crate) fn on_dismiss_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_dismiss_confirm = Some(Rc::new(f));
         self
     }
 
     /// React `setErrorOpen(false)` (React 1883, 1886).
-    pub(crate) fn on_dismiss_error(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss_error(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_dismiss_error = Some(Rc::new(f));
         self
     }
@@ -361,7 +361,7 @@ impl<'a, S: 'static> DataTransferWindow<'a, S> {
     /// `TextEdit`, so the host hands the builder the accessor to its
     /// edit). Must be wired for the field to take focus, as the Backup
     /// window's fields.
-    pub(crate) fn on_profile_name_edit(
+    pub fn on_profile_name_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -370,7 +370,7 @@ impl<'a, S: 'static> DataTransferWindow<'a, S> {
     }
 
     /// The batch-size field's edit binding.
-    pub(crate) fn on_batch_size_edit(
+    pub fn on_batch_size_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -379,7 +379,7 @@ impl<'a, S: 'static> DataTransferWindow<'a, S> {
     }
 
     /// The SQL-file target-database field's edit binding.
-    pub(crate) fn on_sql_file_database_edit(
+    pub fn on_sql_file_database_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -388,7 +388,7 @@ impl<'a, S: 'static> DataTransferWindow<'a, S> {
     }
 
     /// The SQL-file target-schema field's edit binding.
-    pub(crate) fn on_sql_file_schema_edit(
+    pub fn on_sql_file_schema_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -400,14 +400,14 @@ impl<'a, S: 'static> DataTransferWindow<'a, S> {
     /// attached-jobs strip reads the host state through its adapters, so
     /// the build takes it (unlike the Backup window, whose strips have no
     /// state adapters yet).
-    pub(crate) fn build(self, s: &S, dark: bool) -> El {
+    pub fn build(self, s: &S, dark: bool) -> El {
         let (root, layer) = self.build_inner(s, dark);
         rune_kit::root(root, layer)
     }
 
     /// The same window without its kit root: the window element plus
     /// the overlay layer (the error dialog; the seams' dialogs).
-    pub(crate) fn build_inner(mut self, s: &S, dark: bool) -> (El, Vec<El>) {
+    pub fn build_inner(mut self, s: &S, dark: bool) -> (El, Vec<El>) {
         self.dark = dark;
         let k = kit(dark);
         let vm = self.view_vm();

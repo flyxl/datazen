@@ -31,7 +31,7 @@
 /// key landed inside an editor — an input, textarea, select,
 /// contenteditable or the grid's open cell editor).
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct FkKeyContext {
+pub struct FkKeyContext {
     /// `isComposingEvent` (the IME composition, keyCode 229 included).
     pub composing: bool,
     /// `isEditableTarget` (the key landed in an editor).
@@ -46,14 +46,14 @@ pub(crate) struct FkKeyContext {
 
 /// The two arrows the navigation claims.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FkArrow {
+pub enum FkArrow {
     Left,
     Right,
 }
 
 /// What the handler decided.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FkNavigationShortcut {
+pub enum FkNavigationShortcut {
     /// Consume the key (the React `preventDefault`) and go back one
     /// jump.
     Back,
@@ -68,7 +68,7 @@ pub(crate) enum FkNavigationShortcut {
 /// gates whole (a tab that was never reached by a jump has no stack);
 /// the composition and editable guards own their keys; the chord is
 /// mod+alt+Left/Right.
-pub(crate) fn decide_fk_navigation_shortcut(
+pub fn decide_fk_navigation_shortcut(
     enabled: bool,
     context: &FkKeyContext,
 ) -> FkNavigationShortcut {

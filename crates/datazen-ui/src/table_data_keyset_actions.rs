@@ -48,7 +48,7 @@ use crate::table_data_connection_state::KeysetPagingState;
 /// strategy, the order and the drift flags survive — the back end
 /// re-decides them on the next answer; only the boundaries and the
 /// next-page boundary drop.
-pub(crate) fn invalidated_keyset(state: &KeysetPagingState) -> KeysetPagingState {
+pub fn invalidated_keyset(state: &KeysetPagingState) -> KeysetPagingState {
     // React's spread `{...state, stack: [], anchorPage: 0, nextAfterKey: null}`.
     let mut next = state.clone();
     next.stack = Vec::new();

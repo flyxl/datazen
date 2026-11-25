@@ -14,7 +14,7 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
 /// React `newId`: an id prefixed `conn_`.
 #[allow(dead_code)] // shared helper; consumers are the connection dialogs.
-pub(crate) fn new_id() -> String {
+pub fn new_id() -> String {
     let n = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     format!("conn_{n:08x}")
 }
@@ -22,11 +22,11 @@ pub(crate) fn new_id() -> String {
 /// React `COLOR_KEYS` — the tag value (hex data) and its exact i18n key.
 /// Reuses T103's `COLOR_TAGS` so there is a single definition.
 #[allow(unused_imports)] // shared data; consumed by the connection dialogs.
-pub(crate) use super::connection_advanced_settings::COLOR_TAGS as COLOR_KEYS;
+pub use super::connection_advanced_settings::COLOR_TAGS as COLOR_KEYS;
 
 /// React's `Label` re-export from `@datazen/ui`.
 #[allow(unused_imports)] // shared primitive; consumed by the connection dialogs.
-pub(crate) use crate::ui::label::Label;
+pub use crate::ui::label::Label;
 
 // Leftover L1 (removal stage): when a Rust `newId` service exists (the host's
 // id generator) drop the local counter; when `shared.tsx` is fully ported keep

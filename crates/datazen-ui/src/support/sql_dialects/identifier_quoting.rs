@@ -30,7 +30,7 @@ use super::dialect_profile::{FoldCase, QuoteStyle, SqlDialectProfile};
 /// React `SQL_RESERVED_IDENTIFIER_KEYWORDS` — the reserved words that
 /// force quoting, in the React file's (alphabetical) order so the
 /// `binary_search` membership test stays honest (a test pins sortedness).
-pub(crate) const SQL_RESERVED_IDENTIFIER_KEYWORDS: &[&str] = &[
+pub const SQL_RESERVED_IDENTIFIER_KEYWORDS: &[&str] = &[
     "all",
     "analyse",
     "analyze",
@@ -142,13 +142,13 @@ pub(crate) const SQL_RESERVED_IDENTIFIER_KEYWORDS: &[&str] = &[
 ];
 
 /// Membership in the reserved-keyword table (`Set.has`).
-pub(crate) fn is_reserved_keyword(word: &str) -> bool {
+pub fn is_reserved_keyword(word: &str) -> bool {
     SQL_RESERVED_IDENTIFIER_KEYWORDS.binary_search(&word).is_ok()
 }
 
 /// React `foldIdentifier`: fold an unquoted identifier the way the
 /// dialect does (`lower` / `upper` / preserve).
-pub(crate) fn fold_identifier(value: &str, fold_case: FoldCase) -> String {
+pub fn fold_identifier(value: &str, fold_case: FoldCase) -> String {
     match fold_case {
         FoldCase::Lower => value.to_lowercase(),
         FoldCase::Upper => value.to_uppercase(),
@@ -169,7 +169,7 @@ fn is_plain_identifier(value: &str) -> bool {
 /// React `needsQuoting`: whether the identifier must be quoted for the
 /// dialect — empty, non-plain spellings, reserved words (the shared table
 /// plus the dialect's extras), and case that folding would change.
-pub(crate) fn needs_quoting(
+pub fn needs_quoting(
     value: &str,
     quote_style: QuoteStyle,
     fold_case: FoldCase,
@@ -213,7 +213,7 @@ fn escape_for_quote(value: &str, style: QuoteStyle) -> String {
 }
 
 /// React `wrapQuoted`: the identifier wrapped in the style's delimiters.
-pub(crate) fn wrap_quoted(value: &str, style: QuoteStyle) -> String {
+pub fn wrap_quoted(value: &str, style: QuoteStyle) -> String {
     let escaped = escape_for_quote(value, style);
     match style {
         QuoteStyle::Double => format!("\"{escaped}\""),
@@ -225,14 +225,14 @@ pub(crate) fn wrap_quoted(value: &str, style: QuoteStyle) -> String {
 
 /// React `quoteIdentifierForDialect`: quote an identifier for a dialect,
 /// honouring `quoteStyle: 'none'` (the passthrough).
-pub(crate) fn quote_identifier_for_dialect(value: &str, profile: &SqlDialectProfile) -> String {
+pub fn quote_identifier_for_dialect(value: &str, profile: &SqlDialectProfile) -> String {
     if profile.quote_style == QuoteStyle::None {
         return value.to_owned();
     }
     wrap_quoted(value, profile.quote_style)
 }
 
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     #[test]

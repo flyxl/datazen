@@ -113,15 +113,15 @@ const OVERLAY_MIN_H: f32 = 112.0;
 
 /// React `PagingHint` inputs the pager needs; one optional block.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct PagingInputs {
-    pub(crate) page: usize,
-    pub(crate) page_size: usize,
-    pub(crate) total_rows: u64,
-    pub(crate) kind: TotalRowsKind,
-    pub(crate) counting: bool,
-    pub(crate) unstable_paging: bool,
-    pub(crate) estimate_unavailable: bool,
-    pub(crate) hint: Option<PagingHint>,
+pub struct PagingInputs {
+    pub page: usize,
+    pub page_size: usize,
+    pub total_rows: u64,
+    pub kind: TotalRowsKind,
+    pub counting: bool,
+    pub unstable_paging: bool,
+    pub estimate_unavailable: bool,
+    pub hint: Option<PagingHint>,
 }
 
 impl Default for PagingInputs {
@@ -146,7 +146,7 @@ type HostFn<S, T> = Rc<dyn Fn(&mut S) -> &mut T>;
 /// the production caller wires the contract pairs (the selection pair, the
 /// filter-editor six, the pager four) or the matching block stays unmounted,
 /// exactly as React's ternaries drop it.
-pub(crate) struct DataTable<'a, S: 'static> {
+pub struct DataTable<'a, S: 'static> {
     key: String,
     columns: Vec<Column>,
     rows: &'a [Vec<Value>],
@@ -234,7 +234,7 @@ pub(crate) struct DataTable<'a, S: 'static> {
 impl<'a, S: 'static> DataTable<'a, S> {
     /// The shell over the grid's columns and rows. Every other input is a
     /// builder setter, so a probe can mount any gating branch.
-    pub(crate) fn new(columns: Vec<Column>, rows: &'a [Vec<Value>]) -> DataTable<'a, S> {
+    pub fn new(columns: Vec<Column>, rows: &'a [Vec<Value>]) -> DataTable<'a, S> {
         DataTable {
             key: ROOT_KEY.to_owned(),
             columns,
@@ -303,32 +303,32 @@ impl<'a, S: 'static> DataTable<'a, S> {
         }
     }
 
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
 
     /// React `loading` — the spinner overlay and the panels' busy state.
-    pub(crate) fn loading(mut self, loading: bool) -> Self {
+    pub fn loading(mut self, loading: bool) -> Self {
         self.loading = loading;
         self
     }
 
     /// React `rowHeight` (default `DATA_TABLE_ROW_HEIGHT`).
-    pub(crate) fn row_height(mut self, height: f32) -> Self {
+    pub fn row_height(mut self, height: f32) -> Self {
         self.row_height = height;
         self
     }
 
     /// React `gridSelection` — one half of the cell-selection contract.
-    pub(crate) fn grid_selection(mut self, selection: GridSelection) -> Self {
+    pub fn grid_selection(mut self, selection: GridSelection) -> Self {
         self.grid_selection = Some(selection);
         self
     }
 
     /// React `onGridSelectionChange` — the other half; the contract is on
     /// exactly when both halves are present (01-selection §3.8).
-    pub(crate) fn on_grid_selection_change(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_grid_selection_change(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_grid_selection_change = true;
         let _ = f; // the write-back wiring lands with the body (T396)
         self
@@ -336,136 +336,136 @@ impl<'a, S: 'static> DataTable<'a, S> {
 
     /// Mark the write-back half present without a closure (probes pin the
     /// gating without a live callback).
-    pub(crate) fn cell_selection_contract(mut self, on: bool) -> Self {
+    pub fn cell_selection_contract(mut self, on: bool) -> Self {
         self.on_grid_selection_change = on;
         self
     }
 
-    pub(crate) fn keyboard_navigation(mut self, on: bool) -> Self {
+    pub fn keyboard_navigation(mut self, on: bool) -> Self {
         self.keyboard_navigation = on;
         self
     }
 
     /// React `selectedRows` — the row-mode set (only its size and its
     /// indices' sort reach the DOM).
-    pub(crate) fn selected_rows(mut self, rows: impl IntoIterator<Item = usize>) -> Self {
+    pub fn selected_rows(mut self, rows: impl IntoIterator<Item = usize>) -> Self {
         self.selected_rows = rows.into_iter().collect();
         self
     }
 
-    pub(crate) fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_all = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_row_select(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_row_select(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_row_select = Some(Rc::new(f));
         self
     }
 
     /// React `onDeleteRows` — the whole-row delete, from the toolbar button
     /// or the Delete key.
-    pub(crate) fn on_delete_rows(mut self, f: impl Fn(&mut S, Vec<usize>) + 'static) -> Self {
+    pub fn on_delete_rows(mut self, f: impl Fn(&mut S, Vec<usize>) + 'static) -> Self {
         self.on_delete_rows = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn primary_key_columns(mut self, columns: Vec<String>) -> Self {
+    pub fn primary_key_columns(mut self, columns: Vec<String>) -> Self {
         self.primary_key_columns = columns;
         self
     }
 
-    pub(crate) fn sorts(mut self, sorts: Vec<SortCondition>) -> Self {
+    pub fn sorts(mut self, sorts: Vec<SortCondition>) -> Self {
         self.sorts = sorts;
         self
     }
 
-    pub(crate) fn on_sort(mut self, f: impl Fn(&mut S, &str, bool) + 'static) -> Self {
+    pub fn on_sort(mut self, f: impl Fn(&mut S, &str, bool) + 'static) -> Self {
         self.on_sort = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_remove_sort(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_remove_sort(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_remove_sort = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn column_widths(mut self, widths: Vec<f32>) -> Self {
+    pub fn column_widths(mut self, widths: Vec<f32>) -> Self {
         self.column_widths = widths;
         self
     }
 
-    pub(crate) fn frozen_columns(mut self, frozen: usize) -> Self {
+    pub fn frozen_columns(mut self, frozen: usize) -> Self {
         self.frozen_columns = frozen;
         self
     }
 
     /// React `showRowNumbers` — the gutter is the header's to paint (DB-17).
-    pub(crate) fn show_row_numbers(mut self, show: bool) -> Self {
+    pub fn show_row_numbers(mut self, show: bool) -> Self {
         self.show_row_numbers = show;
         self
     }
 
     /// React `headerActions` — the bar's right-side slot.
-    pub(crate) fn header_actions(mut self, slot: El) -> Self {
+    pub fn header_actions(mut self, slot: El) -> Self {
         self.header_actions = Some(slot);
         self
     }
 
     /// React `statusBar` — the strip between the bar and the surface.
-    pub(crate) fn status_bar(mut self, slot: El) -> Self {
+    pub fn status_bar(mut self, slot: El) -> Self {
         self.status_bar = Some(slot);
         self
     }
 
     /// React `emptyPlaceholder` — replaces the header, the body and the
     /// overlays wholesale.
-    pub(crate) fn empty_placeholder(mut self, slot: El) -> Self {
+    pub fn empty_placeholder(mut self, slot: El) -> Self {
         self.empty_placeholder = Some(slot);
         self
     }
 
     /// The `VirtualBody` slot (T396). Until it lands the grid renders the
     /// header, the overlays and the pagination around an empty body.
-    pub(crate) fn body(mut self, slot: El) -> Self {
+    pub fn body(mut self, slot: El) -> Self {
         self.body = Some(slot);
         self
     }
 
     /// React `filters` — the applied list both filter surfaces read.
-    pub(crate) fn filters(mut self, filters: &'a [FilterCondition]) -> Self {
+    pub fn filters(mut self, filters: &'a [FilterCondition]) -> Self {
         self.filters = Some(filters);
         self
     }
 
-    pub(crate) fn filter_logic(mut self, logic: FilterConnector) -> Self {
+    pub fn filter_logic(mut self, logic: FilterConnector) -> Self {
         self.filter_logic = logic;
         self
     }
 
     /// React `filterPanelOpen` (default `false`): the editor's panel is
     /// open; the collapsed summary renders otherwise.
-    pub(crate) fn filter_panel_open(mut self, open: bool) -> Self {
+    pub fn filter_panel_open(mut self, open: bool) -> Self {
         self.filter_panel_open = open;
         self
     }
 
-    pub(crate) fn on_remove_filter(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_remove_filter(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_remove_filter = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_clear_filters(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear_filters(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear_filters = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_add_filter(mut self, f: impl Fn(&mut S, FilterCondition) + 'static) -> Self {
+    pub fn on_add_filter(mut self, f: impl Fn(&mut S, FilterCondition) + 'static) -> Self {
         self.on_add_filter = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_update_filter(
+    pub fn on_update_filter(
         mut self,
         f: impl Fn(&mut S, usize, FilterCondition) + 'static,
     ) -> Self {
@@ -473,7 +473,7 @@ impl<'a, S: 'static> DataTable<'a, S> {
         self
     }
 
-    pub(crate) fn on_filter_logic_change(
+    pub fn on_filter_logic_change(
         mut self,
         f: impl Fn(&mut S, FilterConnector) + 'static,
     ) -> Self {
@@ -481,12 +481,12 @@ impl<'a, S: 'static> DataTable<'a, S> {
         self
     }
 
-    pub(crate) fn on_apply_filters(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_apply_filters(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_apply_filters = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_filter_panel_open_change(
+    pub fn on_filter_panel_open_change(
         mut self,
         f: impl Fn(&mut S, bool) + 'static,
     ) -> Self {
@@ -496,7 +496,7 @@ impl<'a, S: 'static> DataTable<'a, S> {
 
     /// The editor's host state + accessor (the filter-table slot, §3.2 of
     /// the machine runbook).
-    pub(crate) fn filter_editor_host(
+    pub fn filter_editor_host(
         mut self,
         state: &'a FilterEditorState,
         host: impl Fn(&mut S) -> &mut FilterEditorState + 'static,
@@ -506,28 +506,28 @@ impl<'a, S: 'static> DataTable<'a, S> {
         self
     }
 
-    pub(crate) fn supported_operators(mut self, operators: &'a [&'static str]) -> Self {
+    pub fn supported_operators(mut self, operators: &'a [&'static str]) -> Self {
         self.supported_operators = Some(operators);
         self
     }
 
-    pub(crate) fn filter_mode(mut self, mode: FilterPanelMode) -> Self {
+    pub fn filter_mode(mut self, mode: FilterPanelMode) -> Self {
         self.filter_mode = Some(mode);
         self
     }
 
-    pub(crate) fn filter_raw_where_supported(mut self, supported: bool) -> Self {
+    pub fn filter_raw_where_supported(mut self, supported: bool) -> Self {
         self.filter_raw_where_supported = supported;
         self
     }
 
-    pub(crate) fn any_column(mut self, searchable: usize, skipped: usize) -> Self {
+    pub fn any_column(mut self, searchable: usize, skipped: usize) -> Self {
         self.any_column_searchable = searchable;
         self.any_column_skipped = skipped;
         self
     }
 
-    pub(crate) fn raw_where(
+    pub fn raw_where(
         mut self,
         applied: Option<&'a str>,
         context: Option<&'a str>,
@@ -537,7 +537,7 @@ impl<'a, S: 'static> DataTable<'a, S> {
         self
     }
 
-    pub(crate) fn on_filter_mode_change(
+    pub fn on_filter_mode_change(
         mut self,
         f: impl Fn(&mut S, FilterPanelMode) + 'static,
     ) -> Self {
@@ -545,7 +545,7 @@ impl<'a, S: 'static> DataTable<'a, S> {
         self
     }
 
-    pub(crate) fn on_any_column_value_change(
+    pub fn on_any_column_value_change(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -553,12 +553,12 @@ impl<'a, S: 'static> DataTable<'a, S> {
         self
     }
 
-    pub(crate) fn on_apply_any_column(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_apply_any_column(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_apply_any_column = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_raw_where_value_change(
+    pub fn on_raw_where_value_change(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -566,27 +566,27 @@ impl<'a, S: 'static> DataTable<'a, S> {
         self
     }
 
-    pub(crate) fn on_apply_raw_where(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_apply_raw_where(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_apply_raw_where = Some(Rc::new(f));
         self
     }
 
     /// React `onPreviewSql` — the filter panel's SQL button.
-    pub(crate) fn on_preview_sql(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_preview_sql(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_preview_sql = Some(Rc::new(f));
         self
     }
 
     /// React `onExportFiltered` — the panel's direct exit; the shell opens
     /// the export dialog with the filtered scope preselected (DB-15).
-    pub(crate) fn on_export_filtered(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export_filtered(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_export_filtered = Some(Rc::new(f));
         self
     }
 
     /// The shell state (React's `exportOpen` family + the dialog VM) and its
     /// host accessor; the export dialog mounts only when this is wired.
-    pub(crate) fn shell_state(
+    pub fn shell_state(
         mut self,
         state: &'a DataTableShellState,
         host: impl Fn(&mut S) -> &mut DataTableShellState + 'static,
@@ -596,33 +596,33 @@ impl<'a, S: 'static> DataTable<'a, S> {
         self
     }
 
-    pub(crate) fn export_table_name(mut self, name: Option<&'a str>) -> Self {
+    pub fn export_table_name(mut self, name: Option<&'a str>) -> Self {
         self.export_table_name = name;
         self
     }
 
-    pub(crate) fn export_capability(mut self, capability: DataExportCapability) -> Self {
+    pub fn export_capability(mut self, capability: DataExportCapability) -> Self {
         self.capability = capability;
         self
     }
 
     /// React `exportOpenSignal` — replayed into the shell state by the host
     /// before the frame; the setter only records the current counter.
-    pub(crate) fn export_signal(mut self, signal: u32) -> Self {
+    pub fn export_signal(mut self, signal: u32) -> Self {
         self.export_signal = Some(signal);
         self
     }
 
     /// React `onBuildFilteredExportSql` presence: the filtered scope is
     /// offered exactly when the builder exists (DB-15).
-    pub(crate) fn has_filtered_export_sql(mut self, has: bool) -> Self {
+    pub fn has_filtered_export_sql(mut self, has: bool) -> Self {
         self.has_filtered_export_sql = has;
         self
     }
 
     /// The column-presentation dialog's inputs; it mounts only when the
     /// state, the snapshot and the accessor are all wired (T09).
-    pub(crate) fn presentation_dialog(
+    pub fn presentation_dialog(
         mut self,
         state: &'a ColumnPresentationDialogState,
         snapshot: &'a ValuePresentationSnapshot,
@@ -636,7 +636,7 @@ impl<'a, S: 'static> DataTable<'a, S> {
 
     /// The presentation registry is optional the way React's injectable
     /// `presentationRegistry` is (T09); the default is the global one.
-    pub(crate) fn presentation_registry(
+    pub fn presentation_registry(
         mut self,
         registry: &'a crate::components::data_table::column_presentation_rules::ValuePresentationRegistry,
     ) -> Self {
@@ -644,28 +644,28 @@ impl<'a, S: 'static> DataTable<'a, S> {
         self
     }
 
-    pub(crate) fn paging(mut self, inputs: PagingInputs) -> Self {
+    pub fn paging(mut self, inputs: PagingInputs) -> Self {
         self.paging = Some(inputs);
         self
     }
 
-    pub(crate) fn on_page_change(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_page_change(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_page_change = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_page_size_change(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_page_size_change(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_page_size_change = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_count_exact(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_count_exact(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_count_exact = Some(Rc::new(f));
         self
     }
 
     /// React `editingCell != null` — the Delete key's first guard.
-    pub(crate) fn editing_cell(mut self, editing: bool) -> Self {
+    pub fn editing_cell(mut self, editing: bool) -> Self {
         self.editing_cell = editing;
         self
     }
@@ -673,7 +673,7 @@ impl<'a, S: 'static> DataTable<'a, S> {
     /// Builds the shell. `layer` receives the export and presentation
     /// dialogs while their state is on; the returned element is the bordered
     /// grid column.
-    pub(crate) fn build(self, _s: &S, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, _s: &S, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let rows = self.rows;
         let row_count = rows.len();

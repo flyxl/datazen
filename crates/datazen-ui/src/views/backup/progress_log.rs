@@ -84,7 +84,7 @@ use crate::icons::ICON_COPY;
 /// press calls back into. The host owns the lines and the
 /// [`super::progress_log_state::ProgressLogState`]; this value only
 /// borrows the lines for the build.
-pub(crate) struct ProgressLog<'a, S: 'static> {
+pub struct ProgressLog<'a, S: 'static> {
     lines: &'a [String],
     copied: bool,
     auto_scroll: bool,
@@ -94,7 +94,7 @@ pub(crate) struct ProgressLog<'a, S: 'static> {
 impl<'a, S: 'static> ProgressLog<'a, S> {
     /// A log over `lines`. Copy confirmation is off and auto-scroll is
     /// pinned, matching React's initial `useRef(true)` / `copied === false`.
-    pub(crate) fn new(lines: &'a [String]) -> Self {
+    pub fn new(lines: &'a [String]) -> Self {
         Self {
             lines,
             copied: false,
@@ -104,7 +104,7 @@ impl<'a, S: 'static> ProgressLog<'a, S> {
     }
 
     /// React `copied`: show `backup.logCopied` instead of `backup.copyLog`.
-    pub(crate) fn copied(mut self, copied: bool) -> Self {
+    pub fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
     }
@@ -112,14 +112,14 @@ impl<'a, S: 'static> ProgressLog<'a, S> {
     /// React `shouldAutoScroll.current`, rendered as the scroll box's
     /// `stick_bottom`. The host updates it from
     /// [`super::progress_log_state::ProgressLogState::on_scroll`].
-    pub(crate) fn auto_scroll(mut self, auto_scroll: bool) -> Self {
+    pub fn auto_scroll(mut self, auto_scroll: bool) -> Self {
         self.auto_scroll = auto_scroll;
         self
     }
 
     /// The copy button's press. The host copies [`super::progress_log_state::copy_text`]
     /// and arms the feedback timer.
-    pub(crate) fn on_copy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy = Some(Rc::new(f));
         self
     }
@@ -127,7 +127,7 @@ impl<'a, S: 'static> ProgressLog<'a, S> {
     /// The element tree. Empty `lines` is the spacer (see the module
     /// docs); otherwise the header, the copy button and the virtualized
     /// body.
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         if self.lines.is_empty() {
             return col()
                 .key("backup-progress-log-spacer")

@@ -71,7 +71,7 @@ use crate::ui::select::Select;
 /// ones. Owned by T575 (segment-2) once the builder lands; the shape here
 /// is the contract this component renders.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PathHierarchySegment {
+pub enum PathHierarchySegment {
     /// `{ kind: 'label', name }` — the level has exactly one option.
     Label { name: String },
     /// `{ kind: 'select', levelIndex, options, value }`.
@@ -85,7 +85,7 @@ pub(crate) enum PathHierarchySegment {
 /// The placeholder segments React shows while the namespace tree is
 /// loading or has no roots (`PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS`):
 /// two empty selects at levels 0 and 1.
-pub(crate) fn path_hierarchy_placeholder_segments() -> Vec<PathHierarchySegment> {
+pub fn path_hierarchy_placeholder_segments() -> Vec<PathHierarchySegment> {
     vec![
         PathHierarchySegment::Select {
             level_index: 0,
@@ -102,7 +102,7 @@ pub(crate) fn path_hierarchy_placeholder_segments() -> Vec<PathHierarchySegment>
 
 /// React's `levelLabelKey` (`QueryContextSelectors.tsx:21`): which
 /// placeholder key a level uses, by hierarchy mode and index.
-pub(crate) fn level_label_key(index: usize, path_hierarchy: bool) -> &'static str {
+pub fn level_label_key(index: usize, path_hierarchy: bool) -> &'static str {
     if path_hierarchy {
         if index == 0 {
             "query.catalog"
@@ -122,7 +122,7 @@ pub(crate) fn level_label_key(index: usize, path_hierarchy: bool) -> &'static st
 /// the pending focus level from the last choose. The app state embeds
 /// this and hands the component a reference.
 #[derive(Debug, Default)]
-pub(crate) struct QueryContextSelectorsState {
+pub struct QueryContextSelectorsState {
     /// The level whose listbox is open (`None`: closed). React's Select
     /// keeps its own open state; the port's host state carries it.
     pub open_level: Option<usize>,
@@ -133,7 +133,7 @@ pub(crate) struct QueryContextSelectorsState {
 
 impl QueryContextSelectorsState {
     /// Close the open listbox (a choose or an outside press).
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.open_level = None;
     }
 }
@@ -142,7 +142,7 @@ impl QueryContextSelectorsState {
 /// segments (see the module docs); flat mode takes the databases, the
 /// current database and the current schema, and optionally the host
 /// state that carries the database listbox's open flag.
-pub(crate) struct QueryContextSelectors<'a, S: 'static> {
+pub struct QueryContextSelectors<'a, S: 'static> {
     is_multi_db: bool,
     databases: &'a [String],
     current_database: Option<&'a str>,
@@ -156,7 +156,7 @@ pub(crate) struct QueryContextSelectors<'a, S: 'static> {
 impl<'a, S: 'static> QueryContextSelectors<'a, S> {
     /// The flat form: `isMultiDb`, the databases, the current database
     /// and the current schema.
-    pub(crate) fn new(
+    pub fn new(
         is_multi_db: bool,
         databases: &'a [String],
         current_database: Option<&'a str>,
@@ -176,7 +176,7 @@ impl<'a, S: 'static> QueryContextSelectors<'a, S> {
 
     /// The path-hierarchy form: the caller-computed segments (T575's
     /// builder output) plus the host state.
-    pub(crate) fn path_hierarchy(
+    pub fn path_hierarchy(
         segments: &'a [PathHierarchySegment],
         state: &'a QueryContextSelectorsState,
     ) -> Self {
@@ -193,14 +193,14 @@ impl<'a, S: 'static> QueryContextSelectors<'a, S> {
     }
 
     /// The flat form's host state (the database listbox's open flag).
-    pub(crate) fn flat_state(mut self, state: &'a QueryContextSelectorsState) -> Self {
+    pub fn flat_state(mut self, state: &'a QueryContextSelectorsState) -> Self {
         self.state = Some(state);
         self
     }
 
     /// The state accessor, so listbox toggles and closes run without the
     /// component owning the host state.
-    pub(crate) fn host_mut(
+    pub fn host_mut(
         mut self,
         f: impl Fn(&mut S) -> &mut QueryContextSelectorsState + 'static,
     ) -> Self {
@@ -209,7 +209,7 @@ impl<'a, S: 'static> QueryContextSelectors<'a, S> {
     }
 
     /// React's `onSelectLevel(index, value)`.
-    pub(crate) fn on_select_level(
+    pub fn on_select_level(
         mut self,
         f: impl Fn(&mut S, usize, &str) + 'static,
     ) -> Self {
@@ -221,7 +221,7 @@ impl<'a, S: 'static> QueryContextSelectors<'a, S> {
     /// `flex shrink-0 items-center gap-0.5 min-w-0` with the database
     /// glyph (React's `Database`, the registry's database lucide glyph,
     /// 14pt muted).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> Option<El> {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> Option<El> {
         let k = kit(dark);
         let mut children: Vec<El> = Vec::new();
         if let Some(segments) = self.path_segments {

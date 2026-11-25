@@ -10,11 +10,11 @@ use serde_json::{Value, json};
 use super::wire::{DataSyncSelectedRowVm, SyncOptionsVm};
 
 /// The poll's delay (`delay(400)`).
-pub(crate) const SYNC_JOB_POLL_INTERVAL_MS: f64 = 400.0;
+pub const SYNC_JOB_POLL_INTERVAL_MS: f64 = 400.0;
 
 /// The paged read's fallback page size
 /// (`limit ?? activeComparisonPlan.pageSize ?? 100`).
-pub(crate) const COMPARISON_PAGE_FALLBACK_SIZE: u64 = 100;
+pub const COMPARISON_PAGE_FALLBACK_SIZE: u64 = 100;
 
 /// `valueToken(value)`: the row key's identity string — the JSON
 /// array spelling (the `JSON.stringify` of `Value[]`).
@@ -23,7 +23,7 @@ pub(crate) const COMPARISON_PAGE_FALLBACK_SIZE: u64 = 100;
 /// cyclic structures a DOM value array can hold; a `serde_json`
 /// `Value` is always acyclic, so the fallback is dead code on this
 /// side of the wire (the delta the settings pass-throughs carry too).
-pub(crate) fn value_token(value: &[Value]) -> String {
+pub fn value_token(value: &[Value]) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| format!("{value:?}"))
 }
 
@@ -65,7 +65,7 @@ fn operation_enabled(operation: &str, options: &SyncOptionsVm) -> bool {
 /// server validation — UI state removes disabled operations before
 /// it reaches here; a forged or stale caller must still be rejected
 /// by the server instead of silently selecting less data.
-pub(crate) fn selection_from_tables(
+pub fn selection_from_tables(
     plan: &Value,
     tables: &[Value],
     options: &SyncOptionsVm,
@@ -174,7 +174,7 @@ pub(crate) fn selection_from_tables(
 /// (the server-owned plan remains the authority for validating this
 /// key and operation); a table WITH rows but no match falls through
 /// to the next table.
-pub(crate) fn selection_from_statements(plan: &Value, statements: &[Value]) -> Value {
+pub fn selection_from_statements(plan: &Value, statements: &[Value]) -> Value {
     let mut rows: Vec<Value> = Vec::new();
     for statement in statements {
         let table_name = statement.get("table").and_then(Value::as_str).unwrap_or("");
@@ -233,7 +233,7 @@ pub(crate) fn selection_from_statements(plan: &Value, statements: &[Value]) -> V
 
 /// `durableFailure(job, phase)`: the terminal, durable answer of a
 /// failed prepare/apply poll — the four sentences verbatim.
-pub(crate) fn durable_failure(job: &Value, phase: &str) -> String {
+pub fn durable_failure(job: &Value, phase: &str) -> String {
     let state = job.get("state").and_then(Value::as_str).unwrap_or("");
     if state == "cancelled" {
         return format!("Data Sync {phase} job was cancelled.");
@@ -258,7 +258,7 @@ pub(crate) fn durable_failure(job: &Value, phase: &str) -> String {
 
 /// Whether a job view is terminal (`succeeded` / `failed` /
 /// `cancelled`) — the poll loop's exit.
-pub(crate) fn job_terminal(job: &Value) -> bool {
+pub fn job_terminal(job: &Value) -> bool {
     matches!(
         job.get("state").and_then(Value::as_str),
         Some("succeeded") | Some("failed") | Some("cancelled")
@@ -269,7 +269,7 @@ pub(crate) fn job_terminal(job: &Value) -> bool {
 /// the `DataSyncExecutionResponse` the UI renders — the committed
 /// counter (or the job's progress), the effect-outcome spelling, and
 /// the error sentence.
-pub(crate) fn execution_from_job(details: &Value) -> Value {
+pub fn execution_from_job(details: &Value) -> Value {
     let job = details.get("job").cloned().unwrap_or(Value::Null);
     let state = job.get("state").and_then(Value::as_str).unwrap_or("");
     let error_code = job.get("error").and_then(Value::as_str).unwrap_or("");
@@ -351,13 +351,13 @@ pub(crate) fn execution_from_job(details: &Value) -> Value {
 /// `activeExecutionOptions`): the comparison chain's remembered plan
 /// and the options the last execute/generate carried.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SyncPlanStaging {
+pub struct SyncPlanStaging {
     /// `activeComparisonPlan` — `null` until a comparison succeeds
     /// (and `compareDataSync` clears it on entry).
-    pub(crate) plan: Option<Value>,
+    pub plan: Option<Value>,
     /// `activeExecutionOptions` — `DEFAULT_SYNC_OPTIONS` until an
     /// execute/generate replaces it.
-    pub(crate) options: SyncOptionsVm,
+    pub options: SyncOptionsVm,
 }
 
 impl Default for SyncPlanStaging {
@@ -370,23 +370,23 @@ impl Default for SyncPlanStaging {
 }
 
 impl SyncPlanStaging {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// `compareDataSync`'s entry: `activeComparisonPlan = null`.
-    pub(crate) fn clear_plan(&mut self) {
+    pub fn clear_plan(&mut self) {
         self.plan = None;
     }
 
     /// The chain's success arm: `activeComparisonPlan = response`.
-    pub(crate) fn stage_plan(&mut self, preview: Value) {
+    pub fn stage_plan(&mut self, preview: Value) {
         self.plan = Some(preview);
     }
 
     /// The staged plan's id (`activeComparisonPlan.planId`), or the
     /// missing-plan refusal the three gated faces answer.
-    pub(crate) fn plan_id(&self) -> Result<String, &'static str> {
+    pub fn plan_id(&self) -> Result<String, &'static str> {
         match &self.plan {
             Some(plan) => Ok(plan
                 .get("planId")
@@ -399,7 +399,7 @@ impl SyncPlanStaging {
 
     /// The staged plan's page size (the paged read's
     /// `activeComparisonPlan.pageSize ?? 100`).
-    pub(crate) fn page_size(&self) -> u64 {
+    pub fn page_size(&self) -> u64 {
         self.plan
             .as_ref()
             .and_then(|plan| plan.get("pageSize"))
@@ -409,7 +409,7 @@ impl SyncPlanStaging {
 
     /// `activeExecutionOptions = options` (executeDataSyncJob /
     /// generateDataSyncSql's staging arm).
-    pub(crate) fn stage_options(&mut self, options: SyncOptionsVm) {
+    pub fn stage_options(&mut self, options: SyncOptionsVm) {
         self.options = options;
     }
 }
@@ -418,7 +418,7 @@ impl SyncPlanStaging {
 /// reviewed projection, effect-driven — the host runs the transport
 /// and delivers each receipt back.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum SyncCompareStep {
+pub enum SyncCompareStep {
     /// `startDataSyncPrepareJob` fired; awaiting the accepted receipt.
     AwaitingPrepareAccept,
     /// `getDataSyncJob` until a terminal state.
@@ -433,20 +433,20 @@ pub(crate) enum SyncCompareStep {
 
 /// The compare chain's machine over the staging.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct SyncCompareChain {
-    pub(crate) staging: SyncPlanStaging,
-    pub(crate) step: Option<SyncCompareStep>,
+pub struct SyncCompareChain {
+    pub staging: SyncPlanStaging,
+    pub step: Option<SyncCompareStep>,
 }
 
 impl SyncCompareChain {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// `compareDataSync`'s entry: clear the plan and answer the
     /// prepare request to fire (`requestedJobId` is the caller's
     /// `jobId ?? data-sync-{uuid}` — the host mints the uuid).
-    pub(crate) fn begin_compare(
+    pub fn begin_compare(
         &mut self,
         requested_job_id: &str,
         prepare_request: (crate::commands::sync::wire::SyncMethod, Value),
@@ -459,7 +459,7 @@ impl SyncCompareChain {
 
     /// The prepare receipt: `accepted.jobId` moves the chain to the
     /// poll loop.
-    pub(crate) fn note_prepare_accepted(&mut self, accepted: &Value) {
+    pub fn note_prepare_accepted(&mut self, accepted: &Value) {
         let job_id = accepted
             .get("jobId")
             .and_then(Value::as_str)
@@ -473,7 +473,7 @@ impl SyncCompareChain {
     /// after the 400ms delay), or moves the chain on a terminal
     /// state. `poll_request` builds the next
     /// `getDataSyncJob({ jobId })`.
-    pub(crate) fn note_job(
+    pub fn note_job(
         &mut self,
         job: &Value,
         phase: &str,
@@ -500,13 +500,13 @@ impl SyncCompareChain {
     }
 
     /// The preview receipt: stage the plan and finish.
-    pub(crate) fn note_preview(&mut self, preview: Value) {
+    pub fn note_preview(&mut self, preview: Value) {
         self.staging.stage_plan(preview);
         self.step = Some(SyncCompareStep::Done);
     }
 
     /// The failure the chain ended on (the thrown `durableFailure`).
-    pub(crate) fn failure(&self) -> Option<&str> {
+    pub fn failure(&self) -> Option<&str> {
         match &self.step {
             Some(SyncCompareStep::Failed { message }) => Some(message),
             _ => None,

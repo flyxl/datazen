@@ -28,43 +28,43 @@ use serde_json::Value;
 /// A staged expression id (DBR-05): an expression is a change even when its
 /// placeholder value equals the original.
 #[allow(dead_code)] // VM mirror; remove when the host owns change requests.
-pub(crate) type ExpressionId = String;
+pub type ExpressionId = String;
 
 /// One uncommitted row change (`PendingRowChange` in React).
 #[allow(dead_code)] // VM mirror; supplied by the host's change map.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct PendingChangeVm {
-    pub(crate) row_identity: BTreeMap<String, Value>,
-    pub(crate) original_values: BTreeMap<String, Value>,
-    pub(crate) current_values: BTreeMap<String, Value>,
-    pub(crate) changed_columns: Vec<String>,
-    pub(crate) delete_marked: bool,
-    pub(crate) expression_values: BTreeMap<String, ExpressionId>,
+pub struct PendingChangeVm {
+    pub row_identity: BTreeMap<String, Value>,
+    pub original_values: BTreeMap<String, Value>,
+    pub current_values: BTreeMap<String, Value>,
+    pub changed_columns: Vec<String>,
+    pub delete_marked: bool,
+    pub expression_values: BTreeMap<String, ExpressionId>,
 }
 
 /// A declared column, reduced to the field the identity builder reads.
 #[allow(dead_code)] // VM mirror; supplied by the host result feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DirtyColumnVm {
-    pub(crate) name: String,
-    pub(crate) is_primary_key: bool,
+pub struct DirtyColumnVm {
+    pub name: String,
+    pub is_primary_key: bool,
 }
 
 /// The panel slice the derivation reads. Selection is deliberately absent.
 #[allow(dead_code)] // VM surface; owned by the table host.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DirtyTableVm {
-    pub(crate) columns: Vec<DirtyColumnVm>,
-    pub(crate) rows: Vec<BTreeMap<String, Value>>,
-    pub(crate) pending_changes: BTreeMap<String, PendingChangeVm>,
+pub struct DirtyTableVm {
+    pub columns: Vec<DirtyColumnVm>,
+    pub rows: Vec<BTreeMap<String, Value>>,
+    pub pending_changes: BTreeMap<String, PendingChangeVm>,
     /// Row index -> the identity key at edit time (primary-key edit anchor).
-    pub(crate) row_identity_anchors: BTreeMap<usize, String>,
+    pub row_identity_anchors: BTreeMap<usize, String>,
 }
 
 /// React `DirtyRowState`. `inserted` is reserved for DB-04, never produced here.
 #[allow(dead_code)] // contract mirror; remove when drafts join the index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DirtyRowState {
+pub enum DirtyRowState {
     Dirty,
     Deleted,
 }
@@ -72,56 +72,56 @@ pub(crate) enum DirtyRowState {
 /// One uncommitted cell change, by column name.
 #[allow(dead_code)] // VM mirror; consumed by grid markup and tests.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DirtyCellVm {
-    pub(crate) column_name: String,
-    pub(crate) original: Value,
-    pub(crate) next: Value,
-    pub(crate) expression: Option<ExpressionId>,
+pub struct DirtyCellVm {
+    pub column_name: String,
+    pub original: Value,
+    pub next: Value,
+    pub expression: Option<ExpressionId>,
 }
 
 /// One row's resolved dirty state (identity-keyed, not column-indexed).
 #[allow(dead_code)] // VM mirror; consumed by grid markup and tests.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DirtyRowEntryVm {
-    pub(crate) identity_key: String,
-    pub(crate) state: DirtyRowState,
-    pub(crate) changed_columns: Vec<String>,
-    pub(crate) cells: Vec<DirtyCellVm>,
+pub struct DirtyRowEntryVm {
+    pub identity_key: String,
+    pub state: DirtyRowState,
+    pub changed_columns: Vec<String>,
+    pub cells: Vec<DirtyCellVm>,
 }
 
 /// Counts of staged work, split by current page.
 #[allow(dead_code)] // VM mirror; consumed by the pending bar.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DirtyCountsVm {
-    pub(crate) update_rows: usize,
-    pub(crate) delete_rows: usize,
-    pub(crate) total_rows: usize,
-    pub(crate) total_cells: usize,
-    pub(crate) cells_on_page: usize,
-    pub(crate) cells_off_page: usize,
+pub struct DirtyCountsVm {
+    pub update_rows: usize,
+    pub delete_rows: usize,
+    pub total_rows: usize,
+    pub total_cells: usize,
+    pub cells_on_page: usize,
+    pub cells_off_page: usize,
 }
 
 /// The derived dirty index. Entries are `Rc` so untouched rows keep object
 /// identity across an edit in another row (React's structural sharing).
 #[allow(dead_code)] // derived result; remove when the host owns the grid.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DirtyIndexVm {
-    pub(crate) by_row_index: BTreeMap<usize, Rc<DirtyRowEntryVm>>,
-    pub(crate) off_page_keys: Vec<String>,
-    pub(crate) counts: DirtyCountsVm,
+pub struct DirtyIndexVm {
+    pub by_row_index: BTreeMap<usize, Rc<DirtyRowEntryVm>>,
+    pub off_page_keys: Vec<String>,
+    pub counts: DirtyCountsVm,
 }
 
 /// React `dirtyCellKey`: identity key + NUL + column name. NUL never occurs in
 /// a JSON-shaped identity key or a SQL identifier, so the join is injective.
 #[allow(dead_code)] // contract symbol; remove when cell-level marks land.
-pub(crate) fn dirty_cell_key(identity_key: &str, column_name: &str) -> String {
+pub fn dirty_cell_key(identity_key: &str, column_name: &str) -> String {
     format!("{identity_key}\0{column_name}")
 }
 
 /// React `valuesEqual`: `JSON.stringify(left ?? null) === JSON.stringify(right ?? null)`.
 /// `None` (undefined) and `Null` normalise to the same value.
 #[allow(dead_code)] // pure helper; remove when the shared helper lands.
-pub(crate) fn values_equal(left: Option<&Value>, right: Option<&Value>) -> bool {
+pub fn values_equal(left: Option<&Value>, right: Option<&Value>) -> bool {
     let normalize = |value: Option<&Value>| value.cloned().unwrap_or(Value::Null);
     let (left, right) = (normalize(left), normalize(right));
     serde_json::to_string(&left).unwrap_or_default() == serde_json::to_string(&right).unwrap_or_default()
@@ -238,7 +238,7 @@ fn really_changed_columns(change: &PendingChangeVm) -> Vec<String> {
 
 /// React `selectDirtyCounts`: staged-work counts independent of the page.
 #[allow(dead_code)] // pure helper; remove when the host owns counts.
-pub(crate) fn select_dirty_counts(pending: &BTreeMap<String, PendingChangeVm>) -> DirtyCountsVm {
+pub fn select_dirty_counts(pending: &BTreeMap<String, PendingChangeVm>) -> DirtyCountsVm {
     let mut counts = DirtyCountsVm::default();
     for change in pending.values() {
         if change.delete_marked {
@@ -259,7 +259,7 @@ pub(crate) fn select_dirty_counts(pending: &BTreeMap<String, PendingChangeVm>) -
 
 /// React `selectDirtyRow`: the entry for a current-page row index.
 #[allow(dead_code)] // pure helper; remove when the grid reads marks.
-pub(crate) fn select_dirty_row(index: Option<&DirtyIndexVm>, row: usize) -> Option<Rc<DirtyRowEntryVm>> {
+pub fn select_dirty_row(index: Option<&DirtyIndexVm>, row: usize) -> Option<Rc<DirtyRowEntryVm>> {
     index?.by_row_index.get(&row).cloned()
 }
 
@@ -321,7 +321,7 @@ fn row_entry(
 /// taking priority over a recomputed identity, ambiguous rows skipped, and
 /// structural sharing for untouched entries.
 #[allow(dead_code)] // view entry; remove when the host owns the dirty index.
-pub(crate) fn build_dirty_index(ts: &DirtyTableVm, previous: Option<&DirtyIndexVm>) -> DirtyIndexVm {
+pub fn build_dirty_index(ts: &DirtyTableVm, previous: Option<&DirtyIndexVm>) -> DirtyIndexVm {
     if ts.pending_changes.is_empty() {
         return DirtyIndexVm::default();
     }

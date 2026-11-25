@@ -11,13 +11,13 @@
 use crate::table_data_connection_state::CountStrategy;
 
 /// `DEFAULT_ROW_COUNT_MODE`.
-pub(crate) const DEFAULT_ROW_COUNT_MODE: RowCountMode = RowCountMode::Auto;
+pub const DEFAULT_ROW_COUNT_MODE: RowCountMode = RowCountMode::Auto;
 /// `DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD`.
-pub(crate) const DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD: f64 = 200_000.0;
+pub const DEFAULT_ROW_COUNT_ESTIMATE_THRESHOLD: f64 = 200_000.0;
 
 /// `RowCountMode` (`types/settings.ts`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RowCountMode {
+pub enum RowCountMode {
     None,
     Exact,
     Estimated,
@@ -26,7 +26,7 @@ pub(crate) enum RowCountMode {
 
 /// The slice of a schema-store table this lookup reads.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CatalogTable {
+pub struct CatalogTable {
     pub name: String,
     pub schema: Option<String>,
     /// `null` / missing becomes "no prior". `NaN` is kept and the auto
@@ -37,14 +37,14 @@ pub(crate) struct CatalogTable {
 /// Settings the panel reads. `None` mode or threshold falls back to the
 /// defaults (`??` in the React call).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CountSettings {
+pub struct CountSettings {
     pub mode: Option<RowCountMode>,
     pub threshold: Option<f64>,
 }
 
 /// `TableChangeContext` fields the lookup uses.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CountContext {
+pub struct CountContext {
     pub table: String,
     pub schema: Option<String>,
 }
@@ -54,7 +54,7 @@ pub(crate) struct CountContext {
 ///
 /// The return is `None` when the strategy is `undefined` (auto, and the
 /// driver should decide).
-pub(crate) fn resolve_panel_count_strategy(
+pub fn resolve_panel_count_strategy(
     context: &CountContext,
     tables: Option<&[CatalogTable]>,
     settings: &CountSettings,
@@ -68,7 +68,7 @@ pub(crate) fn resolve_panel_count_strategy(
 
 /// `catalogRowCount`. First table whose name matches and whose schema is
 /// compatible: a missing schema on either side matches anything.
-pub(crate) fn catalog_row_count(context: &CountContext, tables: Option<&[CatalogTable]>) -> Option<f64> {
+pub fn catalog_row_count(context: &CountContext, tables: Option<&[CatalogTable]>) -> Option<f64> {
     let tables = tables?;
     let found = tables.iter().find(|info| {
         info.name == context.table && schemas_compatible(&context.schema, &info.schema)
@@ -77,7 +77,7 @@ pub(crate) fn catalog_row_count(context: &CountContext, tables: Option<&[Catalog
 }
 
 /// Mirror of `resolveCountStrategy` (`lib/rowCountStrategy.ts`).
-pub(crate) fn resolve_count_strategy(
+pub fn resolve_count_strategy(
     mode: RowCountMode,
     threshold: f64,
     known_row_count: Option<f64>,

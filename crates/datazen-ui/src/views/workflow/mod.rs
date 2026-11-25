@@ -32,52 +32,52 @@
 //! The workflows page (`views/dashboards_workflows.rs`) routed to the lite
 //! editor until this module's page port (T145) swapped the whole section.
 
-pub(crate) mod editor_action_bar;
-pub(crate) mod execution_result_panel;
+pub mod editor_action_bar;
+pub mod execution_result_panel;
 // T113: the page port (T145) mounts the sidebar list; the AI panel's
 // workflow tab (T334, segment-3) is the family's remaining caller.
-pub(crate) mod history_section;
-pub(crate) mod step_result_utils;
+pub mod history_section;
+pub mod step_result_utils;
 // T145: the workflow page port — the page-level assembly that mounts the
 // form, the history list and the action bar as its production consumer (the
 // section swap in `views/workspace.rs` routes here).
-pub(crate) mod workflow_page;
+pub mod workflow_page;
 // T070: the page's edit pane (T145) is the form's production consumer.
 // T484: the richer editor draft's parking lot behind the legacy
 // WorkflowPage callback.
 #[allow(dead_code)]
-pub(crate) mod draft_bridge;
+pub mod draft_bridge;
 #[allow(dead_code)]
-pub(crate) mod workflow_form;
+pub mod workflow_form;
 // T223: the definition ↔ draft conversion pair — the page's edit entry and
 // save path call it through the full-definition host seam.
-pub(crate) mod workflow_draft_convert;
+pub mod workflow_draft_convert;
 // T223: the panel guards file's own surface — the guards, the result read
 // and the tab label (the page's tab strip and the enum's method delegate).
-pub(crate) mod workflow_panel_guards;
+pub mod workflow_panel_guards;
 // T244: the yaml lint pass — the yaml editor (T200) mounts its gutter over
 // these diagnostics.
-pub(crate) mod yaml_lint;
+pub mod yaml_lint;
 // T265: the yaml syntax highlighting — the yaml editor (T200) mounts it
 // over the document surface.
-pub(crate) mod yaml_mode;
+pub mod yaml_mode;
 // T200: the yaml editor's chrome — the document surface with the yaml
 // highlighting, the line-number and lint gutters (the page's edit pane is
 // its production consumer).
-pub(crate) mod workflow_yaml_editor;
+pub mod workflow_yaml_editor;
 
 // The family's re-exported view models (the page's own helpers ride through
 // `workflow_page::*`; the page reaches the action bar, the result panel and
 // the form through their module paths directly — the lite page's `super::*`
 // consumers went with it).
 #[allow(unused_imports)] // the family surface; the remaining callers are module-path imports
-pub(crate) use editor_action_bar::*;
+pub use editor_action_bar::*;
 #[allow(unused_imports)] // the family surface; the remaining callers are module-path imports
-pub(crate) use execution_result_panel::*;
+pub use execution_result_panel::*;
 #[allow(unused_imports)] // consumers: the AI panel (T334)
-pub(crate) use history_section::*;
-pub(crate) use step_result_utils::*;
+pub use history_section::*;
+pub use step_result_utils::*;
 // T145: the page's view models and pure helpers — the section arm in
 // `views/workspace.rs` calls the page function through this re-export.
-pub(crate) use workflow_page::*;
-pub(crate) use workflow_form::*;
+pub use workflow_page::*;
+pub use workflow_form::*;

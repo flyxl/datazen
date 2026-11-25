@@ -19,7 +19,7 @@ use super::ai_chat_panel::AiChatContextSnapshot;
 /// `memoryModeFor` fallback: the settings memory switch off yields
 /// `'off'`, on yields `'auto'` (`lib/aiMemorySettings.ts:34`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AiMemoryMode {
+pub enum AiMemoryMode {
     Off,
     Ask,
     Auto,
@@ -28,7 +28,7 @@ pub(crate) enum AiMemoryMode {
 /// React's `memoryScope` prop; the panel defaults it to `'user'`
 /// (`AiChatPanel.tsx:114`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum AiMemoryScope {
+pub enum AiMemoryScope {
     Organization,
     #[default]
     User,
@@ -46,7 +46,7 @@ pub(crate) enum AiMemoryScope {
 /// (`composeKvAiMessage`, `lib/kvAiContext.ts:87`) — and `raw_content`
 /// is the draft as typed, which is what the appended user bubble shows.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AiSentMessage {
+pub struct AiSentMessage {
     pub content: String,
     pub raw_content: String,
     pub agent_mode: AiAgentMode,
@@ -66,7 +66,7 @@ pub(crate) struct AiSentMessage {
 /// sensitivity, `0.6` confidence, scoped to the connection when one is
 /// in scope and to the user otherwise.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AiMemoryCreateRequest {
+pub struct AiMemoryCreateRequest {
     pub scope_type: &'static str,
     pub connection_id: Option<String>,
     pub kind: &'static str,

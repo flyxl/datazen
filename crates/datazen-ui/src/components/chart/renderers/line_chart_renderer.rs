@@ -141,52 +141,52 @@ use super::area_chart_renderer::{
 };
 /// The family's `lib/chart/format.ts` seam struct (T079) — the area engine's,
 /// re-exported so the line engine's callers wire it through this module.
-pub(crate) use super::area_chart_renderer::FormatSeams;
+pub use super::area_chart_renderer::FormatSeams;
 use crate::ui::kit::kit;
 use rune_kit::Kit;
 
 // ---- Keys -------------------------------------------------------------------
 
 /// Root, recharts' `<LineChart>` frame.
-pub(crate) const ROOT_KEY: &str = "line-chart";
+pub const ROOT_KEY: &str = "line-chart";
 /// The Y-axis + plot stack row.
-pub(crate) const PLOT_ROW_KEY: &str = "line-chart-plot-row";
+pub const PLOT_ROW_KEY: &str = "line-chart-plot-row";
 /// The plot itself — every canvas, the labels and the hit layer share its rect.
-pub(crate) const PLOT_KEY: &str = "line-chart-plot";
+pub const PLOT_KEY: &str = "line-chart-plot";
 /// The `CartesianGrid` canvas.
-pub(crate) const GRID_KEY: &str = "line-chart-grid";
+pub const GRID_KEY: &str = "line-chart-grid";
 /// The axis frame canvas (recharts' axis lines).
-pub(crate) const AXES_KEY: &str = "line-chart-axes";
+pub const AXES_KEY: &str = "line-chart-axes";
 /// One canvas per series: `line-chart-series-{key}`.
-pub(crate) const SERIES_KEY_PREFIX: &str = "line-chart-series-";
+pub const SERIES_KEY_PREFIX: &str = "line-chart-series-";
 /// The `dot` layer: one `r: 3` disc per drawn point per visible series.
-pub(crate) const DOTS_KEY: &str = "line-chart-dots";
+pub const DOTS_KEY: &str = "line-chart-dots";
 /// The hovered row's `activeDot`s: one `r: 5` disc per visible series.
-pub(crate) const ACTIVE_DOTS_KEY: &str = "line-chart-active-dots";
+pub const ACTIVE_DOTS_KEY: &str = "line-chart-active-dots";
 /// The `LabelList` overlay (React 120-134, `config.showValues`).
-pub(crate) const VALUES_KEY: &str = "line-chart-values";
+pub const VALUES_KEY: &str = "line-chart-values";
 /// One band column per data row: `line-chart-values-band-{row}`.
-pub(crate) const VALUES_BAND_PREFIX: &str = "line-chart-values-band-";
+pub const VALUES_BAND_PREFIX: &str = "line-chart-values-band-";
 /// One value label per row/series: `line-chart-value-{row}-{key}`.
-pub(crate) const VALUE_PREFIX: &str = "line-chart-value-";
+pub const VALUE_PREFIX: &str = "line-chart-value-";
 /// The pointer/press layer over the plot.
-pub(crate) const HIT_ZONE_KEY: &str = "line-chart-hit-zone";
+pub const HIT_ZONE_KEY: &str = "line-chart-hit-zone";
 /// One hit cell per data row: `line-chart-hit-{i}`.
-pub(crate) const HIT_CELL_PREFIX: &str = "line-chart-hit-";
+pub const HIT_CELL_PREFIX: &str = "line-chart-hit-";
 /// The Y-axis label column.
-pub(crate) const Y_AXIS_KEY: &str = "line-chart-yaxis";
+pub const Y_AXIS_KEY: &str = "line-chart-yaxis";
 /// The X-axis label row.
-pub(crate) const X_AXIS_KEY: &str = "line-chart-xaxis";
+pub const X_AXIS_KEY: &str = "line-chart-xaxis";
 /// The legend (multiSeries only).
-pub(crate) const LEGEND_KEY: &str = "line-chart-legend";
+pub const LEGEND_KEY: &str = "line-chart-legend";
 /// One entry per series: `line-chart-legend-item-{key}` (+ `-swatch-`/`-label-`).
-pub(crate) const LEGEND_ITEM_PREFIX: &str = "line-chart-legend-item-";
+pub const LEGEND_ITEM_PREFIX: &str = "line-chart-legend-item-";
 /// The swatch of legend entry `{key}`.
-pub(crate) const LEGEND_SWATCH_PREFIX: &str = "line-chart-legend-swatch-";
+pub const LEGEND_SWATCH_PREFIX: &str = "line-chart-legend-swatch-";
 /// The label of legend entry `{key}` (dims to 0.35 when hidden).
-pub(crate) const LEGEND_LABEL_PREFIX: &str = "line-chart-legend-label-";
+pub const LEGEND_LABEL_PREFIX: &str = "line-chart-legend-label-";
 /// The plain (non-log) `<Tooltip>` content box.
-pub(crate) const TOOLTIP_KEY: &str = "line-chart-tooltip";
+pub const TOOLTIP_KEY: &str = "line-chart-tooltip";
 
 // recharts defaults / React literals, verbatim.
 /// recharts' default `YAxis width`.
@@ -358,22 +358,22 @@ fn x_tick_plan(
 
 /// One series' paint plan.
 #[derive(Clone, Debug)]
-pub(crate) struct LineSeriesPlan {
+pub struct LineSeriesPlan {
     /// React `dataKey`.
-    pub(crate) key: String,
+    pub key: String,
     /// `colors[i % colors.length]` — the stroke, the dot fill and the label
     /// swatch all read it.
-    pub(crate) color: rune::Color,
+    pub color: rune::Color,
     /// `dashMap[yKey]` (the on/off lengths, `None` = solid).
-    pub(crate) dash: Option<&'static [f32]>,
+    pub dash: Option<&'static [f32]>,
     /// `hiddenSeries.has(yKey)`.
-    pub(crate) hidden: bool,
+    pub hidden: bool,
     /// Plot fractions per data row (`None` = the row has no drawable point —
     /// recharts' gap on null/NaN: no line segment, no dot, no label).
-    pub(crate) points: Vec<Option<[f32; 2]>>,
+    pub points: Vec<Option<[f32; 2]>>,
     /// The `LabelList` text per row when `config.showValues` (`None` = no
     /// drawable point, or the toggle is off).
-    pub(crate) labels: Vec<Option<String>>,
+    pub labels: Vec<Option<String>>,
 }
 
 /// Everything one frame of the engine paints, computed before any element:
@@ -381,32 +381,32 @@ pub(crate) struct LineSeriesPlan {
 /// dashMap → `<Line>` geometry → `<LabelList>` text), observable without a
 /// runtime.
 #[derive(Clone, Debug)]
-pub(crate) struct LineChartPlan {
+pub struct LineChartPlan {
     /// `chartData`: `mapToLogScale`'s output when `log_hint.use_log`, else the
     /// input.
-    pub(crate) chart_data: Vec<ChartDataPoint>,
-    pub(crate) log_hint: LogScaleHint,
+    pub chart_data: Vec<ChartDataPoint>,
+    pub log_hint: LogScaleHint,
     /// `config.xAxis ?? '__index'`.
-    pub(crate) x_key: String,
+    pub x_key: String,
     /// `config.yAxes.length > 1` (the legend gate).
-    pub(crate) multi_series: bool,
-    pub(crate) series: Vec<LineSeriesPlan>,
-    pub(crate) y_domain: [f64; 2],
+    pub multi_series: bool,
+    pub series: Vec<LineSeriesPlan>,
+    pub y_domain: [f64; 2],
     /// Top first (the first is the domain max).
-    pub(crate) y_ticks: Vec<YTick>,
-    pub(crate) x_ticks: Vec<XTick>,
-    pub(crate) row_count: usize,
+    pub y_ticks: Vec<YTick>,
+    pub x_ticks: Vec<XTick>,
+    pub row_count: usize,
     /// Vertical grid line fractions (the X tick positions).
-    pub(crate) grid_xs: Vec<f32>,
+    pub grid_xs: Vec<f32>,
     /// Horizontal grid line fractions, top first (the Y tick positions).
-    pub(crate) grid_ys: Vec<f32>,
+    pub grid_ys: Vec<f32>,
 }
 
 /// The engine's whole plan for one frame: the React component's memo chain
 /// (`logHint` → `chartData` → `dashMap` → `<Line>` geometry → `<LabelList>`
 /// text), as pure data. The lean slices the chain reads are the area
 /// engine's, imported — see the seams table in the module docs.
-pub(crate) fn line_chart_plan(
+pub fn line_chart_plan(
     data: &[ChartDataPoint],
     config: &ChartConfig,
     hidden: &BTreeSet<String>,
@@ -708,13 +708,13 @@ struct EngineState {
 /// factory that clones one engine per build keeps the user's toggles and
 /// hover across frames — the component's retained state.
 #[derive(Clone)]
-pub(crate) struct LineChartRenderer {
+pub struct LineChartRenderer {
     state: Rc<RefCell<EngineState>>,
     seams: FormatSeams,
 }
 
 impl LineChartRenderer {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             state: Rc::new(RefCell::new(EngineState::default())),
             seams: FormatSeams::default(),
@@ -722,35 +722,35 @@ impl LineChartRenderer {
     }
 
     /// Wire the T079 `formatCompact` port (or a test probe).
-    pub(crate) fn format_compact(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
+    pub fn format_compact(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
         self.seams.format_compact = f;
         self
     }
 
     /// Wire the T079 `formatAxisTick` port (or a test probe).
-    pub(crate) fn format_axis_tick(mut self, f: Rc<dyn Fn(&ChartValue) -> String>) -> Self {
+    pub fn format_axis_tick(mut self, f: Rc<dyn Fn(&ChartValue) -> String>) -> Self {
         self.seams.format_axis_tick = f;
         self
     }
 
     /// Wire the T079 `formatEpochMs` port (or a test probe).
-    pub(crate) fn format_epoch_ms(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
+    pub fn format_epoch_ms(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
         self.seams.format_epoch_ms = f;
         self
     }
 
     /// React `hiddenSeries`, as the engine keeps it.
-    pub(crate) fn hidden_series(&self) -> BTreeSet<String> {
+    pub fn hidden_series(&self) -> BTreeSet<String> {
         self.state.borrow().hidden.clone()
     }
 
     /// recharts' `activeTooltipIndex`, as the engine keeps it.
-    pub(crate) fn hovered_row(&self) -> Option<usize> {
+    pub fn hovered_row(&self) -> Option<usize> {
         self.state.borrow().hovered
     }
 
     /// React `toggleSeries`: insert-or-remove in the hidden set.
-    pub(crate) fn toggle_series(&self, data_key: &str) {
+    pub fn toggle_series(&self, data_key: &str) {
         let mut state = self.state.borrow_mut();
         if !state.hidden.remove(data_key) {
             state.hidden.insert(data_key.to_string());
@@ -768,7 +768,7 @@ impl Default for LineChartRenderer {
 /// engine (cloned per build, sharing its state), every other type keeps the
 /// honest placeholder. This is the wiring the chart-view track passes to
 /// `ChartCanvas::renderer_factory`.
-pub(crate) fn renderer_factory<S: 'static>(
+pub fn renderer_factory<S: 'static>(
     engine: LineChartRenderer,
 ) -> impl Fn(ChartType) -> Box<dyn ChartRenderer<S> + 'static> {
     move |chart_type| match chart_type {

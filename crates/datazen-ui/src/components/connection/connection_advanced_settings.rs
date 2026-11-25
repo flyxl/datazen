@@ -69,7 +69,7 @@ use crate::ui::toggle::Checkbox;
 
 /// React `shared.tsx::COLOR_KEYS`: the tag value (a hex colour) and its i18n key.
 #[allow(dead_code)] // reusable ported data; consumed by this module's build
-pub(crate) const COLOR_TAGS: [(&str, &str); 7] = [
+pub const COLOR_TAGS: [(&str, &str); 7] = [
     ("#ef4444", "newConn.colorRed"),
     ("#f59e0b", "newConn.colorOrange"),
     ("#22c55e", "newConn.colorGreen"),
@@ -82,7 +82,7 @@ pub(crate) const COLOR_TAGS: [(&str, &str); 7] = [
 /// React `TunnelSource` union.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; wired by later callers/tests
-pub(crate) enum TunnelSource {
+pub enum TunnelSource {
     None,
     Saved,
     Inline,
@@ -90,7 +90,7 @@ pub(crate) enum TunnelSource {
 
 #[allow(dead_code)] // reusable VM surface
 impl TunnelSource {
-    pub(crate) fn from_value(value: &str) -> Self {
+    pub fn from_value(value: &str) -> Self {
         match value {
             "saved" => TunnelSource::Saved,
             "inline" => TunnelSource::Inline,
@@ -110,7 +110,7 @@ impl TunnelSource {
 /// React `TunnelKind` union.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; wired by later callers/tests
-pub(crate) enum TunnelKind {
+pub enum TunnelKind {
     Ssh,
     HttpProxy,
     WebSocket,
@@ -118,7 +118,7 @@ pub(crate) enum TunnelKind {
 
 #[allow(dead_code)] // reusable VM surface
 impl TunnelKind {
-    pub(crate) fn from_value(value: &str) -> Option<Self> {
+    pub fn from_value(value: &str) -> Option<Self> {
         match value {
             "ssh" => Some(TunnelKind::Ssh),
             "httpProxy" => Some(TunnelKind::HttpProxy),
@@ -136,7 +136,7 @@ impl TunnelKind {
     }
 
     /// React `tunnelBadge`: the short label on the tunnel toggle.
-    pub(crate) fn badge(self) -> &'static str {
+    pub fn badge(self) -> &'static str {
         match self {
             TunnelKind::Ssh => "SSH",
             TunnelKind::HttpProxy => "HTTP",
@@ -148,7 +148,7 @@ impl TunnelKind {
 /// React `form.savedTunnels[i]`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; wired by later callers/tests
-pub(crate) struct SavedTunnel {
+pub struct SavedTunnel {
     pub id: String,
     pub name: String,
     pub kind: String,
@@ -158,7 +158,7 @@ pub(crate) struct SavedTunnel {
 /// manage this internally; here it lives in `S` so tree/key probes can observe it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; wired by later callers/tests
-pub(crate) enum SelectKind {
+pub enum SelectKind {
     SslMode,
     Group,
     TunnelSource,
@@ -169,7 +169,7 @@ pub(crate) enum SelectKind {
 /// Every interaction the widget can ask the host to apply to `S`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // public VM surface; wired by later callers/tests
-pub(crate) enum AdvancedAction {
+pub enum AdvancedAction {
     ToggleAdvanced,
     ToggleTunnel,
     /// `None` closes whichever select is open.
@@ -197,7 +197,7 @@ pub(crate) enum AdvancedAction {
 /// the widget never owns state.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable VM surface; wired by later callers/tests
-pub(crate) struct AdvancedSettingsVm {
+pub struct AdvancedSettingsVm {
     pub show_advanced: bool,
     pub show_tunnel: bool,
     /// React `variant === 'window'`.
@@ -286,7 +286,7 @@ fn press<S: 'static>(f: &Option<ActionFn<S>>, a: AdvancedAction) -> impl Fn(&mut
 
 /// Builder for the ported component.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct ConnectionAdvancedSettings<S: 'static> {
+pub struct ConnectionAdvancedSettings<S: 'static> {
     key: String,
     vm: AdvancedSettingsVm,
     on_action: Option<ActionFn<S>>,
@@ -294,7 +294,7 @@ pub(crate) struct ConnectionAdvancedSettings<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl<S: 'static> ConnectionAdvancedSettings<S> {
-    pub(crate) fn new(vm: AdvancedSettingsVm) -> Self {
+    pub fn new(vm: AdvancedSettingsVm) -> Self {
         ConnectionAdvancedSettings {
             key: "new-conn".to_owned(),
             vm,
@@ -303,18 +303,18 @@ impl<S: 'static> ConnectionAdvancedSettings<S> {
     }
 
     /// Override the key prefix (defaults to the React test id prefix).
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, AdvancedAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, AdvancedAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
     /// Builds the whole accordion, pushing any open select listbox into `layer`.
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let ConnectionAdvancedSettings { key: p, vm, on_action } = self;
         let label_font = k.ty.text_small;
         let hint_font = k.ty.text_xsmall;

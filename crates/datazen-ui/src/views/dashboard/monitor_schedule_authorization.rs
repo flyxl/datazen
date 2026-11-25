@@ -107,11 +107,11 @@ fn type_xs() -> TextStyle {
 /// are the drawer's and the backend's business).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct MonitorGrantVm {
+pub struct MonitorGrantVm {
     /// RFC3339 from the backend; unparseable text counts as expired
     /// (React's `Date.parse` → `NaN`).
-    pub(crate) expires_at: String,
-    pub(crate) revoked: bool,
+    pub expires_at: String,
+    pub revoked: bool,
 }
 
 // ---- State ------------------------------------------------------------------
@@ -120,31 +120,31 @@ pub(crate) struct MonitorGrantVm {
 /// owning state `S`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, Default)]
-pub(crate) struct MonitorScheduleAuthorizationState {
-    pub(crate) grant: Option<MonitorGrantVm>,
-    pub(crate) busy: bool,
-    pub(crate) error: Option<String>,
+pub struct MonitorScheduleAuthorizationState {
+    pub grant: Option<MonitorGrantVm>,
+    pub busy: bool,
+    pub error: Option<String>,
     /// Bumped on every resync; the effect-cleanup `active` flag. A delivery
     /// carrying an older token is dropped.
-    pub(crate) request_epoch: u64,
+    pub request_epoch: u64,
     /// The pair the current epoch was issued for (React's dep array); the
     /// host compares through [`Self::needs_resync`].
-    pub(crate) dashboard_id: String,
-    pub(crate) widget_id: String,
+    pub dashboard_id: String,
+    pub widget_id: String,
 }
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl MonitorScheduleAuthorizationState {
     /// React's dep-array check: `[dashboardId, widgetId]` changed (or this
     /// is the mount — the empty default never matches a real pair).
-    pub(crate) fn needs_resync(&self, dashboard_id: &str, widget_id: &str) -> bool {
+    pub fn needs_resync(&self, dashboard_id: &str, widget_id: &str) -> bool {
         self.dashboard_id != dashboard_id || self.widget_id != widget_id
     }
 
     /// The effect's synchronous half: drop the grant and the error, then
     /// bump the cancel token (the host fetches and delivers). `busy` is
     /// deliberately untouched — React's effect does not clear it either.
-    pub(crate) fn begin_resync(&mut self, dashboard_id: &str, widget_id: &str) {
+    pub fn begin_resync(&mut self, dashboard_id: &str, widget_id: &str) {
         self.dashboard_id = dashboard_id.to_owned();
         self.widget_id = widget_id.to_owned();
         self.request_epoch = self.request_epoch.saturating_add(1);
@@ -155,7 +155,7 @@ impl MonitorScheduleAuthorizationState {
     /// The fetch's `.then`: the grant lands. Returns `false` — with the
     /// state untouched — when the token is stale, which is React's
     /// `cancelled` guard.
-    pub(crate) fn deliver_grant(&mut self, grant: MonitorGrantVm, token: u64) -> bool {
+    pub fn deliver_grant(&mut self, grant: MonitorGrantVm, token: u64) -> bool {
         if token != self.request_epoch {
             return false;
         }
@@ -165,7 +165,7 @@ impl MonitorScheduleAuthorizationState {
 
     /// The fetch's `.catch`: `setError(String(reason))` under the same
     /// token guard.
-    pub(crate) fn deliver_resync_error(&mut self, reason: String, token: u64) -> bool {
+    pub fn deliver_resync_error(&mut self, reason: String, token: u64) -> bool {
         if token != self.request_epoch {
             return false;
         }
@@ -176,27 +176,27 @@ impl MonitorScheduleAuthorizationState {
     /// The synchronous head of `change` (identical for both branches):
     /// `setBusy(true); setError(null)`. The host applies this inside the
     /// button callback before dispatching the IPC.
-    pub(crate) fn begin_change(&mut self) {
+    pub fn begin_change(&mut self) {
         self.busy = true;
         self.error = None;
     }
 
     /// `change(false)`'s `.then` + `finally`: the fresh grant lands and the
     /// busy flag clears. Token-free, like React's.
-    pub(crate) fn change_resolved_with_grant(&mut self, grant: MonitorGrantVm) {
+    pub fn change_resolved_with_grant(&mut self, grant: MonitorGrantVm) {
         self.grant = Some(grant);
         self.busy = false;
     }
 
     /// `change(true)`'s `.then` + `finally`: `setGrant(null)` and the busy
     /// flag clears.
-    pub(crate) fn change_resolved_revoked(&mut self) {
+    pub fn change_resolved_revoked(&mut self) {
         self.grant = None;
         self.busy = false;
     }
 
     /// `change`'s `.catch` + `finally`: the error text lands, busy clears.
-    pub(crate) fn change_failed(&mut self, reason: String) {
+    pub fn change_failed(&mut self, reason: String) {
         self.error = Some(reason);
         self.busy = false;
     }
@@ -205,7 +205,7 @@ impl MonitorScheduleAuthorizationState {
     /// `grant && !grant.revoked && Date.parse(expiresAt) > now`. Unparseable
     /// text is `NaN > now` → false; an expiry exactly at `now` is false
     /// (React's strict `>`).
-    pub(crate) fn authorized(&self, now_ms: i64) -> bool {
+    pub fn authorized(&self, now_ms: i64) -> bool {
         match self.grant.as_ref() {
             Some(grant) if !grant.revoked => {
                 parse_zoned_instant(&grant.expires_at).is_some_and(|ms| ms > now_ms)
@@ -217,7 +217,7 @@ impl MonitorScheduleAuthorizationState {
     /// The status line's text: `t('dashboard.scheduleAuthorizedUntil',
     /// { time: new Date(expiresAt).toLocaleString() })` while authorized,
     /// else `t('dashboard.scheduleUnauthorized')`.
-    pub(crate) fn status_line(&self, now_ms: i64) -> String {
+    pub fn status_line(&self, now_ms: i64) -> String {
         if self.authorized(now_ms) {
             // `authorized` implies the grant is present; the `else` arm is
             // the compiler's, not a state the card can reach.
@@ -237,7 +237,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 /// Builder for the card, generic over the app state `S` that owns the state
 /// slice (the ported-dialog pattern of T018/T069).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) struct MonitorScheduleAuthorization<'a, S: 'static> {
+pub struct MonitorScheduleAuthorization<'a, S: 'static> {
     state: &'a MonitorScheduleAuthorizationState,
     /// React's `dirty` prop: unsaved edits add the save-first line and
     /// disable the authorize button (the revoke guard reads only the grant).
@@ -253,12 +253,12 @@ impl<'a, S: 'static> MonitorScheduleAuthorization<'a, S> {
     /// `now_ms` is the render-time `Date.now()` (the host's clock; the
     /// authorized derivation reads it, exactly as React re-evaluates the
     /// expression on every render).
-    pub(crate) fn new(state: &'a MonitorScheduleAuthorizationState, now_ms: i64) -> Self {
+    pub fn new(state: &'a MonitorScheduleAuthorizationState, now_ms: i64) -> Self {
         Self { state, dirty: false, now_ms, on_authorize: None, on_revoke: None }
     }
 
     /// React's `dirty` prop.
-    pub(crate) fn dirty(mut self, dirty: bool) -> Self {
+    pub fn dirty(mut self, dirty: bool) -> Self {
         self.dirty = dirty;
         self
     }
@@ -267,7 +267,7 @@ impl<'a, S: 'static> MonitorScheduleAuthorization<'a, S> {
     /// applies `begin_change` and dispatches `authorizeMonitorSchedule`; the
     /// answer lands through `change_resolved_with_grant` /
     /// `change_failed`.
-    pub(crate) fn on_authorize(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_authorize(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_authorize = Some(Rc::new(f));
         self
     }
@@ -275,7 +275,7 @@ impl<'a, S: 'static> MonitorScheduleAuthorization<'a, S> {
     /// The revoke button's press — React's `change(true)`. The host applies
     /// `begin_change` and dispatches `revokeMonitorSchedule`; the answer
     /// lands through `change_resolved_revoked` / `change_failed`.
-    pub(crate) fn on_revoke(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_revoke(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_revoke = Some(Rc::new(f));
         self
     }
@@ -283,7 +283,7 @@ impl<'a, S: 'static> MonitorScheduleAuthorization<'a, S> {
     /// Builds the `<section>`. It always paints: React's parent gates the
     /// mount on `refresh.mode === 'interval'`, which is the drawer's
     /// concern, not the card's.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut section = col()
             .key("monitor-schedule-authorization")

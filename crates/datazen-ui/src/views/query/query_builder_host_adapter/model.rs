@@ -12,7 +12,7 @@ use super::catalog::qb_context_key;
 /// React `QueryBuilderPanelProps['onCommit']` mode.
 #[allow(dead_code)] // action payload; consumer: the query-editor host (not wired).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CommitMode {
+pub enum CommitMode {
     Replace,
     Append,
 }
@@ -20,7 +20,7 @@ pub(crate) enum CommitMode {
 /// One relation in the catalog: React's `{ name, schema }` shape.
 #[allow(dead_code)] // catalog VM; consumer: the builder panel slot (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RelationVm {
+pub struct RelationVm {
     pub name: String,
     pub schema: Option<String>,
 }
@@ -28,7 +28,7 @@ pub(crate) struct RelationVm {
 /// React `TableSchema`-column metadata key held in `relationColumns`.
 #[allow(dead_code)] // catalog VM; consumer: the catalog builder.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RelationColumnsVm {
+pub struct RelationColumnsVm {
     pub database: String,
     pub schema: Option<String>,
     pub name: String,
@@ -38,7 +38,7 @@ pub(crate) struct RelationColumnsVm {
 /// A column as seen by the builder's typed column map.
 #[allow(dead_code)] // catalog VM; consumer: the catalog builder.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnVm {
+pub struct ColumnVm {
     pub name: String,
     pub data_type: String,
 }
@@ -46,7 +46,7 @@ pub(crate) struct ColumnVm {
 /// The slice of `useSchemaStore` the adapter reads for one db session.
 #[allow(dead_code)] // store projection; consumer: the query-editor host (not wired).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SessionSchemaVm {
+pub struct SessionSchemaVm {
     pub current_database: String,
     pub tables: Vec<RelationVm>,
     pub views: Vec<RelationVm>,
@@ -58,7 +58,7 @@ pub(crate) struct SessionSchemaVm {
 /// React `QueryBuilderCatalog`: de-duplicated tables + the two column maps.
 #[allow(dead_code)] // catalog VM; consumer: the builder panel slot (not wired).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct QueryBuilderCatalogVm {
+pub struct QueryBuilderCatalogVm {
     pub tables: Vec<RelationVm>,
     pub column_map: BTreeMap<String, Vec<String>>,
     pub typed_column_map: BTreeMap<String, BTreeMap<String, String>>,
@@ -68,7 +68,7 @@ pub(crate) struct QueryBuilderCatalogVm {
 /// that decides whether the adapter is mounted at all.
 #[allow(dead_code)] // view VM; consumer: the query-editor host (not wired).
 #[derive(Clone, Debug)]
-pub(crate) struct QueryBuilderVm {
+pub struct QueryBuilderVm {
     pub panel_id: String,
     pub connection_id: String,
     pub db_session_id: String,
@@ -117,14 +117,14 @@ impl Default for QueryBuilderVm {
 impl QueryBuilderVm {
     /// React `qbOpen = openPanelId === panelId`.
     #[allow(dead_code)] // pure rule; pinned by the adapter tests.
-    pub(crate) fn is_open(&self) -> bool {
+    pub fn is_open(&self) -> bool {
         self.contribution_available && self.open_panel_id.as_deref() == Some(self.panel_id.as_str())
     }
 
     /// React `JSON.stringify([connectionId ?? '', dbSessionId, database ?? '',
     /// schema ?? ''])` — the key passed to `openFor(panelId, contextKey)`.
     #[allow(dead_code)] // pure rule; pinned by the adapter tests.
-    pub(crate) fn context_key(&self) -> String {
+    pub fn context_key(&self) -> String {
         qb_context_key(
             &self.connection_id,
             &self.db_session_id,
@@ -136,14 +136,14 @@ impl QueryBuilderVm {
     /// The layout-effect rebind condition: open, but the contribution is bound
     /// to a stale database/schema context.
     #[allow(dead_code)] // pure rule; pinned by the adapter tests.
-    pub(crate) fn needs_rebind(&self) -> bool {
+    pub fn needs_rebind(&self) -> bool {
         self.is_open() && self.bound_context_key.as_deref() != Some(self.context_key().as_str())
     }
 
     /// The rebind request the host must issue before paint when the context is
     /// stale; `None` when nothing needs rebinding.
     #[allow(dead_code)] // pure rule; pinned by the adapter tests.
-    pub(crate) fn rebind_action(&self) -> Option<QueryBuilderAction> {
+    pub fn rebind_action(&self) -> Option<QueryBuilderAction> {
         self.needs_rebind().then_some(QueryBuilderAction::Rebind {
             panel_id: self.panel_id.clone(),
             context_key: self.context_key(),
@@ -157,7 +157,7 @@ impl QueryBuilderVm {
 /// lives in the view.
 #[allow(dead_code)] // host port; consumer: the query-editor host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum QueryBuilderAction {
+pub enum QueryBuilderAction {
     /// Toolbar toggle: open for the current context, or hide if already open.
     Toggle {
         panel_id: String,
@@ -197,7 +197,7 @@ pub(crate) enum QueryBuilderAction {
 }
 
 #[allow(dead_code)] // host port; consumer: the query-editor host (not wired).
-pub(crate) struct QueryBuilderHostPort<S> {
+pub struct QueryBuilderHostPort<S> {
     pub on_action: Option<Rc<dyn Fn(&mut S, QueryBuilderAction) + 'static>>,
 }
 
@@ -209,7 +209,7 @@ impl<S> Default for QueryBuilderHostPort<S> {
 
 impl<S: 'static> QueryBuilderHostPort<S> {
     #[allow(dead_code)] // host port; consumer: the query-editor host (not wired).
-    pub(crate) fn emit(&self, state: &mut S, action: QueryBuilderAction) {
+    pub fn emit(&self, state: &mut S, action: QueryBuilderAction) {
         if let Some(on_action) = &self.on_action {
             on_action(state, action);
         }

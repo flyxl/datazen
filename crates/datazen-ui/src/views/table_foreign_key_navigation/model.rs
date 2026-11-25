@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 /// React `Value` (`string | number | boolean | null`).
 #[allow(dead_code)] // VM mirror; supplied by the host row data.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum FkValue {
+pub enum FkValue {
     Str(String),
     Num(f64),
     Bool(bool),
@@ -16,13 +16,13 @@ pub(crate) enum FkValue {
 impl FkValue {
     /// React's `value == null` check (absent ⇒ cannot navigate).
     #[allow(dead_code)] // pure helper; consumed by navigation and tests.
-    pub(crate) fn is_absent(&self) -> bool {
+    pub fn is_absent(&self) -> bool {
         matches!(self, Self::Null)
     }
 
     /// JSON encoding used by `fkNavKey` (numbers without a trailing `.0`).
     #[allow(dead_code)] // pure helper; consumed by the nav key and tests.
-    pub(crate) fn json(&self) -> String {
+    pub fn json(&self) -> String {
         match self {
             Self::Str(value) => json_quote(value),
             Self::Num(value) => {
@@ -40,7 +40,7 @@ impl FkValue {
 
 /// Minimal JSON string escaping for the nav key (identifiers / values).
 #[allow(dead_code)] // pure helper; consumed by the nav key and tests.
-pub(crate) fn json_quote(value: &str) -> String {
+pub fn json_quote(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 2);
     out.push('"');
     for ch in value.chars() {
@@ -61,7 +61,7 @@ pub(crate) fn json_quote(value: &str) -> String {
 /// React `ForeignKeyInfo`.
 #[allow(dead_code)] // VM mirror; supplied by the host FK metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ForeignKeyInfoVm {
+pub struct ForeignKeyInfoVm {
     pub name: String,
     pub columns: Vec<String>,
     pub referenced_table: String,
@@ -71,7 +71,7 @@ pub(crate) struct ForeignKeyInfoVm {
 /// React `FkGroupAffordance` (one group shared by every member column).
 #[allow(dead_code)] // VM mirror; produced by `index_foreign_keys`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FkGroupAffordanceVm {
+pub struct FkGroupAffordanceVm {
     pub local_columns: Vec<String>,
     pub target_columns: Vec<String>,
     pub target_label: String,
@@ -81,12 +81,12 @@ pub(crate) struct FkGroupAffordanceVm {
 
 /// React `column → group` index.
 #[allow(dead_code)] // VM mirror; produced by `index_foreign_keys`.
-pub(crate) type FkIndexVm = BTreeMap<String, FkGroupAffordanceVm>;
+pub type FkIndexVm = BTreeMap<String, FkGroupAffordanceVm>;
 
 /// React `FkNavTargetIdentity` — the four fields a nav key needs.
 #[allow(dead_code)] // VM mirror; supplied by the jump request.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FkNavTargetIdentityVm {
+pub struct FkNavTargetIdentityVm {
     pub database: String,
     pub schema: Option<String>,
     pub table: String,
@@ -96,7 +96,7 @@ pub(crate) struct FkNavTargetIdentityVm {
 /// React `FilterCondition` (only the `eq` filters the FK path builds).
 #[allow(dead_code)] // VM mirror; produced by `build_fk_filters`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FkFilterVm {
+pub struct FkFilterVm {
     pub column: String,
     pub operator: &'static str,
     pub value: FkValue,
@@ -105,7 +105,7 @@ pub(crate) struct FkFilterVm {
 /// React `GridViewport`.
 #[allow(dead_code)] // VM mirror; supplied by the host grid.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct GridViewportVm {
+pub struct GridViewportVm {
     pub scroll_top: i64,
     pub anchor_row: Option<usize>,
     pub anchor_column: Option<String>,
@@ -114,7 +114,7 @@ pub(crate) struct GridViewportVm {
 /// React `FkNavEntry.origin` (the breadcrumb/restore minimum).
 #[allow(dead_code)] // VM mirror; supplied by the jump record.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FkNavOriginVm {
+pub struct FkNavOriginVm {
     pub source_panel_id: String,
     pub source_table: String,
     pub local_columns: Vec<String>,
@@ -125,7 +125,7 @@ pub(crate) struct FkNavOriginVm {
 /// React `FkNavEntry`.
 #[allow(dead_code)] // VM mirror; produced by the history machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FkNavEntryVm {
+pub struct FkNavEntryVm {
     pub id: String,
     pub panel_id: String,
     pub nav_key: String,

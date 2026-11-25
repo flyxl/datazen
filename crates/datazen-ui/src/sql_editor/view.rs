@@ -217,7 +217,7 @@ fn muted_note(editor: &SqlEditor) -> String {
     }
 }
 
-pub(crate) fn line_row(
+pub fn line_row(
     index: usize,
     start: usize,
     line: &str,
@@ -295,7 +295,7 @@ fn caret(main: bool, dark: bool) -> El {
 /// Split a document into `(byte_offset, line)` pairs for row rendering.
 /// Crate-visible for the workflow yaml editor's surface (T200), which
 /// mounts the same rows the plain panel renders.
-pub(crate) fn split_lines(doc: &str) -> Vec<(usize, &str)> {
+pub fn split_lines(doc: &str) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
     let mut start = 0;
     for (i, byte) in doc.bytes().enumerate() {

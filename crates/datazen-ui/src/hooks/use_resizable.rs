@@ -45,14 +45,14 @@
 
 /// `direction: 'horizontal' | 'vertical'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ResizeDirection {
+pub enum ResizeDirection {
     Horizontal,
     Vertical,
 }
 
 impl ResizeDirection {
     /// The body cursor the drag sets (`col-resize` / `row-resize`).
-    pub(crate) fn cursor(self) -> &'static str {
+    pub fn cursor(self) -> &'static str {
         match self {
             Self::Horizontal => "col-resize",
             Self::Vertical => "row-resize",
@@ -65,24 +65,24 @@ impl ResizeDirection {
 /// [`UseResizableState::pointer_down`], `getStartSize` is its
 /// parameter).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct UseResizableOptions {
-    pub(crate) direction: ResizeDirection,
-    pub(crate) initial_size: f64,
-    pub(crate) min_size: f64,
-    pub(crate) max_size: f64,
+pub struct UseResizableOptions {
+    pub direction: ResizeDirection,
+    pub initial_size: f64,
+    pub min_size: f64,
+    pub max_size: f64,
     /// When true, dragging towards positive axis shrinks the panel
     /// (for right-side panels).
-    pub(crate) reverse: bool,
+    pub reverse: bool,
 }
 
 impl UseResizableOptions {
     /// `clamp` — `Math.max(minSize, Math.min(maxSize, n))`.
-    pub(crate) fn clamp(&self, n: f64) -> f64 {
+    pub fn clamp(&self, n: f64) -> f64 {
         n.max(self.min_size).min(self.max_size)
     }
 
     /// `` `resize:${storageKey}` `` — the localStorage seam's key.
-    pub(crate) fn storage_key(&self, storage_key: &str) -> String {
+    pub fn storage_key(&self, storage_key: &str) -> String {
         format!("resize:{storage_key}")
     }
 }
@@ -97,14 +97,14 @@ struct ResizeDrag {
 /// The hook's state: the size, the persisted-seam answer and the
 /// drag in flight.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct UseResizableState {
+pub struct UseResizableState {
     options: UseResizableOptions,
     size: f64,
     drag: Option<ResizeDrag>,
 }
 
 impl UseResizableState {
-    pub(crate) fn new(options: UseResizableOptions) -> Self {
+    pub fn new(options: UseResizableOptions) -> Self {
         Self {
             options,
             // The useState initializer's fallback arm; a mount with a
@@ -116,7 +116,7 @@ impl UseResizableState {
 
     /// The useState initializer: adopt the persisted value (clamped)
     /// when the storage seam answers one, else keep the initial size.
-    pub(crate) fn mount(&mut self, saved: Option<f64>) {
+    pub fn mount(&mut self, saved: Option<f64>) {
         if let Some(saved) = saved {
             if saved.is_finite() {
                 self.size = self.options.clamp(saved);
@@ -125,18 +125,18 @@ impl UseResizableState {
     }
 
     /// The current size (the `size` the hook returns).
-    pub(crate) fn size(&self) -> f64 {
+    pub fn size(&self) -> f64 {
         self.size
     }
 
     /// The raw setter (the returned `setSize`): the React file hands
     /// the unclamped `setState` to its callers.
-    pub(crate) fn set_size(&mut self, size: f64) {
+    pub fn set_size(&mut self, size: f64) {
         self.size = size;
     }
 
     /// Whether a drag is in flight (`active`).
-    pub(crate) fn dragging(&self) -> bool {
+    pub fn dragging(&self) -> bool {
         self.drag.is_some()
     }
 
@@ -145,7 +145,7 @@ impl UseResizableState {
     /// `get_start_size` is the option's override; `on_resize_start`
     /// is its callback. Adopts the measured start (a CSS-sized panel
     /// must not jump) and answers whether the drag began.
-    pub(crate) fn pointer_down(
+    pub fn pointer_down(
         &mut self,
         axis: f64,
         get_start_size: Option<f64>,
@@ -171,7 +171,7 @@ impl UseResizableState {
     /// next size (the clamped `startSize ± delta`), or `None` while
     /// no drag is in flight (the `if (!active …)` guard; the pointer
     /// capture is the host's).
-    pub(crate) fn pointer_move(&mut self, axis: f64) -> Option<f64> {
+    pub fn pointer_move(&mut self, axis: f64) -> Option<f64> {
         let drag = self.drag?;
         let delta = axis - drag.start_pos;
         let next = if self.options.reverse {
@@ -187,7 +187,7 @@ impl UseResizableState {
     /// `onPointerUp(e)`: ends the drag and answers the persist write
     /// — `("resize:{storageKey}", size)` — when a storage key exists
     /// (the CURRENT size, not the drag's start).
-    pub(crate) fn pointer_up(
+    pub fn pointer_up(
         &mut self,
         storage_key: Option<&str>,
     ) -> Option<(String, f64)> {

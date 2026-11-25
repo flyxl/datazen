@@ -75,7 +75,7 @@ fn code_mask(sql: &str) -> Vec<bool> {
 
 /// React `analyzeTransactionSql`: BEGIN/START TRANSACTION vs COMMIT/END/ROLLBACK.
 #[allow(dead_code)] // pure helper; consumed by the reducer and tests.
-pub(crate) fn transaction_analysis(sql: &str) -> (bool, usize, usize, i32) {
+pub fn transaction_analysis(sql: &str) -> (bool, usize, usize, i32) {
     let mask = code_mask(sql);
     let mut statements: Vec<String> = Vec::new();
     let mut start = 0usize;
@@ -114,7 +114,7 @@ pub(crate) fn transaction_analysis(sql: &str) -> (bool, usize, usize, i32) {
 /// React `hasSuspiciousPostgresDoubleQuotedLiteral`: `= "text"` etc. where the
 /// quoted token is not an identifier (`"tbl"."col"`).
 #[allow(dead_code)] // pure helper; consumed by the reducer and tests.
-pub(crate) fn suspicious_pg_double_quote(sql: &str) -> bool {
+pub fn suspicious_pg_double_quote(sql: &str) -> bool {
     let operators = ["=", "<>", "!=", "LIKE", "ILIKE"];
     let bytes = sql.as_bytes();
     let lower = sql.to_ascii_lowercase();
@@ -159,16 +159,16 @@ pub(crate) fn suspicious_pg_double_quote(sql: &str) -> bool {
 /// One bind placeholder, mirroring `SqlParam` + its original-syntax label.
 #[allow(dead_code)] // VM mirror; consumed by validation and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SqlParam {
-    pub(crate) name: String,
-    pub(crate) stable_id: String,
-    pub(crate) label: String,
-    pub(crate) from: usize,
-    pub(crate) to: usize,
+pub struct SqlParam {
+    pub name: String,
+    pub stable_id: String,
+    pub label: String,
+    pub from: usize,
+    pub to: usize,
 }
 
 #[allow(dead_code)] // pure helper; consumed by the validator and tests.
-pub(crate) fn parse_params(sql: &str) -> Vec<SqlParam> {
+pub fn parse_params(sql: &str) -> Vec<SqlParam> {
     let mask = code_mask(sql);
     let bytes = sql.as_bytes();
     let mut out = Vec::new();
@@ -273,7 +273,7 @@ pub(crate) fn parse_params(sql: &str) -> Vec<SqlParam> {
 
 /// React `findMissingParams`: a value is missing when absent, null or blank.
 #[allow(dead_code)] // pure helper; consumed by the reducer and tests.
-pub(crate) fn missing_params(sql: &str, values: &std::collections::BTreeMap<String, String>) -> Vec<SqlParam> {
+pub fn missing_params(sql: &str, values: &std::collections::BTreeMap<String, String>) -> Vec<SqlParam> {
     parse_params(sql)
         .into_iter()
         .filter(|param| {
@@ -288,7 +288,7 @@ pub(crate) fn missing_params(sql: &str, values: &std::collections::BTreeMap<Stri
 
 /// React `substituteSqlParams` for the documented value formats.
 #[allow(dead_code)] // pure helper; consumed by the reducer and tests.
-pub(crate) fn substitute_params(sql: &str, values: &std::collections::BTreeMap<String, String>) -> String {
+pub fn substitute_params(sql: &str, values: &std::collections::BTreeMap<String, String>) -> String {
     let params = parse_params(sql);
     if params.is_empty() {
         return sql.to_owned();
@@ -320,7 +320,7 @@ pub(crate) fn substitute_params(sql: &str, values: &std::collections::BTreeMap<S
 
 /// Top-level statement ranges `(from, to)` in the original source.
 #[allow(dead_code)] // pure helper; consumed by target resolution and tests.
-pub(crate) fn statement_ranges(sql: &str) -> Vec<(usize, usize)> {
+pub fn statement_ranges(sql: &str) -> Vec<(usize, usize)> {
     let mask = code_mask(sql);
     let mut ranges = Vec::new();
     let mut start = 0usize;

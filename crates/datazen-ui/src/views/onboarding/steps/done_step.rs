@@ -106,7 +106,7 @@ use crate::views::onboarding::onboarding_wizard::Entry;
 // audit's direct entry — the build itself reaches it through
 // `connection_summary`).
 #[allow(unused_imports)]
-pub(crate) use crate::views::onboarding::wizard_state::{
+pub use crate::views::onboarding::wizard_state::{
     ConnectionSummary, connection_summary, imported_count,
 };
 
@@ -153,7 +153,7 @@ fn strip_b_tags(raw: &str) -> (String, Vec<std::ops::Range<usize>>) {
 /// three-row summary card, the sample-entry hint and the open button.
 /// Built per frame over the wizard state's feed-ins — there is nothing
 /// to edit (the button is the only control).
-pub(crate) struct DoneStep<S: 'static> {
+pub struct DoneStep<S: 'static> {
     /// `state.entry` — the sample entry alone shows the hint.
     entry: Entry,
     /// `state.importResult` — the import entry's summary.
@@ -174,7 +174,7 @@ impl<S: 'static> DoneStep<S> {
     /// `INITIAL_STATE`'s halves until the host hands the journey's real
     /// state over (the fresh journey is the manual entry with nothing
     /// configured).
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         DoneStep {
             entry: Entry::Manual,
             import_result: None,
@@ -186,31 +186,31 @@ impl<S: 'static> DoneStep<S> {
     }
 
     /// `state.entry`.
-    pub(crate) fn entry(mut self, entry: Entry) -> Self {
+    pub fn entry(mut self, entry: Entry) -> Self {
         self.entry = entry;
         self
     }
 
     /// `state.importResult` (`None` is React's undefined).
-    pub(crate) fn import_result(mut self, result: ImportSummary) -> Self {
+    pub fn import_result(mut self, result: ImportSummary) -> Self {
         self.import_result = Some(result);
         self
     }
 
     /// `state.connectionName` (`None` is React's undefined).
-    pub(crate) fn connection_name(mut self, name: impl Into<String>) -> Self {
+    pub fn connection_name(mut self, name: impl Into<String>) -> Self {
         self.connection_name = Some(name.into());
         self
     }
 
     /// `state.aiLabel` (`None` is React's `null`).
-    pub(crate) fn ai_label(mut self, label: impl Into<String>) -> Self {
+    pub fn ai_label(mut self, label: impl Into<String>) -> Self {
         self.ai_label = Some(label.into());
         self
     }
 
     /// `state.aiConfigured`.
-    pub(crate) fn ai_configured(mut self, configured: bool) -> Self {
+    pub fn ai_configured(mut self, configured: bool) -> Self {
         self.ai_configured = configured;
         self
     }
@@ -218,13 +218,13 @@ impl<S: 'static> DoneStep<S> {
     /// `onOpen` → the host's `handleOpen`: stash the sample directive
     /// (T114's `post_onboarding_sample()`), persist the completed
     /// onboarding settings, then fire the window's completion action.
-    pub(crate) fn on_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open = Some(Rc::new(f));
         self
     }
 
     /// Paint the step. `dark` drives the kit tokens.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let summary = connection_summary(
             self.entry,

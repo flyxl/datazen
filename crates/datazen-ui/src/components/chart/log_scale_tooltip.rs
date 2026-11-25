@@ -103,11 +103,11 @@ use super::chart_canvas::{ChartDataPoint, ChartValue};
 use crate::ui::kit::kit;
 
 /// The `contentStyle` box recharts' `<Tooltip>` floats (this port's root).
-pub(crate) const CONTENT_KEY: &str = "chart-log-scale-tooltip";
+pub const CONTENT_KEY: &str = "chart-log-scale-tooltip";
 /// The slot prefix `mapToLogScale` (transform.ts) stashes pre-transform
 /// values under. Shared with the transform port (T182), which writes it;
 /// this module only reads one slot at a time.
-pub(crate) const ORIG_PREFIX: &str = "__orig__";
+pub const ORIG_PREFIX: &str = "__orig__";
 /// React `border: '1px solid …'` — the ring's width.
 const BORDER_WIDTH: f32 = 1.0;
 /// recharts' default tooltip item separator.
@@ -118,20 +118,20 @@ const ITEM_SEPARATOR: &str = " : ";
 /// slot — `__orig__${name}`. `Some(n)` means precisely
 /// `typeof payload[key] === 'number'` (a string number is not a number);
 /// `None` is every other slot, and a missing one.
-pub(crate) type PayloadView<'a> = &'a dyn Fn(&str) -> Option<f64>;
+pub type PayloadView<'a> = &'a dyn Fn(&str) -> Option<f64>;
 
 /// The `formatCompact` seam (`lib/chart/format.ts`): the lib/chart track
 /// owns the real port; the engine injects it here.
-pub(crate) type FormatCompact<'a> = &'a dyn Fn(f64) -> String;
+pub type FormatCompact<'a> = &'a dyn Fn(f64) -> String;
 
 /// React's `<Tooltip formatter>` return: the `[display, name]` pair.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct LogScaleTooltipEntry {
+pub struct LogScaleTooltipEntry {
     /// The first tuple slot: the formatted display value.
-    pub(crate) value: String,
+    pub value: String,
     /// The second tuple slot: the name the entry is announced by
     /// (`String(name ?? '')`).
-    pub(crate) name: String,
+    pub name: String,
 }
 
 /// The minimal payload view over the family's `ChartDataPoint` — the adapter
@@ -139,7 +139,7 @@ pub(crate) struct LogScaleTooltipEntry {
 /// is the row's data point). Writing the `__orig__${key}` slots is
 /// `mapToLogScale`'s job (the transform port); this reads one slot and
 /// surfaces JS numbers only.
-pub(crate) fn chart_payload(point: &ChartDataPoint) -> impl Fn(&str) -> Option<f64> + '_ {
+pub fn chart_payload(point: &ChartDataPoint) -> impl Fn(&str) -> Option<f64> + '_ {
     move |key| match point.get(key) {
         Some(ChartValue::Number(n)) => Some(*n),
         _ => None, // Text, Null or absent: not `typeof 'number'`
@@ -149,7 +149,7 @@ pub(crate) fn chart_payload(point: &ChartDataPoint) -> impl Fn(&str) -> Option<f
 /// React's `formatter`, arm by arm (the module docs spell out the JS
 /// coercion rules). `payload` is the entry's data point viewed as one
 /// `__orig__` read; `format_compact` is the injected lib/chart seam.
-pub(crate) fn format_entry(
+pub fn format_entry(
     value: &ChartValue,
     name: &ChartValue,
     payload: PayloadView<'_>,
@@ -181,18 +181,18 @@ pub(crate) fn format_entry(
 /// chrome. The five chart-engine tasks mount it — recharts' `<Tooltip>`
 /// mount, triggering and overlay anchoring are theirs; this box is the
 /// content they float.
-pub(crate) struct LogScaleTooltip<'a> {
+pub struct LogScaleTooltip<'a> {
     entries: &'a [LogScaleTooltipEntry],
 }
 
 impl<'a> LogScaleTooltip<'a> {
     /// One box for the already-formatted entries (payload order).
-    pub(crate) fn new(entries: &'a [LogScaleTooltipEntry]) -> Self {
+    pub fn new(entries: &'a [LogScaleTooltipEntry]) -> Self {
         Self { entries }
     }
 
     /// Builds the content box. `dark` picks the kit theme the tokens read.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let c = &k.c;
         col()

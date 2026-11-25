@@ -25,7 +25,7 @@ use chrono::DateTime;
 
 /// `InferredFieldType` (`types/chart.ts`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InferredFieldType {
+pub enum InferredFieldType {
     Numeric,
     Datetime,
     Categorical,
@@ -37,7 +37,7 @@ pub(crate) enum InferredFieldType {
 /// (`String(obj)` is `[object Object]`). Arrays keep their elements so
 /// `String(array)` is the join, as in JS.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ChartValue {
+pub enum ChartValue {
     Null,
     Bool(bool),
     Number(f64),
@@ -48,14 +48,14 @@ pub(crate) enum ChartValue {
 
 /// `ColumnInfo` minus `nullable`, which inference never reads.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ChartColumn {
+pub struct ChartColumn {
     pub name: String,
     pub data_type: String,
 }
 
 /// The slice of `StatementResult` inference reads: columns and rows.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ChartResult {
+pub struct ChartResult {
     pub columns: Vec<ChartColumn>,
     pub rows: Vec<Vec<ChartValue>>,
 }
@@ -63,7 +63,7 @@ pub(crate) struct ChartResult {
 /// `ChartField`. `sample_values` are the JS `String(value)` forms: the
 /// React set is built from `samples.map(String)`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ChartField {
+pub struct ChartField {
     pub name: String,
     pub data_type: String,
     pub inferred_type: InferredFieldType,
@@ -72,7 +72,7 @@ pub(crate) struct ChartField {
 }
 
 /// `inferFieldType`.
-pub(crate) fn infer_field_type(column: &ChartColumn, sample_values: &[ChartValue]) -> InferredFieldType {
+pub fn infer_field_type(column: &ChartColumn, sample_values: &[ChartValue]) -> InferredFieldType {
     let dt = column.data_type.to_lowercase();
     if dt.contains("bool") {
         return InferredFieldType::Boolean;
@@ -108,7 +108,7 @@ pub(crate) fn infer_field_type(column: &ChartColumn, sample_values: &[ChartValue
 /// `inferAllFields`. Samples are the first 50 rows. Distinct values are
 /// insertion-ordered `String(value)` of the non-null samples; the field
 /// keeps the first five.
-pub(crate) fn infer_all_fields(result: &ChartResult) -> Vec<ChartField> {
+pub fn infer_all_fields(result: &ChartResult) -> Vec<ChartField> {
     let sample_size = result.rows.len().min(50);
     result
         .columns
@@ -142,7 +142,7 @@ pub(crate) fn infer_all_fields(result: &ChartResult) -> Vec<ChartField> {
 }
 
 /// `isChartableResult`: at least one row, one column, and one numeric field.
-pub(crate) fn is_chartable_result(result: &ChartResult) -> bool {
+pub fn is_chartable_result(result: &ChartResult) -> bool {
     if result.rows.is_empty() || result.columns.is_empty() {
         return false;
     }
@@ -243,7 +243,7 @@ fn js_date_parse_ok(text: &str) -> bool {
 /// `String(value)` for the distinct-set. Numbers use V8's `String(number)`:
 /// scientific notation when the exponent is `<= -7` or `>= 21`, with `+`
 /// on a positive exponent (`1e-7`, `1e+21`).
-pub(crate) fn js_string(value: &ChartValue) -> String {
+pub fn js_string(value: &ChartValue) -> String {
     match value {
         ChartValue::Null => "null".to_owned(),
         ChartValue::Bool(flag) => flag.to_string(),
@@ -262,7 +262,7 @@ pub(crate) fn js_string(value: &ChartValue) -> String {
 /// shortest round-trip digits, then decimal notation while the scientific
 /// exponent is in `-6..=20` and exponential notation otherwise. A tie
 /// between two shortest spellings takes the even last digit.
-pub(crate) fn js_number_text(number: f64) -> String {
+pub fn js_number_text(number: f64) -> String {
     if number.is_nan() {
         return "NaN".to_owned();
     }

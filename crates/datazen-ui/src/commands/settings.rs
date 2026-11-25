@@ -46,7 +46,7 @@ use serde_json::{json, Value};
 
 /// The settings faces (the kernel methods and the host-port calls).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SettingsMethod {
+pub enum SettingsMethod {
     KernelGet,
     KernelSave,
     ReadHostExtras,
@@ -61,7 +61,7 @@ pub(crate) enum SettingsMethod {
 }
 
 impl SettingsMethod {
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::KernelGet => "getSettings",
             Self::KernelSave => "saveSettings",
@@ -80,21 +80,21 @@ impl SettingsMethod {
 
 /// One shaped call.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SettingsRequest {
+pub struct SettingsRequest {
     pub method: SettingsMethod,
     pub value: Value,
 }
 
 /// React `DEFAULT_VALUE_PRESENTATION_SETTINGS` (issue-32 T06's
 /// fallback): `{version: 1, renderers: {}}`.
-pub(crate) fn default_value_presentation_settings() -> Value {
+pub fn default_value_presentation_settings() -> Value {
     json!({ "version": 1, "renderers": {} })
 }
 
 /// `flattenShared`: the nested shared wire → the store's flat view.
 /// The key set is the React literal's; an absent `valuePresentation`
 /// (or a non-object) falls to the default.
-pub(crate) fn flatten_shared(shared: &Value) -> Value {
+pub fn flatten_shared(shared: &Value) -> Value {
     let mut flat = serde_json::Map::new();
     // `{...shared.preferences, ...shared.execution}` — execution's
     // keys win (spread later).
@@ -129,7 +129,7 @@ pub(crate) fn flatten_shared(shared: &Value) -> Value {
 /// `getSettings`'s plan: both halves in parallel, the extras merge
 /// UNDER the shared contract (the kernel is the authority for every
 /// field it owns).
-pub(crate) fn get_settings_request() -> [SettingsRequest; 2] {
+pub fn get_settings_request() -> [SettingsRequest; 2] {
     [
         SettingsRequest { method: SettingsMethod::KernelGet, value: json!({}) },
         SettingsRequest { method: SettingsMethod::ReadHostExtras, value: json!({}) },
@@ -138,7 +138,7 @@ pub(crate) fn get_settings_request() -> [SettingsRequest; 2] {
 
 /// The merge order of the two answers: `{...extras, ...flattenShared(
 /// shared)}` — the shared half's keys overwrite the extras'.
-pub(crate) fn merge_settings(extras: &Value, shared: &Value) -> Value {
+pub fn merge_settings(extras: &Value, shared: &Value) -> Value {
     let mut merged = serde_json::Map::new();
     if let Some(entries) = extras.as_object() {
         for (key, value) in entries {
@@ -156,7 +156,7 @@ pub(crate) fn merge_settings(extras: &Value, shared: &Value) -> Value {
 /// `saveSettings`: the host write first, then the kernel save (the
 /// answer flattens back). The wire payload is the settings blob the
 /// host normalizes internally.
-pub(crate) fn save_settings_request(settings: &Value) -> [SettingsRequest; 2] {
+pub fn save_settings_request(settings: &Value) -> [SettingsRequest; 2] {
     [
         SettingsRequest {
             method: SettingsMethod::WriteHostSettings,
@@ -170,38 +170,38 @@ pub(crate) fn save_settings_request(settings: &Value) -> [SettingsRequest; 2] {
 }
 
 /// `syncLanguageMenu(language)`.
-pub(crate) fn sync_language_menu_request(language: &str) -> SettingsRequest {
+pub fn sync_language_menu_request(language: &str) -> SettingsRequest {
     SettingsRequest { method: SettingsMethod::RebuildMenu, value: json!({ "language": language }) }
 }
 
 /// `getLogPath` (the host port read).
-pub(crate) fn get_log_path_request() -> SettingsRequest {
+pub fn get_log_path_request() -> SettingsRequest {
     SettingsRequest { method: SettingsMethod::GetLogPath, value: json!({}) }
 }
 
 /// `getAppExecutablePath`.
-pub(crate) fn get_app_executable_path_request() -> SettingsRequest {
+pub fn get_app_executable_path_request() -> SettingsRequest {
     SettingsRequest { method: SettingsMethod::GetAppExecutablePath, value: json!({}) }
 }
 
 /// `openPath(path)` — deprecated, E2E-only; prefer the open_known_dir
 /// trio below (one IPC).
-pub(crate) fn open_path_request(path: &str) -> SettingsRequest {
+pub fn open_path_request(path: &str) -> SettingsRequest {
     SettingsRequest { method: SettingsMethod::OpenPath, value: json!({ "path": path }) }
 }
 
 /// `openLogDir`.
-pub(crate) fn open_log_dir_request() -> SettingsRequest {
+pub fn open_log_dir_request() -> SettingsRequest {
     SettingsRequest { method: SettingsMethod::OpenLogDir, value: json!({}) }
 }
 
 /// `openWorkflowsDir`.
-pub(crate) fn open_workflows_dir_request() -> SettingsRequest {
+pub fn open_workflows_dir_request() -> SettingsRequest {
     SettingsRequest { method: SettingsMethod::OpenWorkflowsDir, value: json!({}) }
 }
 
 /// `openContextDir`.
-pub(crate) fn open_context_dir_request() -> SettingsRequest {
+pub fn open_context_dir_request() -> SettingsRequest {
     SettingsRequest { method: SettingsMethod::OpenContextDir, value: json!({}) }
 }
 

@@ -40,9 +40,9 @@ use serde::{Deserialize, Serialize};
 
 /// One shaped legacy command: the `legacyInvoke` name plus its payload.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ConnectionRequest {
-    pub(crate) command: &'static str,
-    pub(crate) value: serde_json::Value,
+pub struct ConnectionRequest {
+    pub command: &'static str,
+    pub value: serde_json::Value,
 }
 
 impl ConnectionRequest {
@@ -57,7 +57,7 @@ impl ConnectionRequest {
 /// database session id (in-memory only, never persisted).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ConnectionSessionRef {
+pub struct ConnectionSessionRef {
     pub connection_id: String,
     pub db_session_id: String,
 }
@@ -65,7 +65,7 @@ pub(crate) struct ConnectionSessionRef {
 /// React `importConnections*`'s receipt (the merged-IPC import answers).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ImportConnectionsReceipt {
+pub struct ImportConnectionsReceipt {
     pub imported: u32,
     pub overwritten: u32,
     pub groups_added: u32,
@@ -78,7 +78,7 @@ pub(crate) struct ImportConnectionsReceipt {
 /// React `getConnectionInfo`'s receipt.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ConnectionInfoReceipt {
+pub struct ConnectionInfoReceipt {
     pub database_type: String,
     pub driver_category: String,
     pub name: String,
@@ -100,14 +100,14 @@ pub(crate) struct ConnectionInfoReceipt {
 /// React `detectConnectionImportPath`'s receipt.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct DetectImportPathReceipt {
+pub struct DetectImportPathReceipt {
     pub path: String,
     pub found: bool,
 }
 
 /// The import pickers' modes (React `'file' | 'folder'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ImportPathMode {
+pub enum ImportPathMode {
     File,
     Folder,
 }
@@ -124,12 +124,12 @@ impl ImportPathMode {
 // ---- the shapers (method for method) ---------------------------------------
 
 /// `getConnections`.
-pub(crate) fn get_connections_request() -> ConnectionRequest {
+pub fn get_connections_request() -> ConnectionRequest {
     ConnectionRequest::native("get_connections", serde_json::json!({}))
 }
 
 /// `saveConnection(config, clearMissingCredentials = false)`.
-pub(crate) fn save_connection_request(
+pub fn save_connection_request(
     config: &ConnectionConfig,
     clear_missing_credentials: bool,
 ) -> ConnectionRequest {
@@ -143,7 +143,7 @@ pub(crate) fn save_connection_request(
 }
 
 /// `duplicateConnection(sourceId, newId, newName)`.
-pub(crate) fn duplicate_connection_request(
+pub fn duplicate_connection_request(
     source_id: &str,
     new_id: &str,
     new_name: &str,
@@ -155,12 +155,12 @@ pub(crate) fn duplicate_connection_request(
 }
 
 /// `deleteConnection(id)`.
-pub(crate) fn delete_connection_request(id: &str) -> ConnectionRequest {
+pub fn delete_connection_request(id: &str) -> ConnectionRequest {
     ConnectionRequest::native("delete_connection", serde_json::json!({ "id": id }))
 }
 
 /// `reorderConnections(orderedIds)`.
-pub(crate) fn reorder_connections_request(ordered_ids: &[&str]) -> ConnectionRequest {
+pub fn reorder_connections_request(ordered_ids: &[&str]) -> ConnectionRequest {
     ConnectionRequest::native(
         "reorder_connections",
         serde_json::json!({ "orderedIds": ordered_ids }),
@@ -168,19 +168,19 @@ pub(crate) fn reorder_connections_request(ordered_ids: &[&str]) -> ConnectionReq
 }
 
 /// `testConnection(config)`.
-pub(crate) fn test_connection_request(config: &ConnectionConfig) -> ConnectionRequest {
+pub fn test_connection_request(config: &ConnectionConfig) -> ConnectionRequest {
     ConnectionRequest::native("test_connection", serde_json::json!({ "config": config }))
 }
 
 /// `connect(connectionId)` — the wire half; the join decision is
 /// [`ConnectJoiner`] below.
-pub(crate) fn connect_request(connection_id: &str) -> ConnectionRequest {
+pub fn connect_request(connection_id: &str) -> ConnectionRequest {
     ConnectionRequest::native("connect", serde_json::json!({ "connectionId": connection_id }))
 }
 
 /// `connectDedicated(connectionId, database?)` — sub-window only, never
 /// de-duplicated; `database ?? null` on the wire.
-pub(crate) fn connect_dedicated_request(
+pub fn connect_dedicated_request(
     connection_id: &str,
     database: Option<&str>,
 ) -> ConnectionRequest {
@@ -191,12 +191,12 @@ pub(crate) fn connect_dedicated_request(
 }
 
 /// `pingConnection(dbSessionId)`.
-pub(crate) fn ping_connection_request(db_session_id: &str) -> ConnectionRequest {
+pub fn ping_connection_request(db_session_id: &str) -> ConnectionRequest {
     ConnectionRequest::native("ping_connection", serde_json::json!({ "dbSessionId": db_session_id }))
 }
 
 /// `releaseConnection(dbSessionId)`.
-pub(crate) fn release_connection_request(db_session_id: &str) -> ConnectionRequest {
+pub fn release_connection_request(db_session_id: &str) -> ConnectionRequest {
     ConnectionRequest::native(
         "release_connection",
         serde_json::json!({ "dbSessionId": db_session_id }),
@@ -204,13 +204,13 @@ pub(crate) fn release_connection_request(db_session_id: &str) -> ConnectionReque
 }
 
 /// `disconnect(dbSessionId)`.
-pub(crate) fn disconnect_request(db_session_id: &str) -> ConnectionRequest {
+pub fn disconnect_request(db_session_id: &str) -> ConnectionRequest {
     ConnectionRequest::native("disconnect", serde_json::json!({ "dbSessionId": db_session_id }))
 }
 
 /// `closeDatabase(dbSessionId, database)` — releases one database's
 /// backend resources without closing the session.
-pub(crate) fn close_database_request(db_session_id: &str, database: &str) -> ConnectionRequest {
+pub fn close_database_request(db_session_id: &str, database: &str) -> ConnectionRequest {
     ConnectionRequest::native(
         "close_database",
         serde_json::json!({ "dbSessionId": db_session_id, "database": database }),
@@ -218,7 +218,7 @@ pub(crate) fn close_database_request(db_session_id: &str, database: &str) -> Con
 }
 
 /// `getOpenDatabases(dbSessionId)` — drives the navigator's "open" marker.
-pub(crate) fn get_open_databases_request(db_session_id: &str) -> ConnectionRequest {
+pub fn get_open_databases_request(db_session_id: &str) -> ConnectionRequest {
     ConnectionRequest::native(
         "get_open_databases",
         serde_json::json!({ "dbSessionId": db_session_id }),
@@ -226,7 +226,7 @@ pub(crate) fn get_open_databases_request(db_session_id: &str) -> ConnectionReque
 }
 
 /// `getConnectionInfo(dbSessionId)`.
-pub(crate) fn get_connection_info_request(db_session_id: &str) -> ConnectionRequest {
+pub fn get_connection_info_request(db_session_id: &str) -> ConnectionRequest {
     ConnectionRequest::native(
         "get_connection_info",
         serde_json::json!({ "dbSessionId": db_session_id }),
@@ -234,24 +234,24 @@ pub(crate) fn get_connection_info_request(db_session_id: &str) -> ConnectionRequ
 }
 
 /// `getAvailableDrivers()`.
-pub(crate) fn get_available_drivers_request() -> ConnectionRequest {
+pub fn get_available_drivers_request() -> ConnectionRequest {
     ConnectionRequest::native("get_available_drivers", serde_json::json!({}))
 }
 
 /// `getGroups()`.
-pub(crate) fn get_groups_request() -> ConnectionRequest {
+pub fn get_groups_request() -> ConnectionRequest {
     ConnectionRequest::native("get_groups", serde_json::json!({}))
 }
 
 /// `saveGroups(groups)`.
-pub(crate) fn save_groups_request(groups: &[String]) -> ConnectionRequest {
+pub fn save_groups_request(groups: &[String]) -> ConnectionRequest {
     ConnectionRequest::native("save_groups", serde_json::json!({ "groups": groups }))
 }
 
 /// `exportConnections(password, defaultFileName)` — merged IPC (native
 /// save dialog + encrypted export); the `override_path` hatch is
 /// E2E-only. Answers the connection count, or null when dismissed.
-pub(crate) fn export_connections_request(
+pub fn export_connections_request(
     password: &str,
     default_file_name: &str,
 ) -> ConnectionRequest {
@@ -263,7 +263,7 @@ pub(crate) fn export_connections_request(
 
 /// `importConnectionsPreview(password)` (the password-then-dialog legacy
 /// flow).
-pub(crate) fn import_connections_preview_request(password: &str) -> ConnectionRequest {
+pub fn import_connections_preview_request(password: &str) -> ConnectionRequest {
     ConnectionRequest::native(
         "import_connections_preview",
         serde_json::json!({ "password": password }),
@@ -273,7 +273,7 @@ pub(crate) fn import_connections_preview_request(password: &str) -> ConnectionRe
 /// `importConnections(password)` — legacy merged IPC; prefer
 /// [`pick_connections_import_file_request`] +
 /// [`import_connections_at_path_request`] for the file-first flow.
-pub(crate) fn import_connections_request(password: &str) -> ConnectionRequest {
+pub fn import_connections_request(password: &str) -> ConnectionRequest {
     ConnectionRequest::native(
         "import_connections_with_dialog",
         serde_json::json!({ "password": password }),
@@ -283,13 +283,13 @@ pub(crate) fn import_connections_request(password: &str) -> ConnectionRequest {
 /// `pickConnectionsImportFile()` — form-split F4c: the three import
 /// pickers merged into one host command; the webview only names the
 /// kind. Answers the picked path or null.
-pub(crate) fn pick_connections_import_file_request() -> ConnectionRequest {
+pub fn pick_connections_import_file_request() -> ConnectionRequest {
     ConnectionRequest::native("pick_import_file", serde_json::json!({ "kind": "connections" }))
 }
 
 /// `importConnectionsAtPath(password, path)` — the import after the file
 /// is already chosen.
-pub(crate) fn import_connections_at_path_request(
+pub fn import_connections_at_path_request(
     password: &str,
     path: &str,
 ) -> ConnectionRequest {
@@ -300,7 +300,7 @@ pub(crate) fn import_connections_at_path_request(
 }
 
 /// `detectConnectionImportPath(source)`.
-pub(crate) fn detect_connection_import_path_request(source: &str) -> ConnectionRequest {
+pub fn detect_connection_import_path_request(source: &str) -> ConnectionRequest {
     ConnectionRequest::native(
         "detect_connection_import_path",
         serde_json::json!({ "source": source }),
@@ -309,7 +309,7 @@ pub(crate) fn detect_connection_import_path_request(source: &str) -> ConnectionR
 
 /// `pickConnectionImportPathWithDialog(mode, source)` — the
 /// competitor-path picker (F4c's third kind).
-pub(crate) fn pick_connection_import_path_with_dialog_request(
+pub fn pick_connection_import_path_with_dialog_request(
     mode: ImportPathMode,
     source: &str,
 ) -> ConnectionRequest {
@@ -320,7 +320,7 @@ pub(crate) fn pick_connection_import_path_with_dialog_request(
 }
 
 /// `importConnectionsFromApp(source, password, dataPath)`.
-pub(crate) fn import_connections_from_app_request(
+pub fn import_connections_from_app_request(
     source: &str,
     password: &str,
     data_path: &str,
@@ -335,7 +335,7 @@ pub(crate) fn import_connections_from_app_request(
 
 /// What [`ConnectJoiner::begin`] decided for one `connect` caller.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ConnectDecision {
+pub enum ConnectDecision {
     /// The first caller for this connection: issue this invoke.
     Issue(ConnectionRequest),
     /// An attempt is already in flight: join it — send nothing; the
@@ -352,18 +352,18 @@ pub(crate) enum ConnectDecision {
 /// session, and every reader of it fails with `sessionNotFound` (empty
 /// schema tree, no visible error).
 #[derive(Default)]
-pub(crate) struct ConnectJoiner {
+pub struct ConnectJoiner {
     in_flight: BTreeSet<String>,
 }
 
 impl ConnectJoiner {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// `connect`'s decision half: the first caller for a connection
     /// issues the invoke; concurrent callers join it.
-    pub(crate) fn begin(&mut self, connection_id: &str) -> ConnectDecision {
+    pub fn begin(&mut self, connection_id: &str) -> ConnectDecision {
         if self.in_flight.insert(connection_id.to_owned()) {
             ConnectDecision::Issue(connect_request(connection_id))
         } else {
@@ -375,12 +375,12 @@ impl ConnectJoiner {
     /// next `connect` issues a fresh invoke. The settled value/rejection
     /// rides the attempt the joiners already hold — the host delivers
     /// it to them; this only re-arms the boundary.
-    pub(crate) fn finish(&mut self, connection_id: &str) {
+    pub fn finish(&mut self, connection_id: &str) {
         self.in_flight.remove(connection_id);
     }
 
     /// Whether an attempt for `connection_id` is still in flight.
-    pub(crate) fn is_in_flight(&self, connection_id: &str) -> bool {
+    pub fn is_in_flight(&self, connection_id: &str) -> bool {
         self.in_flight.contains(connection_id)
     }
 }

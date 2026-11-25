@@ -47,12 +47,12 @@
 
 /// driver-sdk's `HOST_DEFAULT_EDITOR_FONT` — the sentinel a user setting
 /// must beat to count as explicit.
-pub(crate) const HOST_DEFAULT_EDITOR_FONT: &str =
+pub const HOST_DEFAULT_EDITOR_FONT: &str =
     "Menlo, Monaco, Consolas, \"Courier New\", monospace";
 
 /// React `ThemeConfig`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ThemeConfig {
+pub struct ThemeConfig {
     pub dark: bool,
     pub font_size: i64,
     pub font_family: String,
@@ -61,7 +61,7 @@ pub(crate) struct ThemeConfig {
 /// driver-sdk `resolveEditorFontFamily`: the explicit user setting wins
 /// over the theme's `--font-editor` computed var, which wins over the
 /// fallback (carried verbatim — the BaseTableSqlGenerator precedent).
-pub(crate) fn resolve_editor_font_family(
+pub fn resolve_editor_font_family(
     user_setting: &str,
     computed_editor_var: &str,
     fallback: &str,
@@ -80,7 +80,7 @@ pub(crate) fn resolve_editor_font_family(
 /// React `currentThemeConfig`: `editorFontSize` defaults to **14** when
 /// unset (`fs || 14`), the font resolves through the user setting → the
 /// computed `--font-editor` var → the host default.
-pub(crate) fn current_theme_config(
+pub fn current_theme_config(
     editor_font_size: i64,
     editor_font_family: &str,
     computed_editor_var: &str,
@@ -104,7 +104,7 @@ pub(crate) fn current_theme_config(
 /// `documentVersionField.update`: the counter bumps on every document
 /// change and on every explicit `BumpDocumentVersion` effect (the
 /// external value replacement), and nothing else.
-pub(crate) fn document_version_bump(version: u64, doc_changed: bool, explicit_bump: bool) -> u64 {
+pub fn document_version_bump(version: u64, doc_changed: bool, explicit_bump: bool) -> u64 {
     if doc_changed || explicit_bump {
         version + 1
     } else {
@@ -119,7 +119,7 @@ pub(crate) fn document_version_bump(version: u64, doc_changed: bool, explicit_bu
 /// What the execute key does: a trimmed selection runs just that SQL,
 /// anything else runs the whole document.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ExecuteDispatch {
+pub enum ExecuteDispatch {
     /// `onExecuteSelection(sel)` — the trimmed selection.
     Selection(String),
     /// `onExecute()`.
@@ -128,7 +128,7 @@ pub(crate) enum ExecuteDispatch {
 
 /// The execute key's rule: a selection that trims to nothing is no
 /// selection — the whole document runs.
-pub(crate) fn execute_key_dispatch(selected: &str) -> ExecuteDispatch {
+pub fn execute_key_dispatch(selected: &str) -> ExecuteDispatch {
     let trimmed = selected.trim();
     if trimmed.is_empty() {
         ExecuteDispatch::All
@@ -143,17 +143,17 @@ pub(crate) fn execute_key_dispatch(selected: &str) -> ExecuteDispatch {
 
 /// Documents beyond this many lines window to ±[`WINDOW_LINES`] around
 /// the cursor for semantic-model builds.
-pub(crate) const LARGE_DOCUMENT_LINES: usize = 1_000;
+pub const LARGE_DOCUMENT_LINES: usize = 1_000;
 
 /// The half-window (in lines) large documents take.
-pub(crate) const WINDOW_LINES: usize = 200;
+pub const WINDOW_LINES: usize = 200;
 
 /// The windowing rule: documents of at most 1000 lines pass through
 /// untouched; larger ones window to ±200 lines around the cursor's line
 /// (clamped to the document), with the cursor re-based into the window.
 /// `doc` is the full text, `cursor` a byte offset; returns the windowed
 /// text and the effective cursor (byte offset into the window).
-pub(crate) fn window_large_document(doc: &str, cursor: usize) -> (String, usize) {
+pub fn window_large_document(doc: &str, cursor: usize) -> (String, usize) {
     let line_starts: Vec<usize> = doc
         .match_indices('\n')
         .map(|(i, _)| i + 1)
@@ -200,14 +200,14 @@ pub(crate) fn window_large_document(doc: &str, cursor: usize) -> (String, usize)
 // ---------------------------------------------------------------------------
 
 /// `parentsEqual`: segment-by-segment equality.
-pub(crate) fn parents_equal(a: &[String], b: &[String]) -> bool {
+pub fn parents_equal(a: &[String], b: &[String]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x == y)
 }
 
 /// The update-listener dedup: `onQualifiedPath` fires only when the
 /// parents actually changed — [`Some`] carries the new parents to store
 /// and report, `None` means "same as last time, stay quiet".
-pub(crate) fn qualified_path_step(last: &[String], next: Vec<String>) -> Option<Vec<String>> {
+pub fn qualified_path_step(last: &[String], next: Vec<String>) -> Option<Vec<String>> {
     if parents_equal(last, &next) {
         None
     } else {
@@ -222,7 +222,7 @@ pub(crate) fn qualified_path_step(last: &[String], next: Vec<String>) -> Option<
 /// The contextmenu's SQL: the selection when there is one; otherwise the
 /// statement at the cursor, or the trimmed whole document when even that
 /// is unavailable.
-pub(crate) fn context_menu_sql(
+pub fn context_menu_sql(
     selected: Option<&str>,
     statement_at_cursor: Option<&str>,
     doc: &str,
@@ -253,13 +253,13 @@ fn is_identifier_quote_admitted(ch: char) -> bool {
 /// word token containing `from` (byte offsets; walks back over `\w$`
 /// characters, so a match that started mid-word anchors at the word
 /// start and CodeMirror can reuse the option list across keystrokes).
-pub(crate) fn function_anchor(doc: &str, from: usize) -> usize {
+pub fn function_anchor(doc: &str, from: usize) -> usize {
     token_anchor(doc, from, is_word_or_dollar)
 }
 
 /// The schema-aware source's token-start anchor: walks back over
 /// `[\w$"']` characters (`match.from` may sit mid-token).
-pub(crate) fn identifier_anchor(doc: &str, from: usize) -> usize {
+pub fn identifier_anchor(doc: &str, from: usize) -> usize {
     token_anchor(doc, from, is_identifier_quote_admitted)
 }
 
@@ -290,7 +290,7 @@ fn token_anchor(doc: &str, from: usize, admits: impl Fn(char) -> bool) -> usize 
 /// `match?.text.replace(/^["'`\[]|["'`\]]$/g, '').toLowerCase()`: the
 /// short-prefix hint strips the identifier's surrounding quote pair
 /// (one leading and one trailing quote character) before lowercasing.
-pub(crate) fn prefix_hint(match_text: &str) -> String {
+pub fn prefix_hint(match_text: &str) -> String {
     let mut text = match_text;
     if text.starts_with(['"', '\'', '`', '[']) {
         text = &text[1..];
@@ -303,18 +303,18 @@ pub(crate) fn prefix_hint(match_text: &str) -> String {
 
 /// The column-context `validFor` class `/^[\w$"']*$/`: identifier
 /// characters only, so backspace keeps reusing the cached result.
-pub(crate) fn admits_plain(ch: char) -> bool {
+pub fn admits_plain(ch: char) -> bool {
     is_identifier_quote_admitted(ch)
 }
 
 /// The relation/join-target `validFor` class `/^[\w$"'.]*$/`:
 /// additionally admits the dot, for qualified typing.
-pub(crate) fn admits_qualified(ch: char) -> bool {
+pub fn admits_qualified(ch: char) -> bool {
     admits_plain(ch) || ch == '.'
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     // ---- theme ----------------------------------------------------------------

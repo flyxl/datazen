@@ -65,7 +65,7 @@ use crate::ui::kit::kit;
 /// `mcp/domain/approval.rs` sends: `camelCase`, `arguments` as raw JSON.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct McpApprovalRequest {
+pub struct McpApprovalRequest {
     pub request_id: String,
     pub tool: String,
     pub connection_id: Option<String>,
@@ -82,7 +82,7 @@ pub(crate) struct McpApprovalRequest {
 
 impl McpApprovalRequest {
     /// A minimal request for tests and host wiring seeds.
-    pub(crate) fn new(tool: impl Into<String>, request_id: impl Into<String>) -> Self {
+    pub fn new(tool: impl Into<String>, request_id: impl Into<String>) -> Self {
         Self {
             request_id: request_id.into(),
             tool: tool.into(),
@@ -99,7 +99,7 @@ impl McpApprovalRequest {
 
     /// `expires_at` as epoch milliseconds, `None` when the stamp is not a
     /// valid RFC 3339 instant (React's `Date.parse` returning `NaN`).
-    pub(crate) fn expires_at_ms(&self) -> Option<i64> {
+    pub fn expires_at_ms(&self) -> Option<i64> {
         DateTime::parse_from_rfc3339(&self.expires_at)
             .ok()
             .map(|stamp| stamp.timestamp_millis())
@@ -110,7 +110,7 @@ impl McpApprovalRequest {
 /// (`allow_once` / `deny` / `cancel` / `timeout` on the wire).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum McpApprovalDecision {
+pub enum McpApprovalDecision {
     AllowOnce,
     Deny,
     Timeout,
@@ -122,7 +122,7 @@ pub(crate) enum McpApprovalDecision {
 /// the timed-out request ids. The caller owns one and drives it through
 /// the methods below, mirroring the React handlers.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct McpApprovalHostState {
+pub struct McpApprovalHostState {
     queue: Vec<McpApprovalRequest>,
     responding: bool,
     error: Option<String>,
@@ -132,18 +132,18 @@ pub(crate) struct McpApprovalHostState {
 
 impl McpApprovalHostState {
     /// React `queue[0]` — the request the dialog shows.
-    pub(crate) fn current(&self) -> Option<&McpApprovalRequest> {
+    pub fn current(&self) -> Option<&McpApprovalRequest> {
         self.queue.first()
     }
 
     /// How many requests are waiting (the queue guard's observable).
-    pub(crate) fn queue_len(&self) -> usize {
+    pub fn queue_len(&self) -> usize {
         self.queue.len()
     }
 
     /// The `mcp:approval-requested` listener's push: an empty tool or a
     /// known `requestId` is dropped, exactly as the React guard does.
-    pub(crate) fn push_request(&mut self, request: McpApprovalRequest) {
+    pub fn push_request(&mut self, request: McpApprovalRequest) {
         if request.tool.is_empty() {
             return;
         }
@@ -155,54 +155,54 @@ impl McpApprovalHostState {
 
     /// The `mcp:audit-error` listener's setter: the raw string, or the
     /// generic `mcp.approval.auditFailed` when the payload is not one.
-    pub(crate) fn set_audit_error(&mut self, message: Option<String>) {
+    pub fn set_audit_error(&mut self, message: Option<String>) {
         self.audit_error = Some(message.unwrap_or_else(|| t("mcp.approval.auditFailed").to_owned()));
     }
 
     /// The toast's `×`: the audit error clears.
-    pub(crate) fn clear_audit_error(&mut self) {
+    pub fn clear_audit_error(&mut self) {
         self.audit_error = None;
     }
 
     /// The audit toast's text, if any.
-    pub(crate) fn audit_error(&self) -> Option<&str> {
+    pub fn audit_error(&self) -> Option<&str> {
         self.audit_error.as_deref()
     }
 
     /// `publishDecision` / `handleStop`'s start: responding begins and the
     /// previous error clears (`setResponding(true)` + `setError(null)`).
-    pub(crate) fn begin_responding(&mut self) {
+    pub fn begin_responding(&mut self) {
         self.responding = true;
         self.error = None;
     }
 
     /// The catch arm: the cause's message when present, otherwise
     /// `mcp.approval.respondFailed`; the responding flag ends.
-    pub(crate) fn fail_response(&mut self, message: Option<String>) {
+    pub fn fail_response(&mut self, message: Option<String>) {
         self.error = Some(message.unwrap_or_else(|| t("mcp.approval.respondFailed").to_owned()));
         self.responding = false;
     }
 
     /// The success arm: the request leaves the queue and the responding
     /// flag ends (`finally`).
-    pub(crate) fn finish_response(&mut self, request_id: &str) {
+    pub fn finish_response(&mut self, request_id: &str) {
         self.queue.retain(|item| item.request_id != request_id);
         self.responding = false;
     }
 
     /// The last respond error, if any.
-    pub(crate) fn error(&self) -> Option<&str> {
+    pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
 
     /// Whether a respond is in flight (the buttons disable).
-    pub(crate) fn responding(&self) -> bool {
+    pub fn responding(&self) -> bool {
         self.responding
     }
 
     /// React's `seconds`: `ceil(remainingMs / 1000)`; no current request
     /// or an unparseable / past expiry is 0 (already expired).
-    pub(crate) fn seconds_left(&self, now_ms: i64) -> u64 {
+    pub fn seconds_left(&self, now_ms: i64) -> u64 {
         let Some(current) = self.queue.first() else {
             return 0;
         };
@@ -223,7 +223,7 @@ impl McpApprovalHostState {
     /// expiry has passed and it has not been timed out before (the
     /// `timedOutRef` dedup). The caller routes the returned id through
     /// its respond callback with [`McpApprovalDecision::Timeout`].
-    pub(crate) fn expire_check(&mut self, now_ms: i64) -> Option<String> {
+    pub fn expire_check(&mut self, now_ms: i64) -> Option<String> {
         let Some(current) = self.queue.first() else {
             return None;
         };
@@ -244,7 +244,7 @@ impl McpApprovalHostState {
     /// Forgets a request's timed-out mark (the queue keeping it out is
     /// what matters; this exists so a re-push after a full round can
     /// time out again the way a fresh React mount would).
-    pub(crate) fn forget_timed_out(&mut self, request_id: &str) {
+    pub fn forget_timed_out(&mut self, request_id: &str) {
         self.timed_out.retain(|id| id != request_id);
     }
 }
@@ -252,7 +252,7 @@ impl McpApprovalHostState {
 /// `McpApprovalHost` — the dialog for the queued request plus the audit
 /// error toast. The host process feeds the state and the wiring routes
 /// the decisions; this builder only renders.
-pub(crate) struct McpApprovalHost<S: 'static> {
+pub struct McpApprovalHost<S: 'static> {
     on_allow_once: Option<Rc<dyn Fn(&mut S, &str)>>,
     on_deny: Option<Rc<dyn Fn(&mut S, &str)>>,
     on_stop: Option<Rc<dyn Fn(&mut S, &str)>>,
@@ -267,7 +267,7 @@ impl<S: 'static> Default for McpApprovalHost<S> {
 }
 
 impl<S: 'static> McpApprovalHost<S> {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             on_allow_once: None,
             on_deny: None,
@@ -278,7 +278,7 @@ impl<S: 'static> McpApprovalHost<S> {
     }
 
     /// React `publishDecision(current.requestId, 'allow_once')`.
-    pub(crate) fn on_allow_once(
+    pub fn on_allow_once(
         mut self,
         f: impl Fn(&mut S, &str) + 'static,
     ) -> Self {
@@ -287,25 +287,25 @@ impl<S: 'static> McpApprovalHost<S> {
     }
 
     /// React `publishDecision(current.requestId, 'deny')`.
-    pub(crate) fn on_deny(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_deny(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_deny = Some(Rc::new(f));
         self
     }
 
     /// React `handleStop` — `mcpCancelApproval(current.requestId)`.
-    pub(crate) fn on_stop(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_stop(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_stop = Some(Rc::new(f));
         self
     }
 
     /// The audit toast's `×` press (`setAuditError(null)`).
-    pub(crate) fn on_dismiss_audit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss_audit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_dismiss_audit = Some(Rc::new(f));
         self
     }
 
     /// Override the root key prefix.
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
@@ -316,7 +316,7 @@ impl<S: 'static> McpApprovalHost<S> {
     /// milliseconds; the caller re-renders each frame, which is the
     /// port of React's `setInterval(tick, 1000)` recompute. The dialog
     /// itself mounts through `layer` (the modal base's channel).
-    pub(crate) fn build(
+    pub fn build(
         self,
         state: &McpApprovalHostState,
         now_ms: i64,

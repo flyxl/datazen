@@ -84,7 +84,7 @@ use crate::views::data_transfer::transfer_job_run::{
 /// counters (an unreadable bucket is *zero*, the in-flight line's own
 /// rule — the verdict engine is stricter) joined ` / `, or `None` when
 /// there is no apply view yet.
-pub(crate) fn active_progress(apply: &TransferApplyJobViewVm) -> Option<String> {
+pub fn active_progress(apply: &TransferApplyJobViewVm) -> Option<String> {
     let progress = &apply.progress;
     let bucket = |value: &Option<JobCounter>| read_job_counter(value.as_ref()).unwrap_or(0);
     Some(format!(
@@ -125,7 +125,7 @@ fn verdict_progress(apply: &TransferApplyJobViewVm) -> VerdictJobProgress {
 /// React `plan` (34–38): the plan identity travels with the verdict so
 /// the panel can name the exact plan that was spent. Same three fields
 /// for all three tools.
-pub(crate) fn plan_info(apply: Option<&TransferApplyJobViewVm>) -> PlanInfo {
+pub fn plan_info(apply: Option<&TransferApplyJobViewVm>) -> PlanInfo {
     match apply {
         Some(apply) => PlanInfo {
             plan_id: Some(apply.plan_id.clone()),
@@ -161,14 +161,14 @@ fn state_label(apply: &TransferApplyJobViewVm) -> String {
 /// while the apply is active, the refusal notice when the run failed
 /// before an apply verdict, the verdict panel once a verdict exists and
 /// the run has settled).
-pub(crate) struct TransferJobResultPanel<'a, S: 'static> {
+pub struct TransferJobResultPanel<'a, S: 'static> {
     run: &'a TransferJobRunVm,
     on_re_review: Option<Rc<dyn Fn(&mut S)>>,
     test_id_prefix: String,
 }
 
 impl<'a, S: 'static> TransferJobResultPanel<'a, S> {
-    pub(crate) fn new(run: &'a TransferJobRunVm) -> Self {
+    pub fn new(run: &'a TransferJobRunVm) -> Self {
         Self {
             run,
             on_re_review: None,
@@ -179,7 +179,7 @@ impl<'a, S: 'static> TransferJobResultPanel<'a, S> {
     /// React `onReReview`: the plan was spent, so the only legal way
     /// forward is a fresh review. Mounts the refusal notice's review
     /// button.
-    pub(crate) fn on_re_review(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_re_review(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_re_review = Some(Rc::new(f));
         self
     }
@@ -188,14 +188,14 @@ impl<'a, S: 'static> TransferJobResultPanel<'a, S> {
     /// notice and the verdict panel share the prefix, so a spec can
     /// query one namespace for both the refusal and the settled
     /// verdict.
-    pub(crate) fn test_id_prefix(mut self, prefix: impl Into<String>) -> Self {
+    pub fn test_id_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.test_id_prefix = prefix.into();
         self
     }
 
     /// The section. React's `flex flex-col gap-4` root with the hidden
     /// `data-*` mirror and whichever of the three blocks hold.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k: &'static Kit = crate::ui::kit::kit(dark);
         let run = self.run;
         let verdict = run.verdict();

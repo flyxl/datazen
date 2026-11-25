@@ -27,7 +27,7 @@ use crate::views::create_database_dialog::{
 
 /// The exact wrapper values from React `CreateSchemaDialog`.
 #[allow(dead_code)] // wrapper config; remove when the admin component lands.
-pub(crate) const SPEC: AdminCreateSpec = AdminCreateSpec {
+pub const SPEC: AdminCreateSpec = AdminCreateSpec {
     key: "content-view-create-schema-dialog",
     title_key: "common.createSchema",
     name_label_key: "createSchema.name",
@@ -38,7 +38,7 @@ pub(crate) const SPEC: AdminCreateSpec = AdminCreateSpec {
 /// Render the create-schema dialog. `open` is applied by the caller: React's
 /// `Dialog` mounts nothing while closed.
 #[allow(dead_code)] // consumer: content_view_dialogs slot (wired by T266).
-pub(crate) fn build_schema<S: 'static>(
+pub fn build_schema<S: 'static>(
     state: &AdminCreateState,
     state_edit: impl Fn(&mut S) -> &mut AdminCreateState + 'static,
     on_action: Option<std::rc::Rc<dyn Fn(&mut S, AdminCreateAction) + 'static>>,
@@ -50,7 +50,7 @@ pub(crate) fn build_schema<S: 'static>(
 
 /// Snapshot variant for the T223 dialog slot (no host form state there).
 #[allow(dead_code)] // consumer: content_view_dialogs slot; remove when the host wires real form state.
-pub(crate) fn build_schema_snapshot<S: 'static>(
+pub fn build_schema_snapshot<S: 'static>(
     state: &AdminCreateState,
     context: Option<&str>,
     on_action: Option<std::rc::Rc<dyn Fn(&mut S, AdminCreateAction) + 'static>>,

@@ -65,7 +65,7 @@ mod confirm_options;
 mod copy_paths;
 mod summary;
 
-pub(crate) use summary::{
+pub use summary::{
     describe_paste_problem, rows_to_draft_values, GridCopyTarget, PasteSummary, RowsPasteStart,
 };
 
@@ -96,7 +96,7 @@ use summary::MAX_REPORTED_PROBLEMS;
 /// every call instead of captured. `stage_paste_writes` stages the
 /// block; `add_draft_rows` appends prefilled draft rows (DBR-02) and is
 /// `None` on result grids, where "paste rows" is simply not offered.
-pub(crate) struct GridClipboardEnv<'a> {
+pub struct GridClipboardEnv<'a> {
     pub is_editable: bool,
     pub columns: &'a [ColumnSchema],
     /// Displayed column names in render order.
@@ -143,7 +143,7 @@ enum PasteFlow {
 
 /// The useGridClipboard machine (the hook IS its state).
 #[derive(Debug, Default)]
-pub(crate) struct GridClipboardHook {
+pub struct GridClipboardHook {
     /// The owned `useConfirmDialog` (the paste flows' gate).
     confirm: ConfirmDialogState,
     /// The owned `useClipboardCopyFeedback` (the async copy path).
@@ -161,44 +161,44 @@ pub(crate) struct GridClipboardHook {
 }
 
 impl GridClipboardHook {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The confirm dialog's state (paint it via `ConfirmDialogHost`).
-    pub(crate) fn confirm(&self) -> &ConfirmDialogState {
+    pub fn confirm(&self) -> &ConfirmDialogState {
         &self.confirm
     }
 
     /// `copyFeedback.copied`: native or async, whichever lit up.
-    pub(crate) fn copied(&self) -> bool {
+    pub fn copied(&self) -> bool {
         self.native_copied || self.copy_feedback.copied()
     }
 
-    pub(crate) fn cell_errors(&self) -> &HashSet<String> {
+    pub fn cell_errors(&self) -> &HashSet<String> {
         &self.cell_errors
     }
 
-    pub(crate) fn problems(&self) -> &[PasteProblem] {
+    pub fn problems(&self) -> &[PasteProblem] {
         &self.problems
     }
 
-    pub(crate) fn last_paste(&self) -> Option<PasteSummary> {
+    pub fn last_paste(&self) -> Option<PasteSummary> {
         self.last_paste
     }
 
     /// `canUseRowCopy`: editable + draft-capable.
-    pub(crate) fn can_use_row_copy(env: &GridClipboardEnv<'_>) -> bool {
+    pub fn can_use_row_copy(env: &GridClipboardEnv<'_>) -> bool {
         env.is_editable && env.add_draft_rows.is_some()
     }
 
     /// `handlers.canCopy`: a selection exists.
-    pub(crate) fn can_copy(&self, env: &GridClipboardEnv<'_>) -> bool {
+    pub fn can_copy(&self, env: &GridClipboardEnv<'_>) -> bool {
         self.selection_range(env).is_some() || !self.covered_rows(env).is_empty()
     }
 
     /// `handlers.canPaste`: editable + a cell region.
-    pub(crate) fn can_paste(&self, env: &GridClipboardEnv<'_>) -> bool {
+    pub fn can_paste(&self, env: &GridClipboardEnv<'_>) -> bool {
         env.is_editable && self.selection_range(env).is_some()
     }
 
@@ -236,7 +236,7 @@ impl GridClipboardHook {
     }
 
     /// `clearPasteResult`.
-    pub(crate) fn clear_paste_result(&mut self) {
+    pub fn clear_paste_result(&mut self) {
         self.problems.clear();
         self.cell_errors.clear();
         self.last_paste = None;
@@ -244,7 +244,7 @@ impl GridClipboardHook {
 
     /// The frame clock: clears the native feedback window and drives
     /// the copy-feedback machine (the host's `wake_at`).
-    pub(crate) fn tick(&mut self, now_ms: i64) {
+    pub fn tick(&mut self, now_ms: i64) {
         if self.native_copied && self.native_clear_at_ms.is_some_and(|clear_at| now_ms >= clear_at)
         {
             self.native_copied = false;
@@ -257,7 +257,7 @@ impl GridClipboardHook {
     /// failure also reports `writeFailed` — React's awaiting
     /// continuation did the same for its own call's `false`, stale or
     /// not (the feedback window itself is id-guarded).
-    pub(crate) fn on_copy_result(&mut self, env: &GridClipboardEnv<'_>, request_id: u64, ok: bool) {
+    pub fn on_copy_result(&mut self, env: &GridClipboardEnv<'_>, request_id: u64, ok: bool) {
         self.copy_feedback.on_copy_result(request_id, ok);
         if !ok {
             self.report(env, PasteProblem::new(paste_code::CLIPBOARD_WRITE_FAILED));
@@ -266,14 +266,14 @@ impl GridClipboardHook {
 
     /// The next frame's wake deadline, when one is armed (the feedback
     /// windows; the chunk pump is frame-driven by the host).
-    pub(crate) fn wake_at_ms(&self) -> Option<i64> {
+    pub fn wake_at_ms(&self) -> Option<i64> {
         self.native_clear_at_ms.min(self.copy_feedback.clear_at_ms())
     }
 
     /// `pasteText` (the paste flow itself): plan → confirm → stage.
     /// Always consumes the paste (the native handler already called
     /// `preventDefault`); the return is React's resolved `true`.
-    pub(crate) fn begin_paste(
+    pub fn begin_paste(
         &mut self,
         env: &GridClipboardEnv<'_>,
         text: &str,
@@ -425,7 +425,7 @@ impl GridClipboardHook {
 
     /// Stage the next chunk. Returns whether another pump is needed
     /// (React's `await nextFrame()` between chunks).
-    pub(crate) fn pump(&mut self, env: &GridClipboardEnv<'_>) -> bool {
+    pub fn pump(&mut self, env: &GridClipboardEnv<'_>) -> bool {
         // Snapshot the chunk first so `&mut self.flow` does not pin the
         // whole hook across the staging call and the reports.
         let (chunk, end, total_writes) = {
@@ -511,7 +511,7 @@ impl GridClipboardHook {
 
     /// Whether a chunked paste still has work (the host pumps until
     /// false).
-    pub(crate) fn staging_in_progress(&self) -> bool {
+    pub fn staging_in_progress(&self) -> bool {
         matches!(self.flow, PasteFlow::ChunkedCellPaste { .. })
     }
 
@@ -519,7 +519,7 @@ impl GridClipboardHook {
     /// pending request). A stale answer — superseded by a newer
     /// `begin_paste` — lands nothing, exactly as React's replaced
     /// resolver could never fire.
-    pub(crate) fn on_confirm_answer(&mut self, env: &GridClipboardEnv<'_>, confirmed: bool) {
+    pub fn on_confirm_answer(&mut self, env: &GridClipboardEnv<'_>, confirmed: bool) {
         let flow = std::mem::replace(&mut self.flow, PasteFlow::Idle);
         match flow {
             PasteFlow::ConfirmCellPaste { plan } => {
@@ -558,7 +558,7 @@ impl GridClipboardHook {
 
     /// `pasteRowsAsDrafts` (DBR-02): a verified DataZen row copy becomes
     /// new draft rows. The clipboard read is host transport.
-    pub(crate) fn begin_paste_rows(&mut self, env: &GridClipboardEnv<'_>) -> RowsPasteStart {
+    pub fn begin_paste_rows(&mut self, env: &GridClipboardEnv<'_>) -> RowsPasteStart {
         if env.add_draft_rows.is_none() {
             return RowsPasteStart::NotOffered;
         }
@@ -585,13 +585,13 @@ impl GridClipboardHook {
 
     /// The host's clipboard read failed: report it, never guess around
     /// it (B23) — there is no "fall back to something on the page".
-    pub(crate) fn on_clipboard_read_failed(&mut self, env: &GridClipboardEnv<'_>) {
+    pub fn on_clipboard_read_failed(&mut self, env: &GridClipboardEnv<'_>) {
         self.report(env, PasteProblem::new(paste_code::CLIPBOARD_READ_FAILED));
     }
 
     /// The host's clipboard text (or `None`, when the platform answered
     /// nothing): verify the payload against it, then confirm or apply.
-    pub(crate) fn on_rows_clipboard_text(
+    pub fn on_rows_clipboard_text(
         &mut self,
         env: &GridClipboardEnv<'_>,
         text: Option<&str>,

@@ -26,7 +26,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// React `KvSlotName`, in render order (`KV_SLOT_NAMES`).
 #[allow(dead_code)] // contract mirror; supplied by the driver registry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum KvSlotName {
+pub enum KvSlotName {
     ContextBar,
     StatusBar,
     KeyPropsSidebar,
@@ -35,7 +35,7 @@ pub(crate) enum KvSlotName {
 
 impl KvSlotName {
     #[allow(dead_code)] // contract mirror; consumed by the resolver and tests.
-    pub(crate) const ALL: [Self; 4] = [
+    pub const ALL: [Self; 4] = [
         Self::ContextBar,
         Self::StatusBar,
         Self::KeyPropsSidebar,
@@ -43,7 +43,7 @@ impl KvSlotName {
     ];
 
     #[allow(dead_code)] // contract mirror; consumed by the registry lookup.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::ContextBar => "contextBar",
             Self::StatusBar => "statusBar",
@@ -55,7 +55,7 @@ impl KvSlotName {
     /// React `capabilityKeyForSlot`: `connectionHome` reads the `home` flag;
     /// the other three keep their own names.
     #[allow(dead_code)] // pure helper; consumed by the capability reader.
-    pub(crate) fn capability_key(self) -> &'static str {
+    pub fn capability_key(self) -> &'static str {
         match self {
             Self::ConnectionHome => "home",
             _ => self.as_str(),
@@ -67,24 +67,24 @@ impl KvSlotName {
 /// reads. Missing meta means "not a KV driver" and keeps the status quo.
 #[allow(dead_code)] // VM mirror; supplied by the host DB registry.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct KvDriverMeta {
-    pub(crate) database_field_type: String,
-    pub(crate) context_bar: bool,
-    pub(crate) status_bar: bool,
-    pub(crate) key_props_sidebar: bool,
-    pub(crate) home: bool,
+pub struct KvDriverMeta {
+    pub database_field_type: String,
+    pub context_bar: bool,
+    pub status_bar: bool,
+    pub key_props_sidebar: bool,
+    pub home: bool,
 }
 
 /// This build's codegen-contributed components, keyed by (driver type, slot).
 #[allow(dead_code)] // VM mirror; supplied by the generated driver registry.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct KvSlotRegistry {
-    pub(crate) contributed: Vec<(String, KvSlotName)>,
+pub struct KvSlotRegistry {
+    pub contributed: Vec<(String, KvSlotName)>,
 }
 
 impl KvSlotRegistry {
     #[allow(dead_code)] // pure lookup; consumed by the slot resolver and tests.
-    pub(crate) fn has(&self, database_type: &str, slot: KvSlotName) -> bool {
+    pub fn has(&self, database_type: &str, slot: KvSlotName) -> bool {
         self.contributed.iter().any(|(kind, name)| kind == database_type && *name == slot)
     }
 }
@@ -92,85 +92,85 @@ impl KvSlotRegistry {
 /// The active panel's identity half (React `Panel` fields the hook reads).
 #[allow(dead_code)] // VM mirror; supplied by the panel store.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct KvPanelRef {
-    pub(crate) id: String,
-    pub(crate) database_type: Option<String>,
-    pub(crate) database: Option<String>,
+pub struct KvPanelRef {
+    pub id: String,
+    pub database_type: Option<String>,
+    pub database: Option<String>,
 }
 
 /// React `ConnectionContext` — the landing screen has no panel, hence no atom.
 #[allow(dead_code)] // VM mirror; supplied by the connection page.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct KvConnectionContext {
-    pub(crate) connection_id: String,
-    pub(crate) db_session_id: String,
-    pub(crate) connection_name: String,
-    pub(crate) database_type: String,
+pub struct KvConnectionContext {
+    pub connection_id: String,
+    pub db_session_id: String,
+    pub connection_name: String,
+    pub database_type: String,
 }
 
 /// The shared `KvPanelSlotProps` bundle. `request` is deliberately NOT here:
 /// only the context bar may ask the host for something.
 #[allow(dead_code)] // props mirror; frozen once per panel identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct KvPanelSlotProps {
-    pub(crate) connection_id: String,
-    pub(crate) db_session_id: String,
-    pub(crate) connection_name: String,
-    pub(crate) database_type: String,
-    pub(crate) database: Option<String>,
-    pub(crate) db_index: Option<u64>,
+pub struct KvPanelSlotProps {
+    pub connection_id: String,
+    pub db_session_id: String,
+    pub connection_name: String,
+    pub database_type: String,
+    pub database: Option<String>,
+    pub db_index: Option<u64>,
     /// The per-panel state atom's identity (React's `state` object reference).
-    pub(crate) state_key: String,
+    pub state_key: String,
 }
 
 /// One in-panel binding. The context bar alone carries the action channel.
 #[allow(dead_code)] // binding mirror; consumed by the host surfaces.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct KvSlotBinding {
-    pub(crate) slot: KvSlotName,
-    pub(crate) props: KvPanelSlotProps,
-    pub(crate) has_request: bool,
+pub struct KvSlotBinding {
+    pub slot: KvSlotName,
+    pub props: KvPanelSlotProps,
+    pub has_request: bool,
 }
 
 /// React `KvConnectionHomeBinding` props plus the presence of the jump bridge.
 #[allow(dead_code)] // binding mirror; consumed by the landing host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct KvHomeBinding {
-    pub(crate) connection_id: String,
-    pub(crate) db_session_id: String,
-    pub(crate) connection_name: String,
-    pub(crate) database_type: String,
-    pub(crate) initial_database: Option<String>,
-    pub(crate) has_open_target: bool,
+pub struct KvHomeBinding {
+    pub connection_id: String,
+    pub db_session_id: String,
+    pub connection_name: String,
+    pub database_type: String,
+    pub initial_database: Option<String>,
+    pub has_open_target: bool,
 }
 
 /// The hook's full result: four optional bindings and the panel-state key.
 #[allow(dead_code)] // VM mirror; owned by the connection-workspace host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct KvWorkspaceSlots {
-    pub(crate) context_bar: Option<KvSlotBinding>,
-    pub(crate) status_bar: Option<KvSlotBinding>,
-    pub(crate) key_props_sidebar: Option<KvSlotBinding>,
-    pub(crate) connection_home: Option<KvHomeBinding>,
-    pub(crate) panel_state_key: Option<String>,
+pub struct KvWorkspaceSlots {
+    pub context_bar: Option<KvSlotBinding>,
+    pub status_bar: Option<KvSlotBinding>,
+    pub key_props_sidebar: Option<KvSlotBinding>,
+    pub connection_home: Option<KvHomeBinding>,
+    pub panel_state_key: Option<String>,
 }
 
 #[allow(dead_code)] // VM mirror; supplied by the connection-workspace host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct KvSlotsInput {
-    pub(crate) active_panel: Option<KvPanelRef>,
-    pub(crate) is_kv_panel: bool,
-    pub(crate) database_type: Option<String>,
-    pub(crate) database: Option<String>,
-    pub(crate) db_session_id: String,
-    pub(crate) connection_id: String,
-    pub(crate) connection_name: String,
-    pub(crate) connection_context: Option<KvConnectionContext>,
-    pub(crate) initial_database: Option<String>,
-    pub(crate) has_slot_action: bool,
-    pub(crate) has_select_kv_db: bool,
-    pub(crate) meta: Option<KvDriverMeta>,
-    pub(crate) registry: KvSlotRegistry,
+pub struct KvSlotsInput {
+    pub active_panel: Option<KvPanelRef>,
+    pub is_kv_panel: bool,
+    pub database_type: Option<String>,
+    pub database: Option<String>,
+    pub db_session_id: String,
+    pub connection_id: String,
+    pub connection_name: String,
+    pub connection_context: Option<KvConnectionContext>,
+    pub initial_database: Option<String>,
+    pub has_slot_action: bool,
+    pub has_select_kv_db: bool,
+    pub meta: Option<KvDriverMeta>,
+    pub registry: KvSlotRegistry,
 }
 
 // ── Pure helpers ──────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ pub(crate) struct KvSlotsInput {
 /// address databases by number; the label's trailing digits are the index and
 /// must be a JS-safe integer (no rounded float reaching the driver).
 #[allow(dead_code)] // pure helper; consumed by the resolver and tests.
-pub(crate) fn resolve_kv_database_index(
+pub fn resolve_kv_database_index(
     meta: Option<&KvDriverMeta>,
     database: Option<&str>,
 ) -> Option<u64> {
@@ -206,7 +206,7 @@ pub(crate) fn resolve_kv_database_index(
 /// React `hasKvSlotCapability(meta, slot)` — missing meta or capability is a
 /// quiet `false`, which leaves non-KV drivers on the old rendering path.
 #[allow(dead_code)] // pure helper; consumed by the resolver and tests.
-pub(crate) fn has_slot_capability(meta: Option<&KvDriverMeta>, slot: KvSlotName) -> bool {
+pub fn has_slot_capability(meta: Option<&KvDriverMeta>, slot: KvSlotName) -> bool {
     let Some(meta) = meta else { return false };
     match slot {
         KvSlotName::ContextBar => meta.context_bar,
@@ -218,7 +218,7 @@ pub(crate) fn has_slot_capability(meta: Option<&KvDriverMeta>, slot: KvSlotName)
 
 /// React `getKvSlotComponent`: capability AND contribution must both hold.
 #[allow(dead_code)] // pure helper; consumed by the resolver and tests.
-pub(crate) fn has_slot_component(
+pub fn has_slot_component(
     meta: Option<&KvDriverMeta>,
     registry: &KvSlotRegistry,
     database_type: Option<&str>,
@@ -231,7 +231,7 @@ pub(crate) fn has_slot_component(
 /// The panel-state atom key exists only for a real, KV, identified panel. A
 /// panel without an id must never mint a shared `undefined` atom.
 #[allow(dead_code)] // pure helper; consumed by the resolver and tests.
-pub(crate) fn panel_state_key(input: &KvSlotsInput) -> Option<String> {
+pub fn panel_state_key(input: &KvSlotsInput) -> Option<String> {
     let panel = input.active_panel.as_ref()?;
     if !input.is_kv_panel || panel.id.is_empty() {
         return None;
@@ -242,7 +242,7 @@ pub(crate) fn panel_state_key(input: &KvSlotsInput) -> Option<String> {
 /// React `panelSlotProps`: a panel atom and a resolved driver type are both
 /// required before a driver component may render against the panel.
 #[allow(dead_code)] // pure helper; consumed by the resolver and tests.
-pub(crate) fn shared_panel_props(input: &KvSlotsInput, state_key: Option<&str>) -> Option<KvPanelSlotProps> {
+pub fn shared_panel_props(input: &KvSlotsInput, state_key: Option<&str>) -> Option<KvPanelSlotProps> {
     let state_key = state_key?;
     let database_type = input.database_type.as_ref()?;
     Some(KvPanelSlotProps {
@@ -258,13 +258,13 @@ pub(crate) fn shared_panel_props(input: &KvSlotsInput, state_key: Option<&str>) 
 
 /// `inPanelKvContext` — slots never mount for a non-KV or half-resolved panel.
 #[allow(dead_code)] // pure gate; consumed by the resolver and tests.
-pub(crate) fn in_panel_context(input: &KvSlotsInput, props: Option<&KvPanelSlotProps>) -> bool {
+pub fn in_panel_context(input: &KvSlotsInput, props: Option<&KvPanelSlotProps>) -> bool {
     input.active_panel.is_some() && input.is_kv_panel && props.is_some()
 }
 
 /// Resolve all four slots plus the panel-state key in one pure decision.
 #[allow(dead_code)] // decision; remove when the KV host wires the slots.
-pub(crate) fn resolve_slots(input: &KvSlotsInput) -> KvWorkspaceSlots {
+pub fn resolve_slots(input: &KvSlotsInput) -> KvWorkspaceSlots {
     let key = panel_state_key(input);
     let props = shared_panel_props(input, key.as_deref());
     let mut slots = KvWorkspaceSlots { panel_state_key: key, ..KvWorkspaceSlots::default() };
@@ -326,7 +326,7 @@ pub(crate) fn resolve_slots(input: &KvSlotsInput) -> KvWorkspaceSlots {
 /// React `OverviewJumpTarget.kind` plus the payload fields the bridge reads.
 #[allow(dead_code)] // VM mirror; supplied by the driver overview.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum KvJumpKind {
+pub enum KvJumpKind {
     Database,
     NewKey,
     Key,
@@ -339,11 +339,11 @@ pub(crate) enum KvJumpKind {
 
 #[allow(dead_code)] // VM mirror; supplied by the driver overview.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct KvJumpTarget {
-    pub(crate) kind: KvJumpKind,
-    pub(crate) db_index: Option<u64>,
-    pub(crate) key: Option<String>,
-    pub(crate) section: Option<String>,
+pub struct KvJumpTarget {
+    pub kind: KvJumpKind,
+    pub db_index: Option<u64>,
+    pub key: Option<String>,
+    pub section: Option<String>,
 }
 
 impl Default for KvJumpKind {
@@ -356,18 +356,18 @@ impl Default for KvJumpKind {
 /// `onSelectKvDb` alongside the target database name.
 #[allow(dead_code)] // VM mirror; consumed by the jump decision.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct KvPendingAction {
-    pub(crate) open_new_key: bool,
-    pub(crate) select_key: Option<String>,
-    pub(crate) key_db_index: Option<u64>,
-    pub(crate) tab: Option<String>,
-    pub(crate) monitor_sub_page: String,
-    pub(crate) open_import_export: bool,
+pub struct KvPendingAction {
+    pub open_new_key: bool,
+    pub select_key: Option<String>,
+    pub key_db_index: Option<u64>,
+    pub tab: Option<String>,
+    pub monitor_sub_page: String,
+    pub open_import_export: bool,
 }
 
 #[allow(dead_code)] // decision; remove when the KV home host wires the bridge.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum KvJumpAction {
+pub enum KvJumpAction {
     Open { database: String, pending: Option<KvPendingAction> },
     /// Unhandled kinds are a host diagnostic; no panel is opened.
     Unhandled,
@@ -378,7 +378,7 @@ pub(crate) enum KvJumpAction {
 /// a monitor section is the cast string forwarded verbatim, defaulting to
 /// `info` only when absent.
 #[allow(dead_code)] // decision; remove when the KV home host wires the bridge.
-pub(crate) fn plan_overview_jump(
+pub fn plan_overview_jump(
     target: &KvJumpTarget,
     initial_database: Option<&str>,
 ) -> KvJumpAction {
@@ -432,22 +432,22 @@ pub(crate) fn plan_overview_jump(
 /// `KvSlotSnapshot`). Kept as one record so a patch can compare fields.
 #[allow(dead_code)] // VM mirror; published by the KV driver.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct KvSlotSnapshot {
-    pub(crate) selected_key: Option<String>,
-    pub(crate) dirty: bool,
-    pub(crate) loaded_count: u64,
-    pub(crate) scan_cursor: String,
-    pub(crate) scanning: bool,
-    pub(crate) scan_budget_used: u64,
-    pub(crate) scan_budget_total: u64,
-    pub(crate) selection_count: u64,
-    pub(crate) last_write_command: Option<String>,
-    pub(crate) last_write_duration_ms: Option<f64>,
+pub struct KvSlotSnapshot {
+    pub selected_key: Option<String>,
+    pub dirty: bool,
+    pub loaded_count: u64,
+    pub scan_cursor: String,
+    pub scanning: bool,
+    pub scan_budget_used: u64,
+    pub scan_budget_total: u64,
+    pub selection_count: u64,
+    pub last_write_command: Option<String>,
+    pub last_write_duration_ms: Option<f64>,
 }
 
 impl KvSlotSnapshot {
     #[allow(dead_code)] // VM mirror; the fresh-panel snapshot.
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self { scan_cursor: "0".to_owned(), ..Self::default() }
     }
 }
@@ -455,15 +455,15 @@ impl KvSlotSnapshot {
 /// A partial relay update. `None` means "this field was not part of the patch".
 #[allow(dead_code)] // VM mirror; published by the KV driver.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct KvSlotPatch {
-    pub(crate) selected_key: Option<Option<String>>,
-    pub(crate) dirty: Option<bool>,
-    pub(crate) loaded_count: Option<u64>,
-    pub(crate) scan_cursor: Option<String>,
-    pub(crate) scanning: Option<bool>,
-    pub(crate) scan_budget: Option<(u64, u64)>,
-    pub(crate) selection_count: Option<u64>,
-    pub(crate) last_write: Option<(Option<String>, Option<f64>)>,
+pub struct KvSlotPatch {
+    pub selected_key: Option<Option<String>>,
+    pub dirty: Option<bool>,
+    pub loaded_count: Option<u64>,
+    pub scan_cursor: Option<String>,
+    pub scanning: Option<bool>,
+    pub scan_budget: Option<(u64, u64)>,
+    pub selection_count: Option<u64>,
+    pub last_write: Option<(Option<String>, Option<f64>)>,
 }
 
 fn same_f64(left: Option<f64>, right: Option<f64>) -> bool {
@@ -478,7 +478,7 @@ fn same_f64(left: Option<f64>, right: Option<f64>) -> bool {
 /// `None` for a silent no-op and the new snapshot otherwise (object identity
 /// changes exactly once per real patch, so consumers never render-storm).
 #[allow(dead_code)] // pure decision; remove when the KV host wires the relay.
-pub(crate) fn commit_slot_patch(
+pub fn commit_slot_patch(
     current: &KvSlotSnapshot,
     patch: &KvSlotPatch,
 ) -> Option<KvSlotSnapshot> {
@@ -532,7 +532,7 @@ pub(crate) fn commit_slot_patch(
 /// never disposes one panel's atom directly, so this is the only recycling
 /// path. Returns the keys it removed, in stable order.
 #[allow(dead_code)] // pure decision; remove when the KV host wires the relay.
-pub(crate) fn prune_slot_states<V>(
+pub fn prune_slot_states<V>(
     atoms: &BTreeMap<String, V>,
     live_panel_ids: &BTreeSet<String>,
 ) -> Vec<String> {

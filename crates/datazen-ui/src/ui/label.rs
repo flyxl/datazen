@@ -18,7 +18,7 @@
 use rune::{col, row, text, El};
 
 #[allow(dead_code)] // reusable base; remove when view callers land
-pub(crate) struct Label {
+pub struct Label {
     key: String,
     text: String,
     required: bool,
@@ -27,7 +27,7 @@ pub(crate) struct Label {
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 impl Label {
-    pub(crate) fn new(key: impl Into<String>, text: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, text: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             text: text.into(),
@@ -36,17 +36,17 @@ impl Label {
         }
     }
 
-    pub(crate) fn required(mut self, required: bool) -> Self {
+    pub fn required(mut self, required: bool) -> Self {
         self.required = required;
         self
     }
 
-    pub(crate) fn hint(mut self, hint: impl Into<String>) -> Self {
+    pub fn hint(mut self, hint: impl Into<String>) -> Self {
         self.hint = Some(hint.into());
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let mut root = col().key(self.key.clone()).w_full().gap(2.0);
         let mut line = row().w_full().items_center().gap(2.0).child(

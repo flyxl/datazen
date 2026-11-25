@@ -78,9 +78,9 @@ use chrono_tz::{Tz, TZ_VARIANTS};
 // ---------------------------------------------------------------------------
 
 /// -100000-01-01T00:00:00.000Z (chrono-verified: -3217862419200000).
-pub(crate) const MIN_SUPPORTED_EPOCH_MS: i64 = -3_217_862_419_200_000;
+pub const MIN_SUPPORTED_EPOCH_MS: i64 = -3_217_862_419_200_000;
 /// 100000-12-31T23:59:59.999Z inclusive (chrono-verified: 3093559603199999).
-pub(crate) const MAX_SUPPORTED_EPOCH_MS: i64 = 3_093_559_603_199_999;
+pub const MAX_SUPPORTED_EPOCH_MS: i64 = 3_093_559_603_199_999;
 
 const DAY_MS: i64 = 86_400_000;
 
@@ -95,59 +95,59 @@ const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0; // 2^53 - 1
 /// Exact instant: floored epoch milliseconds + intra-millisecond nanoseconds
 /// + optional source fraction digits (0–9) for lossless iso re-output.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct InstantParts {
+pub struct InstantParts {
     /// The instant floored to whole milliseconds (negative instants floor
     /// away from zero relative to truncation).
-    pub(crate) epoch_ms: i64,
+    pub epoch_ms: i64,
     /// Intra-millisecond nanosecond remainder, [0, 999_999].
-    pub(crate) sub_second_nanos: u32,
+    pub sub_second_nanos: u32,
     /// Source fraction-digit count (0–9); `None` means "derive minimal
     /// precise digits at format time" (no invented zeros).
-    pub(crate) fraction_digits: Option<u8>,
+    pub fraction_digits: Option<u8>,
 }
 
 /// Wall date components (no zone semantics, Gregorian, month 1–12).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct WallDate {
-    pub(crate) year: i32,
-    pub(crate) month: u32,
-    pub(crate) day: u32,
+pub struct WallDate {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
 }
 
 /// Wall time components (no zone semantics; nanos are within-second).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct WallTime {
-    pub(crate) hour: u32,
-    pub(crate) minute: u32,
-    pub(crate) second: u32,
-    pub(crate) nanos: u32,
-    pub(crate) fraction_digits: Option<u8>,
+pub struct WallTime {
+    pub hour: u32,
+    pub minute: u32,
+    pub second: u32,
+    pub nanos: u32,
+    pub fraction_digits: Option<u8>,
 }
 
 /// Full wall date-time components (date + time flattened, like React's
 /// `WallComponents extends WallDate, WallTime`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct WallComponents {
-    pub(crate) year: i32,
-    pub(crate) month: u32,
-    pub(crate) day: u32,
-    pub(crate) hour: u32,
-    pub(crate) minute: u32,
-    pub(crate) second: u32,
-    pub(crate) nanos: u32,
-    pub(crate) fraction_digits: Option<u8>,
+pub struct WallComponents {
+    pub year: i32,
+    pub month: u32,
+    pub day: u32,
+    pub hour: u32,
+    pub minute: u32,
+    pub second: u32,
+    pub nanos: u32,
+    pub fraction_digits: Option<u8>,
 }
 
 /// The input side of [`parse_unix_value`]: a JSON number or its string form.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum UnixValue<'a> {
+pub enum UnixValue<'a> {
     Number(f64),
     Text(&'a str),
 }
 
 /// Unix timestamp unit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum UnixUnit {
+pub enum UnixUnit {
     Seconds,
     Milliseconds,
 }
@@ -158,7 +158,7 @@ pub(crate) enum UnixUnit {
 
 /// Parse-side error codes for the three text/number parsers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TemporalParseError {
+pub enum TemporalParseError {
     EmptyInput,
     InvalidFormat,
     InvalidIntegerSyntax,
@@ -176,7 +176,7 @@ pub(crate) enum TemporalParseError {
 /// Format-side error codes (React `TemporalFormatError`, consumed by
 /// timestampFormat's `formatTimestampOutput`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TemporalFormatError {
+pub enum TemporalFormatError {
     InvalidInstant,
     InvalidTimeZone,
     InvalidLocale,
@@ -185,7 +185,7 @@ pub(crate) enum TemporalFormatError {
 
 impl TemporalParseError {
     /// React's kebab-case stable reason string.
-    pub(crate) fn as_kebab(&self) -> &'static str {
+    pub fn as_kebab(&self) -> &'static str {
         match self {
             TemporalParseError::EmptyInput => "empty-input",
             TemporalParseError::InvalidFormat => "invalid-format",
@@ -205,7 +205,7 @@ impl TemporalParseError {
 
 impl WallToInstantError {
     /// React's kebab-case stable reason string.
-    pub(crate) fn as_kebab(&self) -> &'static str {
+    pub fn as_kebab(&self) -> &'static str {
         match self {
             WallToInstantError::DstAmbiguous => "dst-ambiguous",
             WallToInstantError::DstInvalid => "dst-invalid",
@@ -218,7 +218,7 @@ impl WallToInstantError {
 
 impl TemporalFormatError {
     /// React's kebab-case stable reason string.
-    pub(crate) fn as_kebab(&self) -> &'static str {
+    pub fn as_kebab(&self) -> &'static str {
         match self {
             TemporalFormatError::InvalidInstant => "invalid-instant",
             TemporalFormatError::InvalidTimeZone => "invalid-time-zone",
@@ -229,11 +229,11 @@ impl TemporalFormatError {
 }
 
 /// `parse_zoned_timestamp` / `parse_unix_value` result.
-pub(crate) type InstantParseResult = Result<InstantParts, TemporalParseError>;
+pub type InstantParseResult = Result<InstantParts, TemporalParseError>;
 
 /// `parse_wall_clock_text` result: three zone-free shapes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WallClockTextParse {
+pub enum WallClockTextParse {
     Datetime(WallComponents),
     Date(WallDate),
     Time(WallTime),
@@ -242,7 +242,7 @@ pub(crate) enum WallClockTextParse {
 
 /// `wall_clock_to_instant` failure codes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WallToInstantError {
+pub enum WallToInstantError {
     DstAmbiguous,
     DstInvalid,
     InvalidTimeZone,
@@ -250,11 +250,11 @@ pub(crate) enum WallToInstantError {
     OutOfRange,
 }
 
-pub(crate) type WallToInstantResult = Result<InstantParts, WallToInstantError>;
+pub type WallToInstantResult = Result<InstantParts, WallToInstantError>;
 
 /// `instant_to_wall_parts` failure codes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InstantToWallError {
+pub enum InstantToWallError {
     InvalidTimeZone,
     InvalidInstant,
     OutOfRange,
@@ -266,19 +266,19 @@ pub(crate) enum InstantToWallError {
 /// A successful `instant_to_wall_parts`: wall components plus the zone's
 /// actual UTC offset at that instant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct InstantToWall {
-    pub(crate) wall: WallComponents,
+pub struct InstantToWall {
+    pub wall: WallComponents,
     /// Exact offset in seconds (historical sub-minute LMT included).
-    pub(crate) offset_seconds: i64,
+    pub offset_seconds: i64,
     /// `offset_seconds / 60` truncated toward zero (convenience field).
-    pub(crate) offset_minutes: i64,
+    pub offset_minutes: i64,
 }
 
-pub(crate) type InstantToWallResult = Result<InstantToWall, InstantToWallError>;
+pub type InstantToWallResult = Result<InstantToWall, InstantToWallError>;
 
 /// `validate_instant_parts` failure codes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InstantValidationError {
+pub enum InstantValidationError {
     InvalidInstant,
     OutOfRange,
 }
@@ -336,7 +336,7 @@ fn epoch_ms_from_utc_parts(
 /// ASCII case-insensitive scan over the variant table — ICU accepts and
 /// canonicalizes lowercase zone ids (`asia/shanghai`), and this mirrors that
 /// locked Node behavior. Whitespace-padded / non-IANA names resolve to None.
-pub(crate) fn resolve_zone(name: &str) -> Option<Tz> {
+pub fn resolve_zone(name: &str) -> Option<Tz> {
     if let Ok(tz) = name.parse::<Tz>() {
         return Some(tz);
     }
@@ -347,7 +347,7 @@ pub(crate) fn resolve_zone(name: &str) -> Option<Tz> {
 }
 
 /// Whether the name is a usable IANA zone (React `isValidTimeZoneName`).
-pub(crate) fn is_valid_time_zone_name(name: &str) -> bool {
+pub fn is_valid_time_zone_name(name: &str) -> bool {
     resolve_zone(name).is_some()
 }
 
@@ -561,7 +561,7 @@ fn match_zoned_shape(text: &str) -> Option<ZonedShape> {
 /// Parse a zoned timestamp into an exact instant, keeping all fraction
 /// precision. Error precedence is React's verbatim: shape → month → day →
 /// hour → minute → second → fraction length → offset range → support range.
-pub(crate) fn parse_zoned_timestamp(text: &str) -> InstantParseResult {
+pub fn parse_zoned_timestamp(text: &str) -> InstantParseResult {
     if text.is_empty() {
         return Err(TemporalParseError::EmptyInput);
     }
@@ -621,7 +621,7 @@ pub(crate) fn parse_zoned_timestamp(text: &str) -> InstantParseResult {
 /// Parse a Unix timestamp. `f64` inputs must be safe integers (the JSON
 /// number path); strings go through `i128` so seconds→milliseconds never
 /// loses precision (React's BigInt domain).
-pub(crate) fn parse_unix_value(value: UnixValue, unit: UnixUnit) -> InstantParseResult {
+pub fn parse_unix_value(value: UnixValue, unit: UnixUnit) -> InstantParseResult {
     let multiplier: i128 = match unit {
         UnixUnit::Seconds => 1000,
         UnixUnit::Milliseconds => 1,
@@ -681,7 +681,7 @@ pub(crate) fn parse_unix_value(value: UnixValue, unit: UnixUnit) -> InstantParse
 /// Parse zone-free text into wall components — three shapes (datetime /
 /// date / time), never any zone interpretation. Zone-bearing text is
 /// `invalid-format` here; it belongs to [`parse_zoned_timestamp`].
-pub(crate) fn parse_wall_clock_text(text: &str) -> WallClockTextParse {
+pub fn parse_wall_clock_text(text: &str) -> WallClockTextParse {
     if text.is_empty() {
         return WallClockTextParse::Err(TemporalParseError::EmptyInput);
     }
@@ -842,7 +842,7 @@ fn check_wall_components(wall: &WallComponents) -> Option<WallToInstantError> {
 /// Precision passthrough: `wall.nanos`' millisecond digits join `epoch_ms`,
 /// the remainder becomes `sub_second_nanos`, and `fraction_digits` passes
 /// through untouched (`None` stays `None` — no invented zeros).
-pub(crate) fn wall_clock_to_instant(
+pub fn wall_clock_to_instant(
     wall: &WallComponents,
     time_zone: &str,
 ) -> WallToInstantResult {
@@ -922,7 +922,7 @@ pub(crate) fn wall_clock_to_instant(
 /// Runtime guard over [`InstantParts`] (React `validateInstantParts`):
 /// `None` = valid. The JS non-object / non-integer guards are type-level
 /// here (`i64`/`u32`/`Option<u8>` cannot carry them).
-pub(crate) fn validate_instant_parts(
+pub fn validate_instant_parts(
     instant: &InstantParts,
 ) -> Option<InstantValidationError> {
     if instant.sub_second_nanos > 999_999 {
@@ -942,7 +942,7 @@ pub(crate) fn validate_instant_parts(
 /// Instant → wall components in a zone + the zone's actual offset.
 /// `sub_second_nanos` is carried into `wall.nanos` (civil milliseconds × 10⁶
 /// + remainder — never a borrow); `fraction_digits` passes through.
-pub(crate) fn instant_to_wall_parts(
+pub fn instant_to_wall_parts(
     instant: &InstantParts,
     time_zone: &str,
 ) -> InstantToWallResult {
@@ -994,7 +994,7 @@ pub(crate) fn instant_to_wall_parts(
 
 /// Offset minutes → `±HH:MM` (zero renders `+00:00`, never `Z`). Non-integer
 /// inputs truncate toward zero — documented, no rounding.
-pub(crate) fn format_offset_minutes(offset_minutes: f64) -> String {
+pub fn format_offset_minutes(offset_minutes: f64) -> String {
     let truncated = offset_minutes.trunc(); // -0.5 → -0.0, and -0.0 < 0 is false
     let sign = if truncated < 0.0 { '-' } else { '+' };
     let abs = truncated.abs() as i64;
@@ -1003,7 +1003,7 @@ pub(crate) fn format_offset_minutes(offset_minutes: f64) -> String {
 
 /// Offset seconds → `±HH:MM`, or `±HH:MM:SS` for sub-minute historical
 /// offsets (29143 → `+08:05:43`).
-pub(crate) fn format_offset_seconds(offset_seconds: f64) -> String {
+pub fn format_offset_seconds(offset_seconds: f64) -> String {
     let truncated = offset_seconds.trunc();
     let sign = if truncated < 0.0 { '-' } else { '+' };
     let abs = truncated.abs() as i64;
@@ -1021,7 +1021,7 @@ pub(crate) fn format_offset_seconds(offset_seconds: f64) -> String {
 /// Strict total order over instants: `epoch_ms` first, then
 /// `sub_second_nanos` (the decomposition is unique, so component comparison
 /// is exact equality too). Fraction digits never participate.
-pub(crate) fn compare_instants(a: &InstantParts, b: &InstantParts) -> Ordering {
+pub fn compare_instants(a: &InstantParts, b: &InstantParts) -> Ordering {
     a.epoch_ms
         .cmp(&b.epoch_ms)
         .then(a.sub_second_nanos.cmp(&b.sub_second_nanos))

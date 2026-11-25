@@ -91,7 +91,7 @@ use crate::views::settings::ai::model_profile_list_item::ModelProfileListItem;
 
 /// React's `setTimeout(() => setSaved(false), 2000)` — the context-dir
 /// save feedback window, in seconds.
-pub(crate) const CONTEXT_DIR_SAVED_WINDOW: f64 = 2.0;
+pub const CONTEXT_DIR_SAVED_WINDOW: f64 = 2.0;
 
 type Act<S> = Rc<dyn Fn(&mut S)>;
 type IdAct<S> = Rc<dyn Fn(&mut S, String)>;
@@ -103,7 +103,7 @@ type ProfileAct<S> = Rc<dyn Fn(&mut S, AiModelProfile)>;
 
 /// What the strict-egress toggle decided (React's async IIFE branches).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EgressToggle {
+pub enum EgressToggle {
     /// The disable path armed the warning confirm (the request id).
     NeedsConfirm(u64),
     /// Apply immediately (enabling, or disabling from a non-`true` value —
@@ -114,34 +114,34 @@ pub(crate) enum EgressToggle {
 /// The section's own state: the context-dir draft and its saved
 /// feedback, the model-profile dialog, and the relaxed-egress confirm.
 #[derive(Clone, Default)]
-pub(crate) struct AiSettingsSectionState {
+pub struct AiSettingsSectionState {
     /// `localDir` (the draft, `PathInput`'s value).
-    pub(crate) context_dir_draft: TextEdit,
+    pub context_dir_draft: TextEdit,
     /// The `settings.contextDir` the draft last resynced from (the
     /// `useEffect` dep; the host drives the resync per frame).
-    pub(crate) resynced_context_dir: String,
+    pub resynced_context_dir: String,
     /// `defaultDir` — `contextCommands.getDir()`'s answer; `None` until
     /// the host's load lands (React's empty-string start).
-    pub(crate) default_context_dir: Option<String>,
+    pub default_context_dir: Option<String>,
     /// The save feedback deadline (`saved` while `tx.clock()` is behind).
-    pub(crate) context_dir_saved_until: Option<f64>,
+    pub context_dir_saved_until: Option<f64>,
     /// `dialogOpen` — while true the model-profile dialog renders.
-    pub(crate) dialog_open: bool,
+    pub dialog_open: bool,
     /// `editingProfile` — `None` adds, `Some` edits that profile.
-    pub(crate) editing_profile: Option<AiModelProfile>,
+    pub editing_profile: Option<AiModelProfile>,
     /// The relaxed-egress confirmation (`useConfirmDialog`'s instance).
-    pub(crate) egress_confirm: ConfirmDialogState,
+    pub egress_confirm: ConfirmDialogState,
 }
 
 impl AiSettingsSectionState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The `useEffect [settings.contextDir]` resync: a changed persisted
     /// value replaces the draft (a fresh `TextEdit` from the value is
     /// React's `setLocalDir` reset).
-    pub(crate) fn resync_context_dir(&mut self, persisted: &str) {
+    pub fn resync_context_dir(&mut self, persisted: &str) {
         if self.resynced_context_dir != persisted {
             self.resynced_context_dir = persisted.to_owned();
             self.context_dir_draft = TextEdit::new(persisted.to_owned());
@@ -149,7 +149,7 @@ impl AiSettingsSectionState {
     }
 
     /// `contextCommands.getDir()`'s answer (the mount effect's load).
-    pub(crate) fn note_default_context_dir(&mut self, dir: Option<String>) {
+    pub fn note_default_context_dir(&mut self, dir: Option<String>) {
         self.default_context_dir = dir;
     }
 
@@ -157,30 +157,30 @@ impl AiSettingsSectionState {
     /// the draft back. The host persists
     /// `{...settings, contextDir: draft}` and calls
     /// `tx.wake_after(CONTEXT_DIR_SAVED_WINDOW)`.
-    pub(crate) fn begin_save_context_dir(&mut self, now: f64) -> String {
+    pub fn begin_save_context_dir(&mut self, now: f64) -> String {
         self.context_dir_saved_until = Some(now + CONTEXT_DIR_SAVED_WINDOW);
         self.context_dir_draft.text.clone()
     }
 
     /// Whether the save feedback is still showing (the button's label).
-    pub(crate) fn context_dir_saved(&self, now: f64) -> bool {
+    pub fn context_dir_saved(&self, now: f64) -> bool {
         self.context_dir_saved_until.is_some_and(|until| now < until)
     }
 
     /// `handleAddModel` — open the dialog with no editing profile.
-    pub(crate) fn begin_add_model(&mut self) {
+    pub fn begin_add_model(&mut self) {
         self.editing_profile = None;
         self.dialog_open = true;
     }
 
     /// `handleEditModel` — open the dialog editing `profile`.
-    pub(crate) fn begin_edit_model(&mut self, profile: &AiModelProfile) {
+    pub fn begin_edit_model(&mut self, profile: &AiModelProfile) {
         self.editing_profile = Some(profile.clone());
         self.dialog_open = true;
     }
 
     /// The dialog's `onClose`.
-    pub(crate) fn close_model_dialog(&mut self) {
+    pub fn close_model_dialog(&mut self) {
         self.dialog_open = false;
     }
 
@@ -189,7 +189,7 @@ impl AiSettingsSectionState {
     /// other transition applies directly. React's truthiness check is
     /// `settings.aiStrictEgress` — `Some(true)` only (undefined and
     /// false are falsy and skip the confirm).
-    pub(crate) fn toggle_strict_egress(
+    pub fn toggle_strict_egress(
         &mut self,
         enabled: bool,
         current: Option<bool>,
@@ -209,7 +209,7 @@ impl AiSettingsSectionState {
 
     /// The confirm's resolution (`if (!ok) return;`): clear the pending
     /// request and report whether the relaxed-egress write goes through.
-    pub(crate) fn resolve_egress_confirm(&mut self, result: bool) -> bool {
+    pub fn resolve_egress_confirm(&mut self, result: bool) -> bool {
         matches!(self.egress_confirm.answer_pending(result), Some(true))
     }
 }
@@ -219,7 +219,7 @@ impl AiSettingsSectionState {
 // ---------------------------------------------------------------------------
 
 /// The AI settings section (React `AiSettingsSection`).
-pub(crate) struct AiSettingsSection<'a, S: 'static> {
+pub struct AiSettingsSection<'a, S: 'static> {
     key: &'a str,
     state: &'a AiSettingsSectionState,
     /// The store's `settingsConfig` (the content sections' load gate).
@@ -261,7 +261,7 @@ pub(crate) struct AiSettingsSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> AiSettingsSection<'a, S> {
-    pub(crate) fn new(key: &'a str, state: &'a AiSettingsSectionState) -> Self {
+    pub fn new(key: &'a str, state: &'a AiSettingsSectionState) -> Self {
         Self {
             key,
             state,
@@ -290,57 +290,57 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
     }
 
     /// The store's `settingsConfig` projection.
-    pub(crate) fn settings_config(mut self, config: Option<&'a AiSettingsConfig>) -> Self {
+    pub fn settings_config(mut self, config: Option<&'a AiSettingsConfig>) -> Self {
         self.settings_config = config;
         self
     }
 
     /// `isConfigured` — the header badge's text.
-    pub(crate) fn is_configured(mut self, configured: bool) -> Self {
+    pub fn is_configured(mut self, configured: bool) -> Self {
         self.is_configured = configured;
         self
     }
 
     /// `configError` — the red line under the models header.
-    pub(crate) fn config_error(mut self, error: Option<&'a str>) -> Self {
+    pub fn config_error(mut self, error: Option<&'a str>) -> Self {
         self.config_error = error;
         self
     }
 
     /// `settings.aiStrictEgress` — `None` is React's undefined.
-    pub(crate) fn strict_egress(mut self, value: Option<bool>) -> Self {
+    pub fn strict_egress(mut self, value: Option<bool>) -> Self {
         self.strict_egress = value;
         self
     }
 
     /// Whether the context-dir save feedback window is still open.
-    pub(crate) fn context_dir_saved(mut self, saved: bool) -> Self {
+    pub fn context_dir_saved(mut self, saved: bool) -> Self {
         self.context_dir_saved = saved;
         self
     }
 
     /// The AiContextSettings section (T015), prebuilt; gated on
     /// `settingsConfig` exactly as React's `{settingsConfig && …}`.
-    pub(crate) fn context_settings(mut self, section: Option<El>) -> Self {
+    pub fn context_settings(mut self, section: Option<El>) -> Self {
         self.context_settings = section;
         self
     }
 
     /// The SkillsSection (T408's seam; `None` until it lands).
-    pub(crate) fn skills_section(mut self, section: Option<El>) -> Self {
+    pub fn skills_section(mut self, section: Option<El>) -> Self {
         self.skills_section = section;
         self
     }
 
     /// The MemorySection (T360's seam; `None` until it lands).
-    pub(crate) fn memory_section(mut self, section: Option<El>) -> Self {
+    pub fn memory_section(mut self, section: Option<El>) -> Self {
         self.memory_section = section;
         self
     }
 
     /// The AiToolBridgeSection (T198's seam; `None` until it lands).
     /// React mounts it unconditionally — no `settingsConfig` gate.
-    pub(crate) fn tool_bridge_section(mut self, section: Option<El>) -> Self {
+    pub fn tool_bridge_section(mut self, section: Option<El>) -> Self {
         self.tool_bridge_section = section;
         self
     }
@@ -348,7 +348,7 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
     /// The model-profile dialog's appearance (T065's component; the host
     /// builds it with its form slots). Painted into the layer only while
     /// the section's dialog is open.
-    pub(crate) fn model_dialog(
+    pub fn model_dialog(
         mut self,
         build: impl Fn(&S, bool, &mut Vec<El>) + 'static,
     ) -> Self {
@@ -357,7 +357,7 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
     }
 
     /// The `PathInput`'s `TextEdit` in `S` (the context-dir draft).
-    pub(crate) fn context_dir_edit(
+    pub fn context_dir_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -368,32 +368,32 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
     /// The context-dir save press: persist
     /// `{...settings, contextDir: draft}`, arm the 2s feedback and
     /// `tx.wake_after` it.
-    pub(crate) fn on_save_context_dir(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_save_context_dir(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_save_context_dir = Some(Rc::new(f));
         self
     }
 
     /// The `PathInput`'s browse (`pickPath` — the folder dialog; T571's
     /// seam).
-    pub(crate) fn on_browse_context_dir(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_browse_context_dir(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_browse_context_dir = Some(Rc::new(f));
         self
     }
 
     /// `settingsCommands.openContextDir()` (T388's seam).
-    pub(crate) fn on_open_context_dir(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_context_dir(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_context_dir = Some(Rc::new(f));
         self
     }
 
     /// The header's add-model press (`handleAddModel`).
-    pub(crate) fn on_add_model(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_add_model(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_add_model = Some(Rc::new(f));
         self
     }
 
     /// A row's edit press (`handleEditModel`).
-    pub(crate) fn on_edit_model(mut self, f: impl Fn(&mut S, AiModelProfile) + 'static) -> Self {
+    pub fn on_edit_model(mut self, f: impl Fn(&mut S, AiModelProfile) + 'static) -> Self {
         self.on_edit_model = Some(Rc::new(f));
         self
     }
@@ -401,7 +401,7 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
     /// A row's duplicate press (`handleDuplicateModel`: the host builds
     /// the copy — new uuid, `` `${name || model} (Copy)` ``, default
     /// false — and saves it).
-    pub(crate) fn on_duplicate_model(
+    pub fn on_duplicate_model(
         mut self,
         f: impl Fn(&mut S, AiModelProfile) + 'static,
     ) -> Self {
@@ -411,20 +411,20 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
 
     /// A row's set-default press (`handleSetDefault`: save with
     /// `isDefault: true`, then `setActiveProfile(id)`).
-    pub(crate) fn on_set_default(mut self, f: impl Fn(&mut S, AiModelProfile) + 'static) -> Self {
+    pub fn on_set_default(mut self, f: impl Fn(&mut S, AiModelProfile) + 'static) -> Self {
         self.on_set_default = Some(Rc::new(f));
         self
     }
 
     /// A row's delete press (`handleDeleteModel`).
-    pub(crate) fn on_delete_model(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_delete_model(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_delete_model = Some(Rc::new(f));
         self
     }
 
     /// The strict-egress toggle's press (the decision runs in the
     /// section state; the host applies the direct branch).
-    pub(crate) fn on_toggle_strict_egress(
+    pub fn on_toggle_strict_egress(
         mut self,
         f: impl Fn(&mut S, bool) + 'static,
     ) -> Self {
@@ -434,7 +434,7 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
 
     /// The relaxed-egress confirm's resolution: clear the pending
     /// request and apply the write on OK.
-    pub(crate) fn on_egress_confirm_resolved(
+    pub fn on_egress_confirm_resolved(
         mut self,
         f: impl Fn(&mut S, bool) + 'static,
     ) -> Self {
@@ -445,7 +445,7 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
     /// Build the section. The tooltips, the model dialog and the
     /// relaxed-egress confirm land in `layer` (the floating overlay the
     /// caller composes).
-    pub(crate) fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let key = self.key;
         let state = self.state;
@@ -693,7 +693,7 @@ impl<'a, S: 'static> AiSettingsSection<'a, S> {
 /// React's SectionTitle stand-in (settingsUi.tsx is T399's): 13/600
 /// muted, the hint as a "?" tooltip trigger — the `ai_context_settings`
 /// precedent, verbatim. Shared by the settings subtree's sections.
-pub(crate) fn section_title(
+pub fn section_title(
     k: &Kit,
     layer: &mut Vec<El>,
     key: String,

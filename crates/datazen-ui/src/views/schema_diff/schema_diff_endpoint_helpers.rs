@@ -30,16 +30,16 @@
 
 /// `EndpointIdentity`: the three fields the same-place rule reads.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct EndpointIdentity {
-    pub(crate) connection_id: String,
-    pub(crate) database: String,
-    pub(crate) schema: String,
+pub struct EndpointIdentity {
+    pub connection_id: String,
+    pub database: String,
+    pub schema: String,
 }
 
 /// `isSameEndpointIdentity`: true when both sides point at the same
 /// connection, database and schema. An empty database on either side
 /// never matches — "the same place" has to be a named place.
-pub(crate) fn is_same_endpoint_identity(source: &EndpointIdentity, target: &EndpointIdentity) -> bool {
+pub fn is_same_endpoint_identity(source: &EndpointIdentity, target: &EndpointIdentity) -> bool {
     source.connection_id == target.connection_id
         && !source.database.is_empty()
         && !target.database.is_empty()
@@ -50,19 +50,19 @@ pub(crate) fn is_same_endpoint_identity(source: &EndpointIdentity, target: &Endp
 /// `MigrationWindowPrefill`: the URL parameters a migration window
 /// consumes once (absent key = not prefilled).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct MigrationWindowPrefill {
-    pub(crate) source_id: Option<String>,
-    pub(crate) target_id: Option<String>,
-    pub(crate) source_database: Option<String>,
-    pub(crate) target_database: Option<String>,
-    pub(crate) source_schema: Option<String>,
-    pub(crate) target_schema: Option<String>,
+pub struct MigrationWindowPrefill {
+    pub source_id: Option<String>,
+    pub target_id: Option<String>,
+    pub source_database: Option<String>,
+    pub target_database: Option<String>,
+    pub source_schema: Option<String>,
+    pub target_schema: Option<String>,
 }
 
 /// `resolveDefaultDatabase(databases, preferred, prev)`: the
 /// configured database when offered, the previous when still offered,
 /// else the first, else empty.
-pub(crate) fn resolve_default_database(
+pub fn resolve_default_database(
     databases: Option<&[String]>,
     preferred: &str,
     prev: &str,
@@ -79,7 +79,7 @@ pub(crate) fn resolve_default_database(
 
 /// `pickPrefillDatabase`: consume the prefill once when the offered
 /// list contains it, else the fallback.
-pub(crate) fn pick_prefill_database(
+pub fn pick_prefill_database(
     prefill: &mut MigrationWindowPrefill,
     side: crate::views::schema_diff::use_schema_diff_endpoints::EndpointSide,
     databases: &[String],
@@ -104,7 +104,7 @@ pub(crate) fn pick_prefill_database(
 }
 
 /// `pickPrefillSchema`: the schema face of the same consume-once rule.
-pub(crate) fn pick_prefill_schema(
+pub fn pick_prefill_schema(
     prefill: &mut MigrationWindowPrefill,
     side: crate::views::schema_diff::use_schema_diff_endpoints::EndpointSide,
     schemas: &[String],
@@ -130,7 +130,7 @@ pub(crate) fn pick_prefill_schema(
 
 /// `pickDefaultSchema(schemas, previous)`: the previous when still
 /// offered, `public` when present, else the first, else empty.
-pub(crate) fn pick_default_schema(schemas: &[String], previous: Option<&str>) -> String {
+pub fn pick_default_schema(schemas: &[String], previous: Option<&str>) -> String {
     if let Some(previous) = previous {
         if schemas.iter().any(|s| s == previous) {
             return previous.to_owned();
@@ -144,7 +144,7 @@ pub(crate) fn pick_default_schema(schemas: &[String], previous: Option<&str>) ->
 
 /// The §13 API error codes, in document order
 /// (`API_ERROR_CODES`).
-pub(crate) const API_ERROR_CODES: &[&str] = &[
+pub const API_ERROR_CODES: &[&str] = &[
     "InvalidArgument",
     "TargetRequired",
     "TargetConflict",
@@ -179,17 +179,17 @@ pub(crate) const API_ERROR_CODES: &[&str] = &[
 ];
 
 /// `isApiErrorCode(value)`.
-pub(crate) fn is_api_error_code(value: &str) -> bool {
+pub fn is_api_error_code(value: &str) -> bool {
     API_ERROR_CODES.contains(&value)
 }
 
 /// `DedicatedSideSession` (the shape): the dedicated sub-window
 /// session a side holds.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DedicatedSideSession {
-    pub(crate) connection_id: String,
-    pub(crate) database: String,
-    pub(crate) db_session_id: String,
+pub struct DedicatedSideSession {
+    pub connection_id: String,
+    pub database: String,
+    pub db_session_id: String,
 }
 
 #[cfg(test)]

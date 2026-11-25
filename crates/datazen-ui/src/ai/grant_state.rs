@@ -50,12 +50,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// own monotonic `u64` handles so it can mirror "store the handle, pass it to
 /// clearTimeout" without depending on a platform type.
 #[allow(dead_code)] // T049 foundation API; delete the alias note when the host timer bridge lands.
-pub(crate) type GrantTimerHandle = u64;
+pub type GrantTimerHandle = u64;
 
 /// Mirrors `AiGrantReceipt` from `ai/targetClaim.ts`.
 #[allow(dead_code)] // consumed by the AI chat panel's run-claim wiring; delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiGrantReceipt {
+pub struct AiGrantReceipt {
     pub grant_id: String,
     pub connection_id: String,
     pub database: Option<String>,
@@ -66,7 +66,7 @@ pub(crate) struct AiGrantReceipt {
 /// `GrantPhase` — the four states of the machine.
 #[allow(dead_code)] // T049 foundation API; delete when the chat panel starts reading snapshots.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GrantPhase {
+pub enum GrantPhase {
     Independent,
     Granting,
     Granted,
@@ -78,7 +78,7 @@ pub(crate) enum GrantPhase {
 /// caller inside the `CallGrant` executor, keeping this machine transport-free.
 #[allow(dead_code)] // passed through by the host's grant executor; delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct GrantInput {
+pub struct GrantInput {
     pub connection_id: String,
     pub database: Option<String>,
     pub editor_session_id: String,
@@ -89,7 +89,7 @@ pub(crate) struct GrantInput {
 /// failure, cleared on a new successful grant.
 #[allow(dead_code)] // read by the chat panel each frame; delete then.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct GrantSnapshot {
+pub struct GrantSnapshot {
     pub phase: GrantPhase,
     pub receipt: Option<AiGrantReceipt>,
     pub expires_at_ms: Option<i64>,
@@ -99,7 +99,7 @@ pub(crate) struct GrantSnapshot {
 impl GrantSnapshot {
     /// The `INDEPENDENT` constant the React module starts from.
     #[allow(dead_code)] // constructor used by the host when creating the machine; delete then.
-    pub(crate) fn independent() -> Self {
+    pub fn independent() -> Self {
         Self {
             phase: GrantPhase::Independent,
             receipt: None,
@@ -112,14 +112,14 @@ impl GrantSnapshot {
 /// Notification callback for [`GrantState::subscribe`]. In immediate mode this
 /// is a convenience; rendering must read [`GrantState::snapshot`] instead.
 #[allow(dead_code)] // optional observer API; delete with subscribe/unsubscribe if unused.
-pub(crate) type GrantListener = Box<dyn FnMut(&GrantSnapshot)>;
+pub type GrantListener = Box<dyn FnMut(&GrantSnapshot)>;
 
 /// Work the host must perform on behalf of the machine. This is the immediate-
 /// mode stand-in for the React injected async functions and timer functions.
 /// The machine never performs I/O itself and never blocks.
 #[allow(dead_code)] // the host adapter executes these; delete the note when it lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum GrantEffect {
+pub enum GrantEffect {
     /// Execute the injected `grant(input)`; deliver with `on_grant_result`.
     /// `token` is echoed back so a stale (revoked/disposed) grant is rejected.
     CallGrant { input: GrantInput, token: u64 },
@@ -144,7 +144,7 @@ pub(crate) enum GrantEffect {
 /// the remaining ttl at which a touch is scheduled (React default `0.5`).
 /// `now` is the injected clock in milliseconds.
 #[allow(dead_code)] // passed to GrantState::new by the host; delete then.
-pub(crate) struct GrantConfig {
+pub struct GrantConfig {
     pub touch_interval_ratio: f64,
     pub now: Box<dyn Fn() -> i64>,
 }
@@ -196,7 +196,7 @@ impl GrantPatch {
 /// the `granting`-state short circuit (the caller reuses the existing request).
 #[allow(dead_code)] // returned to the host's grant button handler; delete then.
 #[derive(Debug)]
-pub(crate) struct GrantStep {
+pub struct GrantStep {
     pub receipt: Option<AiGrantReceipt>,
     pub joined_in_flight: bool,
     pub effects: Vec<GrantEffect>,
@@ -205,7 +205,7 @@ pub(crate) struct GrantStep {
 /// `GrantState` — the ported state machine. Embed in `S`; drive with the
 /// `on_*`/`fire_*` methods and execute the returned effects on the host side.
 #[allow(dead_code)] // T049; the AI chat panel embeds this in its state slice. Delete then.
-pub(crate) struct GrantState {
+pub struct GrantState {
     current: GrantSnapshot,
     listeners: Vec<(u64, GrantListener)>,
     next_listener_id: u64,
@@ -224,7 +224,7 @@ pub(crate) struct GrantState {
 impl GrantState {
     /// Mirrors the React constructor (defaults filled in by `GrantConfig`).
     #[allow(dead_code)] // called by the host when building its state slice; delete then.
-    pub(crate) fn new(config: GrantConfig) -> Self {
+    pub fn new(config: GrantConfig) -> Self {
         Self {
             current: GrantSnapshot::independent(),
             listeners: Vec::new(),
@@ -243,13 +243,13 @@ impl GrantState {
 
     /// `get snapshot` — the immediate-mode source of truth, read each frame.
     #[allow(dead_code)] // read by the panel every frame; delete then.
-    pub(crate) fn snapshot(&self) -> &GrantSnapshot {
+    pub fn snapshot(&self) -> &GrantSnapshot {
         &self.current
     }
 
     /// `get isGranted` — granted *and* holding a receipt.
     #[allow(dead_code)] // read by the panel to enable/disable actions; delete then.
-    pub(crate) fn is_granted(&self) -> bool {
+    pub fn is_granted(&self) -> bool {
         self.current.phase == GrantPhase::Granted && self.current.receipt.is_some()
     }
 
@@ -257,7 +257,7 @@ impl GrantState {
     /// Immediate-mode note: ids replace the TS unsubscribe closure because a
     /// closure borrowing the machine cannot be stored beside it in `S`.
     #[allow(dead_code)] // optional observer API; delete with unsubscribe if unused.
-    pub(crate) fn subscribe(&mut self, listener: GrantListener) -> u64 {
+    pub fn subscribe(&mut self, listener: GrantListener) -> u64 {
         let id = self.next_listener_id;
         self.next_listener_id += 1;
         self.listeners.push((id, listener));
@@ -266,7 +266,7 @@ impl GrantState {
 
     /// Remove the listener previously returned by [`Self::subscribe`].
     #[allow(dead_code)] // optional observer API; delete with subscribe if unused.
-    pub(crate) fn unsubscribe(&mut self, id: u64) {
+    pub fn unsubscribe(&mut self, id: u64) {
         self.listeners.retain(|(candidate, _)| *candidate != id);
     }
 
@@ -275,7 +275,7 @@ impl GrantState {
     /// starts over. A denied grant leaves the machine `independent` with an
     /// error, delivered later through [`Self::on_grant_result`].
     #[allow(dead_code)] // called by the chat panel's grant button; delete then.
-    pub(crate) fn grant(&mut self, input: GrantInput) -> GrantStep {
+    pub fn grant(&mut self, input: GrantInput) -> GrantStep {
         if self.disposed {
             return GrantStep {
                 receipt: None,
@@ -316,7 +316,7 @@ impl GrantState {
     /// Resolution of an injected `grant` call (the `.then`/`.catch`/`.finally`
     /// chain). `token` must be the one emitted with the `CallGrant` effect.
     #[allow(dead_code)] // called by the host's grant executor; delete then.
-    pub(crate) fn on_grant_result(
+    pub fn on_grant_result(
         &mut self,
         token: u64,
         result: Result<AiGrantReceipt, String>,
@@ -364,7 +364,7 @@ impl GrantState {
     /// `revoked`. Safe while `granting`; the stale response is released when
     /// it arrives. Returns the effects for the (quiet) revoke of any receipt.
     #[allow(dead_code)] // called by the panel's revoke button and grant races; delete then.
-    pub(crate) fn revoke(&mut self) -> Vec<GrantEffect> {
+    pub fn revoke(&mut self) -> Vec<GrantEffect> {
         let receipt = self.current.receipt.clone();
         let mut effects = self.clear_timers();
         self.grant_token += 1;
@@ -380,7 +380,7 @@ impl GrantState {
     /// further state. The listener list is cleared like React's
     /// `listeners.clear()`.
     #[allow(dead_code)] // called from the panel's effect cleanup; delete then.
-    pub(crate) fn dispose(&mut self) -> Vec<GrantEffect> {
+    pub fn dispose(&mut self) -> Vec<GrantEffect> {
         if self.disposed {
             return Vec::new();
         }
@@ -399,7 +399,7 @@ impl GrantState {
     /// Outcome of an injected `revoke` call. Mirrors `revokeQuietly`: a failure
     /// is reported through `onWarn`, a success is silent.
     #[allow(dead_code)] // called by the host's revoke executor; delete then.
-    pub(crate) fn on_revoke_result(
+    pub fn on_revoke_result(
         &mut self,
         grant_id: &str,
         result: Result<(), String>,
@@ -417,7 +417,7 @@ impl GrantState {
     /// `Ok(false)` becomes the `"touch rejected"` error; a rejection carries
     /// its own message. A revoke/expiry during the await always wins.
     #[allow(dead_code)] // called by the host's touch executor; delete then.
-    pub(crate) fn on_touch_result(
+    pub fn on_touch_result(
         &mut self,
         grant_id: &str,
         result: Result<bool, String>,
@@ -443,7 +443,7 @@ impl GrantState {
     /// `touchTimer` then calling `runTouch`. A stale handle (cancelled timer)
     /// is ignored, modelling JS `clearTimeout` preventing the callback.
     #[allow(dead_code)] // called by the host timer bridge; delete then.
-    pub(crate) fn fire_touch_timer(&mut self, handle: GrantTimerHandle) -> Vec<GrantEffect> {
+    pub fn fire_touch_timer(&mut self, handle: GrantTimerHandle) -> Vec<GrantEffect> {
         if self.touch_timer != Some(handle) {
             return Vec::new();
         }
@@ -454,7 +454,7 @@ impl GrantState {
     /// The expiry timer fired. Mirrors its callback clearing `expiryTimer`
     /// then calling `expireLocally`.
     #[allow(dead_code)] // called by the host timer bridge; delete then.
-    pub(crate) fn fire_expiry_timer(&mut self, handle: GrantTimerHandle) -> Vec<GrantEffect> {
+    pub fn fire_expiry_timer(&mut self, handle: GrantTimerHandle) -> Vec<GrantEffect> {
         if self.expiry_timer != Some(handle) {
             return Vec::new();
         }

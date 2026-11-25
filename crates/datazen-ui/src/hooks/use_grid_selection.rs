@@ -58,39 +58,39 @@ use crate::table_data_connection_state::{
 /// blank surface; `focus` keeps the last cell the pointer was over so
 /// a drag leaving the grid keeps its last hit.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DragSession {
-    pub(crate) pointer_id: u64,
-    pub(crate) anchor: Option<CellCoord>,
-    pub(crate) focus: Option<CellCoord>,
-    pub(crate) moved: bool,
+pub struct DragSession {
+    pub pointer_id: u64,
+    pub anchor: Option<CellCoord>,
+    pub focus: Option<CellCoord>,
+    pub moved: bool,
     /// `metaKey || ctrlKey` at pointerdown (Cmd/Ctrl+click adds).
-    pub(crate) additive: bool,
+    pub additive: bool,
     /// `shiftKey && selection.mode === 'cell'` at pointerdown.
-    pub(crate) extended: bool,
+    pub extended: bool,
 }
 
 /// The hook's per-frame environment (React's `UseGridSelectionOptions`;
 /// the callbacks' presences are booleans — the host supplies the
 /// actions themselves).
-pub(crate) struct GridSelectionEnv<'a> {
+pub struct GridSelectionEnv<'a> {
     /// Displayed column names, in render order.
-    pub(crate) column_order: &'a [String],
-    pub(crate) row_count: usize,
+    pub column_order: &'a [String],
+    pub row_count: usize,
     /// Controlled value: the store owns the selection, this hook keeps
     /// no copy.
-    pub(crate) selection: &'a GridSelection,
+    pub selection: &'a GridSelection,
     /// The cell selection switch (default true; read-only grids stay
     /// selectable).
-    pub(crate) enabled: bool,
+    pub enabled: bool,
     /// While a cell is being edited, Escape belongs to the editor.
-    pub(crate) editing_cell: bool,
+    pub editing_cell: bool,
     /// `onRowGutterSelect` is supplied.
-    pub(crate) has_row_gutter: bool,
+    pub has_row_gutter: bool,
 }
 
 impl<'a> GridSelectionEnv<'a> {
     /// React's defaults: enabled, no editor, no gutter path.
-    pub(crate) fn new(
+    pub fn new(
         column_order: &'a [String],
         row_count: usize,
         selection: &'a GridSelection,
@@ -109,27 +109,27 @@ impl<'a> GridSelectionEnv<'a> {
 /// The pointer event projection: the DOM resolutions the host already
 /// performed (no DOM handle crosses the seam).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct GridPointerEvent {
-    pub(crate) pointer_id: u64,
+pub struct GridPointerEvent {
+    pub pointer_id: u64,
     /// `event.button` (only `0` starts a session).
-    pub(crate) button: i16,
-    pub(crate) meta_key: bool,
-    pub(crate) ctrl_key: bool,
-    pub(crate) shift_key: bool,
+    pub button: i16,
+    pub meta_key: bool,
+    pub ctrl_key: bool,
+    pub shift_key: bool,
     /// `isEditableTarget(event.target)`.
-    pub(crate) target_editable: bool,
+    pub target_editable: bool,
     /// `rowIndexFromRowHeader(event.target)`.
-    pub(crate) target_row_header: Option<usize>,
+    pub target_row_header: Option<usize>,
     /// `resolveDataTableCellFromEvent(event.target)`.
-    pub(crate) target_cell: Option<CellCoord>,
+    pub target_cell: Option<CellCoord>,
     /// `cellFromPoint(clientX, clientY)` — the move/up answer; `None`
     /// on a cancel (no coordinates) or a miss.
-    pub(crate) cell_from_point: Option<CellCoord>,
+    pub cell_from_point: Option<CellCoord>,
 }
 
 /// What a pointerdown decided.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum PointerDownEffect {
+pub enum PointerDownEffect {
     /// Nothing (disabled, a secondary button, an editable target, or a
     /// stale cell outside the page).
     None,
@@ -144,37 +144,37 @@ pub(crate) enum PointerDownEffect {
 
 /// The hook: the in-flight drag session plus the `dragging` flag.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct GridSelectionHook {
+pub struct GridSelectionHook {
     session: Option<DragSession>,
     dragging: bool,
 }
 
 impl GridSelectionHook {
     /// `useGridSelection()`: no session, not dragging.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// True while a drag is in progress (drives `select-none` and the
     /// journey assertions).
-    pub(crate) fn dragging(&self) -> bool {
+    pub fn dragging(&self) -> bool {
         self.dragging
     }
 
     /// The in-flight session (the host's capture handling).
-    pub(crate) fn session(&self) -> Option<&DragSession> {
+    pub fn session(&self) -> Option<&DragSession> {
         self.session.as_ref()
     }
 
     /// `clearSession`: forget the session, hand back capture, leave
     /// `dragging` false. No selection change.
-    pub(crate) fn clear_session(&mut self) {
+    pub fn clear_session(&mut self) {
         self.session = None;
         self.dragging = false;
     }
 
     /// `onPointerDown`.
-    pub(crate) fn on_pointer_down(
+    pub fn on_pointer_down(
         &mut self,
         env: &GridSelectionEnv,
         event: &GridPointerEvent,
@@ -216,7 +216,7 @@ impl GridSelectionHook {
 
     /// `onPointerMove`: the session's focus follows the pointer; the
     /// first different cell marks the drag.
-    pub(crate) fn on_pointer_move(&mut self, event: &GridPointerEvent) {
+    pub fn on_pointer_move(&mut self, event: &GridPointerEvent) {
         let Some(session) = self.session.as_mut() else {
             return;
         };
@@ -235,7 +235,7 @@ impl GridSelectionHook {
     }
 
     /// `onPointerUp`: finish with commit, the point's cell.
-    pub(crate) fn on_pointer_up(
+    pub fn on_pointer_up(
         &mut self,
         env: &GridSelectionEnv,
         event: &GridPointerEvent,
@@ -245,7 +245,7 @@ impl GridSelectionHook {
 
     /// `onPointerCancel`: finish with commit but no coordinates (the
     /// focus falls back to the session's last hit).
-    pub(crate) fn on_pointer_cancel(
+    pub fn on_pointer_cancel(
         &mut self,
         env: &GridSelectionEnv,
         event: &GridPointerEvent,
@@ -311,7 +311,7 @@ impl GridSelectionHook {
 
     /// `onKeyDown`: the nav hook first (the host reports whether it
     /// claimed the key), then Escape's clearing.
-    pub(crate) fn on_key_down(
+    pub fn on_key_down(
         &mut self,
         env: &GridSelectionEnv,
         event: &GridKeyDownEvent,
@@ -347,13 +347,13 @@ impl GridSelectionHook {
 
     /// `onBlur`: focus leaving the grid must not clear the selection —
     /// only the in-flight drag session ends.
-    pub(crate) fn on_blur(&mut self) {
+    pub fn on_blur(&mut self) {
         self.clear_session();
     }
 
     /// `isCellSelected`: render-time membership test (the pure
     /// helpers, never the DOM).
-    pub(crate) fn is_cell_selected(
+    pub fn is_cell_selected(
         &self,
         env: &GridSelectionEnv,
         row_index: usize,
@@ -366,7 +366,7 @@ impl GridSelectionHook {
     /// `activeDescendantId`: the `aria-activedescendant` target for
     /// the focus cell (`` {prefix}-r{row}c{column} ``, the column an
     /// index in render order).
-    pub(crate) fn active_descendant_id(
+    pub fn active_descendant_id(
         &self,
         env: &GridSelectionEnv,
         id_prefix: &str,
@@ -383,7 +383,7 @@ impl GridSelectionHook {
 
     /// `focusKey`: the stable key of the focus cell, so virtual
     /// scrolling can keep it mounted (`{row}:{column}`).
-    pub(crate) fn focus_key(&self, env: &GridSelectionEnv) -> Option<String> {
+    pub fn focus_key(&self, env: &GridSelectionEnv) -> Option<String> {
         (env.selection.mode == GridSelectionMode::Cell)
             .then(|| env.selection.focus.clone())
             .flatten()

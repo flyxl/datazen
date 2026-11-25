@@ -25,14 +25,14 @@ use std::collections::HashMap;
 
 /// The session barrier a `capture()` closure becomes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SessionBarrier {
+pub struct SessionBarrier {
     db_session_id: String,
     generation: u64,
 }
 
 /// The slot barrier a `begin()`/`captureSlot()` closure becomes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SlotBarrier {
+pub struct SlotBarrier {
     db_session_id: String,
     slot: String,
     generation: u64,
@@ -41,7 +41,7 @@ pub(crate) struct SlotBarrier {
 
 /// The tracker (`SchemaRequestTracker`).
 #[derive(Default)]
-pub(crate) struct SchemaRequestTracker {
+pub struct SchemaRequestTracker {
     /// Per db session: the slot→request-token map, with the generation
     /// the session was created under.
     sessions: HashMap<String, (u64, HashMap<String, u64>)>,
@@ -52,14 +52,14 @@ impl SchemaRequestTracker {
     /// `capture`: ensure the db session's slot map exists (the same one
     /// is reused while the session lives) and return the session
     /// barrier.
-    pub(crate) fn capture(&mut self, db_session_id: &str) -> SessionBarrier {
+    pub fn capture(&mut self, db_session_id: &str) -> SessionBarrier {
         let barrier = self.ensure_session(db_session_id);
         barrier
     }
 
     /// `begin`: capture the session and start a new request in the slot —
     /// any request the slot held is replaced, so its barrier goes stale.
-    pub(crate) fn begin(&mut self, db_session_id: &str, slot: &str) -> SlotBarrier {
+    pub fn begin(&mut self, db_session_id: &str, slot: &str) -> SlotBarrier {
         let session = self.ensure_session(db_session_id);
         let request_token = self.fresh_identity();
         let (_, slots) = self
@@ -77,7 +77,7 @@ impl SchemaRequestTracker {
 
     /// `captureSlot`: bind to the request the slot already holds; an
     /// empty slot (or a missing session) begins one.
-    pub(crate) fn capture_slot(&mut self, db_session_id: &str, slot: &str) -> SlotBarrier {
+    pub fn capture_slot(&mut self, db_session_id: &str, slot: &str) -> SlotBarrier {
         let session = self.ensure_session(db_session_id);
         let existing = self
             .sessions
@@ -97,7 +97,7 @@ impl SchemaRequestTracker {
 
     /// The `capture()` closure: the session the caller saw is still the
     /// live one.
-    pub(crate) fn session_alive(&self, barrier: &SessionBarrier) -> bool {
+    pub fn session_alive(&self, barrier: &SessionBarrier) -> bool {
         self.sessions
             .get(&barrier.db_session_id)
             .is_some_and(|(generation, _)| *generation == barrier.generation)
@@ -105,7 +105,7 @@ impl SchemaRequestTracker {
 
     /// The `begin()`/`captureSlot()` closure: the session is alive and
     /// the slot still holds the caller's request.
-    pub(crate) fn slot_alive(&self, barrier: &SlotBarrier) -> bool {
+    pub fn slot_alive(&self, barrier: &SlotBarrier) -> bool {
         self.sessions
             .get(&barrier.db_session_id)
             .is_some_and(|(generation, slots)| {
@@ -116,12 +116,12 @@ impl SchemaRequestTracker {
 
     /// `invalidate`: the db session's whole slot map (and every barrier
     /// from it) goes.
-    pub(crate) fn invalidate(&mut self, db_session_id: &str) {
+    pub fn invalidate(&mut self, db_session_id: &str) {
         self.sessions.remove(db_session_id);
     }
 
     /// `reset`: every session goes.
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.sessions.clear();
     }
 

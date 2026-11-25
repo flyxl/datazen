@@ -4,7 +4,7 @@
 /// React `Panel.type`.
 #[allow(dead_code)] // VM mirror; consumed by the reuse rules and tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PanelKind {
+pub enum PanelKind {
     Table,
     View,
     CreateTable,
@@ -19,7 +19,7 @@ pub(crate) enum PanelKind {
 
 impl PanelKind {
     #[allow(dead_code)] // pure helper; consumed by diagnostics and tests.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Table => "table",
             Self::View => "view",
@@ -38,7 +38,7 @@ impl PanelKind {
 /// React `SubTabId` (only the values this hook sets).
 #[allow(dead_code)] // VM mirror; consumed by the tab decisions.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum SubTab {
+pub enum SubTab {
     #[default]
     Data,
     Structure,
@@ -49,7 +49,7 @@ pub(crate) enum SubTab {
 /// sum type) keeps the host feed simple; `kind` selects which fields matter.
 #[allow(dead_code)] // VM mirror; supplied by the panel host.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct PanelVm {
+pub struct PanelVm {
     pub id: String,
     pub kind: Option<PanelKind>,
     pub connection_id: String,
@@ -80,7 +80,7 @@ pub(crate) struct PanelVm {
 /// React `ConnectionContext` (the sidebar context).
 #[allow(dead_code)] // VM mirror; supplied by the host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ConnectionContextVm {
+pub struct ConnectionContextVm {
     pub connection_id: String,
     pub db_session_id: String,
     pub connection_name: String,
@@ -90,7 +90,7 @@ pub(crate) struct ConnectionContextVm {
 /// An explicit open target from a context menu (may carry an old dbSessionId).
 #[allow(dead_code)] // VM mirror; supplied by the host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct OpenTargetVm {
+pub struct OpenTargetVm {
     pub connection_id: String,
     pub db_session_id: String,
     pub connection_name: String,
@@ -101,7 +101,7 @@ pub(crate) struct OpenTargetVm {
 /// a field be cleared (React `updatePanel(id, { schema: null })`).
 #[allow(dead_code)] // VM mirror; consumed by the reuse decisions.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct PanelPatch {
+pub struct PanelPatch {
     pub sub_tab: Option<SubTab>,
     pub structure_editing: Option<bool>,
     pub target_column: Option<Option<String>>,
@@ -115,7 +115,7 @@ pub(crate) struct PanelPatch {
 impl PanelPatch {
     /// Apply this patch to a panel snapshot (pure state transition).
     #[allow(dead_code)] // pure transition; consumed by the host and tests.
-    pub(crate) fn apply(&self, panel: &mut PanelVm) {
+    pub fn apply(&self, panel: &mut PanelVm) {
         if let Some(sub_tab) = self.sub_tab {
             panel.sub_tab = sub_tab;
         }
@@ -146,7 +146,7 @@ impl PanelPatch {
 /// The full host effect of a panel handler decision.
 #[allow(dead_code)] // host effect; remove with the host wiring.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum PanelEffect {
+pub enum PanelEffect {
     /// Nothing to do (missing context, wrong connection, no-op close).
     None,
     /// Activate an existing panel.
@@ -181,7 +181,7 @@ pub(crate) enum PanelEffect {
 /// The five tab context-menu entries, with the three enable flags from React.
 #[allow(dead_code)] // VM mirror; consumed by the context-menu decision.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TabMenuItem {
+pub enum TabMenuItem {
     Close,
     CloseOthers,
     CloseAll,
@@ -192,7 +192,7 @@ pub(crate) enum TabMenuItem {
 /// React `panelSchema(panel)` (`panelTypes.ts`): the schema a panel contributes
 /// to an ER diagram, selected by panel type.
 #[allow(dead_code)] // pure helper; remove with the host wiring.
-pub(crate) fn panel_schema(panel: &PanelVm) -> Option<String> {
+pub fn panel_schema(panel: &PanelVm) -> Option<String> {
     match panel.kind {
         Some(PanelKind::Table) | Some(PanelKind::CreateTable) => panel.table_schema.clone(),
         Some(PanelKind::View) => panel.view_schema.clone(),

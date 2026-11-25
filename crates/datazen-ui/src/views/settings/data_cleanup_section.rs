@@ -52,11 +52,11 @@ use crate::ui::toggle::Checkbox;
 use crate::views::settings::ai_settings_section::section_title;
 
 /// React `RETENTION_PRESETS`.
-pub(crate) const RETENTION_PRESETS: [u32; 3] = [7, 30, 90];
+pub const RETENTION_PRESETS: [u32; 3] = [7, 30, 90];
 
 /// React `HistoryPurgeScope` (`'all' | 'query' | 'workflow'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HistoryPurgeScope {
+pub enum HistoryPurgeScope {
     All,
     Query,
     Workflow,
@@ -64,7 +64,7 @@ pub(crate) enum HistoryPurgeScope {
 
 impl HistoryPurgeScope {
     /// The wire spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::All => "all",
             Self::Query => "query",
@@ -75,7 +75,7 @@ impl HistoryPurgeScope {
 
 /// React `RetentionMode`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum RetentionMode {
+pub enum RetentionMode {
     #[default]
     Preset,
     Custom,
@@ -84,14 +84,14 @@ pub(crate) enum RetentionMode {
 
 /// The result line (React `message`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CleanupMessage {
+pub enum CleanupMessage {
     Success { count: u32 },
     Error { text: String },
 }
 
 /// What `handleRun` decided (the state machine's two-phase run).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum CleanupRunDecision {
+pub enum CleanupRunDecision {
     /// No scope is checked: the noScope error line, nothing runs.
     NoScope,
     /// The purge to run, with its confirm message — the host shows the
@@ -103,7 +103,7 @@ pub(crate) enum CleanupRunDecision {
 
 /// The section's state (React's useState fields, owned).
 #[derive(Clone, Default)]
-pub(crate) struct DataCleanupSectionState {
+pub struct DataCleanupSectionState {
     pub scope_query: bool,
     pub scope_workflow: bool,
     pub retention_mode: RetentionMode,
@@ -119,7 +119,7 @@ pub(crate) struct DataCleanupSectionState {
 impl DataCleanupSectionState {
     /// React's initial state (the derived Default is all-zero; this is
     /// the hook's mount values).
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             scope_query: true,
             scope_workflow: true,
@@ -133,7 +133,7 @@ impl DataCleanupSectionState {
     }
 
     /// `resolveScope`: both → all; one → its own; none → no scope.
-    pub(crate) fn resolve_scope(&self) -> Option<HistoryPurgeScope> {
+    pub fn resolve_scope(&self) -> Option<HistoryPurgeScope> {
         match (self.scope_query, self.scope_workflow) {
             (true, true) => Some(HistoryPurgeScope::All),
             (true, false) => Some(HistoryPurgeScope::Query),
@@ -144,37 +144,37 @@ impl DataCleanupSectionState {
 
     /// The custom days, parsed and clamped (`Math.min(365, Math.max(1,
     /// customDays))`; `Number(...) || 1` — unparsable/zero reads 1).
-    pub(crate) fn custom_days_value(&self) -> u32 {
+    pub fn custom_days_value(&self) -> u32 {
         let parsed: f64 = self.custom_days.text.trim().parse().unwrap_or(1.0);
         parsed.clamp(1.0, 365.0) as u32
     }
 
     /// The custom field's edit (the mode flips to custom, React's
     /// onChange half).
-    pub(crate) fn set_custom_days(&mut self, raw: &str) {
+    pub fn set_custom_days(&mut self, raw: &str) {
         self.retention_mode = RetentionMode::Custom;
         self.custom_days = TextEdit::new(raw.to_owned());
     }
 
     /// Focusing the custom field flips the mode (`onFocus`).
-    pub(crate) fn focus_custom(&mut self) {
+    pub fn focus_custom(&mut self) {
         self.retention_mode = RetentionMode::Custom;
     }
 
     /// A preset press: the mode flips to preset with that day count.
-    pub(crate) fn select_preset(&mut self, days: u32) {
+    pub fn select_preset(&mut self, days: u32) {
         self.retention_mode = RetentionMode::Preset;
         self.preset_days = days;
     }
 
     /// The clear-all radio press.
-    pub(crate) fn select_clear_all(&mut self) {
+    pub fn select_clear_all(&mut self) {
         self.retention_mode = RetentionMode::ClearAll;
     }
 
     /// `handleRun`'s decision half: the scope guard, the resolved
     /// retain days, and the confirm message (the armed request).
-    pub(crate) fn begin_run(&mut self) -> CleanupRunDecision {
+    pub fn begin_run(&mut self) -> CleanupRunDecision {
         let Some(scope) = self.resolve_scope() else {
             self.message = Some(CleanupMessage::Error {
                 text: t("settings.dataCleanup.noScope").to_owned(),
@@ -206,7 +206,7 @@ impl DataCleanupSectionState {
 
     /// The confirm answered OK: enter busy, clear the message (the
     /// purge's scope/retainDays are the host's to execute).
-    pub(crate) fn begin_purge(&mut self) {
+    pub fn begin_purge(&mut self) {
         self.busy = true;
         self.message = None;
     }
@@ -214,7 +214,7 @@ impl DataCleanupSectionState {
     /// The purge settled: the count on success (the success line's
     /// `{count}`), the generic error on failure — busy clears either
     /// way (`finally`).
-    pub(crate) fn note_purge_result(&mut self, result: Option<u32>) {
+    pub fn note_purge_result(&mut self, result: Option<u32>) {
         self.busy = false;
         self.message = Some(match result {
             Some(count) => CleanupMessage::Success { count },
@@ -225,13 +225,13 @@ impl DataCleanupSectionState {
     }
 
     /// The confirm's resolution hook (the T038 pattern): OK proceeds.
-    pub(crate) fn resolve_confirm(&mut self, result: bool) -> bool {
+    pub fn resolve_confirm(&mut self, result: bool) -> bool {
         matches!(self.confirm.answer_pending(result), Some(true))
     }
 }
 
 /// The data-cleanup section (React `DataCleanupSection`).
-pub(crate) struct DataCleanupSection<'a, S: 'static> {
+pub struct DataCleanupSection<'a, S: 'static> {
     key: &'a str,
     state: &'a DataCleanupSectionState,
     on_toggle_scope_query: Option<Rc<dyn Fn(&mut S)>>,
@@ -245,7 +245,7 @@ pub(crate) struct DataCleanupSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> DataCleanupSection<'a, S> {
-    pub(crate) fn new(state: &'a DataCleanupSectionState) -> Self {
+    pub fn new(state: &'a DataCleanupSectionState) -> Self {
         Self {
             key: "data-cleanup-section",
             state,
@@ -261,26 +261,26 @@ impl<'a, S: 'static> DataCleanupSection<'a, S> {
     }
 
     /// The query-scope checkbox's press.
-    pub(crate) fn on_toggle_scope_query(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_scope_query(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_scope_query = Some(Rc::new(f));
         self
     }
 
     /// The workflow-scope checkbox's press.
-    pub(crate) fn on_toggle_scope_workflow(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_scope_workflow(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_scope_workflow = Some(Rc::new(f));
         self
     }
 
     /// A preset press.
-    pub(crate) fn on_preset(mut self, f: impl Fn(&mut S, u32) + 'static) -> Self {
+    pub fn on_preset(mut self, f: impl Fn(&mut S, u32) + 'static) -> Self {
         self.on_preset = Some(Rc::new(f));
         self
     }
 
     /// The custom field's edit slot (the host applies
     /// [`DataCleanupSectionState::set_custom_days`]).
-    pub(crate) fn custom_edit(
+    pub fn custom_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -289,31 +289,31 @@ impl<'a, S: 'static> DataCleanupSection<'a, S> {
     }
 
     /// The custom field's focus (flips the mode).
-    pub(crate) fn on_custom_focus(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_custom_focus(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_custom_focus = Some(Rc::new(f));
         self
     }
 
     /// The clear-all radio's press.
-    pub(crate) fn on_clear_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear_all = Some(Rc::new(f));
         self
     }
 
     /// The run press (`handleRun`'s decision + confirm + purge).
-    pub(crate) fn on_run(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_run(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_run = Some(Rc::new(f));
         self
     }
 
     /// The confirm's resolution.
-    pub(crate) fn on_confirm_resolved(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_confirm_resolved(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_confirm_resolved = Some(Rc::new(f));
         self
     }
 
     /// Build the section (the confirm dialog lands in `layer`).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let state = self.state;
 

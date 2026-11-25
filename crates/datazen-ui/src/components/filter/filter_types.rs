@@ -9,7 +9,7 @@
 /// A column the filter editor can filter on.
 #[allow(dead_code)] // contract type; consumers are the filter tests and the editor.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FilterColumn {
+pub struct FilterColumn {
     pub name: String,
     /// React's `type` — the driver's type string; `None` = text operators.
     pub data_type: Option<String>,
@@ -17,7 +17,7 @@ pub(crate) struct FilterColumn {
 
 #[allow(dead_code)] // constructor used by the editor and tests.
 impl FilterColumn {
-    pub(crate) fn new(name: impl Into<String>, data_type: Option<&str>) -> Self {
+    pub fn new(name: impl Into<String>, data_type: Option<&str>) -> Self {
         FilterColumn {
             name: name.into(),
             data_type: data_type.map(str::to_owned),

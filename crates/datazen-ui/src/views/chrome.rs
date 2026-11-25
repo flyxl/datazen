@@ -17,7 +17,7 @@ use rune::tok::{self, type_};
 use rune::{col, row, text, text_input, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
-pub(crate) fn rail_item(state: &AppState, section: Section, expanded: bool, dark: bool) -> El {
+pub fn rail_item(state: &AppState, section: Section, expanded: bool, dark: bool) -> El {
     let theme = tok::theme(dark);
     let selected = state.active == section;
     let bg = if selected {
@@ -64,7 +64,7 @@ pub(crate) fn rail_item(state: &AppState, section: Section, expanded: bool, dark
     item
 }
 
-pub(crate) fn rail_view(state: &AppState, dark: bool) -> El {
+pub fn rail_view(state: &AppState, dark: bool) -> El {
     let theme = tok::theme(dark);
     let expanded = state.sidebar_expanded();
     let width = state.sidebar_rail_width() as f32;
@@ -135,7 +135,7 @@ pub(crate) fn rail_view(state: &AppState, dark: bool) -> El {
         .child(col().w_full().grow(1.0))
         .child(bottom)
 }
-pub(crate) fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
+pub fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
     // The two lookups stay here because the T0-03 i18n sweep pins this key's
     // call count in views/chrome.rs; the controlled builder consumes them.
     let new_query_label = t("common.newQuery").to_owned();
@@ -172,7 +172,7 @@ pub(crate) fn content_toolbar(state: &AppState, theme: tok::Theme) -> El {
 /// focus (Arrow/Home/End via focus_group), active underline, and a close
 /// control per tab. Keys `tab-strip` / `tab-{id}` / `tab-close-{id}` are
 /// kept for existing interactions and tests.
-pub(crate) fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
+pub fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
     let mut strip = row()
         .key("tab-strip")
         .role("tablist")
@@ -239,7 +239,7 @@ pub(crate) fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
 /// L6: 40pt content status bar — replaces the migration preview banner.
 /// Shows connection state, context counts (table/columns/rows) when available,
 /// and shortcut hints.
-pub(crate) fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
+pub fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
     // Kept in this file because the T0-03 sweep pins the call count here.
     let connected_label = t("conn.connected").to_owned();
     let profile = state.desktop_connection.as_ref().and_then(|id| {

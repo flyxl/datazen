@@ -52,7 +52,7 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 
 /// React `COMMON_MYSQL_TEXT_TYPES`: the datalist's suggestions.
-pub(crate) const COMMON_MYSQL_TEXT_TYPES: [&str; 7] = [
+pub const COMMON_MYSQL_TEXT_TYPES: [&str; 7] = [
     "VARCHAR(255)",
     "VARCHAR(128)",
     "VARCHAR(64)",

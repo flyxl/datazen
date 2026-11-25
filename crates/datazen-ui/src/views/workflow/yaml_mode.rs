@@ -83,7 +83,7 @@ fn is_plain_word(byte: u8) -> bool {
 /// `StreamLanguage` walk plus its `HighlightStyle` coloring, folded into
 /// one pass. `foreground` is the text ink the caller's theme already holds
 /// (React's `--cm-foreground`, the `variableName` tag's color source).
-pub(crate) fn highlight_yaml(src: &str, foreground: Color, dark: bool) -> Vec<Span> {
+pub fn highlight_yaml(src: &str, foreground: Color, dark: bool) -> Vec<Span> {
     let palette = yaml_palette(dark, foreground);
     let mut spans = Vec::new();
     let mut line_start = 0usize;

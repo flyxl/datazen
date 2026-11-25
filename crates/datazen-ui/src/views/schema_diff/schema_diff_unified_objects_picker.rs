@@ -49,7 +49,7 @@ use crate::views::schema_diff::schema_diff_object_identity::{
 
 /// React `SchemaDiffObjectKind[]` — the picker's kinds, declaration
 /// order.
-pub(crate) const OBJECT_KINDS: [SchemaDiffObjectKindVm; 6] = [
+pub const OBJECT_KINDS: [SchemaDiffObjectKindVm; 6] = [
     SchemaDiffObjectKindVm::View,
     SchemaDiffObjectKindVm::Type,
     SchemaDiffObjectKindVm::Sequence,
@@ -60,7 +60,7 @@ pub(crate) const OBJECT_KINDS: [SchemaDiffObjectKindVm; 6] = [
 
 impl SchemaDiffObjectKindVm {
     /// The wire/id spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::View => "view",
             Self::Type => "type",
@@ -80,7 +80,7 @@ impl SchemaDiffObjectKindVm {
 /// `displayObjectIdentity` — the row's mono label: `schema.name
 /// (signature) → targetSchema.targetName`, each optional half
 /// collapsing out.
-pub(crate) fn display_object_identity(object: &SchemaDiffObjectIdentityVm) -> String {
+pub fn display_object_identity(object: &SchemaDiffObjectIdentityVm) -> String {
     let name = match &object.schema {
         Some(schema) => format!("{schema}.{}", object.name),
         None => object.name.clone(),
@@ -103,18 +103,18 @@ pub(crate) fn display_object_identity(object: &SchemaDiffObjectIdentityVm) -> St
 
 /// One side's per-kind load errors (React `Partial<Record<kind, error>>`
 /// — a per-kind lookup, not an ordered set; the kind has no Ord).
-pub(crate) type ObjectLoadErrors = Vec<(SchemaDiffObjectKindVm, String)>;
+pub type ObjectLoadErrors = Vec<(SchemaDiffObjectKindVm, String)>;
 
 /// Which side a callback addresses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PickerSide {
+pub enum PickerSide {
     Source,
     Target,
 }
 
 impl PickerSide {
     /// The side's id spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Source => "source",
             Self::Target => "target",
@@ -138,7 +138,7 @@ fn error_for(errors: &ObjectLoadErrors, kind: SchemaDiffObjectKindVm) -> Option<
 }
 
 /// The unified objects picker (React `SchemaDiffUnifiedObjectsPicker`).
-pub(crate) struct SchemaDiffUnifiedObjectsPicker<'a, S: 'static> {
+pub struct SchemaDiffUnifiedObjectsPicker<'a, S: 'static> {
     loading: bool,
     source_objects: &'a [SchemaDiffObjectIdentityVm],
     target_objects: &'a [SchemaDiffObjectIdentityVm],
@@ -155,7 +155,7 @@ pub(crate) struct SchemaDiffUnifiedObjectsPicker<'a, S: 'static> {
 
 impl<'a, S: 'static> SchemaDiffUnifiedObjectsPicker<'a, S> {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         loading: bool,
         source_objects: &'a [SchemaDiffObjectIdentityVm],
         target_objects: &'a [SchemaDiffObjectIdentityVm],
@@ -182,7 +182,7 @@ impl<'a, S: 'static> SchemaDiffUnifiedObjectsPicker<'a, S> {
     }
 
     /// `onToggleSource(object)`.
-    pub(crate) fn on_toggle_source(
+    pub fn on_toggle_source(
         mut self,
         f: impl Fn(&mut S, &SchemaDiffObjectIdentityVm) + 'static,
     ) -> Self {
@@ -191,7 +191,7 @@ impl<'a, S: 'static> SchemaDiffUnifiedObjectsPicker<'a, S> {
     }
 
     /// `onToggleTarget(object)`.
-    pub(crate) fn on_toggle_target(
+    pub fn on_toggle_target(
         mut self,
         f: impl Fn(&mut S, &SchemaDiffObjectIdentityVm) + 'static,
     ) -> Self {
@@ -200,7 +200,7 @@ impl<'a, S: 'static> SchemaDiffUnifiedObjectsPicker<'a, S> {
     }
 
     /// `onSelectAll(side, selected)`.
-    pub(crate) fn on_select_all(
+    pub fn on_select_all(
         mut self,
         f: impl Fn(&mut S, PickerSide, bool) + 'static,
     ) -> Self {
@@ -209,19 +209,19 @@ impl<'a, S: 'static> SchemaDiffUnifiedObjectsPicker<'a, S> {
     }
 
     /// `onClearSelections`.
-    pub(crate) fn on_clear_selections(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear_selections(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear_selections = Some(Rc::new(f));
         self
     }
 
     /// `onRetry`.
-    pub(crate) fn on_retry(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_retry(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_retry = Some(Rc::new(f));
         self
     }
 
     /// Build the picker.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let source_errors_present = !self.source_errors.is_empty();
         let target_errors_present = !self.target_errors.is_empty();

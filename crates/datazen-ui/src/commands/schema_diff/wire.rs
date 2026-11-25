@@ -24,7 +24,7 @@ use crate::views::data_transfer::data_transfer_attached_jobs::{
 
 /// React `StatementRisk`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StatementRiskVm {
+pub enum StatementRiskVm {
     Additive,
     Destructive,
     Rewrite,
@@ -32,7 +32,7 @@ pub(crate) enum StatementRiskVm {
 
 impl StatementRiskVm {
     /// The wire spelling.
-    pub(crate) fn wire_str(self) -> &'static str {
+    pub fn wire_str(self) -> &'static str {
         match self {
             Self::Additive => "additive",
             Self::Destructive => "destructive",
@@ -42,7 +42,7 @@ impl StatementRiskVm {
 
     /// The wire spelling's parse twin; unknown spellings are `None`, not a
     /// silent default (React could not have produced them).
-    pub(crate) fn from_wire_str(value: &str) -> Option<Self> {
+    pub fn from_wire_str(value: &str) -> Option<Self> {
         match value {
             "additive" => Some(Self::Additive),
             "destructive" => Some(Self::Destructive),
@@ -54,50 +54,50 @@ impl StatementRiskVm {
 
 /// React `PlanStatement`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PlanStatementVm {
-    pub(crate) sql: String,
-    pub(crate) risk: StatementRiskVm,
+pub struct PlanStatementVm {
+    pub sql: String,
+    pub risk: StatementRiskVm,
     /// `rollbackSql: string | null`.
-    pub(crate) rollback_sql: Option<String>,
-    pub(crate) summary: String,
+    pub rollback_sql: Option<String>,
+    pub summary: String,
     /// `requiresTransaction?: boolean` — `undefined` is falsy in React's
     /// `.any(s => s.requiresTransaction)`, so `None` reads as false.
-    pub(crate) requires_transaction: Option<bool>,
+    pub requires_transaction: Option<bool>,
 }
 
 /// React `PlanRequirement.kind`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PlanRequirementKindVm {
+pub enum PlanRequirementKindVm {
     Backfill,
     Unsupported,
 }
 
 /// React `PlanRequirement` (the client-folded union).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PlanRequirementVm {
-    pub(crate) kind: PlanRequirementKindVm,
-    pub(crate) table: String,
-    pub(crate) column: String,
-    pub(crate) reason: String,
+pub struct PlanRequirementVm {
+    pub kind: PlanRequirementKindVm,
+    pub table: String,
+    pub column: String,
+    pub reason: String,
 }
 
 /// React `RollbackCompleteness`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RollbackCompletenessVm {
-    pub(crate) complete: bool,
-    pub(crate) missing: Vec<String>,
+pub struct RollbackCompletenessVm {
+    pub complete: bool,
+    pub missing: Vec<String>,
 }
 
 /// React `RollbackCompletenessCounts` — `{ complete, missing }`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct RollbackCompletenessCountsVm {
-    pub(crate) complete: usize,
-    pub(crate) missing: usize,
+pub struct RollbackCompletenessCountsVm {
+    pub complete: usize,
+    pub missing: usize,
 }
 
 /// `rollbackCompletenessCounts` (`schemaDiffClient.ts`): complete is the
 /// statement total minus the missing rollbacks.
-pub(crate) fn rollback_completeness_counts(plan: &SchemaDiffPlanVm) -> RollbackCompletenessCountsVm {
+pub fn rollback_completeness_counts(plan: &SchemaDiffPlanVm) -> RollbackCompletenessCountsVm {
     let total = plan.statements.len();
     let missing = plan.rollback_completeness.missing.len();
     RollbackCompletenessCountsVm { complete: total - missing, missing }
@@ -105,71 +105,71 @@ pub(crate) fn rollback_completeness_counts(plan: &SchemaDiffPlanVm) -> RollbackC
 
 /// React `TypeSuggestion`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TypeSuggestionVm {
-    pub(crate) table: String,
-    pub(crate) column: String,
-    pub(crate) source_type: String,
-    pub(crate) suggested_type: String,
-    pub(crate) current_type: String,
-    pub(crate) reason: String,
-    pub(crate) is_key_or_indexed: bool,
+pub struct TypeSuggestionVm {
+    pub table: String,
+    pub column: String,
+    pub source_type: String,
+    pub suggested_type: String,
+    pub current_type: String,
+    pub reason: String,
+    pub is_key_or_indexed: bool,
 }
 
 /// React `ColumnTypeOverride`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ColumnTypeOverrideVm {
-    pub(crate) table: String,
-    pub(crate) column: String,
-    pub(crate) target_type: String,
+pub struct ColumnTypeOverrideVm {
+    pub table: String,
+    pub column: String,
+    pub target_type: String,
 }
 
 /// React `SchemaDiffPlan`, the fields the schema-diff UI reads.
 /// `expectedTargetSchemas` (stale-review rejection snapshots) is not
 /// modelled — no UI consumer reads it (documented in the module root).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct SchemaDiffPlanVm {
-    pub(crate) plan_id: Option<String>,
-    pub(crate) table: String,
-    pub(crate) tables: Vec<String>,
-    pub(crate) source_dialect: String,
-    pub(crate) target_dialect: String,
-    pub(crate) same_dialect: bool,
-    pub(crate) statements: Vec<PlanStatementVm>,
-    pub(crate) warnings: Vec<String>,
+pub struct SchemaDiffPlanVm {
+    pub plan_id: Option<String>,
+    pub table: String,
+    pub tables: Vec<String>,
+    pub source_dialect: String,
+    pub target_dialect: String,
+    pub same_dialect: bool,
+    pub statements: Vec<PlanStatementVm>,
+    pub warnings: Vec<String>,
     /// `requirements?: PlanRequirement[]` — absent reads as empty.
-    pub(crate) requirements: Vec<PlanRequirementVm>,
-    pub(crate) rollback_completeness: RollbackCompletenessVm,
-    pub(crate) type_suggestions: Option<Vec<TypeSuggestionVm>>,
+    pub requirements: Vec<PlanRequirementVm>,
+    pub rollback_completeness: RollbackCompletenessVm,
+    pub type_suggestions: Option<Vec<TypeSuggestionVm>>,
 }
 
 /// React `SchemaDiffPrepareEnvelope`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SchemaDiffPrepareEnvelopeVm {
-    pub(crate) plan: SchemaDiffPlanVm,
-    pub(crate) plan_id: String,
-    pub(crate) source_connection_id: Option<String>,
-    pub(crate) target_connection_id: Option<String>,
-    pub(crate) selection_revision: i64,
-    pub(crate) plan_version: i64,
-    pub(crate) handler_version: i64,
-    pub(crate) checkpoint_version: i64,
-    pub(crate) expires_at: String,
-    pub(crate) recovery_policy: String,
+pub struct SchemaDiffPrepareEnvelopeVm {
+    pub plan: SchemaDiffPlanVm,
+    pub plan_id: String,
+    pub source_connection_id: Option<String>,
+    pub target_connection_id: Option<String>,
+    pub selection_revision: i64,
+    pub plan_version: i64,
+    pub handler_version: i64,
+    pub checkpoint_version: i64,
+    pub expires_at: String,
+    pub recovery_policy: String,
 }
 
 /// React `StatementExecResult`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StatementExecResultVm {
-    pub(crate) index: usize,
-    pub(crate) sql: String,
-    pub(crate) ok: bool,
-    pub(crate) error: Option<String>,
+pub struct StatementExecResultVm {
+    pub index: usize,
+    pub sql: String,
+    pub ok: bool,
+    pub error: Option<String>,
 }
 
 /// React `DeployStatus` (rendered as its wire string).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DeployStatusVm {
+pub enum DeployStatusVm {
     Committed,
     Unknown,
     RolledBack,
@@ -180,7 +180,7 @@ pub(crate) enum DeployStatusVm {
 
 impl DeployStatusVm {
     /// The wire string React interpolates into the status line.
-    pub(crate) fn wire_str(self) -> &'static str {
+    pub fn wire_str(self) -> &'static str {
         match self {
             DeployStatusVm::Committed => "committed",
             DeployStatusVm::Unknown => "unknown",
@@ -192,7 +192,7 @@ impl DeployStatusVm {
     }
 
     /// The wire spelling's parse twin.
-    pub(crate) fn from_wire_str(value: &str) -> Option<Self> {
+    pub fn from_wire_str(value: &str) -> Option<Self> {
         match value {
             "committed" => Some(Self::Committed),
             "unknown" => Some(Self::Unknown),
@@ -207,22 +207,22 @@ impl DeployStatusVm {
 
 /// React `SchemaDiffDeployResult`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SchemaDiffDeployResultVm {
-    pub(crate) status: DeployStatusVm,
-    pub(crate) executed_count: usize,
-    pub(crate) statement_count: usize,
-    pub(crate) errors: Vec<String>,
-    pub(crate) statement_results: Vec<StatementExecResultVm>,
+pub struct SchemaDiffDeployResultVm {
+    pub status: DeployStatusVm,
+    pub executed_count: usize,
+    pub statement_count: usize,
+    pub errors: Vec<String>,
+    pub statement_results: Vec<StatementExecResultVm>,
 }
 
 /// React `SchemaDiffJobAccepted` — `jobId`, the `schemaDiffPrepare` /
 /// `schemaDiffApply` kind, the starting state and progress.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SchemaDiffJobAcceptedVm {
-    pub(crate) job_id: String,
-    pub(crate) kind: String,
-    pub(crate) state: JobState,
-    pub(crate) progress: JobProgress,
+pub struct SchemaDiffJobAcceptedVm {
+    pub job_id: String,
+    pub kind: String,
+    pub state: JobState,
+    pub progress: JobProgress,
 }
 
 /// The fields of `JobDetails.details.job` (`JobView`) the schema-diff UI
@@ -231,25 +231,25 @@ pub(crate) struct SchemaDiffJobAcceptedVm {
 /// the pending-verification flag (the hydration's selection). The unread
 /// projection (execution/artifact ids, effect outcome) is not modelled.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SchemaDiffJobViewVm {
-    pub(crate) job_id: String,
-    pub(crate) kind: String,
-    pub(crate) state: JobState,
-    pub(crate) stage: Option<String>,
-    pub(crate) cancel_requested: bool,
-    pub(crate) error: Option<String>,
-    pub(crate) progress: JobProgress,
+pub struct SchemaDiffJobViewVm {
+    pub job_id: String,
+    pub kind: String,
+    pub state: JobState,
+    pub stage: Option<String>,
+    pub cancel_requested: bool,
+    pub error: Option<String>,
+    pub progress: JobProgress,
     /// `updatedAt` — epoch milliseconds; the lifecycle sorts by it,
     /// latest first.
-    pub(crate) updated_at: i64,
+    pub updated_at: i64,
     /// Why the job is pending verification (e.g. `outcomeUnknown`), else
     /// null.
-    pub(crate) pending_verification_reason: Option<String>,
+    pub pending_verification_reason: Option<String>,
 }
 
 /// React `JobRecoveryVerdict` (`jobs.ts`): the recovery receipt's verdict.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum JobRecoveryVerdictVm {
+pub enum JobRecoveryVerdictVm {
     NotExecuted,
     PendingVerification,
     ResumeAfterVerify,
@@ -259,7 +259,7 @@ pub(crate) enum JobRecoveryVerdictVm {
 
 impl JobRecoveryVerdictVm {
     /// The wire spelling.
-    pub(crate) fn wire_str(self) -> &'static str {
+    pub fn wire_str(self) -> &'static str {
         match self {
             Self::NotExecuted => "notExecuted",
             Self::PendingVerification => "pendingVerification",
@@ -270,7 +270,7 @@ impl JobRecoveryVerdictVm {
     }
 
     /// The wire spelling's parse twin.
-    pub(crate) fn from_wire_str(value: &str) -> Option<Self> {
+    pub fn from_wire_str(value: &str) -> Option<Self> {
         match value {
             "notExecuted" => Some(Self::NotExecuted),
             "pendingVerification" => Some(Self::PendingVerification),
@@ -285,37 +285,37 @@ impl JobRecoveryVerdictVm {
 /// React `JobRecoveryResult` — the safe recovery receipt; `reasonCode` is
 /// a stable code, never handler text.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct JobRecoveryResultVm {
-    pub(crate) verdict: JobRecoveryVerdictVm,
-    pub(crate) reason_code: Option<String>,
+pub struct JobRecoveryResultVm {
+    pub verdict: JobRecoveryVerdictVm,
+    pub reason_code: Option<String>,
 }
 
 /// React `JobRecoveryTarget` — a stable target identity for an explicit
 /// fresh-session recovery verifier (read for presence only).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct JobRecoveryTargetVm {
-    pub(crate) connection_id: String,
-    pub(crate) object_ids: Vec<String>,
+pub struct JobRecoveryTargetVm {
+    pub connection_id: String,
+    pub object_ids: Vec<String>,
 }
 
 /// React `SchemaDiffJobDetails` — the durable detail query's envelope.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SchemaDiffJobDetailsVm {
-    pub(crate) details: SchemaDiffJobViewVm,
-    pub(crate) state_version: i64,
-    pub(crate) prepared: Option<SchemaDiffPrepareEnvelopeVm>,
-    pub(crate) plan_unavailable_after_restart: bool,
-    pub(crate) deploy_result: Option<SchemaDiffDeployResultVm>,
+pub struct SchemaDiffJobDetailsVm {
+    pub details: SchemaDiffJobViewVm,
+    pub state_version: i64,
+    pub prepared: Option<SchemaDiffPrepareEnvelopeVm>,
+    pub plan_unavailable_after_restart: bool,
+    pub deploy_result: Option<SchemaDiffDeployResultVm>,
     /// The recovery receipt, when one was derived.
-    pub(crate) recovery: Option<JobRecoveryResultVm>,
+    pub recovery: Option<JobRecoveryResultVm>,
     /// The explicit recovery verifier's targets (presence matters).
-    pub(crate) recovery_targets: Vec<JobRecoveryTargetVm>,
+    pub recovery_targets: Vec<JobRecoveryTargetVm>,
 }
 
 impl SchemaDiffJobDetailsVm {
     /// React's poll-loop terminal test:
     /// `details.details.job.state !== 'queued' && … !== 'running'`.
-    pub(crate) fn job_terminal(&self) -> bool {
+    pub fn job_terminal(&self) -> bool {
         !matches!(self.details.state, JobState::Queued | JobState::Running)
     }
 }
@@ -323,34 +323,34 @@ impl SchemaDiffJobDetailsVm {
 /// React `SchemaDiffProfile` — the persisted setup (version 1).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SchemaDiffProfileVm {
-    pub(crate) version: u32,
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) source_connection_id: String,
-    pub(crate) target_connection_id: String,
-    pub(crate) source_database: String,
-    pub(crate) target_database: String,
+pub struct SchemaDiffProfileVm {
+    pub version: u32,
+    pub id: String,
+    pub name: String,
+    pub source_connection_id: String,
+    pub target_connection_id: String,
+    pub source_database: String,
+    pub target_database: String,
     // The optionals ride only when present (React's profile object passes
     // through verbatim — `JSON.stringify` drops the absent keys).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) source_schema: Option<String>,
+    pub source_schema: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) target_schema: Option<String>,
-    pub(crate) tables: Vec<String>,
+    pub target_schema: Option<String>,
+    pub tables: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) target_only_tables: Option<Vec<String>>,
+    pub target_only_tables: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) source_objects: Option<Vec<crate::views::schema_diff::schema_diff_object_identity::SchemaDiffObjectIdentityVm>>,
+    pub source_objects: Option<Vec<crate::views::schema_diff::schema_diff_object_identity::SchemaDiffObjectIdentityVm>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) target_objects: Option<Vec<crate::views::schema_diff::schema_diff_object_identity::SchemaDiffObjectIdentityVm>>,
-    pub(crate) allow_destructive: bool,
-    pub(crate) include_indexes: bool,
-    pub(crate) require_rollback: bool,
+    pub target_objects: Option<Vec<crate::views::schema_diff::schema_diff_object_identity::SchemaDiffObjectIdentityVm>>,
+    pub allow_destructive: bool,
+    pub include_indexes: bool,
+    pub require_rollback: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) type_overrides: Option<Vec<ColumnTypeOverrideVm>>,
-    pub(crate) created_at: String,
-    pub(crate) updated_at: String,
+    pub type_overrides: Option<Vec<ColumnTypeOverrideVm>>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 // ---- the wire mirrors + folding ----------------------------------------------
@@ -595,7 +595,7 @@ fn plan_to_wire(vm: &SchemaDiffPlanVm) -> SchemaDiffPlanWire {
 }
 
 /// `denormalizePlan` → the JSON value the deploy request embeds.
-pub(crate) fn denormalize_plan_to_json(plan: &SchemaDiffPlanVm) -> serde_json::Value {
+pub fn denormalize_plan_to_json(plan: &SchemaDiffPlanVm) -> serde_json::Value {
     match serde_json::to_value(plan_to_wire(plan)) {
         Ok(value) => value,
         Err(_) => serde_json::Value::Null,
@@ -784,7 +784,7 @@ struct SchemaDiffJobDetailsEnvelopeWire {
 /// `getJobDetails` / `verifyRecovery` answer path: deserialize the wire
 /// envelope, fold the tagged requirements, parse the enums. A shape the
 /// React client could not have produced is an error, not a default.
-pub(crate) fn normalize_job_details(
+pub fn normalize_job_details(
     value: serde_json::Value,
 ) -> Result<SchemaDiffJobDetailsVm, String> {
     let wire: SchemaDiffJobDetailsEnvelopeWire = serde_json::from_value(value)
@@ -869,7 +869,7 @@ pub(crate) fn normalize_job_details(
 
 /// Parse a `listSchemaDiffJobs` answer (a `JobView[]`) into the view
 /// projections the lifecycle hydrates from.
-pub(crate) fn parse_job_views(value: serde_json::Value) -> Result<Vec<SchemaDiffJobViewVm>, String> {
+pub fn parse_job_views(value: serde_json::Value) -> Result<Vec<SchemaDiffJobViewVm>, String> {
     let wires: Vec<SchemaDiffJobViewWire> = serde_json::from_value(value)
         .map_err(|error| format!("schema-diff jobs list wire: {error}"))?;
     wires
@@ -893,7 +893,7 @@ pub(crate) fn parse_job_views(value: serde_json::Value) -> Result<Vec<SchemaDiff
 
 /// Deserialize one accepted receipt (`prepareSchemaDiffPlan` /
 /// `prepareSchemaUnifiedPlan` / `executeSchemaDiffDeploy` answers).
-pub(crate) fn parse_job_accepted(
+pub fn parse_job_accepted(
     value: serde_json::Value,
 ) -> Result<SchemaDiffJobAcceptedVm, String> {
     let wire: SchemaDiffJobAcceptedWire = serde_json::from_value(value)

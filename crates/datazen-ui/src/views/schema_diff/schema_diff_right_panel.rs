@@ -57,13 +57,13 @@ type ConfirmProjection<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit>;
 
 /// React `SchemaDiffRightPanelTab`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SchemaDiffRightPanelTab {
+pub enum SchemaDiffRightPanelTab {
     Plan,
     Deploy,
 }
 
 /// The right review panel builder, generic over the owning state `S`.
-pub(crate) struct SchemaDiffRightPanel<'a, S: 'static> {
+pub struct SchemaDiffRightPanel<'a, S: 'static> {
     active_tab: SchemaDiffRightPanelTab,
     plan: Option<&'a SchemaDiffPlanVm>,
     allow_destructive: bool,
@@ -96,7 +96,7 @@ impl<'a, S: 'static> SchemaDiffRightPanel<'a, S> {
     /// / `targetLabel` / `useTransaction` / `requireRollback` /
     /// `confirmText` / `deploying` / `deployResult` props.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         active_tab: SchemaDiffRightPanelTab,
         plan: Option<&'a SchemaDiffPlanVm>,
         allow_destructive: bool,
@@ -138,31 +138,31 @@ impl<'a, S: 'static> SchemaDiffRightPanel<'a, S> {
     }
 
     /// React's `hideTabs` (default false).
-    pub(crate) fn hide_tabs(mut self, hide: bool) -> Self {
+    pub fn hide_tabs(mut self, hide: bool) -> Self {
         self.hide_tabs = hide;
         self
     }
 
     /// React's `hideDeployButton` (default false).
-    pub(crate) fn hide_deploy_button(mut self, hide: bool) -> Self {
+    pub fn hide_deploy_button(mut self, hide: bool) -> Self {
         self.hide_deploy_button = hide;
         self
     }
 
     /// React's `regenerating`.
-    pub(crate) fn regenerating(mut self, regenerating: bool) -> Self {
+    pub fn regenerating(mut self, regenerating: bool) -> Self {
         self.regenerating = regenerating;
         self
     }
 
     /// React's `typeOverrides`.
-    pub(crate) fn type_overrides(mut self, overrides: &'a [ColumnTypeOverrideVm]) -> Self {
+    pub fn type_overrides(mut self, overrides: &'a [ColumnTypeOverrideVm]) -> Self {
         self.type_overrides = overrides;
         self
     }
 
     /// The host-mirrored override edit slots (the plan panel's contract).
-    pub(crate) fn override_edits(
+    pub fn override_edits(
         mut self,
         edits: Option<&'a HashMap<String, TextEdit>>,
     ) -> Self {
@@ -171,7 +171,7 @@ impl<'a, S: 'static> SchemaDiffRightPanel<'a, S> {
     }
 
     /// React's `onTypeOverrideChange` landing (the plan panel's contract).
-    pub(crate) fn on_override_edit(
+    pub fn on_override_edit(
         mut self,
         f: impl for<'b, 'c> Fn(&'b mut S, &'c str, &'c str, &'c str) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -180,7 +180,7 @@ impl<'a, S: 'static> SchemaDiffRightPanel<'a, S> {
     }
 
     /// React's `onTabChange`.
-    pub(crate) fn on_tab_change(
+    pub fn on_tab_change(
         mut self,
         f: impl Fn(&mut S, SchemaDiffRightPanelTab) + 'static,
     ) -> Self {
@@ -189,44 +189,44 @@ impl<'a, S: 'static> SchemaDiffRightPanel<'a, S> {
     }
 
     /// React's `onAllowDestructiveChange`.
-    pub(crate) fn on_allow_destructive(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_allow_destructive(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_allow_destructive = Some(Rc::new(f));
         self
     }
 
     /// React's `onIncludeIndexesChange`.
-    pub(crate) fn on_include_indexes(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_include_indexes(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_include_indexes = Some(Rc::new(f));
         self
     }
 
     /// React's `onRegenerate`.
-    pub(crate) fn on_regenerate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_regenerate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_regenerate = Some(Rc::new(f));
         self
     }
 
     /// React's `onApplyTypeOverrides`.
-    pub(crate) fn on_apply_type_overrides(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_apply_type_overrides(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_apply_type_overrides = Some(Rc::new(f));
         self
     }
 
     /// React's `onUseTransactionChange`.
-    pub(crate) fn on_use_transaction(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_use_transaction(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_use_transaction = Some(Rc::new(f));
         self
     }
 
     /// React's `onRequireRollbackChange`.
-    pub(crate) fn on_require_rollback(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_require_rollback(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_require_rollback = Some(Rc::new(f));
         self
     }
 
     /// The confirm input's edit projection into `S` (React's
     /// `onConfirmTextChange`), the deploy panel's convention.
-    pub(crate) fn on_confirm_edit(
+    pub fn on_confirm_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -235,13 +235,13 @@ impl<'a, S: 'static> SchemaDiffRightPanel<'a, S> {
     }
 
     /// React's `onDeploy`.
-    pub(crate) fn on_deploy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_deploy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_deploy = Some(Rc::new(f));
         self
     }
 
     /// Paint the panel.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut panel = col()
             .key("schema-diff-right-panel")

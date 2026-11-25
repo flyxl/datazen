@@ -32,14 +32,14 @@ use super::engine_label;
 
 /// React `COPIED_FEEDBACK_MS` (both the home row and the MCP bar use 2000 ms).
 #[allow(dead_code)] // consumed by home_copy_button; delete with the host wiring.
-pub(crate) const HOME_COPY_FEEDBACK_MS: u64 = 2000;
+pub const HOME_COPY_FEEDBACK_MS: u64 = 2000;
 
 /// Minimal Rust projection of `KvConnectionHomeBinding`'s props. The real
 /// driver binding is a later task; removal stage: when it lands, carry that
 /// type in `AppState` and delete this stand-in.
 #[allow(dead_code)] // host binding; wired by the driver-slot task.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ConnectionHomeSlotVm {
+pub struct ConnectionHomeSlotVm {
     pub connection_id: String,
     pub db_session_id: String,
     pub connection_name: String,
@@ -51,7 +51,7 @@ pub(crate) struct ConnectionHomeSlotVm {
 /// element of its own. Keeps React's observable keys without disturbing the
 /// existing A1 keys that other tests depend on.
 #[allow(dead_code)] // key parity marker; delete with the A1 key migration.
-pub(crate) fn react_key(key: &str) -> El {
+pub fn react_key(key: &str) -> El {
     el().key(key).a11y_hidden()
 }
 
@@ -59,7 +59,7 @@ pub(crate) fn react_key(key: &str) -> El {
 /// app poll with the runtime clock (seconds). Returns `true` when visible state
 /// changed, so the caller can ask for a redraw.
 #[allow(dead_code)] // host poll hook; delete with the shared copy component.
-pub(crate) fn home_copy_tick(state: &mut AppState, now: f64) -> bool {
+pub fn home_copy_tick(state: &mut AppState, now: f64) -> bool {
     if state.home_copied_until.is_some_and(|until| now >= until) {
         state.home_copied_until = None;
         state.home_copied_id = None;
@@ -71,7 +71,7 @@ pub(crate) fn home_copy_tick(state: &mut AppState, now: f64) -> bool {
 
 /// Whether `row_id` currently owns the per-row "copied" marker.
 #[allow(dead_code)] // rendering helper; delete with the shared copy component.
-pub(crate) fn home_row_copied(state: &AppState, row_id: &str) -> bool {
+pub fn home_row_copied(state: &AppState, row_id: &str) -> bool {
     state.home_copied_until.is_some()
         && state.home_copied_id.as_deref() == Some(row_id)
 }
@@ -80,7 +80,7 @@ pub(crate) fn home_row_copied(state: &AppState, row_id: &str) -> bool {
 /// deadline in `AppState`. `copy_label` is the caller's translated idle label,
 /// so existing `t("common.copy")` call sites stay in `connections_home.rs`.
 #[allow(dead_code)] // consumer: the connections home view (this wave).
-pub(crate) fn home_copy_button(
+pub fn home_copy_button(
     state: &AppState,
     key: &str,
     row_id: &str,
@@ -119,7 +119,7 @@ pub(crate) fn home_copy_button(
 /// landing surface. The host only sets `home_slot` for a live session, which is
 /// what React's "no context → no takeover" case reduces to here.
 #[allow(dead_code)] // consumer: the connections home view (this wave).
-pub(crate) fn kv_connection_home(
+pub fn kv_connection_home(
     state: &AppState,
     theme: rune::tok::Theme,
     _dark: bool,

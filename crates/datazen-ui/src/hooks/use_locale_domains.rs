@@ -38,7 +38,7 @@
 /// One lazy domain (React `LazyDomain`: `'sync' | 'workflows' |
 /// 'dashboard' | 'mcp'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum LazyDomain {
+pub enum LazyDomain {
     Sync,
     Workflows,
     Dashboard,
@@ -47,7 +47,7 @@ pub(crate) enum LazyDomain {
 
 impl LazyDomain {
     /// The pack spelling (the domains.ts literal).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Sync => "sync",
             Self::Workflows => "workflows",
@@ -58,7 +58,7 @@ impl LazyDomain {
 }
 
 /// `LAZY_DOMAINS` (the closed list).
-pub(crate) const LAZY_DOMAINS: [LazyDomain; 4] = [
+pub const LAZY_DOMAINS: [LazyDomain; 4] = [
     LazyDomain::Sync,
     LazyDomain::Workflows,
     LazyDomain::Dashboard,
@@ -69,7 +69,7 @@ pub(crate) const LAZY_DOMAINS: [LazyDomain; 4] = [
 /// `[...domains].sort().join('\0')` — an inline `['sync']` is a new
 /// array every render, but the key stays identical, so the effect
 /// does not re-run.
-pub(crate) fn domains_key(domains: &[LazyDomain]) -> String {
+pub fn domains_key(domains: &[LazyDomain]) -> String {
     let mut sorted: Vec<&'static str> = domains.iter().map(|d| d.as_str()).collect();
     sorted.sort_unstable();
     sorted.join("\0")
@@ -77,7 +77,7 @@ pub(crate) fn domains_key(domains: &[LazyDomain]) -> String {
 
 /// The hook's state: the ready gate over the host's ensure answers.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct UseLocaleDomainsState {
+pub struct UseLocaleDomainsState {
     /// `ready` — flipped by the host's ensure answer; re-armed to
     /// false whenever the `(language, key)` pair changes.
     ready: bool,
@@ -87,12 +87,12 @@ pub(crate) struct UseLocaleDomainsState {
 }
 
 impl UseLocaleDomainsState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The hook's read (`ready`).
-    pub(crate) fn ready(&self) -> bool {
+    pub fn ready(&self) -> bool {
         self.ready
     }
 
@@ -101,7 +101,7 @@ impl UseLocaleDomainsState {
     /// the mount) — and re-arms the gate when it does. A re-render
     /// with the SAME pair (the inline-literal case) answers `false`
     /// and leaves the gate alone.
-    pub(crate) fn begin(&mut self, language: &str, domains: &[LazyDomain]) -> bool {
+    pub fn begin(&mut self, language: &str, domains: &[LazyDomain]) -> bool {
         let key = domains_key(domains);
         if self
             .last_run
@@ -118,7 +118,7 @@ impl UseLocaleDomainsState {
     /// `ensureLocaleDomains(...).then(() => setReady(true))` — the
     /// host's ensure answer (instant under T018: the packs are
     /// compiled in).
-    pub(crate) fn note_ensured(&mut self) {
+    pub fn note_ensured(&mut self) {
         self.ready = true;
     }
 }

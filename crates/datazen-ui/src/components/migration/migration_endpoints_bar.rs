@@ -42,7 +42,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize};
 /// React `MigrationI18nPrefix` ('sync' | 'schemaDiff' | 'transfer').
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) enum MigrationI18nPrefix {
+pub enum MigrationI18nPrefix {
     #[default]
     Sync,
     SchemaDiff,
@@ -52,7 +52,7 @@ pub(crate) enum MigrationI18nPrefix {
 /// React `layout` prop: top bar vs. Transfer wizard card.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) enum EndpointsLayout {
+pub enum EndpointsLayout {
     #[default]
     Bar,
     Grid,
@@ -60,7 +60,7 @@ pub(crate) enum EndpointsLayout {
 
 /// React's `resolveDefaultPrefix`: explicit prefix wins, then the test id.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) fn resolve_prefix(
+pub fn resolve_prefix(
     test_id_prefix: &str,
     explicit: Option<MigrationI18nPrefix>,
 ) -> MigrationI18nPrefix {
@@ -79,7 +79,7 @@ pub(crate) fn resolve_prefix(
 /// One `{ value, label, disabled }` React `MigrationSelectOption`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct EndpointOption {
+pub struct EndpointOption {
     pub value: String,
     pub label: String,
     pub disabled: bool,
@@ -87,7 +87,7 @@ pub(crate) struct EndpointOption {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl EndpointOption {
-    pub(crate) fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
+    pub fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             value: value.into(),
             label: label.into(),
@@ -95,7 +95,7 @@ impl EndpointOption {
         }
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
@@ -105,7 +105,7 @@ impl EndpointOption {
 /// select hold its own flag; a bar keeps one open listbox at a time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) enum SelectSlot {
+pub enum SelectSlot {
     SourceConnection,
     SourceDatabase,
     SourceSchema,
@@ -117,7 +117,7 @@ pub(crate) enum SelectSlot {
 /// The controlled state of one endpoint column.
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct EndpointVm {
+pub struct EndpointVm {
     pub connection_id: String,
     pub options: Vec<EndpointOption>,
     pub database: String,
@@ -133,7 +133,7 @@ pub(crate) struct EndpointVm {
 /// optional string is an i18n-key override resolved by [`resolve_keys`].
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct EndpointsBarVm {
+pub struct EndpointsBarVm {
     pub test_id_prefix: String,
     pub i18n_prefix: Option<MigrationI18nPrefix>,
     pub layout: EndpointsLayout,
@@ -199,7 +199,7 @@ impl Default for EndpointsBarVm {
 /// The exact i18n keys React resolves, exposed for parity tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct ResolvedKeys {
+pub struct ResolvedKeys {
     pub i18n_prefix: MigrationI18nPrefix,
     pub source_label: String,
     pub target_label: String,
@@ -216,7 +216,7 @@ pub(crate) struct ResolvedKeys {
 
 /// Resolve the React `resolved*Key` chain, in the same order as the source.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) fn resolve_keys(vm: &EndpointsBarVm) -> ResolvedKeys {
+pub fn resolve_keys(vm: &EndpointsBarVm) -> ResolvedKeys {
     let prefix = resolve_prefix(&vm.test_id_prefix, vm.i18n_prefix);
     let transfer = prefix == MigrationI18nPrefix::Transfer;
     let empty = vm
@@ -342,14 +342,14 @@ impl<S: 'static> BarCallbacks<S> {
 
 /// Builder for the endpoint bar. `S` is the host state that owns every value.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct MigrationEndpointsBar<S: 'static> {
+pub struct MigrationEndpointsBar<S: 'static> {
     vm: EndpointsBarVm,
     cb: BarCallbacks<S>,
 }
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl<S: 'static> MigrationEndpointsBar<S> {
-    pub(crate) fn new(vm: EndpointsBarVm) -> Self {
+    pub fn new(vm: EndpointsBarVm) -> Self {
         Self {
             vm,
             cb: BarCallbacks::default(),
@@ -357,18 +357,18 @@ impl<S: 'static> MigrationEndpointsBar<S> {
     }
 
     /// React `onSourceChange`: receives the chosen connection value.
-    pub(crate) fn on_source_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_source_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.cb.source_change = Some(Rc::new(f));
         self
     }
 
     /// React `onTargetChange`.
-    pub(crate) fn on_target_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_target_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.cb.target_change = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_source_database_change(
+    pub fn on_source_database_change(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -376,7 +376,7 @@ impl<S: 'static> MigrationEndpointsBar<S> {
         self
     }
 
-    pub(crate) fn on_target_database_change(
+    pub fn on_target_database_change(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -384,7 +384,7 @@ impl<S: 'static> MigrationEndpointsBar<S> {
         self
     }
 
-    pub(crate) fn on_source_schema_change(
+    pub fn on_source_schema_change(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -392,7 +392,7 @@ impl<S: 'static> MigrationEndpointsBar<S> {
         self
     }
 
-    pub(crate) fn on_target_schema_change(
+    pub fn on_target_schema_change(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -401,30 +401,30 @@ impl<S: 'static> MigrationEndpointsBar<S> {
     }
 
     /// React `onSwap`.
-    pub(crate) fn on_swap(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_swap(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.cb.swap = Some(Rc::new(f));
         self
     }
 
     /// React `onCompare` — the refresh/compare primary action.
-    pub(crate) fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.cb.refresh = Some(Rc::new(f));
         self
     }
 
     /// Route a select's open/close to host state. Without it the selects build
     /// but never open (a documented base-only limitation).
-    pub(crate) fn on_toggle(mut self, f: impl Fn(&mut S, SelectSlot) + 'static) -> Self {
+    pub fn on_toggle(mut self, f: impl Fn(&mut S, SelectSlot) + 'static) -> Self {
         self.cb.toggle = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.cb.close = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k: &'static Kit = crate::ui::kit::kit(dark);
         let keys = resolve_keys(&self.vm);
         let prefix = self.vm.test_id_prefix.clone();

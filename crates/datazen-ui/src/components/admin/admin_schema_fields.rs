@@ -89,7 +89,7 @@ const FIELD_HEIGHT: f32 = 36.0;
 /// order must feed the fields from an order-preserving reader instead
 /// of this helper.
 #[allow(dead_code)] // reusable component; wired by the create dialogs
-pub(crate) fn schema_properties(input_schema: &Value) -> Vec<AdminSchemaField> {
+pub fn schema_properties(input_schema: &Value) -> Vec<AdminSchemaField> {
     let Some(properties) = input_schema.get("properties").and_then(Value::as_object) else {
         return Vec::new();
     };
@@ -129,7 +129,7 @@ pub(crate) fn schema_properties(input_schema: &Value) -> Vec<AdminSchemaField> {
 /// `adminSchemaHasField` (`AdminSchemaFields.tsx:64–70`):
 /// `hasSchemaField` over the parsed fields; no definition means no field.
 #[allow(dead_code)] // reusable component; wired by the create dialogs
-pub(crate) fn admin_schema_has_field(definition: Option<&[AdminSchemaField]>, name: &str) -> bool {
+pub fn admin_schema_has_field(definition: Option<&[AdminSchemaField]>, name: &str) -> bool {
     definition.map_or(false, |fields| {
         fields.iter().any(|field| field.name == name)
     })
@@ -138,7 +138,7 @@ pub(crate) fn admin_schema_has_field(definition: Option<&[AdminSchemaField]>, na
 /// `adminSchemaField` (`AdminSchemaFields.tsx:72–78`): `getSchemaField`
 /// over the parsed fields; no definition means no field.
 #[allow(dead_code)] // reusable component; wired by the create dialogs
-pub(crate) fn admin_schema_field<'a>(
+pub fn admin_schema_field<'a>(
     definition: Option<&'a [AdminSchemaField]>,
     name: &str,
 ) -> Option<&'a AdminSchemaField> {
@@ -152,7 +152,7 @@ pub(crate) fn admin_schema_field<'a>(
 /// for its own `exclude={['name']}`; the dialog keeps its own copy
 /// until the wiring task swaps its rendering for this component.
 #[allow(dead_code)] // reusable component; wired by the create dialogs
-pub(crate) fn visible_schema_fields<'a>(
+pub fn visible_schema_fields<'a>(
     fields: &'a [AdminSchemaField],
     exclude: &[String],
 ) -> Vec<&'a AdminSchemaField> {
@@ -171,7 +171,7 @@ fn excluded(exclude: &[String], name: &str) -> bool {
 /// over the computed label, as React's `labelOverride ?? fieldLabel`
 /// does — `""` is not nullish.
 #[allow(dead_code)] // reusable component; wired by the create dialogs
-pub(crate) fn schema_field_label<'a>(
+pub fn schema_field_label<'a>(
     field: &'a AdminSchemaField,
     labels: &'a [(String, String)],
 ) -> &'a str {
@@ -185,13 +185,13 @@ pub(crate) fn schema_field_label<'a>(
 /// React's `onChange(name, value)` on the app's `S`, as the `TextEdit`
 /// accessor `TextField::on_edit` needs: the edit the field writes into.
 #[allow(dead_code)] // reusable component; wired by the create dialogs
-pub(crate) type SchemaFieldEditFn<S> = for<'a, 'b> fn(&'a mut S, &'b str) -> &'a mut TextEdit;
+pub type SchemaFieldEditFn<S> = for<'a, 'b> fn(&'a mut S, &'b str) -> &'a mut TextEdit;
 
 /// The schema fields: one labelled text input per visible field, in
 /// definition order. The host owns the fields and the values; this
 /// component only renders them.
 #[allow(dead_code)] // reusable component; wired by the create dialogs
-pub(crate) struct AdminSchemaFields<S: 'static> {
+pub struct AdminSchemaFields<S: 'static> {
     key: String,
     fields: Vec<AdminSchemaField>,
     exclude: Vec<String>,
@@ -205,7 +205,7 @@ impl<S: 'static> AdminSchemaFields<S> {
     /// React `<AdminSchemaFields definition={…} onChange={…} />` with
     /// the definition already parsed (see [`schema_properties`]); the
     /// values arrive in [`AdminSchemaFields::build`].
-    pub(crate) fn new(fields: Vec<AdminSchemaField>, on_edit: SchemaFieldEditFn<S>) -> Self {
+    pub fn new(fields: Vec<AdminSchemaField>, on_edit: SchemaFieldEditFn<S>) -> Self {
         Self {
             key: "admin-schema-fields".to_string(),
             fields,
@@ -218,21 +218,21 @@ impl<S: 'static> AdminSchemaFields<S> {
 
     /// Override the key prefix (two field lists under one parent need
     /// distinct keys; the default is one fixed string).
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
 
     /// React's `exclude` prop: field names that never render
     /// (`AdminCreateDialog` passes `['name']`).
-    pub(crate) fn exclude(mut self, exclude: impl IntoIterator<Item = impl Into<String>>) -> Self {
+    pub fn exclude(mut self, exclude: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.exclude = exclude.into_iter().map(Into::into).collect();
         self
     }
 
     /// React's `labels` prop: one override per field name, in the
     /// order given (a `Vec` keeps the render order deterministic).
-    pub(crate) fn labels(
+    pub fn labels(
         mut self,
         labels: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
     ) -> Self {
@@ -246,7 +246,7 @@ impl<S: 'static> AdminSchemaFields<S> {
     /// The gap between field rows. React renders a fragment (no gap);
     /// `AdminCreateDialog`'s body col spaces its children by 16pt, so
     /// the wiring task should pass `16.0` there.
-    pub(crate) fn gap(mut self, gap: f32) -> Self {
+    pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
     }
@@ -257,7 +257,7 @@ impl<S: 'static> AdminSchemaFields<S> {
     /// shape of React's `values` prop. An empty field list renders the
     /// empty root, as React renders nothing for a definition with no
     /// visible fields.
-    pub(crate) fn build(self, values: &[(String, TextEdit)], dark: bool) -> El {
+    pub fn build(self, values: &[(String, TextEdit)], dark: bool) -> El {
         let k = kit(dark);
         let mut root = col().key(self.key.clone()).w_full().gap(self.gap);
         for field in visible_schema_fields(&self.fields, &self.exclude) {

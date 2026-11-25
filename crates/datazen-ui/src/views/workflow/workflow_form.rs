@@ -131,7 +131,7 @@ fn hint_style(k: &Kit) -> TextStyle {
 /// has seven; the form creates and edits these three — the rest round-trip
 /// through the YAML editor, T202).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WorkflowStepKind {
+pub enum WorkflowStepKind {
     Query,
     Command,
     Ai,
@@ -139,7 +139,7 @@ pub(crate) enum WorkflowStepKind {
 
 impl WorkflowStepKind {
     /// React's select value.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             WorkflowStepKind::Query => "query",
             WorkflowStepKind::Command => "command",
@@ -147,7 +147,7 @@ impl WorkflowStepKind {
         }
     }
     /// React's select label.
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             WorkflowStepKind::Query => "Query (legacy)",
             WorkflowStepKind::Command => "Command",
@@ -158,17 +158,17 @@ impl WorkflowStepKind {
 
 /// React's variable row `{ name, varType, description, required }`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WorkflowVariableDraft {
-    pub(crate) name: TextEdit,
+pub struct WorkflowVariableDraft {
+    pub name: TextEdit,
     /// `'string' | 'number' | 'connection'`.
-    pub(crate) var_type: String,
-    pub(crate) description: TextEdit,
-    pub(crate) required: bool,
+    pub var_type: String,
+    pub description: TextEdit,
+    pub required: bool,
 }
 
 impl WorkflowVariableDraft {
     /// React's add-variable row.
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             name: TextEdit::new(String::new()),
             var_type: "string".to_owned(),
@@ -180,25 +180,25 @@ impl WorkflowVariableDraft {
 
 /// React's `WorkflowStepDraft`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WorkflowStepDraft {
-    pub(crate) kind: WorkflowStepKind,
-    pub(crate) id: TextEdit,
+pub struct WorkflowStepDraft {
+    pub kind: WorkflowStepKind,
+    pub id: TextEdit,
     /// The query step's SQL document — the data path the SQL engine (T243)
     /// binds its editor to.
-    pub(crate) sql: String,
+    pub sql: String,
     /// The AI step's prompt (React's textarea).
-    pub(crate) prompt: TextEdit,
-    pub(crate) connection: Option<String>,
-    pub(crate) database: Option<String>,
+    pub prompt: TextEdit,
+    pub connection: Option<String>,
+    pub database: Option<String>,
     /// The command step's chosen command id.
-    pub(crate) command: Option<String>,
+    pub command: Option<String>,
     /// The command step's input object (React's `Record<string, unknown>`).
-    pub(crate) input: Map<String, Value>,
+    pub input: Map<String, Value>,
 }
 
 impl WorkflowStepDraft {
     /// React's `emptyDraft` seeds `{ type: 'query', id: 'step1', sql: '' }`.
-    pub(crate) fn query(id: &str) -> Self {
+    pub fn query(id: &str) -> Self {
         Self {
             kind: WorkflowStepKind::Query,
             id: TextEdit::new(id.to_owned()),
@@ -211,7 +211,7 @@ impl WorkflowStepDraft {
         }
     }
     /// React's add-step button pushes `{ type: 'command', id, command: '', input: {} }`.
-    pub(crate) fn command(id: &str) -> Self {
+    pub fn command(id: &str) -> Self {
         Self {
             kind: WorkflowStepKind::Command,
             id: TextEdit::new(id.to_owned()),
@@ -230,23 +230,23 @@ impl WorkflowStepDraft {
 /// interval keeps its typed text and [`WorkflowDraft::interval_secs`]
 /// applies React's `Number(value) || 3600`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WorkflowDraft {
-    pub(crate) id: TextEdit,
-    pub(crate) name: TextEdit,
-    pub(crate) description: TextEdit,
-    pub(crate) connection: Option<String>,
+pub struct WorkflowDraft {
+    pub id: TextEdit,
+    pub name: TextEdit,
+    pub description: TextEdit,
+    pub connection: Option<String>,
     /// The default database multi-db data steps inherit.
-    pub(crate) database: Option<String>,
-    pub(crate) variables: Vec<WorkflowVariableDraft>,
-    pub(crate) steps: Vec<WorkflowStepDraft>,
-    pub(crate) schedule_enabled: bool,
+    pub database: Option<String>,
+    pub variables: Vec<WorkflowVariableDraft>,
+    pub steps: Vec<WorkflowStepDraft>,
+    pub schedule_enabled: bool,
     /// React's `scheduleIntervalSecs ?? 3600`, held as the field's text.
-    pub(crate) schedule_interval: TextEdit,
+    pub schedule_interval: TextEdit,
 }
 
 impl WorkflowDraft {
     /// React's `emptyDraft()`.
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             id: TextEdit::new(String::new()),
             name: TextEdit::new(String::new()),
@@ -261,7 +261,7 @@ impl WorkflowDraft {
     }
 
     /// React's `Number(e.target.value) || 3600` on the interval field.
-    pub(crate) fn interval_secs(&self) -> u64 {
+    pub fn interval_secs(&self) -> u64 {
         self.schedule_interval
             .text
             .trim()
@@ -270,18 +270,18 @@ impl WorkflowDraft {
     }
 
     /// `draft.id.trim()` — the compact Save's disabled rule reads it trimmed.
-    pub(crate) fn id_trimmed(&self) -> &str {
+    pub fn id_trimmed(&self) -> &str {
         self.id.text.trim()
     }
 
     /// `draft.name.trim()`.
-    pub(crate) fn name_trimmed(&self) -> &str {
+    pub fn name_trimmed(&self) -> &str {
         self.name.text.trim()
     }
 }
 
 /// React's compact footer's `disabled` prop.
-pub(crate) fn compact_save_disabled(draft: &WorkflowDraft) -> bool {
+pub fn compact_save_disabled(draft: &WorkflowDraft) -> bool {
     draft.id_trimmed().is_empty()
         || draft.name_trimmed().is_empty()
         || draft.steps.is_empty()
@@ -292,35 +292,35 @@ pub(crate) fn compact_save_disabled(draft: &WorkflowDraft) -> bool {
 /// One row of the `connections` prop: React's
 /// `{ id, name, databaseType, database? }`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WorkflowConnectionOption {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) database_type: String,
-    pub(crate) database: Option<String>,
+pub struct WorkflowConnectionOption {
+    pub id: String,
+    pub name: String,
+    pub database_type: String,
+    pub database: Option<String>,
 }
 
 /// The slice of `DriverCommandMetadata` the form reads.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WorkflowCommandMetadata {
-    pub(crate) category: Option<String>,
+pub struct WorkflowCommandMetadata {
+    pub category: Option<String>,
     /// `'read' | 'write' | 'highRisk'` when present.
-    pub(crate) risk: Option<String>,
+    pub risk: Option<String>,
     /// React filters `d.metadata?.workflow !== false`.
-    pub(crate) workflow: bool,
-    pub(crate) deprecated: bool,
+    pub workflow: bool,
+    pub deprecated: bool,
 }
 
 /// The slice of `DriverCommandDefinition` the form consumes. The full
 /// contract lives in `packages/backend-client` (its Rust twin lands with the
 /// commands domain); the form only labels, describes and schema-edits.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WorkflowCommandDefinition {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) description: Option<String>,
+pub struct WorkflowCommandDefinition {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
     /// The JSON-schema `inputSchema` object.
-    pub(crate) input_schema: Value,
-    pub(crate) metadata: WorkflowCommandMetadata,
+    pub input_schema: Value,
+    pub metadata: WorkflowCommandMetadata,
 }
 
 // ── pure helpers (React's exported/derived rules) ──────────────────────────
@@ -330,7 +330,7 @@ pub(crate) struct WorkflowCommandDefinition {
 /// Sourced from `crates/drivers/*/ui/meta.ts` (`hasMultiDatabase: true` on
 /// the protocol-reuse families; `kiwi` is the domain-type one). The full
 /// registry port is the `lib/databaseTypes` layer task.
-pub(crate) fn db_registry_meta(database_type: &str) -> Option<(bool, bool)> {
+pub fn db_registry_meta(database_type: &str) -> Option<(bool, bool)> {
     // (hasMultiDatabase, databaseFieldType === 'domain')
     match database_type {
         "postgresql" | "questdb" | "cloudberry" | "mysql" | "mariadb" | "doris" | "starrocks"
@@ -345,7 +345,7 @@ pub(crate) fn db_registry_meta(database_type: &str) -> Option<(bool, bool)> {
 /// to a single real database — a configured `database` is only that lock
 /// for non-domain drivers (domain-type drivers store an instance domain
 /// separately and always stay multi-db).
-pub(crate) fn connection_allows_multi_db(conn: Option<&WorkflowConnectionOption>) -> bool {
+pub fn connection_allows_multi_db(conn: Option<&WorkflowConnectionOption>) -> bool {
     let Some(conn) = conn else { return false };
     let Some((multi, domain)) = db_registry_meta(&conn.database_type) else {
         return false;
@@ -358,7 +358,7 @@ pub(crate) fn connection_allows_multi_db(conn: Option<&WorkflowConnectionOption>
 
 /// `step.connection || draft.connection || ''` — the connection a step acts
 /// through (React's `effectiveConnection`).
-pub(crate) fn effective_connection(draft: &WorkflowDraft, step: &WorkflowStepDraft) -> String {
+pub fn effective_connection(draft: &WorkflowDraft, step: &WorkflowStepDraft) -> String {
     step.connection
         .clone()
         .or_else(|| draft.connection.clone())
@@ -368,7 +368,7 @@ pub(crate) fn effective_connection(draft: &WorkflowDraft, step: &WorkflowStepDra
 /// React's `multiDbConnections` memo: the distinct multi-db connections used
 /// at workflow level or by query/command steps (the ones whose database list
 /// the form asks for).
-pub(crate) fn multi_db_connections(
+pub fn multi_db_connections(
     draft: &WorkflowDraft,
     connections: &[WorkflowConnectionOption],
 ) -> Vec<String> {
@@ -396,7 +396,7 @@ pub(crate) fn multi_db_connections(
 /// every query/command step's `database` unless the step overrides its own.
 /// Returns whether anything changed. The *caller* is the host's database
 /// loader resolution (the async half, T467-seam).
-pub(crate) fn auto_fill_single_databases(
+pub fn auto_fill_single_databases(
     draft: &mut WorkflowDraft,
     databases: &BTreeMap<String, Vec<String>>,
 ) -> bool {
@@ -431,7 +431,7 @@ pub(crate) fn auto_fill_single_databases(
 }
 
 /// React's `commandOptionLabel`: `name` + ` · category` + ` (deprecated)`.
-pub(crate) fn command_option_label(def: &WorkflowCommandDefinition) -> String {
+pub fn command_option_label(def: &WorkflowCommandDefinition) -> String {
     let category = def
         .metadata
         .category
@@ -447,16 +447,16 @@ pub(crate) fn command_option_label(def: &WorkflowCommandDefinition) -> String {
 }
 
 /// One property of the command's input schema (React's `schemaProperties`).
-pub(crate) struct CommandSchemaField {
-    pub(crate) name: String,
-    pub(crate) schema: Value,
-    pub(crate) required: bool,
+pub struct CommandSchemaField {
+    pub name: String,
+    pub schema: Value,
+    pub required: bool,
 }
 
 /// React's `schemaProperties`: the input schema's `properties` entries with
 /// their required flags. `serde_json`'s map iterates sorted; React keeps the
 /// JSON's insertion order — a documented ordering seam.
-pub(crate) fn schema_properties(
+pub fn schema_properties(
     def: Option<&WorkflowCommandDefinition>,
 ) -> Vec<CommandSchemaField> {
     let Some(def) = def else { return Vec::new() };
@@ -489,7 +489,7 @@ pub(crate) fn schema_properties(
 }
 
 /// React's `defaultInput`: `false` / `[]` / `{}` / `''` per schema type.
-pub(crate) fn default_input(def: Option<&WorkflowCommandDefinition>) -> Map<String, Value> {
+pub fn default_input(def: Option<&WorkflowCommandDefinition>) -> Map<String, Value> {
     let mut input = Map::new();
     for field in schema_properties(def) {
         let value = match field.schema.get("type").and_then(Value::as_str) {
@@ -505,7 +505,7 @@ pub(crate) fn default_input(def: Option<&WorkflowCommandDefinition>) -> Map<Stri
 
 /// React's `getDefinitions` filter: workflow-capable, and a deprecated
 /// command stays only while it is the chosen one.
-pub(crate) fn workflow_definitions<'a>(
+pub fn workflow_definitions<'a>(
     defs: &'a [WorkflowCommandDefinition],
     chosen: Option<&str>,
 ) -> Vec<&'a WorkflowCommandDefinition> {
@@ -520,7 +520,7 @@ pub(crate) fn workflow_definitions<'a>(
 /// The command-input value a JSON text area seeds from: a string passes
 /// through, anything else pretty-prints at two spaces (React's
 /// `JSON.stringify(value, null, 2)`).
-pub(crate) fn seed_json_text(value: Option<&Value>) -> String {
+pub fn seed_json_text(value: Option<&Value>) -> String {
     match value {
         Some(Value::String(text)) => text.clone(),
         Some(other) => serde_json::to_string_pretty(other).unwrap_or_default(),
@@ -534,7 +534,7 @@ pub(crate) fn seed_json_text(value: Option<&Value>) -> String {
 /// `ui/Select` keeps its own open state; closing on a choice is the form's
 /// handler's job, reproduced by every `on_choose` here).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WorkflowFormSelect {
+pub enum WorkflowFormSelect {
     Connection,
     Database,
     VariableType(usize),
@@ -555,43 +555,43 @@ impl<S: 'static> Clone for WorkflowFormSlots<S> {
 }
 impl<S: 'static> Copy for WorkflowFormSlots<S> {}
 
-pub(crate) struct WorkflowFormSlots<S: 'static> {
+pub struct WorkflowFormSlots<S: 'static> {
     /// The controlled draft (React's `draft` prop).
-    pub(crate) draft: fn(&S) -> &WorkflowDraft,
+    pub draft: fn(&S) -> &WorkflowDraft,
     /// Every edit (React's `onDraftChange`).
-    pub(crate) draft_mut: fn(&mut S) -> &mut WorkflowDraft,
+    pub draft_mut: fn(&mut S) -> &mut WorkflowDraft,
     /// The one open listbox.
-    pub(crate) open: fn(&S) -> Option<WorkflowFormSelect>,
-    pub(crate) set_open: fn(&mut S, Option<WorkflowFormSelect>),
+    pub open: fn(&S) -> Option<WorkflowFormSelect>,
+    pub set_open: fn(&mut S, Option<WorkflowFormSelect>),
     /// The command-input text areas' editing state (React's
     /// `CommandInputEditor` locals), keyed `step<i>.<field>` / `step<i>.raw`
     /// — the write side (an `entry().or_default()` while editing).
-    pub(crate) input_edits: fn(&mut S) -> &mut BTreeMap<String, TextEdit>,
+    pub input_edits: fn(&mut S) -> &mut BTreeMap<String, TextEdit>,
     /// The same map's read side: the render seeds each text area from the
     /// entry it finds (the build only holds `&S`).
-    pub(crate) input_edits_read: fn(&S) -> &BTreeMap<String, TextEdit>,
+    pub input_edits_read: fn(&S) -> &BTreeMap<String, TextEdit>,
     /// React's `commandsByConnection` / `loadingCommands` (the loaded
     /// command lists — the loader itself is a host-side seam).
-    pub(crate) commands: fn(&S) -> &BTreeMap<String, Vec<WorkflowCommandDefinition>>,
-    pub(crate) commands_loading: fn(&S) -> &BTreeSet<String>,
+    pub commands: fn(&S) -> &BTreeMap<String, Vec<WorkflowCommandDefinition>>,
+    pub commands_loading: fn(&S) -> &BTreeSet<String>,
     /// React's `databasesByConn` / `loadingDatabases`.
-    pub(crate) databases: fn(&S) -> &BTreeMap<String, Vec<String>>,
-    pub(crate) databases_loading: fn(&S) -> &BTreeSet<String>,
+    pub databases: fn(&S) -> &BTreeMap<String, Vec<String>>,
+    pub databases_loading: fn(&S) -> &BTreeSet<String>,
     /// React's `onSave` / `onCancel` props.
-    pub(crate) on_save: fn(&mut S),
-    pub(crate) on_cancel: fn(&mut S),
+    pub on_save: fn(&mut S),
+    pub on_cancel: fn(&mut S),
 }
 
 /// The two React layout variants: `compact` fits the AI panel sidebar, `page`
 /// is the full workflow window editor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WorkflowFormVariant {
+pub enum WorkflowFormVariant {
     Page,
     Compact,
 }
 
 /// The workflow form.
-pub(crate) struct WorkflowForm<'a, S: 'static> {
+pub struct WorkflowForm<'a, S: 'static> {
     editing_id: Option<&'a str>,
     connections: &'a [WorkflowConnectionOption],
     variant: WorkflowFormVariant,
@@ -602,7 +602,7 @@ pub(crate) struct WorkflowForm<'a, S: 'static> {
 impl<'a, S: 'static> WorkflowForm<'a, S> {
     /// The form over `connections` (React's `connections` prop; the draft
     /// itself is `S`-side via the slots).
-    pub(crate) fn new(
+    pub fn new(
         connections: &'a [WorkflowConnectionOption],
         slots: WorkflowFormSlots<S>,
     ) -> Self {
@@ -617,26 +617,26 @@ impl<'a, S: 'static> WorkflowForm<'a, S> {
 
     /// React's `editingId` prop (disables the id field, titles the compact
     /// header).
-    pub(crate) fn editing_id(mut self, id: Option<&'a str>) -> Self {
+    pub fn editing_id(mut self, id: Option<&'a str>) -> Self {
         self.editing_id = id;
         self
     }
 
     /// React's `variant` prop.
-    pub(crate) fn variant(mut self, variant: WorkflowFormVariant) -> Self {
+    pub fn variant(mut self, variant: WorkflowFormVariant) -> Self {
         self.variant = variant;
         self
     }
 
     /// React's `showActionBar` prop: `false` when the page-level shared bar
     /// (a sibling, T019's port) is used instead.
-    pub(crate) fn show_action_bar(mut self, show: bool) -> Self {
+    pub fn show_action_bar(mut self, show: bool) -> Self {
         self.show_action_bar = show;
         self
     }
 
     /// Builds one appearance of the form.
-    pub(crate) fn build(&self, s: &S, dark: bool) -> El {
+    pub fn build(&self, s: &S, dark: bool) -> El {
         let k = kit(dark);
         let draft = (self.slots.draft)(s);
         let compact = self.variant == WorkflowFormVariant::Compact;

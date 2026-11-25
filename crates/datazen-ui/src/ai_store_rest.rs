@@ -31,25 +31,25 @@ use crate::ai_store_chat::{
 };
 
 /// Delay before `loadWorkflows` shows the spinner.
-pub(crate) const WORKFLOW_SHOW_AFTER_MS: u64 = 100;
+pub const WORKFLOW_SHOW_AFTER_MS: u64 = 100;
 /// Minimum time the spinner stays up once shown.
-pub(crate) const WORKFLOW_MIN_VISIBLE_MS: u64 = 200;
+pub const WORKFLOW_MIN_VISIBLE_MS: u64 = 200;
 
-pub(crate) const MCP_CONFIG_MISSING: &str = "MCP server config not found: ";
+pub const MCP_CONFIG_MISSING: &str = "MCP server config not found: ";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WorkflowItem {
+pub struct WorkflowItem {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct McpServerStatus {
+pub struct McpServerStatus {
     pub server_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct McpClientConfig {
+pub struct McpClientConfig {
     pub id: String,
     pub enabled: bool,
     /// Host's `JSON.stringify` of the config. Compared as text.
@@ -57,14 +57,14 @@ pub(crate) struct McpClientConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum McpSaveStep {
+pub enum McpSaveStep {
     Disconnect(String),
     Connect(String),
 }
 
 impl AiStore {
     /// `initWorkflowChat`. The host supplies `crypto.randomUUID()`.
-    pub(crate) fn init_workflow_chat(&mut self, id: impl Into<String>) {
+    pub fn init_workflow_chat(&mut self, id: impl Into<String>) {
         self.workflow_chat = Some(blank_workflow_session(id.into()));
         self.workflow_attribution = None;
     }
@@ -72,7 +72,7 @@ impl AiStore {
     /// `sendWorkflowChatMessage`. `None` when no workflow chat exists.
     /// An empty content still sends — this path does not trim.
     /// Does not clear [`AiStore::memory_candidate_notice`].
-    pub(crate) fn begin_send_workflow(
+    pub fn begin_send_workflow(
         &mut self,
         content: &str,
         message_id: impl Into<String>,
@@ -100,7 +100,7 @@ impl AiStore {
     }
 
     /// `catch` of `sendWorkflowChatMessage`. No `status: 'failed'` and no persist.
-    pub(crate) fn fail_send_workflow(
+    pub fn fail_send_workflow(
         &mut self,
         message: &str,
         error_message_id: impl Into<String>,
@@ -124,7 +124,7 @@ impl AiStore {
     }
 
     /// `clearWorkflowChat`. Also clears the memory-candidate notice.
-    pub(crate) fn clear_workflow_chat(&mut self) {
+    pub fn clear_workflow_chat(&mut self) {
         let Some(session) = self.workflow_chat.as_mut() else {
             return;
         };
@@ -138,7 +138,7 @@ impl AiStore {
 
     /// Arm `loadWorkflows`. The spinner stays off until
     /// [`WORKFLOW_SHOW_AFTER_MS`] have passed.
-    pub(crate) fn begin_load_workflows(&mut self, now_ms: u64) {
+    pub fn begin_load_workflows(&mut self, now_ms: u64) {
         self.workflow_load_started = Some(now_ms);
         self.workflow_shown_at = None;
         self.pending_workflows = None;
@@ -147,7 +147,7 @@ impl AiStore {
 
     /// Host frame tick. A late tick still records the show time as
     /// `started + 100`, which is when React's timer was due.
-    pub(crate) fn tick_workflow_load(&mut self, now_ms: u64) {
+    pub fn tick_workflow_load(&mut self, now_ms: u64) {
         let Some(started) = self.workflow_load_started else {
             return;
         };
@@ -163,7 +163,7 @@ impl AiStore {
     /// Success path. `None` means the list is applied and the spinner is down.
     /// `Some(until)` means the spinner must stay until that timestamp; the
     /// list is not visible yet. A success does **not** clear `workflow_error`.
-    pub(crate) fn complete_load_workflows(
+    pub fn complete_load_workflows(
         &mut self,
         now_ms: u64,
         workflows: Vec<WorkflowItem>,
@@ -176,14 +176,14 @@ impl AiStore {
 
     /// Failure path. `String(e)` is the host's string. The previous list stays
     /// until a later success. Same hold rule as success.
-    pub(crate) fn fail_load_workflows(&mut self, now_ms: u64, error: &str) -> Option<u64> {
+    pub fn fail_load_workflows(&mut self, now_ms: u64, error: &str) -> Option<u64> {
         self.tick_workflow_load(now_ms);
         self.pending_workflow_error = Some(error.to_owned());
         self.settle_workflow_load(now_ms)
     }
 
     /// Apply a held result once `now_ms` reaches the returned deadline.
-    pub(crate) fn release_workflow_load(&mut self, now_ms: u64) -> bool {
+    pub fn release_workflow_load(&mut self, now_ms: u64) -> bool {
         let Some(shown) = self.workflow_shown_at else {
             return false;
         };
@@ -194,89 +194,89 @@ impl AiStore {
         true
     }
 
-    pub(crate) fn begin_execute_workflow(&mut self) {
+    pub fn begin_execute_workflow(&mut self) {
         self.is_executing_workflow = true;
         self.workflow_execution_result = None;
         self.workflow_error = None;
     }
 
-    pub(crate) fn complete_execute_workflow(&mut self, result: impl Into<String>) {
+    pub fn complete_execute_workflow(&mut self, result: impl Into<String>) {
         self.is_executing_workflow = false;
         self.workflow_execution_result = Some(result.into());
     }
 
     /// `String(e)`, not `e.message`.
-    pub(crate) fn fail_execute_workflow(&mut self, error: &str) {
+    pub fn fail_execute_workflow(&mut self, error: &str) {
         self.is_executing_workflow = false;
         self.workflow_error = Some(error.to_owned());
     }
 
-    pub(crate) fn clear_workflow_result(&mut self) {
+    pub fn clear_workflow_result(&mut self) {
         self.workflow_execution_result = None;
         self.workflow_error = None;
     }
 
-    pub(crate) fn begin_schema_doc(&mut self) {
+    pub fn begin_schema_doc(&mut self) {
         self.is_generating_schema_doc = true;
         self.schema_doc = None;
         self.schema_doc_error = None;
     }
 
-    pub(crate) fn complete_schema_doc(&mut self, doc: impl Into<String>) {
+    pub fn complete_schema_doc(&mut self, doc: impl Into<String>) {
         self.schema_doc = Some(doc.into());
         self.is_generating_schema_doc = false;
     }
 
-    pub(crate) fn fail_schema_doc(&mut self, message: &str) {
+    pub fn fail_schema_doc(&mut self, message: &str) {
         self.is_generating_schema_doc = false;
         self.schema_doc_error = Some(message.to_owned());
     }
 
-    pub(crate) fn clear_schema_doc(&mut self) {
+    pub fn clear_schema_doc(&mut self) {
         self.schema_doc = None;
         self.schema_doc_error = None;
         self.is_generating_schema_doc = false;
     }
 
-    pub(crate) fn begin_diagnose_connection(&mut self) {
+    pub fn begin_diagnose_connection(&mut self) {
         self.is_diagnosing_connection = true;
         self.connection_diagnosis = None;
         self.connection_diagnosis_error = None;
     }
 
-    pub(crate) fn complete_diagnose_connection(&mut self, result: impl Into<String>) {
+    pub fn complete_diagnose_connection(&mut self, result: impl Into<String>) {
         self.connection_diagnosis = Some(result.into());
         self.is_diagnosing_connection = false;
     }
 
-    pub(crate) fn fail_diagnose_connection(&mut self, message: &str) {
+    pub fn fail_diagnose_connection(&mut self, message: &str) {
         self.is_diagnosing_connection = false;
         self.connection_diagnosis_error = Some(message.to_owned());
     }
 
-    pub(crate) fn clear_connection_diagnosis(&mut self) {
+    pub fn clear_connection_diagnosis(&mut self) {
         self.connection_diagnosis = None;
         self.connection_diagnosis_error = None;
         self.is_diagnosing_connection = false;
     }
 
-    pub(crate) fn begin_analyze_queries(&mut self) {
+    pub fn begin_analyze_queries(&mut self) {
         self.is_analyzing_queries = true;
         self.query_analysis = None;
         self.query_analysis_error = None;
     }
 
-    pub(crate) fn complete_analyze_queries(&mut self, result: impl Into<String>) {
+    pub fn complete_analyze_queries(&mut self, result: impl Into<String>) {
         self.query_analysis = Some(result.into());
         self.is_analyzing_queries = false;
     }
 
-    pub(crate) fn fail_analyze_queries(&mut self, message: &str) {
+    pub fn fail_analyze_queries(&mut self, message: &str) {
         self.is_analyzing_queries = false;
         self.query_analysis_error = Some(message.to_owned());
     }
 
-    pub(crate) fn clear_query_analysis(&mut self) {
+    pub fn clear_query_analysis(&mut self) {
         self.query_analysis = None;
         self.query_analysis_error = None;
         self.is_analyzing_queries = false;
@@ -285,7 +285,7 @@ impl AiStore {
     /// `connectMcpServer` before IPC. `found == false` sets `mcpError` and
     /// returns the thrown message. A found config clears that server's error
     /// and does not set `mcpError`.
-    pub(crate) fn begin_connect_mcp(&mut self, server_id: &str, found: bool) -> Result<(), String> {
+    pub fn begin_connect_mcp(&mut self, server_id: &str, found: bool) -> Result<(), String> {
         if !found {
             let msg = format!("{MCP_CONFIG_MISSING}{server_id}");
             self.mcp_error = Some(msg.clone());
@@ -298,13 +298,13 @@ impl AiStore {
         Ok(())
     }
 
-    pub(crate) fn finish_connect_mcp(&mut self) {
+    pub fn finish_connect_mcp(&mut self) {
         self.mcp_connecting = false;
         self.mcp_connecting_server_id = None;
     }
 
     /// Per-server error only. React does not set `mcpError` on this path.
-    pub(crate) fn fail_connect_mcp(&mut self, server_id: &str, message: &str) -> String {
+    pub fn fail_connect_mcp(&mut self, server_id: &str, message: &str) -> String {
         self.mcp_connecting = false;
         self.mcp_connecting_server_id = None;
         self.mcp_server_errors
@@ -312,42 +312,42 @@ impl AiStore {
         message.to_owned()
     }
 
-    pub(crate) fn fail_disconnect_mcp(&mut self, message: &str) {
+    pub fn fail_disconnect_mcp(&mut self, message: &str) {
         self.mcp_error = Some(message.to_owned());
     }
 
-    pub(crate) fn apply_mcp_servers(&mut self, servers: Vec<McpServerStatus>) {
+    pub fn apply_mcp_servers(&mut self, servers: Vec<McpServerStatus>) {
         self.mcp_servers = servers;
     }
 
     /// Failed list: keep the previous servers. No `mcpError`.
-    pub(crate) fn fail_load_mcp_servers(&mut self) {
+    pub fn fail_load_mcp_servers(&mut self) {
         let _ = &self.mcp_servers;
     }
 
-    pub(crate) fn apply_mcp_tools(&mut self, tools: Vec<String>) {
+    pub fn apply_mcp_tools(&mut self, tools: Vec<String>) {
         self.mcp_tools = tools;
     }
 
-    pub(crate) fn fail_load_mcp_tools(&mut self) {
+    pub fn fail_load_mcp_tools(&mut self) {
         let _ = &self.mcp_tools;
     }
 
-    pub(crate) fn fail_call_mcp(&mut self, message: &str) -> String {
+    pub fn fail_call_mcp(&mut self, message: &str) -> String {
         self.mcp_error = Some(message.to_owned());
         message.to_owned()
     }
 
-    pub(crate) fn clear_mcp_error(&mut self) {
+    pub fn clear_mcp_error(&mut self) {
         self.mcp_error = None;
     }
 
-    pub(crate) fn clear_mcp_server_error(&mut self, server_id: &str) {
+    pub fn clear_mcp_server_error(&mut self, server_id: &str) {
         self.mcp_server_errors.remove(server_id);
     }
 
     /// `ai:chat-injection`. Ignored when the request id does not match.
-    pub(crate) fn note_injection(&mut self, request_id: &str, snapshot: &str) -> bool {
+    pub fn note_injection(&mut self, request_id: &str, snapshot: &str) -> bool {
         let Some(session) = self.chat_session.as_mut() else {
             return false;
         };
@@ -359,7 +359,7 @@ impl AiStore {
     }
 
     /// `ai:memory-candidates`. A zero count does not clear an existing notice.
-    pub(crate) fn note_memory_candidates(&mut self, request_id: &str, count: u32) -> bool {
+    pub fn note_memory_candidates(&mut self, request_id: &str, count: u32) -> bool {
         let Some(session) = self.chat_session.as_ref() else {
             return false;
         };
@@ -379,7 +379,7 @@ impl AiStore {
     /// `ai:skill-used`. Blank `name` is ignored. The matching identity
     /// (`id`, or `name` when `id` is empty) is replaced and the new skill
     /// is appended. Returns [`ChatFollowUp::Persist`] when applied.
-    pub(crate) fn note_skill_used(
+    pub fn note_skill_used(
         &mut self,
         request_id: &str,
         id: Option<&str>,
@@ -446,7 +446,7 @@ impl AiStore {
 /// `saveMcpClientServers` after the settings write: disconnect ids that
 /// left the list, then disconnect+maybe-connect configs whose fingerprint
 /// changed. Newly added configs are not connected here.
-pub(crate) fn plan_mcp_save(
+pub fn plan_mcp_save(
     connected_ids: &[String],
     prev: &[McpClientConfig],
     next: &[McpClientConfig],

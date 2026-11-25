@@ -53,13 +53,13 @@ use crate::support::value_presentation::timestamp_config::{
 };
 
 /// Rule count cap (design §5: count and input length both capped).
-pub(crate) const MAX_VALUE_PRESENTATION_RULES: usize = 20;
+pub const MAX_VALUE_PRESENTATION_RULES: usize = 20;
 /// Per-pattern (exact value or regex source) length cap in characters.
-pub(crate) const MAX_PATTERN_LENGTH: usize = 128;
+pub const MAX_PATTERN_LENGTH: usize = 128;
 /// Rule-name length cap in characters.
-pub(crate) const MAX_RULE_NAME_LENGTH: usize = 64;
+pub const MAX_RULE_NAME_LENGTH: usize = 64;
 /// Identifier-class exact value length cap.
-pub(crate) const MAX_MATCH_VALUE_LENGTH: usize = 128;
+pub const MAX_MATCH_VALUE_LENGTH: usize = 128;
 /// Upper bound of `{n,m}` repetition counts.
 const MAX_REPETITION_COUNT: u64 = 100;
 
@@ -71,7 +71,7 @@ const MAX_REPETITION_COUNT: u64 = 100;
 /// regex. Only the source and flags persist — never a compiled object.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub(crate) enum ValuePresentationNamePattern {
+pub enum ValuePresentationNamePattern {
     Exact {
         value: String,
     },
@@ -86,48 +86,48 @@ pub(crate) enum ValuePresentationNamePattern {
 /// required. Table-level conditions demand the source field to exist.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ValuePresentationRuleMatch {
+pub struct ValuePresentationRuleMatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) connection_id: Option<String>,
+    pub connection_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) database: Option<String>,
+    pub database: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) namespace: Option<String>,
+    pub namespace: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) table: Option<ValuePresentationNamePattern>,
+    pub table: Option<ValuePresentationNamePattern>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) column: Option<ValuePresentationNamePattern>,
+    pub column: Option<ValuePresentationNamePattern>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) database_type_name: Option<ValuePresentationNamePattern>,
+    pub database_type_name: Option<ValuePresentationNamePattern>,
 }
 
 /// One global rule: name, enabled switch, match conditions, options.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct ValuePresentationRule {
-    pub(crate) name: String,
-    pub(crate) enabled: bool,
+pub struct ValuePresentationRule {
+    pub name: String,
+    pub enabled: bool,
     #[serde(rename = "match")]
-    pub(crate) r#match: ValuePresentationRuleMatch,
-    pub(crate) options: TimestampOptions,
+    pub r#match: ValuePresentationRuleMatch,
+    pub options: TimestampOptions,
 }
 
 /// The column context a rule matches against; missing table-level fields
 /// can never satisfy table-level conditions.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ValuePresentationRuleContext<'a> {
-    pub(crate) connection_id: Option<&'a str>,
-    pub(crate) database: Option<&'a str>,
-    pub(crate) namespace: Option<&'a str>,
-    pub(crate) table: Option<&'a str>,
-    pub(crate) column: &'a str,
-    pub(crate) database_type_name: Option<&'a str>,
+pub struct ValuePresentationRuleContext<'a> {
+    pub connection_id: Option<&'a str>,
+    pub database: Option<&'a str>,
+    pub namespace: Option<&'a str>,
+    pub table: Option<&'a str>,
+    pub column: &'a str,
+    pub database_type_name: Option<&'a str>,
 }
 
 /// Pathed validation problem (same shape as T02's).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ValuePresentationRuleProblem {
-    pub(crate) path: String,
-    pub(crate) message: String,
+pub struct ValuePresentationRuleProblem {
+    pub path: String,
+    pub message: String,
 }
 
 impl ValuePresentationRuleProblem {
@@ -138,7 +138,7 @@ impl ValuePresentationRuleProblem {
 
 /// `validate_value_presentation_rule`'s result.
 #[derive(Debug, PartialEq)]
-pub(crate) enum ValuePresentationRuleValidation {
+pub enum ValuePresentationRuleValidation {
     Ok(Box<ValuePresentationRule>),
     Err(Vec<ValuePresentationRuleProblem>),
 }
@@ -619,7 +619,7 @@ fn is_strict_repetition(bytes: &[u8]) -> bool {
 
 /// Validate that a regex source + flags belong to the restricted subset
 /// (never panics). Returns Err(reason) on rejection.
-pub(crate) fn validate_restricted_pattern(
+pub fn validate_restricted_pattern(
     source: &str,
     flags: Option<&str>,
 ) -> Result<(), String> {
@@ -661,7 +661,7 @@ fn compile_pattern(source: &str, flags: Option<&str>) -> Option<regex::Regex> {
 /// Match a name pattern: exact values compare whole; regexes are substring
 /// matches. An uncompilable pattern matches nothing (defensive — validated
 /// patterns always compile).
-pub(crate) fn match_name_pattern(pattern: &ValuePresentationNamePattern, value: &str) -> bool {
+pub fn match_name_pattern(pattern: &ValuePresentationNamePattern, value: &str) -> bool {
     match pattern {
         ValuePresentationNamePattern::Exact { value: exact } => exact == value,
         ValuePresentationNamePattern::Regex { source, flags } => {
@@ -674,7 +674,7 @@ pub(crate) fn match_name_pattern(pattern: &ValuePresentationNamePattern, value: 
 
 /// Human-readable pattern description (rule-list summaries): the exact
 /// value verbatim, regexes as `/source/flags`.
-pub(crate) fn describe_name_pattern(pattern: &ValuePresentationNamePattern) -> String {
+pub fn describe_name_pattern(pattern: &ValuePresentationNamePattern) -> String {
     match pattern {
         ValuePresentationNamePattern::Exact { value } => value.clone(),
         ValuePresentationNamePattern::Regex { source, flags } => {
@@ -860,7 +860,7 @@ fn read_rule_match(
 /// Complete structural validation of unknown JSON input: a rebuilt
 /// canonical rule on success, every pathed problem on failure. Illegal
 /// rules must not save (PRD §3.1).
-pub(crate) fn validate_value_presentation_rule(
+pub fn validate_value_presentation_rule(
     input: &serde_json::Value,
 ) -> ValuePresentationRuleValidation {
     let Some(object) = input.as_object() else {
@@ -933,7 +933,7 @@ pub(crate) fn validate_value_presentation_rule(
 /// Lenient rule-array parsing (storage boundary): non-arrays → empty;
 /// invalid entries drop (the store keeps its original text); at most
 /// MAX_VALUE_PRESENTATION_RULES valid entries survive.
-pub(crate) fn validate_value_presentation_rules(
+pub fn validate_value_presentation_rules(
     input: &serde_json::Value,
 ) -> Vec<ValuePresentationRule> {
     let Some(entries) = input.as_array() else {
@@ -954,7 +954,7 @@ pub(crate) fn validate_value_presentation_rules(
 
 /// Duplicate-name check for the editor layer (case-sensitive): returns the
 /// first duplicated name, ignoring the row being edited.
-pub(crate) fn find_duplicate_rule_name(
+pub fn find_duplicate_rule_name(
     rules: &[ValuePresentationRule],
     ignore_index: Option<usize>,
 ) -> Option<String> {
@@ -976,7 +976,7 @@ pub(crate) fn find_duplicate_rule_name(
 
 /// Whether one enabled rule matches the column context (callers exclude
 /// disabled rules first — see [`find_first_matching_rule`]).
-pub(crate) fn match_value_presentation_rule(
+pub fn match_value_presentation_rule(
     rule: &ValuePresentationRule,
     context: &ValuePresentationRuleContext<'_>,
 ) -> bool {
@@ -1027,7 +1027,7 @@ pub(crate) fn match_value_presentation_rule(
 /// The first matching rule in list order, skipping disabled rules; None
 /// when nothing matches. The first match freezes the column's
 /// interpretation — callers never fall through to lower-priority rules.
-pub(crate) fn find_first_matching_rule<'a>(
+pub fn find_first_matching_rule<'a>(
     rules: &'a [ValuePresentationRule],
     context: &ValuePresentationRuleContext<'_>,
 ) -> Option<&'a ValuePresentationRule> {
@@ -1038,7 +1038,7 @@ pub(crate) fn find_first_matching_rule<'a>(
 }
 
 /// Human-readable match summary for rule-list rows.
-pub(crate) fn describe_rule_match(r#match: &ValuePresentationRuleMatch) -> String {
+pub fn describe_rule_match(r#match: &ValuePresentationRuleMatch) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(connection) = &r#match.connection_id {
         parts.push(format!("connection={connection}"));

@@ -87,7 +87,7 @@ use crate::ui::select::Select;
 /// React's `status` union: form / exporting / success / aborted.
 #[allow(dead_code)] // VM surface; wired by the grid host task that owns exports
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum DataExportStatus {
+pub enum DataExportStatus {
     #[default]
     Form,
     Exporting,
@@ -100,21 +100,21 @@ pub(crate) enum DataExportStatus {
 /// this order).
 #[allow(dead_code)] // VM surface
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DataExportColumn {
+pub struct DataExportColumn {
     pub name: String,
     pub col_type: Option<String>,
 }
 
 #[allow(dead_code)] // VM surface
 impl DataExportColumn {
-    pub(crate) fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             col_type: None,
         }
     }
 
-    pub(crate) fn with_type(mut self, col_type: impl Into<String>) -> Self {
+    pub fn with_type(mut self, col_type: impl Into<String>) -> Self {
         self.col_type = Some(col_type.into());
         self
     }
@@ -124,7 +124,7 @@ impl DataExportColumn {
 /// and projects it here; every interaction is a callback that mutates `S`.
 #[allow(dead_code)] // VM surface; wired by the grid host task
 #[derive(Clone, Debug)]
-pub(crate) struct DataExportVm {
+pub struct DataExportVm {
     pub open: bool,
     /// Bumped on each open so the body's scroll viewport resets (from [`Dialog`]).
     pub open_epoch: u64,
@@ -212,7 +212,7 @@ impl DataExportVm {
     /// React's `useEffect` on open: clear all run state, take the caller's
     /// preferred scope, and re-pick every column (DBR-06). The format
     /// deliberately survives, as in React — the effect does not touch it.
-    pub(crate) fn reset_on_open(&mut self) {
+    pub fn reset_on_open(&mut self) {
         self.status = DataExportStatus::Form;
         self.error = None;
         self.cancelling = false;
@@ -224,13 +224,13 @@ impl DataExportVm {
     }
 
     /// React's `exportLocked`: the driver allows no data export at all.
-    pub(crate) fn export_locked(&self) -> bool {
+    pub fn export_locked(&self) -> bool {
         self.capability == DataExportCapability::None
     }
 
     /// React's `allowEntire`: an unlocked driver that can pull whole tables,
     /// over a live session, on a real table (not the `'data'` placeholder).
-    pub(crate) fn allow_entire(&self) -> bool {
+    pub fn allow_entire(&self) -> bool {
         !self.export_locked()
             && self.capability.supports_full_table()
             && self.db_session_id.is_some()
@@ -239,14 +239,14 @@ impl DataExportVm {
 
     /// React's `allowFiltered`: the filtered scope exists exactly when its
     /// statement builder does (DB-15).
-    pub(crate) fn allow_filtered(&self) -> bool {
+    pub fn allow_filtered(&self) -> bool {
         !self.export_locked() && self.db_session_id.is_some() && self.has_filtered_builder
     }
 
     /// The scope the dialog settles on: React's effect drops an impossible
     /// preferred value back to the page scope, which every driver serves.
     /// Derived, so it also covers a capability/session flip mid-dialog.
-    pub(crate) fn settled_scope(&self) -> ExportScope {
+    pub fn settled_scope(&self) -> ExportScope {
         match self.scope {
             ExportScope::EntireTable if !self.allow_entire() => ExportScope::CurrentPage,
             ExportScope::FilteredTable if !self.allow_filtered() => ExportScope::CurrentPage,
@@ -257,7 +257,7 @@ impl DataExportVm {
     /// The format the dialog settles on: an unavailable format (the scope
     /// became streaming, or no key column) falls back to CSV instead of
     /// keeping a disabled selection (DBR-06).
-    pub(crate) fn settled_format(&self) -> DataFormat {
+    pub fn settled_format(&self) -> DataFormat {
         let options = build_format_options(
             self.settled_scope(),
             self.is_desktop,
@@ -270,13 +270,13 @@ impl DataExportVm {
     }
 
     /// React's `hasKeyColumn`: SQL UPDATE needs one for its WHERE.
-    pub(crate) fn has_key_column(&self) -> bool {
+    pub fn has_key_column(&self) -> bool {
         !self.primary_key_columns.is_empty()
     }
 
     /// The picked columns, in display order — the order the export writes
     /// (DBR-06, restored).
-    pub(crate) fn selected_column_names(&self) -> Vec<String> {
+    pub fn selected_column_names(&self) -> Vec<String> {
         self.columns
             .iter()
             .filter(|c| self.selected_cols.iter().any(|name| name == &c.name))
@@ -287,7 +287,7 @@ impl DataExportVm {
     /// React's `rowCount` summary: streaming scopes report the server's total
     /// (or the loaded rows until it answers); the selected scope reports the
     /// selection; everything else reports the loaded rows.
-    pub(crate) fn row_count(&self) -> usize {
+    pub fn row_count(&self) -> usize {
         let scope = self.settled_scope();
         if scope.is_streaming() {
             return self.total_rows.unwrap_or(self.rows_len as u64) as usize;
@@ -302,7 +302,7 @@ impl DataExportVm {
     /// empty row sets on the provided scopes, no empty column selection (an
     /// empty selection exports nothing; the button says so instead of
     /// writing a header-only file, DBR-06).
-    pub(crate) fn export_disabled(&self) -> bool {
+    pub fn export_disabled(&self) -> bool {
         let scope = self.settled_scope();
         self.status == DataExportStatus::Exporting
             || self.export_locked()
@@ -318,7 +318,7 @@ impl DataExportVm {
 /// the VM's `status` / `error` / `cancelling` / `partial_deleted`.
 #[allow(dead_code)] // VM surface; handed to the host by `on_export`
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DataExportRequest {
+pub struct DataExportRequest {
     pub scope: ExportScope,
     pub format: DataFormat,
     /// The picked column names, in display order — what the export writes and
@@ -332,18 +332,18 @@ pub(crate) struct DataExportRequest {
     pub db_session_id: Option<String>,
 }
 
-pub(crate) type CloseFn<S> = Rc<dyn Fn(&mut S) + 'static>;
-pub(crate) type ScopeFn<S> = Rc<dyn Fn(&mut S, ExportScope) + 'static>;
-pub(crate) type FormatFn<S> = Rc<dyn Fn(&mut S, DataFormat) + 'static>;
-pub(crate) type ExportFn<S> = Rc<dyn Fn(&mut S, DataExportRequest) + 'static>;
-pub(crate) type CopyFn<S> = Rc<dyn Fn(&mut S, &mut Tx) + 'static>;
+pub type CloseFn<S> = Rc<dyn Fn(&mut S) + 'static>;
+pub type ScopeFn<S> = Rc<dyn Fn(&mut S, ExportScope) + 'static>;
+pub type FormatFn<S> = Rc<dyn Fn(&mut S, DataFormat) + 'static>;
+pub type ExportFn<S> = Rc<dyn Fn(&mut S, DataExportRequest) + 'static>;
+pub type CopyFn<S> = Rc<dyn Fn(&mut S, &mut Tx) + 'static>;
 
 /// Builder for the dialog, generic over the app state `S` that owns the VM.
 /// The picker's three actions and its selection probe are plain function
 /// pointers into `S` (the picker's own API); the select and button callbacks
 /// are `Rc` closures, the same split the batch export dialog uses.
 #[allow(dead_code)] // reusable component; wired by the grid host task
-pub(crate) struct DataExportDialog<'a, S: 'static> {
+pub struct DataExportDialog<'a, S: 'static> {
     key: &'a str,
     vm: &'a DataExportVm,
     close: Option<CloseFn<S>>,
@@ -365,7 +365,7 @@ pub(crate) struct DataExportDialog<'a, S: 'static> {
 
 impl<'a, S: 'static> DataExportDialog<'a, S> {
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn new(key: &'a str, vm: &'a DataExportVm) -> Self {
+    pub fn new(key: &'a str, vm: &'a DataExportVm) -> Self {
         Self {
             key,
             vm,
@@ -388,46 +388,46 @@ impl<'a, S: 'static> DataExportDialog<'a, S> {
     }
 
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.close = Some(Rc::new(f));
         self
     }
 
     /// React's `handleScopeChange` (minus the disabled pick, refused here).
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_scope_change(mut self, f: impl Fn(&mut S, ExportScope) + 'static) -> Self {
+    pub fn on_scope_change(mut self, f: impl Fn(&mut S, ExportScope) + 'static) -> Self {
         self.scope = Some(Rc::new(f));
         self
     }
 
     /// The range listbox's open state (the kit keeps it on the app's `S`).
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_scope_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_scope_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.scope_open = Some(Rc::new(f));
         self
     }
 
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_scope_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_scope_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.scope_close = Some(Rc::new(f));
         self
     }
 
     /// React's `handleFormatChange` (minus the disabled pick, refused here).
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_format_change(mut self, f: impl Fn(&mut S, DataFormat) + 'static) -> Self {
+    pub fn on_format_change(mut self, f: impl Fn(&mut S, DataFormat) + 'static) -> Self {
         self.format = Some(Rc::new(f));
         self
     }
 
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_format_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_format_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.format_open = Some(Rc::new(f));
         self
     }
 
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_format_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_format_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.format_close = Some(Rc::new(f));
         self
     }
@@ -435,7 +435,7 @@ impl<'a, S: 'static> DataExportDialog<'a, S> {
     /// React's `handleExport`, projected: the host receives the request and
     /// runs it (streaming or provided), writing the outcome into the VM.
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_export(mut self, f: impl Fn(&mut S, DataExportRequest) + 'static) -> Self {
+    pub fn on_export(mut self, f: impl Fn(&mut S, DataExportRequest) + 'static) -> Self {
         self.export = Some(Rc::new(f));
         self
     }
@@ -443,49 +443,49 @@ impl<'a, S: 'static> DataExportDialog<'a, S> {
     /// React's `handleCancelExport`: the host sets `cancelling` and cancels
     /// its run handle.
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_cancel_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.cancel = Some(Rc::new(f));
         self
     }
 
     /// The error text's copy button.
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn on_copy_error(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_copy_error(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.copy = Some(Rc::new(f));
         self
     }
 
     /// The picker's `selected.has(name)` probe into `S`.
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn picker_is_selected(mut self, f: IsSelectedFn<S>) -> Self {
+    pub fn picker_is_selected(mut self, f: IsSelectedFn<S>) -> Self {
         self.picker_is_selected = Some(f);
         self
     }
 
     /// The picker's `onToggle(name)`.
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn picker_on_toggle(mut self, f: ToggleColumnFn<S>) -> Self {
+    pub fn picker_on_toggle(mut self, f: ToggleColumnFn<S>) -> Self {
         self.picker_toggle = Some(f);
         self
     }
 
     /// The picker's `onSelectAll`.
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn picker_on_select_all(mut self, f: PickerActionFn<S>) -> Self {
+    pub fn picker_on_select_all(mut self, f: PickerActionFn<S>) -> Self {
         self.picker_select_all = Some(f);
         self
     }
 
     /// The picker's `onClearAll`.
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn picker_on_clear_all(mut self, f: PickerActionFn<S>) -> Self {
+    pub fn picker_on_clear_all(mut self, f: PickerActionFn<S>) -> Self {
         self.picker_clear_all = Some(f);
         self
     }
 
     /// The picker's `onResetDefault`.
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn picker_on_reset_default(mut self, f: PickerActionFn<S>) -> Self {
+    pub fn picker_on_reset_default(mut self, f: PickerActionFn<S>) -> Self {
         self.picker_reset_default = Some(f);
         self
     }
@@ -493,7 +493,7 @@ impl<'a, S: 'static> DataExportDialog<'a, S> {
     /// Builds the dialog into the overlay `layer`, mirroring React's JSX.
     /// Needs `s` only for the picker's per-row selection probe.
     #[allow(dead_code)] // reusable component; wired by the grid host task
-    pub(crate) fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) {
         let vm = self.vm;
         if !vm.open {
             return;

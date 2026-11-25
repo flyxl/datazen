@@ -35,7 +35,7 @@ use crate::views::data_sync::data_sync_compare_step::{
 /// React `WizardStep`: the six wizard pages.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the Data Sync window track (T268, not landed yet)
-pub(crate) enum WizardStep {
+pub enum WizardStep {
     Endpoints,
     Setup,
     Objects,
@@ -47,7 +47,7 @@ pub(crate) enum WizardStep {
 impl WizardStep {
     /// The wire spelling (`'endpoints'`, …) — the step chip keys and the
     /// `sync.step.<step>` words ride it.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Endpoints => "endpoints",
             Self::Setup => "setup",
@@ -60,7 +60,7 @@ impl WizardStep {
 }
 
 /// `WIZARD_STEPS`: the full-page layout's six steps, in order.
-pub(crate) const WIZARD_STEPS: [WizardStep; 6] = [
+pub const WIZARD_STEPS: [WizardStep; 6] = [
     WizardStep::Endpoints,
     WizardStep::Setup,
     WizardStep::Objects,
@@ -70,7 +70,7 @@ pub(crate) const WIZARD_STEPS: [WizardStep; 6] = [
 ];
 
 /// `NARROW_WIZARD_STEPS`: the narrow (single-column) layout's three steps.
-pub(crate) const NARROW_WIZARD_STEPS: [WizardStep; 3] = [
+pub const NARROW_WIZARD_STEPS: [WizardStep; 3] = [
     WizardStep::Endpoints,
     WizardStep::Setup,
     WizardStep::Result,
@@ -79,31 +79,31 @@ pub(crate) const NARROW_WIZARD_STEPS: [WizardStep; 3] = [
 /// The hook's state: the wizard's whole mutable surface.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // consumers: the Data Sync window track (T268, not landed yet)
-pub(crate) struct DataSyncWizardState {
+pub struct DataSyncWizardState {
     /// The sync options the setup step edits (`DEFAULT_SYNC_OPTIONS` seed).
-    pub(crate) sync_options: SyncOptions,
+    pub sync_options: SyncOptions,
     /// The inspection/comparison results the wizard shows.
-    pub(crate) mapping_results: Vec<DataSyncTableResult>,
+    pub mapping_results: Vec<DataSyncTableResult>,
     /// The tables the user disabled for this sync.
-    pub(crate) disabled_tables: HashSet<String>,
+    pub disabled_tables: HashSet<String>,
     /// The wizard page the user is on (`'endpoints'` seed).
-    pub(crate) step: WizardStep,
+    pub step: WizardStep,
     /// Whether the inspection step has completed.
-    pub(crate) inspection_complete: bool,
+    pub inspection_complete: bool,
     /// The runner's state (`'idle'` seed).
-    pub(crate) sync_state: SyncState,
+    pub sync_state: SyncState,
     /// The mapping table's selected row key, or none.
-    pub(crate) selected_table_key: Option<String>,
+    pub selected_table_key: Option<String>,
     /// The mapping table's diff filter (`'all'` seed).
-    pub(crate) table_filter: TableDiffFilter,
+    pub table_filter: TableDiffFilter,
     /// The mapping table's search box text (empty seed).
-    pub(crate) table_search: String,
+    pub table_search: String,
 }
 
 #[allow(dead_code)] // consumers: the Data Sync window track (T268, not landed yet)
 impl DataSyncWizardState {
     /// `useDataSyncWizardState()`: the nine seeds.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             sync_options: SyncOptions::default(),
             mapping_results: Vec::new(),
@@ -118,47 +118,47 @@ impl DataSyncWizardState {
     }
 
     /// `setSyncOptions(options)`.
-    pub(crate) fn set_sync_options(&mut self, options: SyncOptions) {
+    pub fn set_sync_options(&mut self, options: SyncOptions) {
         self.sync_options = options;
     }
 
     /// `setMappingResults(results)`.
-    pub(crate) fn set_mapping_results(&mut self, results: Vec<DataSyncTableResult>) {
+    pub fn set_mapping_results(&mut self, results: Vec<DataSyncTableResult>) {
         self.mapping_results = results;
     }
 
     /// `setDisabledTables(disabled)`.
-    pub(crate) fn set_disabled_tables(&mut self, disabled: HashSet<String>) {
+    pub fn set_disabled_tables(&mut self, disabled: HashSet<String>) {
         self.disabled_tables = disabled;
     }
 
     /// `setStep(step)`.
-    pub(crate) fn set_step(&mut self, step: WizardStep) {
+    pub fn set_step(&mut self, step: WizardStep) {
         self.step = step;
     }
 
     /// `setInspectionComplete(complete)`.
-    pub(crate) fn set_inspection_complete(&mut self, complete: bool) {
+    pub fn set_inspection_complete(&mut self, complete: bool) {
         self.inspection_complete = complete;
     }
 
     /// `setSyncState(state)`.
-    pub(crate) fn set_sync_state(&mut self, state: SyncState) {
+    pub fn set_sync_state(&mut self, state: SyncState) {
         self.sync_state = state;
     }
 
     /// `setSelectedTableKey(key)` — `null` clears it.
-    pub(crate) fn set_selected_table_key(&mut self, key: Option<String>) {
+    pub fn set_selected_table_key(&mut self, key: Option<String>) {
         self.selected_table_key = key;
     }
 
     /// `setTableFilter(filter)`.
-    pub(crate) fn set_table_filter(&mut self, filter: TableDiffFilter) {
+    pub fn set_table_filter(&mut self, filter: TableDiffFilter) {
         self.table_filter = filter;
     }
 
     /// `setTableSearch(search)`.
-    pub(crate) fn set_table_search(&mut self, search: impl Into<String>) {
+    pub fn set_table_search(&mut self, search: impl Into<String>) {
         self.table_search = search.into();
     }
 
@@ -167,7 +167,7 @@ impl DataSyncWizardState {
     /// state. The options, the step and the search box survive; a fresh
     /// inspection starts from `DEFAULT_SYNC_OPTIONS`-shaped options only
     /// because the window re-seeds them explicitly when it starts a sync.
-    pub(crate) fn reset_compare_state(&mut self) {
+    pub fn reset_compare_state(&mut self) {
         self.mapping_results = Vec::new();
         self.disabled_tables = HashSet::new();
         self.inspection_complete = false;
@@ -187,4 +187,4 @@ impl Default for DataSyncWizardState {
 /// named the way the window track's props spell it (T408). Rust already
 /// has the concrete type (this module's [`DataSyncWizardState`]); the
 /// alias keeps the React-side name reachable without a second mirror.
-pub(crate) type DataSyncWizardStateOfHook = DataSyncWizardState;
+pub type DataSyncWizardStateOfHook = DataSyncWizardState;

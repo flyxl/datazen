@@ -15,17 +15,17 @@
 
 use crate::ai_store::AiStore;
 
-pub(crate) const DELETE_WHILE_STREAMING: &str = "Cannot delete a conversation while it is streaming.";
-pub(crate) const PERSIST_FAILED: &str = "AI session backend write failed";
+pub const DELETE_WHILE_STREAMING: &str = "Cannot delete a conversation while it is streaming.";
+pub const PERSIST_FAILED: &str = "AI session backend write failed";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ToolCall {
+pub struct ToolCall {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ChatMessage {
+pub struct ChatMessage {
     pub id: String,
     pub role: String,
     pub content: String,
@@ -36,7 +36,7 @@ pub(crate) struct ChatMessage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct LoadedSkill {
+pub struct LoadedSkill {
     pub id: String,
     pub name: String,
     pub source: Option<String>,
@@ -44,7 +44,7 @@ pub(crate) struct LoadedSkill {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ChatSession {
+pub struct ChatSession {
     pub id: String,
     pub session_key: String,
     pub connection_id: Option<String>,
@@ -64,19 +64,19 @@ pub(crate) struct ChatSession {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ChatSessionSummary {
+pub struct ChatSessionSummary {
     pub id: String,
     pub title: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct MemoryCandidateNotice {
+pub struct MemoryCandidateNotice {
     pub request_id: String,
     pub count: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RestoredChat {
+pub struct RestoredChat {
     pub session: ChatSession,
     pub summaries: Vec<ChatSessionSummary>,
     pub migration_error: Option<String>,
@@ -84,14 +84,14 @@ pub(crate) struct RestoredChat {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ChatFollowUp {
+pub enum ChatFollowUp {
     /// Host runs `persistChatSession` on the current session.
     Persist,
     None,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SendChat {
+pub struct SendChat {
     pub request_id: String,
     pub loaded_skill_ids: Vec<String>,
     pub follow_up: ChatFollowUp,
@@ -100,7 +100,7 @@ pub(crate) struct SendChat {
 impl AiStore {
     /// `initChatSession` up to the restore. Returns the token the host must
     /// pass back to [`AiStore::complete_init_chat`].
-    pub(crate) fn begin_init_chat(&mut self, initial: ChatSession) -> u64 {
+    pub fn begin_init_chat(&mut self, initial: ChatSession) -> u64 {
         self.chat_init_token += 1;
         let baseline = initial.messages.len();
         self.init_message_baseline = Some(baseline);
@@ -116,7 +116,7 @@ impl AiStore {
 
     /// Apply a restore only when this init is still the latest one and the
     /// user has not started a stream or changed the message count.
-    pub(crate) fn complete_init_chat(&mut self, token: u64, restored: RestoredChat) -> bool {
+    pub fn complete_init_chat(&mut self, token: u64, restored: RestoredChat) -> bool {
         if token != self.chat_init_token {
             return false;
         }
@@ -138,7 +138,7 @@ impl AiStore {
     }
 
     /// `refreshChatSessions`. `false` when there is no session.
-    pub(crate) fn begin_refresh_sessions(&mut self) -> bool {
+    pub fn begin_refresh_sessions(&mut self) -> bool {
         if self.chat_session.is_none() {
             return false;
         }
@@ -147,18 +147,18 @@ impl AiStore {
         true
     }
 
-    pub(crate) fn complete_refresh_sessions(&mut self, summaries: Vec<ChatSessionSummary>) {
+    pub fn complete_refresh_sessions(&mut self, summaries: Vec<ChatSessionSummary>) {
         self.chat_sessions = summaries;
         self.session_history_loading = false;
     }
 
-    pub(crate) fn fail_refresh_sessions(&mut self, message: &str) {
+    pub fn fail_refresh_sessions(&mut self, message: &str) {
         self.session_history_loading = false;
         self.session_history_error = Some(message.to_owned());
     }
 
     /// `selectChatSession`. `false` with no state change when missing or streaming.
-    pub(crate) fn begin_select_session(&mut self) -> bool {
+    pub fn begin_select_session(&mut self) -> bool {
         match self.chat_session.as_ref() {
             Some(session) if !session.is_streaming => {}
             _ => return false,
@@ -169,19 +169,19 @@ impl AiStore {
         true
     }
 
-    pub(crate) fn complete_select_session(&mut self, session: ChatSession) -> ChatFollowUp {
+    pub fn complete_select_session(&mut self, session: ChatSession) -> ChatFollowUp {
         self.chat_session = Some(session);
         self.session_history_loading = false;
         ChatFollowUp::Persist
     }
 
-    pub(crate) fn fail_select_session(&mut self, message: &str) {
+    pub fn fail_select_session(&mut self, message: &str) {
         self.session_history_loading = false;
         self.session_history_error = Some(message.to_owned());
     }
 
     /// `newChatSession`. The host supplies the new id; scope and key are copied.
-    pub(crate) fn new_chat_session(&mut self, new_id: impl Into<String>) -> bool {
+    pub fn new_chat_session(&mut self, new_id: impl Into<String>) -> bool {
         let Some(current) = self.chat_session.as_ref() else {
             return false;
         };
@@ -212,7 +212,7 @@ impl AiStore {
 
     /// `deleteChatSession` before the persist call. Streaming refuses with
     /// the React error string and does not set loading.
-    pub(crate) fn begin_delete_session(&mut self) -> bool {
+    pub fn begin_delete_session(&mut self) -> bool {
         let Some(current) = self.chat_session.as_ref() else {
             return false;
         };
@@ -228,7 +228,7 @@ impl AiStore {
     /// Apply the delete. `error` is the persist result's error (None when ok).
     /// When the deleted id is the open session, the host's `replacement` is
     /// installed (React `createChatSession` of the same scope and key).
-    pub(crate) fn complete_delete_session(
+    pub fn complete_delete_session(
         &mut self,
         deleted_id: &str,
         ok: bool,
@@ -251,7 +251,7 @@ impl AiStore {
 
     /// `exportChatSession` failure. Success is a host download and does not
     /// change the store. `false` when there is no session.
-    pub(crate) fn fail_export_session(&mut self, message: &str) -> bool {
+    pub fn fail_export_session(&mut self, message: &str) -> bool {
         if self.chat_session.is_none() {
             return false;
         }
@@ -260,7 +260,7 @@ impl AiStore {
     }
 
     /// `sendChatMessage`. `None` when no session is open.
-    pub(crate) fn begin_send_chat(
+    pub fn begin_send_chat(
         &mut self,
         content: &str,
         message_id: impl Into<String>,
@@ -309,7 +309,7 @@ impl AiStore {
 
     /// The `catch` of `sendChatMessage`: stop the stream and append
     /// `Error: {message}` as a failed assistant message.
-    pub(crate) fn fail_send_chat(
+    pub fn fail_send_chat(
         &mut self,
         message: &str,
         error_message_id: impl Into<String>,
@@ -334,7 +334,7 @@ impl AiStore {
     }
 
     /// `clearChat`. `None` when there is no session.
-    pub(crate) fn clear_chat(&mut self) -> ChatFollowUp {
+    pub fn clear_chat(&mut self) -> ChatFollowUp {
         let Some(session) = self.chat_session.as_mut() else {
             return ChatFollowUp::None;
         };
@@ -347,12 +347,12 @@ impl AiStore {
         ChatFollowUp::Persist
     }
 
-    pub(crate) fn dismiss_memory_candidate_notice(&mut self) {
+    pub fn dismiss_memory_candidate_notice(&mut self) {
         self.memory_candidate_notice = None;
     }
 
     /// Persist callback. `None` error on failure uses [`PERSIST_FAILED`].
-    pub(crate) fn note_persist_result(&mut self, ok: bool, error: Option<&str>) {
+    pub fn note_persist_result(&mut self, ok: bool, error: Option<&str>) {
         if ok {
             return;
         }
@@ -385,7 +385,7 @@ fn skill_ids(skills: &[LoadedSkill]) -> Vec<String> {
 
 /// The message `sendChatMessage` appends. A trailing `ask_questions` tool
 /// call makes it a tool result; every other shape is a user message.
-pub(crate) fn outgoing_message(
+pub fn outgoing_message(
     last: Option<&ChatMessage>,
     content: &str,
     id: &str,

@@ -28,7 +28,7 @@
 
 /// The leaf's mirror of the relay's scalar (React's hook output).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct KvSlotSelectedKeyState {
+pub struct KvSlotSelectedKeyState {
     /// The relay's latest answer: the selected key, or `None` while no
     /// relay exists (relational panel) / nothing is selected.
     selected_key: Option<String>,
@@ -37,13 +37,13 @@ pub(crate) struct KvSlotSelectedKeyState {
 impl KvSlotSelectedKeyState {
     /// `NO_SELECTED_KEY`: a leaf with no relay starts (and stays, until
     /// the host mounts one) at "no key".
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The hook's read: the selected key of the panel behind the
     /// relay, or `None`.
-    pub(crate) fn selected_key(&self) -> Option<&str> {
+    pub fn selected_key(&self) -> Option<&str> {
         self.selected_key.as_deref()
     }
 
@@ -51,7 +51,7 @@ impl KvSlotSelectedKeyState {
     /// fresh scalar. A `None` relay never fires — a delivered `None`
     /// is the "nothing selected" answer of a LIVE relay, which the
     /// read answers identically.
-    pub(crate) fn deliver(&mut self, key: Option<String>) {
+    pub fn deliver(&mut self, key: Option<String>) {
         self.selected_key = key;
     }
 }

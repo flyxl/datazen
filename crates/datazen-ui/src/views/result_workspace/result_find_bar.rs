@@ -30,23 +30,23 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 
 const BAR_KEY: &str = "result-find-bar";
-pub(crate) const NEEDLE_KEY: &str = "result-find-needle";
-pub(crate) const COLUMN_KEY: &str = "result-find-column";
-pub(crate) const OPERATOR_KEY: &str = "result-find-operator";
-pub(crate) const MATCH_CASE_KEY: &str = "result-find-match-case";
-pub(crate) const COUNT_KEY: &str = "result-find-count";
-pub(crate) const CLOSE_KEY: &str = "result-find-close";
-pub(crate) const REPLACEMENT_KEY: &str = "result-find-replacement";
-pub(crate) const PLAN_COUNT_KEY: &str = "result-find-plan-count";
-pub(crate) const REPLACE_NEXT_KEY: &str = "result-find-replace-next";
-pub(crate) const REPLACE_ALL_KEY: &str = "result-find-replace-all";
-pub(crate) const ERROR_KEY: &str = "result-find-error";
-pub(crate) const BLOCKED_KEY: &str = "result-find-replace-blocked";
+pub const NEEDLE_KEY: &str = "result-find-needle";
+pub const COLUMN_KEY: &str = "result-find-column";
+pub const OPERATOR_KEY: &str = "result-find-operator";
+pub const MATCH_CASE_KEY: &str = "result-find-match-case";
+pub const COUNT_KEY: &str = "result-find-count";
+pub const CLOSE_KEY: &str = "result-find-close";
+pub const REPLACEMENT_KEY: &str = "result-find-replacement";
+pub const PLAN_COUNT_KEY: &str = "result-find-plan-count";
+pub const REPLACE_NEXT_KEY: &str = "result-find-replace-next";
+pub const REPLACE_ALL_KEY: &str = "result-find-replace-all";
+pub const ERROR_KEY: &str = "result-find-error";
+pub const BLOCKED_KEY: &str = "result-find-replace-blocked";
 
 /// React `ResultFindOperator`.
 #[allow(dead_code)] // contract mirror; consumed by the menu and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum FindOperator {
+pub enum FindOperator {
     #[default]
     Contains,
     NotContains,
@@ -57,10 +57,10 @@ pub(crate) enum FindOperator {
 impl FindOperator {
     /// React `ORDER = Object.keys(operatorLabel)` (insertion order).
     #[allow(dead_code)] // pure projection; consumed by the menu and tests.
-    pub(crate) const ALL: [Self; 4] = [Self::Contains, Self::NotContains, Self::Prefix, Self::Suffix];
+    pub const ALL: [Self; 4] = [Self::Contains, Self::NotContains, Self::Prefix, Self::Suffix];
 
     #[allow(dead_code)] // pure mapping; consumed by the menu and tests.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Contains => "contains",
             Self::NotContains => "notContains",
@@ -70,7 +70,7 @@ impl FindOperator {
     }
 
     #[allow(dead_code)] // pure mapping; consumed by the menu and tests.
-    pub(crate) fn label_key(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
             Self::Contains => "resultFind.operator.contains",
             Self::NotContains => "resultFind.operator.notContains",
@@ -84,20 +84,20 @@ impl FindOperator {
 /// value a replacement would write. The host owns the real write path.
 #[allow(dead_code)] // VM mirror; consumed by the replace actions and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PlanItemVm {
-    pub(crate) row: usize,
-    pub(crate) column: String,
-    pub(crate) value: String,
+pub struct PlanItemVm {
+    pub row: usize,
+    pub column: String,
+    pub value: String,
 }
 
 /// React `ResultFindQuery` plus the two inputs' current text.
 #[allow(dead_code)] // VM mirror; owned by the result-workspace host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ResultFindQueryVm {
-    pub(crate) needle: String,
-    pub(crate) column: Option<String>,
-    pub(crate) operator: FindOperator,
-    pub(crate) match_case: bool,
+pub struct ResultFindQueryVm {
+    pub needle: String,
+    pub column: Option<String>,
+    pub operator: FindOperator,
+    pub match_case: bool,
 }
 
 impl Default for ResultFindQueryVm {
@@ -114,22 +114,22 @@ impl Default for ResultFindQueryVm {
 /// React `ResultFindBarProps` as a cloneable VM.
 #[allow(dead_code)] // VM surface; owned by the result-workspace host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ResultFindBarVm {
-    pub(crate) columns: Vec<String>,
-    pub(crate) query: ResultFindQueryVm,
-    pub(crate) replacement: String,
-    pub(crate) matched_rows: usize,
-    pub(crate) total_rows: usize,
-    pub(crate) plan: Vec<PlanItemVm>,
-    pub(crate) can_replace: bool,
-    pub(crate) replace_reason: Option<String>,
+pub struct ResultFindBarVm {
+    pub columns: Vec<String>,
+    pub query: ResultFindQueryVm,
+    pub replacement: String,
+    pub matched_rows: usize,
+    pub total_rows: usize,
+    pub plan: Vec<PlanItemVm>,
+    pub can_replace: bool,
+    pub replace_reason: Option<String>,
     /// Whether a replace write is in flight (disables the write row, React's
     /// local `busy`).
-    pub(crate) busy: bool,
-    pub(crate) error: Option<String>,
+    pub busy: bool,
+    pub error: Option<String>,
     /// Rune-only dropdown state for the two selects.
-    pub(crate) column_open: bool,
-    pub(crate) operator_open: bool,
+    pub column_open: bool,
+    pub operator_open: bool,
 }
 
 impl Default for ResultFindBarVm {
@@ -154,7 +154,7 @@ impl Default for ResultFindBarVm {
 impl ResultFindBarVm {
     /// React `t('resultFind.matchCount', { matched, total })`.
     #[allow(dead_code)] // pure helper; pinned by the find-bar tests.
-    pub(crate) fn match_count_text(&self) -> String {
+    pub fn match_count_text(&self) -> String {
         t("resultFind.matchCount")
             .replace("{matched}", &self.matched_rows.to_string())
             .replace("{total}", &self.total_rows.to_string())
@@ -162,7 +162,7 @@ impl ResultFindBarVm {
 
     /// React `t('resultFind.planCount', { count })`.
     #[allow(dead_code)] // pure helper; pinned by the find-bar tests.
-    pub(crate) fn plan_count_text(&self) -> String {
+    pub fn plan_count_text(&self) -> String {
         t("resultFind.planCount").replace("{count}", &self.plan.len().to_string())
     }
 }
@@ -170,7 +170,7 @@ impl ResultFindBarVm {
 /// Every host intent the find bar can emit.
 #[allow(dead_code)] // host port; remove when the result host wires the bar.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum FindAction {
+pub enum FindAction {
     SetNeedle(String),
     SetColumn(Option<String>),
     SetOperator(FindOperator),
@@ -185,7 +185,7 @@ pub(crate) enum FindAction {
 
 /// Injected host port: actions plus the two text accessors the fields edit.
 #[allow(dead_code)] // host port; remove when the result host wires the bar.
-pub(crate) struct FindHostPort<S> {
+pub struct FindHostPort<S> {
     pub on_action: Option<Rc<dyn Fn(&mut S, FindAction) + 'static>>,
     pub needle_edit: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>>,
     pub replacement_edit: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>>,
@@ -234,7 +234,7 @@ fn option_row<S: 'static>(
 /// Build the find bar. All inputs are bound through `host` accessors; every
 /// change and replacement is a [`FindAction`], never a direct host call.
 #[allow(dead_code)] // view entry; remove when the result host wires the bar.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ResultFindBarVm,
     dark: bool,
     host: &FindHostPort<S>,

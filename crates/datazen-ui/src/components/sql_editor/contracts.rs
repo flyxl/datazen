@@ -34,7 +34,7 @@
 use crate::components::sql_editor::sql_namespace::SqlNamespace;
 
 /// React `SqlSchema` — the nested schema tree for SQL autocompletion.
-pub(crate) type SqlSchema = SqlNamespace;
+pub type SqlSchema = SqlNamespace;
 
 // ---------------------------------------------------------------------------
 // The drop payload (SchemaTree → editor drag-and-drop)
@@ -43,7 +43,7 @@ pub(crate) type SqlSchema = SqlNamespace;
 /// One dropped table reference (`{ tableName, schema? }`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // wired by the drop-extension task
-pub(crate) struct DroppedTableRef {
+pub struct DroppedTableRef {
     pub table_name: String,
     pub schema: Option<String>,
 }
@@ -51,7 +51,7 @@ pub(crate) struct DroppedTableRef {
 /// React `DroppedTablePayload` — the `onDropTable` payload.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // wired by the drop-extension task
-pub(crate) struct DroppedTablePayload {
+pub struct DroppedTablePayload {
     pub tables: Vec<DroppedTableRef>,
     /// Cross-connection drop validation.
     pub connection_id: Option<String>,
@@ -66,7 +66,7 @@ pub(crate) struct DroppedTablePayload {
 /// `executionStatus` from `contracts.ts`: `'idle' | 'running' | 'cancelling'`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) enum ExecutionStatus {
+pub enum ExecutionStatus {
     #[default]
     Idle,
     Running,
@@ -76,7 +76,7 @@ pub(crate) enum ExecutionStatus {
 /// `'unquoted' | 'always' | 'both'` from `contracts.ts`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) enum CompletionQuotePolicy {
+pub enum CompletionQuotePolicy {
     #[default]
     Unquoted,
     Always,
@@ -90,7 +90,7 @@ pub(crate) enum CompletionQuotePolicy {
 /// `onNavigateToTable`'s target (Mod+Click on a table name).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // wired by the navigation-extension task
-pub(crate) struct TableNavTarget {
+pub struct TableNavTarget {
     pub database: Option<String>,
     pub schema: Option<String>,
     pub name: String,
@@ -99,7 +99,7 @@ pub(crate) struct TableNavTarget {
 /// `onNavigateToStructure`'s target (Mod+Click on a column name).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // wired by the navigation-extension task
-pub(crate) struct StructureNavTarget {
+pub struct StructureNavTarget {
     pub database: Option<String>,
     pub schema: Option<String>,
     pub name: String,
@@ -110,7 +110,7 @@ pub(crate) struct StructureNavTarget {
 /// with the name.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // wired by the hover-extension task
-pub(crate) struct DdlNavTarget {
+pub struct DdlNavTarget {
     pub database: Option<String>,
     pub schema: Option<String>,
     pub name: String,
@@ -125,7 +125,7 @@ pub(crate) struct DdlNavTarget {
 /// CodeMirror's `SQLDialect` objects, as the engine's wiring enum.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // keyed by the highlight task; resolveCmDialect returns it
-pub(crate) enum CmSqlDialect {
+pub enum CmSqlDialect {
     PostgreSql,
     MySql,
     MariaSql,
@@ -136,7 +136,7 @@ pub(crate) enum CmSqlDialect {
 
 impl CmSqlDialect {
     /// The React import each arm maps to (`@codemirror/lang-sql`).
-    pub(crate) fn react_name(self) -> &'static str {
+    pub fn react_name(self) -> &'static str {
         match self {
             Self::PostgreSql => "PostgreSQL",
             Self::MySql => "MySQL",
@@ -165,7 +165,7 @@ fn cm_dialect_for(key: &str) -> Option<CmSqlDialect> {
 /// registry-resolved family (the host seam — plugins map via
 /// `sqlDialect`, e.g. kiwi → mysql), then StandardSQL. An absent db type
 /// is StandardSQL too.
-pub(crate) fn resolve_cm_dialect(db_type: Option<&str>, registry_family: Option<&str>) -> CmSqlDialect {
+pub fn resolve_cm_dialect(db_type: Option<&str>, registry_family: Option<&str>) -> CmSqlDialect {
     if let Some(db_type) = db_type {
         if let Some(dialect) = cm_dialect_for(db_type) {
             return dialect;
@@ -180,7 +180,7 @@ pub(crate) fn resolve_cm_dialect(db_type: Option<&str>, registry_family: Option<
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     #[test]

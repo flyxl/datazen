@@ -24,7 +24,7 @@ use rune::{el, icon, row, text, El};
 /// tier real call sites use (h-6 = 24px, T149's objects step).
 #[allow(dead_code)] // reusable base; remove when view callers land
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum SpinnerSize {
+pub enum SpinnerSize {
     Sm,
     #[default]
     Md,
@@ -46,7 +46,7 @@ impl SpinnerSize {
 /// Color tone.
 #[allow(dead_code)] // reusable base; remove when view callers land
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum SpinnerTone {
+pub enum SpinnerTone {
     #[default]
     Current,
     Accent,
@@ -56,14 +56,14 @@ pub(crate) enum SpinnerTone {
 /// Glyph stroke icon or ring-like arc.
 #[allow(dead_code)] // reusable base; remove when view callers land
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum SpinnerVariant {
+pub enum SpinnerVariant {
     #[default]
     Icon,
     Ring,
 }
 
 #[allow(dead_code)] // reusable base; remove when view callers land
-pub(crate) struct Spinner {
+pub struct Spinner {
     key: String,
     size: SpinnerSize,
     tone: SpinnerTone,
@@ -73,7 +73,7 @@ pub(crate) struct Spinner {
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 impl Spinner {
-    pub(crate) fn new(key: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             size: SpinnerSize::Md,
@@ -83,28 +83,28 @@ impl Spinner {
         }
     }
 
-    pub(crate) fn size(mut self, size: SpinnerSize) -> Self {
+    pub fn size(mut self, size: SpinnerSize) -> Self {
         self.size = size;
         self
     }
 
-    pub(crate) fn tone(mut self, tone: SpinnerTone) -> Self {
+    pub fn tone(mut self, tone: SpinnerTone) -> Self {
         self.tone = tone;
         self
     }
 
-    pub(crate) fn variant(mut self, variant: SpinnerVariant) -> Self {
+    pub fn variant(mut self, variant: SpinnerVariant) -> Self {
         self.variant = variant;
         self
     }
 
     /// Standalone/loading announcement label. When set, root is `role="progressbar"` with text.
-    pub(crate) fn label(mut self, label: impl Into<String>) -> Self {
+    pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let px = self.size.px();
         let color = match self.tone {

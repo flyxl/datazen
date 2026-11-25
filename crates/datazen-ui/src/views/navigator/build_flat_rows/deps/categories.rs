@@ -13,13 +13,13 @@ use super::super::inputs::DriverMeta;
 
 /// React `SchemaTreeCategoryDef` (id + labelKey; the icon lives view-side).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SchemaTreeCategory {
+pub struct SchemaTreeCategory {
     pub id: &'static str,
     pub label_key: &'static str,
 }
 
 /// React `BASE_CATEGORIES` — tables then views, always first.
-pub(crate) const BASE_CATEGORIES: [SchemaTreeCategory; 2] = [
+pub const BASE_CATEGORIES: [SchemaTreeCategory; 2] = [
     SchemaTreeCategory {
         id: "tables",
         label_key: "schemaTree.tables",
@@ -59,7 +59,7 @@ fn object_kind_category(kind: &str) -> Option<SchemaTreeCategory> {
 
 /// React `getCategoriesForDriver`: tables/views plus every object kind the
 /// driver supports; drivers with no object kinds get the base pair only.
-pub(crate) fn get_categories_for_driver(meta: Option<&DriverMeta>) -> Vec<SchemaTreeCategory> {
+pub fn get_categories_for_driver(meta: Option<&DriverMeta>) -> Vec<SchemaTreeCategory> {
     let mut cats: Vec<SchemaTreeCategory> = BASE_CATEGORIES.to_vec();
     let Some(meta) = meta else { return cats };
     for kind in &meta.supported_object_kinds {

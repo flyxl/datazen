@@ -7,12 +7,12 @@
 //! honest description of how React promises/timers map to immediate mode.
 
 #[allow(dead_code)] // T049; no host caller until the AI chat panel lands. Delete when it does.
-pub(crate) mod grant_state;
-pub(crate) mod session_cancel;
+pub mod grant_state;
+pub mod session_cancel;
 #[allow(dead_code)] // T133; consumer: AI chat panel (not landed). Delete when it lands.
-pub(crate) mod stream_registry;
+pub mod stream_registry;
 /// targetClaim.ts's wire contracts (T086's seam; segment 1's T162 owns the
 /// file formally — see the module doc). T162's version reuses the receipt and
 /// cancel types from the sibling state machines rather than duplicating them.
 #[allow(dead_code)] // T164/T162; consumer: AI chat panel claim wiring (not landed). Delete when it lands.
-pub(crate) mod target_claim;
+pub mod target_claim;

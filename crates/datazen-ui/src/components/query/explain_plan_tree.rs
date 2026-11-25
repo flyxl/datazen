@@ -55,12 +55,12 @@ use crate::ui::palette::code_palette;
 /// Node ids explicitly toggled away from their depth default. Empty means
 /// every node uses `depth < 2`.
 #[allow(dead_code)] // reusable component; wired by the Explain view track
-pub(crate) type ExpandOverrides = HashSet<String>;
+pub type ExpandOverrides = HashSet<String>;
 
 /// One `ExplainPlanNode` view model (React `types.ExplainPlanNode`).
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable component; wired by the Explain view track
-pub(crate) struct ExplainPlanNode {
+pub struct ExplainPlanNode {
     pub id: String,
     pub label: String,
     pub cost: Option<f64>,
@@ -72,7 +72,7 @@ pub(crate) struct ExplainPlanNode {
 
 /// React's `useState(depth < 2)` default.
 #[allow(dead_code)] // reusable component; wired by the Explain view track
-pub(crate) fn default_expanded(depth: u32) -> bool {
+pub fn default_expanded(depth: u32) -> bool {
     depth < 2
 }
 
@@ -80,13 +80,13 @@ pub(crate) fn default_expanded(depth: u32) -> bool {
 /// present in the override set. A node with no children is never rendered as
 /// expandable, but the answer is still well-defined for tests and callers.
 #[allow(dead_code)] // reusable component; wired by the Explain view track
-pub(crate) fn is_node_expanded(overrides: &ExpandOverrides, id: &str, depth: u32) -> bool {
+pub fn is_node_expanded(overrides: &ExpandOverrides, id: &str, depth: u32) -> bool {
     default_expanded(depth) ^ overrides.contains(id)
 }
 
 /// Flip one node's expansion in `S` without seeding the whole tree.
 #[allow(dead_code)] // reusable component; wired by the Explain view track
-pub(crate) fn toggle_node(overrides: &mut ExpandOverrides, id: impl Into<String>) {
+pub fn toggle_node(overrides: &mut ExpandOverrides, id: impl Into<String>) {
     let id = id.into();
     if !overrides.remove(&id) {
         overrides.insert(id);
@@ -98,7 +98,7 @@ type ToggleFn<S> = fn(&mut S, String);
 /// The explain plan tree. `read_overrides` and `toggle` locate the expansion
 /// state in the app's `S`; no expansion state is stored on this struct.
 #[allow(dead_code)] // reusable component; wired by the Explain view track
-pub(crate) struct ExplainPlanTree<S: 'static> {
+pub struct ExplainPlanTree<S: 'static> {
     key: String,
     plan_tree: Option<ExplainPlanNode>,
     read_overrides: fn(&S) -> &ExpandOverrides,
@@ -107,7 +107,7 @@ pub(crate) struct ExplainPlanTree<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by the Explain view track
 impl<S: 'static> ExplainPlanTree<S> {
-    pub(crate) fn new(
+    pub fn new(
         plan_tree: Option<ExplainPlanNode>,
         read_overrides: fn(&S) -> &ExpandOverrides,
         toggle: ToggleFn<S>,
@@ -122,13 +122,13 @@ impl<S: 'static> ExplainPlanTree<S> {
 
     /// Override the key prefix (two trees can then share one state slot safely
     /// only if their node ids differ; ids are otherwise the identity).
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
 
     /// Builds the tree, or `el()` (nothing) when there is no plan.
-    pub(crate) fn build(self, s: &S, dark: bool) -> El {
+    pub fn build(self, s: &S, dark: bool) -> El {
         let Some(root) = self.plan_tree else {
             return el();
         };

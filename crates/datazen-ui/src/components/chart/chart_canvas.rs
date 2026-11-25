@@ -34,21 +34,21 @@ use rune::{col, text, El, Tx};
 use crate::ui::kit::kit;
 
 /// Outer padded container, mirroring React `absolute inset-0` + `p-4`/`p-1`.
-pub(crate) const CANVAS_KEY: &str = "chart-canvas";
+pub const CANVAS_KEY: &str = "chart-canvas";
 /// The measured chart viewport, Rune's `ResponsiveContainer` (width/height 100%).
-pub(crate) const CANVAS_CONTAINER_KEY: &str = "chart-canvas-container";
+pub const CANVAS_CONTAINER_KEY: &str = "chart-canvas-container";
 
 /// Padding for a standalone canvas (React `p-4` = 16pt).
-pub(crate) const PAD_FULL: f32 = 16.0;
+pub const PAD_FULL: f32 = 16.0;
 /// Padding for a compact tile (React `p-1` = 4pt).
-pub(crate) const PAD_COMPACT: f32 = 4.0;
+pub const PAD_COMPACT: f32 = 4.0;
 
 // ---- View models mirroring `packages/frontend/src/types/chart.ts` ----------
 
 /// Mirror of `ChartType`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
-pub(crate) enum ChartType {
+pub enum ChartType {
     Bar,
     Line,
     Pie,
@@ -58,7 +58,7 @@ pub(crate) enum ChartType {
 
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
 impl ChartType {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Bar => "bar",
             Self::Line => "line",
@@ -70,7 +70,7 @@ impl ChartType {
 
     /// Parse a TS `ChartType` string; unknown values fall back to the React
     /// default (`bar`) so a malformed payload cannot select a phantom renderer.
-    pub(crate) fn from_str(value: &str) -> Self {
+    pub fn from_str(value: &str) -> Self {
         match value {
             "line" => Self::Line,
             "pie" => Self::Pie,
@@ -93,7 +93,7 @@ impl ChartType {
 
 /// Every renderer the dispatcher knows about, in React declaration order.
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
-pub(crate) const ALL_CHART_TYPES: [ChartType; 5] = [
+pub const ALL_CHART_TYPES: [ChartType; 5] = [
     ChartType::Bar,
     ChartType::Line,
     ChartType::Pie,
@@ -102,7 +102,7 @@ pub(crate) const ALL_CHART_TYPES: [ChartType; 5] = [
 ];
 
 /// Stable marker key for the placeholder note of a given chart type.
-pub(crate) fn renderer_note_key(chart_type: ChartType) -> &'static str {
+pub fn renderer_note_key(chart_type: ChartType) -> &'static str {
     match chart_type {
         ChartType::Bar => "chart-renderer-note-bar",
         ChartType::Line => "chart-renderer-note-line",
@@ -115,7 +115,7 @@ pub(crate) fn renderer_note_key(chart_type: ChartType) -> &'static str {
 /// Mirror of `AggregationType`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
-pub(crate) enum AggregationType {
+pub enum AggregationType {
     None,
     Sum,
     Avg,
@@ -143,7 +143,7 @@ impl AggregationType {
 /// Mirror of `InferredFieldType`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
-pub(crate) enum InferredFieldType {
+pub enum InferredFieldType {
     Numeric,
     Datetime,
     Categorical,
@@ -155,18 +155,18 @@ pub(crate) enum InferredFieldType {
 /// scalar cells; nested/unknown JSON does not cross into the Rune VM).
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
-pub(crate) struct ChartField {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
-    pub(crate) inferred_type: InferredFieldType,
-    pub(crate) distinct_count: Option<u64>,
-    pub(crate) sample_values: Vec<ChartValue>,
+pub struct ChartField {
+    pub name: String,
+    pub data_type: String,
+    pub inferred_type: InferredFieldType,
+    pub distinct_count: Option<u64>,
+    pub sample_values: Vec<ChartValue>,
 }
 
 /// The value space of `ChartDataPoint` (`string | number | null`).
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
-pub(crate) enum ChartValue {
+pub enum ChartValue {
     Text(String),
     Number(f64),
     Null,
@@ -174,7 +174,7 @@ pub(crate) enum ChartValue {
 
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
 impl ChartValue {
-    pub(crate) fn as_display(&self) -> String {
+    pub fn as_display(&self) -> String {
         match self {
             Self::Text(s) => s.clone(),
             Self::Number(n) => n.to_string(),
@@ -187,36 +187,36 @@ impl ChartValue {
 /// A `BTreeMap` keeps field iteration deterministic (stable keys/order).
 #[derive(Clone, Debug, Default, PartialEq)]
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
-pub(crate) struct ChartDataPoint {
+pub struct ChartDataPoint {
     values: BTreeMap<String, ChartValue>,
 }
 
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
 impl ChartDataPoint {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             values: BTreeMap::new(),
         }
     }
 
-    pub(crate) fn with(mut self, key: impl Into<String>, value: ChartValue) -> Self {
+    pub fn with(mut self, key: impl Into<String>, value: ChartValue) -> Self {
         self.values.insert(key.into(), value);
         self
     }
 
-    pub(crate) fn insert(&mut self, key: impl Into<String>, value: ChartValue) {
+    pub fn insert(&mut self, key: impl Into<String>, value: ChartValue) {
         self.values.insert(key.into(), value);
     }
 
-    pub(crate) fn get(&self, key: &str) -> Option<&ChartValue> {
+    pub fn get(&self, key: &str) -> Option<&ChartValue> {
         self.values.get(key)
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.values.len()
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
 }
@@ -224,7 +224,7 @@ impl ChartDataPoint {
 /// Mirror of `ChartConfig['sortBy']`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
-pub(crate) enum ChartSort {
+pub enum ChartSort {
     XAsc,
     XDesc,
     YAsc,
@@ -248,19 +248,19 @@ impl ChartSort {
 /// Mirror of `ChartConfig`.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
-pub(crate) struct ChartConfig {
-    pub(crate) chart_type: ChartType,
-    pub(crate) x_axis: Option<String>,
-    pub(crate) y_axes: Vec<String>,
-    pub(crate) group_by: Option<String>,
-    pub(crate) aggregation: AggregationType,
-    pub(crate) sort_by: ChartSort,
-    pub(crate) show_legend: bool,
-    pub(crate) show_grid: bool,
-    pub(crate) show_values: bool,
-    pub(crate) color_scheme: String,
-    pub(crate) time_domain: Option<[f64; 2]>,
-    pub(crate) time_ticks: Vec<f64>,
+pub struct ChartConfig {
+    pub chart_type: ChartType,
+    pub x_axis: Option<String>,
+    pub y_axes: Vec<String>,
+    pub group_by: Option<String>,
+    pub aggregation: AggregationType,
+    pub sort_by: ChartSort,
+    pub show_legend: bool,
+    pub show_grid: bool,
+    pub show_values: bool,
+    pub color_scheme: String,
+    pub time_domain: Option<[f64; 2]>,
+    pub time_ticks: Vec<f64>,
 }
 
 /// Mirror of React `DEFAULT_CHART_CONFIG`.
@@ -287,7 +287,7 @@ impl Default for ChartConfig {
 #[allow(dead_code)] // reusable VM; consumed by the chart-view track
 impl ChartConfig {
     /// Set the chart type (builder for tests and the future view track).
-    pub(crate) fn chart_type(mut self, chart_type: ChartType) -> Self {
+    pub fn chart_type(mut self, chart_type: ChartType) -> Self {
         self.chart_type = chart_type;
         self
     }
@@ -298,35 +298,35 @@ impl ChartConfig {
 /// Everything a renderer needs to build its element. Kept generic over the app
 /// state `S` so a real renderer can attach `on_data_point_click` callbacks.
 #[allow(dead_code)] // reusable API; consumed by the chart-view track
-pub(crate) struct ChartRenderContext<'a, S: 'static> {
-    pub(crate) data: &'a [ChartDataPoint],
-    pub(crate) config: &'a ChartConfig,
-    pub(crate) compact: bool,
-    pub(crate) dark: bool,
-    pub(crate) on_data_point_click: Option<Rc<dyn Fn(&mut S, usize) + 'static>>,
+pub struct ChartRenderContext<'a, S: 'static> {
+    pub data: &'a [ChartDataPoint],
+    pub config: &'a ChartConfig,
+    pub compact: bool,
+    pub dark: bool,
+    pub on_data_point_click: Option<Rc<dyn Fn(&mut S, usize) + 'static>>,
 }
 
 /// The renderer abstraction selected by `config.chart_type`.
 #[allow(dead_code)] // reusable API; consumed by the chart-view track
-pub(crate) trait ChartRenderer<S: 'static> {
+pub trait ChartRenderer<S: 'static> {
     fn render(&self, ctx: &ChartRenderContext<'_, S>) -> El;
 }
 
 /// A factory the canvas calls once per build to obtain the renderer for the
 /// selected chart type. Inject the real renderers here later.
-pub(crate) type RendererFactory<S> =
+pub type RendererFactory<S> =
     dyn Fn(ChartType) -> Box<dyn ChartRenderer<S> + 'static> + 'static;
 
 /// Honest placeholder for an unported chart engine. Renders only a note with a
 /// stable marker key; no fake bars/lines/points.
 #[allow(dead_code)] // reusable API; consumed by the chart-view track
-pub(crate) struct PlaceholderChartRenderer {
+pub struct PlaceholderChartRenderer {
     chart_type: ChartType,
 }
 
 #[allow(dead_code)] // reusable API; consumed by the chart-view track
 impl PlaceholderChartRenderer {
-    pub(crate) fn new(chart_type: ChartType) -> Self {
+    pub fn new(chart_type: ChartType) -> Self {
         Self { chart_type }
     }
 }
@@ -353,7 +353,7 @@ impl<S: 'static> ChartRenderer<S> for PlaceholderChartRenderer {
 }
 
 /// Default factory: every chart type gets its honest placeholder.
-pub(crate) fn placeholder_renderer<S: 'static>(chart_type: ChartType) -> Box<dyn ChartRenderer<S>> {
+pub fn placeholder_renderer<S: 'static>(chart_type: ChartType) -> Box<dyn ChartRenderer<S>> {
     Box::new(PlaceholderChartRenderer::new(chart_type))
 }
 
@@ -361,7 +361,7 @@ pub(crate) fn placeholder_renderer<S: 'static>(chart_type: ChartType) -> Box<dyn
 
 /// The `ResponsiveContainer` equivalent plus the thin dispatcher.
 #[allow(dead_code)] // reusable API; wired by the chart-view track
-pub(crate) struct ChartCanvas<'a, S: 'static> {
+pub struct ChartCanvas<'a, S: 'static> {
     config: &'a ChartConfig,
     data: &'a [ChartDataPoint],
     dark: bool,
@@ -374,7 +374,7 @@ pub(crate) struct ChartCanvas<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable API; wired by the chart-view track
 impl<'a, S: 'static> ChartCanvas<'a, S> {
-    pub(crate) fn new(config: &'a ChartConfig, data: &'a [ChartDataPoint]) -> Self {
+    pub fn new(config: &'a ChartConfig, data: &'a [ChartDataPoint]) -> Self {
         Self {
             config,
             data,
@@ -387,37 +387,37 @@ impl<'a, S: 'static> ChartCanvas<'a, S> {
         }
     }
 
-    pub(crate) fn dark(mut self, dark: bool) -> Self {
+    pub fn dark(mut self, dark: bool) -> Self {
         self.dark = dark;
         self
     }
 
-    pub(crate) fn compact(mut self, compact: bool) -> Self {
+    pub fn compact(mut self, compact: bool) -> Self {
         self.compact = compact;
         self
     }
 
     /// Bound the viewport to an explicit height instead of filling the space
     /// the parent leaves. This is the tile/fixed-height case.
-    pub(crate) fn height(mut self, height: f32) -> Self {
+    pub fn height(mut self, height: f32) -> Self {
         self.height = Some(height);
         self
     }
 
-    pub(crate) fn on_data_point_click(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_data_point_click(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_data_point_click = Some(Rc::new(f));
         self
     }
 
     /// Observe the runtime-measured rect `[x, y, w, h]` of the viewport. This
     /// is the observable channel for "the container has a measurable rect".
-    pub(crate) fn on_measured(mut self, f: impl Fn(&mut S, [f32; 4]) + 'static) -> Self {
+    pub fn on_measured(mut self, f: impl Fn(&mut S, [f32; 4]) + 'static) -> Self {
         self.on_measured = Some(Rc::new(f));
         self
     }
 
     /// Inject the five concrete renderers later without touching this file.
-    pub(crate) fn renderer_factory(
+    pub fn renderer_factory(
         mut self,
         f: impl Fn(ChartType) -> Box<dyn ChartRenderer<S> + 'static> + 'static,
     ) -> Self {
@@ -425,7 +425,7 @@ impl<'a, S: 'static> ChartCanvas<'a, S> {
         self
     }
 
-    pub(crate) fn build(self) -> El {
+    pub fn build(self) -> El {
         let mut viewport = col()
             .key(CANVAS_CONTAINER_KEY)
             .w_full()

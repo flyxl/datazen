@@ -19,7 +19,7 @@ use crate::i18n::t;
 /// everything before it, the columns everything between it and the closing
 /// bracket. A label without `'.('` is a single-column target, interpolated
 /// as `{target}`.
-pub(crate) fn fk_jump_label(target_label: &str) -> String {
+pub fn fk_jump_label(target_label: &str) -> String {
     let Some(composite_at) = target_label.find(".(") else {
         return t("fkNav.jumpTo").replace("{target}", target_label);
     };
@@ -35,6 +35,6 @@ pub(crate) fn fk_jump_label(target_label: &str) -> String {
 
 /// `fkResolvingLabel`: the wording while the resolution of a target is in
 /// flight.
-pub(crate) fn fk_resolving_label() -> String {
+pub fn fk_resolving_label() -> String {
     t("fkNav.resolving").to_owned()
 }

@@ -35,7 +35,7 @@ use crate::commands::driver::{
 /// `HistorySort`: the history page's order.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum HistorySort {
+pub enum HistorySort {
     #[default]
     Recent,
     Oldest,
@@ -44,7 +44,7 @@ pub(crate) enum HistorySort {
 /// The query-assets / backend-client faces the shapers ride (plus the
 /// native invokes' command names).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum QueryMethod {
+pub enum QueryMethod {
     CancelQuery,
     ClearQueryHistory,
     GetQueryHistoryPage,
@@ -65,7 +65,7 @@ pub(crate) enum QueryMethod {
 
 impl QueryMethod {
     /// The wire name (the domain-client method or the invoke command).
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::CancelQuery => "cancel_query",
             Self::ClearQueryHistory => "clearQueryHistory",
@@ -89,7 +89,7 @@ impl QueryMethod {
 
 /// The shaped call: the method plus its payload (the host runs it).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct QueryRequest {
+pub struct QueryRequest {
     pub method: QueryMethod,
     pub value: Value,
 }
@@ -117,7 +117,7 @@ fn query_input(sql: &str, params: Option<&Value>) -> Value {
 /// `executeQuery`: the driver execute with `command: 'query'`, the
 /// statement's database/schema target, and the params-when-non-empty
 /// input. The answer is the driver's `data` (the host casts).
-pub(crate) fn execute_query_request(
+pub fn execute_query_request(
     db_session_id: &str,
     sql: &str,
     params: Option<&Value>,
@@ -135,7 +135,7 @@ pub(crate) fn execute_query_request(
 }
 
 /// `executeQueryStream`'s caller options.
-pub(crate) struct QueryStreamOptions<'a> {
+pub struct QueryStreamOptions<'a> {
     pub apply_result_limit: Option<bool>,
     pub record_history: Option<bool>,
     /// Database this stream reads from. Never a session `USE`.
@@ -148,7 +148,7 @@ pub(crate) struct QueryStreamOptions<'a> {
 
 /// `executeQueryStream`: the driver stream execute with `command:
 /// 'query_stream'` (the channel edge is the host's, T279's ruling).
-pub(crate) fn execute_query_stream_request(
+pub fn execute_query_stream_request(
     db_session_id: &str,
     sql: &str,
     options: &QueryStreamOptions<'_>,
@@ -165,7 +165,7 @@ pub(crate) fn execute_query_stream_request(
 }
 
 /// `cancelQuery`.
-pub(crate) fn cancel_query_request(db_session_id: &str, execution_id: &str) -> QueryRequest {
+pub fn cancel_query_request(db_session_id: &str, execution_id: &str) -> QueryRequest {
     QueryRequest::native(
         QueryMethod::CancelQuery,
         json!({ "dbSessionId": db_session_id, "executionId": execution_id }),
@@ -174,14 +174,14 @@ pub(crate) fn cancel_query_request(db_session_id: &str, execution_id: &str) -> Q
 
 /// `clearQueryHistory` (the token-carrying write): the host mints the
 /// `saveUserAsset` token first and passes it here.
-pub(crate) fn clear_query_history_request(token: &AiSubmissionTokenVm) -> QueryRequest {
+pub fn clear_query_history_request(token: &AiSubmissionTokenVm) -> QueryRequest {
     QueryRequest::native(QueryMethod::ClearQueryHistory, with_submission_token(json!({}), token))
 }
 
 /// `getQueryHistoryPage`'s predicates (every absent half reads null,
 /// the order defaults to `recent` — the wrapper's own fill-ins).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct QueryHistoryPageOptions {
+pub struct QueryHistoryPageOptions {
     pub limit: u64,
     pub connection_id: Option<String>,
     pub database: Option<String>,
@@ -195,7 +195,7 @@ pub(crate) struct QueryHistoryPageOptions {
 /// predicate applies BEFORE the page is cut, `total` covers the whole
 /// match set ("N of M", never "the page is everything"). The keys are
 /// always present (null when unset — the React `?? null` fill-ins).
-pub(crate) fn get_query_history_page_request(options: &QueryHistoryPageOptions) -> QueryRequest {
+pub fn get_query_history_page_request(options: &QueryHistoryPageOptions) -> QueryRequest {
     QueryRequest::native(
         QueryMethod::GetQueryHistoryPage,
         json!({
@@ -212,7 +212,7 @@ pub(crate) fn get_query_history_page_request(options: &QueryHistoryPageOptions) 
 
 /// `deleteQueryHistoryEntry` — removes one row; resolves to 0 when the
 /// id was already gone.
-pub(crate) fn delete_query_history_entry_request(
+pub fn delete_query_history_entry_request(
     id: &str,
     token: &AiSubmissionTokenVm,
 ) -> QueryRequest {
@@ -224,7 +224,7 @@ pub(crate) fn delete_query_history_entry_request(
 
 /// `saveSqlFile`: ask for a save path, then write `content` to it
 /// (resolves false when cancelled).
-pub(crate) fn save_sql_file_request(default_file_name: &str, content: &str) -> QueryRequest {
+pub fn save_sql_file_request(default_file_name: &str, content: &str) -> QueryRequest {
     QueryRequest::native(
         QueryMethod::SaveSqlFile,
         json!({ "defaultFileName": default_file_name, "content": content }),
@@ -232,7 +232,7 @@ pub(crate) fn save_sql_file_request(default_file_name: &str, content: &str) -> Q
 }
 
 /// `getFavoriteQueries`: the cached fast path.
-pub(crate) fn get_favorite_queries_request(connection_id: Option<&str>) -> QueryRequest {
+pub fn get_favorite_queries_request(connection_id: Option<&str>) -> QueryRequest {
     QueryRequest::native(
         QueryMethod::ListQueryFavorites,
         json!({ "connectionId": connection_id }),
@@ -240,7 +240,7 @@ pub(crate) fn get_favorite_queries_request(connection_id: Option<&str>) -> Query
 }
 
 /// `addFavoriteQuery` (the token-carrying write).
-pub(crate) fn add_favorite_query_request(
+pub fn add_favorite_query_request(
     connection_id: &str,
     title: &str,
     sql: &str,
@@ -256,7 +256,7 @@ pub(crate) fn add_favorite_query_request(
 }
 
 /// `deleteFavoriteQuery` (the token-carrying write).
-pub(crate) fn delete_favorite_query_request(id: &str, token: &AiSubmissionTokenVm) -> QueryRequest {
+pub fn delete_favorite_query_request(id: &str, token: &AiSubmissionTokenVm) -> QueryRequest {
     QueryRequest::native(
         QueryMethod::DeleteQueryFavorite,
         with_submission_token(json!({ "id": id }), token),
@@ -266,7 +266,7 @@ pub(crate) fn delete_favorite_query_request(id: &str, token: &AiSubmissionTokenV
 /// `getFavoritesRoot`: the resolved favorites directory, default or
 /// configured (the panel shows it so the user knows which folder to
 /// point a sync service at).
-pub(crate) fn get_favorites_root_request() -> QueryRequest {
+pub fn get_favorites_root_request() -> QueryRequest {
     QueryRequest::native(QueryMethod::GetFavoritesRoot, json!({}))
 }
 
@@ -275,7 +275,7 @@ pub(crate) fn get_favorites_root_request() -> QueryRequest {
 /// file a sync client wrote while the app was running. The
 /// `connectionId` key is ABSENT when unset (React passes the
 /// `undefined` straight through and JSON drops it).
-pub(crate) fn refresh_favorites_request(connection_id: Option<&str>) -> QueryRequest {
+pub fn refresh_favorites_request(connection_id: Option<&str>) -> QueryRequest {
     let value = match connection_id {
         Some(connection_id) => json!({ "connectionId": connection_id }),
         None => json!({}),
@@ -284,7 +284,7 @@ pub(crate) fn refresh_favorites_request(connection_id: Option<&str>) -> QueryReq
 }
 
 /// `beginSessionTransaction`.
-pub(crate) fn begin_session_transaction_request(db_session_id: &str) -> QueryRequest {
+pub fn begin_session_transaction_request(db_session_id: &str) -> QueryRequest {
     QueryRequest::native(
         QueryMethod::BeginSessionTransaction,
         json!({ "dbSessionId": db_session_id }),
@@ -292,7 +292,7 @@ pub(crate) fn begin_session_transaction_request(db_session_id: &str) -> QueryReq
 }
 
 /// `commitSessionTransaction`.
-pub(crate) fn commit_session_transaction_request(db_session_id: &str) -> QueryRequest {
+pub fn commit_session_transaction_request(db_session_id: &str) -> QueryRequest {
     QueryRequest::native(
         QueryMethod::CommitSessionTransaction,
         json!({ "dbSessionId": db_session_id }),
@@ -300,7 +300,7 @@ pub(crate) fn commit_session_transaction_request(db_session_id: &str) -> QueryRe
 }
 
 /// `rollbackSessionTransaction`.
-pub(crate) fn rollback_session_transaction_request(db_session_id: &str) -> QueryRequest {
+pub fn rollback_session_transaction_request(db_session_id: &str) -> QueryRequest {
     QueryRequest::native(
         QueryMethod::RollbackSessionTransaction,
         json!({ "dbSessionId": db_session_id }),
@@ -308,7 +308,7 @@ pub(crate) fn rollback_session_transaction_request(db_session_id: &str) -> Query
 }
 
 /// `sessionTransactionStatus`.
-pub(crate) fn session_transaction_status_request(db_session_id: &str) -> QueryRequest {
+pub fn session_transaction_status_request(db_session_id: &str) -> QueryRequest {
     QueryRequest::native(
         QueryMethod::SessionTransactionStatus,
         json!({ "dbSessionId": db_session_id }),
@@ -321,14 +321,14 @@ pub(crate) fn session_transaction_status_request(db_session_id: &str) -> QueryRe
 /// failed call reads "read-only", never "writable"). The request is
 /// the backend client's own shape; the port passes it through
 /// verbatim.
-pub(crate) fn resolve_result_origin_request(request: &Value) -> QueryRequest {
+pub fn resolve_result_origin_request(request: &Value) -> QueryRequest {
     QueryRequest::native(QueryMethod::ResolveResultOrigin, request.clone())
 }
 
 /// `previewResultCellChange`: the change plan for one edited cell —
 /// the preview renders the statement and executes nothing; the commit
 /// is a separate step, guarded by the plan's fingerprint.
-pub(crate) fn preview_result_cell_change_request(request: &Value) -> QueryRequest {
+pub fn preview_result_cell_change_request(request: &Value) -> QueryRequest {
     QueryRequest::native(QueryMethod::PreviewResultCellChange, request.clone())
 }
 

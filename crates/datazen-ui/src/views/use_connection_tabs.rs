@@ -29,33 +29,33 @@ use crate::i18n::t;
 /// Host-owned projection of the active-connection store entry for one id.
 #[allow(dead_code)] // VM mirror; supplied by the active-connection store.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ActiveConnectionSnapshot {
-    pub(crate) status: String,
-    pub(crate) db_session_id: Option<String>,
+pub struct ActiveConnectionSnapshot {
+    pub status: String,
+    pub db_session_id: Option<String>,
 }
 
 /// The hook's full host-owned state. `active_idx` is stored raw, matching
 /// React's `setActiveIdx` (an out-of-range index simply yields no active tab).
 #[allow(dead_code)] // VM surface; owned by the connection host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ConnectionTabsVm {
-    pub(crate) tabs: Vec<ConnectionTab>,
-    pub(crate) active_idx: usize,
-    pub(crate) pending_action: Option<String>,
+pub struct ConnectionTabsVm {
+    pub tabs: Vec<ConnectionTab>,
+    pub active_idx: usize,
+    pub pending_action: Option<String>,
     /// Connection ids whose connect is already in flight (React's ref set).
-    pub(crate) connecting: BTreeSet<String>,
+    pub connecting: BTreeSet<String>,
 }
 
 /// `activeTab = tabs[activeIdx] ?? null` — no clamping, no fallback to 0.
 #[allow(dead_code)] // pure projection; consumed by the host and tests.
-pub(crate) fn active_tab(vm: &ConnectionTabsVm) -> Option<&ConnectionTab> {
+pub fn active_tab(vm: &ConnectionTabsVm) -> Option<&ConnectionTab> {
     vm.tabs.get(vm.active_idx)
 }
 
 /// React's lazy `useState` initializer plus the effect that consumes the
 /// pending action once. A missing/invalid payload leaves an empty tab list.
 #[allow(dead_code)] // pure projection; consumed by the host and tests.
-pub(crate) fn bootstrap(consumed: Option<&ConsumedConnection>) -> ConnectionTabsVm {
+pub fn bootstrap(consumed: Option<&ConsumedConnection>) -> ConnectionTabsVm {
     match consumed {
         Some(consumed) => ConnectionTabsVm {
             tabs: vec![consumed.tab.clone()],
@@ -71,7 +71,7 @@ pub(crate) fn bootstrap(consumed: Option<&ConsumedConnection>) -> ConnectionTabs
 /// `connecting`, has no session, and this connection id is not already in
 /// flight. Returns indices in tab order.
 #[allow(dead_code)] // pure selection; consumed by the host and tests.
-pub(crate) fn pending_connect_indices(vm: &ConnectionTabsVm) -> Vec<usize> {
+pub fn pending_connect_indices(vm: &ConnectionTabsVm) -> Vec<usize> {
     vm.tabs
         .iter()
         .enumerate()
@@ -88,13 +88,13 @@ pub(crate) fn pending_connect_indices(vm: &ConnectionTabsVm) -> Vec<usize> {
 /// otherwise the host must mark it connecting and run the connect command.
 #[allow(dead_code)] // decision; remove when the connection host wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ConnectDecision {
+pub enum ConnectDecision {
     Reuse { db_session_id: String },
     Connect { connection_id: String, initial_database: Option<String> },
 }
 
 #[allow(dead_code)] // pure decision; consumed by the host and tests.
-pub(crate) fn connect_decision(
+pub fn connect_decision(
     existing: Option<&ActiveConnectionSnapshot>,
     tab: &ConnectionTab,
 ) -> ConnectDecision {
@@ -116,7 +116,7 @@ pub(crate) fn connect_decision(
 /// React's success path: mark the tab connected and clear its error. Every
 /// tab of the same connection id is updated, not just the active one.
 #[allow(dead_code)] // pure transition; consumed by the host and tests.
-pub(crate) fn apply_connected(
+pub fn apply_connected(
     tabs: &[ConnectionTab],
     connection_id: &str,
     db_session_id: &str,
@@ -141,13 +141,13 @@ pub(crate) fn apply_connected(
 /// the exact `backend.unknownError` key for an unknown thrown value.
 #[allow(dead_code)] // VM mirror; supplied by the connect command host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ConnectError {
+pub enum ConnectError {
     Message(String),
     Unknown,
 }
 
 #[allow(dead_code)] // pure helper; consumed by the failure transition.
-pub(crate) fn connect_error_message(error: &ConnectError) -> String {
+pub fn connect_error_message(error: &ConnectError) -> String {
     match error {
         ConnectError::Message(message) => message.clone(),
         ConnectError::Unknown => t("backend.unknownError").to_owned(),
@@ -156,7 +156,7 @@ pub(crate) fn connect_error_message(error: &ConnectError) -> String {
 
 /// React's failure path: mark every tab of that connection as `error`.
 #[allow(dead_code)] // pure transition; consumed by the host and tests.
-pub(crate) fn apply_failed(
+pub fn apply_failed(
     tabs: &[ConnectionTab],
     connection_id: &str,
     message: &str,
@@ -181,7 +181,7 @@ pub(crate) fn apply_failed(
 /// `datazen:connection-ready`: both ids are required; a partial payload is
 /// ignored (returns `None` — the host keeps the current list).
 #[allow(dead_code)] // pure transition; consumed by the host and tests.
-pub(crate) fn apply_cross_ready(
+pub fn apply_cross_ready(
     tabs: &[ConnectionTab],
     connection_id: Option<&str>,
     db_session_id: Option<&str>,
@@ -196,7 +196,7 @@ pub(crate) fn apply_cross_ready(
 /// `datazen:connection-failed`: only a connection id is required; a missing
 /// error text uses React's literal `'Unknown error'` (not an i18n key).
 #[allow(dead_code)] // pure transition; consumed by the host and tests.
-pub(crate) fn apply_cross_failed(
+pub fn apply_cross_failed(
     tabs: &[ConnectionTab],
     connection_id: Option<&str>,
     error: Option<&str>,
@@ -212,7 +212,7 @@ pub(crate) fn apply_cross_failed(
 /// `datazen:disconnect-requested`: a session id is required; every tab bound
 /// to that session is dropped (tabs of other sessions stay untouched).
 #[allow(dead_code)] // pure transition; consumed by the host and tests.
-pub(crate) fn apply_disconnect_requested(
+pub fn apply_disconnect_requested(
     tabs: &[ConnectionTab],
     db_session_id: Option<&str>,
 ) -> Option<Vec<ConnectionTab>> {
@@ -233,14 +233,14 @@ pub(crate) fn apply_disconnect_requested(
 /// React's `setActiveIdx` is a raw store write; the observed value is the
 /// index itself even when it points past the current tab list.
 #[allow(dead_code)] // pure transition; consumed by the host and tests.
-pub(crate) fn set_active_idx(vm: &mut ConnectionTabsVm, index: usize) {
+pub fn set_active_idx(vm: &mut ConnectionTabsVm, index: usize) {
     vm.active_idx = index;
 }
 
 /// The host's heartbeat tick selects exactly the connected tabs that hold a
 /// session. The 5-minute cadence and the ping command stay host concerns.
 #[allow(dead_code)] // pure selection; consumed by the host and tests.
-pub(crate) fn heartbeat_sessions(tabs: &[ConnectionTab]) -> Vec<String> {
+pub fn heartbeat_sessions(tabs: &[ConnectionTab]) -> Vec<String> {
     tabs.iter()
         .filter(|tab| tab.status == ConnectionStatus::Connected && !tab.db_session_id.is_empty())
         .map(|tab| tab.db_session_id.clone())
@@ -251,13 +251,13 @@ pub(crate) fn heartbeat_sessions(tabs: &[ConnectionTab]) -> Vec<String> {
 /// success transition uses.
 #[allow(dead_code)] // host port; remove when the connection host wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConnectionReadyEvent {
-    pub(crate) connection_id: String,
-    pub(crate) db_session_id: String,
+pub struct ConnectionReadyEvent {
+    pub connection_id: String,
+    pub db_session_id: String,
 }
 
 #[allow(dead_code)] // pure helper; consumed by the host and tests.
-pub(crate) fn ready_event(connection_id: &str, db_session_id: &str) -> ConnectionReadyEvent {
+pub fn ready_event(connection_id: &str, db_session_id: &str) -> ConnectionReadyEvent {
     ConnectionReadyEvent {
         connection_id: connection_id.to_owned(),
         db_session_id: db_session_id.to_owned(),

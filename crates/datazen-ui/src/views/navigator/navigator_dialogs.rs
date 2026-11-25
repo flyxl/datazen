@@ -41,18 +41,18 @@ const RENAME_GROUP: &str = "navigator-rename-group-dialog";
 /// for React's `objectFilterConn != null` gate.
 #[allow(dead_code)] // VM surface; owned by the navigator host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct NavigatorDialogsVm {
-    pub(crate) new_group_open: bool,
-    pub(crate) new_group_name: TextEdit,
-    pub(crate) renaming_group: Option<String>,
-    pub(crate) rename_value: TextEdit,
-    pub(crate) object_filter: ObjectFilterVm,
+pub struct NavigatorDialogsVm {
+    pub new_group_open: bool,
+    pub new_group_name: TextEdit,
+    pub renaming_group: Option<String>,
+    pub rename_value: TextEdit,
+    pub object_filter: ObjectFilterVm,
 }
 
 /// The intents a host must apply. Text is already trimmed, as in React.
 #[allow(dead_code)] // host port; remove when the navigator host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum NavigatorDialogsAction {
+pub enum NavigatorDialogsAction {
     CloseNewGroup,
     AddGroup(String),
     CloseRename,
@@ -134,7 +134,7 @@ fn footer_actions<S: 'static>(
 
 /// Compose every mounted dialog into `layer`. Closed dialogs mount nothing.
 #[allow(dead_code)] // consumer: the connection navigator host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &NavigatorDialogsVm,
     new_group_edit: Option<EditFn<S>>,
     rename_edit: Option<EditFn<S>>,

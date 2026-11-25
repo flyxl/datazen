@@ -101,7 +101,7 @@ const TEXT_XS_MEDIUM: TextStyle = TextStyle::new(12.0, 500.0);
 
 /// `MemorySection({ config })`: the section over the state, the host's
 /// connection list, and the action slots.
-pub(crate) struct MemorySection<'a, S: 'static> {
+pub struct MemorySection<'a, S: 'static> {
     state: &'a MemorySectionState,
     dark: bool,
     /// `now` — the host clock (the toggles' notices read it).
@@ -149,7 +149,7 @@ pub(crate) struct MemorySection<'a, S: 'static> {
 impl<'a, S: 'static> MemorySection<'a, S> {
     /// The section over the state and the three text lenses.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         state: &'a MemorySectionState,
         dark: bool,
         now: f64,
@@ -196,27 +196,27 @@ impl<'a, S: 'static> MemorySection<'a, S> {
 
     /// `toggleEnabled(next)` — the host runs the first-use gate then
     /// persists when it answers true.
-    pub(crate) fn on_toggle_enabled(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_toggle_enabled(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_toggle_enabled = Some(Rc::new(f));
         self
     }
     /// `confirmEnable`.
-    pub(crate) fn on_confirm_enable(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_enable(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_enable = Some(Rc::new(f));
         self
     }
     /// The first-use card's cancel.
-    pub(crate) fn on_cancel_enable(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_enable(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel_enable = Some(Rc::new(f));
         self
     }
     /// The auto-learn toggle's write.
-    pub(crate) fn on_set_auto_learn(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_set_auto_learn(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_set_auto_learn = Some(Rc::new(f));
         self
     }
     /// `setCloudPolicy`.
-    pub(crate) fn on_set_cloud_policy(
+    pub fn on_set_cloud_policy(
         mut self,
         f: impl Fn(&mut S, &'static str) + 'static,
     ) -> Self {
@@ -225,90 +225,90 @@ impl<'a, S: 'static> MemorySection<'a, S> {
     }
     /// The search box's debounced commit (the host notes the filter
     /// change).
-    pub(crate) fn on_search_commit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_search_commit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_search_commit = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_set_connection_filter(
+    pub fn on_set_connection_filter(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
         self.on_set_connection_filter = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_set_kind_filter(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_set_kind_filter(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_set_kind_filter = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_set_status_filter(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_set_status_filter(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_set_status_filter = Some(Rc::new(f));
         self
     }
     /// `refresh`.
-    pub(crate) fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_refresh = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_toggle_selected(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_selected(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_selected = Some(Rc::new(f));
         self
     }
     /// `toggleAll`.
-    pub(crate) fn on_toggle_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_all = Some(Rc::new(f));
         self
     }
     /// The edit form's save (`updateRow`).
-    pub(crate) fn on_update_row(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_update_row(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_update_row = Some(Rc::new(f));
         self
     }
     /// `confirmAll`.
-    pub(crate) fn on_confirm_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_all = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_delete_one(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_delete_one(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_delete_one = Some(Rc::new(f));
         self
     }
     /// `deleteSelected`.
-    pub(crate) fn on_delete_selected(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_delete_selected(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_delete_selected = Some(Rc::new(f));
         self
     }
     /// `mergeSelected`.
-    pub(crate) fn on_merge_selected(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_merge_selected(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_merge_selected = Some(Rc::new(f));
         self
     }
     /// One candidate's check button.
-    pub(crate) fn on_confirm_entry(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_confirm_entry(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_confirm_entry = Some(Rc::new(f));
         self
     }
     /// One candidate's X button.
-    pub(crate) fn on_reject_entry(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_reject_entry(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_reject_entry = Some(Rc::new(f));
         self
     }
     /// A stale row's mark-reviewed.
-    pub(crate) fn on_mark_reviewed(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_mark_reviewed(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_mark_reviewed = Some(Rc::new(f));
         self
     }
     /// The pencil press.
-    pub(crate) fn on_begin_edit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_begin_edit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_begin_edit = Some(Rc::new(f));
         self
     }
     /// The edit form's cancel.
-    pub(crate) fn on_cancel_edit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_edit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel_edit = Some(Rc::new(f));
         self
     }
     /// The export pair.
-    pub(crate) fn on_export(
+    pub fn on_export(
         mut self,
         f: impl Fn(&mut S, MemoryExportFormat) + 'static,
     ) -> Self {
@@ -316,7 +316,7 @@ impl<'a, S: 'static> MemorySection<'a, S> {
         self
     }
     /// A select's trigger press (the one-open-listbox rule).
-    pub(crate) fn on_select_toggle(
+    pub fn on_select_toggle(
         mut self,
         f: impl Fn(&mut S, MemorySelect) + 'static,
     ) -> Self {
@@ -324,13 +324,13 @@ impl<'a, S: 'static> MemorySection<'a, S> {
         self
     }
     /// Close the open listbox.
-    pub(crate) fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_close = Some(Rc::new(f));
         self
     }
 
     /// The section body.
-    pub(crate) fn build(self, layer: &mut Vec<El>) -> El {
+    pub fn build(self, layer: &mut Vec<El>) -> El {
         let dark = self.dark;
         let k = kit(dark);
 

@@ -26,31 +26,31 @@ use rune_kit::{Button, ButtonVariant, ControlSize};
 use crate::ui::copyable::CopyableError;
 use crate::ui::kit::kit;
 
-pub(crate) const ROOT_KEY: &str = "table-load-error";
-pub(crate) const TEXT_KEY: &str = "table-load-error-text";
-pub(crate) const RETRY_KEY: &str = "table-load-error-retry";
+pub const ROOT_KEY: &str = "table-load-error";
+pub const TEXT_KEY: &str = "table-load-error-text";
+pub const RETRY_KEY: &str = "table-load-error-retry";
 
 /// React props: the error, its already-translated retry label and the callback.
 #[allow(dead_code)] // VM mirror; remove when the host wires the state.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TableLoadErrorVm {
-    pub(crate) error: String,
-    pub(crate) retry_label: String,
+pub struct TableLoadErrorVm {
+    pub error: String,
+    pub retry_label: String,
 }
 
 /// The sole React callback (`onRetry`).
 #[allow(dead_code)] // host port; remove when the host wires the state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum LoadErrorAction {
+pub enum LoadErrorAction {
     Retry,
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the state.
-pub(crate) type LoadErrorActionFn<S> = Rc<dyn Fn(&mut S, LoadErrorAction) + 'static>;
+pub type LoadErrorActionFn<S> = Rc<dyn Fn(&mut S, LoadErrorAction) + 'static>;
 
 /// Build the error state into `layer`.
 #[allow(dead_code)] // view entry; remove when the host wires the state.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableLoadErrorVm,
     on_action: &Option<LoadErrorActionFn<S>>,
     dark: bool,

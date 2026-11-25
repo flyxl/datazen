@@ -56,7 +56,7 @@ use datazen_ui_api::WorkflowVariable;
 
 /// React's `workflowDefinitionToDraft` — the edit panel's draft over a
 /// persisted definition.
-pub(crate) fn workflow_definition_to_draft(workflow: &WorkflowDefinition) -> WorkflowDraft {
+pub fn workflow_definition_to_draft(workflow: &WorkflowDefinition) -> WorkflowDraft {
     WorkflowDraft {
         id: TextEdit::new(workflow.id.clone()),
         name: TextEdit::new(workflow.name.clone()),
@@ -168,7 +168,7 @@ fn base_step(kind: WorkflowStepType, id: String) -> WorkflowStep {
 
 /// React's `workflowDraftToDefinition` — the save path's definition over the
 /// editing draft.
-pub(crate) fn workflow_draft_to_definition(draft: &WorkflowDraft) -> WorkflowDefinition {
+pub fn workflow_draft_to_definition(draft: &WorkflowDraft) -> WorkflowDefinition {
     let steps = draft
         .steps
         .iter()

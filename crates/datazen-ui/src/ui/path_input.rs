@@ -28,14 +28,14 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 
 /// Marker: the browse picker has not been provided yet.
-pub(crate) struct NeedsBrowse;
+pub struct NeedsBrowse;
 /// Marker: the browse picker is set for state `S`.
-pub(crate) struct HasBrowse<S: 'static>(PhantomData<S>);
+pub struct HasBrowse<S: 'static>(PhantomData<S>);
 
 type EditBind<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit>;
 type Browse<S> = Rc<dyn Fn(&mut S)>;
 
-pub(crate) struct PathInput<'a, S: 'static, B> {
+pub struct PathInput<'a, S: 'static, B> {
     key: String,
     edit: &'a TextEdit,
     placeholder: Option<String>,
@@ -49,7 +49,7 @@ pub(crate) struct PathInput<'a, S: 'static, B> {
 
 impl<'a> PathInput<'a, (), NeedsBrowse> {
     /// A path input over `edit`. Call [`PathInput::on_browse`] before `build`.
-    pub(crate) fn new(key: impl Into<String>, edit: &'a TextEdit) -> Self {
+    pub fn new(key: impl Into<String>, edit: &'a TextEdit) -> Self {
         Self {
             key: key.into(),
             edit,
@@ -65,30 +65,30 @@ impl<'a> PathInput<'a, (), NeedsBrowse> {
 }
 
 impl<'a, S: 'static, B> PathInput<'a, S, B> {
-    pub(crate) fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.placeholder = Some(placeholder.into());
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
-    pub(crate) fn error(mut self, error: bool) -> Self {
+    pub fn error(mut self, error: bool) -> Self {
         self.error = error;
         self
     }
 
     /// Accessible name for the browse control (and input label) when no visible
     /// label names them.
-    pub(crate) fn label(mut self, label: impl Into<String>) -> Self {
+    pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
     }
 
     /// Set the required browse picker. Without this, `build` is unavailable.
-    pub(crate) fn on_browse<S2: 'static>(
+    pub fn on_browse<S2: 'static>(
         self,
         f: impl Fn(&mut S2) + 'static,
     ) -> PathInput<'a, S2, HasBrowse<S2>> {
@@ -109,7 +109,7 @@ impl<'a, S: 'static, B> PathInput<'a, S, B> {
 
 impl<'a, S: 'static> PathInput<'a, S, HasBrowse<S>> {
     /// Bind the edited text into app state for the browse state's type.
-    pub(crate) fn on_edit(
+    pub fn on_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -117,7 +117,7 @@ impl<'a, S: 'static> PathInput<'a, S, HasBrowse<S>> {
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let c = &k.c;
 

@@ -21,32 +21,32 @@
 
 /// React's `FeedbackKind` without the `null` arm.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SchemaDiffFeedbackKind {
+pub enum SchemaDiffFeedbackKind {
     Summary,
     Sql,
     Config,
 }
 
 /// The 2000ms feedback window (`window.setTimeout(…, 2000)`).
-pub(crate) const SCHEMA_DIFF_FEEDBACK_MS: i64 = 2_000;
+pub const SCHEMA_DIFF_FEEDBACK_MS: i64 = 2_000;
 
 /// The feedback state machine.
 #[derive(Default)]
-pub(crate) struct SchemaDiffClipboardFeedback {
+pub struct SchemaDiffClipboardFeedback {
     feedback: Option<SchemaDiffFeedbackKind>,
     clear_at_ms: Option<i64>,
 }
 
 impl SchemaDiffClipboardFeedback {
     /// `showFeedback(kind)`: set the kind and arm the 2000ms clear.
-    pub(crate) fn show(&mut self, kind: SchemaDiffFeedbackKind, now_ms: i64) {
+    pub fn show(&mut self, kind: SchemaDiffFeedbackKind, now_ms: i64) {
         self.feedback = Some(kind);
         self.clear_at_ms = Some(now_ms + SCHEMA_DIFF_FEEDBACK_MS);
     }
 
     /// The clock tick: a due deadline clears the feedback (the host calls
     /// this from its `wake_at`).
-    pub(crate) fn tick(&mut self, now_ms: i64) {
+    pub fn tick(&mut self, now_ms: i64) {
         if self.clear_at_ms.is_some_and(|clear_at| now_ms >= clear_at) {
             self.feedback = None;
             self.clear_at_ms = None;
@@ -54,18 +54,18 @@ impl SchemaDiffClipboardFeedback {
     }
 
     /// The active kind (`null` is `None`).
-    pub(crate) fn feedback(&self) -> Option<SchemaDiffFeedbackKind> {
+    pub fn feedback(&self) -> Option<SchemaDiffFeedbackKind> {
         self.feedback
     }
 
     /// The clear deadline the host should `wake_at` (when armed).
-    pub(crate) fn clear_at_ms(&self) -> Option<i64> {
+    pub fn clear_at_ms(&self) -> Option<i64> {
         self.clear_at_ms
     }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[doc(hidden)]  // exposed for integration tests
+pub mod tests {
     use super::*;
 
     #[test]

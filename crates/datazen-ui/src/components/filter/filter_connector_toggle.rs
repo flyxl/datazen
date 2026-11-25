@@ -38,13 +38,13 @@ use crate::ui::kit::kit;
 
 /// The connector in effect for one row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FilterConnector {
+pub enum FilterConnector {
     And,
     Or,
 }
 
 impl FilterConnector {
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             FilterConnector::And => t("filter.and"),
             FilterConnector::Or => t("filter.or"),
@@ -52,7 +52,7 @@ impl FilterConnector {
     }
 }
 
-pub(crate) struct FilterConnectorToggle {
+pub struct FilterConnectorToggle {
     key: String,
     index: usize,
     value: FilterConnector,
@@ -66,7 +66,7 @@ pub(crate) struct FilterConnectorToggle {
 impl FilterConnectorToggle {
     /// `index` is the row's `data-filter-index` in React; it is kept for the
     /// caller's bookkeeping and does not change the drawing.
-    pub(crate) fn new(
+    pub fn new(
         key: impl Into<String>,
         index: usize,
         value: FilterConnector,
@@ -84,35 +84,35 @@ impl FilterConnectorToggle {
     }
 
     /// Whether the row carries its own connector (React `explicit`).
-    pub(crate) fn explicit(mut self, explicit: bool) -> Self {
+    pub fn explicit(mut self, explicit: bool) -> Self {
         self.explicit = explicit;
         self
     }
 
     /// Whether the effective connector differs from the request wide logic.
-    pub(crate) fn differs_from_global(mut self, differs: bool) -> Self {
+    pub fn differs_from_global(mut self, differs: bool) -> Self {
         self.differs_from_global = differs;
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// Called when `AND` is pressed.
-    pub(crate) fn on_and<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_and<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_and = Some(Box::new(move |e: El| e.on_press(f)));
         self
     }
 
     /// Called when `OR` is pressed.
-    pub(crate) fn on_or<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_or<S: 'static>(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_or = Some(Box::new(move |e: El| e.on_press(f)));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let accent = k.c.text_accent;
         let muted = k.c.text_muted;

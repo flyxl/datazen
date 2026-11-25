@@ -3,7 +3,7 @@
 use crate::i18n::t;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TableView {
+pub enum TableView {
     #[default]
     Data,
     Ddl,
@@ -13,7 +13,7 @@ pub(crate) enum TableView {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum Section {
+pub enum Section {
     #[default]
     Connections,
     Workspace,
@@ -25,7 +25,7 @@ pub(crate) enum Section {
 }
 
 impl Section {
-    pub(crate) const ALL: [Self; 7] = [
+    pub const ALL: [Self; 7] = [
         Self::Connections,
         Self::Workspace,
         Self::Settings,
@@ -35,7 +35,7 @@ impl Section {
         Self::Wapps,
     ];
 
-    pub(crate) const fn key(self) -> &'static str {
+    pub const fn key(self) -> &'static str {
         match self {
             Self::Connections => "connections",
             Self::Workspace => "workspace",
@@ -47,7 +47,7 @@ impl Section {
         }
     }
 
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             // Align rail/main navigation labels with the React sidebar
             // (packages/frontend/src/windows/connection/WorkspaceModeSidebar.tsx).
@@ -65,7 +65,7 @@ impl Section {
 
 /// Which data tool the tools page shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum Tool {
+pub enum Tool {
     #[default]
     Sync,
     Compare,
@@ -75,7 +75,7 @@ pub(crate) enum Tool {
 
 /// A3: the panel shown in the query workspace's sidebar.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum QuerySidebarPanel {
+pub enum QuerySidebarPanel {
     #[default]
     Favorites,
     History,
@@ -83,13 +83,13 @@ pub(crate) enum QuerySidebarPanel {
 }
 
 impl QuerySidebarPanel {
-    pub(crate) const ALL: [QuerySidebarPanel; 3] = [
+    pub const ALL: [QuerySidebarPanel; 3] = [
         QuerySidebarPanel::Favorites,
         QuerySidebarPanel::History,
         QuerySidebarPanel::Snippets,
     ];
 
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             QuerySidebarPanel::Favorites => "Favorites",
             QuerySidebarPanel::History => "History",
@@ -100,7 +100,7 @@ impl QuerySidebarPanel {
 
 /// A5: how the result workspace presents query results.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ResultView {
+pub enum ResultView {
     #[default]
     Table,
     Chart,

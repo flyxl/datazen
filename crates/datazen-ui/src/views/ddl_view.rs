@@ -37,7 +37,7 @@ const COPIED_MS: u64 = 2000;
 /// The identity React passes to `fetchRelationDdl`.
 #[allow(dead_code)] // contract mirror; remove when the host panel store lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DdlIdentity {
+pub struct DdlIdentity {
     pub table_name: String,
     pub database: String,
     pub database_type: Option<String>,
@@ -47,7 +47,7 @@ pub(crate) struct DdlIdentity {
 /// The four `useState` values; `copied_until` is the host-owned deadline.
 #[allow(dead_code)] // VM surface; owned by the host until the panel store lands.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DdlViewState {
+pub struct DdlViewState {
     pub ddl: String,
     pub loading: bool,
     pub error: String,
@@ -57,7 +57,7 @@ pub(crate) struct DdlViewState {
 /// Host calls the view emits.
 #[allow(dead_code)] // host port; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DdlAction {
+pub enum DdlAction {
     Load,
     Copy,
 }
@@ -65,7 +65,7 @@ pub(crate) enum DdlAction {
 impl DdlViewState {
     /// React's effect prologue: clear both prior values and start the spinner.
     #[allow(dead_code)] // consumer: the DDL host (not landed); remove when wired.
-    pub(crate) fn begin_load(&mut self) {
+    pub fn begin_load(&mut self) {
         self.loading = true;
         self.error.clear();
         self.ddl.clear();
@@ -75,7 +75,7 @@ impl DdlViewState {
     /// empty or whitespace-only one, so every `Some(text)` is the DDL. Only a
     /// missing result (`None`) or a rejection is a failure. Both clear the spinner.
     #[allow(dead_code)] // consumer: the DDL host result feed (not landed); remove when wired.
-    pub(crate) fn apply_load(&mut self, result: Result<Option<String>, String>) {
+    pub fn apply_load(&mut self, result: Result<Option<String>, String>) {
         self.loading = false;
         match result {
             Ok(Some(text)) => {
@@ -94,7 +94,7 @@ impl DdlViewState {
     }
 
     /// React `copied` is true for 2000ms after a successful copy.
-    pub(crate) fn copied(&self, now: f64) -> bool {
+    pub fn copied(&self, now: f64) -> bool {
         self.copied_until.is_some_and(|until| now < until)
     }
 }
@@ -105,7 +105,7 @@ type CopyFn<S> = Rc<dyn Fn(&mut S, &mut Tx) + 'static>;
 /// Render the DDL view into `layer`. `root_key` is `ddl-view` for the standalone
 /// view and `db-object-ddl` when composed into T305's editor slot.
 #[allow(dead_code)] // consumer: connection_page / database_object composition.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     identity: &DdlIdentity,
     state: &DdlViewState,
     root_key: &str,
@@ -207,7 +207,7 @@ pub(crate) fn build<S: 'static>(
 /// Snapshot entry point for T305's `db-object-ddl` block: its own state machine
 /// already loaded the DDL, so only display/copy are wired here.
 #[allow(dead_code)] // consumer: database_object_view composition; remove when the SqlCodeBlock port lands.
-pub(crate) fn build_snapshot<S: 'static>(
+pub fn build_snapshot<S: 'static>(
     ddl: &str,
     on_copy: Option<CopyFn<S>>,
     dark: bool,

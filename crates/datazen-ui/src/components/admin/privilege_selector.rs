@@ -90,14 +90,14 @@ const GROUP_LABEL_GAP: f32 = 6.0;
 /// driver order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by the grant dialogs
-pub(crate) struct PrivilegeGroup {
+pub struct PrivilegeGroup {
     pub label: String,
     pub privileges: Vec<String>,
 }
 
 #[allow(dead_code)] // reusable component; wired by the grant dialogs
 impl PrivilegeGroup {
-    pub(crate) fn new(
+    pub fn new(
         label: impl Into<String>,
         privileges: impl IntoIterator<Item = impl Into<String>>,
     ) -> Self {
@@ -109,7 +109,7 @@ impl PrivilegeGroup {
 
     /// React's group key (`PrivilegeSelector.tsx:23`):
     /// the label, or `"default"` when the group has none.
-    pub(crate) fn key(&self) -> &str {
+    pub fn key(&self) -> &str {
         if self.label.is_empty() {
             "default"
         } else {
@@ -125,7 +125,7 @@ impl PrivilegeGroup {
 /// kept; a group with no privileges is dropped; a non-string label
 /// becomes `""`.
 #[allow(dead_code)] // reusable component; wired by the grant dialogs
-pub(crate) fn privilege_groups(input_schema: &Value) -> Vec<PrivilegeGroup> {
+pub fn privilege_groups(input_schema: &Value) -> Vec<PrivilegeGroup> {
     let Some(raw) = input_schema
         .get("x-datazen")
         .and_then(Value::as_object)
@@ -169,7 +169,7 @@ pub(crate) fn privilege_groups(input_schema: &Value) -> Vec<PrivilegeGroup> {
 /// empty ones (`privilegeGroups` already drops them at parse time; the
 /// filter keeps the rule true for groups built by hand, too).
 #[allow(dead_code)] // reusable component; wired by the grant dialogs
-pub(crate) fn visible_privilege_groups<'a>(
+pub fn visible_privilege_groups<'a>(
     groups: &'a [PrivilegeGroup],
 ) -> Vec<&'a PrivilegeGroup> {
     groups
@@ -183,7 +183,7 @@ pub(crate) fn visible_privilege_groups<'a>(
 /// `usePrivilegeOptions` returns as `all` for the callers'
 /// select-all / deselect-all buttons.
 #[allow(dead_code)] // reusable component; wired by the grant dialogs
-pub(crate) fn all_privileges(groups: &[PrivilegeGroup]) -> Vec<&str> {
+pub fn all_privileges(groups: &[PrivilegeGroup]) -> Vec<&str> {
     visible_privilege_groups(groups)
         .into_iter()
         .flat_map(|group| group.privileges.iter().map(String::as_str))
@@ -192,17 +192,17 @@ pub(crate) fn all_privileges(groups: &[PrivilegeGroup]) -> Vec<&str> {
 
 /// React's `selected.has(privilege)` on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the grant dialogs
-pub(crate) type IsPrivilegeSelectedFn<S> = fn(&S, &str) -> bool;
+pub type IsPrivilegeSelectedFn<S> = fn(&S, &str) -> bool;
 
 /// React's `onToggle(privilege)` on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the grant dialogs
-pub(crate) type TogglePrivilegeFn<S> = fn(&mut S, String);
+pub type TogglePrivilegeFn<S> = fn(&mut S, String);
 
 /// The privilege selector: one labelled section per group over a grid
 /// of checkbox rows. The host owns the groups and the selection; this
 /// component only renders them.
 #[allow(dead_code)] // reusable component; wired by the grant dialogs
-pub(crate) struct PrivilegeSelector<S: 'static> {
+pub struct PrivilegeSelector<S: 'static> {
     key: String,
     groups: Vec<PrivilegeGroup>,
     is_selected: IsPrivilegeSelectedFn<S>,
@@ -218,7 +218,7 @@ impl<S: 'static> PrivilegeSelector<S> {
     /// React `<PrivilegeSelector definition={…} selected={…}
     /// onToggle={…} />` with the definition already parsed (see
     /// [`privilege_groups`]).
-    pub(crate) fn new(
+    pub fn new(
         groups: Vec<PrivilegeGroup>,
         is_selected: IsPrivilegeSelectedFn<S>,
         on_toggle: TogglePrivilegeFn<S>,
@@ -240,35 +240,35 @@ impl<S: 'static> PrivilegeSelector<S> {
 
     /// Override the key prefix (two selectors in one dialog need
     /// distinct keys; the default is one fixed string).
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
 
     /// The grid's column count: React's `grid-cols-2` default,
     /// `grid-cols-3` in `PrivilegeView`.
-    pub(crate) fn columns(mut self, columns: usize) -> Self {
+    pub fn columns(mut self, columns: usize) -> Self {
         self.columns = columns;
         self
     }
 
     /// The grid's gap: React's `gap-2` default, `gap-1.5` in
     /// `PrivilegeView`.
-    pub(crate) fn grid_gap(mut self, grid_gap: f32) -> Self {
+    pub fn grid_gap(mut self, grid_gap: f32) -> Self {
         self.grid_gap = grid_gap;
         self
     }
 
     /// The item text size: React's `text-sm` (14pt) default,
     /// `text-[11px]` in `PrivilegeView`.
-    pub(crate) fn item_font_size(mut self, item_font_size: f32) -> Self {
+    pub fn item_font_size(mut self, item_font_size: f32) -> Self {
         self.item_font_size = item_font_size;
         self
     }
 
     /// The item's checkbox-to-name gap: React's `gap-2` default,
     /// `gap-1.5` in `PrivilegeView`.
-    pub(crate) fn item_gap(mut self, item_gap: f32) -> Self {
+    pub fn item_gap(mut self, item_gap: f32) -> Self {
         self.item_gap = item_gap;
         self
     }
@@ -277,7 +277,7 @@ impl<S: 'static> PrivilegeSelector<S> {
     /// order (`PrivilegeSelector.tsx:20–46`). No visible groups renders
     /// the empty root, as React returns `null` when `groups.length`
     /// is 0.
-    pub(crate) fn build(self, s: &S, dark: bool) -> El {
+    pub fn build(self, s: &S, dark: bool) -> El {
         let k = kit(dark);
         let mut root = col().key(self.key.clone()).w_full();
         for group in visible_privilege_groups(&self.groups) {

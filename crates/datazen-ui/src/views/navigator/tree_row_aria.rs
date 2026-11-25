@@ -31,12 +31,12 @@ use super::types::NavigatorRow;
 /// React `TREE_TOP_LEVEL` (`@datazen/ui` `tree/types.ts`): `aria-level` is
 /// 1-based while a painted depth is 0-based, so the two are never the same
 /// number.
-pub(crate) const TREE_TOP_LEVEL: usize = 1;
+pub const TREE_TOP_LEVEL: usize = 1;
 
 /// React `VirtualTreeItemAria` — what a tree row announces. `expanded` is
 /// `None` when the attribute is absent, which is not the same as `Some(false)`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct VirtualTreeItemAria {
+pub struct VirtualTreeItemAria {
     pub role: &'static str,
     pub level: usize,
     pub expanded: Option<bool>,
@@ -48,13 +48,13 @@ pub(crate) struct VirtualTreeItemAria {
 /// that declares a `level_depth` announces at `level_depth + 1`, which is how
 /// a tree whose parent row was filtered away still describes a real hierarchy
 /// instead of a hole.
-pub(crate) fn aria_level_of(row: &NavigatorRow) -> usize {
+pub fn aria_level_of(row: &NavigatorRow) -> usize {
     row.level_depth() + TREE_TOP_LEVEL
 }
 
 /// React `navigatorRowAria` — the ARIA for one row, or `None` for the two
 /// decoration variants (they stay out of the tree structure entirely).
-pub(crate) fn navigator_row_aria(row: &NavigatorRow) -> Option<VirtualTreeItemAria> {
+pub fn navigator_row_aria(row: &NavigatorRow) -> Option<VirtualTreeItemAria> {
     match row {
         NavigatorRow::Section { expanded, .. } | NavigatorRow::Group { expanded, .. } => {
             // The roots: there is no parent rung above them, so they announce
@@ -122,7 +122,7 @@ fn branch_aria(row: &NavigatorRow, level: usize, expanded: bool) -> VirtualTreeI
 /// connection has nothing to expand, and `aria-expanded` on it would offer the
 /// user a disclosure that does nothing. The chevron button and the treeitem
 /// both read this, which is why it is a function and not an inline ternary.
-pub(crate) fn connection_expanded_state(row: &NavigatorRow) -> Option<bool> {
+pub fn connection_expanded_state(row: &NavigatorRow) -> Option<bool> {
     let NavigatorRow::Connection { status, expanded, .. } = row else {
         return None;
     };
@@ -135,7 +135,7 @@ pub(crate) fn connection_expanded_state(row: &NavigatorRow) -> Option<bool> {
 
 /// React `isNavigatorBranch` — branch probe for the shared shell: does this
 /// row own a child list?
-pub(crate) fn is_navigator_branch(row: &NavigatorRow) -> bool {
+pub fn is_navigator_branch(row: &NavigatorRow) -> bool {
     match row {
         NavigatorRow::Section { .. }
         | NavigatorRow::Group { .. }

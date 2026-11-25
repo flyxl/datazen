@@ -53,11 +53,11 @@ use crate::ui::kit::kit;
 
 /// React line 6: `const MAX_NOTE_BYTES = 4 * 1024`.
 #[allow(dead_code)] // public VM surface; consumed by this module's build and the tests
-pub(crate) const MAX_NOTE_BYTES: usize = 4 * 1024;
+pub const MAX_NOTE_BYTES: usize = 4 * 1024;
 
 /// React line 48: `setTimeout(() => setSaved(false), 2000)`.
 #[allow(dead_code)] // public VM surface; consumed by AiNotesState::apply
-pub(crate) const SAVED_FEEDBACK_MS: u64 = 2000;
+pub const SAVED_FEEDBACK_MS: u64 = 2000;
 
 const ROOT_KEY: &str = "connection-ai-notes";
 const INPUT_KEY: &str = "connection-notes-input";
@@ -71,7 +71,7 @@ const SAVE_KEY: &str = "connection-notes-save";
 /// `epoch`. No default implementation is provided — inventing a command that
 /// pretends to persist notes would be a lie; the real binding is leftover L1.
 #[allow(dead_code)] // host-facing trait; implemented by the wiring in leftover L1
-pub(crate) trait NotesPort {
+pub trait NotesPort {
     /// React `aiCommands.connectionNotesGet(connectionId)`.
     fn get(&mut self, connection_id: &str, epoch: u64);
     /// React `aiCommands.connectionNotesSet(connectionId, content)`.
@@ -82,7 +82,7 @@ pub(crate) trait NotesPort {
 /// applies the answer as a [`NotesEvent`].
 #[allow(dead_code)] // VM surface; wired by the caller (leftover L1) and the tests
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum NotesAction {
+pub enum NotesAction {
     /// The component was laid out for `connection_id` for the first time.
     /// React's `useEffect` on `[connectionId]`.
     Mount { connection_id: String },
@@ -96,7 +96,7 @@ pub(crate) enum NotesAction {
 /// that asked for it; a mismatched delivery is a no-op.
 #[allow(dead_code)] // VM surface; delivered by the caller (leftover L1) and the tests
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum NotesEvent {
+pub enum NotesEvent {
     /// The `connectionNotesGet` promise settled.
     Loaded { epoch: u64, result: Result<String, String> },
     /// The `connectionNotesSet` promise settled.
@@ -108,25 +108,25 @@ pub(crate) enum NotesEvent {
 /// `mounted_for` so the mount effect fires once per connection).
 #[allow(dead_code)] // VM surface; mounted into AppState by leftover L1
 #[derive(Clone, Debug)]
-pub(crate) struct AiNotesState {
-    pub(crate) connection_id: String,
+pub struct AiNotesState {
+    pub connection_id: String,
     /// The textarea's value. `TextEdit::text` is a `String`, so `.len()` is the
     /// UTF-8 byte count React gets from `new TextEncoder().encode(content)`.
-    pub(crate) content: TextEdit,
-    pub(crate) loading: bool,
-    pub(crate) saving: bool,
+    pub content: TextEdit,
+    pub loading: bool,
+    pub saving: bool,
     /// Absolute clock deadline for the transient `common.success` label;
     /// `None` means "not currently saved".
-    pub(crate) saved_until: Option<f64>,
-    pub(crate) error: String,
+    pub saved_until: Option<f64>,
+    pub error: String,
     /// Bumped on mount/unmount; stale results are ignored.
-    pub(crate) epoch: u64,
+    pub epoch: u64,
     mounted_for: Option<String>,
 }
 
 #[allow(dead_code)] // test/initial-state convenience; wired by leftover L1
 impl AiNotesState {
-    pub(crate) fn new(connection_id: impl Into<String>) -> Self {
+    pub fn new(connection_id: impl Into<String>) -> Self {
         Self {
             connection_id: connection_id.into(),
             content: TextEdit::new(String::new()),
@@ -141,13 +141,13 @@ impl AiNotesState {
     }
 
     /// Whether the component should emit a mount load for `self.connection_id`.
-    pub(crate) fn needs_mount(&self) -> bool {
+    pub fn needs_mount(&self) -> bool {
         self.mounted_for.as_deref() != Some(self.connection_id.as_str())
     }
 
     /// React's effect body: fresh load, cleared error, new epoch, then the
     /// caller stages `port.get`. Returns the epoch the result must carry.
-    pub(crate) fn on_mount(&mut self, connection_id: &str) -> u64 {
+    pub fn on_mount(&mut self, connection_id: &str) -> u64 {
         self.connection_id = connection_id.to_owned();
         self.mounted_for = Some(connection_id.to_owned());
         self.epoch = self.epoch.wrapping_add(1);
@@ -161,7 +161,7 @@ impl AiNotesState {
 
     /// React's effect cleanup (`cancelled = true`). Bumping the epoch makes a
     /// late result harmless; the fields stay as they are until a new mount.
-    pub(crate) fn on_unmount(&mut self) {
+    pub fn on_unmount(&mut self) {
         self.epoch = self.epoch.wrapping_add(1);
         self.mounted_for = None;
     }
@@ -169,35 +169,35 @@ impl AiNotesState {
     /// React's `handleSave` prologue: clear the error and mark saving, returning
     /// the epoch the save result must carry. Call only after the guards in
     /// [`AiNotesState::can_save`] passed.
-    pub(crate) fn begin_save(&mut self) -> u64 {
+    pub fn begin_save(&mut self) -> u64 {
         self.error.clear();
         self.saving = true;
         self.epoch
     }
 
     /// React's `overLimit` plus the button's `disabled={saving || loading || overLimit}`.
-    pub(crate) fn can_save(&self) -> bool {
+    pub fn can_save(&self) -> bool {
         !self.over_limit() && !self.loading && !self.saving
     }
 
     /// `new TextEncoder().encode(content).length` — `String::len()` is UTF-8
     /// bytes, so a 4-byte emoji counts four and a 3-byte CJK ideograph three.
-    pub(crate) fn byte_len(&self) -> usize {
+    pub fn byte_len(&self) -> usize {
         self.content.text.len()
     }
 
-    pub(crate) fn over_limit(&self) -> bool {
+    pub fn over_limit(&self) -> bool {
         self.byte_len() > MAX_NOTE_BYTES
     }
 
     /// Whether the transient success label is showing.
-    pub(crate) fn saved(&self) -> bool {
+    pub fn saved(&self) -> bool {
         self.saved_until.is_some()
     }
 
     /// Apply a host result. Returns `true` when visible state changed. The
     /// success branch records the real deadline and arms a runtime wake.
-    pub(crate) fn apply(&mut self, event: NotesEvent, now: f64, tx: &mut Tx) -> bool {
+    pub fn apply(&mut self, event: NotesEvent, now: f64, tx: &mut Tx) -> bool {
         match event {
             NotesEvent::Loaded { epoch, result } => {
                 if epoch != self.epoch || self.mounted_for.is_none() {
@@ -232,7 +232,7 @@ impl AiNotesState {
     /// The deadline check half of the timed feedback. Called from the app poll;
     /// returns `true` when it actually cleared an expired deadline so the poll
     /// can ask for a redraw.
-    pub(crate) fn tick(&mut self, now: f64) -> bool {
+    pub fn tick(&mut self, now: f64) -> bool {
         if self.saved_until.is_some_and(|until| now >= until) {
             self.saved_until = None;
             true
@@ -249,7 +249,7 @@ type EditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 /// does. `edit` is an accessor for the textarea's `TextEdit` (kept inside the
 /// state slice) so rune can route typed keystrokes back into state.
 #[allow(dead_code)] // reusable component; mounted by leftover L1 and the tests
-pub(crate) struct ConnectionAiNotes<'a, S: 'static> {
+pub struct ConnectionAiNotes<'a, S: 'static> {
     state: &'a AiNotesState,
     edit: Option<EditFn<S>>,
     on_action: Option<ActionFn<S>>,
@@ -257,7 +257,7 @@ pub(crate) struct ConnectionAiNotes<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable component; mounted by leftover L1 and the tests
 impl<'a, S: 'static> ConnectionAiNotes<'a, S> {
-    pub(crate) fn new(state: &'a AiNotesState) -> Self {
+    pub fn new(state: &'a AiNotesState) -> Self {
         Self {
             state,
             edit: None,
@@ -267,7 +267,7 @@ impl<'a, S: 'static> ConnectionAiNotes<'a, S> {
 
     /// Accessor for the multiline `TextEdit` the textarea edits. Without it the
     /// field cannot take a caret (rune focuses a text input only through `on_edit`).
-    pub(crate) fn on_edit(
+    pub fn on_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -275,12 +275,12 @@ impl<'a, S: 'static> ConnectionAiNotes<'a, S> {
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, NotesAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, NotesAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let state = self.state;
         let bytes = state.byte_len();

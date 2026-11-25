@@ -135,7 +135,7 @@ const QUICK_LOOK_MIN_LENGTH: usize = 120;
 /// The columns the search box leaves visible: React's `filteredColumns`
 /// `useMemo` — an empty or blank query keeps every column, otherwise a
 /// case-insensitive substring test on the name.
-pub(crate) fn filtered_columns<'a>(columns: &'a [Column], query: &str) -> Vec<&'a Column> {
+pub fn filtered_columns<'a>(columns: &'a [Column], query: &str) -> Vec<&'a Column> {
     let needle = query.trim().to_lowercase();
     if needle.is_empty() {
         return columns.iter().collect();
@@ -148,37 +148,37 @@ pub(crate) fn filtered_columns<'a>(columns: &'a [Column], query: &str) -> Vec<&'
 
 /// React's `multiRow`: the bulk-edit badge shows when a row is selected and
 /// more than one row is in the selection.
-pub(crate) fn multi_row(row_index: Option<usize>, selected_rows: usize) -> bool {
+pub fn multi_row(row_index: Option<usize>, selected_rows: usize) -> bool {
     row_index.is_some() && selected_rows > 1
 }
 
 /// The badge text: `t('detail.editingRows', { count })` — the pack keeps the
 /// `{count}` placeholder and the caller formats it (the i18n module's rule).
-pub(crate) fn editing_rows_text(selected_rows: usize) -> String {
+pub fn editing_rows_text(selected_rows: usize) -> String {
     t("detail.editingRows").replace("{count}", &selected_rows.to_string())
 }
 
 /// One field's classification, React's `FieldRow` locals — the same verdicts
 /// the same inputs always produce.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FieldFacts {
+pub struct FieldFacts {
     /// `value === null || value === undefined` (`Value::Null` covers both).
-    pub(crate) is_null: bool,
+    pub is_null: bool,
     /// `type.includes('json') || isJsonValue(value)`.
-    pub(crate) is_json: bool,
+    pub is_json: bool,
     /// `isBlobType(type)` (the lowercased type name).
-    pub(crate) is_blob: bool,
+    pub is_blob: bool,
     /// `type.includes('text') || isJson || isBlob`.
-    pub(crate) is_long_text: bool,
+    pub is_long_text: bool,
     /// `isJson || isBlob || (typeof value === 'string' && value.length > 120)`.
-    pub(crate) can_quick_look: bool,
+    pub can_quick_look: bool,
     /// `isJson ? prettyJson(value) : null`.
-    pub(crate) pretty: Option<String>,
+    pub pretty: Option<String>,
 }
 
 /// React's `FieldRow` classification. `ty` is the raw column type; the type
 /// tests run on its lowercased form (`(column.type ?? '').toLowerCase()`).
-pub(crate) fn field_facts(ty: Option<&str>, value: &Value) -> FieldFacts {
+pub fn field_facts(ty: Option<&str>, value: &Value) -> FieldFacts {
     let type_lower = ty.unwrap_or_default().to_lowercase();
     let is_json = type_lower.contains("json") || is_json_value(value);
     let is_blob = is_blob_type(&type_lower);
@@ -204,7 +204,7 @@ pub(crate) fn field_facts(ty: Option<&str>, value: &Value) -> FieldFacts {
 /// 2. a presentation plan's `text` result (the T05 read path — consulted
 ///    only here, never by the editor);
 /// 3. `pretty ?? formatCell(value)` (pretty JSON, else the shared formatter).
-pub(crate) fn displayed_text(
+pub fn displayed_text(
     facts: &FieldFacts,
     value: &Value,
     plan: Option<&super::column_presentation_plan::ColumnPresentationPlan>,
@@ -223,7 +223,7 @@ pub(crate) fn displayed_text(
 /// The blob line's count: a string counts its length, anything else its
 /// formatted form (`typeof value === 'string' ? value.length :
 /// formatCell(value).length`). Code points, per the crate convention.
-pub(crate) fn blob_byte_count(value: &Value) -> usize {
+pub fn blob_byte_count(value: &Value) -> usize {
     match value {
         Value::String(text) => count_code_points(text),
         other => count_code_points(&format_cell(other)),
@@ -231,7 +231,7 @@ pub(crate) fn blob_byte_count(value: &Value) -> usize {
 }
 
 /// The blob line: `t('detail.blobData') · <n> t('detail.bytes')`.
-pub(crate) fn blob_line(value: &Value) -> String {
+pub fn blob_line(value: &Value) -> String {
     format!("{} · {} {}", t("detail.blobData"), blob_byte_count(value), t("detail.bytes"))
 }
 
@@ -241,7 +241,7 @@ pub(crate) fn blob_line(value: &Value) -> String {
 
 /// What the editor's commit does, React's `commit` callbacks in order.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum FieldCommit {
+pub enum FieldCommit {
     /// `trimmed === toEditString(value)` or `trimmed === '' && isNull` —
     /// nothing to commit.
     NoChange,
@@ -264,7 +264,7 @@ pub(crate) enum FieldCommit {
 /// * bool → `trimmed === 'true'`;
 /// * json → `JSON.parse(trimmed)`, the raw string when it does not parse;
 /// * otherwise the string itself.
-pub(crate) fn commit_field_edit(ty: &str, trimmed: &str, display: &str, value_is_null: bool) -> FieldCommit {
+pub fn commit_field_edit(ty: &str, trimmed: &str, display: &str, value_is_null: bool) -> FieldCommit {
     if trimmed == display {
         return FieldCommit::NoChange;
     }
@@ -319,7 +319,7 @@ pub(crate) fn commit_field_edit(ty: &str, trimmed: &str, display: &str, value_is
 /// `preventDefault`s it so the textarea keeps no newline), anything else is
 /// the editor's own typing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EditorKeyDecision {
+pub enum EditorKeyDecision {
     /// Escape: restore + cancel.
     Cancel,
     /// Enter on a single-line field: commit.
@@ -330,7 +330,7 @@ pub(crate) enum EditorKeyDecision {
 
 /// The decision for one key. Keys arrive as the host runtime reports them
 /// (the same `Key` enum the `on_key` handler set sees).
-pub(crate) fn editor_key_decision(key: &Key, is_long_text: bool) -> EditorKeyDecision {
+pub fn editor_key_decision(key: &Key, is_long_text: bool) -> EditorKeyDecision {
     match key {
         Key::Escape => EditorKeyDecision::Cancel,
         Key::Enter if !is_long_text => EditorKeyDecision::Commit,
@@ -347,47 +347,47 @@ pub(crate) fn editor_key_decision(key: &Key, is_long_text: bool) -> EditorKeyDec
 /// are per-frame inputs ([`DetailPanel`]); only the editable state lives
 /// here.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DetailPanelState {
+pub struct DetailPanelState {
     /// The search box's text (`query`).
-    pub(crate) query: TextEdit,
+    pub query: TextEdit,
     /// BUG-005's per-field edit state: a column name → its editor text. A
     /// field with no entry is in the display state (the default); entering
     /// the editor seeds it with `toEditString(value)` and leaving drops it,
     /// which is React's `useEffect` reset in the ownership world.
-    pub(crate) editing: BTreeMap<String, TextEdit>,
+    pub editing: BTreeMap<String, TextEdit>,
     /// Which column's Quick Look is open (`quickLookOpen`, per field);
     /// the dialog element itself awaits T378.
-    pub(crate) quick_look: Option<String>,
+    pub quick_look: Option<String>,
     /// Which column's presentation dialog is open (`presentationColumn`).
-    pub(crate) presentation_column: Option<String>,
+    pub presentation_column: Option<String>,
 }
 
 impl DetailPanelState {
     /// The empty drawer: no query, every field displaying, nothing open.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// BUG-005's "enter the editor": seed the field's local text with the
     /// value's edit form (React's `useState(display)` on mount — the local
     /// starts from the raw value, never the presented one).
-    pub(crate) fn enter_edit(&mut self, column: &str, value: &Value) {
+    pub fn enter_edit(&mut self, column: &str, value: &Value) {
         self.editing.insert(column.to_owned(), TextEdit::new(to_edit_string(value)));
     }
 
     /// BUG-005's "return to display": drop the field's local text. The next
     /// entry re-seeds it, which is the reset half of React's `useEffect`.
-    pub(crate) fn exit_edit(&mut self, column: &str) {
+    pub fn exit_edit(&mut self, column: &str) {
         self.editing.remove(column);
     }
 
     /// The field's editor text, if the field is editing.
-    pub(crate) fn field_editor(&self, column: &str) -> Option<&TextEdit> {
+    pub fn field_editor(&self, column: &str) -> Option<&TextEdit> {
         self.editing.get(column)
     }
 
     /// The search text as the filter reads it (the raw `TextEdit` string).
-    pub(crate) fn query_text(&self) -> &str {
+    pub fn query_text(&self) -> &str {
         &self.query.text
     }
 }
@@ -410,7 +410,7 @@ struct FieldRowInputs<'a> {
 /// The drawer, one per grid. Callers wire the per-frame data (row, columns,
 /// selection) plus the host callbacks; [`build`](DetailPanel::build) paints
 /// the aside and, when the presentation dialog is open, its layer element.
-pub(crate) struct DetailPanel<'a, S> {
+pub struct DetailPanel<'a, S> {
     state: &'a DetailPanelState,
     open: bool,
     columns: &'a [Column],
@@ -432,7 +432,7 @@ pub(crate) struct DetailPanel<'a, S> {
 
 impl<'a, S: 'static> DetailPanel<'a, S> {
     /// The drawer for `state`, closed until [`open`](DetailPanel::open).
-    pub(crate) fn new(state: &'a DetailPanelState) -> Self {
+    pub fn new(state: &'a DetailPanelState) -> Self {
         Self {
             state,
             open: false,
@@ -455,74 +455,74 @@ impl<'a, S: 'static> DetailPanel<'a, S> {
     }
 
     /// React `open`: `false` mounts nothing.
-    pub(crate) fn open(mut self, open: bool) -> Self {
+    pub fn open(mut self, open: bool) -> Self {
         self.open = open;
         self
     }
 
     /// The grid's columns — the drawer shows the same columns, so the type
     /// labels answer the same question the grid's do.
-    pub(crate) fn columns(mut self, columns: &'a [Column]) -> Self {
+    pub fn columns(mut self, columns: &'a [Column]) -> Self {
         self.columns = columns;
         self
     }
 
     /// The selected row (`row[col.name]` reads each field; `None` paints the
     /// no-selection line).
-    pub(crate) fn row(mut self, row: Option<&'a Value>) -> Self {
+    pub fn row(mut self, row: Option<&'a Value>) -> Self {
         self.row = row;
         self
     }
 
     /// React `rowIndex` — the row the edits commit to.
-    pub(crate) fn row_index(mut self, row_index: Option<usize>) -> Self {
+    pub fn row_index(mut self, row_index: Option<usize>) -> Self {
         self.row_index = row_index;
         self
     }
 
     /// React `editable`: whether the fields offer the editor at all.
-    pub(crate) fn editable(mut self, editable: bool) -> Self {
+    pub fn editable(mut self, editable: bool) -> Self {
         self.editable = editable;
         self
     }
 
     /// The size of React's `selectedRows` set (the badge only needs the
     /// count).
-    pub(crate) fn selected_rows(mut self, count: usize) -> Self {
+    pub fn selected_rows(mut self, count: usize) -> Self {
         self.selected_rows = count;
         self
     }
 
     /// React `cellTypeHints`.
-    pub(crate) fn cell_type_hints(mut self, hints: &'a CellTypeHints) -> Self {
+    pub fn cell_type_hints(mut self, hints: &'a CellTypeHints) -> Self {
         self.cell_type_hints = Some(hints);
         self
     }
 
     /// The session-merged presentation snapshot (the host merges through the
     /// ported session hook, the same merge DataTable consumes).
-    pub(crate) fn presentation_snapshot(mut self, snapshot: &'a ValuePresentationSnapshot) -> Self {
+    pub fn presentation_snapshot(mut self, snapshot: &'a ValuePresentationSnapshot) -> Self {
         self.presentation_snapshot = Some(snapshot);
         self
     }
 
     /// React `presentationSource` (the table identity; `None` for
     /// query-result columns, where overrides are unavailable).
-    pub(crate) fn presentation_source(mut self, source: &'a ColumnSource) -> Self {
+    pub fn presentation_source(mut self, source: &'a ColumnSource) -> Self {
         self.presentation_source = Some(source);
         self
     }
 
     /// React `presentationRegistry` (the default is the global one when the
     /// caller wires none).
-    pub(crate) fn presentation_registry(mut self, registry: &'a ValuePresentationRegistry) -> Self {
+    pub fn presentation_registry(mut self, registry: &'a ValuePresentationRegistry) -> Self {
         self.presentation_registry = Some(registry);
         self
     }
 
     /// The timestamp engine's presenter, the same one the dialog previews
     /// with; `None` leaves `ready` plans on the `plan-error` fallback.
-    pub(crate) fn presentation_presenter(mut self, presenter: &'a TimestampPresenter) -> Self {
+    pub fn presentation_presenter(mut self, presenter: &'a TimestampPresenter) -> Self {
         self.presentation_presenter = Some(presenter);
         self
     }
@@ -530,7 +530,7 @@ impl<'a, S: 'static> DetailPanel<'a, S> {
     /// The column-presentation dialog's state and the accessor that drives
     /// it (T09's aside entry). The drawer mounts the dialog when the state
     /// is open; the open/close bridging is the host's press wiring.
-    pub(crate) fn presentation_dialog(
+    pub fn presentation_dialog(
         mut self,
         state: &'a ColumnPresentationDialogState,
         host: impl Fn(&mut S) -> &mut ColumnPresentationDialogState + 'static,
@@ -543,7 +543,7 @@ impl<'a, S: 'static> DetailPanel<'a, S> {
     /// React `onFieldEdit(row, col, value)` — the drawer's edit commits.
     /// Without it the fields never offer the editor (`editable &&
     /// onCommit` in React).
-    pub(crate) fn on_field_edit(
+    pub fn on_field_edit(
         mut self,
         f: impl Fn(&mut S, usize, &str, Value) + 'static,
     ) -> Self {
@@ -553,7 +553,7 @@ impl<'a, S: 'static> DetailPanel<'a, S> {
 
     /// The drawer's own state accessor — the search box, the per-field edit
     /// state and the quick-look / presentation records live behind it.
-    pub(crate) fn host(mut self, f: impl Fn(&mut S) -> &mut DetailPanelState + 'static) -> Self {
+    pub fn host(mut self, f: impl Fn(&mut S) -> &mut DetailPanelState + 'static) -> Self {
         self.host = Some(Rc::new(f));
         self
     }
@@ -562,7 +562,7 @@ impl<'a, S: 'static> DetailPanel<'a, S> {
     /// The button mounts only when the callback exists, exactly as React's
     /// `{onOpenColumnPresentation && (<button …>)}`; the host bridges the
     /// drawer's `presentationColumn` and the dialog state's config/open.
-    pub(crate) fn on_open_column_presentation(
+    pub fn on_open_column_presentation(
         mut self,
         f: impl Fn(&mut S, &str) + 'static,
     ) -> Self {
@@ -573,7 +573,7 @@ impl<'a, S: 'static> DetailPanel<'a, S> {
     /// Build the aside (and the presentation dialog's layer element while it
     /// is open). `None` — a closed drawer — mounts nothing, as React's
     /// `if (!open) return null`.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> Option<El> {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> Option<El> {
         if !self.open {
             return None;
         }

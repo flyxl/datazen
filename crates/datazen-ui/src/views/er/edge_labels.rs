@@ -16,7 +16,7 @@ const LABEL_PADDING: f32 = 12.0;
 /// A label is centred on the edge, so it needs the horizontal gap between the
 /// two nodes to be at least as wide as the text. An absent or empty label
 /// never "fits" — callers use that to skip drawing entirely.
-pub(crate) fn label_fits(label: Option<&str>, gap: f32) -> bool {
+pub fn label_fits(label: Option<&str>, gap: f32) -> bool {
     let Some(label) = label else {
         return false;
     };
@@ -57,7 +57,7 @@ fn truncate_to_gap(text: &str, gap: f32) -> String {
 /// a label overlap the nodes on either side, or drop it and lose the
 /// relationship's meaning, it is shortened to the column the edge attaches to
 /// plus a count of the rest.
-pub(crate) fn fit_edge_label(columns: &[String], gap: f32) -> String {
+pub fn fit_edge_label(columns: &[String], gap: f32) -> String {
     if columns.is_empty() {
         return String::new();
     }

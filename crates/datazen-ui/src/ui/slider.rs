@@ -39,7 +39,7 @@ fn ratio_for(value: f64, min: f64, max: f64) -> f64 {
 
 type OnChange<S> = Rc<dyn Fn(&mut S, f64)>;
 
-pub(crate) struct Slider<S: 'static> {
+pub struct Slider<S: 'static> {
     key: String,
     value: f64,
     min: f64,
@@ -52,7 +52,7 @@ pub(crate) struct Slider<S: 'static> {
 }
 
 impl<S: 'static> Slider<S> {
-    pub(crate) fn new(key: impl Into<String>, value: f64) -> Self {
+    pub fn new(key: impl Into<String>, value: f64) -> Self {
         Self {
             key: key.into(),
             value,
@@ -67,53 +67,53 @@ impl<S: 'static> Slider<S> {
     }
 
     /// Create a slider with value 0.0.
-    pub(crate) fn from_key(key: impl Into<String>) -> Self {
+    pub fn from_key(key: impl Into<String>) -> Self {
         Self::new(key, 0.0)
     }
 
-    pub(crate) fn value(mut self, value: f64) -> Self {
+    pub fn value(mut self, value: f64) -> Self {
         self.value = value;
         self
     }
 
-    pub(crate) fn min(mut self, min: f64) -> Self {
+    pub fn min(mut self, min: f64) -> Self {
         self.min = min;
         self
     }
 
-    pub(crate) fn max(mut self, max: f64) -> Self {
+    pub fn max(mut self, max: f64) -> Self {
         self.max = max;
         self
     }
 
-    pub(crate) fn step(mut self, step: f64) -> Self {
+    pub fn step(mut self, step: f64) -> Self {
         self.step = if step <= 0.0 { 1.0 } else { step };
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
-    pub(crate) fn label(mut self, label: impl Into<String>) -> Self {
+    pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
     }
 
     /// Fixed track width in points. When set, thumb/fill are positioned so the
     /// thumb center sits at `ratio * width` from the track's left edge.
-    pub(crate) fn width(mut self, width: f32) -> Self {
+    pub fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
         self
     }
 
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, f64) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, f64) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let c = &k.c;
 

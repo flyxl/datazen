@@ -20,17 +20,17 @@ use super::build_flat_rows::inputs::{DatabaseObject, TableInfo, TableType};
 
 /// React `NAVIGATOR_ROW_HEIGHT` — every row of the virtualized tree is this
 /// many px tall (the virtualizer's fixed step).
-pub(crate) const NAVIGATOR_ROW_HEIGHT: f32 = 28.0;
+pub const NAVIGATOR_ROW_HEIGHT: f32 = 28.0;
 
 /// A row's depth pair: where it is painted, and where it *announces* —
 /// a search removes exactly one announced level at and below the connection
 /// children, and the two numbers deliberately disagree there.
-pub(crate) type DepthPair = (usize, usize);
+pub type DepthPair = (usize, usize);
 
 /// React `UnifiedRow`. Every variant carries its depth pair first, matching
 /// the `...levels(depth)` spread at each emit site.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum NavigatorRow {
+pub enum NavigatorRow {
     /// A pinned/recent shortcut section header.
     Section {
         depth_pair: DepthPair,
@@ -146,15 +146,15 @@ pub(crate) enum NavigatorRow {
 }
 
 impl NavigatorRow {
-    pub(crate) fn depth(&self) -> usize {
+    pub fn depth(&self) -> usize {
         self.depth_pair().0
     }
 
-    pub(crate) fn level_depth(&self) -> usize {
+    pub fn level_depth(&self) -> usize {
         self.depth_pair().1
     }
 
-    pub(crate) fn depth_pair(&self) -> DepthPair {
+    pub fn depth_pair(&self) -> DepthPair {
         match self {
             Self::Section { depth_pair, .. }
             | Self::Group { depth_pair, .. }
@@ -176,7 +176,7 @@ impl NavigatorRow {
     /// Test/VM helper for React's `{ ...row, levelDepth }` spread: clone
     /// semantics live with the type, so the equivalence suite can spell the
     /// builder's search rule without a second hand-rolled union.
-    pub(crate) fn set_level_depth(&mut self, level_depth: usize) {
+    pub fn set_level_depth(&mut self, level_depth: usize) {
         let (depth, _) = self.depth_pair();
         let pair = (depth, level_depth);
         match self {
@@ -198,7 +198,7 @@ impl NavigatorRow {
     }
 
     /// The row's type tag, for assertions and host dispatch.
-    pub(crate) fn kind(&self) -> &'static str {
+    pub fn kind(&self) -> &'static str {
         match self {
             Self::Section { .. } => "section",
             Self::Group { .. } => "group",
@@ -222,7 +222,7 @@ impl NavigatorRow {
 /// fields that say *which object the row is*, so it survives re-sorts,
 /// re-filters and window changes. No index, on purpose (see the React doc
 /// comment for the two bugs an index key caused).
-pub(crate) fn row_key(row: &NavigatorRow) -> String {
+pub fn row_key(row: &NavigatorRow) -> String {
     match row {
         NavigatorRow::Section { section, .. } => format!("sec:{section}"),
         NavigatorRow::Group { group_name, .. } => format!("grp:{group_name}"),
@@ -298,7 +298,7 @@ pub(crate) fn row_key(row: &NavigatorRow) -> String {
 /// React `ConnectionNavigatorTreeHandle` — the imperative facet the host
 /// exposes (its ref): refresh one connection, or all of them.
 #[allow(dead_code)] // host port; consumer: the navigator tree host (not wired).
-pub(crate) struct NavigatorTreeHandlePort<S> {
+pub struct NavigatorTreeHandlePort<S> {
     pub refresh_all_connections: Option<Rc<dyn Fn(&mut S) + 'static>>,
     pub refresh_connection: Option<Rc<dyn Fn(&mut S, String) + 'static>>,
 }
@@ -315,7 +315,7 @@ impl<S> Default for NavigatorTreeHandlePort<S> {
 /// React `ConnectionNavigatorTreeProps['onShowMessage']` payload kind.
 #[allow(dead_code)] // host port payload; consumer: the navigator tree host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MessageKind {
+pub enum MessageKind {
     Error,
     Success,
 }
@@ -324,7 +324,7 @@ pub(crate) enum MessageKind {
 /// the tree knows about the node a secondary press landed on.
 #[allow(dead_code)] // host port payload; consumer: the navigator tree host.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct NodeContextMenuPayload {
+pub struct NodeContextMenuPayload {
     pub kind: String,
     pub name: String,
     pub x: f32,
@@ -336,7 +336,7 @@ pub(crate) struct NodeContextMenuPayload {
 /// of `viewActions.newQuery`, all a new editor tab needs to bind itself.
 #[allow(dead_code)] // host port payload; consumer: the navigator tree host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct QueryOpenDatabaseContext {
+pub struct QueryOpenDatabaseContext {
     pub database: Option<String>,
     pub schema: Option<String>,
 }
@@ -346,7 +346,7 @@ pub(crate) struct QueryOpenDatabaseContext {
 /// exactly as the React interface is: a menu item is offered only when its
 /// action is wired.
 #[allow(dead_code)] // host port; consumer: the navigator tree host (not wired).
-pub(crate) struct NavigatorViewActionsPort<S> {
+pub struct NavigatorViewActionsPort<S> {
     pub new_query:
         Option<Rc<dyn Fn(&mut S, Option<String>, Option<QueryOpenDatabaseContext>, Option<String>) -> bool + 'static>>,
     pub open_sql_file: Option<Rc<dyn Fn(&mut S) + 'static>>,
@@ -383,7 +383,7 @@ impl<S> Default for NavigatorViewActionsPort<S> {
 /// task) fills this in; the menus (T578) and the db state (T580) read the
 /// pieces they own through it.
 #[allow(dead_code)] // host port; consumer: the navigator tree host (not wired).
-pub(crate) struct NavigatorTreePropsPort<S> {
+pub struct NavigatorTreePropsPort<S> {
     pub on_select_connection: Rc<dyn Fn(&mut S, String) + 'static>,
     pub on_select_table: Rc<dyn Fn(&mut S, String, Option<String>, String) + 'static>,
     pub on_select_kv_db: Option<Rc<dyn Fn(&mut S, String, String) + 'static>>,

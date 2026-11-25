@@ -55,27 +55,27 @@ use crate::views::data_transfer::data_transfer_attached_jobs::JobState;
 /// React `SchemaDiffTrackedJob`: the accepted receipt plus its freshest
 /// details and the local-submission marker.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SchemaDiffTrackedJobVm {
-    pub(crate) job_id: String,
-    pub(crate) kind: String,
-    pub(crate) state: JobState,
-    pub(crate) progress: crate::views::data_transfer::data_transfer_attached_jobs::JobProgress,
-    pub(crate) details: Option<SchemaDiffJobDetailsVm>,
+pub struct SchemaDiffTrackedJobVm {
+    pub job_id: String,
+    pub kind: String,
+    pub state: JobState,
+    pub progress: crate::views::data_transfer::data_transfer_attached_jobs::JobProgress,
+    pub details: Option<SchemaDiffJobDetailsVm>,
     /// Only jobs submitted in this wizard may populate its execution
     /// result.
-    pub(crate) submitted_locally: bool,
+    pub submitted_locally: bool,
 }
 
 impl SchemaDiffTrackedJobVm {
     /// `isActive(job)`: queued or running.
-    pub(crate) fn is_active(&self) -> bool {
+    pub fn is_active(&self) -> bool {
         matches!(self.state, JobState::Queued | JobState::Running)
     }
 }
 
 /// React's `cancelOutcome` union.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum SchemaDiffCancelOutcome {
+pub enum SchemaDiffCancelOutcome {
     #[default]
     Idle,
     Requested,
@@ -84,7 +84,7 @@ pub(crate) enum SchemaDiffCancelOutcome {
 
 /// What the host must run next — the hook's await points, as effects.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum LifecycleEffect {
+pub enum LifecycleEffect {
     /// `schemaDiffCommands.listJobs()`.
     ListJobs,
     /// `schemaDiffCommands.getJobDetails(jobId)`.
@@ -100,7 +100,7 @@ pub(crate) enum LifecycleEffect {
 
 /// React's `useSchemaDiffJobLifecycle()` state machine.
 #[derive(Default)]
-pub(crate) struct SchemaDiffJobLifecycle {
+pub struct SchemaDiffJobLifecycle {
     current_job: Option<SchemaDiffTrackedJobVm>,
     latest_apply: Option<SchemaDiffJobDetailsVm>,
     cancel_outcome: SchemaDiffCancelOutcome,
@@ -125,13 +125,13 @@ enum HydratePhase {
 }
 
 /// React `wait`-free 1s poll cadence (the `setTimeout(…, 1000)`).
-pub(crate) const SCHEMA_DIFF_JOB_POLL_MS: i64 = 1_000;
+pub const SCHEMA_DIFF_JOB_POLL_MS: i64 = 1_000;
 
 impl SchemaDiffJobLifecycle {
     /// `accept(accepted)` — the bus's accepted branch: a fresh local
     /// submission resets the cancel outcome and replaces the tracked job
     /// (no details yet).
-    pub(crate) fn accept(&mut self, accepted: SchemaDiffJobAcceptedVm) {
+    pub fn accept(&mut self, accepted: SchemaDiffJobAcceptedVm) {
         self.cancel_outcome = SchemaDiffCancelOutcome::Idle;
         self.current_job = Some(SchemaDiffTrackedJobVm {
             job_id: accepted.job_id,
@@ -147,7 +147,7 @@ impl SchemaDiffJobLifecycle {
     /// refreshes only when it is the same job (a different job's details
     /// never replace it), keeping the local-submission marker; an apply
     /// job's details also become `latestApply`.
-    pub(crate) fn observe(&mut self, details: SchemaDiffJobDetailsVm) {
+    pub fn observe(&mut self, details: SchemaDiffJobDetailsVm) {
         let view = &details.details;
         let same_job = self
             .current_job
@@ -173,7 +173,7 @@ impl SchemaDiffJobLifecycle {
     }
 
     /// The subscription: route one bus update (accepted or details).
-    pub(crate) fn on_bus_update(&mut self, update: SchemaDiffJobUpdateVm) {
+    pub fn on_bus_update(&mut self, update: SchemaDiffJobUpdateVm) {
         match update {
             SchemaDiffJobUpdateVm::Accepted(accepted) => self.accept(accepted),
             SchemaDiffJobUpdateVm::Details(details) => self.observe(details),
@@ -182,7 +182,7 @@ impl SchemaDiffJobLifecycle {
 
     /// The mount effect's start: `listJobs`, latest first, then the
     /// selection and the ordered reads.
-    pub(crate) fn hydrate_begin(&mut self) -> Vec<LifecycleEffect> {
+    pub fn hydrate_begin(&mut self) -> Vec<LifecycleEffect> {
         self.hydrate = HydratePhase::ListingJobs;
         vec![LifecycleEffect::ListJobs]
     }
@@ -191,7 +191,7 @@ impl SchemaDiffJobLifecycle {
     /// active/pending/apply/prepare selection and the read set (the
     /// selected job first, the apply job after — React's `Set` insertion
     /// order). An active job also arms the 1000ms poll after the reads.
-    pub(crate) fn on_list_jobs(&mut self, jobs: Vec<SchemaDiffJobViewVm>) -> Vec<LifecycleEffect> {
+    pub fn on_list_jobs(&mut self, jobs: Vec<SchemaDiffJobViewVm>) -> Vec<LifecycleEffect> {
         if !matches!(self.hydrate, HydratePhase::ListingJobs) {
             return Vec::new();
         }
@@ -242,7 +242,7 @@ impl SchemaDiffJobLifecycle {
     /// A `getJobDetails` answer (hydration or poll): observe it, advance
     /// the read queue; when the queue drains, an active job arms the
     /// 1000ms poll, else the hydration finishes.
-    pub(crate) fn on_details(&mut self, now_ms: i64, details: SchemaDiffJobDetailsVm) -> Vec<LifecycleEffect> {
+    pub fn on_details(&mut self, now_ms: i64, details: SchemaDiffJobDetailsVm) -> Vec<LifecycleEffect> {
         self.observe(details);
         if let HydratePhase::Reading { queue, active_job } = &mut self.hydrate {
             if !queue.is_empty() {
@@ -262,7 +262,7 @@ impl SchemaDiffJobLifecycle {
 
     /// A failed `getJobDetails` read: the error slot, and the queue moves
     /// on (React's `catch` returns null and the loop continues).
-    pub(crate) fn on_read_error(&mut self, message: String) -> Vec<LifecycleEffect> {
+    pub fn on_read_error(&mut self, message: String) -> Vec<LifecycleEffect> {
         self.error = Some(message);
         if let HydratePhase::Reading { queue, active_job } = &mut self.hydrate {
             if !queue.is_empty() {
@@ -280,7 +280,7 @@ impl SchemaDiffJobLifecycle {
     }
 
     /// The clock tick: a due poll re-fires the read.
-    pub(crate) fn tick(&mut self, now_ms: i64) -> Vec<LifecycleEffect> {
+    pub fn tick(&mut self, now_ms: i64) -> Vec<LifecycleEffect> {
         if let HydratePhase::Polling { job_id, next_poll_at_ms } = &self.hydrate {
             if now_ms >= *next_poll_at_ms {
                 let job_id = job_id.clone();
@@ -293,7 +293,7 @@ impl SchemaDiffJobLifecycle {
     /// A poll read's answer while polling: still active re-arms the 1000ms
     /// wait; terminal stops the loop. (`on_details` handles the observe +
     /// reading-queue side; this is the polling transition.)
-    pub(crate) fn on_poll_details(&mut self, now_ms: i64, details: &SchemaDiffJobDetailsVm) -> Vec<LifecycleEffect> {
+    pub fn on_poll_details(&mut self, now_ms: i64, details: &SchemaDiffJobDetailsVm) -> Vec<LifecycleEffect> {
         let view = &details.details;
         let active = matches!(view.state, JobState::Queued | JobState::Running);
         if let HydratePhase::Polling { job_id, next_poll_at_ms } = &mut self.hydrate {
@@ -313,7 +313,7 @@ impl SchemaDiffJobLifecycle {
     /// `requestCancel`: only an active tracked job may request; the
     /// outcome starts `requested` and the host's answer lands in
     /// [`Self::on_cancel_acknowledged`] / [`Self::on_cancel_error`].
-    pub(crate) fn request_cancel(&mut self) -> Option<LifecycleEffect> {
+    pub fn request_cancel(&mut self) -> Option<LifecycleEffect> {
         let active = self
             .current_job
             .as_ref()
@@ -331,14 +331,14 @@ impl SchemaDiffJobLifecycle {
     }
 
     /// The cancel answer: `false` (not acknowledged) is `unavailable`.
-    pub(crate) fn on_cancel_acknowledged(&mut self, acknowledged: bool) {
+    pub fn on_cancel_acknowledged(&mut self, acknowledged: bool) {
         if !acknowledged {
             self.cancel_outcome = SchemaDiffCancelOutcome::Unavailable;
         }
     }
 
     /// A failed cancel: `unavailable` plus the error slot.
-    pub(crate) fn on_cancel_error(&mut self, message: String) {
+    pub fn on_cancel_error(&mut self, message: String) {
         self.cancel_outcome = SchemaDiffCancelOutcome::Unavailable;
         self.error = Some(message);
     }
@@ -346,7 +346,7 @@ impl SchemaDiffJobLifecycle {
     /// `verifyRecovery(jobId, targetDbSessionId)`: `verifying` on, the
     /// error slot cleared; the host runs the IPC and delivers the details
     /// ([`Self::observe`], `verifying` off) or the failure.
-    pub(crate) fn verify_recovery_begin(
+    pub fn verify_recovery_begin(
         &mut self,
         job_id: &str,
         target_db_session_id: &str,
@@ -357,41 +357,41 @@ impl SchemaDiffJobLifecycle {
     }
 
     /// A successful verification: observe the details, `verifying` off.
-    pub(crate) fn on_verify_details(&mut self, details: SchemaDiffJobDetailsVm) {
+    pub fn on_verify_details(&mut self, details: SchemaDiffJobDetailsVm) {
         self.observe(details);
         self.verifying = false;
     }
 
     /// A failed verification: the error slot, `verifying` off.
-    pub(crate) fn on_verify_error(&mut self, message: String) {
+    pub fn on_verify_error(&mut self, message: String) {
         self.error = Some(message);
         self.verifying = false;
     }
 
     // ---- the render-side reads (the hook's return value) -------------------
 
-    pub(crate) fn current_job(&self) -> Option<&SchemaDiffTrackedJobVm> {
+    pub fn current_job(&self) -> Option<&SchemaDiffTrackedJobVm> {
         self.current_job.as_ref()
     }
 
-    pub(crate) fn latest_apply(&self) -> Option<&SchemaDiffJobDetailsVm> {
+    pub fn latest_apply(&self) -> Option<&SchemaDiffJobDetailsVm> {
         self.latest_apply.as_ref()
     }
 
-    pub(crate) fn cancel_outcome(&self) -> SchemaDiffCancelOutcome {
+    pub fn cancel_outcome(&self) -> SchemaDiffCancelOutcome {
         self.cancel_outcome
     }
 
-    pub(crate) fn verifying(&self) -> bool {
+    pub fn verifying(&self) -> bool {
         self.verifying
     }
 
-    pub(crate) fn error(&self) -> Option<&str> {
+    pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
 
     /// Parse a `listJobs` wire answer for [`Self::on_list_jobs`].
-    pub(crate) fn parse_list_jobs(
+    pub fn parse_list_jobs(
         &self,
         value: serde_json::Value,
     ) -> Result<Vec<SchemaDiffJobViewVm>, String> {

@@ -23,7 +23,7 @@ use super::format::{
 use super::{ServerStatusVm, StatusValue, TrendPointVm, AUTO_REFRESH_OPTIONS};
 
 #[allow(dead_code)] // render VM; consumed by the card grid and tests.
-pub(crate) struct MetricCardVm {
+pub struct MetricCardVm {
     pub key: &'static str,
     pub label: String,
     pub value: String,
@@ -32,7 +32,7 @@ pub(crate) struct MetricCardVm {
 
 /// React `cards`: 11 definitions, filtered to those with backing data.
 #[allow(dead_code)] // pure projection; consumed by the overview and tests.
-pub(crate) fn metric_cards(vm: &ServerStatusVm) -> Vec<MetricCardVm> {
+pub fn metric_cards(vm: &ServerStatusVm) -> Vec<MetricCardVm> {
     let status = match &vm.status {
         Some(status) => status,
         None => return Vec::new(),
@@ -98,7 +98,7 @@ fn fmt_num(value: f64) -> String {
 }
 
 #[allow(dead_code)] // render VM; consumed by the chart grid and tests.
-pub(crate) struct ChartCardVm {
+pub struct ChartCardVm {
     pub key: &'static str,
     pub label: String,
     pub series_keys: Vec<String>,
@@ -114,7 +114,7 @@ fn has_series(vm: &ServerStatusVm, keys: &[&str]) -> bool {
 /// React `chartCards`: 9 definitions gated by backing history series, in React's
 /// push order. Command labels come from `serverStatus.cmd{cap(c)}`.
 #[allow(dead_code)] // pure projection; consumed by the overview and tests.
-pub(crate) fn chart_cards(vm: &ServerStatusVm) -> Vec<ChartCardVm> {
+pub fn chart_cards(vm: &ServerStatusVm) -> Vec<ChartCardVm> {
     let mut cards = Vec::new();
     if has_series(vm, &["qps"]) {
         cards.push(ChartCardVm {
@@ -224,7 +224,7 @@ pub(crate) fn chart_cards(vm: &ServerStatusVm) -> Vec<ChartCardVm> {
 /// Point count a chart would receive from `toChartData` (the union of sample
 /// timestamps across its series), shown on the stand-in canvas marker.
 #[allow(dead_code)] // pure helper; consumed by the chart grid and tests.
-pub(crate) fn chart_point_count(vm: &ServerStatusVm, card: &ChartCardVm) -> usize {
+pub fn chart_point_count(vm: &ServerStatusVm, card: &ChartCardVm) -> usize {
     let mut stamps = std::collections::BTreeSet::new();
     for key in &card.series_keys {
         if let Some(series) = vm.history.get(key) {
@@ -238,7 +238,7 @@ pub(crate) fn chart_point_count(vm: &ServerStatusVm, card: &ChartCardVm) -> usiz
 
 /// Build the dashboard body: metric grid + the chart section when populated.
 #[allow(dead_code)] // view part; remove when the connection host wires the panel.
-pub(crate) fn build(vm: &ServerStatusVm, dark: bool) -> El {
+pub fn build(vm: &ServerStatusVm, dark: bool) -> El {
     let k = kit(dark);
     let mut body = col().key("server-status-dashboard").w_full().min_w(0.0).gap(12.0);
 
@@ -313,7 +313,7 @@ fn chart_card(vm: &ServerStatusVm, card: &ChartCardVm, k: &Kit, dark: bool) -> E
 
 /// React `toChartData` union length, exposed for the pure tests.
 #[allow(dead_code)] // pure helper; consumed by tests.
-pub(crate) fn to_chart_point_count(keys: &[String], history: &std::collections::BTreeMap<String, Vec<TrendPointVm>>) -> usize {
+pub fn to_chart_point_count(keys: &[String], history: &std::collections::BTreeMap<String, Vec<TrendPointVm>>) -> usize {
     let mut stamps = std::collections::BTreeSet::new();
     for key in keys {
         if let Some(series) = history.get(key) {

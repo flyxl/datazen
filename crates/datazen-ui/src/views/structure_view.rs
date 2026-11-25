@@ -40,16 +40,16 @@ use crate::ui::copyable::CopyableError;
 use crate::ui::kit::kit;
 
 const ROOT: &str = "structure-view";
-pub(crate) const EDIT_KEY: &str = "struct-edit-structure";
-pub(crate) const TABLE_KEY: &str = "structure-view-table";
-pub(crate) const SUMMARY_KEY: &str = "structure-view-summary";
-pub(crate) const LOADING_KEY: &str = "structure-view-loading";
-pub(crate) const ERROR_KEY: &str = "structure-view-error";
+pub const EDIT_KEY: &str = "struct-edit-structure";
+pub const TABLE_KEY: &str = "structure-view-table";
+pub const SUMMARY_KEY: &str = "structure-view-summary";
+pub const LOADING_KEY: &str = "structure-view-loading";
+pub const ERROR_KEY: &str = "structure-view-error";
 
 /// React `TableSchema.column`, reduced to what the view paints.
 #[allow(dead_code)] // VM mirror; supplied by the host schema feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct StructColumnVm {
+pub struct StructColumnVm {
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
@@ -61,7 +61,7 @@ pub(crate) struct StructColumnVm {
 /// React `TableSchema.index`, reduced to the unique/primary/columns fields.
 #[allow(dead_code)] // VM mirror; supplied by the host schema feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct StructIndexVm {
+pub struct StructIndexVm {
     pub is_unique: bool,
     pub is_primary: bool,
     pub columns: Vec<String>,
@@ -70,7 +70,7 @@ pub(crate) struct StructIndexVm {
 /// React `TableSchema`, reduced to what `StructureView` reads.
 #[allow(dead_code)] // VM mirror; supplied by the host schema feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TableSchemaVm {
+pub struct TableSchemaVm {
     pub table_name: String,
     pub columns: Vec<StructColumnVm>,
     pub primary_keys: Vec<String>,
@@ -81,7 +81,7 @@ pub(crate) struct TableSchemaVm {
 impl TableSchemaVm {
     /// React `uniqueCols`: columns of unique, non-primary indexes.
     #[allow(dead_code)] // pure rule; consumed by the badge column and tests.
-    pub(crate) fn unique_columns(&self) -> Vec<String> {
+    pub fn unique_columns(&self) -> Vec<String> {
         self.indexes
             .iter()
             .filter(|index| index.is_unique && !index.is_primary)
@@ -91,7 +91,7 @@ impl TableSchemaVm {
 
     /// React `indexes.filter(i => i.isUnique && !i.isPrimary).length`.
     #[allow(dead_code)] // pure helper; consumed by the summary bar and tests.
-    pub(crate) fn unique_index_count(&self) -> usize {
+    pub fn unique_index_count(&self) -> usize {
         self.indexes.iter().filter(|index| index.is_unique && !index.is_primary).count()
     }
 }
@@ -99,7 +99,7 @@ impl TableSchemaVm {
 /// Host-owned projection of the props + the loaded schema + highlight.
 #[allow(dead_code)] // VM surface; owned by the connection-page host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct StructureViewVm {
+pub struct StructureViewVm {
     pub db_session_id: String,
     pub table_name: String,
     pub database: String,
@@ -117,7 +117,7 @@ impl StructureViewVm {
     /// React's target-column match: first column whose lowercased name equals
     /// the lowercased `targetColumn`.
     #[allow(dead_code)] // pure helper; consumed by the row highlight and tests.
-    pub(crate) fn matched_column(&self) -> Option<&str> {
+    pub fn matched_column(&self) -> Option<&str> {
         let target = self.target_column.as_deref()?.to_lowercase();
         let schema = self.schema.as_ref()?;
         schema.columns.iter().find(|col| col.name.to_lowercase() == target).map(|col| col.name.as_str())
@@ -127,41 +127,41 @@ impl StructureViewVm {
     /// source. React clears it after the fade and never re-derives it from
     /// `targetColumn` (which only seeds it on initial load).
     #[allow(dead_code)] // pure helper; consumed by the row highlight and tests.
-    pub(crate) fn effective_highlight(&self) -> Option<String> {
+    pub fn effective_highlight(&self) -> Option<String> {
         self.highlighted_col.clone()
     }
 
     /// React `t('structView.fields', { count })`.
     #[allow(dead_code)] // pure helper; consumed by the summary bar and tests.
-    pub(crate) fn fields_text(&self) -> String {
+    pub fn fields_text(&self) -> String {
         let count = self.schema.as_ref().map_or(0, |schema| schema.columns.len());
         t("structView.fields").replace("{count}", &count.to_string())
     }
 
     /// React `t('structView.primaryKeys', { count })`.
     #[allow(dead_code)] // pure helper; consumed by the summary bar and tests.
-    pub(crate) fn primary_keys_text(&self) -> String {
+    pub fn primary_keys_text(&self) -> String {
         let count = self.schema.as_ref().map_or(0, |schema| schema.primary_keys.len());
         t("structView.primaryKeys").replace("{count}", &count.to_string())
     }
 
     /// React `t('structView.uniqueIndexes', { count })`.
     #[allow(dead_code)] // pure helper; consumed by the summary bar and tests.
-    pub(crate) fn unique_indexes_text(&self) -> String {
+    pub fn unique_indexes_text(&self) -> String {
         let count = self.schema.as_ref().map_or(0, TableSchemaVm::unique_index_count);
         t("structView.uniqueIndexes").replace("{count}", &count.to_string())
     }
 
     /// React `t('common.indexCount', { count })`.
     #[allow(dead_code)] // pure helper; consumed by the summary bar and tests.
-    pub(crate) fn index_count_text(&self) -> String {
+    pub fn index_count_text(&self) -> String {
         let count = self.schema.as_ref().map_or(0, |schema| schema.indexes.len());
         t("common.indexCount").replace("{count}", &count.to_string())
     }
 
     /// React `t('common.foreignKeyCount', { count })`.
     #[allow(dead_code)] // pure helper; consumed by the summary bar and tests.
-    pub(crate) fn foreign_key_count_text(&self) -> String {
+    pub fn foreign_key_count_text(&self) -> String {
         let count = self.schema.as_ref().map_or(0, |schema| schema.foreign_keys.len());
         t("common.foreignKeyCount").replace("{count}", &count.to_string())
     }
@@ -170,7 +170,7 @@ impl StructureViewVm {
 /// The single host intent the view emits.
 #[allow(dead_code)] // host port; remove when the connection host wires the view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum StructureViewAction {
+pub enum StructureViewAction {
     EditStructure { table_name: String },
 }
 
@@ -178,7 +178,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S, StructureViewAction) + 'static>;
 
 /// Build the view.
 #[allow(dead_code)] // view entry; remove when the connection host wires the view.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &StructureViewVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

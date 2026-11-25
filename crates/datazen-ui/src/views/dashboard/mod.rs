@@ -1,21 +1,21 @@
 //! The `windows/dashboard` subtree ports (AddToDashboardDialog is its first;
 //! the drawers / DashboardPanel land with their own tasks).
 
-pub(crate) mod add_to_dashboard_dialog;
+pub mod add_to_dashboard_dialog;
 // T069: the chart widget tile (header switches, the eight body states, the
 // expand overlay with the axis-configurator seam).
-pub(crate) mod chart_widget_tile;
+pub mod chart_widget_tile;
 // T112: the dashboards page body (the board tab strip, the toolbar, the
 // widget grid of tiles, the run-history drawer mount, the delete
 // confirmations; the editor drawer is the T201 seam).
-pub(crate) mod dashboard_panel;
+pub mod dashboard_panel;
 // T146: the scheduled-refresh authorization card (grant load, the
 // authorized-until status line, the authorize/revoke guards).
-pub(crate) mod monitor_schedule_authorization;
+pub mod monitor_schedule_authorization;
 // T175: the run-history drawer (the right-anchored overlay with the run
 // index list and the loaded run's chart/table states).
-pub(crate) mod run_history_drawer;
+pub mod run_history_drawer;
 // T201: the widget editor drawer (the right-anchored form over the widget
 // config — title, source, refresh, the T146 monitor card, view mode, chart
 // axes, the alert rule — with the save guards and the dirty comparison).
-pub(crate) mod widget_editor_drawer;
+pub mod widget_editor_drawer;

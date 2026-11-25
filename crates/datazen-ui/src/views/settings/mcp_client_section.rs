@@ -131,7 +131,7 @@ use crate::views::settings::settings_ui::{section_title, setting_row, toggle_row
 /// `McpClientSection()`: the section over the state and the host's
 /// action slots (the `language_packs_card` convention — every action
 /// optional, `None` renders unwired).
-pub(crate) struct McpClientSection<'a, S: 'static> {
+pub struct McpClientSection<'a, S: 'static> {
     state: &'a McpClientSectionState,
     dark: bool,
     // the form's edit lenses (the model_profile_form convention)
@@ -166,7 +166,7 @@ impl<'a, S: 'static> McpClientSection<'a, S> {
     /// The section over the state plus the six form lenses (the
     /// TextEdits live in the host's state; the field atoms edit them
     /// through these).
-    pub(crate) fn new(
+    pub fn new(
         state: &'a McpClientSectionState,
         dark: bool,
         id_edit: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
@@ -205,17 +205,17 @@ impl<'a, S: 'static> McpClientSection<'a, S> {
     }
 
     /// `connectMcpServer(id)` — connect and reconnect share it.
-    pub(crate) fn on_connect(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_connect(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_connect = Some(Rc::new(f));
         self
     }
     /// `disconnectMcpServer(id)`.
-    pub(crate) fn on_disconnect(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_disconnect(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_disconnect = Some(Rc::new(f));
         self
     }
     /// `handleToggleEnabled(id, next)`.
-    pub(crate) fn on_toggle_enabled(
+    pub fn on_toggle_enabled(
         mut self,
         f: impl Fn(&mut S, String, bool) + 'static,
     ) -> Self {
@@ -223,73 +223,73 @@ impl<'a, S: 'static> McpClientSection<'a, S> {
         self
     }
     /// The form's `enabled` ToggleRow (`setDraft(d => ({...d, enabled}))`).
-    pub(crate) fn on_draft_enabled(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_draft_enabled(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_draft_enabled = Some(Rc::new(f));
         self
     }
     /// The form's `enabledForAi` ToggleRow.
-    pub(crate) fn on_draft_enabled_for_ai(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_draft_enabled_for_ai(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_draft_enabled_for_ai = Some(Rc::new(f));
         self
     }
     /// `startEdit(config)`.
-    pub(crate) fn on_edit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_edit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_edit = Some(Rc::new(f));
         self
     }
     /// `handleDelete(id)`.
-    pub(crate) fn on_delete(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_delete(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_delete = Some(Rc::new(f));
         self
     }
     /// `startAdd`.
-    pub(crate) fn on_add_server(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_add_server(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_add_server = Some(Rc::new(f));
         self
     }
     /// `handleSave`.
-    pub(crate) fn on_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save = Some(Rc::new(f));
         self
     }
     /// Cancel (`setShowForm(false)`).
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
     /// The env block's `+` button.
-    pub(crate) fn on_add_env(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_add_env(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_add_env = Some(Rc::new(f));
         self
     }
     /// One env row's trash button.
-    pub(crate) fn on_remove_env(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_remove_env(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_remove_env = Some(Rc::new(f));
         self
     }
     /// `pickPath` — the command field's browse.
-    pub(crate) fn on_browse_command(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_browse_command(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_browse_command = Some(Rc::new(f));
         self
     }
     /// `clearMcpError`.
-    pub(crate) fn on_clear_mcp_error(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear_mcp_error(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear_mcp_error = Some(Rc::new(f));
         self
     }
     /// `clearMcpServerError(id)`.
-    pub(crate) fn on_clear_server_error(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_clear_server_error(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_clear_server_error = Some(Rc::new(f));
         self
     }
     /// `toggleServerTools(id)`.
-    pub(crate) fn on_toggle_tools(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_tools(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_tools = Some(Rc::new(f));
         self
     }
 
     /// The section body.
-    pub(crate) fn build(self, layer: &mut Vec<El>) -> El {
+    pub fn build(self, layer: &mut Vec<El>) -> El {
         let dark = self.dark;
         let k = kit(dark);
         let state = self.state;

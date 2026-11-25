@@ -31,7 +31,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize};
 /// React `DatabaseObjectKind` (from `@datazen/extension-points`).
 #[allow(dead_code)] // contract mirror; remove when the extension-points port lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectKind {
+pub enum ObjectKind {
     Function,
     Procedure,
     Trigger,
@@ -41,7 +41,7 @@ pub(crate) enum ObjectKind {
 
 impl ObjectKind {
     /// React's kind label: three kinds are translated, the rest use the raw id.
-    pub(crate) fn label(self) -> String {
+    pub fn label(self) -> String {
         match self {
             Self::Function => t("objects.function").to_owned(),
             Self::Procedure => t("objects.procedure").to_owned(),
@@ -55,7 +55,7 @@ impl ObjectKind {
 /// The object identity the host supplies (React props).
 #[allow(dead_code)] // VM surface; owned by the host until the panel store lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ObjectIdentity {
+pub struct ObjectIdentity {
     pub db_session_id: String,
     pub database_type: Option<String>,
     pub database: String,
@@ -70,7 +70,7 @@ pub(crate) struct ObjectIdentity {
 /// The three `useState` values plus the loaded DDL.
 #[allow(dead_code)] // VM surface; owned by the host until the panel store lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ObjectViewState {
+pub struct ObjectViewState {
     pub ddl: String,
     pub loading: bool,
     pub running: bool,
@@ -80,7 +80,7 @@ pub(crate) struct ObjectViewState {
 /// Host calls the view emits. The host owns commands/session ids.
 #[allow(dead_code)] // host port; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectAction {
+pub enum ObjectAction {
     LoadDdl,
     Execute { sql: String, database: String, schema: Option<String> },
 }
@@ -88,7 +88,7 @@ pub(crate) enum ObjectAction {
 /// Host answers fed back into the view state.
 #[allow(dead_code)] // host port; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectEvent {
+pub enum ObjectEvent {
     DdlLoaded(Result<String, String>),
     Executed(Result<(), String>),
 }
@@ -96,14 +96,14 @@ pub(crate) enum ObjectEvent {
 impl ObjectViewState {
     /// React `loadDdl` prologue: clear the prior message and show the spinner.
     #[allow(dead_code)] // consumer: the object-detail host result feed (not landed); remove when wired.
-    pub(crate) fn begin_load(&mut self) {
+    pub fn begin_load(&mut self) {
         self.loading = true;
         self.message.clear();
     }
 
     /// React's DDL answer: a failure is shown as a SQL comment, not an error bar.
     #[allow(dead_code)] // consumer: the object-detail host result feed (not landed); remove when wired.
-    pub(crate) fn apply_ddl(&mut self, result: Result<String, String>) {
+    pub fn apply_ddl(&mut self, result: Result<String, String>) {
         self.loading = false;
         match result {
             Ok(text) => self.ddl = text,
@@ -113,7 +113,7 @@ impl ObjectViewState {
 
     /// React `handleExecute` guard + payload readiness.
     #[allow(dead_code)] // consumer: the object-detail host (not landed); remove when wired.
-    pub(crate) fn begin_execute(&mut self) -> bool {
+    pub fn begin_execute(&mut self) -> bool {
         if self.ddl.trim().is_empty() || self.loading || self.running {
             return false;
         }
@@ -124,7 +124,7 @@ impl ObjectViewState {
 
     /// React's execute answer: success shows the localized `objects.executeOk`.
     #[allow(dead_code)] // consumer: the object-detail host result feed (not landed); remove when wired.
-    pub(crate) fn apply_execute(&mut self, result: Result<(), String>) {
+    pub fn apply_execute(&mut self, result: Result<(), String>) {
         self.running = false;
         self.message = match result {
             Ok(()) => t("objects.executeOk").to_owned(),
@@ -133,7 +133,7 @@ impl ObjectViewState {
     }
 
     /// React `disabled={running || !ddl.trim() || loading}`.
-    pub(crate) fn execute_disabled(&self) -> bool {
+    pub fn execute_disabled(&self) -> bool {
         self.running || self.ddl.trim().is_empty() || self.loading
     }
 }
@@ -142,7 +142,7 @@ impl ObjectViewState {
 /// `ContentViewVm` so `connection_page` can compose this view.
 #[allow(dead_code)] // composition VM; remove when the panel/object store lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DatabaseObjectVm {
+pub struct DatabaseObjectVm {
     pub identity: ObjectIdentity,
     pub state: ObjectViewState,
 }
@@ -160,7 +160,7 @@ fn emit<S: 'static>(on_action: &Option<ActionFn<S>>, action: ObjectAction) -> im
 
 /// Render the object detail view into `layer`.
 #[allow(dead_code)] // consumer: connection_page composition (wired by T305).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     identity: &ObjectIdentity,
     state: &ObjectViewState,
     on_action: Option<ActionFn<S>>,

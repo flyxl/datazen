@@ -27,30 +27,30 @@ use crate::i18n::t;
 use crate::ui::copyable::CopyableError;
 use crate::ui::kit::kit;
 
-pub(crate) const ROOT_KEY: &str = "table-fk-error";
-pub(crate) const TEXT_KEY: &str = "table-fk-error-text";
-pub(crate) const CLOSE_KEY: &str = "table-fk-error-close";
+pub const ROOT_KEY: &str = "table-fk-error";
+pub const TEXT_KEY: &str = "table-fk-error-text";
+pub const CLOSE_KEY: &str = "table-fk-error-close";
 
 /// React `{ code, raw }` of the refused jump.
 #[allow(dead_code)] // VM mirror; remove when the host owns the error slice.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FkErrorVm {
+pub struct FkErrorVm {
     /// `GridErrorCode | 'unknown'`, e.g. `grid.fk.unknownConstraint`.
-    pub(crate) code: String,
-    pub(crate) raw: String,
+    pub code: String,
+    pub raw: String,
 }
 
 /// The banner's props: `null` error means no banner (React returns `null`).
 #[allow(dead_code)] // VM mirror; remove when the host wires the banner.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TableFkErrorBannerVm {
-    pub(crate) error: Option<FkErrorVm>,
+pub struct TableFkErrorBannerVm {
+    pub error: Option<FkErrorVm>,
 }
 
 #[allow(dead_code)] // pure helper; remove with the host.
 impl TableFkErrorBannerVm {
     /// React's `useMemo` message: conclusion + raw, or raw alone.
-    pub(crate) fn message(&self) -> Option<String> {
+    pub fn message(&self) -> Option<String> {
         let error = self.error.as_ref()?;
         if error.code == "unknown" {
             return Some(error.raw.clone());
@@ -72,16 +72,16 @@ impl TableFkErrorBannerVm {
 /// The sole React callback (`onDismiss`).
 #[allow(dead_code)] // host port; remove when the host wires the banner.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FkBannerAction {
+pub enum FkBannerAction {
     Dismiss,
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the banner.
-pub(crate) type FkBannerActionFn<S> = Rc<dyn Fn(&mut S, FkBannerAction) + 'static>;
+pub type FkBannerActionFn<S> = Rc<dyn Fn(&mut S, FkBannerAction) + 'static>;
 
 /// Build the banner into `layer`; a null error mounts nothing.
 #[allow(dead_code)] // view entry; remove when the host wires the banner.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableFkErrorBannerVm,
     on_action: &Option<FkBannerActionFn<S>>,
     dark: bool,

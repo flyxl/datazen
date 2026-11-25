@@ -92,13 +92,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Milliseconds a `markConnecting` entry may stay `connecting` before the
 /// store fails it with `Connection timeout` (React `setTimeout(…, 30_000)`).
-pub(crate) const CONNECT_TIMEOUT_MS: u64 = 30_000;
+pub const CONNECT_TIMEOUT_MS: u64 = 30_000;
 
 /// Wall-clock milliseconds since the Unix epoch, for the host to feed
 /// [`ActiveConnectionStore::tick`]. Falls back to `0` when the clock is
 /// unavailable (the `metadata_cache` / `ai_write_proposal_state` precedent).
 #[allow(dead_code)] // foundation API; consumers land with the connection views
-pub(crate) fn now_ms() -> u64 {
+pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
@@ -111,7 +111,7 @@ pub(crate) fn now_ms() -> u64 {
 /// store actually holds are never `idle` — they start `connecting`.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum ConnectionStatus {
+pub enum ConnectionStatus {
     Idle,
     Connecting,
     Connected,
@@ -120,7 +120,7 @@ pub(crate) enum ConnectionStatus {
 
 #[allow(dead_code)] // wire spelling of the reusable status
 impl ConnectionStatus {
-    pub(crate) fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Idle => "idle",
             Self::Connecting => "connecting",
@@ -134,7 +134,7 @@ impl ConnectionStatus {
 /// string and the server type, both straight from `testConnection`.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ServerInfo {
+pub struct ServerInfo {
     pub server_version: String,
     pub server_type: String,
 }
@@ -144,7 +144,7 @@ pub(crate) struct ServerInfo {
 /// unknown — the UI treats cancellation as unknown until discovery lands.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DriverCapabilities {
+pub struct DriverCapabilities {
     pub supports_cancel_query: bool,
     /// True only when the driver implements opaque execution-handle cancel.
     pub supports_query_execution_cancel: bool,
@@ -160,7 +160,7 @@ pub(crate) struct DriverCapabilities {
 /// `connection_id` — the persistent config id, not the runtime session id.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConnectionEntry {
+pub struct ConnectionEntry {
     /// Runtime database session id (empty while connecting/errored).
     pub db_session_id: String,
     /// Persistent connection id this entry was opened from (the map key).
@@ -201,7 +201,7 @@ impl ConnectionEntry {
 /// stays on the IPC side — the store never sees it.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConnectRequest {
+pub struct ConnectRequest {
     pub connection_id: String,
     pub database: Option<String>,
 }
@@ -210,7 +210,7 @@ pub(crate) struct ConnectRequest {
 /// one already in flight.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ConnectStart {
+pub enum ConnectStart {
     /// This caller owns the attempt: it runs the IPC sequence and feeds the
     /// outcome back through `complete_connect` / `fail_connect`.
     Started,
@@ -224,7 +224,7 @@ pub(crate) enum ConnectStart {
 /// cross-window bus, or the schema store itself.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ConnectionEffect {
+pub enum ConnectionEffect {
     /// Announce that a runtime session now belongs to a persistent
     /// connection config (React `bindSessionMetadataIdentity`). See the
     /// module docs: no Rune implementation exists yet.
@@ -260,7 +260,7 @@ pub(crate) enum ConnectionEffect {
 /// What [`ActiveConnectionStore::disconnect`] asks the host to do.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DisconnectPlan {
+pub enum DisconnectPlan {
     /// No live session for this connection: the entry is already removed
     /// and the host has nothing to do.
     Removed,
@@ -278,7 +278,7 @@ pub(crate) enum DisconnectPlan {
 /// connection id, plus the in-flight connect claims.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ActiveConnectionStore {
+pub struct ActiveConnectionStore {
     /// All tracked connections, keyed by connection id (persistent config
     /// connection id).
     connections: HashMap<String, ConnectionEntry>,
@@ -289,22 +289,22 @@ pub(crate) struct ActiveConnectionStore {
 
 #[allow(dead_code)] // foundation API; consumers land with the connection views
 impl ActiveConnectionStore {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// All tracked connections, keyed by connection id.
-    pub(crate) fn connections(&self) -> &HashMap<String, ConnectionEntry> {
+    pub fn connections(&self) -> &HashMap<String, ConnectionEntry> {
         &self.connections
     }
 
     /// The entry for one connection id, if the store tracks it.
-    pub(crate) fn entry(&self, connection_id: &str) -> Option<&ConnectionEntry> {
+    pub fn entry(&self, connection_id: &str) -> Option<&ConnectionEntry> {
         self.connections.get(connection_id)
     }
 
     /// Whether a connect attempt is in flight for this connection id.
-    pub(crate) fn is_connect_in_flight(&self, connection_id: &str) -> bool {
+    pub fn is_connect_in_flight(&self, connection_id: &str) -> bool {
         self.in_flight.contains(connection_id)
     }
 
@@ -317,7 +317,7 @@ impl ActiveConnectionStore {
     /// [`ConnectStart::Started`] and owns the attempt until
     /// `complete_connect` / `fail_connect` releases the claim (React
     /// `.finally`, so a settled attempt frees the slot for the next one).
-    pub(crate) fn connect(&mut self, request: ConnectRequest) -> ConnectStart {
+    pub fn connect(&mut self, request: ConnectRequest) -> ConnectStart {
         if self.in_flight.contains(&request.connection_id) {
             return ConnectStart::JoinedInFlight;
         }
@@ -336,7 +336,7 @@ impl ActiveConnectionStore {
     /// / headless backends may not return the optional field; the UI then
     /// treats cancellation as unknown). Releases the in-flight claim and
     /// returns the bind + `connection-ready` broadcast, in that order.
-    pub(crate) fn complete_connect(
+    pub fn complete_connect(
         &mut self,
         connection_id: &str,
         db_session_id: &str,
@@ -380,7 +380,7 @@ impl ActiveConnectionStore {
     /// are already empty by then) — with an empty session, `error` status
     /// and the message. Releases the in-flight claim and returns the
     /// `connection-failed` broadcast.
-    pub(crate) fn fail_connect(
+    pub fn fail_connect(
         &mut self,
         connection_id: &str,
         error: String,
@@ -408,7 +408,7 @@ impl ActiveConnectionStore {
     /// with `Connection timeout` by [`ActiveConnectionStore::tick`] if it is
     /// still `connecting` then. (Only this path arms a timeout; `connect`
     /// does not.) A fresh entry replaces whatever was tracked before.
-    pub(crate) fn mark_connecting(
+    pub fn mark_connecting(
         &mut self,
         connection_id: &str,
         database: Option<String>,
@@ -424,7 +424,7 @@ impl ActiveConnectionStore {
     /// old fails with the literal `Connection timeout` (React's timer checks
     /// `entry?.status === 'connecting'` at fire time — the same guard).
     /// Returns the timed-out connection ids, in no particular order.
-    pub(crate) fn tick(&mut self, now_ms: u64) -> Vec<String> {
+    pub fn tick(&mut self, now_ms: u64) -> Vec<String> {
         let mut timed_out = Vec::new();
         for (connection_id, entry) in self.connections.iter_mut() {
             let armed_since = match entry.connecting_since_ms {
@@ -452,7 +452,7 @@ impl ActiveConnectionStore {
     /// starts here too). Returns the bind effect plus the capabilities
     /// request; the host feeds the IPC answer back through
     /// `apply_capabilities`.
-    pub(crate) fn mark_connected(
+    pub fn mark_connected(
         &mut self,
         connection_id: &str,
         db_session_id: &str,
@@ -490,7 +490,7 @@ impl ActiveConnectionStore {
     /// whether the capabilities were written. `None` capabilities (a
     /// discovery failure, or a backend that advertises none) leave the
     /// entry connected with capabilities unknown.
-    pub(crate) fn apply_capabilities(
+    pub fn apply_capabilities(
         &mut self,
         connection_id: &str,
         db_session_id: &str,
@@ -510,7 +510,7 @@ impl ActiveConnectionStore {
     /// connection `error` with an empty session and the given message,
     /// keeping whatever else the entry held (server info, capabilities,
     /// current database — React spreads the old entry).
-    pub(crate) fn mark_error(&mut self, connection_id: &str, error: String) {
+    pub fn mark_error(&mut self, connection_id: &str, error: String) {
         let previous = self.connections.get(connection_id);
         let mut entry = match previous {
             Some(entry) => entry.clone(),
@@ -529,7 +529,7 @@ impl ActiveConnectionStore {
     /// the `disconnect` IPC and emit the plan's `on_success` broadcast, then
     /// call [`ActiveConnectionStore::finish_disconnect`] — on IPC failure
     /// too, so the entry is removed either way (React `finally`).
-    pub(crate) fn disconnect(&mut self, connection_id: &str) -> DisconnectPlan {
+    pub fn disconnect(&mut self, connection_id: &str) -> DisconnectPlan {
         let db_session_id = self
             .connections
             .get(connection_id)
@@ -549,7 +549,7 @@ impl ActiveConnectionStore {
 
     /// The `disconnect` tail: removes the entry unconditionally — the
     /// `finally` of the React flow, called after the IPC succeeds or fails.
-    pub(crate) fn finish_disconnect(&mut self, connection_id: &str) {
+    pub fn finish_disconnect(&mut self, connection_id: &str) {
         self.connections.remove(connection_id);
     }
 
@@ -560,7 +560,7 @@ impl ActiveConnectionStore {
     /// so a queued read for this session is dropped here rather than left
     /// to fail later. The host applies effects in order, synchronously,
     /// before any further transition.
-    pub(crate) fn remove_by_db_session_id(&mut self, db_session_id: &str) -> Vec<ConnectionEffect> {
+    pub fn remove_by_db_session_id(&mut self, db_session_id: &str) -> Vec<ConnectionEffect> {
         self.connections
             .retain(|_, entry| entry.db_session_id != db_session_id);
         vec![ConnectionEffect::DropColumnReadsForSession {
@@ -571,7 +571,7 @@ impl ActiveConnectionStore {
     /// React `reset`: clears the tracked connections. The in-flight claims
     /// are intentionally untouched — React's `reset` only sets
     /// `{ connections: {} }`.
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.connections.clear();
     }
 }
@@ -581,7 +581,7 @@ impl ActiveConnectionStore {
 /// (`未知错误`). Rust call sites hold either a message or none, so the
 /// `unknown` input is `None` here.
 #[allow(dead_code)] // foundation API; consumers land with the connection views
-pub(crate) fn extract_error(message: Option<&str>) -> String {
+pub fn extract_error(message: Option<&str>) -> String {
     match message {
         Some(message) => message.to_owned(),
         None => crate::i18n::t("backend.unknownError").to_owned(),

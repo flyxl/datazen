@@ -39,21 +39,21 @@ use rune::TextStyle;
 /// React `WIZARD_FOOTER_HEIGHT_CLASS` (`h-[56px]`, 56px → 42pt): the one
 /// height the brand sidebar's version row and the wizard's step-indicator
 /// footer share, so both lines of chrome text end on the same bottom line.
-pub(crate) const WIZARD_FOOTER_HEIGHT: f32 = 42.0;
+pub const WIZARD_FOOTER_HEIGHT: f32 = 42.0;
 
 /// React `WIZARD_FOOTER_PX_CLASS` (`px-[48px]`, 48px → 36pt): the
 /// right-hand footer's horizontal rhythm.
-pub(crate) const WIZARD_FOOTER_PX: f32 = 36.0;
+pub const WIZARD_FOOTER_PX: f32 = 36.0;
 
 /// React `WIZARD_ASIDE_PX_CLASS` (`px-[34px]`, 34px → 25.5pt): the brand
 /// sidebar's horizontal rhythm.
-pub(crate) const WIZARD_ASIDE_PX: f32 = 25.5;
+pub const WIZARD_ASIDE_PX: f32 = 25.5;
 
 /// React `WIZARD_CHROME_TEXT_CLASS`'s typographic half
 /// (`text-[11.5px] font-mono`, 11.5px → 8.625pt): the version label and
 /// the step indicator's shared small mono text. The class's `text-fg-muted`
 /// colour half is the caller's (`kit(dark).c.text_muted`).
-pub(crate) fn chrome_text() -> TextStyle {
+pub fn chrome_text() -> TextStyle {
     TextStyle::new(8.625, 400.0).mono()
 }
 

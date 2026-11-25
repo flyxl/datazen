@@ -40,7 +40,7 @@ fn handle_id(column: Option<&str>, role: &str, side: &str, collapsed: bool) -> S
 ///
 /// The list is insertion-ordered and deduplicated — the same order a JS
 /// `Set` spreads in — so the handle keys are stable for a given edge list.
-pub(crate) fn with_handle_columns(nodes: Vec<ErNode>, edges: &[ErEdge]) -> Vec<ErNode> {
+pub fn with_handle_columns(nodes: Vec<ErNode>, edges: &[ErEdge]) -> Vec<ErNode> {
     let mut touched: HashMap<String, Vec<String>> = HashMap::new();
     let mut touch = |table: &str, column: &Option<String>| {
         let Some(column) = column else { return };
@@ -74,7 +74,7 @@ pub(crate) fn with_handle_columns(nodes: Vec<ErNode>, edges: &[ErEdge]) -> Vec<E
 /// relayout) keep whatever they had rather than being dropped. An ambiguous
 /// inference carries no label at all: a clique of identical labels is
 /// precisely what made this diagram unreadable.
-pub(crate) fn with_handles(mut edges: Vec<ErEdge>, nodes: &[ErNode]) -> Vec<ErEdge> {
+pub fn with_handles(mut edges: Vec<ErEdge>, nodes: &[ErNode]) -> Vec<ErEdge> {
     let by_id: HashMap<&str, &ErNode> =
         nodes.iter().map(|node| (node.id.as_str(), node)).collect();
 

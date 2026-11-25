@@ -23,7 +23,7 @@ use std::collections::HashMap;
 
 /// The store (`useEditorSelectionStore`): the per-panel selections.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct EditorSelectionStore {
+pub struct EditorSelectionStore {
     by_panel: HashMap<String, String>,
 }
 
@@ -31,7 +31,7 @@ impl EditorSelectionStore {
     /// `setSelection`: an empty selection removes the panel's entry (a
     /// selection that exists is never empty); an unchanged selection
     /// writes nothing; otherwise the new selection lands.
-    pub(crate) fn set_selection(&mut self, panel_id: &str, selection: &str) {
+    pub fn set_selection(&mut self, panel_id: &str, selection: &str) {
         if selection.is_empty() {
             self.by_panel.remove(panel_id);
             return;
@@ -43,12 +43,12 @@ impl EditorSelectionStore {
     }
 
     /// `clearSelection`: drop the panel's entry (unmounting the editor).
-    pub(crate) fn clear_selection(&mut self, panel_id: &str) {
+    pub fn clear_selection(&mut self, panel_id: &str) {
         self.by_panel.remove(panel_id);
     }
 
     /// The panel's current selection, or empty when nothing is reported.
-    pub(crate) fn selection(&self, panel_id: &str) -> &str {
+    pub fn selection(&self, panel_id: &str) -> &str {
         self.by_panel.get(panel_id).map(String::as_str).unwrap_or("")
     }
 }
@@ -61,7 +61,7 @@ thread_local! {
 
 /// `getEditorSelection`: the selection of the active query panel without
 /// subscribing — empty for a nullish panel or an unreported one.
-pub(crate) fn get_editor_selection(panel_id: Option<&str>) -> String {
+pub fn get_editor_selection(panel_id: Option<&str>) -> String {
     match panel_id {
         Some(panel_id) => EDITOR_SELECTION.with_borrow(|store| {
             store.selection(panel_id).to_owned()
@@ -71,11 +71,11 @@ pub(crate) fn get_editor_selection(panel_id: Option<&str>) -> String {
 }
 
 /// `setEditorSelection`: the editor's update-listener write.
-pub(crate) fn set_editor_selection(panel_id: &str, selection: &str) {
+pub fn set_editor_selection(panel_id: &str, selection: &str) {
     EDITOR_SELECTION.with_borrow_mut(|store| store.set_selection(panel_id, selection));
 }
 
 /// `clearEditorSelection`: drop the entry when the editor unmounts.
-pub(crate) fn clear_editor_selection(panel_id: &str) {
+pub fn clear_editor_selection(panel_id: &str) {
     EDITOR_SELECTION.with_borrow_mut(|store| store.clear_selection(panel_id));
 }

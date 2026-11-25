@@ -31,22 +31,22 @@ use std::collections::HashSet;
 /// One cell coordinate: the 0-based row index inside the current page
 /// (render-only, never used to build SQL) and the stable column name.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct CellCoord {
-    pub(crate) row_index: usize,
-    pub(crate) column_name: String,
+pub struct CellCoord {
+    pub row_index: usize,
+    pub column_name: String,
 }
 
 /// A rectangle by its two corners; the order is meaningless and
 /// normalized by [`normalize_cell_range`].
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CellRange {
-    pub(crate) start: CellCoord,
-    pub(crate) end: CellCoord,
+pub struct CellRange {
+    pub start: CellCoord,
+    pub end: CellCoord,
 }
 
 /// The selection mode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum GridSelectionMode {
+pub enum GridSelectionMode {
     #[default]
     None,
     Cell,
@@ -57,16 +57,16 @@ pub(crate) enum GridSelectionMode {
 /// Shift-extension start), the moving focus corner, and the extra
 /// non-contiguous single-cell ranges (Cmd/Ctrl+click).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct GridSelection {
-    pub(crate) anchor: Option<CellCoord>,
-    pub(crate) focus: Option<CellCoord>,
-    pub(crate) extra_ranges: Vec<CellRange>,
-    pub(crate) mode: GridSelectionMode,
+pub struct GridSelection {
+    pub anchor: Option<CellCoord>,
+    pub focus: Option<CellCoord>,
+    pub extra_ranges: Vec<CellRange>,
+    pub mode: GridSelectionMode,
 }
 
 impl GridSelection {
     /// `EMPTY_GRID_SELECTION`: every "no selection" site's shape.
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Self::default()
     }
 }
@@ -75,9 +75,9 @@ impl GridSelection {
 /// `TableState.selectedRows` — [`rows_covered_by_selection`] reads it
 /// verbatim in row mode.
 #[derive(Clone, Debug)]
-pub(crate) struct GridSelectionState<'a> {
-    pub(crate) selection: &'a GridSelection,
-    pub(crate) selected_rows: &'a HashSet<usize>,
+pub struct GridSelectionState<'a> {
+    pub selection: &'a GridSelection,
+    pub selected_rows: &'a HashSet<usize>,
 }
 
 fn coord_equals(a: &CellCoord, b: &CellCoord) -> bool {
@@ -86,7 +86,7 @@ fn coord_equals(a: &CellCoord, b: &CellCoord) -> bool {
 
 /// Column name → index in render order; `None` when the column is not
 /// displayed (React's `-1`).
-pub(crate) fn column_index_from_coord(
+pub fn column_index_from_coord(
     coord: &CellCoord,
     column_order: &[&str],
 ) -> Option<usize> {
@@ -94,7 +94,7 @@ pub(crate) fn column_index_from_coord(
 }
 
 /// `cellCoordEquals`: both-null equality, then coordinate equality.
-pub(crate) fn cell_coord_equals(a: Option<&CellCoord>, b: Option<&CellCoord>) -> bool {
+pub fn cell_coord_equals(a: Option<&CellCoord>, b: Option<&CellCoord>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(a), Some(b)) => coord_equals(a, b),
@@ -104,7 +104,7 @@ pub(crate) fn cell_coord_equals(a: Option<&CellCoord>, b: Option<&CellCoord>) ->
 
 /// Row/cell coordinate → coordinate, or `None` when either index falls
 /// outside the grid.
-pub(crate) fn coord_at(
+pub fn coord_at(
     row_index: usize,
     column_index: usize,
     column_order: &[&str],
@@ -119,7 +119,7 @@ pub(crate) fn coord_at(
 /// Pull a coordinate back into the grid: an unknown column (hidden while
 /// referenced) or an empty grid has no legal coordinate (`None`); the row
 /// index is clamped.
-pub(crate) fn clamp_cell_coord(
+pub fn clamp_cell_coord(
     coord: &CellCoord,
     row_count: usize,
     column_order: &[&str],
@@ -140,7 +140,7 @@ pub(crate) fn clamp_cell_coord(
 /// order — never lexicographic, because `id` sorts before `name` while
 /// the grid may show the opposite. An unknown column has no position to
 /// compare, so the range is "not found".
-pub(crate) fn normalize_cell_range(
+pub fn normalize_cell_range(
     range: &CellRange,
     column_order: &[&str],
 ) -> Option<CellRange> {
@@ -167,7 +167,7 @@ pub(crate) fn normalize_cell_range(
 
 /// Normalized anchor→focus rectangle; `None` unless both corners exist
 /// and are displayable.
-pub(crate) fn normalize_selection_range(
+pub fn normalize_selection_range(
     selection: &GridSelection,
     column_order: &[&str],
 ) -> Option<CellRange> {
@@ -184,7 +184,7 @@ pub(crate) fn normalize_selection_range(
 
 /// Every region the selection covers, the main region first, then the
 /// extra ranges (all normalized).
-pub(crate) fn selection_ranges(
+pub fn selection_ranges(
     selection: &GridSelection,
     column_order: &[&str],
 ) -> Vec<CellRange> {
@@ -204,7 +204,7 @@ pub(crate) fn selection_ranges(
 }
 
 /// Whether a normalized rectangle covers one coordinate.
-pub(crate) fn cell_range_contains(
+pub fn cell_range_contains(
     range: &CellRange,
     coord: &CellCoord,
     column_order: &[&str],
@@ -227,7 +227,7 @@ pub(crate) fn cell_range_contains(
 }
 
 /// Whether any region of the selection covers one coordinate.
-pub(crate) fn grid_selection_contains(
+pub fn grid_selection_contains(
     selection: &GridSelection,
     coord: &CellCoord,
     column_order: &[&str],
@@ -239,7 +239,7 @@ pub(crate) fn grid_selection_contains(
 
 /// Total cell area of every region, overlapping regions counted twice
 /// (the render/summary metric).
-pub(crate) fn grid_selection_cell_count(
+pub fn grid_selection_cell_count(
     selection: &GridSelection,
     column_order: &[&str],
 ) -> usize {
@@ -260,7 +260,7 @@ pub(crate) fn grid_selection_cell_count(
 
 /// Distinct displayed columns covered by the selection (the "M" of
 /// "N rows × M columns").
-pub(crate) fn columns_covered_by_selection(
+pub fn columns_covered_by_selection(
     selection: &GridSelection,
     column_order: &[&str],
 ) -> usize {
@@ -283,7 +283,7 @@ pub(crate) fn columns_covered_by_selection(
 /// written back into `selected_rows` (00-contracts §4.2 rule 3). Row
 /// indices are UI indices: a write path still resolves a row identity
 /// through `rowIdentityAnchors` before touching the database.
-pub(crate) fn rows_covered_by_selection(state: &GridSelectionState<'_>) -> HashSet<usize> {
+pub fn rows_covered_by_selection(state: &GridSelectionState<'_>) -> HashSet<usize> {
     if state.selection.mode == GridSelectionMode::Row {
         return state.selected_rows.clone();
     }
@@ -310,7 +310,7 @@ pub(crate) fn rows_covered_by_selection(state: &GridSelectionState<'_>) -> HashS
 
 /// Every coordinate of a normalized rectangle, row-major — the **one**
 /// place a region is expanded into coordinates (00-contracts §4.1).
-pub(crate) fn cell_coords_in_range(
+pub fn cell_coords_in_range(
     range: &CellRange,
     column_order: &[&str],
 ) -> Vec<CellCoord> {
@@ -342,7 +342,7 @@ fn same_range(a: &CellRange, b: &CellRange) -> bool {
 }
 
 /// Structural equality; extra ranges are compared as an unordered set.
-pub(crate) fn grid_selection_equals(
+pub fn grid_selection_equals(
     a: &GridSelection,
     b: &GridSelection,
     column_order: &[&str],
@@ -375,7 +375,7 @@ pub(crate) fn grid_selection_equals(
 /// Move the focus corner by a row/column delta and clamp it into the
 /// grid; `None` when the clamped result equals the input — nowhere left
 /// to go, so the caller leaves the selection untouched.
-pub(crate) fn move_cell_focus(
+pub fn move_cell_focus(
     focus: &CellCoord,
     delta_row: i64,
     delta_column: i64,
@@ -402,7 +402,7 @@ pub(crate) fn move_cell_focus(
 
 /// Build a selection from its two corners. `row` mode carries no
 /// geometry at all (00-contracts §4 invariant I2).
-pub(crate) fn selection_from_anchor_focus(
+pub fn selection_from_anchor_focus(
     anchor: CellCoord,
     focus: CellCoord,
     mode: GridSelectionMode,
@@ -428,7 +428,7 @@ pub(crate) fn selection_from_anchor_focus(
 /// or drop it when it already is one. Clicking inside the main region is
 /// a no-op (already selected); an unknown column leaves the selection
 /// untouched.
-pub(crate) fn toggle_extra_range(
+pub fn toggle_extra_range(
     selection: &GridSelection,
     coord: &CellCoord,
     column_order: &[&str],
@@ -488,7 +488,7 @@ fn coord_is_displayable(
 /// reload, column visibility): an invalid main corner clears the whole
 /// selection; an invalid extra range is dropped; `row` mode keeps no
 /// geometry by construction.
-pub(crate) fn reconcile_grid_selection(
+pub fn reconcile_grid_selection(
     selection: &GridSelection,
     row_count: usize,
     column_order: &[&str],

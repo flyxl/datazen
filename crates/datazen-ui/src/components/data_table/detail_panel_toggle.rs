@@ -45,7 +45,7 @@ use crate::ui::kit::kit;
 
 /// The 7-point (`h-7 w-7`) toggle button.
 #[allow(dead_code)] // ported base; remove when the grid header call site lands
-pub(crate) struct DetailPanelToggle<S: 'static> {
+pub struct DetailPanelToggle<S: 'static> {
     key: String,
     open: bool,
     on_toggle: Option<Box<dyn Fn(&mut S)>>,
@@ -55,7 +55,7 @@ pub(crate) struct DetailPanelToggle<S: 'static> {
 impl<S: 'static> DetailPanelToggle<S> {
     /// `DetailPanelToggle::new("detail-panel-toggle", open)` — the key is
     /// this port's own (React has no `data-testid` on the button).
-    pub(crate) fn new(key: impl Into<String>, open: bool) -> Self {
+    pub fn new(key: impl Into<String>, open: bool) -> Self {
         Self {
             key: key.into(),
             open,
@@ -65,7 +65,7 @@ impl<S: 'static> DetailPanelToggle<S> {
 
     /// React `onToggle` — the whole contract: one press, one flip; the
     /// open state itself lives in the host.
-    pub(crate) fn on_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle = Some(Box::new(f));
         self
     }
@@ -73,7 +73,7 @@ impl<S: 'static> DetailPanelToggle<S> {
     /// Paint the button. The two states are React's two class lists:
     /// the open one carries the accent wash, the closed one stays
     /// surface-quiet until hover.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         // React 17: `title={open ? t('detail.hide') : t('detail.show')}`.
         let title = if self.open {

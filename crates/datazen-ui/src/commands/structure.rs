@@ -31,13 +31,13 @@
 
 use serde_json::json;
 
-pub(crate) use datazen_driver_api::StructureChangeRequest;
+pub use datazen_driver_api::StructureChangeRequest;
 
 use crate::commands::database::{DatabaseTarget, TargetCommandRequest, metadata_target};
 
 /// `getStructureCapabilities`' target: the session's catalog position,
 /// no object half (the React call passes `undefined` for the table).
-pub(crate) fn capabilities_target(
+pub fn capabilities_target(
     connection_id: &str,
     database: Option<&str>,
     schema: Option<&str>,
@@ -47,7 +47,7 @@ pub(crate) fn capabilities_target(
 
 /// `getStructureCapabilities(dbSessionId, database, schema,
 /// connectionId)`.
-pub(crate) fn get_structure_capabilities_request(target: &DatabaseTarget) -> TargetCommandRequest {
+pub fn get_structure_capabilities_request(target: &DatabaseTarget) -> TargetCommandRequest {
     TargetCommandRequest {
         target: target.clone(),
         command: "get_structure_capabilities",
@@ -58,7 +58,7 @@ pub(crate) fn get_structure_capabilities_request(target: &DatabaseTarget) -> Tar
 /// `planTableStructureChanges`' target: the plan's `database` is the
 /// target and the `schema` is the request's own (`request.schema ??
 /// null`) — a request without a schema plans against the default.
-pub(crate) fn plan_target(
+pub fn plan_target(
     connection_id: &str,
     database: Option<&str>,
     request: &StructureChangeRequest,
@@ -68,7 +68,7 @@ pub(crate) fn plan_target(
 
 /// `planTableStructureChanges(dbSessionId, request, database,
 /// connectionId)`: the `{ request }` input bag, wire camelCase.
-pub(crate) fn plan_table_structure_changes_request(
+pub fn plan_table_structure_changes_request(
     target: &DatabaseTarget,
     request: &StructureChangeRequest,
 ) -> TargetCommandRequest {

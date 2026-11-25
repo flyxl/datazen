@@ -41,17 +41,17 @@ use crate::views::data_sync::data_sync_compare_step::{
 
 /// The four row-diff counters of one table result.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RowDiffCounts {
-    pub(crate) inserts: usize,
-    pub(crate) updates: usize,
-    pub(crate) deletes: usize,
-    pub(crate) unchanged: usize,
+pub struct RowDiffCounts {
+    pub inserts: usize,
+    pub updates: usize,
+    pub deletes: usize,
+    pub unchanged: usize,
 }
 
 /// `rowDiffCounts`: the wire counters win; absent ones are recomputed from
 /// the row list (`insertCount ?? count(INSERT)`), while the unchanged
 /// counter is `unchangedCount ?? 0` **plus** the UNCHANGED rows in the list.
-pub(crate) fn row_diff_counts(row: &DataSyncTableResult) -> RowDiffCounts {
+pub fn row_diff_counts(row: &DataSyncTableResult) -> RowDiffCounts {
     RowDiffCounts {
         inserts: row.insert_count.unwrap_or_else(|| {
             row.rows
@@ -81,18 +81,18 @@ pub(crate) fn row_diff_counts(row: &DataSyncTableResult) -> RowDiffCounts {
 }
 
 /// `tableHasRowDiffs`: any of the three change kinds present.
-pub(crate) fn table_has_row_diffs(row: &DataSyncTableResult) -> bool {
+pub fn table_has_row_diffs(row: &DataSyncTableResult) -> bool {
     let counts = row_diff_counts(row);
     counts.inserts + counts.updates + counts.deletes > 0
 }
 
 /// `tableIsUnchanged`: a matched table without row diffs.
-pub(crate) fn table_is_unchanged(row: &DataSyncTableResult) -> bool {
+pub fn table_is_unchanged(row: &DataSyncTableResult) -> bool {
     row.status == DataSyncMappingStatus::Matched && !table_has_row_diffs(row)
 }
 
 /// `mappingLabelKey`: the zh-CN key of one mapping status's label.
-pub(crate) fn mapping_label_key(status: DataSyncMappingStatus) -> &'static str {
+pub fn mapping_label_key(status: DataSyncMappingStatus) -> &'static str {
     match status {
         DataSyncMappingStatus::Matched => "sync.mappingMatched",
         DataSyncMappingStatus::UnmappedSource => "sync.mappingUnmappedSource",
@@ -104,7 +104,7 @@ pub(crate) fn mapping_label_key(status: DataSyncMappingStatus) -> &'static str {
 
 /// `displayTableName`: `source → target` when both exist and differ;
 /// whichever exists otherwise.
-pub(crate) fn display_table_name(row: &DataSyncTableResult) -> String {
+pub fn display_table_name(row: &DataSyncTableResult) -> String {
     if !row.source_table.is_empty()
         && !row.target_table.is_empty()
         && row.source_table != row.target_table
@@ -118,7 +118,7 @@ pub(crate) fn display_table_name(row: &DataSyncTableResult) -> String {
 }
 
 /// `tableKey`: the source table, or the target when there is none.
-pub(crate) fn table_key(row: &DataSyncTableResult) -> String {
+pub fn table_key(row: &DataSyncTableResult) -> String {
     if row.source_table.is_empty() {
         row.target_table.clone()
     } else {
@@ -128,20 +128,20 @@ pub(crate) fn table_key(row: &DataSyncTableResult) -> String {
 
 /// `tablePageKey`: the composite key of a table pair (`source\0target`),
 /// used to address the paged comparison cursors of one table.
-pub(crate) fn table_page_key(row: &DataSyncTableResult) -> String {
+pub fn table_page_key(row: &DataSyncTableResult) -> String {
     format!("{}\u{0}{}", row.source_table, row.target_table)
 }
 
 /// `summarizeMappings`: the four status buckets of the mapping step.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct MappingSummary {
-    pub(crate) matched: usize,
-    pub(crate) incompatible: usize,
-    pub(crate) unmapped: usize,
-    pub(crate) disabled: usize,
+pub struct MappingSummary {
+    pub matched: usize,
+    pub incompatible: usize,
+    pub unmapped: usize,
+    pub disabled: usize,
 }
 
-pub(crate) fn summarize_mappings(rows: &[DataSyncTableResult]) -> MappingSummary {
+pub fn summarize_mappings(rows: &[DataSyncTableResult]) -> MappingSummary {
     let mut summary = MappingSummary::default();
     for row in rows {
         match row.status {
@@ -158,15 +158,15 @@ pub(crate) fn summarize_mappings(rows: &[DataSyncTableResult]) -> MappingSummary
 
 /// `summarizeCompare`: the change counters of the comparison step.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CompareSummaryStats {
-    pub(crate) inserts: usize,
-    pub(crate) updates: usize,
-    pub(crate) deletes: usize,
-    pub(crate) unchanged_tables: usize,
-    pub(crate) incompatible: usize,
+pub struct CompareSummaryStats {
+    pub inserts: usize,
+    pub updates: usize,
+    pub deletes: usize,
+    pub unchanged_tables: usize,
+    pub incompatible: usize,
 }
 
-pub(crate) fn summarize_compare(rows: &[DataSyncTableResult]) -> CompareSummaryStats {
+pub fn summarize_compare(rows: &[DataSyncTableResult]) -> CompareSummaryStats {
     let mut stats = CompareSummaryStats::default();
     for row in rows {
         if row.status == DataSyncMappingStatus::Incompatible {
@@ -190,13 +190,13 @@ pub(crate) fn summarize_compare(rows: &[DataSyncTableResult]) -> CompareSummaryS
 /// `rowKeyString`: the JSON spelling of a composite key. The React
 /// `try/catch` guards a circular structure, which `serde_json::Value`
 /// cannot represent — the fallback is unreachable and not ported.
-pub(crate) fn row_key_string(key: &[Value]) -> String {
+pub fn row_key_string(key: &[Value]) -> String {
     Value::Array(key.to_vec()).to_string()
 }
 
 /// `defaultRowSelected`: which operations start selected under options —
 /// DELETE never does.
-pub(crate) fn default_row_selected(operation: DataSyncOperation, options: &SyncOptions) -> bool {
+pub fn default_row_selected(operation: DataSyncOperation, options: &SyncOptions) -> bool {
     match operation {
         DataSyncOperation::Insert => options.insert,
         DataSyncOperation::Update => options.update,
@@ -206,7 +206,7 @@ pub(crate) fn default_row_selected(operation: DataSyncOperation, options: &SyncO
 
 /// `applyOptionsToRows`: a selected row stays selected only when its
 /// operation is still allowed under the options.
-pub(crate) fn apply_options_to_rows(
+pub fn apply_options_to_rows(
     rows: &[DataSyncRowChange],
     options: &SyncOptions,
 ) -> Vec<DataSyncRowChange> {
@@ -220,7 +220,7 @@ pub(crate) fn apply_options_to_rows(
 }
 
 /// `operationAllowed`: the options' three switches.
-pub(crate) fn operation_allowed(operation: DataSyncOperation, options: &SyncOptions) -> bool {
+pub fn operation_allowed(operation: DataSyncOperation, options: &SyncOptions) -> bool {
     match operation {
         DataSyncOperation::Insert => options.insert,
         DataSyncOperation::Update => options.update,
@@ -231,7 +231,7 @@ pub(crate) fn operation_allowed(operation: DataSyncOperation, options: &SyncOpti
 
 /// `selectedRowCount`: rows that are selected, not UNCHANGED, and still
 /// allowed.
-pub(crate) fn selected_row_count(table: &DataSyncTableResult, options: &SyncOptions) -> usize {
+pub fn selected_row_count(table: &DataSyncTableResult, options: &SyncOptions) -> usize {
     table
         .rows
         .iter()
@@ -245,7 +245,7 @@ pub(crate) fn selected_row_count(table: &DataSyncTableResult, options: &SyncOpti
 
 /// `tableMatchesFilter`: the query matches the display name
 /// case-insensitively, then the status/diff-count filter applies.
-pub(crate) fn table_matches_filter(
+pub fn table_matches_filter(
     row: &DataSyncTableResult,
     filter: TableDiffFilter,
     query: &str,
@@ -278,7 +278,7 @@ pub(crate) fn table_matches_filter(
 /// itself; a DISABLED mapping is never overwritten; otherwise every
 /// compared field replaces the mapping's, with warnings falling back when
 /// the comparison carries none.
-pub(crate) fn merge_compare_into_mappings(
+pub fn merge_compare_into_mappings(
     mappings: &[DataSyncTableResult],
     compared: &[DataSyncTableResult],
 ) -> Vec<DataSyncTableResult> {
@@ -322,7 +322,7 @@ pub(crate) fn merge_compare_into_mappings(
 
 /// `markDisabledTables`: matched tables in the disabled set become
 /// DISABLED with their row list dropped.
-pub(crate) fn mark_disabled_tables(
+pub fn mark_disabled_tables(
     rows: &[DataSyncTableResult],
     disabled: &std::collections::HashSet<String>,
 ) -> Vec<DataSyncTableResult> {
@@ -342,7 +342,7 @@ pub(crate) fn mark_disabled_tables(
 
 /// `tablesForCompare`: the source tables of matched tables with a
 /// non-empty source name (`.filter(Boolean)`).
-pub(crate) fn tables_for_compare(rows: &[DataSyncTableResult]) -> Vec<String> {
+pub fn tables_for_compare(rows: &[DataSyncTableResult]) -> Vec<String> {
     rows.iter()
         .filter(|r| r.status == DataSyncMappingStatus::Matched)
         .map(|r| r.source_table.clone())

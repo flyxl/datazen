@@ -12,14 +12,14 @@ use super::{
     QueryTransactionModalsVm,
 };
 
-pub(crate) const ABORTED_KEY: &str = "query-tx-aborted-modal";
-pub(crate) const DETAIL_KEY: &str = "query-tx-aborted-detail";
-pub(crate) const SKIP_KEY: &str = "query-tx-aborted-skip";
-pub(crate) const ROLLBACK_KEY: &str = "query-tx-aborted-rollback";
+pub const ABORTED_KEY: &str = "query-tx-aborted-modal";
+pub const DETAIL_KEY: &str = "query-tx-aborted-detail";
+pub const SKIP_KEY: &str = "query-tx-aborted-skip";
+pub const ROLLBACK_KEY: &str = "query-tx-aborted-rollback";
 
 /// React: a `<pre>` with the abort detail (danger-coloured, capped height), a
 /// ghost Skip and a danger Roll back — both disabled while `txBusy`.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &QueryTransactionModalsVm,
     host: &QueryTransactionHostPort<S>,
     dark: bool,

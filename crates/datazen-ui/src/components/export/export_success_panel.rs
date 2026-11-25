@@ -45,13 +45,13 @@ use crate::icons::ICON_CHECK;
 use crate::ui::kit::kit;
 
 /// The panel: a centred green check over the caller's message.
-pub(crate) struct ExportSuccessPanel {
+pub struct ExportSuccessPanel {
     key: String,
     message: String,
 }
 
 impl ExportSuccessPanel {
-    pub(crate) fn new(key: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             message: message.into(),
@@ -59,7 +59,7 @@ impl ExportSuccessPanel {
     }
 
     /// React's column: `flex flex-col items-center gap-2 py-6 text-center`.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let key = self.key;
         col()

@@ -50,7 +50,7 @@ use crate::views::{WappPageSummaryVm, WappSummaryVm};
 /// Mirrors `WAPPS_OPEN_PAGE_EVENT` in `crates/datazen/src/wapps/protocol.rs`:
 /// the event the host emits when a `datazen://…/open?page=…` deep link
 /// resolves to a contributed page. Payload: `{ wappId, pageId, params }`.
-pub(crate) const WAPPS_OPEN_PAGE_EVENT: &str = "wapps:open-page";
+pub const WAPPS_OPEN_PAGE_EVENT: &str = "wapps:open-page";
 
 /// React's `OpenPageEventPayload` (`windows/workspace/workspacePages.ts`):
 /// the raw `wapps:open-page` deep-link event — no Tauri envelope, the
@@ -58,16 +58,16 @@ pub(crate) const WAPPS_OPEN_PAGE_EVENT: &str = "wapps:open-page";
 /// bridge forwards to the wapp page) is ignored by the React file itself and
 /// rides the F6 bridge consumer, so it is deliberately not carried.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct OpenPageEventPayload {
-    pub(crate) wapp_id: Option<String>,
-    pub(crate) page_id: Option<String>,
+pub struct OpenPageEventPayload {
+    pub wapp_id: Option<String>,
+    pub page_id: Option<String>,
 }
 
 /// React's `workspaceTabKey` (`stores/workspaceTabsStore.ts`): the stable
 /// `${wappId}:${pageId}` key an open tab and its entry share. Declared here
 /// because that is the file that spells it; the workspace-tabs store's own
 /// port (T143/T172 area) should reuse this instead of re-spelling the form.
-pub(crate) fn workspace_tab_key(wapp_id: &str, page_id: &str) -> String {
+pub fn workspace_tab_key(wapp_id: &str, page_id: &str) -> String {
     format!("{wapp_id}:{page_id}")
 }
 
@@ -98,7 +98,7 @@ fn to_entry(wapp: &WappSummaryVm, page: &WappPageSummaryVm) -> WorkspacePageEntr
 /// in install order — the wapp list's order, each wapp's pages in their
 /// contribution order. This is the body `useWorkspacePages` memoizes; the
 /// host calls it over its wapps slice whenever it builds the workspace.
-pub(crate) fn derive_workspace_pages(wapps: &[WappSummaryVm]) -> Vec<WorkspacePageEntry> {
+pub fn derive_workspace_pages(wapps: &[WappSummaryVm]) -> Vec<WorkspacePageEntry> {
     wapps
         .iter()
         .filter(|wapp| wapp.enabled && !wapp.pages.is_empty())
@@ -109,7 +109,7 @@ pub(crate) fn derive_workspace_pages(wapps: &[WappSummaryVm]) -> Vec<WorkspacePa
 /// React's `buildWorkspaceTab`: the workspace tab a resolved page opens —
 /// the entry's fields minus `author`/`description` (the tab carries
 /// neither), i.e. the T067 `WorkspaceTabVm` payload.
-pub(crate) fn build_workspace_tab(
+pub fn build_workspace_tab(
     wapp: &WappSummaryVm,
     page: &WappPageSummaryVm,
 ) -> WorkspaceTabVm {
@@ -126,14 +126,14 @@ pub(crate) fn build_workspace_tab(
 
 /// The workspace-tabs store's `open(tab)` — the host seam the resolve hands
 /// its built tab to (React: `useWorkspaceTabsStore.getState().open(tab)`).
-pub(crate) type OpenWorkspaceTabSlot<S> = Rc<dyn Fn(&mut S, WorkspaceTabVm)>;
+pub type OpenWorkspaceTabSlot<S> = Rc<dyn Fn(&mut S, WorkspaceTabVm)>;
 
 /// React's `openWappPage`: resolve + open a workspace app page tab
 /// (activating it — the store's `open` is idempotent per key). Returns
 /// `false` when the wapp is missing/disabled or has no such page — callers
 /// decide whether to surface that to the user. The wapp-store read is the
 /// `wapps` slice parameter; the tabs-store write is the [`OpenWorkspaceTabSlot`].
-pub(crate) fn open_wapp_page<S: 'static>(
+pub fn open_wapp_page<S: 'static>(
     wapps: &[WappSummaryVm],
     wapp_id: &str,
     page_id: Option<&str>,

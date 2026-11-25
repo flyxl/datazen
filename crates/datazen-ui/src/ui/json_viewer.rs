@@ -62,7 +62,7 @@ use crate::i18n;
 
 /// Display mode for a JSON document.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum JsonDisplayMode {
+pub enum JsonDisplayMode {
     #[default]
     Tree,
     Raw,
@@ -98,13 +98,13 @@ impl JsonDisplayMode {
 }
 
 /// Default number of levels opened in tree mode.
-pub(crate) const DEFAULT_OPEN_DEPTH: usize = 2;
+pub const DEFAULT_OPEN_DEPTH: usize = 2;
 
 type ModeBind = Box<dyn Fn(El, JsonDisplayMode) -> El>;
 type ToggleBind = Box<dyn Fn(El, String) -> El>;
 
 /// A read-only JSON viewer with tree/raw/pretty/minify modes.
-pub(crate) struct JsonViewer {
+pub struct JsonViewer {
     key: String,
     text: String,
     mode: JsonDisplayMode,
@@ -117,7 +117,7 @@ pub(crate) struct JsonViewer {
 }
 
 impl JsonViewer {
-    pub(crate) fn new(key: impl Into<String>, text: &str) -> Self {
+    pub fn new(key: impl Into<String>, text: &str) -> Self {
         Self {
             key: key.into(),
             text: text.to_owned(),
@@ -131,18 +131,18 @@ impl JsonViewer {
         }
     }
 
-    pub(crate) fn mode(mut self, mode: JsonDisplayMode) -> Self {
+    pub fn mode(mut self, mode: JsonDisplayMode) -> Self {
         self.mode = mode;
         self
     }
 
-    pub(crate) fn open_depth(mut self, depth: usize) -> Self {
+    pub fn open_depth(mut self, depth: usize) -> Self {
         self.open_depth = depth;
         self
     }
 
     /// Paths whose open state is flipped from the default (`depth < open_depth`).
-    pub(crate) fn toggled<I, P>(mut self, paths: I) -> Self
+    pub fn toggled<I, P>(mut self, paths: I) -> Self
     where
         I: IntoIterator<Item = P>,
         P: Into<String>,
@@ -151,18 +151,18 @@ impl JsonViewer {
         self
     }
 
-    pub(crate) fn grow(mut self) -> Self {
+    pub fn grow(mut self) -> Self {
         self.grow = true;
         self
     }
 
-    pub(crate) fn height(mut self, height: f32) -> Self {
+    pub fn height(mut self, height: f32) -> Self {
         self.height = Some(height);
         self
     }
 
     /// Called when a mode button is pressed.
-    pub(crate) fn on_mode<S: 'static>(
+    pub fn on_mode<S: 'static>(
         mut self,
         f: impl Fn(&mut S, JsonDisplayMode) + Clone + 'static,
     ) -> Self {
@@ -174,7 +174,7 @@ impl JsonViewer {
     }
 
     /// Called when a tree node toggle is pressed, with the node path.
-    pub(crate) fn on_toggle<S: 'static>(
+    pub fn on_toggle<S: 'static>(
         mut self,
         f: impl Fn(&mut S, String) + Clone + 'static,
     ) -> Self {
@@ -185,7 +185,7 @@ impl JsonViewer {
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let parsed = serde_json::from_str::<Value>(&self.text);
         let (value, parse_error) = match parsed {

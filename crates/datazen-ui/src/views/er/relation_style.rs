@@ -11,14 +11,14 @@
 //! [`ER_PREDICTED_DASH`], and a test pins the derivation.
 
 /// Stroke of a relationship a foreign key constraint declares.
-pub(crate) const ER_DECLARED_COLOR: &str = "var(--c-accent, #3b82f6)";
+pub const ER_DECLARED_COLOR: &str = "var(--c-accent, #3b82f6)";
 
 /// Stroke of a relationship the engine inferred from structure and naming.
-pub(crate) const ER_PREDICTED_COLOR: &str = "var(--c-warning, #e39a27)";
+pub const ER_PREDICTED_COLOR: &str = "var(--c-warning, #e39a27)";
 
 /// Dash pattern for an inferred relationship.
 ///
 /// Dashed rather than only recoloured: a colour-only distinction disappears
 /// in a monochrome export and for a colour-blind reader, while a dash
 /// survives both.
-pub(crate) const ER_PREDICTED_DASH: &str = "4 3";
+pub const ER_PREDICTED_DASH: &str = "4 3";

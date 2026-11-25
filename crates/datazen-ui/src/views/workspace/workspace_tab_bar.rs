@@ -78,15 +78,15 @@ use crate::views::wapp_page_shell::WorkspaceTabVm;
 
 /// The store's `activate(key)` — the host slot the entry's press routes
 /// through.
-pub(crate) type ActivateTabSlot<S> = Rc<dyn Fn(&mut S, &str)>;
+pub type ActivateTabSlot<S> = Rc<dyn Fn(&mut S, &str)>;
 
 /// The store's `close(key)` — the close button's host slot.
-pub(crate) type CloseTabSlot<S> = Rc<dyn Fn(&mut S, &str)>;
+pub type CloseTabSlot<S> = Rc<dyn Fn(&mut S, &str)>;
 
 /// The `WorkspaceTabBar` React props' store projections plus the Rune
 /// seams: the tab list, the active key, the two host press slots and the
 /// T017 picture wire.
-pub(crate) struct WorkspaceTabBar<'a, S: 'static> {
+pub struct WorkspaceTabBar<'a, S: 'static> {
     tabs: &'a [WorkspaceTabVm],
     active_key: Option<&'a str>,
     on_activate: Option<ActivateTabSlot<S>>,
@@ -97,7 +97,7 @@ pub(crate) struct WorkspaceTabBar<'a, S: 'static> {
 impl<'a, S: 'static> WorkspaceTabBar<'a, S> {
     /// React's three store reads (`tabs`, `activeKey`) — the actions are
     /// the two slots below.
-    pub(crate) fn new(tabs: &'a [WorkspaceTabVm], active_key: Option<&'a str>) -> Self {
+    pub fn new(tabs: &'a [WorkspaceTabVm], active_key: Option<&'a str>) -> Self {
         Self {
             tabs,
             active_key,
@@ -110,26 +110,26 @@ impl<'a, S: 'static> WorkspaceTabBar<'a, S> {
     /// The store's `activate(tab.key)` — the entry press's host slot;
     /// without it the entries render but their presses no-op (the
     /// not-yet-wired host's case).
-    pub(crate) fn on_activate(mut self, slot: ActivateTabSlot<S>) -> Self {
+    pub fn on_activate(mut self, slot: ActivateTabSlot<S>) -> Self {
         self.on_activate = Some(slot);
         self
     }
 
     /// The store's `close(tab.key)` — the close button's host slot.
-    pub(crate) fn on_close(mut self, slot: CloseTabSlot<S>) -> Self {
+    pub fn on_close(mut self, slot: CloseTabSlot<S>) -> Self {
         self.on_close = Some(slot);
         self
     }
 
     /// The entries' icon picture wire (the T017 port's `WappIconImages`).
-    pub(crate) fn images(mut self, images: WappIconImages) -> Self {
+    pub fn images(mut self, images: WappIconImages) -> Self {
         self.images = Some(images);
         self
     }
 
     /// Build the strip at the given theme — `None` while no tab is open
     /// (React's `return null`).
-    pub(crate) fn build(self, dark: bool) -> Option<El> {
+    pub fn build(self, dark: bool) -> Option<El> {
         if self.tabs.is_empty() {
             return None;
         }

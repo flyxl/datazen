@@ -7,18 +7,18 @@ use super::risk::{FindingType, RiskClassification};
 /// The i18n keys React passes to `confirmDangerous` for one confirm decision.
 #[allow(dead_code)] // host-facing value; consumed by the reducer and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConfirmSpec {
-    pub(crate) title_key: &'static str,
-    pub(crate) message_key: &'static str,
-    pub(crate) badge_key: Option<&'static str>,
-    pub(crate) confirm_label_key: &'static str,
-    pub(crate) finding_keys: Vec<&'static str>,
-    pub(crate) code_preview: String,
+pub struct ConfirmSpec {
+    pub title_key: &'static str,
+    pub message_key: &'static str,
+    pub badge_key: Option<&'static str>,
+    pub confirm_label_key: &'static str,
+    pub finding_keys: Vec<&'static str>,
+    pub code_preview: String,
 }
 
 /// React `resolveConfirmI18n` branch order: combined → production → high-risk → chat-write → dangerous.
 #[allow(dead_code)] // pure helper; consumed by the spec builder and tests.
-pub(crate) fn confirm_keys(reasons: &[&str]) -> (&'static str, &'static str, Option<&'static str>) {
+pub fn confirm_keys(reasons: &[&str]) -> (&'static str, &'static str, Option<&'static str>) {
     let production = reasons.contains(&"production");
     let high_risk = reasons.contains(&"high-risk");
     if production && high_risk {
@@ -52,7 +52,7 @@ pub(crate) fn confirm_keys(reasons: &[&str]) -> (&'static str, &'static str, Opt
 
 /// React `resolveFindingDescriptions` for the findings the gate produces.
 #[allow(dead_code)] // pure helper; consumed by the spec builder and tests.
-pub(crate) fn finding_keys(
+pub fn finding_keys(
     findings: &[FindingType],
     classification: RiskClassification,
 ) -> Vec<&'static str> {
@@ -76,7 +76,7 @@ pub(crate) fn finding_keys(
 
 /// Build the full confirm spec for a decision.
 #[allow(dead_code)] // pure helper; consumed by the reducer and tests.
-pub(crate) fn confirm_spec(
+pub fn confirm_spec(
     reasons: &[&str],
     findings: &[FindingType],
     classification: RiskClassification,

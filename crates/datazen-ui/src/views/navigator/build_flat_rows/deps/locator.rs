@@ -20,19 +20,19 @@ use super::super::inputs::{
 };
 
 /// React `PINNED_GROUP_KEY`.
-pub(crate) const PINNED_GROUP_KEY: &str = "__pinned__";
+pub const PINNED_GROUP_KEY: &str = "__pinned__";
 /// React `RECENT_GROUP_KEY`.
-pub(crate) const RECENT_GROUP_KEY: &str = "__recent__";
+pub const RECENT_GROUP_KEY: &str = "__recent__";
 
 /// React `connectionExpandKey` — scoped so the same connection expands
 /// independently per navigator section.
-pub(crate) fn connection_expand_key(section_group: &str, connection_id: &str) -> String {
+pub fn connection_expand_key(section_group: &str, connection_id: &str) -> String {
     format!("{section_group}::{connection_id}")
 }
 
 /// React `ConnectionMatchReason` (order matters only for the tiebreak sort).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MatchReason {
+pub enum MatchReason {
     Name,
     Host,
     Database,
@@ -64,7 +64,7 @@ impl MatchReason {
 
 /// React `ConnectionMatch` — lower rank is stronger and sorts first.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConnectionMatch {
+pub struct ConnectionMatch {
     pub rank: i64,
     pub reason: MatchReason,
     pub context: String,
@@ -72,7 +72,7 @@ pub(crate) struct ConnectionMatch {
 
 /// React `ConnectionLocatorResult`.
 #[derive(Clone, Debug)]
-pub(crate) struct ConnectionLocatorResult {
+pub struct ConnectionLocatorResult {
     pub connection: ConnectionSnapshot,
     pub match_payload: Option<ConnectionMatch>,
 }
@@ -388,7 +388,7 @@ fn compare_results(a: &ConnectionLocatorResult, b: &ConnectionLocatorResult) -> 
 /// deterministic ordering. A non-empty query returns only matching
 /// connections; an empty query returns every connection, deduplicated by id
 /// in first-seen order, each with a null match.
-pub(crate) fn rank_connections(
+pub fn rank_connections(
     connections: &[ConnectionSnapshot],
     query: &str,
     usage: &UsageStateSnapshot,

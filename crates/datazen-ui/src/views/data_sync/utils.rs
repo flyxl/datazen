@@ -23,7 +23,7 @@ use crate::views::schema_diff::schema_diff_table_names::TableInfoVm;
 /// equal to JavaScript's UTF-16 code-unit order for every BMP schema name
 /// (the difference exists only for astral-plane characters, which a schema
 /// name is not).
-pub(crate) fn unique_schemas_from_tables(tables: &[TableInfoVm]) -> Vec<String> {
+pub fn unique_schemas_from_tables(tables: &[TableInfoVm]) -> Vec<String> {
     let mut seen: Vec<String> = Vec::new();
     for table in tables {
         let Some(trimmed) = table.schema.as_deref().map(str::trim) else {
@@ -43,7 +43,7 @@ pub(crate) fn unique_schemas_from_tables(tables: &[TableInfoVm]) -> Vec<String> 
 /// `pickDefaultSchema`: the previous schema if it still exists, else
 /// `'public'` if the list has it, else the first schema, else the empty
 /// string.
-pub(crate) fn pick_default_schema(schemas: &[String], previous: Option<&str>) -> String {
+pub fn pick_default_schema(schemas: &[String], previous: Option<&str>) -> String {
     if let Some(previous) = previous {
         if schemas.iter().any(|schema| schema == previous) {
             return previous.to_string();
@@ -57,7 +57,7 @@ pub(crate) fn pick_default_schema(schemas: &[String], previous: Option<&str>) ->
 
 /// `isComparedSyncState`: whether the current state carries a reviewable
 /// comparison result — the four states past the comparison.
-pub(crate) fn is_compared_sync_state(sync_state: SyncState) -> bool {
+pub fn is_compared_sync_state(sync_state: SyncState) -> bool {
     matches!(
         sync_state,
         SyncState::Compared | SyncState::Executing | SyncState::Unknown | SyncState::Done

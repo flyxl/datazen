@@ -72,7 +72,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize};
 
 /// The main window's root view: the React `MainPage` composition, branch by
 /// branch, over the chrome and dialog layer the shell already owns.
-pub(crate) fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
+pub fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
     let system_dark = cx.system_dark();
     state.system_dark.set(system_dark);
     let dark = match state.desktop.read_ui_settings() {

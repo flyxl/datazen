@@ -64,7 +64,7 @@ const PAGE_SIZES: [usize; 5] = [25, 50, 100, 200, 500];
 // lands in a later migration task and `tests/data_table_parts.rs` covers them now.
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TotalRowsKind {
+pub enum TotalRowsKind {
     #[default]
     Exact,
     Estimated,
@@ -73,27 +73,27 @@ pub(crate) enum TotalRowsKind {
 
 /// The three states of a row count (`lib/totalRowsDisplay.ts`).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum TotalRowsView {
+pub enum TotalRowsView {
     Exact(f64),
     Estimated(f64),
     Unknown,
 }
 
 impl TotalRowsView {
-    pub(crate) fn value(self) -> f64 {
+    pub fn value(self) -> f64 {
         match self {
             TotalRowsView::Exact(value) | TotalRowsView::Estimated(value) => value,
             TotalRowsView::Unknown => 0.0,
         }
     }
 
-    pub(crate) fn is_unknown(self) -> bool {
+    pub fn is_unknown(self) -> bool {
         matches!(self, TotalRowsView::Unknown)
     }
 }
 
 /// `totalRowsView(kind, totalRows)`.
-pub(crate) fn total_rows_view(kind: TotalRowsKind, total_rows: usize) -> TotalRowsView {
+pub fn total_rows_view(kind: TotalRowsKind, total_rows: usize) -> TotalRowsView {
     match kind {
         TotalRowsKind::Estimated => TotalRowsView::Estimated(total_rows as f64),
         TotalRowsKind::Unsupported => TotalRowsView::Unknown,
@@ -102,7 +102,7 @@ pub(crate) fn total_rows_view(kind: TotalRowsKind, total_rows: usize) -> TotalRo
 }
 
 /// `formatRowCount`: thousands separators under a million, then `1.2M` / `3.4B`.
-pub(crate) fn format_row_count(value: f64) -> String {
+pub fn format_row_count(value: f64) -> String {
     if !value.is_finite() {
         return "0".to_owned();
     }
@@ -127,7 +127,7 @@ pub(crate) fn format_row_count(value: f64) -> String {
 
 /// `canPageForward`: an exact total closes the grid, an estimate never does, and
 /// the unknown state only trusts a full page.
-pub(crate) fn can_page_forward(view: TotalRowsView, row_count: usize, page_size: usize) -> bool {
+pub fn can_page_forward(view: TotalRowsView, row_count: usize, page_size: usize) -> bool {
     match view {
         TotalRowsView::Unknown => page_size > 0 && row_count >= page_size,
         TotalRowsView::Estimated(_) => true,
@@ -139,7 +139,7 @@ pub(crate) fn can_page_forward(view: TotalRowsView, row_count: usize, page_size:
 // The back end produces every variant; the view that maps it lands later.
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum KeysetUnavailableReason {
+pub enum KeysetUnavailableReason {
     DriverUnsupported,
     NoStableOrder,
     NullableKeyColumn,
@@ -167,7 +167,7 @@ impl KeysetUnavailableReason {
 
 /// `pagingHintKey`: every reason has its own `pagination.hint.<reason>` key; the
 /// one exception is `notAdjacent`, which says the cursor re-anchored.
-pub(crate) fn paging_hint_key(reason: KeysetUnavailableReason) -> String {
+pub fn paging_hint_key(reason: KeysetUnavailableReason) -> String {
     if reason == KeysetUnavailableReason::NotAdjacent {
         "pagination.hint.jumpReanchored".to_owned()
     } else {
@@ -177,13 +177,13 @@ pub(crate) fn paging_hint_key(reason: KeysetUnavailableReason) -> String {
 
 /// `showPagingReason`: a database that has no keyset paging at all is not a
 /// warning the user needs on every page.
-pub(crate) fn show_paging_reason(reason: KeysetUnavailableReason) -> bool {
+pub fn show_paging_reason(reason: KeysetUnavailableReason) -> bool {
     reason != KeysetUnavailableReason::DriverUnsupported
 }
 
 /// How the current page is paged.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PagingMode {
+pub enum PagingMode {
     Keyset,
     #[default]
     Offset,
@@ -191,15 +191,15 @@ pub(crate) enum PagingMode {
 
 /// What the back end said about the paging of this page.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PagingHint {
-    pub(crate) reason: Option<KeysetUnavailableReason>,
-    pub(crate) drift_suspected: bool,
-    pub(crate) mode: PagingMode,
+pub struct PagingHint {
+    pub reason: Option<KeysetUnavailableReason>,
+    pub drift_suspected: bool,
+    pub mode: PagingMode,
 }
 
 /// `showPagingLabel`: the mode shows once the user can actually page, or when a
 /// reason explains why they cannot.
-pub(crate) fn show_paging_label(hint: PagingHint, has_more_than_one_page: bool) -> bool {
+pub fn show_paging_label(hint: PagingHint, has_more_than_one_page: bool) -> bool {
     if let Some(reason) = hint.reason {
         if show_paging_reason(reason) {
             return true;
@@ -209,7 +209,7 @@ pub(crate) fn show_paging_label(hint: PagingHint, has_more_than_one_page: bool) 
 }
 
 /// `pagingLabelKey`.
-pub(crate) fn paging_label_key(hint: PagingHint) -> &'static str {
+pub fn paging_label_key(hint: PagingHint) -> &'static str {
     match hint.mode {
         PagingMode::Keyset => "pagination.mode.keyset",
         PagingMode::Offset => "pagination.mode.offset",
@@ -221,7 +221,7 @@ type PressFn<S> = Rc<dyn Fn(&mut S)>;
 
 /// The page strip. Build it with the state the view already owns, then hand the
 /// callbacks the next page / page size.
-pub(crate) struct Pagination<S: 'static> {
+pub struct Pagination<S: 'static> {
     page: usize,
     page_size: usize,
     total_rows: usize,
@@ -245,7 +245,7 @@ pub(crate) struct Pagination<S: 'static> {
 // `tests/data_table_parts.rs` is the caller today.
 #[allow(dead_code)]
 impl<S: 'static> Pagination<S> {
-    pub(crate) fn new(page: usize, page_size: usize, total_rows: usize) -> Pagination<S> {
+    pub fn new(page: usize, page_size: usize, total_rows: usize) -> Pagination<S> {
         Pagination {
             page,
             page_size,
@@ -268,62 +268,62 @@ impl<S: 'static> Pagination<S> {
     }
 
     /// The three states of the row count (`totalRowsKind`).
-    pub(crate) fn total_rows_kind(mut self, kind: TotalRowsKind) -> Pagination<S> {
+    pub fn total_rows_kind(mut self, kind: TotalRowsKind) -> Pagination<S> {
         self.kind = kind;
         self
     }
 
     /// Rows in the page on screen; `None` means the back end did not say.
-    pub(crate) fn row_count(mut self, row_count: Option<usize>) -> Pagination<S> {
+    pub fn row_count(mut self, row_count: Option<usize>) -> Pagination<S> {
         self.row_count = row_count;
         self
     }
 
     /// The back end's `hasMore`; overrides the derived forward rule.
-    pub(crate) fn has_more(mut self, has_more: Option<bool>) -> Pagination<S> {
+    pub fn has_more(mut self, has_more: Option<bool>) -> Pagination<S> {
         self.has_more = has_more;
         self
     }
 
-    pub(crate) fn loading(mut self, loading: bool) -> Pagination<S> {
+    pub fn loading(mut self, loading: bool) -> Pagination<S> {
         self.loading = loading;
         self
     }
 
-    pub(crate) fn counting(mut self, counting: bool) -> Pagination<S> {
+    pub fn counting(mut self, counting: bool) -> Pagination<S> {
         self.counting = counting;
         self
     }
 
-    pub(crate) fn unstable_paging(mut self, unstable: bool) -> Pagination<S> {
+    pub fn unstable_paging(mut self, unstable: bool) -> Pagination<S> {
         self.unstable_paging = unstable;
         self
     }
 
-    pub(crate) fn estimate_unavailable(mut self, unavailable: bool) -> Pagination<S> {
+    pub fn estimate_unavailable(mut self, unavailable: bool) -> Pagination<S> {
         self.estimate_unavailable = unavailable;
         self
     }
 
-    pub(crate) fn paging_hint(mut self, hint: Option<PagingHint>) -> Pagination<S> {
+    pub fn paging_hint(mut self, hint: Option<PagingHint>) -> Pagination<S> {
         self.hint = hint;
         self
     }
 
     /// Whether the page-size picker's listbox is open (the app owns that state,
     /// as it does for every `ui::select::Select`).
-    pub(crate) fn page_size_open(mut self, open: bool) -> Pagination<S> {
+    pub fn page_size_open(mut self, open: bool) -> Pagination<S> {
         self.page_size_open = open;
         self
     }
 
     /// Previous / next / page-size reset all arrive here with the target page.
-    pub(crate) fn on_page_change(mut self, f: impl Fn(&mut S, usize) + 'static) -> Pagination<S> {
+    pub fn on_page_change(mut self, f: impl Fn(&mut S, usize) + 'static) -> Pagination<S> {
         self.on_page_change = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_page_size_change(
+    pub fn on_page_size_change(
         mut self,
         f: impl Fn(&mut S, usize) + 'static,
     ) -> Pagination<S> {
@@ -331,24 +331,24 @@ impl<S: 'static> Pagination<S> {
         self
     }
 
-    pub(crate) fn on_page_size_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Pagination<S> {
+    pub fn on_page_size_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Pagination<S> {
         self.on_page_size_toggle = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_page_size_close(mut self, f: impl Fn(&mut S) + 'static) -> Pagination<S> {
+    pub fn on_page_size_close(mut self, f: impl Fn(&mut S) + 'static) -> Pagination<S> {
         self.on_page_size_close = Some(Rc::new(f));
         self
     }
 
     /// The `onCountExact` action, shown only while the total is an estimate.
-    pub(crate) fn on_count_exact(mut self, f: impl Fn(&mut S) + 'static) -> Pagination<S> {
+    pub fn on_count_exact(mut self, f: impl Fn(&mut S) + 'static) -> Pagination<S> {
         self.on_count_exact = Some(Rc::new(f));
         self
     }
 
     /// Builds the strip. `layer` receives the page-size listbox while it is open.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let c = &k.c;
         let page_size = self.page_size.max(1);

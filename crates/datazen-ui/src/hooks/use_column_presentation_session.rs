@@ -53,23 +53,23 @@ struct SessionSnapshotMemo {
 /// `useSessionValuePresentationSnapshot`. Each consuming surface (grid,
 /// aside) owns one; the session store itself is shared (AppState).
 #[derive(Default)]
-pub(crate) struct ColumnPresentationSessionHook {
+pub struct ColumnPresentationSessionHook {
     memo: Option<SessionSnapshotMemo>,
     /// How many times the merge has actually run — the observable half of
     /// the memoization (tests pin that an unchanged input pair does not
     /// recompute).
-    pub(crate) merge_count: u64,
+    pub merge_count: u64,
 }
 
 impl ColumnPresentationSessionHook {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// `useColumnPresentationSessionState` — subscribe to the session
     /// override store and read it (a revision change is a re-render in
     /// React, a next-frame read here).
-    pub(crate) fn session_state(
+    pub fn session_state(
         &self,
         session: &ColumnPresentationSession,
     ) -> ColumnPresentationSessionState {
@@ -80,7 +80,7 @@ impl ColumnPresentationSessionHook {
     /// overrides into the host snapshot; an empty session returns the
     /// base snapshot (same revision, equal content). The memo recomputes
     /// only when either input changed since the last call.
-    pub(crate) fn session_value_presentation_snapshot(
+    pub fn session_value_presentation_snapshot(
         &mut self,
         base: &ValuePresentationSnapshot,
         session: &ColumnPresentationSession,

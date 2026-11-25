@@ -69,7 +69,7 @@ use super::main_page;
 /// wrapper layers are the documented seams above; the body the window router
 /// picks is composed directly, unwrapped, exactly as React renders it when
 /// no error and no load is in flight.
-pub(crate) fn app_root(state: &AppState, cx: &mut Cx<AppState>) -> El {
+pub fn app_root(state: &AppState, cx: &mut Cx<AppState>) -> El {
     window_content(state, cx)
 }
 

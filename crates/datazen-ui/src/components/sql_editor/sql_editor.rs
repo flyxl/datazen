@@ -61,7 +61,7 @@ use std::rc::Rc;
 use rune::{col, row, text, tok, El, Ime, KeyEvent, Span, Tx};
 
 #[allow(unused_imports)] // re-export keeps the pre-T105 paths (mod.rs, completion) stable
-pub(crate) use super::contracts::{CompletionQuotePolicy, ExecutionStatus};
+pub use super::contracts::{CompletionQuotePolicy, ExecutionStatus};
 use super::lib_helpers::parse_qualified_path_parents;
 use super::sql_editor_context_menu::toggle_sql_line_comments;
 use crate::sql_editor::{self, SqlEditor};
@@ -79,7 +79,7 @@ use crate::ui::spinner::{Spinner, SpinnerVariant};
 /// factories are kept as documented wiring points.
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) struct SqlEditorProps {
+pub struct SqlEditorProps {
     /// `placeholder`: shown on the first line while the document is empty.
     pub placeholder: Option<String>,
     /// `databaseType`: dialect wiring point for the completion task.
@@ -112,7 +112,7 @@ pub(crate) struct SqlEditorProps {
 /// `onExecuteAll`, `onSaveQuery`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) enum EditorEvent {
+pub enum EditorEvent {
     /// `onChange(value)` — the document changed by an edit or IME commit.
     Changed(String),
     /// `onSelectionChange(selection)` — empty string means no selected text.
@@ -130,7 +130,7 @@ pub(crate) enum EditorEvent {
 /// `StartExecutionEffect` payload, pinned to the document version at start.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) struct ExecutionMark {
+pub struct ExecutionMark {
     pub target_range: Option<(usize, usize)>,
     pub document_version: u64,
 }
@@ -143,7 +143,7 @@ pub(crate) struct ExecutionMark {
 /// kept in refs (`documentVersionField`, execution effects, `lastParentsRef`).
 #[derive(Debug)]
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) struct SqlEditorState {
+pub struct SqlEditorState {
     /// The CodeMirror-equivalent engine model.
     pub editor: SqlEditor,
     /// `documentVersionField`: bumped by external value replacement only,
@@ -163,7 +163,7 @@ impl Default for SqlEditorState {
 
 #[allow(dead_code)]
 impl SqlEditorState {
-    pub(crate) fn new(editor: SqlEditor) -> Self {
+    pub fn new(editor: SqlEditor) -> Self {
         let mut state = Self {
             editor,
             document_version: 0,
@@ -178,20 +178,20 @@ impl SqlEditorState {
     }
 
     /// The initial `onQualifiedPath` payload the mount effect fires.
-    pub(crate) fn mount_parents(&self) -> &[String] {
+    pub fn mount_parents(&self) -> &[String] {
         &self.last_parents
     }
 
     // ---- handle methods (contracts.ts `SqlEditorHandle`) ----
 
     /// `getSelection`: the text of the selection, `""` for a plain caret.
-    pub(crate) fn get_selection(&self) -> String {
+    pub fn get_selection(&self) -> String {
         self.editor.selected_text()
     }
 
     /// `toggleLineComment`: toggle `-- ` on the selected lines (or the line
     /// holding the caret), then select the replaced region.
-    pub(crate) fn toggle_line_comment(&mut self) {
+    pub fn toggle_line_comment(&mut self) {
         let sel = self.editor.selection().main();
         let (from, to) = line_bounds(self.editor.doc(), sel.from(), sel.to());
         let original = self.editor.doc()[from..to].to_string();
@@ -205,7 +205,7 @@ impl SqlEditorState {
 
     /// `insertAt(text, pos)`: replace an empty document, or insert with the
     /// React newline padding rules and land the caret after the insertion.
-    pub(crate) fn insert_at(&mut self, text: &str, pos: Option<usize>) {
+    pub fn insert_at(&mut self, text: &str, pos: Option<usize>) {
         let doc = self.editor.doc();
         if doc.trim().is_empty() {
             let doc_len = doc.len();
@@ -235,17 +235,17 @@ impl SqlEditorState {
     }
 
     /// `getDocumentVersion`.
-    pub(crate) fn get_document_version(&self) -> u64 {
+    pub fn get_document_version(&self) -> u64 {
         self.document_version
     }
 
     /// `getDocument`.
-    pub(crate) fn get_document(&self) -> &str {
+    pub fn get_document(&self) -> &str {
         self.editor.doc()
     }
 
     /// `rawInsert(text, pos)`: insert without newline padding.
-    pub(crate) fn raw_insert(&mut self, text: &str, pos: usize) {
+    pub fn raw_insert(&mut self, text: &str, pos: usize) {
         let doc_len = self.editor.doc().len();
         let target = pos.min(doc_len);
         let caret = target + text.len();
@@ -254,7 +254,7 @@ impl SqlEditorState {
     }
 
     /// `focus`.
-    pub(crate) fn focus(&mut self) {
+    pub fn focus(&mut self) {
         self.editor.focus();
     }
 
@@ -263,7 +263,7 @@ impl SqlEditorState {
     /// selection-reindent and statement-anchored cursor mapping are
     /// T220's `format_editor_document` port (this method is the
     /// infallible-formatter shorthand — a formatter that cannot reject).
-    pub(crate) fn format_document(&mut self, formatter: &dyn Fn(&str) -> String) -> bool {
+    pub fn format_document(&mut self, formatter: &dyn Fn(&str) -> String) -> bool {
         self.format_document_with(None, super::format_editor_document::PartialSqlFormatOptions::default(), &|sql, _database_type, _options| {
             Ok(formatter(sql))
         })
@@ -272,7 +272,7 @@ impl SqlEditorState {
     /// The full `formatEditorDocument` seam: the dialect, the partial
     /// options overlay and a formatter that may reject (sql-formatter
     /// throws on syntax it cannot parse; the buffer stays untouched).
-    pub(crate) fn format_document_with(
+    pub fn format_document_with(
         &mut self,
         database_type: Option<&str>,
         options: super::format_editor_document::PartialSqlFormatOptions,
@@ -300,7 +300,7 @@ impl SqlEditorState {
     /// `insertSnippet(template)`: replace the selection with the template.
     /// Tabstop navigation (React `snippet()` sessions) is the snippets task's
     /// seam; the caret lands after the template here.
-    pub(crate) fn insert_snippet(&mut self, template: &str) {
+    pub fn insert_snippet(&mut self, template: &str) {
         let sel = self.editor.selection().main();
         let caret = sel.from() + template.len();
         self.editor.replace_range(sel.from(), sel.to(), template);
@@ -309,7 +309,7 @@ impl SqlEditorState {
     }
 
     /// `getCursorOffset`.
-    pub(crate) fn get_cursor_offset(&self) -> usize {
+    pub fn get_cursor_offset(&self) -> usize {
         self.editor.main_head()
     }
 
@@ -317,7 +317,7 @@ impl SqlEditorState {
 
     /// The `[value]` effect: replace the document when it differs from the
     /// external value, bumping `document_version` (`BumpDocumentVersion`).
-    pub(crate) fn set_value(&mut self, value: &str) {
+    pub fn set_value(&mut self, value: &str) {
         if self.editor.doc() == value {
             return;
         }
@@ -330,7 +330,7 @@ impl SqlEditorState {
 
     /// The execution-state effect: `StartExecutionEffect` pins the document
     /// version; `FinishExecutionEffect` (idle or cancelling) clears the mark.
-    pub(crate) fn set_execution(&mut self, status: ExecutionStatus, range: Option<(usize, usize)>) {
+    pub fn set_execution(&mut self, status: ExecutionStatus, range: Option<(usize, usize)>) {
         match status {
             ExecutionStatus::Running => {
                 self.execution = Some(ExecutionMark {
@@ -345,12 +345,12 @@ impl SqlEditorState {
     }
 
     /// The running mark, if any (gutter-spinner state in React).
-    pub(crate) fn execution_mark(&self) -> Option<ExecutionMark> {
+    pub fn execution_mark(&self) -> Option<ExecutionMark> {
         self.execution
     }
 
     /// `lastParentsRef`.
-    pub(crate) fn last_parents(&self) -> &[String] {
+    pub fn last_parents(&self) -> &[String] {
         &self.last_parents
     }
 
@@ -414,7 +414,7 @@ fn update_events(
 /// update listener (`onChange` / `onSelectionChange` / `onQualifiedPath`).
 /// Returns `(consumed, events)`.
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) fn on_key(state: &mut SqlEditorState, ev: &KeyEvent, tx: &mut Tx) -> (bool, Vec<EditorEvent>) {
+pub fn on_key(state: &mut SqlEditorState, ev: &KeyEvent, tx: &mut Tx) -> (bool, Vec<EditorEvent>) {
     if !state.editor.focused() || state.editor.composition().is_some() {
         return (false, Vec::new());
     }
@@ -439,7 +439,7 @@ pub(crate) fn on_key(state: &mut SqlEditorState, ev: &KeyEvent, tx: &mut Tx) -> 
 
 /// IME routing with the same update listener: a commit changes the document.
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) fn on_ime(state: &mut SqlEditorState, ev: &Ime) -> (bool, Vec<EditorEvent>) {
+pub fn on_ime(state: &mut SqlEditorState, ev: &Ime) -> (bool, Vec<EditorEvent>) {
     let doc_before = state.editor.doc().to_string();
     let selection_before = state.editor.selected_text();
     let consumed = sql_editor::on_ime(&mut state.editor, ev);
@@ -462,7 +462,7 @@ type CompletionFn<S> = Rc<dyn Fn(&mut S, usize) + 'static>;
 
 /// The component view, builder style like `components/history`.
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) struct SqlEditorComponent<'a, S: 'static> {
+pub struct SqlEditorComponent<'a, S: 'static> {
     state: &'a SqlEditorState,
     props: &'a SqlEditorProps,
     on_focus: Option<FocusFn<S>>,
@@ -471,23 +471,23 @@ pub(crate) struct SqlEditorComponent<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
 impl<'a, S: 'static> SqlEditorComponent<'a, S> {
-    pub(crate) fn new(state: &'a SqlEditorState, props: &'a SqlEditorProps) -> Self {
+    pub fn new(state: &'a SqlEditorState, props: &'a SqlEditorProps) -> Self {
         Self { state, props, on_focus: None, on_completion_accept: None }
     }
 
     /// Pressing the editing surface focuses the editor.
-    pub(crate) fn on_focus(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_focus(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_focus = Some(Rc::new(f));
         self
     }
 
     /// Clicking completion item `i` accepts it (React: the canvas list click).
-    pub(crate) fn on_completion_accept(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_completion_accept(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_completion_accept = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let theme = tok::theme(dark);
         let ink = theme.text;
         let muted = theme.text_secondary;

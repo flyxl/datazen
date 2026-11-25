@@ -16,7 +16,7 @@ use super::deps::sql_namespace::SqlNamespace;
 
 /// React `TableType` — the kinds a schema read can report.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TableType {
+pub enum TableType {
     #[default]
     Table,
     SystemTable,
@@ -26,7 +26,7 @@ pub(crate) enum TableType {
 
 impl TableType {
     /// The wire string the driver API uses.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Table => "table",
             Self::SystemTable => "systemTable",
@@ -35,7 +35,7 @@ impl TableType {
         }
     }
 
-    pub(crate) fn parse(raw: &str) -> Self {
+    pub fn parse(raw: &str) -> Self {
         match raw {
             "systemTable" => Self::SystemTable,
             "view" => Self::View,
@@ -47,7 +47,7 @@ impl TableType {
 
 /// React `TableInfo` (the read set: name, schema, type).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TableInfo {
+pub struct TableInfo {
     pub name: String,
     pub schema: Option<String>,
     pub table_type: TableType,
@@ -55,7 +55,7 @@ pub(crate) struct TableInfo {
 
 /// React `DatabaseObject` (the read set: kind, schema, name).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DatabaseObject {
+pub struct DatabaseObject {
     pub kind: String,
     pub schema: Option<String>,
     pub name: String,
@@ -63,7 +63,7 @@ pub(crate) struct DatabaseObject {
 
 /// React `ConnectionConfig`, restricted to the builder's read set.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ConnectionSnapshot {
+pub struct ConnectionSnapshot {
     pub id: String,
     pub name: String,
     pub database_type: String,
@@ -83,7 +83,7 @@ pub(crate) struct ConnectionSnapshot {
 
 impl ConnectionSnapshot {
     /// Test helper: the minimal connection the React tests construct.
-    pub(crate) fn new(id: &str, name: &str, database_type: &str) -> Self {
+    pub fn new(id: &str, name: &str, database_type: &str) -> Self {
         Self {
             id: id.to_owned(),
             name: name.to_owned(),
@@ -95,7 +95,7 @@ impl ConnectionSnapshot {
 
 /// React `ConnectionEntry` (the read set).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ActiveEntrySnapshot {
+pub struct ActiveEntrySnapshot {
     /// Empty while connecting/errored.
     pub db_session_id: Option<String>,
     pub status: String,
@@ -103,7 +103,7 @@ pub(crate) struct ActiveEntrySnapshot {
 
 /// React `ConnectionSchemaState` (the read set).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SchemaStateSnapshot {
+pub struct SchemaStateSnapshot {
     pub current_database: Option<String>,
     pub databases: Vec<String>,
     pub database_type: Option<String>,
@@ -125,7 +125,7 @@ pub(crate) struct SchemaStateSnapshot {
 /// React `ConnectionLocatorUsageState` — the runtime caches the locator
 /// searches besides the connection's own fields.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct UsageStateSnapshot {
+pub struct UsageStateSnapshot {
     pub active_connections: HashMap<String, ActiveEntrySnapshot>,
     pub schemas: HashMap<String, SchemaStateSnapshot>,
     pub db_tables_map: BTreeMap<String, Vec<TableInfo>>,
@@ -135,7 +135,7 @@ pub(crate) struct UsageStateSnapshot {
 /// React `DatabaseTypeMeta`, restricted to the fields the tree shape reads.
 /// The registry lookup is caller-supplied (see [`BuildFlatRowsParams`]).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DriverMeta {
+pub struct DriverMeta {
     /// `label`, used by the locator as a `database-type` candidate.
     pub label: Option<String>,
     pub is_key_value: bool,
@@ -156,7 +156,7 @@ pub(crate) struct DriverMeta {
 /// (React's `grouped: { group, connections }[]` — already built, pinned and
 /// recent sections included by the caller).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct GroupedSection {
+pub struct GroupedSection {
     pub group: String,
     pub connections: Vec<ConnectionSnapshot>,
 }

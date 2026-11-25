@@ -32,7 +32,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize};
 /// The two fill modes (React's `variant`): the whole window, or a
 /// bounded in-page region.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum LocaleDomainLoadingVariant {
+pub enum LocaleDomainLoadingVariant {
     /// `page` (default): fill the whole window height — the full-screen
     /// feature windows (Data Sync / Transfer / Schema Diff / Workflow).
     #[default]
@@ -43,14 +43,14 @@ pub(crate) enum LocaleDomainLoadingVariant {
 }
 
 /// The loading skeleton.
-pub(crate) struct LocaleDomainLoading {
+pub struct LocaleDomainLoading {
     key: &'static str,
     variant: LocaleDomainLoadingVariant,
 }
 
 impl LocaleDomainLoading {
     /// `testId` becomes the root key.
-    pub(crate) fn new(key: &'static str) -> Self {
+    pub fn new(key: &'static str) -> Self {
         Self {
             key,
             variant: LocaleDomainLoadingVariant::Page,
@@ -58,12 +58,12 @@ impl LocaleDomainLoading {
     }
 
     /// `variant` (`page` default).
-    pub(crate) fn variant(mut self, variant: LocaleDomainLoadingVariant) -> Self {
+    pub fn variant(mut self, variant: LocaleDomainLoadingVariant) -> Self {
         self.variant = variant;
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let mut root = row()
             .key(self.key)

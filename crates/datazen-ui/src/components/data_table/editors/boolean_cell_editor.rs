@@ -61,7 +61,7 @@ const OPTIONS: [&str; 3] = [NULL_OPTION, "true", "false"];
 type Pick<S> = Rc<dyn Fn(&mut S, Option<Value>)>;
 
 /// `BooleanCellEditor`: the two-branch control.
-pub(crate) struct BooleanCellEditor<S: 'static> {
+pub struct BooleanCellEditor<S: 'static> {
     draft: String,
     nullable: bool,
     aria_label: String,
@@ -76,7 +76,7 @@ pub(crate) struct BooleanCellEditor<S: 'static> {
 impl<S: 'static> BooleanCellEditor<S> {
     /// The control over the fields it reads (`draft`, `nullable`,
     /// `ariaLabel`).
-    pub(crate) fn new(draft: impl Into<String>, nullable: bool, aria_label: impl Into<String>) -> Self {
+    pub fn new(draft: impl Into<String>, nullable: bool, aria_label: impl Into<String>) -> Self {
         Self {
             draft: draft.into(),
             nullable,
@@ -90,33 +90,33 @@ impl<S: 'static> BooleanCellEditor<S> {
 
     /// React `onPick(value | null)`: a discrete choice was made — it
     /// is written right away.
-    pub(crate) fn on_pick(mut self, f: impl Fn(&mut S, Option<Value>) + 'static) -> Self {
+    pub fn on_pick(mut self, f: impl Fn(&mut S, Option<Value>) + 'static) -> Self {
         self.on_pick = Some(Rc::new(f));
         self
     }
 
     /// The three-state select's listbox open flag (the host's cell).
-    pub(crate) fn select_open(mut self, open: bool) -> Self {
+    pub fn select_open(mut self, open: bool) -> Self {
         self.select_open = open;
         self
     }
 
     /// The select trigger's press: open or close the listbox (the
     /// enabled-select rule).
-    pub(crate) fn on_select_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_toggle = Some(Rc::new(f));
         self
     }
 
     /// Presses outside and Escape close the select's listbox.
-    pub(crate) fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_close = Some(Rc::new(f));
         self
     }
 
     /// The control — the checkbox for NOT NULL, the three-item select
     /// for nullable. The select's listbox rides `layer`.
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         if !self.nullable {
             return self.checkbox(k);
         }

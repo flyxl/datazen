@@ -59,21 +59,21 @@ use crate::ui::kit::kit;
 /// One paged row plus the connection id React uses for the display name.
 #[allow(dead_code)] // projection type; fields are read by host wiring/tests
 #[derive(Clone, Debug)]
-pub(crate) struct GlobalHistoryEntry {
-    pub(crate) connection_id: String,
-    pub(crate) entry: HistoryEntryVm,
+pub struct GlobalHistoryEntry {
+    pub connection_id: String,
+    pub entry: HistoryEntryVm,
 }
 
 /// The paged result. `total` is the backend's honest count, so a short page is
 /// never presented as the whole list.
 #[allow(dead_code)] // projection type; fields are read by host wiring/tests
 #[derive(Clone, Debug)]
-pub(crate) struct HistoryPageVm {
-    pub(crate) entries: Vec<GlobalHistoryEntry>,
-    pub(crate) total: usize,
+pub struct HistoryPageVm {
+    pub entries: Vec<GlobalHistoryEntry>,
+    pub total: usize,
     /// Zero-based current page.
-    pub(crate) page: usize,
-    pub(crate) page_size: usize,
+    pub page: usize,
+    pub page_size: usize,
 }
 
 impl Default for HistoryPageVm {
@@ -90,23 +90,23 @@ impl Default for HistoryPageVm {
 /// Everything the dialog renders, kept in the app state `S` and projected here.
 #[allow(dead_code)] // projection type; fields are read by host wiring/tests
 #[derive(Clone, Debug)]
-pub(crate) struct GlobalHistoryVm {
-    pub(crate) open: bool,
+pub struct GlobalHistoryVm {
+    pub open: bool,
     /// Bumped on each open so Rune resets the body's scroll offset.
-    pub(crate) open_epoch: u64,
-    pub(crate) query: HistoryQueryState,
-    pub(crate) page: HistoryPageVm,
-    pub(crate) loading: bool,
-    pub(crate) error: Option<String>,
-    pub(crate) selected: Vec<String>,
+    pub open_epoch: u64,
+    pub query: HistoryQueryState,
+    pub page: HistoryPageVm,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub selected: Vec<String>,
     /// The row whose copy feedback is currently visible.
-    pub(crate) copied_id: Option<String>,
-    pub(crate) notice: Option<String>,
-    pub(crate) confirm_clear: bool,
-    pub(crate) filter_open: HistoryFilterOpen,
-    pub(crate) connections: Vec<HistoryConnectionOption>,
+    pub copied_id: Option<String>,
+    pub notice: Option<String>,
+    pub confirm_clear: bool,
+    pub filter_open: HistoryFilterOpen,
+    pub connections: Vec<HistoryConnectionOption>,
     /// Mirrors React's `canOpen = Boolean(onSelectQuery)`.
-    pub(crate) can_open: bool,
+    pub can_open: bool,
 }
 
 impl Default for GlobalHistoryVm {
@@ -140,7 +140,7 @@ type SearchFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 
 /// Builder for the global query-history dialog, generic over the app state `S`
 /// so every callback can write the state that actually owns the dialog's VM.
-pub(crate) struct GlobalQueryHistoryDialog<'a, S: 'static> {
+pub struct GlobalQueryHistoryDialog<'a, S: 'static> {
     key: &'a str,
     vm: &'a GlobalHistoryVm,
     search_edit: &'a TextEdit,
@@ -163,7 +163,7 @@ pub(crate) struct GlobalQueryHistoryDialog<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable API; wired by the query-history host/view track
 impl<'a, S: 'static> GlobalQueryHistoryDialog<'a, S> {
-    pub(crate) fn new(key: &'a str, vm: &'a GlobalHistoryVm, search_edit: &'a TextEdit) -> Self {
+    pub fn new(key: &'a str, vm: &'a GlobalHistoryVm, search_edit: &'a TextEdit) -> Self {
         Self {
             key,
             vm,
@@ -187,25 +187,25 @@ impl<'a, S: 'static> GlobalQueryHistoryDialog<'a, S> {
     }
 
     /// Header close, Escape and outside-press all run this handler.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.close = Some(Rc::new(f));
         self
     }
 
     /// React's `onSelectQuery`: the open action on a row. Its presence is also
     /// what makes the card expose an Open control (via `vm.can_open`).
-    pub(crate) fn on_select_query(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_select_query(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.select_query = Some(Rc::new(f));
         self
     }
 
     /// Any filter change arrives as a complete new [`HistoryQueryState`].
-    pub(crate) fn on_query(mut self, f: impl Fn(&mut S, HistoryQueryState) + 'static) -> Self {
+    pub fn on_query(mut self, f: impl Fn(&mut S, HistoryQueryState) + 'static) -> Self {
         self.query = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_filter_open(
+    pub fn on_filter_open(
         mut self,
         f: impl Fn(&mut S, HistoryFilterOpen) + 'static,
     ) -> Self {
@@ -213,20 +213,20 @@ impl<'a, S: 'static> GlobalQueryHistoryDialog<'a, S> {
         self
     }
 
-    pub(crate) fn on_toggle_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.toggle_select = Some(Rc::new(f));
         self
     }
 
     /// Select-all / clear-selection toggle (the VM decides from `selected`).
-    pub(crate) fn on_toggle_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.toggle_all = Some(Rc::new(f));
         self
     }
 
     /// Favorite / delete / open actions. Copy is forwarded for parity, but the
     /// clipboard write and feedback wake belong to the card's `CopyButton`.
-    pub(crate) fn on_action(
+    pub fn on_action(
         mut self,
         f: impl Fn(&mut S, HistoryEntryAction, String) + 'static,
     ) -> Self {
@@ -235,45 +235,45 @@ impl<'a, S: 'static> GlobalQueryHistoryDialog<'a, S> {
     }
 
     /// Recorded after the card has copied SQL; use it to set `vm.copied_id`.
-    pub(crate) fn on_copy(mut self, f: impl Fn(&mut S, String, &mut Tx) + 'static) -> Self {
+    pub fn on_copy(mut self, f: impl Fn(&mut S, String, &mut Tx) + 'static) -> Self {
         self.copy = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.export = Some(Rc::new(f));
         self
     }
 
     /// Enter the clear-history confirmation.
-    pub(crate) fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.clear = Some(Rc::new(f));
         self
     }
 
     /// The confirmed clear-history load/delete callback.
-    pub(crate) fn on_confirm_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.confirm_clear = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_cancel_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.cancel_clear = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_dismiss_notice(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss_notice(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.dismiss_notice = Some(Rc::new(f));
         self
     }
 
     /// Request a different (zero-based) page; the host then reloads entries.
-    pub(crate) fn on_page_change(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_page_change(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.page_change = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_search_edit(
+    pub fn on_search_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -283,7 +283,7 @@ impl<'a, S: 'static> GlobalQueryHistoryDialog<'a, S> {
 
     /// Paints the modal into `layer`. Dropdown overlays from the filter bar are
     /// appended after the dialog so they sit above the scrim and panel.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         if !self.vm.open {
             return;
         }

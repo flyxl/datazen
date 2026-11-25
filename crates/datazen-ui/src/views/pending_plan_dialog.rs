@@ -32,43 +32,43 @@ use crate::i18n::t;
 use crate::ui::dialog::Dialog;
 use crate::ui::kit::kit;
 
-pub(crate) const DIALOG_KEY: &str = "pending-plan-dialog";
-pub(crate) const CLOSE_KEY: &str = "pending-plan-close";
+pub const DIALOG_KEY: &str = "pending-plan-dialog";
+pub const CLOSE_KEY: &str = "pending-plan-close";
 
 /// React `PlannedStatement`, reduced to the two fields the preview reads.
 #[allow(dead_code)] // VM mirror; remove when the host owns the plan.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PlannedStatement {
-    pub(crate) sql_template: String,
-    pub(crate) parameter_summary: Vec<String>,
+pub struct PlannedStatement {
+    pub sql_template: String,
+    pub parameter_summary: Vec<String>,
 }
 
 /// React `ChangeWarning`.
 #[allow(dead_code)] // VM mirror; remove when the host owns the plan.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ChangeWarning {
-    pub(crate) code: String,
-    pub(crate) message: String,
+pub struct ChangeWarning {
+    pub code: String,
+    pub message: String,
 }
 
 /// The `RowChangePlan` fields `PendingPlanDialog` reads.
 #[allow(dead_code)] // VM mirror; remove when the host owns the plan.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RowChangePlanVm {
-    pub(crate) plan_id: String,
-    pub(crate) fingerprint: String,
+pub struct RowChangePlanVm {
+    pub plan_id: String,
+    pub fingerprint: String,
     /// `plan.table.table`.
-    pub(crate) table: String,
-    pub(crate) inserts: Vec<PlannedStatement>,
-    pub(crate) updates: Vec<PlannedStatement>,
-    pub(crate) deletes: Vec<PlannedStatement>,
-    pub(crate) warnings: Vec<ChangeWarning>,
+    pub table: String,
+    pub inserts: Vec<PlannedStatement>,
+    pub updates: Vec<PlannedStatement>,
+    pub deletes: Vec<PlannedStatement>,
+    pub warnings: Vec<ChangeWarning>,
 }
 
 #[allow(dead_code)] // VM helper; remove with the host.
 impl RowChangePlanVm {
     /// React's `inserts ?? []` is always a list on the wire; the mirror is too.
-    pub(crate) fn statements(&self) -> Vec<&PlannedStatement> {
+    pub fn statements(&self) -> Vec<&PlannedStatement> {
         self.inserts
             .iter()
             .chain(self.updates.iter())
@@ -79,7 +79,7 @@ impl RowChangePlanVm {
     /// React's `description`: table then the three interpolated count phrases,
     /// joined with ` · `. The insert phrase is omitted for an empty list, and
     /// no raw count is prefixed — the wording already carries it.
-    pub(crate) fn description(&self) -> String {
+    pub fn description(&self) -> String {
         let mut parts = vec![self.table.clone()];
         if !self.inserts.is_empty() {
             parts.push(
@@ -99,12 +99,12 @@ impl RowChangePlanVm {
 /// The sole React callback (`onClose`), forwarded to the host.
 #[allow(dead_code)] // host port; remove when the panel wires the dialog.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PendingPlanAction {
+pub enum PendingPlanAction {
     Close,
 }
 
 #[allow(dead_code)] // host port; remove when the panel wires the dialog.
-pub(crate) type PendingPlanActionFn<S> = Rc<dyn Fn(&mut S, PendingPlanAction) + 'static>;
+pub type PendingPlanActionFn<S> = Rc<dyn Fn(&mut S, PendingPlanAction) + 'static>;
 
 fn emit<S: 'static>(
     on_action: &Option<PendingPlanActionFn<S>>,
@@ -122,7 +122,7 @@ fn emit<S: 'static>(
 /// like React's `if (!plan) return null`; a closed dialog mounts nothing either
 /// (`ui::dialog::Dialog` requires an open gate).
 #[allow(dead_code)] // view entry; remove when the panel wires it.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     plan: Option<&RowChangePlanVm>,
     open: bool,
     on_action: &Option<PendingPlanActionFn<S>>,

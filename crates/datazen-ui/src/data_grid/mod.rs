@@ -18,4 +18,4 @@ pub use input::on_key;
 pub use model::{DataGrid, COL_COUNT, COL_W, COL_WINDOW, GUTTER_W, ROW_COUNT, ROW_H};
 pub use view::{panel, result_panel, GridSlot};
 
-pub(crate) use view::grid_of;
+pub use view::grid_of;

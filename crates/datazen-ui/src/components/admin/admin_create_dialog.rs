@@ -90,7 +90,7 @@ use rune::TextEdit;
 /// `common.createSchema` / `createSchema.name`, and `name_placeholder` is
 /// the literal `my_database` / `my_schema`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AdminCreateDialogConfig {
+pub struct AdminCreateDialogConfig {
     pub db_session_id: String,
     pub command: String,
     pub title_key: String,
@@ -103,7 +103,7 @@ pub(crate) struct AdminCreateDialogConfig {
 }
 
 impl AdminCreateDialogConfig {
-    pub(crate) fn new(
+    pub fn new(
         db_session_id: impl Into<String>,
         command: impl Into<String>,
         title_key: impl Into<String>,
@@ -121,12 +121,12 @@ impl AdminCreateDialogConfig {
         }
     }
 
-    pub(crate) fn database(mut self, database: impl Into<String>) -> Self {
+    pub fn database(mut self, database: impl Into<String>) -> Self {
         self.database = Some(database.into());
         self
     }
 
-    pub(crate) fn field_label(
+    pub fn field_label(
         mut self,
         field: impl Into<String>,
         label: impl Into<String>,
@@ -135,7 +135,7 @@ impl AdminCreateDialogConfig {
         self
     }
 
-    pub(crate) fn label_override(&self, field: &str) -> Option<&str> {
+    pub fn label_override(&self, field: &str) -> Option<&str> {
         self.field_labels
             .iter()
             .find(|(name, _)| name == field)
@@ -147,7 +147,7 @@ impl AdminCreateDialogConfig {
 /// reduced to the fields the dialog renders. `schema` in React is the raw
 /// JSON-schema object; only the keys the dialog reads are modelled here.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct AdminSchemaField {
+pub struct AdminSchemaField {
     pub name: String,
     /// `schema.type`, if the driver sent one.
     pub schema_type: Option<String>,
@@ -164,7 +164,7 @@ pub(crate) struct AdminSchemaField {
 impl AdminSchemaField {
     /// A plain string field, the common case (`create_database`'s
     /// `encoding` / `owner`, `create_schema`'s `owner`).
-    pub(crate) fn string_field(name: impl Into<String>) -> Self {
+    pub fn string_field(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             schema_type: Some("string".to_string()),
@@ -174,13 +174,13 @@ impl AdminSchemaField {
 
     /// `renderField`'s guard (`AdminSchemaFields.tsx:22`): only string
     /// fields — and fields with no `type` at all — render an input.
-    pub(crate) fn renders_input(&self) -> bool {
+    pub fn renders_input(&self) -> bool {
         self.schema_type.as_deref().map_or(true, |t| t == "string")
     }
 
     /// `fieldLabel` (`lib/commandSchema.ts:49–57`): `title`, else
     /// `description`, else the field name.
-    pub(crate) fn label(&self) -> &str {
+    pub fn label(&self) -> &str {
         self.title
             .as_deref()
             .filter(|s| !s.is_empty())
@@ -190,7 +190,7 @@ impl AdminSchemaField {
 
     /// `fieldPlaceholder` (`lib/commandSchema.ts:39–47`): the first
     /// `examples` entry, else `example`.
-    pub(crate) fn placeholder(&self) -> Option<&str> {
+    pub fn placeholder(&self) -> Option<&str> {
         self.examples
             .first()
             .map(String::as_str)
@@ -204,7 +204,7 @@ impl AdminSchemaField {
 /// React sends (`name` first, then the optional values in field order)
 /// is preserved.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AdminCreateExecuteRequest {
+pub struct AdminCreateExecuteRequest {
     pub db_session_id: String,
     pub command: String,
     pub input: Vec<(String, String)>,
@@ -214,7 +214,7 @@ pub(crate) struct AdminCreateExecuteRequest {
 /// The dialog's state: React's four `useState`s plus the props
 /// (`AdminCreateDialog.tsx:42–46`).
 #[derive(Clone, Debug)]
-pub(crate) struct AdminCreateDialogState {
+pub struct AdminCreateDialogState {
     config: AdminCreateDialogConfig,
     open: bool,
     /// Bumped on every open, so a reopened dialog scrolls to the top
@@ -237,7 +237,7 @@ pub(crate) struct AdminCreateDialogState {
 }
 
 impl AdminCreateDialogState {
-    pub(crate) fn new(config: AdminCreateDialogConfig) -> Self {
+    pub fn new(config: AdminCreateDialogConfig) -> Self {
         Self {
             config,
             open: false,
@@ -254,36 +254,36 @@ impl AdminCreateDialogState {
         }
     }
 
-    pub(crate) fn config(&self) -> &AdminCreateDialogConfig {
+    pub fn config(&self) -> &AdminCreateDialogConfig {
         &self.config
     }
 
-    pub(crate) fn is_open(&self) -> bool {
+    pub fn is_open(&self) -> bool {
         self.open
     }
 
-    pub(crate) fn open_epoch(&self) -> u64 {
+    pub fn open_epoch(&self) -> u64 {
         self.open_epoch
     }
 
     /// The raw name text (untrimmed — trimming happens in `create()`,
     /// as React trims only when building the request).
-    pub(crate) fn name_text(&self) -> &str {
+    pub fn name_text(&self) -> &str {
         &self.name.text
     }
 
-    pub(crate) fn name_edit(&mut self) -> &mut TextEdit {
+    pub fn name_edit(&mut self) -> &mut TextEdit {
         &mut self.name
     }
 
-    pub(crate) fn name_edit_ref(&self) -> &TextEdit {
+    pub fn name_edit_ref(&self) -> &TextEdit {
         &self.name
     }
 
     /// The `TextEdit` a schema field's input writes into, creating an
     /// empty one when the host never set the definition — the view's
     /// `on_edit` accessor always has somewhere to write.
-    pub(crate) fn optional_edit(&mut self, field: &str) -> &mut TextEdit {
+    pub fn optional_edit(&mut self, field: &str) -> &mut TextEdit {
         if let Some(index) = self.optional.iter().position(|(name, _)| name == field) {
             return &mut self.optional[index].1;
         }
@@ -293,21 +293,21 @@ impl AdminCreateDialogState {
         &mut self.optional[index].1
     }
 
-    pub(crate) fn optional_edit_ref(&self, field: &str) -> Option<&TextEdit> {
+    pub fn optional_edit_ref(&self, field: &str) -> Option<&TextEdit> {
         self.optional
             .iter()
             .find(|(name, _)| name == field)
             .map(|(_, edit)| edit)
     }
 
-    pub(crate) fn optional_value(&self, field: &str) -> &str {
+    pub fn optional_value(&self, field: &str) -> &str {
         self.optional_edit_ref(field).map_or("", |edit| &edit.text)
     }
 
     /// The fields the dialog renders: the definition minus `name`
     /// (`exclude={['name']}`), minus non-string fields
     /// (`AdminSchemaFields.tsx:22`).
-    pub(crate) fn visible_fields(&self) -> Vec<&AdminSchemaField> {
+    pub fn visible_fields(&self) -> Vec<&AdminSchemaField> {
         self.definition
             .iter()
             .filter(|field| field.name != "name" && field.renders_input())
@@ -316,40 +316,40 @@ impl AdminCreateDialogState {
 
     /// The label a field renders with: the caller's `fieldLabels`
     /// override, else `fieldLabel` (`AdminSchemaFields.tsx:27`).
-    pub(crate) fn field_label(&self, field: &AdminSchemaField) -> String {
+    pub fn field_label(&self, field: &AdminSchemaField) -> String {
         self.config
             .label_override(&field.name)
             .map(str::to_string)
             .unwrap_or_else(|| field.label().to_string())
     }
 
-    pub(crate) fn running(&self) -> bool {
+    pub fn running(&self) -> bool {
         self.running
     }
 
-    pub(crate) fn error(&self) -> Option<&str> {
+    pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
 
-    pub(crate) fn error_copied(&self) -> bool {
+    pub fn error_copied(&self) -> bool {
         self.error_copied
     }
 
-    pub(crate) fn set_error_copied(&mut self, copied: bool) {
+    pub fn set_error_copied(&mut self, copied: bool) {
         self.error_copied = copied;
     }
 
-    pub(crate) fn execute_requests(&self) -> &[AdminCreateExecuteRequest] {
+    pub fn execute_requests(&self) -> &[AdminCreateExecuteRequest] {
         &self.execute_requests
     }
 
-    pub(crate) fn created_names(&self) -> &[String] {
+    pub fn created_names(&self) -> &[String] {
         &self.created_names
     }
 
     /// The primary button's `disabled` (`AdminCreateDialog.tsx:114`):
     /// a blank name, or a create already in flight.
-    pub(crate) fn can_create(&self) -> bool {
+    pub fn can_create(&self) -> bool {
         !self.name.text.trim().is_empty() && !self.running
     }
 
@@ -357,7 +357,7 @@ impl AdminCreateDialogState {
     /// the component is mounted, and only `handleClose` / a successful
     /// create resets it. It does ask for the name focus again (React's
     /// `autoFocus` fires on every mount).
-    pub(crate) fn open_dialog(&mut self) {
+    pub fn open_dialog(&mut self) {
         self.open = true;
         self.open_epoch += 1;
         self.focus_name_pending = true;
@@ -366,14 +366,14 @@ impl AdminCreateDialogState {
     /// The view's layout hook consumes the pending `autoFocus`: `true`
     /// once per open, `false` afterwards, so a later layout never steals
     /// the focus back.
-    pub(crate) fn take_focus_name_request(&mut self) -> bool {
+    pub fn take_focus_name_request(&mut self) -> bool {
         std::mem::replace(&mut self.focus_name_pending, false)
     }
 
     /// React's `resetForm` (`AdminCreateDialog.tsx:48–52`): the name and
     /// the optional values are cleared and the error drops. `running`
     /// is untouched — a reset never cancels a flight.
-    pub(crate) fn reset_form(&mut self) {
+    pub fn reset_form(&mut self) {
         self.name = TextEdit::new(String::new());
         for (_, edit) in &mut self.optional {
             *edit = TextEdit::new(String::new());
@@ -382,7 +382,7 @@ impl AdminCreateDialogState {
     }
 
     /// React's `handleClose` (56–59): reset, then close.
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.reset_form();
         self.open = false;
     }
@@ -391,7 +391,7 @@ impl AdminCreateDialogState {
     /// host passes the command's schema fields in schema order. Edits
     /// for fields that survive keep their text; dropped fields lose
     /// theirs; new fields start empty.
-    pub(crate) fn set_definition(&mut self, fields: Vec<AdminSchemaField>) {
+    pub fn set_definition(&mut self, fields: Vec<AdminSchemaField>) {
         let mut old = std::mem::take(&mut self.optional);
         let mut next: Vec<(String, TextEdit)> = Vec::new();
         for field in fields
@@ -410,13 +410,13 @@ impl AdminCreateDialogState {
     }
 
     /// Test / host helper: set the name without going through the input.
-    pub(crate) fn set_name(&mut self, name: impl Into<String>) {
+    pub fn set_name(&mut self, name: impl Into<String>) {
         self.name = TextEdit::new(name.into());
     }
 
     /// Test / host helper: set one optional value without going through
     /// the input.
-    pub(crate) fn set_optional(&mut self, field: &str, value: impl Into<String>) {
+    pub fn set_optional(&mut self, field: &str, value: impl Into<String>) {
         let edit = self.optional_edit(field);
         *edit = TextEdit::new(value.into());
     }
@@ -426,7 +426,7 @@ impl AdminCreateDialogState {
     /// records the exact execute request and holds `running` until the
     /// host answers. A blank name, or a create already in flight, is a
     /// no-op (the in-flight guard is the documented deviation above).
-    pub(crate) fn create(&mut self) {
+    pub fn create(&mut self) {
         if !self.can_create() {
             return;
         }
@@ -451,7 +451,7 @@ impl AdminCreateDialogState {
     /// The host's answer to a recorded execute request that succeeded:
     /// React's post-`await` path (84–87) — reset the form, record the
     /// created name for the `onCreated` edge, and close.
-    pub(crate) fn execute_succeeded(&mut self) {
+    pub fn execute_succeeded(&mut self) {
         let created = self.name.text.trim().to_string();
         self.reset_form();
         self.created_names.push(created);
@@ -462,7 +462,7 @@ impl AdminCreateDialogState {
     /// The host's answer to a recorded execute request that failed:
     /// React's `catch` (88–89) — the error stays on the dialog and the
     /// form keeps its values, as `finally` (90–91) drops `running`.
-    pub(crate) fn execute_failed(&mut self, message: impl Into<String>) {
+    pub fn execute_failed(&mut self, message: impl Into<String>) {
         self.error = Some(message.into());
         self.running = false;
     }

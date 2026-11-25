@@ -122,21 +122,21 @@ use crate::ui::select::Select;
 
 /// React `onInsertSql`: insert `code` into the editor.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type InsertSqlFn<S> = Rc<dyn Fn(&mut S, String)>;
+pub type InsertSqlFn<S> = Rc<dyn Fn(&mut S, String)>;
 
 /// React `onRunCode`: run `code` as `language`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type RunCodeFn<S> = Rc<dyn Fn(&mut S, String, String)>;
+pub type RunCodeFn<S> = Rc<dyn Fn(&mut S, String, String)>;
 
 /// React `onNewQuery`: open a new query tab with `code`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type NewQueryFn<S> = Rc<dyn Fn(&mut S, String)>;
+pub type NewQueryFn<S> = Rc<dyn Fn(&mut S, String)>;
 
 /// The host's clipboard write starter: write `code`, report a failure with
 /// [`AiCodeBlockState::fail_copy`] and the timer expiry with
 /// [`AiCodeBlockState::expire_copy_feedback`], both keyed by `request`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type CopyCodeFn<S> = Rc<dyn Fn(&mut S, String, u64)>;
+pub type CopyCodeFn<S> = Rc<dyn Fn(&mut S, String, u64)>;
 
 /// The code block. `read_state` and the five state functions locate the
 /// state slot in the app's `S`; the four `on_*` callbacks are the host's
@@ -146,7 +146,7 @@ pub(crate) type CopyCodeFn<S> = Rc<dyn Fn(&mut S, String, u64)>;
 /// slot when the block's `sqlDialect` prop changes, as a React remount
 /// would).
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) struct AiCodeBlock<S: 'static> {
+pub struct AiCodeBlock<S: 'static> {
     key: String,
     props: AiCodeBlockProps,
     read_state: ReadCodeBlockStateFn<S>,
@@ -166,7 +166,7 @@ impl<S: 'static> AiCodeBlock<S> {
     /// `read_state` returns a clone of the block's state slot (the message
     /// wiring addresses one slot per rendered block by index — see
     /// `ai_message_content.rs`); the five mutators locate that same slot.
-    pub(crate) fn new(
+    pub fn new(
         props: AiCodeBlockProps,
         read_state: impl Fn(&S) -> AiCodeBlockState + 'static,
         toggle_fullscreen: impl Fn(&mut S) + 'static,
@@ -194,13 +194,13 @@ impl<S: 'static> AiCodeBlock<S> {
     /// Override the key prefix (two blocks can then share one state slot
     /// only if their callers keep the prefixes distinct — and they
     /// should not share a slot at all; see the struct docs).
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
 
     /// React `onInsertSql`; without it the insert button is not rendered.
-    pub(crate) fn on_insert_sql(
+    pub fn on_insert_sql(
         mut self,
         on_insert_sql: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -209,7 +209,7 @@ impl<S: 'static> AiCodeBlock<S> {
     }
 
     /// React `onRunCode`; without it the run button is not rendered.
-    pub(crate) fn on_run_code(
+    pub fn on_run_code(
         mut self,
         on_run_code: impl Fn(&mut S, String, String) + 'static,
     ) -> Self {
@@ -218,7 +218,7 @@ impl<S: 'static> AiCodeBlock<S> {
     }
 
     /// React `onNewQuery`; without it the new-query button is not rendered.
-    pub(crate) fn on_new_query(
+    pub fn on_new_query(
         mut self,
         on_new_query: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -228,7 +228,7 @@ impl<S: 'static> AiCodeBlock<S> {
 
     /// The host's clipboard write starter; without it the copy button
     /// renders but does nothing, so it never claims a copy it did not make.
-    pub(crate) fn on_copy(mut self, on_copy: impl Fn(&mut S, String, u64) + 'static) -> Self {
+    pub fn on_copy(mut self, on_copy: impl Fn(&mut S, String, u64) + 'static) -> Self {
         self.on_copy = Some(Rc::new(on_copy));
         self
     }
@@ -236,7 +236,7 @@ impl<S: 'static> AiCodeBlock<S> {
     /// Builds the inline block, or the fullscreen tree while
     /// `state.fullscreen` is set. `layer` takes the dialect listbox while
     /// it is open (the same two-part build as `ui/select.rs`).
-    pub(crate) fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
         let state = (self.read_state)(s);
         self.build_with_state(&state, dark, layer)
     }
@@ -245,7 +245,7 @@ impl<S: 'static> AiCodeBlock<S> {
     /// already holds (the message content wiring passes the message's
     /// code-block slots), while the event closures still route through
     /// `S` when they fire.
-    pub(crate) fn build_with_state(
+    pub fn build_with_state(
         self,
         state: &AiCodeBlockState,
         dark: bool,

@@ -134,13 +134,13 @@ use super::onboarding_layout::WIZARD_FOOTER_HEIGHT;
 // now; they are re-exported here under their T114 names so the shell's,
 // the steps' and the audits' import paths stay untouched (the
 // onboarding_layout ← brand_sidebar precedent).
-pub(crate) use super::wizard_state::{Entry, Step};
+pub use super::wizard_state::{Entry, Step};
 // The T306 absorb: the import-track app enum lives in
 // `use_detected_import_source.rs` now (the detection hook owns
 // `IMPORT_APP_ORDER`, its ordered universe, and the probe ids); it is
 // re-exported here under its T114 name so the steps'/audits' import
 // paths stay untouched (the same precedent).
-pub(crate) use super::use_detected_import_source::ImportApp;
+pub use super::use_detected_import_source::ImportApp;
 
 /// The wizard's action slots (`Rc<dyn Fn(&mut S)>`, the crate convention).
 type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
@@ -149,7 +149,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 /// `'file' | ConnectionImportApp` — the wizard's own `importSource` state.
 /// A seam type (see [`ImportApp`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ImportSource {
+pub enum ImportSource {
     /// React `useState('file')`'s default: pick a connection file.
     #[default]
     File,
@@ -159,7 +159,7 @@ pub(crate) enum ImportSource {
 
 /// React `SAMPLE_PRESET_SQL`: the preset query filled into the editor when
 /// the user enters the main workspace through the sample-database path.
-pub(crate) const SAMPLE_PRESET_SQL: &str =
+pub const SAMPLE_PRESET_SQL: &str =
     "SELECT region, SUM(amount) AS total\nFROM demo_sales\nGROUP BY region\nORDER BY total DESC;";
 
 /// React `PostOnboardingSample` (`lib/windowManager.ts:188`): the
@@ -168,17 +168,17 @@ pub(crate) const SAMPLE_PRESET_SQL: &str =
 /// sample connection and pre-fill a query. The host's stash converts at its
 /// seam (there is no localStorage in Rune).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PostOnboardingSampleVm {
+pub struct PostOnboardingSampleVm {
     /// The seeded sample connection's name.
-    pub(crate) connection_name: String,
+    pub connection_name: String,
     /// The preset SQL ([`SAMPLE_PRESET_SQL`]).
-    pub(crate) sql: String,
+    pub sql: String,
 }
 
 /// React `handleFinish`'s branch: nothing typed → the journey finishes with
 /// AI unconfigured; credentials typed → the draft's save path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FinishPath {
+pub enum FinishPath {
     /// `!aiDraft.hasCredentials`: dispatch `FINISH { aiLabel: null }` — the
     /// journey never forces a key.
     FinishUnconfigured,
@@ -190,26 +190,26 @@ pub(crate) enum FinishPath {
 
 /// The prop list React's wizard hands `WizardFooter` — the back/next footer
 /// wiring, computed by this shell until the footer port (T247) renders it.
-pub(crate) struct FooterWiring<S: 'static> {
+pub struct FooterWiring<S: 'static> {
     /// `step`.
-    pub(crate) step: Step,
+    pub step: Step,
     /// `canContinue` — `canContinueFromStepOne(state)`, fed in (T323's).
-    pub(crate) can_continue: bool,
+    pub can_continue: bool,
     /// `showContinue` — React's `continueVisible`: step 1 of a non-manual
     /// entry (the manual entry's own Save button is the way forward).
-    pub(crate) show_continue: bool,
+    pub show_continue: bool,
     /// `showFinish` — `step === 's2'`.
-    pub(crate) show_finish: bool,
+    pub show_finish: bool,
     /// `busy` — `aiDraft.savingState`.
-    pub(crate) busy: bool,
+    pub busy: bool,
     /// `onSkip` → the host's `SKIP` dispatch.
-    pub(crate) on_skip: Option<ActionFn<S>>,
+    pub on_skip: Option<ActionFn<S>>,
     /// `onBack` → the host's `BACK` dispatch.
-    pub(crate) on_back: Option<ActionFn<S>>,
+    pub on_back: Option<ActionFn<S>>,
     /// `onContinue` → the host's `CONTINUE` dispatch.
-    pub(crate) on_continue: Option<ActionFn<S>>,
+    pub on_continue: Option<ActionFn<S>>,
     /// `onFinish` → the host's `handleFinish` (see [`FinishPath`]).
-    pub(crate) on_finish: Option<ActionFn<S>>,
+    pub on_finish: Option<ActionFn<S>>,
 }
 
 /// The first-run journey's step host: the step list (exactly one step seat
@@ -218,7 +218,7 @@ pub(crate) struct FooterWiring<S: 'static> {
 /// [`OnboardingWizard::build`] as its wizard slot; the state machine (T323),
 /// the detection pre-check (T306), the AI draft (T148) and the seven
 /// children (T148–T247) are the host's feed-ins and slots.
-pub(crate) struct OnboardingWizard<S: 'static> {
+pub struct OnboardingWizard<S: 'static> {
     /// `state.step` — the current screen (the T323 machine's output).
     step: Step,
     /// `state.entry` — which screen step 1 renders.
@@ -269,7 +269,7 @@ impl<S: 'static> OnboardingWizard<S> {
     /// React's start: `INITIAL_STATE` (S0, the manual entry — so
     /// `canContinueFromStepOne` is false), `importSource = 'file'`, nothing
     /// fed and no dispatch wired.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             step: Step::S0,
             entry: Entry::Manual,
@@ -296,39 +296,39 @@ impl<S: 'static> OnboardingWizard<S> {
     // ---- feed-ins (the later tasks' outputs) --------------------------------
 
     /// `state.step` — the current screen.
-    pub(crate) fn step(mut self, step: Step) -> Self {
+    pub fn step(mut self, step: Step) -> Self {
         self.step = step;
         self
     }
 
     /// `state.entry` — which screen step 1 renders.
-    pub(crate) fn entry(mut self, entry: Entry) -> Self {
+    pub fn entry(mut self, entry: Entry) -> Self {
         self.entry = entry;
         self
     }
 
     /// `canContinueFromStepOne(state)` — the T323 helper's output, fed in
     /// by the host that owns the state machine.
-    pub(crate) fn can_continue(mut self, can_continue: bool) -> Self {
+    pub fn can_continue(mut self, can_continue: bool) -> Self {
         self.can_continue = can_continue;
         self
     }
 
     /// `state.connectionName` — the connection created in step 1 (the
     /// sample directive's connection).
-    pub(crate) fn connection_name(mut self, name: impl Into<String>) -> Self {
+    pub fn connection_name(mut self, name: impl Into<String>) -> Self {
         self.connection_name = Some(name.into());
         self
     }
 
     /// `aiDraft.hasCredentials` — the AI draft seam (T148).
-    pub(crate) fn has_credentials(mut self, has_credentials: bool) -> Self {
+    pub fn has_credentials(mut self, has_credentials: bool) -> Self {
         self.has_credentials = has_credentials;
         self
     }
 
     /// `aiDraft.savingState` — the footer's busy flag (T148).
-    pub(crate) fn busy(mut self, busy: bool) -> Self {
+    pub fn busy(mut self, busy: bool) -> Self {
         self.busy = busy;
         self
     }
@@ -336,44 +336,44 @@ impl<S: 'static> OnboardingWizard<S> {
     // ---- host-fed slots (the children's ports) ------------------------------
 
     /// The S0 `WelcomeStep` slot (T247 fills it).
-    pub(crate) fn welcome(mut self, el: El) -> Self {
+    pub fn welcome(mut self, el: El) -> Self {
         self.welcome = Some(el);
         self
     }
 
     /// The S1 manual `ManualConnectionStep` slot (T203 fills it).
-    pub(crate) fn manual(mut self, el: El) -> Self {
+    pub fn manual(mut self, el: El) -> Self {
         self.manual = Some(el);
         self
     }
 
     /// The S1 import `ImportStep` slot (T177 fills it).
-    pub(crate) fn import(mut self, el: El) -> Self {
+    pub fn import(mut self, el: El) -> Self {
         self.import = Some(el);
         self
     }
 
     /// The S1 sample `SampleStep` slot (T226 fills it).
-    pub(crate) fn sample(mut self, el: El) -> Self {
+    pub fn sample(mut self, el: El) -> Self {
         self.sample = Some(el);
         self
     }
 
     /// The S2 `AiProviderStep` slot (T148 fills it).
-    pub(crate) fn ai(mut self, el: El) -> Self {
+    pub fn ai(mut self, el: El) -> Self {
         self.ai = Some(el);
         self
     }
 
     /// The S3 `DoneStep` slot (T177 fills it).
-    pub(crate) fn done(mut self, el: El) -> Self {
+    pub fn done(mut self, el: El) -> Self {
         self.done = Some(el);
         self
     }
 
     /// The `WizardFooter` slot (T247 fills it); the seat mounts it at every
     /// step except S3.
-    pub(crate) fn footer(mut self, el: El) -> Self {
+    pub fn footer(mut self, el: El) -> Self {
         self.footer = Some(el);
         self
     }
@@ -381,26 +381,26 @@ impl<S: 'static> OnboardingWizard<S> {
     // ---- action slots (the host's dispatch wiring) --------------------------
 
     /// Footer `onSkip` → the host's `SKIP` dispatch (T323).
-    pub(crate) fn on_skip(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_skip(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_skip = Some(Rc::new(f));
         self
     }
 
     /// Footer `onBack` → the host's `BACK` dispatch (T323).
-    pub(crate) fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_back = Some(Rc::new(f));
         self
     }
 
     /// Footer `onContinue` → the host's `CONTINUE` dispatch (T323).
-    pub(crate) fn on_continue(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_continue(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_continue = Some(Rc::new(f));
         self
     }
 
     /// Footer `onFinish` → the host's `handleFinish` (see
     /// [`Self::finish_path`]).
-    pub(crate) fn on_finish(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_finish(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_finish = Some(Rc::new(f));
         self
     }
@@ -409,7 +409,7 @@ impl<S: 'static> OnboardingWizard<S> {
     /// [`Self::post_onboarding_sample`], persist the completed onboarding
     /// settings (T268's payload), then fire the window's completion action
     /// (T072's `completion_action()`).
-    pub(crate) fn on_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open = Some(Rc::new(f));
         self
     }
@@ -418,7 +418,7 @@ impl<S: 'static> OnboardingWizard<S> {
 
     /// The `WizardFooter` prop list (T247 renders it) — exactly what React
     /// computes in the wizard and hands down.
-    pub(crate) fn footer_wiring(&self) -> FooterWiring<S> {
+    pub fn footer_wiring(&self) -> FooterWiring<S> {
         FooterWiring {
             step: self.step,
             can_continue: self.can_continue,
@@ -435,7 +435,7 @@ impl<S: 'static> OnboardingWizard<S> {
     }
 
     /// React `handleFinish`'s branch (the journey never forces a key).
-    pub(crate) fn finish_path(&self) -> FinishPath {
+    pub fn finish_path(&self) -> FinishPath {
         if self.has_credentials {
             FinishPath::RequestSave
         } else {
@@ -446,7 +446,7 @@ impl<S: 'static> OnboardingWizard<S> {
     /// React `handleOpen`'s stash payload: the sample-database directive,
     /// `Some` only on the sample entry with a seeded connection. The host
     /// persists it under `POST_ONBOARDING_SAMPLE_KEY`'s semantics.
-    pub(crate) fn post_onboarding_sample(&self) -> Option<PostOnboardingSampleVm> {
+    pub fn post_onboarding_sample(&self) -> Option<PostOnboardingSampleVm> {
         if self.entry != Entry::Sample {
             return None;
         }
@@ -458,20 +458,20 @@ impl<S: 'static> OnboardingWizard<S> {
 
     /// The done step's `onOpen` action for the host's `DoneStep` slot build
     /// (T177) — the T072 `completion_action` convention.
-    pub(crate) fn open_action(&self) -> Option<ActionFn<S>> {
+    pub fn open_action(&self) -> Option<ActionFn<S>> {
         self.on_open.clone()
     }
 
     /// The wizard's own `importSource` state (`useState('file')`), fed to
     /// `ImportStep` as `initialSource` at the host's slot build (T177).
-    pub(crate) fn import_source(&self) -> ImportSource {
+    pub fn import_source(&self) -> ImportSource {
         self.import_source
     }
 
     /// React's `useEffect` on `detected`: a detected client becomes the
     /// default import source; `None` (nothing detected, or detection
     /// failed) never resets what an earlier detection chose.
-    pub(crate) fn resync_detected(&mut self, detected: Option<ImportApp>) {
+    pub fn resync_detected(&mut self, detected: Option<ImportApp>) {
         if let Some(app) = detected {
             self.import_source = ImportSource::App(app);
         }
@@ -483,7 +483,7 @@ impl<S: 'static> OnboardingWizard<S> {
     /// above the footer, as one `El`. No theme — the shell paints nothing
     /// itself; the step and footer slots carry their own theming when their
     /// tasks land.
-    pub(crate) fn build(self) -> El {
+    pub fn build(self) -> El {
         let OnboardingWizard {
             step,
             entry,
@@ -559,7 +559,7 @@ fn seat(key: &'static str, fed: Option<El>) -> El {
 /// React `visibleStepNumber` (the test helper kept next to the shell so
 /// tests can assert the visible step number): the step indicator's number —
 /// `None` on the entry (S0) and done (S3) screens.
-pub(crate) fn visible_step_number(step: Step) -> Option<u8> {
+pub fn visible_step_number(step: Step) -> Option<u8> {
     match super::wizard_state::step_index_for(step) {
         0 => None,
         index => Some(index),

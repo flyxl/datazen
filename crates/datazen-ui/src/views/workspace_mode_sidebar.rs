@@ -34,20 +34,20 @@ use crate::icons::{
 };
 use crate::ui::kit::kit;
 
-pub(crate) const ROOT_KEY: &str = "workspace-mode-sidebar";
-pub(crate) const NAV_DATABASES: &str = "workspace-nav-databases";
-pub(crate) const NAV_WORKFLOW: &str = "workspace-nav-workflow";
-pub(crate) const NAV_DASHBOARD: &str = "workspace-nav-dashboard";
-pub(crate) const NAV_WORKSPACE_PAGES: &str = "workspace-nav-workspace-pages";
-pub(crate) const NAV_EXTENSIONS: &str = "workspace-nav-extensions";
-pub(crate) const NAV_UPDATE: &str = "workspace-nav-update";
-pub(crate) const NAV_SETTINGS: &str = "workspace-nav-settings";
-pub(crate) const SIDEBAR_TOGGLE: &str = "workspace-sidebar-toggle";
+pub const ROOT_KEY: &str = "workspace-mode-sidebar";
+pub const NAV_DATABASES: &str = "workspace-nav-databases";
+pub const NAV_WORKFLOW: &str = "workspace-nav-workflow";
+pub const NAV_DASHBOARD: &str = "workspace-nav-dashboard";
+pub const NAV_WORKSPACE_PAGES: &str = "workspace-nav-workspace-pages";
+pub const NAV_EXTENSIONS: &str = "workspace-nav-extensions";
+pub const NAV_UPDATE: &str = "workspace-nav-update";
+pub const NAV_SETTINGS: &str = "workspace-nav-settings";
+pub const SIDEBAR_TOGGLE: &str = "workspace-sidebar-toggle";
 
 /// React `WorkspaceMode`.
 #[allow(dead_code)] // VM mirror; remove when the host owns the mode store.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum WorkspaceMode {
+pub enum WorkspaceMode {
     #[default]
     Connections,
     Workflow,
@@ -59,38 +59,38 @@ pub(crate) enum WorkspaceMode {
 /// React's update progress phases (downloading / installing).
 #[allow(dead_code)] // VM mirror; remove when the updater host lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct UpdateProgressVm {
-    pub(crate) phase_downloading: bool,
-    pub(crate) phase_installing: bool,
-    pub(crate) downloaded: u64,
-    pub(crate) total: u64,
+pub struct UpdateProgressVm {
+    pub phase_downloading: bool,
+    pub phase_installing: bool,
+    pub downloaded: u64,
+    pub total: u64,
 }
 
 /// The update-reminder store fields the rail reads.
 #[allow(dead_code)] // VM mirror; remove when the updater host lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct UpdateReminderVm {
-    pub(crate) available_version: Option<String>,
-    pub(crate) pending_restart_version: Option<String>,
-    pub(crate) is_installing: bool,
-    pub(crate) progress: Option<UpdateProgressVm>,
-    pub(crate) error: Option<String>,
+pub struct UpdateReminderVm {
+    pub available_version: Option<String>,
+    pub pending_restart_version: Option<String>,
+    pub is_installing: bool,
+    pub progress: Option<UpdateProgressVm>,
+    pub error: Option<String>,
 }
 
 /// Props plus the update store slice.
 #[allow(dead_code)] // VM surface; remove when the host wires the rail.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct WorkspaceModeSidebarVm {
-    pub(crate) workspace_mode: WorkspaceMode,
-    pub(crate) sidebar_expanded: bool,
-    pub(crate) update: UpdateReminderVm,
+pub struct WorkspaceModeSidebarVm {
+    pub workspace_mode: WorkspaceMode,
+    pub sidebar_expanded: bool,
+    pub update: UpdateReminderVm,
 }
 
 #[allow(dead_code)] // pure helpers; remove with the host.
 impl WorkspaceModeSidebarVm {
     /// React's update button presence: a truthy available or pending-restart
     /// version string (an empty string is falsy in JS; whitespace stays truthy).
-    pub(crate) fn update_visible(&self) -> bool {
+    pub fn update_visible(&self) -> bool {
         self.update
             .available_version
             .as_deref()
@@ -103,7 +103,7 @@ impl WorkspaceModeSidebarVm {
     }
 
     /// React `progressLabel`: downloading / installing / generic installing.
-    pub(crate) fn progress_label(&self) -> String {
+    pub fn progress_label(&self) -> String {
         match self.update.progress.as_ref() {
             Some(progress) if progress.phase_downloading => {
                 if progress.total > 0 {
@@ -123,7 +123,7 @@ impl WorkspaceModeSidebarVm {
     }
 
     /// React `updateLabel` / `aria-label` of the update button.
-    pub(crate) fn update_label(&self) -> String {
+    pub fn update_label(&self) -> String {
         if self.update.is_installing {
             self.progress_label()
         } else if let Some(version) = self.update.pending_restart_version.as_deref() {
@@ -140,7 +140,7 @@ impl WorkspaceModeSidebarVm {
     }
 
     /// React `title={error ?? updateLabel}`.
-    pub(crate) fn update_title(&self) -> String {
+    pub fn update_title(&self) -> String {
         self.update.error.clone().unwrap_or_else(|| self.update_label())
     }
 }
@@ -148,7 +148,7 @@ impl WorkspaceModeSidebarVm {
 /// Every interaction the rail emits.
 #[allow(dead_code)] // host port; remove when the host wires the rail.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WorkspaceModeAction {
+pub enum WorkspaceModeAction {
     SetMode(WorkspaceMode),
     OpenWorkflow,
     OpenDashboard,
@@ -159,7 +159,7 @@ pub(crate) enum WorkspaceModeAction {
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the rail.
-pub(crate) type WorkspaceModeActionFn<S> = Rc<dyn Fn(&mut S, WorkspaceModeAction) + 'static>;
+pub type WorkspaceModeActionFn<S> = Rc<dyn Fn(&mut S, WorkspaceModeAction) + 'static>;
 
 fn emit<S: 'static>(
     on_action: &Option<WorkspaceModeActionFn<S>>,
@@ -221,7 +221,7 @@ fn mode_button<S: 'static>(
 
 /// Build the rail into `layer`.
 #[allow(dead_code)] // view entry; remove when the host wires the rail.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &WorkspaceModeSidebarVm,
     on_action: &Option<WorkspaceModeActionFn<S>>,
     dark: bool,

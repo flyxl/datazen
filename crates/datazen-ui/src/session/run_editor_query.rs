@@ -43,58 +43,58 @@ const MAX_DISCONNECTED_READS: u32 = 20;
 /// The two settings the query envelope reads.
 #[allow(dead_code)] // consumer: the query view; remove when it lands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct QuerySettings {
-    pub(crate) limit_select_results: bool,
-    pub(crate) query_result_limit: i64,
+pub struct QuerySettings {
+    pub limit_select_results: bool,
+    pub query_result_limit: i64,
 }
 
 #[allow(dead_code)] // consumer: the query view; remove when it lands.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct QueryRequest {
-    pub(crate) key: String,
-    pub(crate) connection_id: String,
-    pub(crate) sql: String,
-    pub(crate) database: Option<String>,
-    pub(crate) schema: Option<String>,
-    pub(crate) params: Vec<(String, Value)>,
-    pub(crate) settings: QuerySettings,
+pub struct QueryRequest {
+    pub key: String,
+    pub connection_id: String,
+    pub sql: String,
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub params: Vec<(String, Value)>,
+    pub settings: QuerySettings,
 }
 
 /// A shaped column (React's `ColumnInfo` guard).
 #[allow(dead_code)] // local VM; remove with the shared query-result VM.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ColumnMeta {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
-    pub(crate) nullable: bool,
+pub struct ColumnMeta {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
 }
 
 /// React `StatementResult` as assembled by this flow.
 #[allow(dead_code)] // local VM; remove with the shared query-result VM.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct StatementSnapshot {
-    pub(crate) sql: String,
-    pub(crate) columns: Vec<ColumnMeta>,
-    pub(crate) rows: Vec<Vec<Value>>,
-    pub(crate) rows_affected: Option<i64>,
-    pub(crate) truncated: bool,
-    pub(crate) source: Option<StatementResultSource>,
-    pub(crate) runtime_binding: Option<RuntimeResultBinding>,
+pub struct StatementSnapshot {
+    pub sql: String,
+    pub columns: Vec<ColumnMeta>,
+    pub rows: Vec<Vec<Value>>,
+    pub rows_affected: Option<i64>,
+    pub truncated: bool,
+    pub source: Option<StatementResultSource>,
+    pub runtime_binding: Option<RuntimeResultBinding>,
 }
 
 /// The authoritative artifact references published on any terminal view.
 #[allow(dead_code)] // local VM; remove with the shared query-result VM.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ArtifactRefs {
-    pub(crate) execution_id: String,
-    pub(crate) artifact_ids: Vec<String>,
-    pub(crate) result_completeness: ResultCompleteness,
+pub struct ArtifactRefs {
+    pub execution_id: String,
+    pub artifact_ids: Vec<String>,
+    pub result_completeness: ResultCompleteness,
 }
 
 /// React `QueryStreamEvent` variants this flow emits.
 #[allow(dead_code)] // local VM; remove with the shared query-result VM.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum QueryEvent {
+pub enum QueryEvent {
     ExecutionStarted { execution_id: String },
     StatementSnapshot { index: u64, result: StatementSnapshot },
     PublishedArtifacts { artifacts: ArtifactRefs },
@@ -104,7 +104,7 @@ pub(crate) enum QueryEvent {
 /// Work the host performs to drive a query run.
 #[allow(dead_code)] // emitted work; remove with the query view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum QueryEffect {
+pub enum QueryEffect {
     GetController {
         key: String,
         target: ExecutionTarget,
@@ -123,7 +123,7 @@ pub(crate) enum QueryEffect {
 /// Host answers fed back into [`QueryRun::step`].
 #[allow(dead_code)] // result feed; remove with the query view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum QueryInput {
+pub enum QueryInput {
     ControllerReady,
     Executed(Result<ExecutionReceipt, SessionError>),
     Projected,
@@ -140,7 +140,7 @@ pub(crate) enum QueryInput {
 
 #[allow(dead_code)] // failure mirror; remove with the query view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum QueryFailure {
+pub enum QueryFailure {
     Session(SessionError),
     DisconnectExhausted,
     Execution { message: String },
@@ -148,17 +148,17 @@ pub(crate) enum QueryFailure {
 
 #[allow(dead_code)] // result mirror; remove with the query view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum QueryOutcome {
+pub enum QueryOutcome {
     Completed,
     Failed(QueryFailure),
 }
 
 #[allow(dead_code)] // step result; remove with the query view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct QueryStep {
-    pub(crate) effects: Vec<QueryEffect>,
-    pub(crate) events: Vec<QueryEvent>,
-    pub(crate) outcome: Option<QueryOutcome>,
+pub struct QueryStep {
+    pub effects: Vec<QueryEffect>,
+    pub events: Vec<QueryEvent>,
+    pub outcome: Option<QueryOutcome>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -173,7 +173,7 @@ enum QueryPhase {
 
 /// The query flow as an explicit machine.
 #[allow(dead_code)] // consumer: the query view; remove when it lands.
-pub(crate) struct QueryRun {
+pub struct QueryRun {
     request: QueryRequest,
     phase: QueryPhase,
     disconnected_reads: u32,
@@ -184,7 +184,7 @@ pub(crate) struct QueryRun {
 
 /// Start a query run: the first effect resolves the pane controller.
 #[allow(dead_code)] // consumer: the query view; remove when it lands.
-pub(crate) fn start(request: QueryRequest) -> (QueryRun, QueryStep) {
+pub fn start(request: QueryRequest) -> (QueryRun, QueryStep) {
     let target = ExecutionTarget {
         connection_id: request.connection_id.clone(),
         namespace: NamespaceTarget {
@@ -221,7 +221,7 @@ pub(crate) fn start(request: QueryRequest) -> (QueryRun, QueryStep) {
 
 #[allow(dead_code)] // consumer: the query view; remove when it lands.
 impl QueryRun {
-    pub(crate) fn phase(&self) -> &'static str {
+    pub fn phase(&self) -> &'static str {
         match self.phase {
             QueryPhase::AwaitController => "awaitController",
             QueryPhase::AwaitExecute => "awaitExecute",
@@ -232,7 +232,7 @@ impl QueryRun {
         }
     }
 
-    pub(crate) fn step(&mut self, input: QueryInput) -> QueryStep {
+    pub fn step(&mut self, input: QueryInput) -> QueryStep {
         match (self.phase, input) {
             (QueryPhase::AwaitController, QueryInput::ControllerReady) => {
                 self.phase = QueryPhase::AwaitExecute;
@@ -393,7 +393,7 @@ impl QueryRun {
 
 /// React's `query` envelope, in literal key order.
 #[allow(dead_code)] // envelope helper; remove with the query view.
-pub(crate) fn query_command_call(request: &QueryRequest) -> CommandCall {
+pub fn query_command_call(request: &QueryRequest) -> CommandCall {
     let mut fields = vec![
         format!("\"sql\":{}", json_string(&request.sql)),
         "\"recordHistory\":true".to_owned(),
@@ -443,7 +443,7 @@ fn column_meta(value: &Value) -> Option<ColumnMeta> {
 
 /// Group chunk payloads into statement snapshots (React's inner loop).
 #[allow(dead_code)] // projection helper; remove with the query view.
-pub(crate) fn statement_snapshots(
+pub fn statement_snapshots(
     chunks: &[PublishedResultChunk],
     _has_provenance: bool,
     writable_binding: &Option<RuntimeResultBinding>,
@@ -535,7 +535,7 @@ pub(crate) fn statement_snapshots(
 /// React's failure diagnostic: an `executionError` chunk message, else the
 /// view's error code, else the fallback sentence.
 #[allow(dead_code)] // error helper; remove with the query view.
-pub(crate) fn execution_error_message(view: &ExecutionView, chunks: &[PublishedResultChunk]) -> String {
+pub fn execution_error_message(view: &ExecutionView, chunks: &[PublishedResultChunk]) -> String {
     let diagnostic = chunks.iter().find_map(|chunk| {
         let output = record(&chunk.payload)?.get("output")?;
         let output = record(output)?;

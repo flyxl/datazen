@@ -133,7 +133,7 @@ use crate::views::onboarding::onboarding_wizard::{ImportApp, ImportSource};
 // The T323 absorb: the summary the import produces lives in `wizard_state.rs`
 // (the state machine's `IMPORT_SUCCESS` payload); re-exported here so the
 // audits' `import_step::ImportSummary` path stays untouched.
-pub(crate) use crate::views::onboarding::wizard_state::ImportSummary;
+pub use crate::views::onboarding::wizard_state::ImportSummary;
 
 use super::step_tag::step_tag;
 use super::welcome_step::import_app_label;
@@ -155,7 +155,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 
 /// React `SOURCE_ORDER` (`ImportStep.tsx:27`): the picker's six sources in
 /// React's order — the file flow first, then the five clients.
-pub(crate) const SOURCE_ORDER: [ImportSource; 6] = [
+pub const SOURCE_ORDER: [ImportSource; 6] = [
     ImportSource::File,
     ImportSource::App(ImportApp::Dbeaver),
     ImportSource::App(ImportApp::Datagrip),
@@ -169,7 +169,7 @@ pub(crate) const SOURCE_ORDER: [ImportSource; 6] = [
 /// `onboarding-import-found-<id>` postfixes, verbatim. The client ids
 /// delegate to [`ImportApp::source_id`] (T306's absorb — the one truth
 /// the host's detection probes share).
-pub(crate) fn source_id(source: ImportSource) -> &'static str {
+pub fn source_id(source: ImportSource) -> &'static str {
     match source {
         ImportSource::File => "file",
         ImportSource::App(app) => app.source_id(),
@@ -179,7 +179,7 @@ pub(crate) fn source_id(source: ImportSource) -> &'static str {
 /// React `sourceLabel`: the file flow's translated label, or the client's
 /// display name from `CONNECTION_IMPORT_APP_LABEL` (T247's port of the
 /// same map).
-pub(crate) fn source_label<'a>(source: ImportSource, file_label: &'a str) -> &'a str {
+pub fn source_label<'a>(source: ImportSource, file_label: &'a str) -> &'a str {
     match source {
         ImportSource::File => file_label,
         ImportSource::App(app) => import_app_label(app),
@@ -190,13 +190,13 @@ pub(crate) fn source_label<'a>(source: ImportSource, file_label: &'a str) -> &'a
 /// (`useConnectionImport.ts:9`) this file reads in `handleSuccess`. A
 /// T346 seam type (the hook's port absorbs it).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ImportOutcome {
+pub struct ImportOutcome {
     /// `imported`.
-    pub(crate) imported: u32,
+    pub imported: u32,
     /// `overwritten`.
-    pub(crate) overwritten: u32,
+    pub overwritten: u32,
     /// `sourceFormat` — the backend's format name when it reports one.
-    pub(crate) source_format: Option<String>,
+    pub source_format: Option<String>,
 }
 
 /// React `handleSuccess` (the hook's `onImportSuccess` arm): the summary
@@ -204,7 +204,7 @@ pub(crate) struct ImportOutcome {
 /// backend's format name when it reports one, else the picker's label for
 /// the source that ran. The host runs this when its T346 import flow
 /// resolves, then dispatches.
-pub(crate) fn import_summary(source: ImportSource, outcome: &ImportOutcome) -> ImportSummary {
+pub fn import_summary(source: ImportSource, outcome: &ImportOutcome) -> ImportSummary {
     ImportSummary {
         imported: outcome.imported,
         overwritten: outcome.overwritten,
@@ -218,18 +218,18 @@ pub(crate) fn import_summary(source: ImportSource, outcome: &ImportOutcome) -> I
 /// (`useState(initialSource)`). The host keeps this in its `S` and clones
 /// it per frame, exactly the T103 `FormBodyVm` discipline.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ImportStepVm {
+pub struct ImportStepVm {
     /// `source` — the import source the picker has chosen. The default is
     /// React's `useState('file')` fallback; the wizard seeds the real
     /// `initialSource` (T114's `import_source()`).
-    pub(crate) source: ImportSource,
+    pub source: ImportSource,
 }
 
 /// The journey's import-entry step: the source picker, the bordered card
 /// carrying the shared import fields (inline variant) with the success
 /// banner, and the submit footer. Built per frame over the host's
 /// [`ImportStepVm`] and the T346 machinery's [`ImportVm`].
-pub(crate) struct ImportStep<S: 'static> {
+pub struct ImportStep<S: 'static> {
     /// The step-local half of React's state (the chosen source).
     step: ImportStepVm,
     /// The import machinery's snapshot (the T346 seam, T103's `ImportVm`).
@@ -256,7 +256,7 @@ impl<S: 'static> ImportStep<S> {
     /// React's mount on S1-import: the wizard's `initialSource` (the VM
     /// the host seeds from T114's `import_source()`) and the machinery's
     /// snapshot, no seams wired until the host hands them over.
-    pub(crate) fn new(step: ImportStepVm, imp: ImportVm) -> Self {
+    pub fn new(step: ImportStepVm, imp: ImportVm) -> Self {
         ImportStep {
             step,
             imp,
@@ -271,27 +271,27 @@ impl<S: 'static> ImportStep<S> {
     }
 
     /// The machinery's `detecting` flag — the footer's mono line.
-    pub(crate) fn detecting(mut self, detecting: bool) -> Self {
+    pub fn detecting(mut self, detecting: bool) -> Self {
         self.detecting = detecting;
         self
     }
 
     /// `importResult` — the wizard state's import summary (`None` is
     /// React's undefined: no import has succeeded yet).
-    pub(crate) fn import_result(mut self, result: ImportSummary) -> Self {
+    pub fn import_result(mut self, result: ImportSummary) -> Self {
         self.import_result = Some(result);
         self
     }
 
     /// `detectedApps` — every client whose config was found on this
     /// machine (T306's `useDetectedImportSource` output).
-    pub(crate) fn detected_apps(mut self, apps: impl Into<Vec<ImportApp>>) -> Self {
+    pub fn detected_apps(mut self, apps: impl Into<Vec<ImportApp>>) -> Self {
         self.detected_apps = apps.into();
         self
     }
 
     /// The step-local VM accessor (`source`'s writes land in `S`).
-    pub(crate) fn on_step(
+    pub fn on_step(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut ImportStepVm + 'static,
     ) -> Self {
@@ -300,7 +300,7 @@ impl<S: 'static> ImportStep<S> {
     }
 
     /// The machinery's VM accessor — the T103 `on_vm` seam, forwarded.
-    pub(crate) fn on_vm(
+    pub fn on_vm(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut ImportVm + 'static,
     ) -> Self {
@@ -309,7 +309,7 @@ impl<S: 'static> ImportStep<S> {
     }
 
     /// The fields' action port — the T103 `on_action` seam, forwarded.
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, ImportAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, ImportAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
@@ -317,13 +317,13 @@ impl<S: 'static> ImportStep<S> {
     /// `imp.submit()` — the host's import flow (T346); the machinery's
     /// success reports back through [`import_summary`] and the host's
     /// `IMPORT_SUCCESS` dispatch.
-    pub(crate) fn on_submit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_submit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_submit = Some(Rc::new(f));
         self
     }
 
     /// Paint the step. `dark` drives the kit tokens.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let ImportStep {
             step,

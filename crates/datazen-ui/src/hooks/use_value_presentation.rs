@@ -57,16 +57,16 @@ use crate::support::value_presentation::registry::ValuePresentationRegistry;
 /// owned): the plans, the first-wins map, the revisions and the key.
 /// (The plans hold boxed presenters — no derive; the manual Debug
 /// prints the plan faces only.)
-pub(crate) struct ValuePresentationPlans {
+pub struct ValuePresentationPlans {
     /// One plan per input column, in input order.
-    pub(crate) plans: Vec<ColumnPresentationPlan>,
+    pub plans: Vec<ColumnPresentationPlan>,
     /// Same-named columns keep the first plan.
-    pub(crate) plan_by_column: HashMap<String, usize>,
+    pub plan_by_column: HashMap<String, usize>,
     /// The registry revision the plans were built under.
-    pub(crate) contribution_revision: u64,
+    pub contribution_revision: u64,
     /// The cache key the plans were built for (the memo's own
     /// dependency — equal key, equal plans).
-    pub(crate) cache_key: String,
+    pub cache_key: String,
 }
 
 impl std::fmt::Debug for ValuePresentationPlans {
@@ -89,7 +89,7 @@ impl std::fmt::Debug for ValuePresentationPlans {
 
 /// `useValuePresentation()`'s state machine.
 #[derive(Debug, Default)]
-pub(crate) struct ValuePresentationHookState {
+pub struct ValuePresentationHookState {
     /// The registry revision last observed (the external store's
     /// snapshot).
     contribution_revision: u64,
@@ -98,29 +98,29 @@ pub(crate) struct ValuePresentationHookState {
 }
 
 impl ValuePresentationHookState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The registry's revision report (the external store's change
     /// notification): a bump invalidates the next reconcile (the
     /// cache key covers it).
-    pub(crate) fn note_registry_revision(&mut self, revision: u64) {
+    pub fn note_registry_revision(&mut self, revision: u64) {
         self.contribution_revision = revision;
     }
 
     /// The observed registry revision (`contributionRevision`).
-    pub(crate) fn contribution_revision(&self) -> u64 {
+    pub fn contribution_revision(&self) -> u64 {
         self.contribution_revision
     }
 
     /// The plans (empty before the first build; the memo's output).
-    pub(crate) fn plans(&self) -> &[ColumnPresentationPlan] {
+    pub fn plans(&self) -> &[ColumnPresentationPlan] {
         self.built.as_ref().map(|b| b.plans.as_slice()).unwrap_or(&[])
     }
 
     /// `planByColumn`: the first plan for a column name.
-    pub(crate) fn plan_by_column(&self, column_name: &str) -> Option<&ColumnPresentationPlan> {
+    pub fn plan_by_column(&self, column_name: &str) -> Option<&ColumnPresentationPlan> {
         let built = self.built.as_ref()?;
         built
             .plan_by_column
@@ -130,7 +130,7 @@ impl ValuePresentationHookState {
 
     /// The current cache key (the last build's, or the one the next
     /// build would use — the memo's dependency is observable).
-    pub(crate) fn cache_key(&self) -> &str {
+    pub fn cache_key(&self) -> &str {
         self.built.as_ref().map(|b| b.cache_key.as_str()).unwrap_or("")
     }
 
@@ -138,7 +138,7 @@ impl ValuePresentationHookState {
     /// and rebuild the plans ONLY when the key changed (the React
     /// rule: 键不变即计划不变，不逐渲染重建 prepare). Answers whether
     /// the build ran.
-    pub(crate) fn reconcile<'a>(
+    pub fn reconcile<'a>(
         &mut self,
         columns: Vec<PresentationPlanColumn<'a>>,
         source: Option<SourceIdentity<'a>>,
@@ -188,7 +188,7 @@ impl ValuePresentationHookState {
     /// `presentValue`: the column's plan presents the value; a
     /// missing plan answers `unchanged("no-plan")` (the React
     /// literal).
-    pub(crate) fn present_value(
+    pub fn present_value(
         &self,
         column_name: &str,
         value: &serde_json::Value,
@@ -204,11 +204,11 @@ impl ValuePresentationHookState {
 /// plan builder fills a column into (absent for query-result
 /// columns — overrides unavailable).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SourceIdentity<'a> {
-    pub(crate) connection_id: &'a str,
-    pub(crate) database: Option<&'a str>,
-    pub(crate) namespace: Option<&'a str>,
-    pub(crate) table: &'a str,
+pub struct SourceIdentity<'a> {
+    pub connection_id: &'a str,
+    pub database: Option<&'a str>,
+    pub namespace: Option<&'a str>,
+    pub table: &'a str,
 }
 
 impl<'a> SourceIdentity<'a> {

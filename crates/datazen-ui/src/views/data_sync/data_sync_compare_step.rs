@@ -81,7 +81,7 @@ use crate::views::data_transfer::source_filter_editor::StructuredSourceFilter;
 
 /// React `SyncState` (`windows/data-sync/utils.ts:18`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum SyncState {
+pub enum SyncState {
     #[default]
     Idle,
     Inspecting,
@@ -95,7 +95,7 @@ pub(crate) enum SyncState {
 /// React `DataSyncOperation` (`backend-client/types/dataSync.ts:33`):
 /// the row operation of one comparison change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DataSyncOperation {
+pub enum DataSyncOperation {
     Insert,
     Update,
     Delete,
@@ -106,7 +106,7 @@ pub(crate) enum DataSyncOperation {
 /// `Exclude<DataSyncRowChange['operation'], 'UNCHANGED'>` — the
 /// operations a review selection can scope.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RowOperation {
+pub enum RowOperation {
     Insert,
     Update,
     Delete,
@@ -118,7 +118,7 @@ pub(crate) enum RowOperation {
 /// `string | number | boolean | null | Record<string, unknown> | unknown[]`),
 /// so a `null` cell rides as `Value::Null` inside the row vector.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DataSyncRowChange {
+pub struct DataSyncRowChange {
     pub operation: DataSyncOperation,
     pub key: Vec<serde_json::Value>,
     pub source_row: Option<Vec<serde_json::Value>>,
@@ -130,7 +130,7 @@ pub(crate) struct DataSyncRowChange {
 /// React `DataSyncMappingStatus` (`backend-client/types/dataSync.ts:36-41`):
 /// the table-pair classification of one inspection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum DataSyncMappingStatus {
+pub enum DataSyncMappingStatus {
     #[default]
     Matched,
     UnmappedSource,
@@ -147,7 +147,7 @@ pub(crate) enum DataSyncMappingStatus {
 /// and paging, never row payloads) — so the count/paging fields are
 /// `Option`: absent on the face that does not carry them.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DataSyncTableResult {
+pub struct DataSyncTableResult {
     pub source_table: String,
     pub target_table: String,
     pub status: DataSyncMappingStatus,
@@ -176,7 +176,7 @@ pub(crate) struct DataSyncTableResult {
 
 /// React `TableDiffFilter` (`windows/data-sync/mappingView.ts:16`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum TableDiffFilter {
+pub enum TableDiffFilter {
     #[default]
     All,
     Insert,
@@ -188,7 +188,7 @@ pub(crate) enum TableDiffFilter {
 
 /// React `CompareSummaryStats` (`windows/data-sync/mappingView.ts:95-101`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CompareSummaryStats {
+pub struct CompareSummaryStats {
     pub inserts: usize,
     pub updates: usize,
     pub deletes: usize,
@@ -199,7 +199,7 @@ pub(crate) struct CompareSummaryStats {
 /// React `DataSyncPageCursor`
 /// (`windows/data-sync/useDataSyncSelectionState.ts:5-9`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DataSyncPageCursor {
+pub struct DataSyncPageCursor {
     pub current: Option<String>,
     pub next: Option<String>,
     pub previous: Vec<String>,
@@ -207,7 +207,7 @@ pub(crate) struct DataSyncPageCursor {
 
 /// React `DataSyncSelectionMode` (`backend-client/types/dataSync.ts:283`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DataSyncSelectionMode {
+pub enum DataSyncSelectionMode {
     All,
     Defaults,
 }
@@ -215,7 +215,7 @@ pub(crate) enum DataSyncSelectionMode {
 /// React `DataSyncSelectionExclusion`
 /// (`backend-client/types/dataSync.ts:277-280`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DataSyncSelectionExclusion {
+pub struct DataSyncSelectionExclusion {
     pub operation: RowOperation,
     pub key: Vec<serde_json::Value>,
 }
@@ -224,7 +224,7 @@ pub(crate) struct DataSyncSelectionExclusion {
 /// the server-owned selection of comparison rows for one table and
 /// operation.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DataSyncTableSelection {
+pub struct DataSyncTableSelection {
     pub source_table: String,
     pub target_table: String,
     pub selection_mode: DataSyncSelectionMode,
@@ -238,7 +238,7 @@ pub(crate) struct DataSyncTableSelection {
 /// when the caller does not set them; [`SyncOptions::default`] is
 /// `DEFAULT_SYNC_OPTIONS` (`commands/sync.ts:88-96`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SyncOptions {
+pub struct SyncOptions {
     pub insert: bool,
     pub update: bool,
     pub delete: bool,
@@ -264,14 +264,14 @@ impl Default for SyncOptions {
 
 /// React `SyncOptions['matchingStrategy']`: only `'primaryKey'` exists.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum SyncMatchingStrategy {
+pub enum SyncMatchingStrategy {
     #[default]
     PrimaryKey,
 }
 
 /// React `SyncOptions['largeValueMode']`: `'full' | 'hash'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum SyncLargeValueMode {
+pub enum SyncLargeValueMode {
     #[default]
     Full,
     Hash,
@@ -279,7 +279,7 @@ pub(crate) enum SyncLargeValueMode {
 
 /// React `SyncOptions['conflictPolicy']`: `'abort' | 'skip' | 'force'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum SyncConflictPolicy {
+pub enum SyncConflictPolicy {
     #[default]
     Abort,
     Skip,
@@ -290,14 +290,14 @@ pub(crate) enum SyncConflictPolicy {
 /// the composite key of a table pair, used to address the paged
 /// comparison cursors of one table. The separator is NUL, so no table
 /// name can collide with another pair's key.
-pub(crate) fn table_page_key(source_table: &str, target_table: &str) -> String {
+pub fn table_page_key(source_table: &str, target_table: &str) -> String {
     format!("{source_table}\u{0}{target_table}")
 }
 
 /// The `hasTableSelection` inline in `DataSyncCompareStep.tsx`: a table
 /// has a review selection when some scope addresses the same
 /// source/target pair.
-pub(crate) fn has_table_selection(
+pub fn has_table_selection(
     selections: &[DataSyncTableSelection],
     table: &DataSyncTableResult,
 ) -> bool {
@@ -307,7 +307,7 @@ pub(crate) fn has_table_selection(
 }
 
 /// React `pageIndex[tablePageKey(selectedTable)] ?? 0`.
-pub(crate) fn page_index_for(
+pub fn page_index_for(
     page_index: &HashMap<String, usize>,
     table: &DataSyncTableResult,
 ) -> usize {
@@ -318,7 +318,7 @@ pub(crate) fn page_index_for(
 }
 
 /// React `hasPreviousPage`: `Boolean(pageCursors[key]?.previous.length)`.
-pub(crate) fn has_previous_page(
+pub fn has_previous_page(
     page_cursors: &HashMap<String, DataSyncPageCursor>,
     table: &DataSyncTableResult,
 ) -> bool {
@@ -330,7 +330,7 @@ pub(crate) fn has_previous_page(
 /// React `hasNextPage`: `Boolean(pageCursors[key]?.next)` — falsy for an
 /// empty-string cursor as well as for `null`/missing, so the check is
 /// "a non-empty next cursor exists", not a plain `is_some()`.
-pub(crate) fn has_next_page(
+pub fn has_next_page(
     page_cursors: &HashMap<String, DataSyncPageCursor>,
     table: &DataSyncTableResult,
 ) -> bool {
@@ -341,7 +341,7 @@ pub(crate) fn has_next_page(
 
 /// Which of the step's three branches renders.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CompareStepBranch {
+pub enum CompareStepBranch {
     Comparing,
     Compared,
     Prompt,
@@ -351,7 +351,7 @@ pub(crate) enum CompareStepBranch {
 /// (`DataSyncCompareStep.tsx`: `hasTableSelection`, `pageIndex`,
 /// `hasPreviousPage`, `hasNextPage`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SelectedTablePage {
+pub struct SelectedTablePage {
     pub has_table_selection: bool,
     pub page_index: usize,
     pub has_previous_page: bool,
@@ -364,7 +364,7 @@ pub(crate) struct SelectedTablePage {
 /// `selected_table_key`, `options`, `explain_loading`) are carried for
 /// T288/T308/T383, which read them when they fill their slots.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncCompareStepVm {
+pub struct DataSyncCompareStepVm {
     pub sync_state: SyncState,
     pub compared: bool,
     pub rows: Vec<DataSyncTableResult>,
@@ -384,7 +384,7 @@ pub(crate) struct DataSyncCompareStepVm {
 impl DataSyncCompareStepVm {
     /// React's branch order: `syncState === 'comparing'` wins over
     /// `compared`, and `compared` wins over the prompt.
-    pub(crate) fn branch(&self) -> CompareStepBranch {
+    pub fn branch(&self) -> CompareStepBranch {
         if self.sync_state == SyncState::Comparing {
             CompareStepBranch::Comparing
         } else if self.compared {
@@ -396,7 +396,7 @@ impl DataSyncCompareStepVm {
 
     /// The derived `DiffDetail` props for the selected table, or `None`
     /// when no table is selected.
-    pub(crate) fn selected_table_page(&self) -> Option<SelectedTablePage> {
+    pub fn selected_table_page(&self) -> Option<SelectedTablePage> {
         let table = self.selected_table.as_ref()?;
         Some(SelectedTablePage {
             has_table_selection: has_table_selection(&self.table_selections, table),
@@ -409,14 +409,14 @@ impl DataSyncCompareStepVm {
 
 /// Builder for the compare step. `S` is the host state that owns the
 /// cancel action.
-pub(crate) struct DataSyncCompareStep<S: 'static> {
+pub struct DataSyncCompareStep<S: 'static> {
     vm: DataSyncCompareStepVm,
     dark: bool,
     on_cancel: Option<Rc<dyn Fn(&mut S)>>,
 }
 
 impl<S: 'static> DataSyncCompareStep<S> {
-    pub(crate) fn new(vm: DataSyncCompareStepVm) -> Self {
+    pub fn new(vm: DataSyncCompareStepVm) -> Self {
         Self {
             vm,
             dark: true,
@@ -425,13 +425,13 @@ impl<S: 'static> DataSyncCompareStep<S> {
     }
 
     /// React `onCancel`: the comparing branch's cancel button.
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
 
     /// The compare step on its own, exactly as the probes mount it.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let (root, layer) = self.build_inner(dark);
         rune_kit::root(root, layer)
     }
@@ -440,7 +440,7 @@ impl<S: 'static> DataSyncCompareStep<S> {
     /// overlay layer (empty — the step mounts no select/menu). The Data
     /// Sync window (T270) calls this once and roots the whole wizard
     /// once.
-    pub(crate) fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
+    pub fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
         self.dark = dark;
         let k = kit(dark);
         // React root: `flex min-h-0 flex-1 flex-col overflow-hidden`.

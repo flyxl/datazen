@@ -112,7 +112,7 @@ const TEXT_SM_MEDIUM: TextStyle = TextStyle::new(14.0, 500.0);
 
 /// `McpSettingsSection()`: the section over the state and the host's
 /// action slots.
-pub(crate) struct McpSettingsSection<'a, S: 'static> {
+pub struct McpSettingsSection<'a, S: 'static> {
     state: &'a McpSettingsSectionState,
     dark: bool,
     /// The host clock the saved/copied windows read (the host passes
@@ -147,7 +147,7 @@ impl<'a, S: 'static> McpSettingsSection<'a, S> {
     /// The section over the state, the clock, the executable path and
     /// the three text-input lenses.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
+    pub fn new(
         state: &'a McpSettingsSectionState,
         dark: bool,
         now: f64,
@@ -183,27 +183,27 @@ impl<'a, S: 'static> McpSettingsSection<'a, S> {
     }
 
     /// `handleToggleEnabled(next)` — the stdio toggle row.
-    pub(crate) fn on_toggle_enabled(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_toggle_enabled(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_toggle_enabled = Some(Rc::new(f));
         self
     }
     /// `handleToggleHttp(next)` — the HTTP enable checkbox.
-    pub(crate) fn on_toggle_http(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_toggle_http(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_toggle_http = Some(Rc::new(f));
         self
     }
     /// `handleApplyHttpPort`.
-    pub(crate) fn on_apply_port(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_apply_port(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_apply_port = Some(Rc::new(f));
         self
     }
     /// `handleRegenerateHttpToken`.
-    pub(crate) fn on_regenerate_token(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_regenerate_token(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_regenerate_token = Some(Rc::new(f));
         self
     }
     /// `handlePermissionChange(mode)`.
-    pub(crate) fn on_permission_change(
+    pub fn on_permission_change(
         mut self,
         f: impl Fn(&mut S, McpPermissionMode) + 'static,
     ) -> Self {
@@ -211,47 +211,47 @@ impl<'a, S: 'static> McpSettingsSection<'a, S> {
         self
     }
     /// `toggleTool(name)`.
-    pub(crate) fn on_toggle_tool(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_tool(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_tool = Some(Rc::new(f));
         self
     }
     /// `toggleAllowed(id)`.
-    pub(crate) fn on_toggle_allowed(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_allowed(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_allowed = Some(Rc::new(f));
         self
     }
     /// `handleEnableAll`.
-    pub(crate) fn on_enable_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_enable_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_enable_all = Some(Rc::new(f));
         self
     }
     /// `handleDisableAll`.
-    pub(crate) fn on_disable_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_disable_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_disable_all = Some(Rc::new(f));
         self
     }
     /// `handleSaveTools`.
-    pub(crate) fn on_save_tools(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save_tools(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save_tools = Some(Rc::new(f));
         self
     }
     /// `handleSaveScope`.
-    pub(crate) fn on_save_scope(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save_scope(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save_scope = Some(Rc::new(f));
         self
     }
     /// `handleCopySnippet` (the host also writes the clipboard).
-    pub(crate) fn on_copy_snippet(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy_snippet(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_snippet = Some(Rc::new(f));
         self
     }
     /// The token's copy button.
-    pub(crate) fn on_copy_token(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy_token(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_token = Some(Rc::new(f));
         self
     }
     /// `setAgentTarget(target)`.
-    pub(crate) fn on_set_agent_target(
+    pub fn on_set_agent_target(
         mut self,
         f: impl Fn(&mut S, McpAgentTarget) + 'static,
     ) -> Self {
@@ -259,13 +259,13 @@ impl<'a, S: 'static> McpSettingsSection<'a, S> {
         self
     }
     /// `loadAudit` (the refresh link).
-    pub(crate) fn on_refresh_audit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_refresh_audit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_refresh_audit = Some(Rc::new(f));
         self
     }
 
     /// The section body.
-    pub(crate) fn build(self, layer: &mut Vec<El>) -> El {
+    pub fn build(self, layer: &mut Vec<El>) -> El {
         let dark = self.dark;
         let k = kit(dark);
         let state = self.state;

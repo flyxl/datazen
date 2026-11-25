@@ -33,23 +33,23 @@ use crate::views::table_filter_toolbar::{
     build as build_filter, TableFilterAction, TableFilterToolbarVm,
 };
 
-pub(crate) const REFRESH_KEY: &str = "table-data-refresh";
-pub(crate) const INSERT_KEY: &str = "table-insert-row";
+pub const REFRESH_KEY: &str = "table-data-refresh";
+pub const INSERT_KEY: &str = "table-insert-row";
 
 /// React `TableToolbarProps` plus the filter half's VM (delegated as-is).
 #[allow(dead_code)] // VM surface; owned by the table-panel host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TableToolbarVm {
-    pub(crate) loading: bool,
-    pub(crate) pending_busy: bool,
-    pub(crate) is_editable: bool,
-    pub(crate) filter: TableFilterToolbarVm,
+pub struct TableToolbarVm {
+    pub loading: bool,
+    pub pending_busy: bool,
+    pub is_editable: bool,
+    pub filter: TableFilterToolbarVm,
 }
 
 /// Every host intent the toolbar can emit.
 #[allow(dead_code)] // host port; remove when the table-panel host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TableToolbarAction {
+pub enum TableToolbarAction {
     Refresh,
     AddDraftRow,
     Filter(TableFilterAction),
@@ -68,7 +68,7 @@ fn emit<S: 'static>(on_action: &Option<ActionFn<S>>, action: TableToolbarAction)
 
 /// Build the full toolbar: leading table buttons + the filter half.
 #[allow(dead_code)] // view entry; remove when the table-panel host lands.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableToolbarVm,
     quick_filter: &TextEdit,
     quick_edit: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>>,

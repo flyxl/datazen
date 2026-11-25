@@ -16,7 +16,7 @@ use rune::{row, text, El, TextStyle};
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum BadgeTone {
+pub enum BadgeTone {
     #[default]
     Neutral,
     Success,
@@ -26,7 +26,7 @@ pub(crate) enum BadgeTone {
 }
 
 #[allow(dead_code)] // reusable base; remove when view callers land
-pub(crate) struct Badge {
+pub struct Badge {
     key: String,
     label: String,
     tone: BadgeTone,
@@ -40,7 +40,7 @@ pub(crate) struct Badge {
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 impl Badge {
-    pub(crate) fn new(key: impl Into<String>, label: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             label: label.into(),
@@ -50,7 +50,7 @@ impl Badge {
         }
     }
 
-    pub(crate) fn tone(mut self, tone: BadgeTone) -> Self {
+    pub fn tone(mut self, tone: BadgeTone) -> Self {
         self.tone = tone;
         self
     }
@@ -58,19 +58,19 @@ impl Badge {
     /// Padding override: `(px, py)` in points, for React callers that pass
     /// `className` padding utilities over the badge (T067's shell chip:
     /// `px-1.5 py-0`).
-    pub(crate) fn pad(mut self, px: f32, py: f32) -> Self {
+    pub fn pad(mut self, px: f32, py: f32) -> Self {
         self.pad = Some((px, py));
         self
     }
 
     /// Font override, for React callers that pass `className` text utilities
     /// over the badge (T067's shell chip: `text-[10px] font-normal`).
-    pub(crate) fn font(mut self, font: TextStyle) -> Self {
+    pub fn font(mut self, font: TextStyle) -> Self {
         self.font = Some(font);
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let (fill, fg, border) = match self.tone {
             BadgeTone::Neutral => (k.c.layer_02, k.c.text_muted, k.c.border_base),

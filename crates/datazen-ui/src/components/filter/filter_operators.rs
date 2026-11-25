@@ -38,7 +38,7 @@ use crate::support::cell_types::{resolve_cell_type, CellType, CellTypeHints};
 /// Which control the value of a condition is edited with.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FilterValueInputKind {
+pub enum FilterValueInputKind {
     /// The operator carries no value (`isNull` / `isNotNull` / `isEmpty` /
     /// `isNotEmpty`); the editor renders no value field at all.
     None,
@@ -53,7 +53,7 @@ pub(crate) enum FilterValueInputKind {
 /// How the operator is grouped in the UI and in the documentation.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FilterOperatorGroup {
+pub enum FilterOperatorGroup {
     /// Value comparison.
     Compare,
     /// Text patterns.
@@ -71,7 +71,7 @@ pub(crate) enum FilterOperatorGroup {
 /// One row of the operator table.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct FilterOperatorMeta {
+pub struct FilterOperatorMeta {
     /// The operator this entry describes.
     pub id: &'static str,
     /// Which value control the editor renders for it.
@@ -92,7 +92,7 @@ impl FilterOperatorMeta {
     /// React derives this field from the matrix, so the two can never drift
     /// apart; Rust keeps the same rule as a method rather than a stored copy
     /// (a `const` table cannot call a function).
-    pub(crate) fn cell_types(&self) -> Vec<CellType> {
+    pub fn cell_types(&self) -> Vec<CellType> {
         cell_types_for_operator(self.id)
     }
 }
@@ -299,7 +299,7 @@ const FILTER_OPERATOR_META: [FilterOperatorMeta; 22] = [
 
 /// The row of the table that describes `operator`.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
-pub(crate) fn filter_operator_meta(operator: &str) -> Option<&'static FilterOperatorMeta> {
+pub fn filter_operator_meta(operator: &str) -> Option<&'static FilterOperatorMeta> {
     FILTER_OPERATOR_META.iter().find(|entry| entry.id == operator)
 }
 
@@ -310,7 +310,7 @@ pub(crate) fn filter_operator_meta(operator: &str) -> Option<&'static FilterOper
 /// This is the bridge: the table is the closed set, so an unknown name can
 /// only come from a caller-supplied operator that is already `&'static`.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
-pub(crate) fn static_operator(name: &str) -> Option<&'static str> {
+pub fn static_operator(name: &str) -> Option<&'static str> {
     FILTER_OPERATOR_META
         .iter()
         .map(|entry| entry.id)
@@ -340,7 +340,7 @@ fn dialect_operators_by_cell_type(cell: CellType) -> &'static [&'static str] {
 /// It is **derived**, never written a second time: the matrix is the only place
 /// that says which operator belongs to which type.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
-pub(crate) fn cell_types_for_operator(operator: &str) -> Vec<CellType> {
+pub fn cell_types_for_operator(operator: &str) -> Vec<CellType> {
     ALL_CELL_TYPES
         .iter()
         .copied()
@@ -357,7 +357,7 @@ pub(crate) fn cell_types_for_operator(operator: &str) -> Vec<CellType> {
 /// driver's whitelist. The result is the intersection of "the column type can
 /// take it" and "this database serves it", in a stable order.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
-pub(crate) fn operators_for_column(
+pub fn operators_for_column(
     data_type: Option<&str>,
     supported: &[&str],
     hints: Option<&CellTypeHints>,
@@ -378,7 +378,7 @@ pub(crate) fn operators_for_column(
 /// instead of throwing while it renders — an operator the user cannot change
 /// anyway is better than a panel that fails to open.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
-pub(crate) fn value_input_for(operator: &str) -> FilterValueInputKind {
+pub fn value_input_for(operator: &str) -> FilterValueInputKind {
     filter_operator_meta(operator)
         .map(|meta| meta.value_input)
         .unwrap_or(FilterValueInputKind::Single)
@@ -391,7 +391,7 @@ pub(crate) fn value_input_for(operator: &str) -> FilterValueInputKind {
 /// The value is kept: changing the column is usually "same value, other
 /// column", and throwing the value away would lose the user's work.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
-pub(crate) fn normalize_operator_for_column(
+pub fn normalize_operator_for_column(
     current: &'static str,
     data_type: Option<&str>,
     supported: &[&str],
@@ -427,7 +427,7 @@ fn as_tokens(value: &FilterValue) -> Vec<String> {
 
 /// Split a comma separated value the way React's `asTokens` does.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
-pub(crate) fn split_tokens(text: &str) -> Vec<String> {
+pub fn split_tokens(text: &str) -> Vec<String> {
     if text.is_empty() {
         return Vec::new();
     }
@@ -463,7 +463,7 @@ fn as_pair(value: &FilterValue) -> (String, String) {
 /// Switching to an operator that carries no value keeps the old value, so
 /// switching back restores it.
 #[allow(dead_code)] // T513 moves this port to support/filter_operators.rs.
-pub(crate) fn convert_filter_value(
+pub fn convert_filter_value(
     from: FilterValueInputKind,
     to: FilterValueInputKind,
     value: &FilterValue,

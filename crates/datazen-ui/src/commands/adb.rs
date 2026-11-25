@@ -28,19 +28,19 @@ use serde::Deserialize;
 use crate::state_def::AppState;
 
 /// The ADB commands' driver (declared by `crates/drivers/sqlite`).
-pub(crate) const ADB_DRIVER_TYPE: &str = "sqlite";
+pub const ADB_DRIVER_TYPE: &str = "sqlite";
 
 /// An installed device package (`adb_list_packages` rows).
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-pub(crate) struct AdbPackage {
-    pub(crate) package_name: String,
+pub struct AdbPackage {
+    pub package_name: String,
 }
 
 /// A device database file (`adb_list_databases` rows).
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-pub(crate) struct AdbDatabaseFile {
-    pub(crate) path: String,
-    pub(crate) name: String,
+pub struct AdbDatabaseFile {
+    pub path: String,
+    pub name: String,
 }
 
 /// The unified entry every helper below routes through (React's
@@ -54,13 +54,13 @@ fn execute_adb_command(
 }
 
 /// List the device's installed packages.
-pub(crate) fn adb_list_packages(state: &mut AppState) -> Result<Vec<AdbPackage>, String> {
+pub fn adb_list_packages(state: &mut AppState) -> Result<Vec<AdbPackage>, String> {
     let data = execute_adb_command(state, "adb_list_packages", &serde_json::json!({}))?;
     serde_json::from_value(data).map_err(|error| error.to_string())
 }
 
 /// List one package's database files.
-pub(crate) fn adb_list_databases(
+pub fn adb_list_databases(
     state: &mut AppState,
     package_name: &str,
 ) -> Result<Vec<AdbDatabaseFile>, String> {
@@ -80,7 +80,7 @@ pub(crate) fn adb_list_databases(
 /// native dialog, writes the bytes and replaces the payload with
 /// `{ savedPath }` (null when cancelled). No path ever travels from the
 /// UI to the filesystem.
-pub(crate) fn adb_pull_database_with_dialog(
+pub fn adb_pull_database_with_dialog(
     state: &mut AppState,
     package_name: &str,
     db_path: &str,

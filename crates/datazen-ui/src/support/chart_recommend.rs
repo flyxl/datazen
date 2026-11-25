@@ -23,7 +23,7 @@ use crate::support::chart_field_inference::{ChartField, InferredFieldType};
 /// React's `ChartRecommendation`.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // consumed by the query-results pane wiring
-pub(crate) struct ChartRecommendation {
+pub struct ChartRecommendation {
     pub chart_type: ChartType,
     pub xAxis: Option<String>,
     pub yAxes: Vec<String>,
@@ -37,7 +37,7 @@ pub(crate) struct ChartRecommendation {
 
 /// `recommendChart(fields, rowCount)`: the first rule whose shape matches
 /// wins, exactly in React's order.
-pub(crate) fn recommend_chart(fields: &[ChartField], row_count: usize) -> Option<ChartRecommendation> {
+pub fn recommend_chart(fields: &[ChartField], row_count: usize) -> Option<ChartRecommendation> {
     let numerics: Vec<&ChartField> = fields
         .iter()
         .filter(|f| f.inferred_type == InferredFieldType::Numeric)

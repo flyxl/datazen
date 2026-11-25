@@ -18,13 +18,13 @@ use crate::views::er::table_node::TableNodeVm;
 /// React `Node['position']` / React Flow's top-left corner convention.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct ErPosition {
+pub struct ErPosition {
     pub x: f32,
     pub y: f32,
 }
 
 impl ErPosition {
-    pub(crate) fn new(x: f32, y: f32) -> Self {
+    pub fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
 }
@@ -32,7 +32,7 @@ impl ErPosition {
 /// How an edge between two tables was established.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ErRelationKind {
+pub enum ErRelationKind {
     /// A foreign key constraint the database declares.
     Declared,
     #[default]
@@ -42,7 +42,7 @@ pub(crate) enum ErRelationKind {
 
 impl ErRelationKind {
     /// The `data.kind` string the React sources tag edges with.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Declared => "declared",
             Self::Predicted => "predicted",
@@ -54,7 +54,7 @@ impl ErRelationKind {
 /// absent in React (`strokeDasharray: undefined`, no hover styling yet).
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ErEdgeStyle {
+pub struct ErEdgeStyle {
     pub stroke: Option<String>,
     pub stroke_dasharray: Option<String>,
     pub opacity: Option<f32>,
@@ -64,7 +64,7 @@ pub(crate) struct ErEdgeStyle {
 /// An arrowhead, painted by a marker the line's own opacity does not reach.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ErMarkerEnd {
+pub struct ErMarkerEnd {
     /// Always `MarkerType.ArrowClosed` in the React sources.
     pub arrow_closed: bool,
     pub color: String,
@@ -82,7 +82,7 @@ impl Default for ErMarkerEnd {
 /// The label's own ink.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ErLabelStyle {
+pub struct ErLabelStyle {
     pub font_size: f32,
     pub fill: String,
 }
@@ -99,7 +99,7 @@ impl Default for ErLabelStyle {
 /// The chip a label sits on, so it knocks out the line behind it.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ErLabelBg {
+pub struct ErLabelBg {
     pub fill: String,
     pub padding: (f32, f32),
     pub radius: f32,
@@ -121,7 +121,7 @@ impl Default for ErLabelBg {
 /// anchors on.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ErEdgeData {
+pub struct ErEdgeData {
     pub kind: ErRelationKind,
     /// Only an inference carries a score.
     pub score: Option<f64>,
@@ -136,7 +136,7 @@ pub(crate) struct ErEdgeData {
 /// React `Edge`, reduced to the fields the ports observe.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ErEdge {
+pub struct ErEdge {
     pub id: String,
     pub source: String,
     pub target: String,
@@ -159,7 +159,7 @@ pub(crate) struct ErEdge {
 /// `TableNodeData` the rendered table consumes (T361's `TableNodeVm`).
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ErNode {
+pub struct ErNode {
     pub id: String,
     /// Always `'tableNode'` in the React sources.
     pub node_type: &'static str,
@@ -172,7 +172,7 @@ pub(crate) struct ErNode {
 /// What `buildErGraph` hands back.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ErGraph {
+pub struct ErGraph {
     pub nodes: Vec<ErNode>,
     pub edges: Vec<ErEdge>,
 }

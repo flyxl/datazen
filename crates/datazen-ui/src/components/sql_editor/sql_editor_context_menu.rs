@@ -26,11 +26,11 @@ use std::rc::Rc;
 
 /// React `Platform` — its definition home since T384
 /// (`hooks/usePlatform.ts`); re-exported at the pre-T384 carry path.
-pub(crate) use crate::hooks::use_platform::Platform;
+pub use crate::hooks::use_platform::Platform;
 
 /// `formatModKey` from `lib/keymap.ts` (segment 2, T541) — carried 1:1:
 /// ⌘ on macOS, Ctrl everywhere else.
-pub(crate) fn format_mod_key(platform: Platform) -> &'static str {
+pub fn format_mod_key(platform: Platform) -> &'static str {
     if platform == Platform::Macos {
         "⌘"
     } else {
@@ -41,7 +41,7 @@ pub(crate) fn format_mod_key(platform: Platform) -> &'static str {
 /// driver-sdk `NativeMenuPredefined` — the edit/separator kinds shared by
 /// web context menus (legacy name kept for item defs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum NativeMenuPredefined {
+pub enum NativeMenuPredefined {
     Separator,
     Cut,
     Copy,
@@ -54,7 +54,7 @@ pub(crate) enum NativeMenuPredefined {
 /// driver-sdk `NativeMenuItemDef` — the item model. `action` is
 /// `() => void | Promise<void>` in React; a synchronous `Rc<dyn Fn()>` here
 /// (no driver action in this port is async).
-pub(crate) enum NativeMenuItemDef {
+pub enum NativeMenuItemDef {
     Item {
         id: String,
         label: String,
@@ -78,14 +78,14 @@ pub(crate) enum NativeMenuItemDef {
 impl NativeMenuItemDef {
     /// The `kind: 'item' && id === ...` predicate React's tests and
     /// callers use.
-    pub(crate) fn is_item_with_id(&self, id: &str) -> bool {
+    pub fn is_item_with_id(&self, id: &str) -> bool {
         matches!(self, Self::Item { id: i, .. } if i == id)
     }
 
     /// A kind/name token for order assertions: `'Cut'`-style predefined
     /// names for edit items, the id for real items, the kind otherwise —
     /// exactly the `kinds()` helper in sqlEditorContextMenu.test.ts.
-    pub(crate) fn kind_token(&self) -> &str {
+    pub fn kind_token(&self) -> &str {
         match self {
             Self::Item { id, .. } => id,
             Self::Separator => "separator",
@@ -105,7 +105,7 @@ impl NativeMenuItemDef {
 
 /// driver-sdk `nativeEditMenuItems()` — the standard edit block for
 /// text-focused surfaces, in declaration order.
-pub(crate) fn native_edit_menu_items() -> Vec<NativeMenuItemDef> {
+pub fn native_edit_menu_items() -> Vec<NativeMenuItemDef> {
     vec![
         NativeMenuItemDef::Predefined { item: NativeMenuPredefined::Cut, text: None },
         NativeMenuItemDef::Predefined { item: NativeMenuPredefined::Copy, text: None },
@@ -115,43 +115,43 @@ pub(crate) fn native_edit_menu_items() -> Vec<NativeMenuItemDef> {
 }
 
 /// React `SqlEditorContextMenuLabels`.
-pub(crate) struct SqlEditorContextMenuLabels {
-    pub(crate) run: String,
-    pub(crate) run_selection: String,
-    pub(crate) format: String,
-    pub(crate) comment: String,
-    pub(crate) add_favorite: Option<String>,
+pub struct SqlEditorContextMenuLabels {
+    pub run: String,
+    pub run_selection: String,
+    pub format: String,
+    pub comment: String,
+    pub add_favorite: Option<String>,
 }
 
 /// React `SqlEditorContextMenuHandlers` — every handler optional; the
 /// builder omits the item when the handler (or, for the favorite, the
 /// label too) is absent.
 #[derive(Default)]
-pub(crate) struct SqlEditorContextMenuHandlers {
-    pub(crate) on_run: Option<Rc<dyn Fn()>>,
-    pub(crate) on_run_selection: Option<Rc<dyn Fn()>>,
-    pub(crate) on_format: Option<Rc<dyn Fn()>>,
-    pub(crate) on_comment: Option<Rc<dyn Fn()>>,
-    pub(crate) on_add_favorite: Option<Rc<dyn Fn(&str)>>,
+pub struct SqlEditorContextMenuHandlers {
+    pub on_run: Option<Rc<dyn Fn()>>,
+    pub on_run_selection: Option<Rc<dyn Fn()>>,
+    pub on_format: Option<Rc<dyn Fn()>>,
+    pub on_comment: Option<Rc<dyn Fn()>>,
+    pub on_add_favorite: Option<Rc<dyn Fn(&str)>>,
 }
 
 /// React `BuildSqlEditorContextMenuArgs` — plus the `platform` input the
 /// React version reads through `getPlatformSync()` (T386 seam; React's
 /// `hasSelection` defaults to false and is decided by the caller here).
-pub(crate) struct BuildSqlEditorContextMenuArgs<'a> {
-    pub(crate) labels: &'a SqlEditorContextMenuLabels,
-    pub(crate) handlers: &'a SqlEditorContextMenuHandlers,
+pub struct BuildSqlEditorContextMenuArgs<'a> {
+    pub labels: &'a SqlEditorContextMenuLabels,
+    pub handlers: &'a SqlEditorContextMenuHandlers,
     /// Full editor SQL (or trimmed selection fallback from the editor).
-    pub(crate) sql_text: &'a str,
+    pub sql_text: &'a str,
     /// True when the editor has a non-empty selection.
-    pub(crate) has_selection: bool,
-    pub(crate) platform: Platform,
+    pub has_selection: bool,
+    pub platform: Platform,
 }
 
 /// `toggleSqlLineComments` — toggle `-- ` line comments on each non-empty
 /// line. If every non-empty line is already commented, strips the comment
 /// prefix instead.
-pub(crate) fn toggle_sql_line_comments(text: &str) -> String {
+pub fn toggle_sql_line_comments(text: &str) -> String {
     let lines: Vec<&str> = text.split('\n').collect();
     let non_empty: Vec<&str> = lines.iter().copied().filter(|l| !l.trim().is_empty()).collect();
     let all_commented =
@@ -187,7 +187,7 @@ pub(crate) fn toggle_sql_line_comments(text: &str) -> String {
 /// for the SQL editor. OS edit actions first; then Run / Run Selection /
 /// Format / Comment; then Add Favorite (which needs both the handler and
 /// the label, and receives the trimmed SQL only when it is non-empty).
-pub(crate) fn build_sql_editor_context_menu_items(
+pub fn build_sql_editor_context_menu_items(
     args: &BuildSqlEditorContextMenuArgs<'_>,
 ) -> Vec<NativeMenuItemDef> {
     let mod_key = format_mod_key(args.platform);

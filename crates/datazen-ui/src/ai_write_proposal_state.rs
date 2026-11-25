@@ -23,7 +23,7 @@ use crate::state_def::AppState;
 
 impl AppState {
     /// The expiry tick for the write-proposal host (T012).
-    pub(crate) fn sync_ai_write_proposals(&mut self) -> bool {
+    pub fn sync_ai_write_proposals(&mut self) -> bool {
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)

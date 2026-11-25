@@ -43,7 +43,7 @@ use serde_json::Value;
 
 /// How this build receives updates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum UpdateChannel {
+pub enum UpdateChannel {
     /// This SKU publishes signed updater artifacts plus its own
     /// manifest, so the in-app updater is safe to run.
     Auto,
@@ -57,7 +57,7 @@ pub(crate) enum UpdateChannel {
 
 impl UpdateChannel {
     /// The React string literal.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             UpdateChannel::Auto => "auto",
             UpdateChannel::Manual => "manual",
@@ -69,7 +69,7 @@ impl UpdateChannel {
 /// `getUpdateChannel()`: the browser-dev run of the desktop bundle
 /// folds to `none` (ruling #5); a desktop build with a published
 /// channel is `auto`, without one `manual`.
-pub(crate) fn get_update_channel(is_desktop_build: bool, has_updater_channel: bool) -> UpdateChannel {
+pub fn get_update_channel(is_desktop_build: bool, has_updater_channel: bool) -> UpdateChannel {
     if !is_desktop_build {
         return UpdateChannel::None;
     }
@@ -82,19 +82,19 @@ pub(crate) fn get_update_channel(is_desktop_build: bool, has_updater_channel: bo
 
 /// `isUpdaterSupported()`: false when the in-app updater must not
 /// run.
-pub(crate) fn is_updater_supported(channel: UpdateChannel) -> bool {
+pub fn is_updater_supported(channel: UpdateChannel) -> bool {
     channel == UpdateChannel::Auto
 }
 
 /// `normalizeSku(value)`: trim, lowercase, strip the leading dashes
 /// so `all` and `-all` compare equal.
-pub(crate) fn normalize_sku(value: &str) -> String {
+pub fn normalize_sku(value: &str) -> String {
     value.trim().to_lowercase().trim_start_matches('-').to_owned()
 }
 
 /// `readManifestVariant(rawJson)`: the manifest's top-level
 /// `variant`; missing, non-string or blank all collapse to `None`.
-pub(crate) fn read_manifest_variant(raw_json: &Value) -> Option<String> {
+pub fn read_manifest_variant(raw_json: &Value) -> Option<String> {
     let value = raw_json.get("variant")?;
     let as_str = value.as_str()?;
     let trimmed = as_str.trim();
@@ -111,7 +111,7 @@ pub(crate) fn read_manifest_variant(raw_json: &Value) -> Option<String> {
 /// releases); variant manifests only came into existence with
 /// per-SKU channels, so a missing field there can only mean the
 /// manifest belongs to someone else.
-pub(crate) fn manifest_belongs_to_build(raw_json: &Value, variant: &str) -> bool {
+pub fn manifest_belongs_to_build(raw_json: &Value, variant: &str) -> bool {
     match read_manifest_variant(raw_json) {
         None => normalize_sku(variant) == "basic",
         Some(found) => normalize_sku(&found) == normalize_sku(variant),
@@ -121,24 +121,24 @@ pub(crate) fn manifest_belongs_to_build(raw_json: &Value, variant: &str) -> bool
 /// `maybeCheckOnStartup`'s gate: the silent startup check runs only
 /// when the setting is on and the channel is `auto` (the skip is
 /// diagnosable on purpose — the host logs the channel and variant).
-pub(crate) fn startup_check_should_run(enabled: bool, channel: UpdateChannel) -> bool {
+pub fn startup_check_should_run(enabled: bool, channel: UpdateChannel) -> bool {
     enabled && channel == UpdateChannel::Auto
 }
 
 /// `UpdateProgress` (platform/contracts): the flow's phase plus the
 /// download counters (bytes).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct UpdateProgress {
-    pub(crate) phase: UpdatePhase,
-    pub(crate) downloaded: u64,
+pub struct UpdateProgress {
+    pub phase: UpdatePhase,
+    pub downloaded: u64,
     /// `None` (or zero) — an indeterminate download.
-    pub(crate) total: Option<u64>,
-    pub(crate) version: String,
+    pub total: Option<u64>,
+    pub version: String,
 }
 
 /// The progress phases.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum UpdatePhase {
+pub enum UpdatePhase {
     Checking,
     Downloading,
     Installing,
@@ -151,7 +151,7 @@ pub(crate) enum UpdatePhase {
 /// `Error` (the type is shared, so the impossible arms simply never
 /// arrive).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum UpdateCheckResult {
+pub enum UpdateCheckResult {
     UpToDate,
     Available { version: String },
     Installed { version: String },

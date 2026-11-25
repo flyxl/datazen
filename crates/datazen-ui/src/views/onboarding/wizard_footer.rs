@@ -92,7 +92,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 
 /// The wizard's global footer: step dots + label left, actions right.
 /// Stateless — every prop arrives per frame (React's are per render).
-pub(crate) struct WizardFooter<S: 'static> {
+pub struct WizardFooter<S: 'static> {
     /// `step`.
     step: Step,
     /// `canContinue` — step 1 completeness (the T323 machine's output).
@@ -116,7 +116,7 @@ pub(crate) struct WizardFooter<S: 'static> {
 impl<S: 'static> WizardFooter<S> {
     /// The footer at `step` with React's prop defaults: nothing shown, not
     /// busy, no actions wired.
-    pub(crate) fn new(step: Step) -> Self {
+    pub fn new(step: Step) -> Self {
         Self {
             step,
             can_continue: false,
@@ -133,7 +133,7 @@ impl<S: 'static> WizardFooter<S> {
     /// The footer over the wizard's computed prop list — exactly the props
     /// React's `OnboardingWizard` hands `<WizardFooter … />` (the T114
     /// shell's `footer_wiring()` output).
-    pub(crate) fn from_wiring(wiring: FooterWiring<S>) -> Self {
+    pub fn from_wiring(wiring: FooterWiring<S>) -> Self {
         Self {
             step: wiring.step,
             can_continue: wiring.can_continue,
@@ -148,49 +148,49 @@ impl<S: 'static> WizardFooter<S> {
     }
 
     /// `canContinue`.
-    pub(crate) fn can_continue(mut self, can_continue: bool) -> Self {
+    pub fn can_continue(mut self, can_continue: bool) -> Self {
         self.can_continue = can_continue;
         self
     }
 
     /// `showContinue`.
-    pub(crate) fn show_continue(mut self, show_continue: bool) -> Self {
+    pub fn show_continue(mut self, show_continue: bool) -> Self {
         self.show_continue = show_continue;
         self
     }
 
     /// `showFinish`.
-    pub(crate) fn show_finish(mut self, show_finish: bool) -> Self {
+    pub fn show_finish(mut self, show_finish: bool) -> Self {
         self.show_finish = show_finish;
         self
     }
 
     /// `busy` (React default `false`).
-    pub(crate) fn busy(mut self, busy: bool) -> Self {
+    pub fn busy(mut self, busy: bool) -> Self {
         self.busy = busy;
         self
     }
 
     /// `onSkip`.
-    pub(crate) fn on_skip(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_skip(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_skip = Some(Rc::new(f));
         self
     }
 
     /// `onBack`.
-    pub(crate) fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_back = Some(Rc::new(f));
         self
     }
 
     /// `onContinue`.
-    pub(crate) fn on_continue(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_continue(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_continue = Some(Rc::new(f));
         self
     }
 
     /// `onFinish`.
-    pub(crate) fn on_finish(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_finish(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_finish = Some(Rc::new(f));
         self
     }
@@ -198,7 +198,7 @@ impl<S: 'static> WizardFooter<S> {
     /// Paint the footer. `dark` drives the kit tokens; the shared chrome
     /// height keeps the sidebar's version row and this step indicator on
     /// the same bottom line (T287's one rule).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let WizardFooter {
             step,

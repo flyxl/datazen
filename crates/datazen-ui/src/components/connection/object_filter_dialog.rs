@@ -30,7 +30,7 @@ use crate::ui::toggle::Checkbox;
 /// The three editable preferences, mirroring React's `ObjectFilterPrefs`.
 #[allow(dead_code)] // VM surface; consumer: the connection navigator host.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub(crate) struct ObjectFilterPrefs {
+pub struct ObjectFilterPrefs {
     pub hide_system_schemas: bool,
     pub table_name_include: String,
     pub table_name_exclude: String,
@@ -39,7 +39,7 @@ pub(crate) struct ObjectFilterPrefs {
 /// The dialog's observable state.
 #[allow(dead_code)] // VM surface; consumer: the connection navigator host.
 #[derive(Clone, Debug)]
-pub(crate) struct ObjectFilterVm {
+pub struct ObjectFilterVm {
     pub open: bool,
     /// React's local `hideSystemSchemas`.
     pub hide_system_schemas: bool,
@@ -65,7 +65,7 @@ impl Default for ObjectFilterVm {
 #[allow(dead_code)] // open/reset contract; wired by the host view.
 impl ObjectFilterVm {
     /// React's effect: seed the form from the connection's saved filter.
-    pub(crate) fn open(&mut self, saved: &ObjectFilterPrefs) {
+    pub fn open(&mut self, saved: &ObjectFilterPrefs) {
         self.open = true;
         self.hide_system_schemas = saved.hide_system_schemas;
         self.table_name_include.replace_text(saved.table_name_include.clone());
@@ -73,14 +73,14 @@ impl ObjectFilterVm {
         self.saving = false;
     }
 
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.open = false;
         self.saving = false;
     }
 
     /// React's trimmed config: empty strings become `None` (absent optional
     /// fields), exactly like the `|| undefined` in `handleSave`.
-    pub(crate) fn trimmed_prefs(&self) -> ObjectFilterPrefs {
+    pub fn trimmed_prefs(&self) -> ObjectFilterPrefs {
         ObjectFilterPrefs {
             hide_system_schemas: self.hide_system_schemas,
             table_name_include: self.table_name_include.text.trim().to_owned(),
@@ -92,7 +92,7 @@ impl ObjectFilterVm {
 /// The two user intents. The host performs the save command and closes.
 #[allow(dead_code)] // VM surface; consumer: the connection navigator host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectFilterAction {
+pub enum ObjectFilterAction {
     Close,
     /// The checkbox only edits local state (React's `setHideSystemSchemas`).
     ToggleHide(bool),
@@ -131,7 +131,7 @@ fn footer_button<S: 'static>(
 
 /// Builder for the ported dialog.
 #[allow(dead_code)] // consumer: the connection navigator host (not landed).
-pub(crate) struct ObjectFilterDialog<'a, S: 'static> {
+pub struct ObjectFilterDialog<'a, S: 'static> {
     vm: &'a ObjectFilterVm,
     on_vm: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut ObjectFilterVm>>,
     on_action: Option<ActionFn<S>>,
@@ -139,7 +139,7 @@ pub(crate) struct ObjectFilterDialog<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: the connection navigator host (not landed).
 impl<'a, S: 'static> ObjectFilterDialog<'a, S> {
-    pub(crate) fn new(vm: &'a ObjectFilterVm) -> Self {
+    pub fn new(vm: &'a ObjectFilterVm) -> Self {
         Self {
             vm,
             on_vm: None,
@@ -147,7 +147,7 @@ impl<'a, S: 'static> ObjectFilterDialog<'a, S> {
         }
     }
 
-    pub(crate) fn on_vm(
+    pub fn on_vm(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut ObjectFilterVm + 'static,
     ) -> Self {
@@ -155,12 +155,12 @@ impl<'a, S: 'static> ObjectFilterDialog<'a, S> {
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, ObjectFilterAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, ObjectFilterAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let vm = self.vm;
         let k = kit(dark);
         let root = col()

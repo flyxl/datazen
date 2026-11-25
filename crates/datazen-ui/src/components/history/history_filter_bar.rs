@@ -42,7 +42,7 @@ use crate::ui::select::Select;
 /// Time range filter. Mirrors frontend `HistoryRange`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) enum HistoryRange {
+pub enum HistoryRange {
     #[default]
     All,
     Today,
@@ -53,7 +53,7 @@ pub(crate) enum HistoryRange {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl HistoryRange {
-    pub(crate) fn as_value(self) -> &'static str {
+    pub fn as_value(self) -> &'static str {
         match self {
             Self::All => "all",
             Self::Today => "today",
@@ -63,7 +63,7 @@ impl HistoryRange {
         }
     }
 
-    pub(crate) fn from_value(v: &str) -> Self {
+    pub fn from_value(v: &str) -> Self {
         match v {
             "today" => Self::Today,
             "7d" => Self::D7,
@@ -73,7 +73,7 @@ impl HistoryRange {
         }
     }
 
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::All => t("query.historyRangeAll"),
             Self::Today => t("query.historyRangeToday"),
@@ -87,7 +87,7 @@ impl HistoryRange {
 /// Sort order. Mirrors frontend `HistorySort`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) enum HistorySort {
+pub enum HistorySort {
     #[default]
     Recent,
     Oldest,
@@ -96,7 +96,7 @@ pub(crate) enum HistorySort {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl HistorySort {
-    pub(crate) fn as_value(self) -> &'static str {
+    pub fn as_value(self) -> &'static str {
         match self {
             Self::Recent => "recent",
             Self::Oldest => "oldest",
@@ -104,7 +104,7 @@ impl HistorySort {
         }
     }
 
-    pub(crate) fn from_value(v: &str) -> Self {
+    pub fn from_value(v: &str) -> Self {
         match v {
             "oldest" => Self::Oldest,
             "slowest" => Self::Slowest,
@@ -112,7 +112,7 @@ impl HistorySort {
         }
     }
 
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Recent => t("query.historySortRecent"),
             Self::Oldest => t("query.historySortOldest"),
@@ -124,7 +124,7 @@ impl HistorySort {
 /// Status filter.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) enum HistoryStatus {
+pub enum HistoryStatus {
     #[default]
     All,
     Success,
@@ -133,7 +133,7 @@ pub(crate) enum HistoryStatus {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl HistoryStatus {
-    pub(crate) fn as_value(self) -> &'static str {
+    pub fn as_value(self) -> &'static str {
         match self {
             Self::All => "all",
             Self::Success => "success",
@@ -141,7 +141,7 @@ impl HistoryStatus {
         }
     }
 
-    pub(crate) fn from_value(v: &str) -> Self {
+    pub fn from_value(v: &str) -> Self {
         match v {
             "success" => Self::Success,
             "failed" => Self::Failed,
@@ -149,7 +149,7 @@ impl HistoryStatus {
         }
     }
 
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::All => t("query.historyStatusAll"),
             Self::Success => t("query.historyStatusSuccess"),
@@ -161,7 +161,7 @@ impl HistoryStatus {
 /// Filter/query state. Mirrors frontend `HistoryQueryState`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct HistoryQueryState {
+pub struct HistoryQueryState {
     pub search: String,
     pub connection_id: String,
     pub database: String,
@@ -188,7 +188,7 @@ impl Default for HistoryQueryState {
 /// Connection option for scope select.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct HistoryConnectionOption {
+pub struct HistoryConnectionOption {
     pub id: String,
     pub name: String,
 }
@@ -196,7 +196,7 @@ pub(crate) struct HistoryConnectionOption {
 /// Which select dropdown is currently open (owned by caller state).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) enum HistoryFilterOpen {
+pub enum HistoryFilterOpen {
     #[default]
     None,
     Connection,
@@ -212,7 +212,7 @@ pub(crate) enum HistoryFilterOpen {
 /// Select dropdowns render into `layer` (caller provides overlay layer vector).
 /// `open` indicates which dropdown is open; callers toggle/close via callbacks.
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
-pub(crate) struct HistoryFilterBar<'a, S: 'static> {
+pub struct HistoryFilterBar<'a, S: 'static> {
     value: HistoryQueryState,
     search_edit: &'a TextEdit,
     connections: Vec<HistoryConnectionOption>,
@@ -233,7 +233,7 @@ pub(crate) struct HistoryFilterBar<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by later callers/tasks
 impl<'a, S: 'static> HistoryFilterBar<'a, S> {
-    pub(crate) fn new(value: HistoryQueryState, search_edit: &'a TextEdit) -> Self {
+    pub fn new(value: HistoryQueryState, search_edit: &'a TextEdit) -> Self {
         Self {
             value,
             search_edit,
@@ -254,27 +254,27 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
         }
     }
 
-    pub(crate) fn connections(mut self, connections: Vec<HistoryConnectionOption>) -> Self {
+    pub fn connections(mut self, connections: Vec<HistoryConnectionOption>) -> Self {
         self.connections = connections;
         self
     }
 
-    pub(crate) fn databases(mut self, databases: Vec<String>) -> Self {
+    pub fn databases(mut self, databases: Vec<String>) -> Self {
         self.databases = databases;
         self
     }
 
-    pub(crate) fn schemas(mut self, schemas: Vec<String>) -> Self {
+    pub fn schemas(mut self, schemas: Vec<String>) -> Self {
         self.schemas = schemas;
         self
     }
 
-    pub(crate) fn open(mut self, open: HistoryFilterOpen) -> Self {
+    pub fn open(mut self, open: HistoryFilterOpen) -> Self {
         self.open = open;
         self
     }
 
-    pub(crate) fn on_search_edit(
+    pub fn on_search_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -282,42 +282,42 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
         self
     }
 
-    pub(crate) fn on_set_connection(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_set_connection(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_set_connection = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn on_set_database(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_set_database(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_set_database = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn on_set_schema(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_set_schema(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_set_schema = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn on_set_status(mut self, f: impl Fn(&mut S, HistoryStatus) + 'static) -> Self {
+    pub fn on_set_status(mut self, f: impl Fn(&mut S, HistoryStatus) + 'static) -> Self {
         self.on_set_status = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn on_set_range(mut self, f: impl Fn(&mut S, HistoryRange) + 'static) -> Self {
+    pub fn on_set_range(mut self, f: impl Fn(&mut S, HistoryRange) + 'static) -> Self {
         self.on_set_range = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn on_set_sort(mut self, f: impl Fn(&mut S, HistorySort) + 'static) -> Self {
+    pub fn on_set_sort(mut self, f: impl Fn(&mut S, HistorySort) + 'static) -> Self {
         self.on_set_sort = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn on_reset(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_reset(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_reset = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn on_toggle_open(
+    pub fn on_toggle_open(
         mut self,
         f: impl Fn(&mut S, HistoryFilterOpen) + 'static,
     ) -> Self {
@@ -325,13 +325,13 @@ impl<'a, S: 'static> HistoryFilterBar<'a, S> {
         self
     }
 
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Box::new(f));
         self
     }
 
     /// Build the filter bar. `layer` receives select dropdown overlays.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let value = self.value.clone();
 

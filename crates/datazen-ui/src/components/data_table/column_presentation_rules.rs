@@ -47,7 +47,7 @@ use super::column_presentation_dialog::{TimestampOptions, TIMESTAMP_CONTRIBUTION
 
 /// 时间展示器贡献的配置 schema 版本（`timestampContribution.ts` 的
 /// `TIMESTAMP_CONTRIBUTION_CONFIG_VERSION`，v1）。
-pub(crate) const TIMESTAMP_CONTRIBUTION_CONFIG_VERSION: u64 = 1;
+pub const TIMESTAMP_CONTRIBUTION_CONFIG_VERSION: u64 = 1;
 
 // ---------------------------------------------------------------------------
 // 注册中心最小镜像
@@ -56,14 +56,14 @@ pub(crate) const TIMESTAMP_CONTRIBUTION_CONFIG_VERSION: u64 = 1;
 /// 一个展示贡献的注册项：本片只用 id 与配置版本（`prepare` /
 /// `validateConfig` 属于时间引擎接线口，不在这里建模）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ValuePresentationContribution {
-    pub(crate) id: String,
-    pub(crate) config_version: u64,
+pub struct ValuePresentationContribution {
+    pub id: String,
+    pub config_version: u64,
 }
 
 impl ValuePresentationContribution {
     /// 内置时间展示器（`registerBundledContributions.ts` 唯一注册项）。
-    pub(crate) fn timestamp() -> Self {
+    pub fn timestamp() -> Self {
         Self {
             id: TIMESTAMP_CONTRIBUTION_ID.to_owned(),
             config_version: TIMESTAMP_CONTRIBUTION_CONFIG_VERSION,
@@ -75,19 +75,19 @@ impl ValuePresentationContribution {
 /// 注销 +1）。宿主持有它，变化时重渲染；对话框每次 `build` 重读
 /// `revision` 与 `get`，即 T11 的即时出现/消失（见模块头）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ValuePresentationRegistry {
+pub struct ValuePresentationRegistry {
     contributions: HashMap<String, ValuePresentationContribution>,
     revision: u64,
 }
 
 impl ValuePresentationRegistry {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// 只有 `datazen.timestamp` 的注册中心（`registerBundledContributions`
     /// 的等价物：核心内置贡献随应用启动激活、永不卸载）。
-    pub(crate) fn with_timestamp() -> Self {
+    pub fn with_timestamp() -> Self {
         let mut registry = Self::new();
         registry.register(ValuePresentationContribution::timestamp());
         registry
@@ -96,7 +96,7 @@ impl ValuePresentationRegistry {
     /// 注册一个贡献；已存在时不重复注册、不动 `revision`（与
     /// `registerBundledValuePresentationContributions` 的幂等守卫一致，
     /// TS 的 `register` 本身对重复 ID 抛错）。
-    pub(crate) fn register(&mut self, contribution: ValuePresentationContribution) {
+    pub fn register(&mut self, contribution: ValuePresentationContribution) {
         if self.contributions.contains_key(&contribution.id) {
             return;
         }
@@ -106,17 +106,17 @@ impl ValuePresentationRegistry {
     }
 
     /// 注销一个贡献；在场时删掉并 +1，不在场时不动。
-    pub(crate) fn unregister(&mut self, id: &str) {
+    pub fn unregister(&mut self, id: &str) {
         if self.contributions.remove(id).is_some() {
             self.revision += 1;
         }
     }
 
-    pub(crate) fn get(&self, id: &str) -> Option<&ValuePresentationContribution> {
+    pub fn get(&self, id: &str) -> Option<&ValuePresentationContribution> {
         self.contributions.get(id)
     }
 
-    pub(crate) fn revision(&self) -> u64 {
+    pub fn revision(&self) -> u64 {
         self.revision
     }
 }
@@ -128,7 +128,7 @@ impl ValuePresentationRegistry {
 /// 名称模式：精确值（全等匹配）或受限正则（只保存 source 与受限
 /// flags，绝不持久化 RegExp）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ValuePresentationNamePattern {
+pub enum ValuePresentationNamePattern {
     Exact(String),
     Regex {
         source: String,
@@ -138,33 +138,33 @@ pub(crate) enum ValuePresentationNamePattern {
 
 /// 一条规则的匹配条件：全部可选，出现者为 AND；至少出现一个。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ValuePresentationRuleMatch {
-    pub(crate) connection_id: Option<String>,
-    pub(crate) database: Option<String>,
-    pub(crate) namespace: Option<String>,
-    pub(crate) table: Option<ValuePresentationNamePattern>,
-    pub(crate) column: Option<ValuePresentationNamePattern>,
-    pub(crate) database_type_name: Option<ValuePresentationNamePattern>,
+pub struct ValuePresentationRuleMatch {
+    pub connection_id: Option<String>,
+    pub database: Option<String>,
+    pub namespace: Option<String>,
+    pub table: Option<ValuePresentationNamePattern>,
+    pub column: Option<ValuePresentationNamePattern>,
+    pub database_type_name: Option<ValuePresentationNamePattern>,
 }
 
 /// 一条全局规则：名称、启用开关、匹配条件、时间选项（复用 T02）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ValuePresentationRule {
-    pub(crate) name: String,
-    pub(crate) enabled: bool,
-    pub(crate) match_: ValuePresentationRuleMatch,
-    pub(crate) options: TimestampOptions,
+pub struct ValuePresentationRule {
+    pub name: String,
+    pub enabled: bool,
+    pub match_: ValuePresentationRuleMatch,
+    pub options: TimestampOptions,
 }
 
 /// 规则匹配的列上下文：表级字段缺失时表级条件不满足。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ValuePresentationRuleContext<'a> {
-    pub(crate) connection_id: Option<&'a str>,
-    pub(crate) database: Option<&'a str>,
-    pub(crate) namespace: Option<&'a str>,
-    pub(crate) table: Option<&'a str>,
-    pub(crate) column: &'a str,
-    pub(crate) database_type_name: Option<&'a str>,
+pub struct ValuePresentationRuleContext<'a> {
+    pub connection_id: Option<&'a str>,
+    pub database: Option<&'a str>,
+    pub namespace: Option<&'a str>,
+    pub table: Option<&'a str>,
+    pub column: &'a str,
+    pub database_type_name: Option<&'a str>,
 }
 
 /// 匹配一个名称模式：精确值全等；正则用未锚定子串匹配（TS
@@ -179,7 +179,7 @@ pub(crate) struct ValuePresentationRuleContext<'a> {
 /// `\r` / `\u2028` / `\u2029`，这里只排除 `\n`；JS 的 `i` 按
 /// Unicode 折叠大小写，这里只折叠 ASCII。编译失败（未经验证的
 /// pattern）按不匹配处理，与 TS 的防御性 catch 一致。
-pub(crate) fn match_name_pattern(pattern: &ValuePresentationNamePattern, value: &str) -> bool {
+pub fn match_name_pattern(pattern: &ValuePresentationNamePattern, value: &str) -> bool {
     match pattern {
         ValuePresentationNamePattern::Exact(expected) => expected == value,
         ValuePresentationNamePattern::Regex { source, flags } => {
@@ -202,7 +202,7 @@ pub(crate) fn match_name_pattern(pattern: &ValuePresentationNamePattern, value: 
 
 /// 一条规则是否命中：`enabled` 由调用方（`find_first_matching_rule`）
 /// 先筛；这里只看匹配条件（AND）。
-pub(crate) fn match_value_presentation_rule(
+pub fn match_value_presentation_rule(
     rule: &ValuePresentationRule,
     context: &ValuePresentationRuleContext<'_>,
 ) -> bool {
@@ -245,7 +245,7 @@ pub(crate) fn match_value_presentation_rule(
 /// 首条命中规则：按列表顺序，跳过禁用规则，返回第一条命中的规则；
 /// 无命中返回 `None`。命中后冻结整列解释，调用方不再继续找低优先
 /// 级规则（PRD §4）。
-pub(crate) fn find_first_matching_rule<'a>(
+pub fn find_first_matching_rule<'a>(
     rules: &'a [ValuePresentationRule],
     context: &ValuePresentationRuleContext<'_>,
 ) -> Option<&'a ValuePresentationRule> {

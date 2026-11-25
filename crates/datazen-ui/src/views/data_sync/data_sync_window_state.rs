@@ -90,7 +90,7 @@ use crate::i18n::t;
 
 /// `useDataSyncRunState()`'s output as the window reads it (T484).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncRunStateSeam {
+pub struct DataSyncRunStateSeam {
     /// React `runState.writeOutcomeUncertain` — the root attribute and
     /// the execute-confirm dialog's uncertainty warning.
     pub write_outcome_uncertain: bool,
@@ -107,7 +107,7 @@ pub(crate) struct DataSyncRunStateSeam {
 /// already renders (T322); only the fields the OTHER mounts read are
 /// modelled here.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncEndpointsSeam {
+pub struct DataSyncEndpointsSeam {
     /// React `endpoints.sourceSession?.dbSessionId` — the preview
     /// step's source session (271).
     pub source_db_session_id: Option<String>,
@@ -129,7 +129,7 @@ pub(crate) struct DataSyncEndpointsSeam {
 /// `useDataSyncSelectionState()`'s output as the window reads it
 /// (T491).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncSelectionSeam {
+pub struct DataSyncSelectionSeam {
     /// React `selection.tableSelections` — the compare and preview
     /// steps' server-owned selections (249, 280).
     pub table_selections: Vec<DataSyncTableSelection>,
@@ -146,7 +146,7 @@ pub(crate) struct DataSyncSelectionSeam {
 
 /// `useDataSyncSelection()`'s output as the window reads it (T488).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncRowSelectionSeam {
+pub struct DataSyncRowSelectionSeam {
     /// React `rowSelection.selectedTable` — the compare step's diff
     /// detail input (247).
     pub selected_table: Option<DataSyncTableResult>,
@@ -160,7 +160,7 @@ pub(crate) struct DataSyncRowSelectionSeam {
 
 /// `useDataSyncComparison()`'s output as the window reads it (T434).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncComparisonSeam {
+pub struct DataSyncComparisonSeam {
     /// React `comparison.compared` — the compare step's gate (234).
     pub compared: bool,
     /// React `comparison.compareStats` — the compare and result steps'
@@ -170,7 +170,7 @@ pub(crate) struct DataSyncComparisonSeam {
 
 /// `useDataSyncOptions()`'s output as the window reads it (T469).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncOptionsSeam {
+pub struct DataSyncOptionsSeam {
     /// React `options.deleteConfirmOpen` — the delete-confirm dialog's
     /// open flag (326).
     pub delete_confirm_open: bool,
@@ -178,7 +178,7 @@ pub(crate) struct DataSyncOptionsSeam {
 
 /// `useDataSyncExecution()`'s output as the window reads it (T447).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncExecutionSeam {
+pub struct DataSyncExecutionSeam {
     /// React `execution.canExecute` — the execute bar's gate (303).
     pub can_execute: bool,
     /// React `execution.executeConfirmOpen` — the execute-confirm
@@ -190,7 +190,7 @@ pub(crate) struct DataSyncExecutionSeam {
 /// profile name is the window's own `TextEdit` (see
 /// [`DataSyncWindowEdits`]); the seam carries the rest.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncProfilesSeam {
+pub struct DataSyncProfilesSeam {
     /// React `profiles.syncProfiles` — the endpoints step's profile
     /// select list (170).
     pub profiles: Vec<super::data_sync_endpoint_step::SyncProfile>,
@@ -200,7 +200,7 @@ pub(crate) struct DataSyncProfilesSeam {
 
 /// `useDataSyncExplain()`'s output as the window reads it (T453).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncExplainSeam {
+pub struct DataSyncExplainSeam {
     /// React `explain.explainOpen` (329).
     pub explain_open: bool,
     /// React `explain.explainLoading` — the compare and result steps'
@@ -214,7 +214,7 @@ pub(crate) struct DataSyncExplainSeam {
 /// (T494). `stepIndex` is not a seam field: it derives from the
 /// wizard step (see [`DataSyncWindowVm::step_index`]).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncNavigationSeam {
+pub struct DataSyncNavigationSeam {
     /// React `navigation.busy` — the endpoint step's busy gate and the
     /// nav's spinner state (194, 311).
     pub busy: bool,
@@ -229,7 +229,7 @@ pub(crate) struct DataSyncNavigationSeam {
 /// dialog (the T074 port's controlled contract: a reopened dialog
 /// restarts at the top).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncDialogEpochs {
+pub struct DataSyncDialogEpochs {
     /// The error dialog's epoch.
     pub error: u64,
     /// The delete-confirm dialog's epoch.
@@ -244,7 +244,7 @@ pub(crate) struct DataSyncDialogEpochs {
 /// hooks' seams. Every field the render half (T268-S2) reads lives
 /// here; the host feeds the seams when the owning tasks land.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncWindowVm {
+pub struct DataSyncWindowVm {
     /// The wizard state (T497's port) — the nine cells.
     pub wizard: DataSyncWizardState,
     /// The feedback store (T459's port) — the status line, the error
@@ -284,7 +284,7 @@ pub(crate) struct DataSyncWindowVm {
 impl DataSyncWindowVm {
     /// `navigation.stepIndex`: the step's index in `WIZARD_STEPS` —
     /// the stepper (155) and the nav (310) read it.
-    pub(crate) fn step_index(&self) -> usize {
+    pub fn step_index(&self) -> usize {
         WIZARD_STEPS
             .iter()
             .position(|step| *step == self.wizard.step)
@@ -293,25 +293,25 @@ impl DataSyncWindowVm {
 
     /// React 161: `NARROW_WIZARD_STEPS.includes(wizard.step)` — the
     /// body column's `max-w-2xl` (narrow) / `max-w-6xl` (wide) switch.
-    pub(crate) fn narrow_layout(&self) -> bool {
+    pub fn narrow_layout(&self) -> bool {
         NARROW_WIZARD_STEPS.contains(&self.wizard.step)
     }
 
     /// React 313: `wizard.step !== 'preview' && wizard.step !== 'result'`
     /// — the nav's next button shows only before the preview.
-    pub(crate) fn show_next(&self) -> bool {
+    pub fn show_next(&self) -> bool {
         !matches!(self.wizard.step, WizardStep::Preview | WizardStep::Result)
     }
 
     /// React 302: `wizard.syncState === 'executing'` — the execute bar's
     /// executing gate.
-    pub(crate) fn executing(&self) -> bool {
+    pub fn executing(&self) -> bool {
         self.wizard.sync_state == SyncState::Executing
     }
 
     /// React 319: `feedback.statusMsg || t('common.dataSync')` — the
     /// status bar's left line (JS `||`: the empty string falls back).
-    pub(crate) fn status_text(&self) -> String {
+    pub fn status_text(&self) -> String {
         if self.feedback.status_msg.is_empty() {
             t("common.dataSync").to_owned()
         } else {
@@ -325,7 +325,7 @@ impl DataSyncWindowVm {
 /// transfer window's sync contract — the host re-seeds the buffer
 /// wherever the profile model changes.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncWindowEdits {
+pub struct DataSyncWindowEdits {
     /// The profile-name field's edit buffer.
     pub profile_name: TextEdit,
 }

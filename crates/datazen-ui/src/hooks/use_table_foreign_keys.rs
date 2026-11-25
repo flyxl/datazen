@@ -49,21 +49,21 @@ use datazen_driver_api::{ForeignKeyInfo, TableSchema};
 /// group maps to the same entry, so a cell can ask "which group am I
 /// part of?" with one lookup.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FkGroupAffordance {
+pub struct FkGroupAffordance {
     /// The local columns of the group, in `ForeignKeyInfo.columns`
     /// order.
-    pub(crate) local_columns: Vec<String>,
+    pub local_columns: Vec<String>,
     /// The referenced columns, aligned with `local_columns`.
-    pub(crate) target_columns: Vec<String>,
+    pub target_columns: Vec<String>,
     /// Display label of the target: `customers.id` or
     /// `sales.customers.(x, y)`.
-    pub(crate) target_label: String,
+    pub target_label: String,
     /// The constraint name; disambiguates two constraints over the
     /// same column.
-    pub(crate) constraint_name: String,
+    pub constraint_name: String,
     /// The referenced table as the driver reported it (never split
     /// here).
-    pub(crate) reference_table: String,
+    pub reference_table: String,
 }
 
 /// `targetLabelOf`: the display label of a foreign-key target.
@@ -85,7 +85,7 @@ fn target_label_of(reference_table: &str, target_columns: &[String]) -> String {
 /// ordered-columns match" rule of the request path. (The React map
 /// shares one group object per constraint; the port's entries are
 /// value-equal — the same group, read twice.)
-pub(crate) fn index_foreign_keys(
+pub fn index_foreign_keys(
     foreign_keys: &[ForeignKeyInfo],
 ) -> HashMap<String, FkGroupAffordance> {
     let mut index: HashMap<String, FkGroupAffordance> = HashMap::new();
@@ -109,33 +109,33 @@ pub(crate) fn index_foreign_keys(
 
 /// `UseTableForeignKeysParams`: what identifies the read.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct UseTableForeignKeysParams {
+pub struct UseTableForeignKeysParams {
     /// The runtime session the table belongs to.
-    pub(crate) db_session_id: String,
+    pub db_session_id: String,
     /// The table the constraints belong to.
-    pub(crate) table_name: String,
+    pub table_name: String,
     /// The database of the table.
-    pub(crate) database: String,
+    pub database: String,
     /// The namespace of the table; `None` when the driver has none.
-    pub(crate) schema: Option<String>,
+    pub schema: Option<String>,
     /// The connection of the table; part of the metadata cache key.
-    pub(crate) connection_id: Option<String>,
+    pub connection_id: Option<String>,
 }
 
 /// The schema-cache read the mount asks for (the
 /// `getCachedTableSchema(dbSessionId, tableName, database, schema,
 /// connectionId ?? undefined)` call's arguments).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TableSchemaRead {
-    pub(crate) db_session_id: String,
-    pub(crate) table_name: String,
-    pub(crate) database: String,
-    pub(crate) schema: Option<String>,
-    pub(crate) connection_id: Option<String>,
+pub struct TableSchemaRead {
+    pub db_session_id: String,
+    pub table_name: String,
+    pub database: String,
+    pub schema: Option<String>,
+    pub connection_id: Option<String>,
 }
 
 /// `useTableForeignKeys(params)`'s state machine.
-pub(crate) struct UseTableForeignKeys {
+pub struct UseTableForeignKeys {
     params: UseTableForeignKeysParams,
     /// `index`: the columns that take part in a foreign key, mapped
     /// to their group.
@@ -150,13 +150,13 @@ pub(crate) struct UseTableForeignKeys {
 impl UseTableForeignKeys {
     /// `useTableForeignKeys(params)` — the hook's initial state
     /// (empty index, not loading, no error).
-    pub(crate) fn new(params: UseTableForeignKeysParams) -> Self {
+    pub fn new(params: UseTableForeignKeysParams) -> Self {
         Self { params, index: HashMap::new(), loading: false, error: None, cancelled: false }
     }
 
     /// The effect: ask the schema cache for this table's schema. The
     /// returned read is the host's cue (`loading` is already true).
-    pub(crate) fn mount(&mut self) -> TableSchemaRead {
+    pub fn mount(&mut self) -> TableSchemaRead {
         self.loading = true;
         self.error = None;
         TableSchemaRead {
@@ -170,7 +170,7 @@ impl UseTableForeignKeys {
 
     /// The `.then` arm: index the table's foreign keys. A no-op once
     /// unmounted (the `cancelled` gate).
-    pub(crate) fn on_schema(&mut self, table_schema: &TableSchema) {
+    pub fn on_schema(&mut self, table_schema: &TableSchema) {
         if self.cancelled {
             return;
         }
@@ -180,7 +180,7 @@ impl UseTableForeignKeys {
 
     /// The `.catch` arm: degrade — no arrows, the grid keeps working.
     /// A no-op once unmounted.
-    pub(crate) fn on_error(&mut self, message: String) {
+    pub fn on_error(&mut self, message: String) {
         if self.cancelled {
             return;
         }
@@ -191,22 +191,22 @@ impl UseTableForeignKeys {
 
     /// The effect cleanup's `cancelled = true`: no later callback may
     /// mutate state.
-    pub(crate) fn unmount(&mut self) {
+    pub fn unmount(&mut self) {
         self.cancelled = true;
     }
 
     /// `result.index`.
-    pub(crate) fn index(&self) -> &HashMap<String, FkGroupAffordance> {
+    pub fn index(&self) -> &HashMap<String, FkGroupAffordance> {
         &self.index
     }
 
     /// `result.loading`.
-    pub(crate) fn loading(&self) -> bool {
+    pub fn loading(&self) -> bool {
         self.loading
     }
 
     /// `result.error`.
-    pub(crate) fn error(&self) -> Option<&str> {
+    pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
 }

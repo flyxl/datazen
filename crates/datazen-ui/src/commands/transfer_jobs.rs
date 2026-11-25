@@ -54,12 +54,12 @@ use crate::views::data_transfer::data_transfer_attached_jobs::JobState;
 
 /// `LOCAL_BACKEND_SCOPE` — the scope string the local desktop
 /// backend declares (mirrors the desktop's own constant).
-pub(crate) const LOCAL_BACKEND_SCOPE: &str = "local-desktop-backend";
+pub const LOCAL_BACKEND_SCOPE: &str = "local-desktop-backend";
 
 /// `TransferBackendScope`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferBackendScope {
+pub struct TransferBackendScope {
     pub source_backend_scope: String,
     pub target_backend_scope: String,
     /// Profile scopes, if any. The backend rejects a foreign entry
@@ -70,7 +70,7 @@ pub(crate) struct TransferBackendScope {
 
 /// `localBackendScope()` — the scope every migration tool in this
 /// window declares, the same object on both branches.
-pub(crate) fn local_backend_scope() -> TransferBackendScope {
+pub fn local_backend_scope() -> TransferBackendScope {
     TransferBackendScope {
         source_backend_scope: LOCAL_BACKEND_SCOPE.to_owned(),
         target_backend_scope: LOCAL_BACKEND_SCOPE.to_owned(),
@@ -81,7 +81,7 @@ pub(crate) fn local_backend_scope() -> TransferBackendScope {
 /// `TransferPrepareJobRequest`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferPrepareJobRequest {
+pub struct TransferPrepareJobRequest {
     pub job: TransferJob,
     pub backend_scope: TransferBackendScope,
     /// Replaying the same key returns the recorded prepare Job.
@@ -92,7 +92,7 @@ pub(crate) struct TransferPrepareJobRequest {
 /// `TransferApplyJobRequest`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferApplyJobRequest {
+pub struct TransferApplyJobRequest {
     pub plan_id: String,
     pub plan_digest: String,
     pub selection_revision: u64,
@@ -106,14 +106,14 @@ pub(crate) struct TransferApplyJobRequest {
 /// `selection: { sourceTables?: string[] | null }`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferApplySelection {
+pub struct TransferApplySelection {
     pub source_tables: Option<Vec<String>>,
 }
 
 /// `TransferPrepareJobView` — the admitted, frozen plan's receipt.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferPrepareJobView {
+pub struct TransferPrepareJobView {
     pub job_id: String,
     pub kind: String,
     pub state: String,
@@ -134,7 +134,7 @@ pub(crate) struct TransferPrepareJobView {
 /// `TransferApplyJobView` — the spent plan's Job verdict.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TransferApplyJobView {
+pub struct TransferApplyJobView {
     pub job_id: String,
     pub kind: String,
     pub state: String,
@@ -167,7 +167,7 @@ pub(crate) struct TransferApplyJobView {
 
 /// The Job-path legacy `invoke` commands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TransferJobMethod {
+pub enum TransferJobMethod {
     Prepare,
     Apply,
     GetJob,
@@ -178,7 +178,7 @@ pub(crate) enum TransferJobMethod {
 
 impl TransferJobMethod {
     /// The legacy command name.
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::Prepare => "prepare_data_transfer_job",
             Self::Apply => "apply_data_transfer_job",
@@ -192,7 +192,7 @@ impl TransferJobMethod {
 
 /// `prepare(request)` — admits the plan, freezes evidence, returns
 /// the plan digest to spend.
-pub(crate) fn prepare_request(request: &TransferPrepareJobRequest) -> (TransferJobMethod, Value) {
+pub fn prepare_request(request: &TransferPrepareJobRequest) -> (TransferJobMethod, Value) {
     (
         TransferJobMethod::Prepare,
         json!({ "request": request }),
@@ -201,13 +201,13 @@ pub(crate) fn prepare_request(request: &TransferPrepareJobRequest) -> (TransferJ
 
 /// `apply(request)` — one planId, one Job, one idempotent write
 /// attempt.
-pub(crate) fn apply_request(request: &TransferApplyJobRequest) -> (TransferJobMethod, Value) {
+pub fn apply_request(request: &TransferApplyJobRequest) -> (TransferJobMethod, Value) {
     (TransferJobMethod::Apply, json!({ "request": request }))
 }
 
 /// `getJob(jobId)` — the live P5 Job projection after an accepted
 /// apply receipt.
-pub(crate) fn get_job_request(job_id: &str) -> (TransferJobMethod, Value) {
+pub fn get_job_request(job_id: &str) -> (TransferJobMethod, Value) {
     (TransferJobMethod::GetJob, json!({ "jobId": job_id }))
 }
 
@@ -215,7 +215,7 @@ pub(crate) fn get_job_request(job_id: &str) -> (TransferJobMethod, Value) {
 /// reopens. The `{ ...details, job: parseJobView(details.job) }`
 /// restitch is the host's decode seam (the details' `job` field
 /// carries the parsed view).
-pub(crate) fn get_details_request(job_id: &str) -> (TransferJobMethod, Value) {
+pub fn get_details_request(job_id: &str) -> (TransferJobMethod, Value) {
     (
         TransferJobMethod::GetDetails,
         json!({ "jobId": job_id }),
@@ -224,7 +224,7 @@ pub(crate) fn get_details_request(job_id: &str) -> (TransferJobMethod, Value) {
 
 /// `listJobs(filter = {})` — Job projections for window hydration
 /// and lost-receipt recovery.
-pub(crate) fn list_jobs_request(filter: Option<&Value>) -> (TransferJobMethod, Value) {
+pub fn list_jobs_request(filter: Option<&Value>) -> (TransferJobMethod, Value) {
     (
         TransferJobMethod::ListJobs,
         filter.cloned().unwrap_or_else(|| json!({})),
@@ -235,7 +235,7 @@ pub(crate) fn list_jobs_request(filter: Option<&Value>) -> (TransferJobMethod, V
 /// path used (the Job chain routes it to the Job repository first).
 /// `false` means "no such Job", which the caller must surface rather
 /// than treat as a successful cancel.
-pub(crate) fn cancel_request(job_id: &str) -> (TransferJobMethod, Value) {
+pub fn cancel_request(job_id: &str) -> (TransferJobMethod, Value) {
     (TransferJobMethod::Cancel, json!({ "jobId": job_id }))
 }
 

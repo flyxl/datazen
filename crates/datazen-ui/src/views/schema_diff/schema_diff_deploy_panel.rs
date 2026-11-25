@@ -74,12 +74,12 @@ use crate::ui::toggle::Checkbox;
 // from the panel module keeps resolving. Test-tree-consumed: the lib build
 // alone sees them unused.
 #[allow(unused_imports)]
-pub(crate) use crate::commands::schema_diff::wire::{
+pub use crate::commands::schema_diff::wire::{
     DeployStatusVm, PlanRequirementKindVm, PlanRequirementVm, PlanStatementVm, RollbackCompletenessVm,
     SchemaDiffDeployResultVm, SchemaDiffPlanVm, StatementRiskVm,
 };
 #[allow(unused_imports)]
-pub(crate) use crate::commands::schema_diff::{
+pub use crate::commands::schema_diff::{
     DESTRUCTIVE_CONFIRM_TOKEN, dialect_supports_transactional_ddl, plan_has_destructive,
 };
 
@@ -91,7 +91,7 @@ pub(crate) use crate::commands::schema_diff::{
 
 /// React `canConfirmDestructiveDeploy`.
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) fn can_confirm_destructive_deploy(typed: &str, has_destructive: bool) -> bool {
+pub fn can_confirm_destructive_deploy(typed: &str, has_destructive: bool) -> bool {
     if !has_destructive {
         return true;
     }
@@ -100,7 +100,7 @@ pub(crate) fn can_confirm_destructive_deploy(typed: &str, has_destructive: bool)
 
 /// React `canRunDeploy`.
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) fn can_run_deploy(
+pub fn can_run_deploy(
     has_destructive: bool,
     confirm_text: &str,
     require_rollback: bool,
@@ -122,20 +122,20 @@ pub(crate) fn can_run_deploy(
 /// one render, the mutation-proved core.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) struct DeployReadiness {
-    pub(crate) has_destructive: bool,
-    pub(crate) tx_supported: bool,
-    pub(crate) transaction_required: bool,
-    pub(crate) transaction_enabled: bool,
-    pub(crate) has_unsupported_requirement: bool,
+pub struct DeployReadiness {
+    pub has_destructive: bool,
+    pub tx_supported: bool,
+    pub transaction_required: bool,
+    pub transaction_enabled: bool,
+    pub has_unsupported_requirement: bool,
     /// React's `canRun`.
-    pub(crate) can_run: bool,
+    pub can_run: bool,
 }
 
 /// React's render-time derivation, verbatim. `result_present` is
 /// `result !== null`.
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) fn deploy_readiness(
+pub fn deploy_readiness(
     plan: &SchemaDiffPlanVm,
     use_transaction: bool,
     require_rollback: bool,
@@ -182,7 +182,7 @@ type DeployFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 /// The panel builder, generic over the owning state `S` (the ported-dialog
 /// pattern).
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
-pub(crate) struct SchemaDiffDeployPanel<'a, S: 'static> {
+pub struct SchemaDiffDeployPanel<'a, S: 'static> {
     key: &'a str,
     plan: &'a SchemaDiffPlanVm,
     target_label: &'a str,
@@ -200,7 +200,7 @@ pub(crate) struct SchemaDiffDeployPanel<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable port; wired by the schema-diff wizard track
 impl<'a, S: 'static> SchemaDiffDeployPanel<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         key: &'a str,
         plan: &'a SchemaDiffPlanVm,
         target_label: &'a str,
@@ -228,26 +228,26 @@ impl<'a, S: 'static> SchemaDiffDeployPanel<'a, S> {
     }
 
     /// React `hideDeployButton` (default false).
-    pub(crate) fn hide_deploy_button(mut self, hide: bool) -> Self {
+    pub fn hide_deploy_button(mut self, hide: bool) -> Self {
         self.hide_deploy_button = hide;
         self
     }
 
     /// The transaction checkbox's `onUseTransactionChange` (the host flips
     /// its own flag — the new value is the flipped one).
-    pub(crate) fn on_use_transaction(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_use_transaction(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_use_transaction = Some(Rc::new(f));
         self
     }
 
     /// The rollback checkbox's `onRequireRollbackChange`.
-    pub(crate) fn on_require_rollback(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_require_rollback(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_require_rollback = Some(Rc::new(f));
         self
     }
 
     /// The confirm input's edit projection into `S`.
-    pub(crate) fn on_confirm_edit(
+    pub fn on_confirm_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -256,13 +256,13 @@ impl<'a, S: 'static> SchemaDiffDeployPanel<'a, S> {
     }
 
     /// The deploy action.
-    pub(crate) fn on_deploy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_deploy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_deploy = Some(Rc::new(f));
         self
     }
 
     /// Paint the panel (React's `space-y-3 text-sm` column).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         // The confirm edit leaves via take(), so the later &this
         // sub-builders stay whole (a partial move would not).

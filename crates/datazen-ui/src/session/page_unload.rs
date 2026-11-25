@@ -43,7 +43,7 @@
 /// host can log which fallback failed without a panic.
 #[allow(dead_code)] // host error logging; remove when the host teardown wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CloserError {
+pub struct CloserError {
     pub closer_id: u64,
     pub message: String,
 }
@@ -52,27 +52,27 @@ pub(crate) struct CloserError {
 /// expressed as a value the owning host can hand back to the registry.
 #[allow(dead_code)] // host unregister hook; remove when the host teardown wires it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct PageUnloadToken {
-    pub(crate) id: u64,
+pub struct PageUnloadToken {
+    pub id: u64,
 }
 
 /// The two `window` events React installs on first registration. Both dispatch
 /// to [`PageUnloadRegistry::release_owned_sessions`].
 #[allow(dead_code)] // host listener wiring; remove when the host teardown wires it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum UnloadEvent {
+pub enum UnloadEvent {
     PageHide,
     BeforeUnload,
 }
 
 /// A page-unload closer. `Err` stands in for a JS `throw`: the registry records
 /// it and keeps firing the remaining closers.
-pub(crate) type PageUnloadCloser = Box<dyn FnMut() -> Result<(), CloserError>>;
+pub type PageUnloadCloser = Box<dyn FnMut() -> Result<(), CloserError>>;
 
 /// Observable result of one release, in registration order.
 #[allow(dead_code)] // host diagnostics; remove when the host teardown wires it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ReleaseReport {
+pub struct ReleaseReport {
     /// Ids of the closers that were fired by this release.
     pub fired: Vec<u64>,
     /// Failures swallowed so the remaining closers still ran.
@@ -82,7 +82,7 @@ pub(crate) struct ReleaseReport {
 /// Registry value owned by the host. No global state and no threads.
 #[allow(dead_code)] // consumer: host teardown wiring (not landed); remove then.
 #[derive(Default)]
-pub(crate) struct PageUnloadRegistry {
+pub struct PageUnloadRegistry {
     closers: Vec<(u64, PageUnloadCloser)>,
     next_id: u64,
     installed: bool,
@@ -94,14 +94,14 @@ impl PageUnloadRegistry {
     // Each item below names its consumer and removal stage individually: the
     // struct-level allowance does not propagate to associated items.
     #[allow(dead_code)] // consumer: host page-lifecycle wiring (not landed); remove when the host calls it.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// Install once. Returns `true` only on the first call, so the host attaches
     /// [`Self::listener_events`] exactly once (React's `installed` flag).
     #[allow(dead_code)] // consumer: host startup listener hook; remove when the host calls it.
-    pub(crate) fn install(&mut self) -> bool {
+    pub fn install(&mut self) -> bool {
         if self.installed {
             return false;
         }
@@ -110,13 +110,13 @@ impl PageUnloadRegistry {
     }
 
     #[allow(dead_code)] // consumer: host page-lifecycle wiring (not landed); remove when the host calls it.
-    pub(crate) fn is_installed(&self) -> bool {
+    pub fn is_installed(&self) -> bool {
         self.installed
     }
 
     /// The fixed pair of events that both dispatch to release.
     #[allow(dead_code)] // consumer: host listener registration; remove when the host installs them.
-    pub(crate) fn listener_events(&self) -> &'static [UnloadEvent] {
+    pub fn listener_events(&self) -> &'static [UnloadEvent] {
         const EVENTS: [UnloadEvent; 2] = [UnloadEvent::PageHide, UnloadEvent::BeforeUnload];
         &EVENTS
     }
@@ -124,7 +124,7 @@ impl PageUnloadRegistry {
     /// React `registerPageUnloadCloser`: install (idempotently), remember the
     /// closer, and return the handle that unregisters it.
     #[allow(dead_code)] // consumer: host closer registration; remove when the host calls it.
-    pub(crate) fn register(&mut self, closer: PageUnloadCloser) -> PageUnloadToken {
+    pub fn register(&mut self, closer: PageUnloadCloser) -> PageUnloadToken {
         let _ = self.install();
         self.next_id += 1;
         let id = self.next_id;
@@ -135,7 +135,7 @@ impl PageUnloadRegistry {
     /// React's returned unregister closure. `false` means the closer was no
     /// longer registered (e.g. a release already cleared it).
     #[allow(dead_code)] // consumer: host controller disarm path; remove when the host calls it.
-    pub(crate) fn unregister(&mut self, token: PageUnloadToken) -> bool {
+    pub fn unregister(&mut self, token: PageUnloadToken) -> bool {
         let before = self.closers.len();
         self.closers.retain(|(id, _)| *id != token.id);
         self.closers.len() != before
@@ -145,7 +145,7 @@ impl PageUnloadRegistry {
     /// closer once, swallowing failures so one broken closer cannot stop the
     /// rest. Never panics and never returns an error.
     #[allow(dead_code)] // consumer: app teardown hook (not landed); remove when the host calls it.
-    pub(crate) fn release_owned_sessions(&mut self) -> ReleaseReport {
+    pub fn release_owned_sessions(&mut self) -> ReleaseReport {
         let pending = std::mem::take(&mut self.closers);
         self.release_count += 1;
         self.last_errors.clear();
@@ -160,22 +160,22 @@ impl PageUnloadRegistry {
     }
 
     #[allow(dead_code)] // consumer: host teardown diagnostics; remove when the host calls it.
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.closers.len()
     }
 
     #[allow(dead_code)] // consumer: host teardown diagnostics; remove when the host calls it.
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.closers.is_empty()
     }
 
     #[allow(dead_code)] // consumer: host teardown observability; remove when the host calls it.
-    pub(crate) fn release_count(&self) -> u64 {
+    pub fn release_count(&self) -> u64 {
         self.release_count
     }
 
     #[allow(dead_code)] // consumer: host error logging; remove when the host calls it.
-    pub(crate) fn last_errors(&self) -> &[CloserError] {
+    pub fn last_errors(&self) -> &[CloserError] {
         &self.last_errors
     }
 }

@@ -89,23 +89,23 @@ const PREVIEW_ROWS: usize = 20;
 /// whose rows are expanded, and the step ids currently showing the chart
 /// view (React's `viewMode === 'chart'`). Function pointers, so the host
 /// keeps the state and the panel stays stateless.
-pub(crate) struct StepUiSlots<S: 'static> {
-    pub(crate) expanded: fn(&S) -> &BTreeSet<String>,
-    pub(crate) toggle: fn(&mut S, String),
-    pub(crate) chart: fn(&S) -> &BTreeSet<String>,
-    pub(crate) set_chart: fn(&mut S, String, bool),
+pub struct StepUiSlots<S: 'static> {
+    pub expanded: fn(&S) -> &BTreeSet<String>,
+    pub toggle: fn(&mut S, String),
+    pub chart: fn(&S) -> &BTreeSet<String>,
+    pub set_chart: fn(&mut S, String, bool),
 }
 
 /// The execution-result panel. `result` is the run to show; `slots` locates
 /// the interaction state in the app's `S`.
-pub(crate) struct WorkflowExecutionResultPanel<'a, S: 'static> {
+pub struct WorkflowExecutionResultPanel<'a, S: 'static> {
     key: String,
     result: &'a WorkflowExecutionResult,
     slots: StepUiSlots<S>,
 }
 
 impl<'a, S: 'static> WorkflowExecutionResultPanel<'a, S> {
-    pub(crate) fn new(result: &'a WorkflowExecutionResult, slots: StepUiSlots<S>) -> Self {
+    pub fn new(result: &'a WorkflowExecutionResult, slots: StepUiSlots<S>) -> Self {
         Self {
             key: "workflow-execution-result".to_owned(),
             result,
@@ -114,7 +114,7 @@ impl<'a, S: 'static> WorkflowExecutionResultPanel<'a, S> {
     }
 
     /// Builds the panel for one appearance.
-    pub(crate) fn build(self, s: &S, dark: bool) -> El {
+    pub fn build(self, s: &S, dark: bool) -> El {
         let k = kit(dark);
         let ctx = RenderCtx {
             k,

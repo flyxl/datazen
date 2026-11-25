@@ -55,7 +55,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 /// Which part of the lifecycle the dialog renders.
 #[allow(dead_code)] // component lands before its query-results caller
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ColumnStatsStatus {
+pub enum ColumnStatsStatus {
     /// No request is in flight and the dialog is closed.
     #[default]
     Idle,
@@ -74,7 +74,7 @@ pub(crate) enum ColumnStatsStatus {
 /// the former and `''` for the latter.
 #[allow(dead_code)] // component lands before its query-results caller
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) enum StatsValue {
+pub enum StatsValue {
     /// No value was reported.
     #[default]
     Null,
@@ -90,7 +90,7 @@ impl StatsValue {
     /// React's `formatValue`: `null`/`undefined` → `—`, empty string → `''`,
     /// anything else as the string form.
     #[allow(dead_code)] // component lands before its query-results caller
-    pub(crate) fn format(&self) -> String {
+    pub fn format(&self) -> String {
         match self {
             Self::Null => "—".to_owned(),
             Self::Text(value) if value.is_empty() => "''".to_owned(),
@@ -104,37 +104,37 @@ impl StatsValue {
 /// The aggregates of one column. `None` counts are "the server had no value".
 #[allow(dead_code)] // component lands before its query-results caller
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ColumnStats {
+pub struct ColumnStats {
     /// `COUNT(*)` — the rows of the table, independent of the column.
-    pub(crate) row_count: Option<i64>,
+    pub row_count: Option<i64>,
     /// `COUNT(col)` — the non-null values of the column.
-    pub(crate) non_null_count: Option<i64>,
+    pub non_null_count: Option<i64>,
     /// `rowCount - nonNullCount` — the NULL cells of the column.
-    pub(crate) null_count: Option<i64>,
+    pub null_count: Option<i64>,
     /// `COUNT(DISTINCT col)`.
-    pub(crate) distinct_count: Option<i64>,
+    pub distinct_count: Option<i64>,
     /// `MIN(col)` as the server reported it.
-    pub(crate) min: StatsValue,
+    pub min: StatsValue,
     /// `MAX(col)` as the server reported it.
-    pub(crate) max: StatsValue,
+    pub max: StatsValue,
     /// `AVG(col)`; ignored when `supports_avg` is false.
-    pub(crate) avg: StatsValue,
+    pub avg: StatsValue,
     /// Whether `avg` was asked of the server at all.
-    pub(crate) supports_avg: bool,
+    pub supports_avg: bool,
 }
 
 /// The hook's state, as far as the dialog reads it.
 #[allow(dead_code)] // component lands before its query-results caller
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ColumnStatsState {
+pub struct ColumnStatsState {
     /// Which branch of the body renders.
-    pub(crate) status: ColumnStatsStatus,
+    pub status: ColumnStatsStatus,
     /// The column the numbers belong to; `None` while idle.
-    pub(crate) column: Option<String>,
+    pub column: Option<String>,
     /// The aggregates; `None` until `ready`.
-    pub(crate) stats: Option<ColumnStats>,
+    pub stats: Option<ColumnStats>,
     /// The failure text; `None` falls back to the generic message.
-    pub(crate) error: Option<String>,
+    pub error: Option<String>,
 }
 
 /// A close handler boxed so the component itself stays non-generic, the same
@@ -143,7 +143,7 @@ type CloseHook = Box<dyn FnOnce(Dialog) -> Dialog>;
 
 /// The column-statistics dialog panel.
 #[allow(dead_code)] // component lands before its query-results caller
-pub(crate) struct ColumnStatsDialog<'a> {
+pub struct ColumnStatsDialog<'a> {
     key: &'a str,
     state: &'a ColumnStatsState,
     close: Option<CloseHook>,
@@ -153,7 +153,7 @@ impl<'a> ColumnStatsDialog<'a> {
     /// A dialog for `state`, mounted under `key` (for example
     /// `"column-stats-dialog"`).
     #[allow(dead_code)] // component lands before its query-results caller
-    pub(crate) fn new(key: &'a str, state: &'a ColumnStatsState) -> Self {
+    pub fn new(key: &'a str, state: &'a ColumnStatsState) -> Self {
         Self {
             key,
             state,
@@ -165,7 +165,7 @@ impl<'a> ColumnStatsDialog<'a> {
     /// caller enables it) a press outside the panel. Without it nothing mounts,
     /// exactly as [`Dialog`] behaves.
     #[allow(dead_code)] // component lands before its query-results caller
-    pub(crate) fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + Clone + 'static) -> Self {
+    pub fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + Clone + 'static) -> Self {
         self.close = Some(Box::new(move |dialog| dialog.on_close(f.clone())));
         self
     }
@@ -183,7 +183,7 @@ impl<'a> ColumnStatsDialog<'a> {
 
     /// Paints the panel into the modal layer.
     #[allow(dead_code)] // component lands before its query-results caller
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         let k = kit(dark);
         // React's dialog is as tall as its content: the loading block, one
         // error line, or the statistics list. `.fit()` sized the panel before

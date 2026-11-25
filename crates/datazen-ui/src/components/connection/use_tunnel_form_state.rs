@@ -36,71 +36,71 @@ use super::tunnel_field_contracts::{
 /// React `SavedTunnelSummary` (kind widened to the Rune enum).
 #[allow(dead_code)] // local VM; remove with the backend-client DTO.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SavedSummary {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) kind: TunnelKind,
+pub struct SavedSummary {
+    pub id: String,
+    pub name: String,
+    pub kind: TunnelKind,
 }
 
 #[allow(dead_code)] // local VM; remove with the backend-client DTO.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SshJumpConfig {
-    pub(crate) enabled: bool,
-    pub(crate) host: String,
-    pub(crate) port: u32,
-    pub(crate) username: String,
-    pub(crate) auth_method: SshAuthMethod,
-    pub(crate) password: Option<String>,
-    pub(crate) private_key_path: Option<String>,
-    pub(crate) passphrase: Option<String>,
+pub struct SshJumpConfig {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u32,
+    pub username: String,
+    pub auth_method: SshAuthMethod,
+    pub password: Option<String>,
+    pub private_key_path: Option<String>,
+    pub passphrase: Option<String>,
 }
 
 #[allow(dead_code)] // local VM; remove with the backend-client DTO.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SshConfig {
-    pub(crate) enabled: bool,
-    pub(crate) host: String,
-    pub(crate) port: u32,
-    pub(crate) username: String,
-    pub(crate) auth_method: SshAuthMethod,
-    pub(crate) password: Option<String>,
-    pub(crate) private_key_path: Option<String>,
-    pub(crate) passphrase: Option<String>,
-    pub(crate) jump: Option<SshJumpConfig>,
+pub struct SshConfig {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u32,
+    pub username: String,
+    pub auth_method: SshAuthMethod,
+    pub password: Option<String>,
+    pub private_key_path: Option<String>,
+    pub passphrase: Option<String>,
+    pub jump: Option<SshJumpConfig>,
 }
 
 #[allow(dead_code)] // local VM; remove with the backend-client DTO.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct HttpProxyConfig {
-    pub(crate) enabled: bool,
-    pub(crate) host: String,
-    pub(crate) port: u32,
-    pub(crate) scheme: HttpProxyScheme,
-    pub(crate) username: Option<String>,
-    pub(crate) password: Option<String>,
-    pub(crate) connect_timeout_secs: u32,
+pub struct HttpProxyConfig {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u32,
+    pub scheme: HttpProxyScheme,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub connect_timeout_secs: u32,
 }
 
 #[allow(dead_code)] // local VM; remove with the backend-client DTO.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WebSocketConfig {
-    pub(crate) enabled: bool,
-    pub(crate) url: String,
-    pub(crate) mode: WsMode,
-    pub(crate) auth_token: Option<String>,
-    pub(crate) connect_timeout_secs: u32,
+pub struct WebSocketConfig {
+    pub enabled: bool,
+    pub url: String,
+    pub mode: WsMode,
+    pub auth_token: Option<String>,
+    pub connect_timeout_secs: u32,
 }
 
 /// React `SavedTunnel`, flattened into optional per-kind configs.
 #[allow(dead_code)] // local VM; remove with the backend-client DTO.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SavedTunnelConfig {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) kind: TunnelKind,
-    pub(crate) ssh: Option<SshConfig>,
-    pub(crate) http_proxy: Option<HttpProxyConfig>,
-    pub(crate) websocket: Option<WebSocketConfig>,
+pub struct SavedTunnelConfig {
+    pub id: String,
+    pub name: String,
+    pub kind: TunnelKind,
+    pub ssh: Option<SshConfig>,
+    pub http_proxy: Option<HttpProxyConfig>,
+    pub websocket: Option<WebSocketConfig>,
 }
 
 /// What to do once an in-flight refill fetch answers.
@@ -115,7 +115,7 @@ enum Pending {
 /// Errors the host may report for tunnel lookups/saves.
 #[allow(dead_code)] // host result; remove with the view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TunnelIoError {
+pub enum TunnelIoError {
     Message(String),
     Other,
 }
@@ -132,7 +132,7 @@ impl TunnelIoError {
 /// The hook's whole state, owned by the host.
 #[allow(dead_code)] // slice; remove with the connection view.
 #[derive(Clone, Debug)]
-pub(crate) struct TunnelFormState {
+pub struct TunnelFormState {
     supports_ssh: bool,
     source: TunnelSource,
     kind: Option<TunnelKind>,
@@ -151,7 +151,7 @@ pub(crate) struct TunnelFormState {
 
 #[allow(dead_code)] // slice; remove with the connection view.
 impl TunnelFormState {
-    pub(crate) fn new(supports_ssh: bool) -> Self {
+    pub fn new(supports_ssh: bool) -> Self {
         Self {
             supports_ssh,
             source: TunnelSource::None,
@@ -176,57 +176,57 @@ impl TunnelFormState {
 
     // --- observable state ---------------------------------------------------
 
-    pub(crate) fn source(&self) -> TunnelSource {
+    pub fn source(&self) -> TunnelSource {
         self.source
     }
 
-    pub(crate) fn kind(&self) -> Option<TunnelKind> {
+    pub fn kind(&self) -> Option<TunnelKind> {
         self.kind
     }
 
-    pub(crate) fn tunnel_id(&self) -> Option<&str> {
+    pub fn tunnel_id(&self) -> Option<&str> {
         self.tunnel_id.as_deref()
     }
 
-    pub(crate) fn summaries(&self) -> &[SavedSummary] {
+    pub fn summaries(&self) -> &[SavedSummary] {
         &self.summaries
     }
 
-    pub(crate) fn saved_tunnel(&self) -> Option<&SavedSummary> {
+    pub fn saved_tunnel(&self) -> Option<&SavedSummary> {
         self.tunnel_id
             .as_deref()
             .and_then(|id| self.summaries.iter().find(|summary| summary.id == id))
     }
 
-    pub(crate) fn tunnel_ref_missing(&self) -> bool {
+    pub fn tunnel_ref_missing(&self) -> bool {
         self.tunnel_id.is_some()
             && self.summaries_loaded
             && self.summaries_error.is_none()
             && self.saved_tunnel().is_none()
     }
 
-    pub(crate) fn busy(&self) -> bool {
+    pub fn busy(&self) -> bool {
         self.busy
     }
 
-    pub(crate) fn error(&self) -> Option<&str> {
+    pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
 
-    pub(crate) fn ssh(&self) -> &SshTunnelFieldsValue {
+    pub fn ssh(&self) -> &SshTunnelFieldsValue {
         &self.ssh
     }
 
-    pub(crate) fn http_proxy(&self) -> &HttpProxyTunnelFieldsValue {
+    pub fn http_proxy(&self) -> &HttpProxyTunnelFieldsValue {
         &self.http_proxy
     }
 
-    pub(crate) fn websocket(&self) -> &WebSocketTunnelFieldsValue {
+    pub fn websocket(&self) -> &WebSocketTunnelFieldsValue {
         &self.websocket
     }
 
     /// React `effectiveTunnelKind`.
-    pub(crate) fn effective_kind(&self) -> Option<TunnelKind> {
+    pub fn effective_kind(&self) -> Option<TunnelKind> {
         if self.source == TunnelSource::Saved {
             if let Some(saved) = self.saved_tunnel() {
                 return Some(saved.kind);
@@ -242,7 +242,7 @@ impl TunnelFormState {
     }
 
     /// React `tunnelInlineValid`.
-    pub(crate) fn inline_valid(&self) -> bool {
+    pub fn inline_valid(&self) -> bool {
         if self.source != TunnelSource::Inline {
             return false;
         }
@@ -263,73 +263,73 @@ impl TunnelFormState {
 
     // --- inline field setters (React's per-kind state setters) --------------
 
-    pub(crate) fn set_ssh_host(&mut self, value: impl Into<String>) {
+    pub fn set_ssh_host(&mut self, value: impl Into<String>) {
         self.ssh.host = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ssh_port(&mut self, value: impl Into<String>) {
+    pub fn set_ssh_port(&mut self, value: impl Into<String>) {
         self.ssh.port = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ssh_username(&mut self, value: impl Into<String>) {
+    pub fn set_ssh_username(&mut self, value: impl Into<String>) {
         self.ssh.username = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ssh_password(&mut self, value: impl Into<String>) {
+    pub fn set_ssh_password(&mut self, value: impl Into<String>) {
         self.ssh.password = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ssh_key_path(&mut self, value: impl Into<String>) {
+    pub fn set_ssh_key_path(&mut self, value: impl Into<String>) {
         self.ssh.key_path = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ssh_passphrase(&mut self, value: impl Into<String>) {
+    pub fn set_ssh_passphrase(&mut self, value: impl Into<String>) {
         self.ssh.passphrase = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ssh_auth_method(&mut self, value: SshAuthMethod) {
+    pub fn set_ssh_auth_method(&mut self, value: SshAuthMethod) {
         self.ssh.auth_method = value;
     }
-    pub(crate) fn set_ssh_jump_host(&mut self, value: impl Into<String>) {
+    pub fn set_ssh_jump_host(&mut self, value: impl Into<String>) {
         self.ssh.jump_host = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ssh_jump_port(&mut self, value: impl Into<String>) {
+    pub fn set_ssh_jump_port(&mut self, value: impl Into<String>) {
         self.ssh.jump_port = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ssh_jump_username(&mut self, value: impl Into<String>) {
+    pub fn set_ssh_jump_username(&mut self, value: impl Into<String>) {
         self.ssh.jump_username = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ssh_jump_auth_method(&mut self, value: SshAuthMethod) {
+    pub fn set_ssh_jump_auth_method(&mut self, value: SshAuthMethod) {
         self.ssh.jump_auth_method = value;
     }
-    pub(crate) fn set_http_proxy_host(&mut self, value: impl Into<String>) {
+    pub fn set_http_proxy_host(&mut self, value: impl Into<String>) {
         self.http_proxy.host = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_http_proxy_port(&mut self, value: impl Into<String>) {
+    pub fn set_http_proxy_port(&mut self, value: impl Into<String>) {
         self.http_proxy.port = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_http_proxy_scheme(&mut self, value: HttpProxyScheme) {
+    pub fn set_http_proxy_scheme(&mut self, value: HttpProxyScheme) {
         self.http_proxy.scheme = value;
     }
-    pub(crate) fn set_http_proxy_username(&mut self, value: impl Into<String>) {
+    pub fn set_http_proxy_username(&mut self, value: impl Into<String>) {
         self.http_proxy.username = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_http_proxy_password(&mut self, value: impl Into<String>) {
+    pub fn set_http_proxy_password(&mut self, value: impl Into<String>) {
         self.http_proxy.password = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_http_proxy_timeout(&mut self, value: impl Into<String>) {
+    pub fn set_http_proxy_timeout(&mut self, value: impl Into<String>) {
         self.http_proxy.timeout = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ws_url(&mut self, value: impl Into<String>) {
+    pub fn set_ws_url(&mut self, value: impl Into<String>) {
         self.websocket.url = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ws_mode(&mut self, value: WsMode) {
+    pub fn set_ws_mode(&mut self, value: WsMode) {
         self.websocket.mode = value;
     }
-    pub(crate) fn set_ws_auth_token(&mut self, value: impl Into<String>) {
+    pub fn set_ws_auth_token(&mut self, value: impl Into<String>) {
         self.websocket.auth_token = rune::TextEdit::new(value.into());
     }
-    pub(crate) fn set_ws_timeout(&mut self, value: impl Into<String>) {
+    pub fn set_ws_timeout(&mut self, value: impl Into<String>) {
         self.websocket.timeout = rune::TextEdit::new(value.into());
     }
 
     // --- transitions --------------------------------------------------------
 
-    pub(crate) fn step(
+    pub fn step(
         &mut self,
         action: TunnelAction,
         strings: &TunnelStrings,
@@ -579,7 +579,7 @@ impl TunnelFormState {
     }
 
     /// React `buildInlineTunnel` — the saved-entity payload for the inline form.
-    pub(crate) fn build_inline(&self, name: &str) -> Option<SavedTunnelConfig> {
+    pub fn build_inline(&self, name: &str) -> Option<SavedTunnelConfig> {
         let kind = self.kind?;
         let base = (name.trim().to_owned(), kind);
         match kind {
@@ -668,22 +668,22 @@ fn parse_port(value: &str, fallback: u32) -> u32 {
 /// Translated fallback strings (React calls `t()` directly).
 #[allow(dead_code)] // stand-in; remove when the view resolves these with t().
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TunnelStrings {
-    pub(crate) unbind_kept: String,
-    pub(crate) save_failed: String,
+pub struct TunnelStrings {
+    pub unbind_kept: String,
+    pub save_failed: String,
 }
 
 /// Work the host performs for the injected tunnel commands.
 #[allow(dead_code)] // effects; remove with the connection view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum TunnelEffect {
+pub enum TunnelEffect {
     FetchTunnel { id: String },
     SaveTunnel { config: SavedTunnelConfig },
 }
 
 #[allow(dead_code)] // input; remove with the connection view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum TunnelAction {
+pub enum TunnelAction {
     SourceChanged(TunnelSource),
     KindChanged(Option<TunnelKind>),
     TunnelIdChanged(Option<String>),
@@ -711,6 +711,6 @@ pub(crate) enum TunnelAction {
 
 #[allow(dead_code)] // step result; remove with the connection view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TunnelStep {
-    pub(crate) effects: Vec<TunnelEffect>,
+pub struct TunnelStep {
+    pub effects: Vec<TunnelEffect>,
 }

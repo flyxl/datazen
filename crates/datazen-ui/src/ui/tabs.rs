@@ -34,7 +34,7 @@ use std::sync::Arc;
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 #[derive(Clone)]
-pub(crate) struct TabItem {
+pub struct TabItem {
     pub id: String,
     pub label: String,
     pub aria_label: Option<String>,
@@ -42,7 +42,7 @@ pub(crate) struct TabItem {
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 impl TabItem {
-    pub(crate) fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             label: label.into(),
@@ -50,7 +50,7 @@ impl TabItem {
         }
     }
 
-    pub(crate) fn aria_label(mut self, label: impl Into<String>) -> Self {
+    pub fn aria_label(mut self, label: impl Into<String>) -> Self {
         self.aria_label = Some(label.into());
         self
     }
@@ -59,7 +59,7 @@ impl TabItem {
 type OnChange<S> = Box<dyn Fn(&mut S, String) + 'static>;
 
 #[allow(dead_code)] // reusable base; remove when view callers land
-pub(crate) struct Tabs<S: 'static> {
+pub struct Tabs<S: 'static> {
     key: String,
     items: Vec<TabItem>,
     active_id: String,
@@ -70,7 +70,7 @@ pub(crate) struct Tabs<S: 'static> {
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 impl<S: 'static> Tabs<S> {
-    pub(crate) fn new(
+    pub fn new(
         key: impl Into<String>,
         items: Vec<TabItem>,
         active_id: impl Into<String>,
@@ -86,22 +86,22 @@ impl<S: 'static> Tabs<S> {
     }
 
     /// Panel content for the active tab. If omitted, renders bar-only strip.
-    pub(crate) fn panel(mut self, panel: El) -> Self {
+    pub fn panel(mut self, panel: El) -> Self {
         self.panel = Some(panel);
         self
     }
 
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_change = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn aria_label(mut self, label: impl Into<String>) -> Self {
+    pub fn aria_label(mut self, label: impl Into<String>) -> Self {
         self.aria_label = Some(label.into());
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let active_index = self
             .items

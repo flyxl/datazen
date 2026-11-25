@@ -71,7 +71,7 @@ use crate::ui::toggle::Checkbox;
 /// PK chip.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by the export dialogs
-pub(crate) struct ExportColumnPickerColumn {
+pub struct ExportColumnPickerColumn {
     pub name: String,
     pub col_type: Option<String>,
     pub is_primary_key: bool,
@@ -80,7 +80,7 @@ pub(crate) struct ExportColumnPickerColumn {
 #[allow(dead_code)] // reusable component; wired by the export dialogs
 impl ExportColumnPickerColumn {
     /// A column with no known type and no PK mark.
-    pub(crate) fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             col_type: None,
@@ -89,13 +89,13 @@ impl ExportColumnPickerColumn {
     }
 
     /// The column's data-type label, shown greyed next to the name.
-    pub(crate) fn with_type(mut self, col_type: impl Into<String>) -> Self {
+    pub fn with_type(mut self, col_type: impl Into<String>) -> Self {
         self.col_type = Some(col_type.into());
         self
     }
 
     /// Marks the column as a primary key (shows the PK chip).
-    pub(crate) fn primary_key(mut self) -> Self {
+    pub fn primary_key(mut self) -> Self {
         self.is_primary_key = true;
         self
     }
@@ -103,21 +103,21 @@ impl ExportColumnPickerColumn {
 
 /// React's `selected.has(name)` on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the export dialogs
-pub(crate) type IsSelectedFn<S> = fn(&S, &str) -> bool;
+pub type IsSelectedFn<S> = fn(&S, &str) -> bool;
 
 /// React's `onToggle(name)` on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the export dialogs
-pub(crate) type ToggleColumnFn<S> = fn(&mut S, String);
+pub type ToggleColumnFn<S> = fn(&mut S, String);
 
 /// One of React's `onSelectAll` / `onClearAll` / `onResetDefault` on the
 /// app's `S`.
 #[allow(dead_code)] // reusable component; wired by the export dialogs
-pub(crate) type PickerActionFn<S> = fn(&mut S);
+pub type PickerActionFn<S> = fn(&mut S);
 
 /// The picker. Columns are given in display order; the export writes
 /// them in exactly this order.
 #[allow(dead_code)] // reusable component; wired by the export dialogs
-pub(crate) struct ExportColumnPicker<S: 'static> {
+pub struct ExportColumnPicker<S: 'static> {
     key: String,
     columns: Vec<ExportColumnPickerColumn>,
     is_selected: IsSelectedFn<S>,
@@ -129,7 +129,7 @@ pub(crate) struct ExportColumnPicker<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by the export dialogs
 impl<S: 'static> ExportColumnPicker<S> {
-    pub(crate) fn new(
+    pub fn new(
         columns: Vec<ExportColumnPickerColumn>,
         is_selected: IsSelectedFn<S>,
         on_toggle: ToggleColumnFn<S>,
@@ -150,7 +150,7 @@ impl<S: 'static> ExportColumnPicker<S> {
 
     /// Override the key prefix (two pickers in one dialog need distinct
     /// keys; the default is one fixed string).
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
@@ -158,7 +158,7 @@ impl<S: 'static> ExportColumnPicker<S> {
     /// Builds the picker: the header (`export.selectColumns` label plus
     /// the three action buttons) over the scrolling checkbox list
     /// (`max-h-40`, bordered, `bg-surface`).
-    pub(crate) fn build(self, s: &S, dark: bool) -> El {
+    pub fn build(self, s: &S, dark: bool) -> El {
         let k = kit(dark);
         col()
             .key(self.key.clone())

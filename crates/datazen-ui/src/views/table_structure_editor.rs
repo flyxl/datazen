@@ -41,25 +41,25 @@ use crate::views::structure_plan_preview::{
     build as build_plan, StructurePlanAction, StructurePlanActionFn, StructurePlanPreviewVm,
 };
 
-pub(crate) const ROOT_KEY: &str = "table-structure-editor";
-pub(crate) const BACK_KEY: &str = "struct-editor-back";
-pub(crate) const TITLE_KEY: &str = "struct-editor-title";
-pub(crate) const TARGET_KEY: &str = "struct-editor-target";
-pub(crate) const EXPORT_KEY: &str = "struct-editor-export-structure";
-pub(crate) const EXECUTE_KEY: &str = "struct-editor-execute";
-pub(crate) const ADD_COLUMN_KEY: &str = "struct-editor-add-column";
-pub(crate) const ADD_INDEX_KEY: &str = "struct-editor-add-index";
-pub(crate) const UNSUPPORTED_KEY: &str = "struct-editor-unsupported";
-pub(crate) const LOADING_KEY: &str = "struct-editor-loading";
-pub(crate) const ERROR_KEY: &str = "struct-editor-error";
-pub(crate) const COLUMN_TABLE_KEY: &str = "column-table";
-pub(crate) const PLAN_KEY: &str = "plan-preview";
-pub(crate) const PLAN_CLOSE_KEY: &str = "plan-close";
+pub const ROOT_KEY: &str = "table-structure-editor";
+pub const BACK_KEY: &str = "struct-editor-back";
+pub const TITLE_KEY: &str = "struct-editor-title";
+pub const TARGET_KEY: &str = "struct-editor-target";
+pub const EXPORT_KEY: &str = "struct-editor-export-structure";
+pub const EXECUTE_KEY: &str = "struct-editor-execute";
+pub const ADD_COLUMN_KEY: &str = "struct-editor-add-column";
+pub const ADD_INDEX_KEY: &str = "struct-editor-add-index";
+pub const UNSUPPORTED_KEY: &str = "struct-editor-unsupported";
+pub const LOADING_KEY: &str = "struct-editor-loading";
+pub const ERROR_KEY: &str = "struct-editor-error";
+pub const COLUMN_TABLE_KEY: &str = "column-table";
+pub const PLAN_KEY: &str = "plan-preview";
+pub const PLAN_CLOSE_KEY: &str = "plan-close";
 
 /// React `mode: 'create' | 'alter'`.
 #[allow(dead_code)] // VM mirror; remove when the host owns the editor.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum EditorMode {
+pub enum EditorMode {
     #[default]
     Create,
     Alter,
@@ -68,38 +68,38 @@ pub(crate) enum EditorMode {
 /// Host-owned projection of the props plus the `useState` values.
 #[allow(dead_code)] // VM surface; remove when the host wires the editor.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct StructureEditorVm {
-    pub(crate) mode: EditorMode,
-    pub(crate) table_name: String,
-    pub(crate) initial_table_name: Option<String>,
-    pub(crate) database: Option<String>,
-    pub(crate) ui_config: Option<StructureEditorUiConfig>,
-    pub(crate) caps: Option<StructureCapabilities>,
-    pub(crate) show_back_button: bool,
-    pub(crate) export_supported: bool,
-    pub(crate) loading: bool,
-    pub(crate) previewing: bool,
-    pub(crate) executing: bool,
-    pub(crate) exporting: bool,
-    pub(crate) error: String,
-    pub(crate) columns: Vec<StructureColumnDraft>,
-    pub(crate) indexes: Vec<StructureIndexDraft>,
-    pub(crate) preview_plan: Option<StructureChangePlan>,
-    pub(crate) table_name_edit: TextEdit,
+pub struct StructureEditorVm {
+    pub mode: EditorMode,
+    pub table_name: String,
+    pub initial_table_name: Option<String>,
+    pub database: Option<String>,
+    pub ui_config: Option<StructureEditorUiConfig>,
+    pub caps: Option<StructureCapabilities>,
+    pub show_back_button: bool,
+    pub export_supported: bool,
+    pub loading: bool,
+    pub previewing: bool,
+    pub executing: bool,
+    pub exporting: bool,
+    pub error: String,
+    pub columns: Vec<StructureColumnDraft>,
+    pub indexes: Vec<StructureIndexDraft>,
+    pub preview_plan: Option<StructureChangePlan>,
+    pub table_name_edit: TextEdit,
 }
 
 #[allow(dead_code)] // pure helpers; remove with the host.
 impl StructureEditorVm {
     /// React `resolveUiConfig(...)`: null unless the config exists and is not
     /// explicitly disabled (`enabled === false`).
-    pub(crate) fn supported(&self) -> bool {
+    pub fn supported(&self) -> bool {
         self.ui_config
             .as_ref()
             .is_some_and(|cfg| cfg.enabled != Some(false))
     }
 
     /// React's header title per mode.
-    pub(crate) fn title(&self) -> String {
+    pub fn title(&self) -> String {
         match self.mode {
             EditorMode::Create => t("common.newTable").to_owned(),
             EditorMode::Alter => format!(
@@ -111,17 +111,17 @@ impl StructureEditorVm {
     }
 
     /// React `validColumns` (columns with a trimmed, non-empty name).
-    pub(crate) fn valid_columns(&self) -> Vec<&StructureColumnDraft> {
+    pub fn valid_columns(&self) -> Vec<&StructureColumnDraft> {
         self.columns.iter().filter(|column| !column.name.trim().is_empty()).collect()
     }
 
     /// React `isValid`.
-    pub(crate) fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         !self.table_name.trim().is_empty() && !self.valid_columns().is_empty()
     }
 
     /// React `canAddColumn`.
-    pub(crate) fn can_add_column(&self) -> bool {
+    pub fn can_add_column(&self) -> bool {
         let control = match self.mode {
             EditorMode::Create => StructureCapabilityFlag::CreateTable,
             EditorMode::Alter => StructureCapabilityFlag::AddColumn,
@@ -130,12 +130,12 @@ impl StructureEditorVm {
     }
 
     /// React `canAddIndex`.
-    pub(crate) fn can_add_index(&self) -> bool {
+    pub fn can_add_index(&self) -> bool {
         cap_enabled(self.caps.as_ref(), StructureCapabilityFlag::CreateIndex)
     }
 
     /// React's export control condition.
-    pub(crate) fn can_export(&self) -> bool {
+    pub fn can_export(&self) -> bool {
         self.mode == EditorMode::Alter
             && self
                 .initial_table_name
@@ -145,7 +145,7 @@ impl StructureEditorVm {
     }
 
     /// React's execute button label.
-    pub(crate) fn execute_label(&self) -> String {
+    pub fn execute_label(&self) -> String {
         if self.executing {
             return t("structEditor.executing").to_owned();
         }
@@ -156,12 +156,12 @@ impl StructureEditorVm {
     }
 
     /// React `disabled={!isValid || executing}` on Execute.
-    pub(crate) fn can_execute(&self) -> bool {
+    pub fn can_execute(&self) -> bool {
         self.is_valid() && !self.executing
     }
 
     /// React `disabled={!isValid || previewing}` on Preview.
-    pub(crate) fn can_preview(&self) -> bool {
+    pub fn can_preview(&self) -> bool {
         self.is_valid() && !self.previewing
     }
 }
@@ -169,7 +169,7 @@ impl StructureEditorVm {
 /// Every interaction the editor emits.
 #[allow(dead_code)] // host port; remove when the host wires the editor.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum StructureEditorAction {
+pub enum StructureEditorAction {
     Back,
     Cancel,
     SetTableName(String),
@@ -187,7 +187,7 @@ pub(crate) enum StructureEditorAction {
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the editor.
-pub(crate) type StructureEditorActionFn<S> = Rc<dyn Fn(&mut S, StructureEditorAction) + 'static>;
+pub type StructureEditorActionFn<S> = Rc<dyn Fn(&mut S, StructureEditorAction) + 'static>;
 
 fn emit<S: 'static>(
     on_action: &Option<StructureEditorActionFn<S>>,
@@ -203,7 +203,7 @@ fn emit<S: 'static>(
 
 /// Build the editor into `layer`.
 #[allow(dead_code)] // view entry; remove when the host wires the editor.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &StructureEditorVm,
     on_action: &Option<StructureEditorActionFn<S>>,
     dark: bool,

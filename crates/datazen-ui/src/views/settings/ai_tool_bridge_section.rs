@@ -61,7 +61,7 @@ use crate::views::settings::ai_settings_section::section_title;
 /// reads: the manifest's AI tools decide eligibility, `enabled` decides
 /// whether the row can toggle).
 #[derive(Clone)]
-pub(crate) struct BridgeWappVm {
+pub struct BridgeWappVm {
     pub id: String,
     pub name: String,
     pub enabled: bool,
@@ -71,7 +71,7 @@ pub(crate) struct BridgeWappVm {
 /// One declared AI tool (`WappAiToolSummary`'s name + readOnly — the
 /// hint's currency).
 #[derive(Clone)]
-pub(crate) struct BridgeAiToolVm {
+pub struct BridgeAiToolVm {
     pub name: String,
     pub read_only: bool,
 }
@@ -79,7 +79,7 @@ pub(crate) struct BridgeAiToolVm {
 /// One workflow row (`WorkflowListItem`'s id/name/description — the
 /// section's whole read of it).
 #[derive(Clone)]
-pub(crate) struct BridgeWorkflowVm {
+pub struct BridgeWorkflowVm {
     pub id: String,
     pub name: String,
     pub description: String,
@@ -87,7 +87,7 @@ pub(crate) struct BridgeWorkflowVm {
 
 /// The toggle's set logic: enable = remove-then-append (deduped, the id
 /// moves to the end), disable = remove.
-pub(crate) fn toggle_tool_id(ids: &[String], id: &str, enabled: bool) -> Vec<String> {
+pub fn toggle_tool_id(ids: &[String], id: &str, enabled: bool) -> Vec<String> {
     let mut next: Vec<String> = ids.iter().filter(|existing| existing.as_str() != id).cloned().collect();
     if enabled {
         next.push(id.to_owned());
@@ -97,42 +97,42 @@ pub(crate) fn toggle_tool_id(ids: &[String], id: &str, enabled: bool) -> Vec<Str
 
 /// The section's own state: the workflow list and its load error.
 #[derive(Clone, Default)]
-pub(crate) struct AiToolBridgeSectionState {
+pub struct AiToolBridgeSectionState {
     workflows: Vec<BridgeWorkflowVm>,
     workflow_error: Option<String>,
 }
 
 impl AiToolBridgeSectionState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The loaded workflow rows (the render's source).
-    pub(crate) fn workflows(&self) -> &[BridgeWorkflowVm] {
+    pub fn workflows(&self) -> &[BridgeWorkflowVm] {
         &self.workflows
     }
 
     /// The load error, if the last `workflowList` rejected.
-    pub(crate) fn workflow_error(&self) -> Option<&str> {
+    pub fn workflow_error(&self) -> Option<&str> {
         self.workflow_error.as_deref()
     }
 
     /// `workflowList`'s answer: `rows ?? []` (a null answer is an empty
     /// list, not an error), clearing any stale error.
-    pub(crate) fn note_workflow_rows(&mut self, rows: Option<Vec<BridgeWorkflowVm>>) {
+    pub fn note_workflow_rows(&mut self, rows: Option<Vec<BridgeWorkflowVm>>) {
         self.workflows = rows.unwrap_or_default();
         self.workflow_error = None;
     }
 
     /// `workflowList`'s rejection (`toErrorMessage`): the red line; the
     /// rows stay whatever they were.
-    pub(crate) fn note_workflow_error(&mut self, message: String) {
+    pub fn note_workflow_error(&mut self, message: String) {
         self.workflow_error = Some(message);
     }
 }
 
 /// The AI tool bridge section (React `AiToolBridgeSection`).
-pub(crate) struct AiToolBridgeSection<'a, S: 'static> {
+pub struct AiToolBridgeSection<'a, S: 'static> {
     key: &'a str,
     state: &'a AiToolBridgeSectionState,
     /// The host's wapp rows; the bridge filter (`aiTools` non-empty) is
@@ -147,7 +147,7 @@ pub(crate) struct AiToolBridgeSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> AiToolBridgeSection<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a AiToolBridgeSectionState,
         wapps: &'a [BridgeWappVm],
         plugin_ids: &'a [String],
@@ -166,7 +166,7 @@ impl<'a, S: 'static> AiToolBridgeSection<'a, S> {
 
     /// A plugin switch's press (the host applies [`toggle_tool_id`] to
     /// `aiPluginToolIds`).
-    pub(crate) fn on_toggle_plugin(
+    pub fn on_toggle_plugin(
         mut self,
         f: impl Fn(&mut S, String, bool) + 'static,
     ) -> Self {
@@ -176,7 +176,7 @@ impl<'a, S: 'static> AiToolBridgeSection<'a, S> {
 
     /// A workflow switch's press (the host applies [`toggle_tool_id`] to
     /// `aiWorkflowToolIds`).
-    pub(crate) fn on_toggle_workflow(
+    pub fn on_toggle_workflow(
         mut self,
         f: impl Fn(&mut S, String, bool) + 'static,
     ) -> Self {
@@ -185,7 +185,7 @@ impl<'a, S: 'static> AiToolBridgeSection<'a, S> {
     }
 
     /// Build the section (tooltips land in `layer`).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let key = self.key;
 

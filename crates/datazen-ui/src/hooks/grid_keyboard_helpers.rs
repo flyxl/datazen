@@ -23,7 +23,7 @@
 //!   in `table_data_connection_state.rs` and are reused, not re-mirrored.
 //!
 //! When T527 / T525 / T210 land, this module's items move to their own
-//! files and the `pub(crate) use` re-export here keeps the consumers'
+//! files and the `pub use` re-export here keeps the consumers'
 //! paths valid during the dedupe.
 
 use crate::table_data_connection_state::{
@@ -33,40 +33,40 @@ use crate::table_data_connection_state::{
 /// `GridKeyEventLike`: the structural projection of a key event — only
 /// the fields the decision needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct GridKeyEventLike {
+pub struct GridKeyEventLike {
     /// Normalised to lower case, like `useKeyboardShortcuts` does.
-    pub(crate) key: String,
-    pub(crate) meta_key: bool,
-    pub(crate) ctrl_key: bool,
-    pub(crate) shift_key: bool,
-    pub(crate) alt_key: bool,
+    pub key: String,
+    pub meta_key: bool,
+    pub ctrl_key: bool,
+    pub shift_key: bool,
+    pub alt_key: bool,
     /// True while an IME composition is active.
-    pub(crate) is_composing: bool,
+    pub is_composing: bool,
 }
 
 /// The host-side key-down projection: what `useGridKeyboardNav`'s
 /// handler receives (React's `KeyboardEvent` adapted, the T341
 /// `ShortcutEvent` convention — no DOM handle crosses the seam).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct GridKeyDownEvent {
+pub struct GridKeyDownEvent {
     /// `e.key` verbatim (lower-cased by [`to_grid_key_event_like`]).
-    pub(crate) key: String,
-    pub(crate) meta_key: bool,
-    pub(crate) ctrl_key: bool,
-    pub(crate) shift_key: bool,
-    pub(crate) alt_key: bool,
+    pub key: String,
+    pub meta_key: bool,
+    pub ctrl_key: bool,
+    pub shift_key: bool,
+    pub alt_key: bool,
     /// `nativeEvent.isComposing`.
-    pub(crate) native_is_composing: bool,
+    pub native_is_composing: bool,
     /// `nativeEvent.keyCode` (the legacy IME signal is 229).
-    pub(crate) native_key_code: i32,
+    pub native_key_code: i32,
     /// `isEditableTarget(e.target)`: the event came from an input, a
     /// textarea, a select, a contenteditable, or an open cell editor
     /// (the DOM `closest()` check is the host's — it owns the tree).
-    pub(crate) target_editable: bool,
+    pub target_editable: bool,
 }
 
 /// `toGridKeyEventLike`: flatten the event into the projection.
-pub(crate) fn to_grid_key_event_like(e: &GridKeyDownEvent) -> GridKeyEventLike {
+pub fn to_grid_key_event_like(e: &GridKeyDownEvent) -> GridKeyEventLike {
     GridKeyEventLike {
         key: e.key.to_lowercase(),
         meta_key: e.meta_key,
@@ -82,13 +82,13 @@ pub(crate) fn to_grid_key_event_like(e: &GridKeyDownEvent) -> GridKeyEventLike {
 /// `isComposingEvent` (`gridEventGuards.ts`): both signals are checked —
 /// browsers disagree (Chrome/Safari set `isComposing`, older engines
 /// only send `keyCode === 229`).
-pub(crate) fn is_composing_event(e: &GridKeyDownEvent) -> bool {
+pub fn is_composing_event(e: &GridKeyDownEvent) -> bool {
     e.native_is_composing || e.native_key_code == 229
 }
 
 /// `isImeComposingKey`: a composition owns every key; Chromium reports
 /// the combination as `process`.
-pub(crate) fn is_ime_composing_key(e: &GridKeyEventLike) -> bool {
+pub fn is_ime_composing_key(e: &GridKeyEventLike) -> bool {
     e.is_composing || e.key == "process"
 }
 
@@ -112,7 +112,7 @@ fn arrow_move(key: &str) -> Option<(i64, i64)> {
 /// `GridKeyIntent`: key → intent. The order of the checks in
 /// [`read_grid_key_intent`] is the priority.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GridKeyIntent {
+pub enum GridKeyIntent {
     /// `{ kind: 'move'; deltaRow; deltaColumn }`.
     Move { delta_row: i64, delta_column: i64 },
     /// `{ kind: 'move-page'; direction }`.
@@ -132,7 +132,7 @@ pub(crate) enum GridKeyIntent {
 
 /// `move-edge`'s four edges.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GridEdge {
+pub enum GridEdge {
     RowStart,
     RowEnd,
     GridStart,
@@ -141,29 +141,29 @@ pub(crate) enum GridEdge {
 
 /// `GridKeyboardContext`.
 #[derive(Clone, Debug)]
-pub(crate) struct GridKeyboardContext<'a> {
+pub struct GridKeyboardContext<'a> {
     /// Displayed column names in render order; the arrows move between
     /// them only.
-    pub(crate) column_order: &'a [String],
-    pub(crate) row_count: usize,
-    pub(crate) mode: GridSelectionMode,
+    pub column_order: &'a [String],
+    pub row_count: usize,
+    pub mode: GridSelectionMode,
     /// The current cursor; `None` in `none` mode when there is nothing
     /// to resume.
-    pub(crate) cursor: Option<CellCoord>,
+    pub cursor: Option<CellCoord>,
     /// Visible rows of the viewport (≥ 1); the step size of
     /// PageUp/PageDown.
-    pub(crate) viewport_row_count: usize,
+    pub viewport_row_count: usize,
     /// An editor is open (`editingCell !== null`).
-    pub(crate) editing: bool,
+    pub editing: bool,
     /// Shift was held: the command layer extends the region instead of
     /// moving it.
-    pub(crate) extend: bool,
+    pub extend: bool,
 }
 
 /// `GridKeyCommand`: what the key means for the grid. The host only
 /// dispatches it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum GridKeyCommand {
+pub enum GridKeyCommand {
     /// `{ kind: 'set-selection'; selection }`.
     SetSelection(GridSelection),
     /// `{ kind: 'row-select'; rowIndex; opts }`.
@@ -185,7 +185,7 @@ pub(crate) enum GridKeyCommand {
 /// beyond the context. The order of the checks **is** the priority
 /// table (02 §4.0): ① IME composition ② open editor ③ `Escape` (01's)
 /// ④ clipboard/undo (03/06) ⑤ `Alt` ⑥ the key table ⑦ everything else.
-pub(crate) fn read_grid_key_intent(e: &GridKeyEventLike, ctx: &GridKeyboardContext) -> GridKeyIntent {
+pub fn read_grid_key_intent(e: &GridKeyEventLike, ctx: &GridKeyboardContext) -> GridKeyIntent {
     if is_ime_composing_key(e) {
         return GridKeyIntent::Pass;
     }
@@ -255,7 +255,7 @@ pub(crate) fn read_grid_key_intent(e: &GridKeyEventLike, ctx: &GridKeyboardConte
 /// `resolveKeyboardCursor`: the cursor of the current selection — the
 /// focus corner in cell mode, the row anchor of the row selection in
 /// row mode, nothing in `none` mode.
-pub(crate) fn resolve_keyboard_cursor(
+pub fn resolve_keyboard_cursor(
     selection: &GridSelection,
     last_selected_index: Option<usize>,
     column_order: &[String],
@@ -274,7 +274,7 @@ pub(crate) fn resolve_keyboard_cursor(
 /// `resolveEntryCursor`: where the grid is entered from `none` mode —
 /// the remembered cursor when it is still displayable, the first cell
 /// otherwise.
-pub(crate) fn resolve_entry_cursor(
+pub fn resolve_entry_cursor(
     remembered: Option<&CellCoord>,
     row_count: usize,
     column_order: &[String],
@@ -292,19 +292,19 @@ pub(crate) fn resolve_entry_cursor(
 
 /// `resolvePageDelta`: the step of PageUp/PageDown — one screen minus
 /// one row, so the origin stays visible.
-pub(crate) fn resolve_page_delta(viewport_row_count: usize) -> i64 {
+pub fn resolve_page_delta(viewport_row_count: usize) -> i64 {
     (viewport_row_count as i64 - 1).max(1)
 }
 
 /// `gridCursorEquals`: coordinate comparison with 01's semantics.
-pub(crate) fn grid_cursor_equals(a: Option<&CellCoord>, b: Option<&CellCoord>) -> bool {
+pub fn grid_cursor_equals(a: Option<&CellCoord>, b: Option<&CellCoord>) -> bool {
     cell_coord_equals(a, b)
 }
 
 /// `clampGridCursor`: converge a cursor after the rows or the displayed
 /// columns changed — a hidden column or an empty grid has no legal
 /// coordinate at all, hence `None`.
-pub(crate) fn clamp_grid_cursor(
+pub fn clamp_grid_cursor(
     cursor: Option<&CellCoord>,
     row_count: usize,
     column_order: &[String],
@@ -501,7 +501,7 @@ fn resolve_movement(
 /// `resolveGridKeyCommand`: intent → command. This is the only semantic
 /// centre of the volume: every keyboard behaviour of the grid can be
 /// decided without a browser.
-pub(crate) fn resolve_grid_key_command(
+pub fn resolve_grid_key_command(
     intent: &GridKeyIntent,
     ctx: &GridKeyboardContext,
     selection: &GridSelection,
@@ -527,12 +527,12 @@ pub(crate) fn resolve_grid_key_command(
 // ---- the gridSelection pure functions (T210's, mirrored) --------------------
 
 /// `columnIndexFromCoord`.
-pub(crate) fn column_index_from_coord(coord: &CellCoord, column_order: &[String]) -> i64 {
+pub fn column_index_from_coord(coord: &CellCoord, column_order: &[String]) -> i64 {
     column_order.iter().position(|name| *name == coord.column_name).map_or(-1, |i| i as i64)
 }
 
 /// `cellCoordEquals`.
-pub(crate) fn cell_coord_equals(a: Option<&CellCoord>, b: Option<&CellCoord>) -> bool {
+pub fn cell_coord_equals(a: Option<&CellCoord>, b: Option<&CellCoord>) -> bool {
     match (a, b) {
         (None, None) => true,
         (Some(a), Some(b)) => a.row_index == b.row_index && a.column_name == b.column_name,
@@ -542,7 +542,7 @@ pub(crate) fn cell_coord_equals(a: Option<&CellCoord>, b: Option<&CellCoord>) ->
 
 /// `coordAt`: row/cell coordinate → coordinate, or `None` when either
 /// index falls outside the grid.
-pub(crate) fn coord_at(
+pub fn coord_at(
     row_index: usize,
     column_index: usize,
     column_order: &[String],
@@ -554,7 +554,7 @@ pub(crate) fn coord_at(
 /// `clampCellCoord`: pull a coordinate back into the grid. An unknown
 /// column (hidden while referenced) or an empty grid has no legal
 /// coordinate at all, hence `None`; a row index is clamped.
-pub(crate) fn clamp_cell_coord(
+pub fn clamp_cell_coord(
     coord: &CellCoord,
     row_count: usize,
     column_order: &[String],
@@ -570,7 +570,7 @@ pub(crate) fn clamp_cell_coord(
 }
 
 /// `moveCellFocus`.
-pub(crate) fn move_cell_focus(
+pub fn move_cell_focus(
     focus: &CellCoord,
     delta_row: i64,
     delta_column: i64,
@@ -602,7 +602,7 @@ pub(crate) fn move_cell_focus(
 /// `id` sorts before `name` while the grid may show the opposite. An
 /// unknown column has no position to compare, so the range is "not
 /// found".
-pub(crate) fn normalize_cell_range(
+pub fn normalize_cell_range(
     range: &CellRange,
     column_order: &[String],
 ) -> Option<CellRange> {
@@ -626,7 +626,7 @@ pub(crate) fn normalize_cell_range(
 
 /// `normalizeSelectionRange`: normalized anchor-to-focus rectangle;
 /// `None` unless both corners exist and are displayable.
-pub(crate) fn normalize_selection_range(
+pub fn normalize_selection_range(
     selection: &GridSelection,
     column_order: &[String],
 ) -> Option<CellRange> {
@@ -640,7 +640,7 @@ pub(crate) fn normalize_selection_range(
 
 /// `selectionRanges`: every region the selection covers, main region
 /// first, then the extra ranges (all normalized).
-pub(crate) fn selection_ranges(
+pub fn selection_ranges(
     selection: &GridSelection,
     column_order: &[String],
 ) -> Vec<CellRange> {
@@ -660,7 +660,7 @@ pub(crate) fn selection_ranges(
 }
 
 /// `cellRangeContains`.
-pub(crate) fn cell_range_contains(
+pub fn cell_range_contains(
     range: &CellRange,
     coord: &CellCoord,
     column_order: &[String],
@@ -682,7 +682,7 @@ pub(crate) fn cell_range_contains(
 
 /// `gridSelectionContains`: render-time membership test (goes through
 /// the pure helpers, never through the DOM).
-pub(crate) fn grid_selection_contains(
+pub fn grid_selection_contains(
     selection: &GridSelection,
     coord: &CellCoord,
     column_order: &[String],
@@ -696,7 +696,7 @@ pub(crate) fn grid_selection_contains(
 /// extra single-cell region, or drop it when it already is one.
 /// Clicking inside the main region is a no-op (it is already
 /// selected), and an unknown column leaves the selection untouched.
-pub(crate) fn toggle_extra_range(
+pub fn toggle_extra_range(
     selection: &GridSelection,
     coord: &CellCoord,
     column_order: &[String],
@@ -748,7 +748,7 @@ pub(crate) fn toggle_extra_range(
 /// I2): the row highlight comes from `selectedRows`, so anchor/focus/
 /// extras are dropped here instead of being kept as a hidden second
 /// source of truth.
-pub(crate) fn selection_from_anchor_focus(
+pub fn selection_from_anchor_focus(
     anchor: &CellCoord,
     focus: &CellCoord,
     mode: GridSelectionMode,

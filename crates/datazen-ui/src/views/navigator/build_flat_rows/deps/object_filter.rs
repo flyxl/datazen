@@ -18,7 +18,7 @@ use super::super::inputs::ConnectionSnapshot;
 
 /// React `ObjectFilterPrefs` — absent fields mean "no opinion".
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ObjectFilterPrefs {
+pub struct ObjectFilterPrefs {
     pub hide_system_schemas: Option<bool>,
     pub table_name_include: Option<String>,
     pub table_name_exclude: Option<String>,
@@ -45,7 +45,7 @@ const SYSTEM_DATABASES: [&str; 7] = [
 
 /// React `getObjectFilter` — read the prefs off the connection's opaque
 /// options blob, ignoring anything with the wrong shape.
-pub(crate) fn get_object_filter(conn: &ConnectionSnapshot) -> ObjectFilterPrefs {
+pub fn get_object_filter(conn: &ConnectionSnapshot) -> ObjectFilterPrefs {
     let Some(Value::Object(record)) = conn.options.as_ref() else {
         return ObjectFilterPrefs::default();
     };
@@ -70,7 +70,7 @@ pub(crate) fn get_object_filter(conn: &ConnectionSnapshot) -> ObjectFilterPrefs 
 }
 
 /// React `isSystemSchemaName` — the fixed set, or any `pg_` prefix.
-pub(crate) fn is_system_schema_name(name: &str) -> bool {
+pub fn is_system_schema_name(name: &str) -> bool {
     let lower = name.to_lowercase();
     if SYSTEM_SCHEMAS.contains(&lower.as_str()) {
         return true;
@@ -79,13 +79,13 @@ pub(crate) fn is_system_schema_name(name: &str) -> bool {
 }
 
 /// React `isSystemDatabaseName` — the fixed set only, no prefixes.
-pub(crate) fn is_system_database_name(name: &str) -> bool {
+pub fn is_system_database_name(name: &str) -> bool {
     SYSTEM_DATABASES.contains(&name.to_lowercase().as_str())
 }
 
 /// React `matchNamePattern` — glob (`*` only, everything else literal) or a
 /// plain substring match when the pattern has no wildcard.
-pub(crate) fn match_name_pattern(name: &str, pattern: &str) -> bool {
+pub fn match_name_pattern(name: &str, pattern: &str) -> bool {
     let p = pattern.trim();
     if p.is_empty() {
         return true;
@@ -140,7 +140,7 @@ fn glob_match(pattern: &str, name: &str) -> bool {
 }
 
 /// React `matchesTableNameFilter` — include must match, exclude must not.
-pub(crate) fn matches_table_name_filter(name: &str, filter: &ObjectFilterPrefs) -> bool {
+pub fn matches_table_name_filter(name: &str, filter: &ObjectFilterPrefs) -> bool {
     let include = filter
         .table_name_include
         .as_deref()
@@ -165,7 +165,7 @@ pub(crate) fn matches_table_name_filter(name: &str, filter: &ObjectFilterPrefs) 
 }
 
 /// React `shouldShowSchema`.
-pub(crate) fn should_show_schema(schema_name: &str, filter: &ObjectFilterPrefs) -> bool {
+pub fn should_show_schema(schema_name: &str, filter: &ObjectFilterPrefs) -> bool {
     if filter.hide_system_schemas == Some(true) && is_system_schema_name(schema_name) {
         return false;
     }
@@ -173,7 +173,7 @@ pub(crate) fn should_show_schema(schema_name: &str, filter: &ObjectFilterPrefs) 
 }
 
 /// React `shouldShowDatabase`.
-pub(crate) fn should_show_database(db_name: &str, filter: &ObjectFilterPrefs) -> bool {
+pub fn should_show_database(db_name: &str, filter: &ObjectFilterPrefs) -> bool {
     if filter.hide_system_schemas == Some(true) && is_system_database_name(db_name) {
         return false;
     }
@@ -182,7 +182,7 @@ pub(crate) fn should_show_database(db_name: &str, filter: &ObjectFilterPrefs) ->
 
 /// React `filterTableItems` — drop system tables and system-schema tables when
 /// hiding, then apply the name filter.
-pub(crate) fn filter_table_items<'a>(
+pub fn filter_table_items<'a>(
     items: impl IntoIterator<Item = &'a super::super::inputs::TableInfo>,
     filter: &ObjectFilterPrefs,
 ) -> Vec<super::super::inputs::TableInfo> {

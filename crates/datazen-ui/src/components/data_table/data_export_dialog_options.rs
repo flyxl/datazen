@@ -31,7 +31,7 @@
 //!   callbacks.
 //!
 //! The full `lib/exportDialogShared.ts` port task (if the coordinator files
-//! one) can lift these items verbatim: they are `pub(crate)` and stateless.
+//! one) can lift these items verbatim: they are `pub` and stateless.
 
 use crate::i18n::t;
 use crate::components::connection::batch_export_dialog::DataFormat;
@@ -40,7 +40,7 @@ use crate::components::connection::batch_export_dialog::DataFormat;
 /// writes.
 #[allow(dead_code)] // wired with the DataExportDialog view (same task)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum ExportScope {
+pub enum ExportScope {
     /// The rows currently loaded on the page.
     #[default]
     CurrentPage,
@@ -55,7 +55,7 @@ pub(crate) enum ExportScope {
 #[allow(dead_code)] // wired with the DataExportDialog view (same task)
 impl ExportScope {
     /// The stored value behind the option (React's `option.value`).
-    pub(crate) fn value(self) -> &'static str {
+    pub fn value(self) -> &'static str {
         match self {
             Self::CurrentPage => "current_page",
             Self::Selected => "selected",
@@ -65,7 +65,7 @@ impl ExportScope {
     }
 
     /// React's `value as ExportScope` (the select answers with the value).
-    pub(crate) fn from_value(value: &str) -> Self {
+    pub fn from_value(value: &str) -> Self {
         match value {
             "selected" => Self::Selected,
             "entire_table" => Self::EntireTable,
@@ -76,7 +76,7 @@ impl ExportScope {
 
     /// The streaming scopes run through the backend exporter (React's
     /// `isStreamingScope`).
-    pub(crate) fn is_streaming(self) -> bool {
+    pub fn is_streaming(self) -> bool {
         matches!(self, Self::EntireTable | Self::FilteredTable)
     }
 }
@@ -86,7 +86,7 @@ impl ExportScope {
 /// primary key when known, and the Rust exporter falls back to the first
 /// column otherwise (the old frontend rule).
 #[allow(dead_code)] // wired with the DataExportDialog view (same task)
-pub(crate) const ARRAY_EXPORT_FORMATS: [DataFormat; 8] = [
+pub const ARRAY_EXPORT_FORMATS: [DataFormat; 8] = [
     DataFormat::Csv,
     DataFormat::Tsv,
     DataFormat::Json,
@@ -102,7 +102,7 @@ pub(crate) const ARRAY_EXPORT_FORMATS: [DataFormat; 8] = [
 /// hidden, never silently reset (DBR-06, restored for the new architecture).
 #[allow(dead_code)] // wired with the DataExportDialog view (same task)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ExportFormatOption {
+pub struct ExportFormatOption {
     /// The format the entry offers.
     pub format: DataFormat,
     /// Offered but unavailable. The kit listbox cannot grey the row out, so
@@ -131,7 +131,7 @@ pub(crate) struct ExportFormatOption {
 /// XLSX is never disabled (both roads serve it: SheetJS-equivalent in-memory
 /// formatting for provided scopes, the Rust writer for SQL scopes).
 #[allow(dead_code)] // wired with the DataExportDialog view (same task)
-pub(crate) fn build_format_options(
+pub fn build_format_options(
     scope: ExportScope,
     is_desktop: bool,
     has_key_column: bool,
@@ -172,7 +172,7 @@ pub(crate) fn build_format_options(
 
 /// The entry a scope/format lookup lands on, if the list has it.
 #[allow(dead_code)] // wired with the DataExportDialog view (same task)
-pub(crate) fn format_option<'a>(
+pub fn format_option<'a>(
     options: &'a [ExportFormatOption],
     format: DataFormat,
 ) -> Option<&'a ExportFormatOption> {
@@ -183,7 +183,7 @@ pub(crate) fn format_option<'a>(
 /// `disabledFormatReasons`: a `Set` over the disabled entries, in list
 /// order).
 #[allow(dead_code)] // wired with the DataExportDialog view (same task)
-pub(crate) fn disabled_reason_keys(options: &[ExportFormatOption]) -> Vec<&'static str> {
+pub fn disabled_reason_keys(options: &[ExportFormatOption]) -> Vec<&'static str> {
     let mut keys: Vec<&'static str> = Vec::new();
     for option in options {
         if let (true, Some(key)) = (option.disabled, option.disabled_reason_key) {
@@ -198,7 +198,7 @@ pub(crate) fn disabled_reason_keys(options: &[ExportFormatOption]) -> Vec<&'stat
 /// One scope entry of the range select (React's option object).
 #[allow(dead_code)] // wired with the DataExportDialog view (same task)
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExportScopeOption {
+pub struct ExportScopeOption {
     pub scope: ExportScope,
     /// The label with its counts baked in (React builds it from `t()`).
     pub label: String,
@@ -218,7 +218,7 @@ pub(crate) struct ExportScopeOption {
 /// when a filtered statement builder exists, so the scope never appears for a
 /// table whose filtered read cannot be built.
 #[allow(dead_code)] // wired with the DataExportDialog view (same task)
-pub(crate) fn build_scope_options(
+pub fn build_scope_options(
     row_count: usize,
     selected_count: usize,
     entire: Option<Option<u64>>,

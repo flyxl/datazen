@@ -103,11 +103,11 @@ use crate::views::{
 };
 
 /// Which end of a range a patch addresses.
-pub(crate) use crate::views::BoundName;
-pub(crate) use crate::views::RecordsetHost;
+pub use crate::views::BoundName;
+pub use crate::views::RecordsetHost;
 
 /// `defaultOrder`: the single primary key, or `''` for any other count.
-pub(crate) fn default_order(primary_keys: &[String]) -> String {
+pub fn default_order(primary_keys: &[String]) -> String {
     match primary_keys {
         [only] => only.clone(),
         _ => String::new(),
@@ -116,7 +116,7 @@ pub(crate) fn default_order(primary_keys: &[String]) -> String {
 
 /// React `tupleMode`: a tuple range exists, or a composite key sits on a
 /// recordset with none of the scalar fields set.
-pub(crate) fn tuple_mode(primary_keys: &[String], recordset: Option<&TransferRecordset>) -> bool {
+pub fn tuple_mode(primary_keys: &[String], recordset: Option<&TransferRecordset>) -> bool {
     let Some(recordset) = recordset else {
         return false;
     };
@@ -134,7 +134,7 @@ fn with_base(recordset: Option<&TransferRecordset>) -> TransferRecordset {
 }
 
 /// The toggle: drop the recordset, or create the right empty one.
-pub(crate) fn toggle_recordset(
+pub fn toggle_recordset(
     primary_keys: &[String],
     recordset: Option<&TransferRecordset>,
 ) -> Option<TransferRecordset> {
@@ -162,7 +162,7 @@ pub(crate) fn toggle_recordset(
 /// The single-bound value edit: an emptied value deletes the bound,
 /// otherwise the bound is created (`{ value: '', inclusive: true }` base)
 /// and its value replaced.
-pub(crate) fn set_bound_value(
+pub fn set_bound_value(
     recordset: Option<&TransferRecordset>,
     name: BoundName,
     value: &str,
@@ -194,7 +194,7 @@ pub(crate) fn set_bound_value(
 
 /// The single-bound inclusive flag edit (a bound exists by construction:
 /// the checkbox only renders while it does).
-pub(crate) fn set_bound_inclusive(
+pub fn set_bound_inclusive(
     recordset: Option<&TransferRecordset>,
     name: BoundName,
     inclusive: bool,
@@ -212,7 +212,7 @@ pub(crate) fn set_bound_inclusive(
 }
 
 /// The order-by edit: `value || undefined` (an empty choice clears it).
-pub(crate) fn set_order_by(
+pub fn set_order_by(
     recordset: Option<&TransferRecordset>,
     order: &str,
 ) -> TransferRecordset {
@@ -238,7 +238,7 @@ fn tuple_base(
 
 /// React `updateTupleBound`: set one tuple bound's patch and clear the
 /// scalar trio — a range is either scalar or tuple.
-pub(crate) fn set_tuple_bound(
+pub fn set_tuple_bound(
     primary_keys: &[String],
     recordset: Option<&TransferRecordset>,
     name: BoundName,
@@ -259,7 +259,7 @@ pub(crate) fn set_tuple_bound(
 
 /// React `setTupleComponent`: one typed component of one tuple bound. The
 /// values array is padded to the key count; all-empty deletes the bound.
-pub(crate) fn set_tuple_component(
+pub fn set_tuple_component(
     primary_keys: &[String],
     recordset: Option<&TransferRecordset>,
     name: BoundName,
@@ -311,7 +311,7 @@ pub(crate) fn set_tuple_component(
 /// React `setLimit`: the model change plus the error flag. An empty text
 /// clears the limit and the error; a whole safe integer ≥ 1 sets it; the
 /// rest keeps the model and raises the error.
-pub(crate) fn set_limit(
+pub fn set_limit(
     recordset: Option<&TransferRecordset>,
     value: &str,
 ) -> (TransferRecordset, bool) {
@@ -342,7 +342,7 @@ pub(crate) fn set_limit(
 
 /// The controlled view model of the editor.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SyncRecordsetEditorVm {
+pub struct SyncRecordsetEditorVm {
     pub primary_keys: Vec<String>,
     pub recordset: Option<TransferRecordset>,
     /// The kit `Select` open flag the host owns.
@@ -355,7 +355,7 @@ pub(crate) struct SyncRecordsetEditorVm {
 /// The editor builder. `S` is the host state that owns the recordset, the
 /// input buffers ([`RecordsetHost`]), the limit-error flag, and the order
 /// select's open flag.
-pub(crate) struct SyncRecordsetEditor<S: 'static> {
+pub struct SyncRecordsetEditor<S: 'static> {
     vm: SyncRecordsetEditorVm,
     on_change: Option<Rc<dyn Fn(&mut S, Option<TransferRecordset>)>>,
     on_toggle_order: Option<Rc<dyn Fn(&mut S)>>,
@@ -367,7 +367,7 @@ pub(crate) struct SyncRecordsetEditor<S: 'static> {
 }
 
 impl<S: 'static> SyncRecordsetEditor<S> {
-    pub(crate) fn new(vm: SyncRecordsetEditorVm) -> Self {
+    pub fn new(vm: SyncRecordsetEditorVm) -> Self {
         Self {
             vm,
             on_change: None,
@@ -381,7 +381,7 @@ impl<S: 'static> SyncRecordsetEditor<S> {
     }
 
     /// React `onChange`.
-    pub(crate) fn on_change(
+    pub fn on_change(
         mut self,
         f: impl Fn(&mut S, Option<TransferRecordset>) + 'static,
     ) -> Self {
@@ -390,19 +390,19 @@ impl<S: 'static> SyncRecordsetEditor<S> {
     }
 
     /// The host records the order select opening.
-    pub(crate) fn on_toggle_order(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_order(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_order = Some(Rc::new(f));
         self
     }
 
     /// The host closes the order select.
-    pub(crate) fn on_close_order(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_order(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_order = Some(Rc::new(f));
         self
     }
 
     /// Where the start-bound input's buffer lives in the host.
-    pub(crate) fn bind_start(
+    pub fn bind_start(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -411,7 +411,7 @@ impl<S: 'static> SyncRecordsetEditor<S> {
     }
 
     /// Where the end-bound input's buffer lives in the host.
-    pub(crate) fn bind_end(
+    pub fn bind_end(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -420,7 +420,7 @@ impl<S: 'static> SyncRecordsetEditor<S> {
     }
 
     /// Where the limit input's buffer lives in the host.
-    pub(crate) fn bind_limit(
+    pub fn bind_limit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -429,7 +429,7 @@ impl<S: 'static> SyncRecordsetEditor<S> {
     }
 
     /// Where one tuple component's buffer lives in the host.
-    pub(crate) fn bind_tuple(
+    pub fn bind_tuple(
         mut self,
         f: impl Fn(&mut S, BoundName, usize) -> &mut TextEdit + 'static,
     ) -> Self {
@@ -438,7 +438,7 @@ impl<S: 'static> SyncRecordsetEditor<S> {
     }
 
     /// The editor on its own kit root.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut layer = Vec::new();
         let root = self.build_inner(dark, &k, &mut layer);
@@ -447,7 +447,7 @@ impl<S: 'static> SyncRecordsetEditor<S> {
 
     /// The same editor without its kit root (for a parent that roots the
     /// overlay once).
-    pub(crate) fn build_inner(self, dark: bool, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build_inner(self, dark: bool, k: &Kit, layer: &mut Vec<El>) -> El {
         let mut root = col()
             .key("data-sync-recordset")
             .w_full()
@@ -895,6 +895,6 @@ impl<S: 'static> SyncRecordsetEditor<S> {
 
 /// An Enter handler helper the tests reuse: nothing here — the limit error
 /// paragraph renders from the host's flag, whose wiring the panel owns.
-pub(crate) fn limit_error_text() -> &'static str {
+pub fn limit_error_text() -> &'static str {
     t("sync.recordsetLimitInvalid")
 }

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 /// React: `export const ONBOARDING_VERSION = 1` — a JS `number`; the shared
 /// settings contract types the field `i32`, and this port follows the
 /// contract.
-pub(crate) const ONBOARDING_VERSION: i32 = 1;
+pub const ONBOARDING_VERSION: i32 = 1;
 
 /// React `OnboardingState` (`onboardingGate.ts:19`): the persisted
 /// first-run-journey state.
@@ -31,23 +31,23 @@ pub(crate) const ONBOARDING_VERSION: i32 = 1;
 /// [`ONBOARDING_VERSION`] re-onboards everyone.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct OnboardingState {
+pub struct OnboardingState {
     /// True once the user has left the journey (finished or skipped).
-    pub(crate) completed: bool,
+    pub completed: bool,
     /// The journey revision this state was written by.
-    pub(crate) version: i32,
+    pub version: i32,
 }
 
 /// React `completedOnboardingState()` (`onboardingGate.ts:31`): the settings
 /// payload written when the user leaves the journey — the done step's open
 /// handler merges it via `updateSettings({ onboarding: … })` before the
 /// window's completion action fires (the T114 `on_open` seam's feed-in).
-pub(crate) fn completed_onboarding_state() -> OnboardingState {
+pub fn completed_onboarding_state() -> OnboardingState {
     OnboardingState { completed: true, version: ONBOARDING_VERSION }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[doc(hidden)]  // exposed for integration tests
+pub mod tests {
     use super::*;
 
     // --- completedOnboardingState (onboardingGate.test.ts:25) ----------------

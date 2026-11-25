@@ -163,7 +163,7 @@ use super::export_plan::{
 /// variants marked Rune-side have no React counterpart (they are
 /// wiring failures) and say so.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum BlobTablesExportError {
+pub enum BlobTablesExportError {
     /// No tables in the request (`'no tables selected'`).
     NoTablesSelected,
     /// A non-CSV data format for a source that is not already loaded.
@@ -263,7 +263,7 @@ impl From<ExportFormatError> for BlobTablesExportError {
 
 /// One page of a table, as the injected reader answers it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TablePage {
+pub struct TablePage {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<Value>>,
     /// Paging cursor the reader understands. `None` when the table is
@@ -281,7 +281,7 @@ pub(crate) struct TablePage {
 /// (the table's own or the request's fallback) overrides the request
 /// default per call (applied by S2's page loop, not here).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TablePageRequestContext {
+pub struct TablePageRequestContext {
     pub db_session_id: String,
     pub database: Option<String>,
     pub schema: Option<String>,
@@ -294,7 +294,7 @@ pub(crate) struct TablePageRequestContext {
 /// over their own target may ignore it. The first call passes
 /// `cursor: None`; later calls pass the previous page's `next_cursor`.
 /// A reader failure is reported as [`BlobTablesExportError::ReadFailed`].
-pub(crate) trait TablePageReader: Send + Sync {
+pub trait TablePageReader: Send + Sync {
     fn read_page(
         &self,
         table_name: &str,
@@ -306,7 +306,7 @@ pub(crate) trait TablePageReader: Send + Sync {
 /// Loads one table's DDL (structure modes). Answers `None` when it has no
 /// DDL for the table — the exporter then leaves the request's own `ddl`
 /// (or nothing, and the planner falls back to its placeholder).
-pub(crate) trait DdlLoader: Send + Sync {
+pub trait DdlLoader: Send + Sync {
     fn load_ddl(
         &self,
         table_name: &str,
@@ -323,7 +323,7 @@ pub(crate) trait DdlLoader: Send + Sync {
 /// exactly (`1e21` renders as `"1e+21"` in both — the S1 docs had this
 /// backwards). Integers and ordinary decimals match JS exactly; the
 /// divergence only bites floats that arrive on the wire as `1.0`.
-pub(crate) fn cell_to_text(value: &Value) -> String {
+pub fn cell_to_text(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
         Value::String(text) => text.clone(),
@@ -349,7 +349,7 @@ fn escape_delimited(text: &str, delimiter: char) -> String {
 /// (`escapeCsvField` in `gridClipboard.ts`, DB-10), for callers that
 /// format one cell at a time instead of a matrix. Minimal mirror pending
 /// T523's port of `lib/gridClipboard.ts`.
-pub(crate) fn escape_csv_field(value: &Value) -> String {
+pub fn escape_csv_field(value: &Value) -> String {
     escape_delimited(&cell_to_text(value), ',')
 }
 
@@ -361,7 +361,7 @@ pub(crate) fn escape_csv_field(value: &Value) -> String {
 /// The guard stays out of the shared escaping kernel, where copy/paste
 /// treats a formula prefix as inert text; it belongs to the CSV export
 /// layer only.
-pub(crate) fn apply_csv_formula_guard(escaped: &str) -> String {
+pub fn apply_csv_formula_guard(escaped: &str) -> String {
     let starts_with_formula_prefix = matches!(escaped.chars().next(), Some('=' | '+' | '-' | '@'));
     if starts_with_formula_prefix && !escaped.starts_with('"') {
         format!("\"{escaped}\"")
@@ -375,14 +375,14 @@ pub(crate) fn apply_csv_formula_guard(escaped: &str) -> String {
 /// plus the formula-injection guard shared with the other two CSV paths
 /// (`applyCsvFormulaGuard` in `exportFormat.ts` — also the Rust
 /// `StreamFormatter` rule).
-pub(crate) fn csv_cell(value: &Value) -> String {
+pub fn csv_cell(value: &Value) -> String {
     apply_csv_formula_guard(&escape_csv_field(value))
 }
 
 /// What a download delivers — `BlobPart` in React: text for every format
 /// except XLSX, which delivers decoded workbook bytes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DeliveredContent {
+pub enum DeliveredContent {
     Text(String),
     Bytes(Vec<u8>),
 }
@@ -392,7 +392,7 @@ pub(crate) enum DeliveredContent {
 /// URL, an anchor click with `download = file_name`, and then revokes
 /// the URL.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct BlobDownload {
+pub struct BlobDownload {
     pub contents: DeliveredContent,
     pub file_name: String,
     /// The MIME type with `;charset=utf-8` pinned, exactly as React's
@@ -403,7 +403,7 @@ pub(crate) struct BlobDownload {
 /// Build the Blob download request for `contents` as `file_name`.
 /// `mime_type` defaults to `'text/csv'` in React; here it is explicit so
 /// S2 always passes the emitted plan's MIME type.
-pub(crate) fn download_blob(
+pub fn download_blob(
     contents: DeliveredContent,
     file_name: &str,
     mime_type: &str,
@@ -421,7 +421,7 @@ pub(crate) fn download_blob(
 /// [`download_blob`]). `atob` strips ASCII whitespace before decoding,
 /// and throws on anything that is not standard base64; both are mirrored
 /// here.
-pub(crate) fn base64_to_bytes(data_base64: &str) -> Result<Vec<u8>, BlobTablesExportError> {
+pub fn base64_to_bytes(data_base64: &str) -> Result<Vec<u8>, BlobTablesExportError> {
     let cleaned: String = data_base64
         .chars()
         .filter(|ch| !ch.is_ascii_whitespace())
@@ -435,15 +435,15 @@ pub(crate) fn base64_to_bytes(data_base64: &str) -> Result<Vec<u8>, BlobTablesEx
 /// hands it (Blob + object URL + anchor click + revoke on the web host).
 /// `None` in the factory options means no sink is wired — see the module
 /// docs.
-pub(crate) type DeliverFn = Arc<dyn Fn(&BlobDownload) + Send + Sync>;
+pub type DeliverFn = Arc<dyn Fn(&BlobDownload) + Send + Sync>;
 
 /// The clock for the default output name; tests pin it, production uses now.
-pub(crate) type NowFn = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
+pub type NowFn = Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>;
 
 /// Factory options — the `options?` object of React's
 /// `createBlobTablesExporter`.
 #[derive(Default)]
-pub(crate) struct BlobTablesExporterOptions {
+pub struct BlobTablesExporterOptions {
     /// Loads one table's DDL (structure modes). Absent ⇒ structure modes
     /// emit a placeholder comment (via the planner's
     /// [`export_plan::resolve_ddl`]).
@@ -466,7 +466,7 @@ pub(crate) struct BlobTablesExporterOptions {
 /// zip is refused in [`BlobTablesExporter::plan_export`], so S2 can
 /// assume a single-file merge.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PlannedExport {
+pub struct PlannedExport {
     pub request: TablesExportRequest,
     pub plans: Vec<ExportFilePlan>,
     pub file_name: String,
@@ -483,7 +483,7 @@ pub(crate) struct PlannedExport {
 /// CSV-only rule: its rows are already loaded, so every format goes
 /// through the shared frontend formatter (`exportFormat.ts`) and
 /// downloads as a Blob (plan §2.8).
-pub(crate) fn create_blob_tables_exporter(
+pub fn create_blob_tables_exporter(
     read_page: Arc<dyn TablePageReader>,
     options: BlobTablesExporterOptions,
 ) -> BlobTablesExporter {
@@ -498,7 +498,7 @@ pub(crate) fn create_blob_tables_exporter(
 
 /// The web-shaped tables exporter (factory shell + gate/plan stage +
 /// S2's emission stage — see the module docs).
-pub(crate) struct BlobTablesExporter {
+pub struct BlobTablesExporter {
     /// Consumed by `emit_data_plan`'s page loop (via [`BlobTablesExporter::reader`]).
     reader: Arc<dyn TablePageReader>,
     load_ddl: Option<Arc<dyn DdlLoader>>,
@@ -512,13 +512,13 @@ impl BlobTablesExporter {
     /// The injected page reader, for S2's emission stage — the `impl`
     /// block lives in [`super::blob_tables_emission`] so neither file
     /// exceeds the 800-line recommendation.
-    pub(crate) fn reader(&self) -> &Arc<dyn TablePageReader> {
+    pub fn reader(&self) -> &Arc<dyn TablePageReader> {
         &self.reader
     }
 
     /// The injected deliver sink, for S2's emission stage (`None` means
     /// no sink was wired).
-    pub(crate) fn deliver_sink(&self) -> Option<&DeliverFn> {
+    pub fn deliver_sink(&self) -> Option<&DeliverFn> {
         self.deliver.as_ref()
     }
 }
@@ -528,7 +528,7 @@ impl BlobTablesExporter {
 /// except XLSX, which delivers decoded workbook bytes
 /// ([`base64_to_bytes`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct EmittedDataPlan {
+pub struct EmittedDataPlan {
     pub content: DeliveredContent,
     pub mime_type: String,
 }
@@ -539,7 +539,7 @@ pub(crate) struct EmittedDataPlan {
 /// return is `Saved` today; the `Cancelled` arm stays so T131's port
 /// trait can share the shape.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExportTablesOutcome {
+pub enum ExportTablesOutcome {
     Saved(usize),
     Cancelled,
 }

@@ -53,7 +53,7 @@ use crate::ui::toggle::Checkbox;
 use crate::views::{SyncConflictPolicy, SyncOptions};
 
 /// The builder. `S` is the host state that owns the options.
-pub(crate) struct OptionsBar<S: 'static> {
+pub struct OptionsBar<S: 'static> {
     options: SyncOptions,
     policy_select_open: bool,
     on_change: Option<Rc<dyn Fn(&mut S, SyncOptions)>>,
@@ -63,7 +63,7 @@ pub(crate) struct OptionsBar<S: 'static> {
 }
 
 impl<S: 'static> OptionsBar<S> {
-    pub(crate) fn new(options: SyncOptions) -> Self {
+    pub fn new(options: SyncOptions) -> Self {
         Self {
             options,
             policy_select_open: false,
@@ -75,38 +75,38 @@ impl<S: 'static> OptionsBar<S> {
     }
 
     /// The conflict-policy select's open flag, from the host's slot.
-    pub(crate) fn policy_select_open(mut self, open: bool) -> Self {
+    pub fn policy_select_open(mut self, open: bool) -> Self {
         self.policy_select_open = open;
         self
     }
 
     /// The host records the select opening.
-    pub(crate) fn on_toggle_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_policy = Some(Rc::new(f));
         self
     }
 
     /// The host closes the select.
-    pub(crate) fn on_close_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_policy = Some(Rc::new(f));
         self
     }
 
     /// React `onChange(next)`.
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, SyncOptions) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, SyncOptions) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
     /// React `onEnableDelete`: the confirmation the delete checkbox asks
     /// for instead of flipping the option itself.
-    pub(crate) fn on_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_enable_delete = Some(Rc::new(f));
         self
     }
 
     /// The bar on its own kit root.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut layer = Vec::new();
         let root = self.build_inner(&k, &mut layer);
@@ -115,7 +115,7 @@ impl<S: 'static> OptionsBar<S> {
 
     /// The same bar without its kit root (for a parent that roots the
     /// overlay once).
-    pub(crate) fn build_inner(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build_inner(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let mut bar = row()
             .key("data-sync-options-bar")
             .w_full()

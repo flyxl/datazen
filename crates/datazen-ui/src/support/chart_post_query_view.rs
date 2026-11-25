@@ -22,14 +22,14 @@ use crate::support::chart_field_inference::{is_chartable_result, ChartResult};
 
 /// The view the results pane opens in (React's `'table' | 'chart'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PostQueryViewMode {
+pub enum PostQueryViewMode {
     Table,
     Chart,
 }
 
 /// `resolvePostQueryViewMode`: chart only when the setting opts in, a
 /// result exists, and it is chartable; table in every other case.
-pub(crate) fn resolve_post_query_view_mode(
+pub fn resolve_post_query_view_mode(
     result: Option<&ChartResult>,
     auto_chart_on_query: Option<bool>,
 ) -> PostQueryViewMode {

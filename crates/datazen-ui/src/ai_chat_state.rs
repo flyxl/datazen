@@ -77,7 +77,7 @@ impl crate::AppState {
     /// [`AppState::sync_ai_chat_panel`]'s mounted → unmounted
     /// transition — so one close yields one receipt however the panel
     /// was hidden (toggle or section switch).
-    pub(crate) fn toggle_ai_chat(&mut self) {
+    pub fn toggle_ai_chat(&mut self) {
         let open = !self.ai_chat_open;
         if open {
             self.ai_draft_last_issue = None;
@@ -92,7 +92,7 @@ impl crate::AppState {
     /// query error surface is still a one-line `query_notice` — that
     /// action wires this entry when it lands.
     #[allow(dead_code)]
-    pub(crate) fn open_ai_chat_draft(&mut self, draft: AiPendingDraft) {
+    pub fn open_ai_chat_draft(&mut self, draft: AiPendingDraft) {
         self.ai_pending_draft = Some(draft);
         if !self.ai_chat_open {
             self.ai_chat_open = true;
@@ -106,7 +106,7 @@ impl crate::AppState {
     /// document is untouched otherwise. [`SqlEditor::from_doc`] resets
     /// the caret and undo, the closest honest equivalent of the store
     /// replacing the pane's SQL.
-    pub(crate) fn insert_ai_sql(&mut self, sql: &str) {
+    pub fn insert_ai_sql(&mut self, sql: &str) {
         if query_selected(self) {
             self.sql = SqlEditor::from_doc(sql);
         }
@@ -116,7 +116,7 @@ impl crate::AppState {
     /// the code block. The editor document is replaced only when the
     /// tab actually opened (`Tabs::open` fails only on an empty title,
     /// and the title here is constant).
-    pub(crate) fn open_ai_new_query(&mut self, sql: &str) {
+    pub fn open_ai_new_query(&mut self, sql: &str) {
         if self.open_query_tab("Query").is_some() {
             self.sql = SqlEditor::from_doc(sql);
         }
@@ -126,7 +126,7 @@ impl crate::AppState {
     /// changed (the caller redraws on `true`). Mount tracking runs on
     /// every section so leaving the workspace cancels the in-flight
     /// run exactly once; the prop writes run only while mounted.
-    pub(crate) fn sync_ai_chat_panel(&mut self, tx: &mut Tx) -> bool {
+    pub fn sync_ai_chat_panel(&mut self, tx: &mut Tx) -> bool {
         let mounted = self.active == Section::Workspace && self.ai_chat_open;
         if !mounted {
             if self.ai_chat_mounted {

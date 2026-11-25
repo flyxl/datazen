@@ -19,7 +19,7 @@ fn base_icon_button(key: &str, icon: &'static Icon, label: &str, theme: tok::The
         .child(rune::icon(icon, 14.0).color(theme.text_secondary))
 }
 
-pub(crate) fn icon_button_action(
+pub fn icon_button_action(
     key: &str,
     icon: &'static Icon,
     label: &str,
@@ -29,7 +29,7 @@ pub(crate) fn icon_button_action(
     base_icon_button(key, icon, label, theme).on_press(on_press)
 }
 
-pub(crate) fn search_field(
+pub fn search_field(
     key: &str,
     edit: &TextEdit,
     placeholder: &str,
@@ -66,7 +66,7 @@ pub(crate) fn search_field(
         .child(input)
 }
 
-pub(crate) fn nav_section_header(
+pub fn nav_section_header(
     key: &str,
     label: &str,
     count: usize,
@@ -111,7 +111,7 @@ pub(crate) fn nav_section_header(
         )
 }
 
-pub(crate) fn nav_empty_row(key: &str, label: &str, depth: u32, theme: tok::Theme) -> El {
+pub fn nav_empty_row(key: &str, label: &str, depth: u32, theme: tok::Theme) -> El {
     row()
         .key(key.to_owned())
         .w_full()
@@ -122,7 +122,7 @@ pub(crate) fn nav_empty_row(key: &str, label: &str, depth: u32, theme: tok::Them
         .child(text(label.to_owned()).font(type_::LABEL).color(theme.text_secondary))
 }
 
-pub(crate) fn nav_connection_row(
+pub fn nav_connection_row(
     key: &str,
     name: &str,
     engine: &str,
@@ -172,7 +172,7 @@ pub(crate) fn nav_connection_row(
     )
 }
 
-pub(crate) fn nav_branch_row(
+pub fn nav_branch_row(
     key: &str,
     label: &str,
     secondary: Option<&str>,
@@ -215,7 +215,7 @@ pub(crate) fn nav_branch_row(
     row_el.child(label_col)
 }
 
-pub(crate) fn nav_leaf_row(
+pub fn nav_leaf_row(
     key: &str,
     label: &str,
     depth: u32,
@@ -241,7 +241,7 @@ pub(crate) fn nav_leaf_row(
         )
 }
 
-pub(crate) fn nav_toolbar_button(
+pub fn nav_toolbar_button(
     key: &str,
     icon: &'static Icon,
     label: &str,

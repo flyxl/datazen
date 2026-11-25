@@ -56,7 +56,7 @@ const SWITCH_KNOB_X: (f32, f32) = (3.0, 18.0);
 
 /// `SectionTitle({ children, hint })`: the section heading with its
 /// optional "?" hint.
-pub(crate) fn section_title(
+pub fn section_title(
     k: &Kit,
     layer: &mut Vec<El>,
     key: String,
@@ -81,7 +81,7 @@ pub(crate) fn section_title(
 /// `SettingRow({ label, hint, children })`: the two-column row — the
 /// 160pt label column (with its optional hint) and the `flex-1`
 /// content.
-pub(crate) fn setting_row(
+pub fn setting_row(
     k: &Kit,
     layer: &mut Vec<El>,
     key: String,
@@ -110,22 +110,22 @@ pub(crate) fn setting_row(
 }
 
 /// `ToggleRow`'s switch payload.
-pub(crate) struct ToggleRow<'a> {
+pub struct ToggleRow<'a> {
     /// The row key (the React `testId`: a stable hook for tests; the
     /// accessible name is translated, so it cannot be one).
-    pub(crate) key: String,
-    pub(crate) label: &'a str,
-    pub(crate) hint: Option<&'a str>,
-    pub(crate) checked: bool,
+    pub key: String,
+    pub label: &'a str,
+    pub hint: Option<&'a str>,
+    pub checked: bool,
     /// A row can be unavailable while still displaying its current
     /// value.
-    pub(crate) disabled: bool,
+    pub disabled: bool,
 }
 
 /// `ToggleRow({ label, hint, checked, onChange, testId, disabled })`:
 /// the label left, the pill switch right. `on_change` fires only
 /// when enabled (the React click guard), with the **next** value.
-pub(crate) fn toggle_row<S: 'static>(
+pub fn toggle_row<S: 'static>(
     k: &Kit,
     layer: &mut Vec<El>,
     spec: ToggleRow<'_>,

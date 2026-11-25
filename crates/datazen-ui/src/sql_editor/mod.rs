@@ -18,7 +18,7 @@ pub use model::{Sel, Selection, SqlEditor};
 pub use view::{editor_font, panel, plain_panel, EDITOR_SURFACE_WIDTH};
 // T200: crate-visible row renderers — the workflow yaml editor mounts the
 // same rows the plain panel renders.
-pub(crate) use view::{line_row, split_lines};
+pub use view::{line_row, split_lines};
 
 #[cfg(test)]
 mod tests;

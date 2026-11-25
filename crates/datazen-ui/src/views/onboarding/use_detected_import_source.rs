@@ -84,7 +84,7 @@
 /// `Step`/`Entry` precedent); variant order is the React union's,
 /// verbatim.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ImportApp {
+pub enum ImportApp {
     Dbx,
     Navicat,
     Datagrip,
@@ -95,7 +95,7 @@ pub(crate) enum ImportApp {
 impl ImportApp {
     /// The React union's string literal (`'dbx'` …) —
     /// `detectConnectionImportPath(app)`'s `source` argument, verbatim.
-    pub(crate) fn source_id(self) -> &'static str {
+    pub fn source_id(self) -> &'static str {
         match self {
             ImportApp::Dbx => "dbx",
             ImportApp::Navicat => "navicat",
@@ -110,7 +110,7 @@ impl ImportApp {
 /// pre-check order for the "import connections" entry card. The first
 /// client whose config is found on this machine is offered as the default
 /// import source (Q6: detection over known config paths only).
-pub(crate) const IMPORT_APP_ORDER: [ImportApp; 5] = [
+pub const IMPORT_APP_ORDER: [ImportApp; 5] = [
     ImportApp::Dbeaver,
     ImportApp::Datagrip,
     ImportApp::Navicat,
@@ -123,7 +123,7 @@ pub(crate) const IMPORT_APP_ORDER: [ImportApp; 5] = [
 /// `Promise.allSettled` result the hook filters
 /// (`results[i]?.status === 'fulfilled' && results[i].value?.found === true`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ImportProbe {
+pub enum ImportProbe {
     /// `status === 'rejected'` — or the invoke never settled: not a hit
     /// (failures degrade to "nothing detected").
     Rejected,
@@ -145,7 +145,7 @@ impl ImportProbe {
 /// runs the probes and reports back). The returned interface
 /// `{ detected, detectedApps, loading }` is this struct and its getters.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DetectedImportSource {
+pub struct DetectedImportSource {
     /// `detectedApps` — every client whose config was found, in
     /// [`IMPORT_APP_ORDER`] order (`useState([])`'s empty start).
     detected_apps: Vec<ImportApp>,
@@ -163,7 +163,7 @@ impl DetectedImportSource {
     /// The hook's mount: `useState([])` + `useState(enabled)` — `loading`
     /// starts as the `enabled` argument (React's default argument is
     /// `true`; see [`Default`]).
-    pub(crate) fn new(enabled: bool) -> Self {
+    pub fn new(enabled: bool) -> Self {
         Self { detected_apps: Vec::new(), loading: enabled, round: 0 }
     }
 
@@ -178,7 +178,7 @@ impl DetectedImportSource {
     /// the five `detect_connection_import_path` probes (the IO seam —
     /// [`IMPORT_APP_ORDER`] × [`ImportApp::source_id`], in order) and
     /// reports back through [`report_probes`].
-    pub(crate) fn resync_detection(&mut self, enabled: bool) -> u32 {
+    pub fn resync_detection(&mut self, enabled: bool) -> u32 {
         self.round += 1; // the cleanup: the previous round is cancelled
         if enabled {
             self.loading = true;
@@ -195,7 +195,7 @@ impl DetectedImportSource {
     /// [`IMPORT_APP_ORDER`] order, and `loading` ends. A report tagged
     /// with a stale round (the effect re-ran after the probes were kicked
     /// off) is dropped whole — React's `cancelled` guard.
-    pub(crate) fn report_probes(&mut self, round: u32, results: &[ImportProbe]) {
+    pub fn report_probes(&mut self, round: u32, results: &[ImportProbe]) {
         if round != self.round {
             return;
         }
@@ -208,19 +208,19 @@ impl DetectedImportSource {
     /// was (or nothing has been reported yet). The host feeds this into
     /// the wizard's `resync_detected` (T114's adopt-the-first-detected
     /// effect).
-    pub(crate) fn detected(&self) -> Option<ImportApp> {
+    pub fn detected(&self) -> Option<ImportApp> {
         self.detected_apps.first().copied()
     }
 
     /// `detectedApps` — every client whose config was found, in
     /// [`IMPORT_APP_ORDER`] order. The host feeds this into
     /// `ImportStep::detected_apps` (T177's checkmark feed).
-    pub(crate) fn detected_apps(&self) -> &[ImportApp] {
+    pub fn detected_apps(&self) -> &[ImportApp] {
         &self.detected_apps
     }
 
     /// `loading`.
-    pub(crate) fn loading(&self) -> bool {
+    pub fn loading(&self) -> bool {
         self.loading
     }
 }
@@ -246,8 +246,8 @@ fn probe_hits(results: &[ImportProbe]) -> Vec<ImportApp> {
         .collect()
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[doc(hidden)]  // exposed for integration tests
+pub mod tests {
     use super::*;
 
     use crate::views::onboarding::onboarding_wizard::{ImportSource, OnboardingWizard};

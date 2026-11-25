@@ -27,18 +27,18 @@ use datazen_ui_api::{
 };
 
 /// `DEFAULT_SSH_PORT`.
-pub(crate) const DEFAULT_SSH_PORT: &str = "22";
+pub const DEFAULT_SSH_PORT: &str = "22";
 /// `DEFAULT_HTTP_PROXY_PORT`.
-pub(crate) const DEFAULT_HTTP_PROXY_PORT: &str = "8080";
+pub const DEFAULT_HTTP_PROXY_PORT: &str = "8080";
 /// `DEFAULT_TUNNEL_TIMEOUT`.
-pub(crate) const DEFAULT_TUNNEL_TIMEOUT: &str = "30";
+pub const DEFAULT_TUNNEL_TIMEOUT: &str = "30";
 
 /// `SAVED_TUNNEL_KINDS`, in declaration order.
-pub(crate) const SAVED_TUNNEL_KINDS: [SavedTunnelKind; 3] =
+pub const SAVED_TUNNEL_KINDS: [SavedTunnelKind; 3] =
     [SavedTunnelKind::Ssh, SavedTunnelKind::HttpProxy, SavedTunnelKind::WebSocket];
 
 /// The kind label's i18n key.
-pub(crate) fn tunnel_kind_label_key(kind: SavedTunnelKind) -> &'static str {
+pub fn tunnel_kind_label_key(kind: SavedTunnelKind) -> &'static str {
     match kind {
         SavedTunnelKind::Ssh => "settings.tunnels.kind.ssh",
         SavedTunnelKind::HttpProxy => "settings.tunnels.kind.httpProxy",
@@ -48,7 +48,7 @@ pub(crate) fn tunnel_kind_label_key(kind: SavedTunnelKind) -> &'static str {
 
 /// `SshJumpDraft`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SshJumpDraft {
+pub struct SshJumpDraft {
     pub enabled: bool,
     pub host: String,
     pub port: String,
@@ -61,7 +61,7 @@ pub(crate) struct SshJumpDraft {
 
 /// `SshDraft`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SshDraft {
+pub struct SshDraft {
     pub host: String,
     pub port: String,
     pub username: String,
@@ -74,7 +74,7 @@ pub(crate) struct SshDraft {
 
 /// `HttpProxyDraft`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct HttpProxyDraft {
+pub struct HttpProxyDraft {
     pub host: String,
     pub port: String,
     /// `'http' | 'https'`.
@@ -86,7 +86,7 @@ pub(crate) struct HttpProxyDraft {
 
 /// `WebSocketDraft`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WebSocketDraft {
+pub struct WebSocketDraft {
     pub url: String,
     /// `'datazen_v1' | 'raw_binary'`.
     pub mode: String,
@@ -96,7 +96,7 @@ pub(crate) struct WebSocketDraft {
 
 /// `TunnelDraft`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TunnelDraft {
+pub struct TunnelDraft {
     /// Id of the entity being edited; `None` while creating a new
     /// one.
     pub id: Option<String>,
@@ -111,7 +111,7 @@ pub(crate) struct TunnelDraft {
 /// valid. The keys live here (not in the dialog) so both the guard
 /// and the message stay in sync with the validation rules below.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TunnelDraftProblem {
+pub enum TunnelDraftProblem {
     Name,
     SshHost,
     SshPort,
@@ -126,7 +126,7 @@ pub(crate) enum TunnelDraftProblem {
 
 impl TunnelDraftProblem {
     /// `TUNNEL_DRAFT_PROBLEM_KEYS`.
-    pub(crate) fn message_key(self) -> &'static str {
+    pub fn message_key(self) -> &'static str {
         match self {
             Self::Name => "settings.tunnels.validation.name",
             Self::SshHost => "settings.tunnels.validation.sshHost",
@@ -169,7 +169,7 @@ fn empty_ssh_draft() -> SshDraft {
 }
 
 /// `emptyTunnelDraft`.
-pub(crate) fn empty_tunnel_draft() -> TunnelDraft {
+pub fn empty_tunnel_draft() -> TunnelDraft {
     TunnelDraft {
         id: None,
         name: String::new(),
@@ -233,7 +233,7 @@ fn ssh_draft_from_config(config: Option<&SshTunnelConfig>) -> SshDraft {
 
 /// Project a stored entity (credentials included) onto the editable
 /// draft.
-pub(crate) fn saved_tunnel_to_draft(tunnel: &SavedTunnel) -> TunnelDraft {
+pub fn saved_tunnel_to_draft(tunnel: &SavedTunnel) -> TunnelDraft {
     let draft = empty_tunnel_draft();
     TunnelDraft {
         id: Some(tunnel.id.clone()),
@@ -356,7 +356,7 @@ fn ssh_config_from_draft(draft: &SshDraft) -> SshTunnelConfig {
 /// Build the entity to persist. Only the block matching `kind` is
 /// emitted, so a tunnel never carries a stale config from a kind the
 /// user switched away from.
-pub(crate) fn draft_to_saved_tunnel(draft: &TunnelDraft, id: &str) -> SavedTunnel {
+pub fn draft_to_saved_tunnel(draft: &TunnelDraft, id: &str) -> SavedTunnel {
     let mut tunnel = SavedTunnel {
         id: id.to_owned(),
         name: draft.name.trim().to_owned(),
@@ -410,7 +410,7 @@ pub(crate) fn draft_to_saved_tunnel(draft: &TunnelDraft, id: &str) -> SavedTunne
 
 /// First unmet requirement of the draft, or `None` when it can be
 /// saved.
-pub(crate) fn tunnel_draft_problem(draft: &TunnelDraft) -> Option<TunnelDraftProblem> {
+pub fn tunnel_draft_problem(draft: &TunnelDraft) -> Option<TunnelDraftProblem> {
     if draft.name.trim().is_empty() {
         return Some(TunnelDraftProblem::Name);
     }
@@ -457,12 +457,12 @@ pub(crate) fn tunnel_draft_problem(draft: &TunnelDraft) -> Option<TunnelDraftPro
 }
 
 /// `isTunnelDraftValid`.
-pub(crate) fn is_tunnel_draft_valid(draft: &TunnelDraft) -> bool {
+pub fn is_tunnel_draft_valid(draft: &TunnelDraft) -> bool {
     tunnel_draft_problem(draft).is_none()
 }
 
 /// `copyTunnelName` — `Bastion` + ` (copy)` → `Bastion (copy)`.
-pub(crate) fn copy_tunnel_name(name: &str, suffix: &str) -> String {
+pub fn copy_tunnel_name(name: &str, suffix: &str) -> String {
     format!("{name}{suffix}")
 }
 

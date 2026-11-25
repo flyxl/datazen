@@ -38,7 +38,7 @@ use crate::i18n::t;
 
 /// `DeleteTunnelOutcome`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DeleteTunnelOutcome {
+pub enum DeleteTunnelOutcome {
     Deleted { unbound_connection_ids: Vec<String> },
     UnbindFailed {
         message: String,
@@ -52,7 +52,7 @@ pub(crate) enum DeleteTunnelOutcome {
 }
 
 /// `DeleteTunnelDeps` — the transport the cleanup drives.
-pub(crate) trait TunnelDeletionDeps {
+pub trait TunnelDeletionDeps {
     /// `getConnections()`.
     fn get_connections(&self) -> Result<Vec<ConnectionConfig>, String>;
     /// `saveConnection(config)`.
@@ -75,7 +75,7 @@ fn message_of(error: &str, fallback_key: &str) -> String {
 /// persists alongside it (leaving it behind makes the connection
 /// form hydrate as an empty inline tunnel of that kind instead of a
 /// plain direct connection).
-pub(crate) fn unbind_connection_patch(connection: &ConnectionConfig) -> ConnectionConfig {
+pub fn unbind_connection_patch(connection: &ConnectionConfig) -> ConnectionConfig {
     let mut next = connection.clone();
     // `tunnelId: undefined, tunnelKind: undefined` — absent on the
     // wire (skip_serializing_if), exactly the React undefined.
@@ -85,7 +85,7 @@ pub(crate) fn unbind_connection_patch(connection: &ConnectionConfig) -> Connecti
 }
 
 /// `deleteTunnelAndUnbind`.
-pub(crate) fn delete_tunnel_and_unbind(
+pub fn delete_tunnel_and_unbind(
     tunnel_id: &str,
     deps: &dyn TunnelDeletionDeps,
 ) -> DeleteTunnelOutcome {

@@ -60,7 +60,7 @@ use serde_json::Value;
 
 /// Export mode — `ExportMode` in `commands/file.ts`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ExportMode {
+pub enum ExportMode {
     StructureOnly,
     #[default]
     DataOnly,
@@ -69,7 +69,7 @@ pub(crate) enum ExportMode {
 
 /// Data format — `ExportDataFormat` in `commands/file.ts`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ExportDataFormat {
+pub enum ExportDataFormat {
     #[default]
     Csv,
     Tsv,
@@ -84,7 +84,7 @@ pub(crate) enum ExportDataFormat {
 impl ExportDataFormat {
     /// The wire name (`'csv'`, `'sql_insert'`, …) — the spelling the TS
     /// error messages and the file extensions use.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             ExportDataFormat::Csv => "csv",
             ExportDataFormat::Tsv => "tsv",
@@ -106,7 +106,7 @@ impl std::fmt::Display for ExportDataFormat {
 
 /// Output container — `ExportOutputMode` in `commands/file.ts`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ExportOutputMode {
+pub enum ExportOutputMode {
     #[default]
     Single,
     Zip,
@@ -116,7 +116,7 @@ pub(crate) enum ExportOutputMode {
 /// (`commands/file.ts` imports it from `../types`) that planning and
 /// validation touch. The full column shape arrives with T298 / T500.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ProvidedColumn {
+pub struct ProvidedColumn {
     pub name: String,
 }
 
@@ -125,7 +125,7 @@ pub(crate) struct ProvidedColumn {
 /// tag). `Table` is the default: the named table as a SELECT, which is
 /// what an absent `source` means on the wire.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) enum ExportTableSource {
+pub enum ExportTableSource {
     #[default]
     Table,
     /// One arbitrary read-only SQL statement (a filtered export).
@@ -145,7 +145,7 @@ pub(crate) enum ExportTableSource {
 /// One table in an export request — `ExportTableInput` in
 /// `commands/file.ts`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ExportTableInput {
+pub struct ExportTableInput {
     pub table_name: String,
     /// Schema the table lives in (PostgreSQL family); resolved per table.
     pub schema: Option<String>,
@@ -162,7 +162,7 @@ pub(crate) struct ExportTableInput {
 
 /// An export request — `ExportTablesRequest` in `commands/file.ts`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TablesExportRequest {
+pub struct TablesExportRequest {
     /// Runtime db session id (backend `ExportTablesRequest.db_session_id`).
     pub db_session_id: String,
     /// Opaque per-run cancellation token, carried only by SQL-path
@@ -182,7 +182,7 @@ pub(crate) struct TablesExportRequest {
 /// One planned output file — `ExportFilePlan` in `exportPlan.ts`
 /// (`FilePlan` in `export/mod.rs`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ExportFilePlan {
+pub enum ExportFilePlan {
     Ddl {
         filename: String,
         text: String,
@@ -198,7 +198,7 @@ pub(crate) enum ExportFilePlan {
 }
 
 impl ExportFilePlan {
-    pub(crate) fn filename(&self) -> &str {
+    pub fn filename(&self) -> &str {
         match self {
             ExportFilePlan::Ddl { filename, .. } | ExportFilePlan::Data { filename, .. } => {
                 filename
@@ -211,7 +211,7 @@ impl ExportFilePlan {
 /// message verbatim, so a web failure and a desktop failure for the same
 /// request read the same.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ExportPlanError {
+pub enum ExportPlanError {
     /// `prepare_export` planned zero files (`'no tables selected'`).
     NoTables,
     /// A `sql` source whose statement is blank.
@@ -277,7 +277,7 @@ impl std::fmt::Display for ExportPlanError {
 impl std::error::Error for ExportPlanError {}
 
 /// File extension of one data format — `DataFormat::extension`.
-pub(crate) fn format_extension(format: ExportDataFormat) -> &'static str {
+pub fn format_extension(format: ExportDataFormat) -> &'static str {
     match format {
         ExportDataFormat::Csv => "csv",
         ExportDataFormat::Tsv => "tsv",
@@ -290,7 +290,7 @@ pub(crate) fn format_extension(format: ExportDataFormat) -> &'static str {
 }
 
 /// SQL data formats carry their DDL as a prefix in the same `.sql` file.
-pub(crate) fn is_sql_data_format(format: ExportDataFormat) -> bool {
+pub fn is_sql_data_format(format: ExportDataFormat) -> bool {
     matches!(
         format,
         ExportDataFormat::SqlInsert | ExportDataFormat::SqlUpdate
@@ -301,21 +301,21 @@ pub(crate) fn is_sql_data_format(format: ExportDataFormat) -> bool {
 /// never be concatenated as text — `DataFormat::is_binary`: XLSX and
 /// Parquet (T187's completion of the mirror; both are Rust-only on
 /// desktop, but the planning mirror stays platform-free).
-pub(crate) fn is_binary_format(format: ExportDataFormat) -> bool {
+pub fn is_binary_format(format: ExportDataFormat) -> bool {
     matches!(format, ExportDataFormat::Xlsx | ExportDataFormat::Parquet)
 }
 
 /// `planFilename(plan)` — the planned file's name, for either plan kind
 /// (the [`ExportFilePlan::filename`] accessor is the same mirror; the
 /// free function keeps the TS file's 1:1 surface).
-pub(crate) fn plan_filename(plan: &ExportFilePlan) -> &str {
+pub fn plan_filename(plan: &ExportFilePlan) -> &str {
     plan.filename()
 }
 
 /// DDL text for one table — `resolve_ddl`: the caller's `ddl` when it
 /// carries non-blank text, else the shared placeholder. The placeholder
 /// names the bare table, exactly as the Rust side does.
-pub(crate) fn resolve_ddl(table: &ExportTableInput) -> String {
+pub fn resolve_ddl(table: &ExportTableInput) -> String {
     match table.ddl.as_deref() {
         Some(ddl) if !ddl.trim().is_empty() => ddl.to_owned(),
         _ => format!("-- DDL unavailable for {}", table.table_name),
@@ -329,7 +329,7 @@ pub(crate) fn resolve_ddl(table: &ExportTableInput) -> String {
 /// the caller to supply explicit `ddl` text for these items, and planning
 /// fails with a clear error instead of emitting a placeholder that
 /// pretends to be a table definition.
-pub(crate) fn ddl_for_structure(table: &ExportTableInput) -> Result<String, ExportPlanError> {
+pub fn ddl_for_structure(table: &ExportTableInput) -> Result<String, ExportPlanError> {
     match &table.source {
         ExportTableSource::Table => Ok(resolve_ddl(table)),
         _ => match table.ddl.as_deref() {
@@ -346,7 +346,7 @@ pub(crate) fn ddl_for_structure(table: &ExportTableInput) -> Result<String, Expo
 /// (`export/mod.rs`); the provided half has no Rust counterpart any more
 /// — the Rust provided source was deleted in task 5, so this is the only
 /// copy of the provided check.
-pub(crate) fn validate_table_source(table: &ExportTableInput) -> Result<(), ExportPlanError> {
+pub fn validate_table_source(table: &ExportTableInput) -> Result<(), ExportPlanError> {
     match &table.source {
         ExportTableSource::Table => Ok(()),
         ExportTableSource::Sql { sql } => {
@@ -390,7 +390,7 @@ pub(crate) fn validate_table_source(table: &ExportTableInput) -> Result<(), Expo
 /// De-duplicated `.sql` filename — `unique_filename`. Only DDL plans and
 /// SQL-format data plans go through it (a data plan's `{table}.{ext}` is
 /// used verbatim, as on the Rust side).
-pub(crate) fn unique_filename(seen: &mut HashSet<String>, name: &str) -> String {
+pub fn unique_filename(seen: &mut HashSet<String>, name: &str) -> String {
     if seen.insert(name.to_owned()) {
         return name.to_owned();
     }
@@ -412,7 +412,7 @@ pub(crate) fn unique_filename(seen: &mut HashSet<String>, name: &str) -> String 
 /// - `data_and_structure`: SQL data formats carry their DDL as a prefix in
 ///   the same `{table}.sql` file; every other format splits DDL
 ///   (`{table}.sql`) and data (`{table}.{ext}`).
-pub(crate) fn build_file_plans(
+pub fn build_file_plans(
     request: &TablesExportRequest,
 ) -> Result<Vec<ExportFilePlan>, ExportPlanError> {
     for table in &request.tables {
@@ -465,7 +465,7 @@ pub(crate) fn build_file_plans(
 
 /// The planned container — `prepareExport`'s `{ plans, useZip }`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PreparedExport {
+pub struct PreparedExport {
     pub plans: Vec<ExportFilePlan>,
     pub use_zip: bool,
 }
@@ -476,7 +476,7 @@ pub(crate) struct PreparedExport {
 /// has more than one file and they are not all `.sql` (a multi-file
 /// non-SQL export has nowhere to go as a single file). A single file, or
 /// several `.sql` files, merge into one target instead.
-pub(crate) fn prepare_export(
+pub fn prepare_export(
     request: &TablesExportRequest,
 ) -> Result<PreparedExport, ExportPlanError> {
     let plans = build_file_plans(request)?;
@@ -494,7 +494,7 @@ pub(crate) fn prepare_export(
 /// (`build_file_plans` emits only `{table}.sql` plans), so it is `.sql`
 /// whatever the data format says; a zip container is `.zip`; everything
 /// else keeps the data format's extension.
-pub(crate) fn default_export_extension(
+pub fn default_export_extension(
     request: &TablesExportRequest,
     use_zip: bool,
 ) -> &'static str {
@@ -514,7 +514,7 @@ pub(crate) fn default_export_extension(
 /// data format's extension). `now` is injectable so tests can pin the
 /// timestamp; production passes the current time (UTC, as `chrono::Utc`
 /// does on the Rust side).
-pub(crate) fn default_export_name(
+pub fn default_export_name(
     request: &TablesExportRequest,
     use_zip: bool,
     now: DateTime<Utc>,

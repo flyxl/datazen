@@ -22,10 +22,10 @@ use std::rc::Rc;
 use rune::{El, Icon, PointerPress};
 use rune_kit::Kit;
 
-pub(crate) use rune_kit::Placement;
-pub(crate) use rune_kit::State;
+pub use rune_kit::Placement;
+pub use rune_kit::State;
 
-pub(crate) enum Entry<S: 'static> {
+pub enum Entry<S: 'static> {
     Item(Item<S>),
     Separator,
     Label(String),
@@ -34,7 +34,7 @@ pub(crate) enum Entry<S: 'static> {
 type SelectFn<S> = Box<dyn Fn(&mut S) + 'static>;
 
 /// A menu item or submenu trigger.
-pub(crate) struct Item<S: 'static> {
+pub struct Item<S: 'static> {
     label: String,
     icon: Option<&'static Icon>,
     lead: Option<El>,
@@ -50,7 +50,7 @@ pub(crate) struct Item<S: 'static> {
 }
 
 impl<S: 'static> Item<S> {
-    pub(crate) fn new(label: impl Into<String>) -> Self {
+    pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
             icon: None,
@@ -67,58 +67,58 @@ impl<S: 'static> Item<S> {
         }
     }
 
-    pub(crate) fn icon(mut self, icon: &'static Icon) -> Self {
+    pub fn icon(mut self, icon: &'static Icon) -> Self {
         self.icon = Some(icon);
         self
     }
 
-    pub(crate) fn lead(mut self, lead: El) -> Self {
+    pub fn lead(mut self, lead: El) -> Self {
         self.lead = Some(lead);
         self
     }
 
-    pub(crate) fn shortcut(mut self, shortcut: impl Into<String>) -> Self {
+    pub fn shortcut(mut self, shortcut: impl Into<String>) -> Self {
         self.shortcut = Some(shortcut.into());
         self
     }
 
-    pub(crate) fn badge(mut self, badge: impl Into<String>) -> Self {
+    pub fn badge(mut self, badge: impl Into<String>) -> Self {
         self.badge = Some(badge.into());
         self
     }
 
-    pub(crate) fn description(mut self, description: impl Into<String>) -> Self {
+    pub fn description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
     }
 
-    pub(crate) fn danger(mut self, danger: bool) -> Self {
+    pub fn danger(mut self, danger: bool) -> Self {
         self.danger = danger;
         self
     }
 
-    pub(crate) fn checked(mut self, checked: bool) -> Self {
+    pub fn checked(mut self, checked: bool) -> Self {
         self.checked = Some(checked);
         self
     }
 
     /// Make this item a submenu trigger with nested entries.
-    pub(crate) fn submenu(mut self, entries: Vec<Entry<S>>, open: bool) -> Self {
+    pub fn submenu(mut self, entries: Vec<Entry<S>>, open: bool) -> Self {
         self.submenu = Some((entries, open));
         self
     }
 
-    pub(crate) fn state(mut self, state: State) -> Self {
+    pub fn state(mut self, state: State) -> Self {
         self.state = Some(state);
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
-    pub(crate) fn on_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select = Some(Box::new(f));
         self
     }
@@ -195,15 +195,15 @@ impl<S: 'static> Item<S> {
 }
 
 impl<S: 'static> Entry<S> {
-    pub(crate) fn item(item: Item<S>) -> Self {
+    pub fn item(item: Item<S>) -> Self {
         Entry::Item(item)
     }
 
-    pub(crate) fn separator() -> Self {
+    pub fn separator() -> Self {
         Entry::Separator
     }
 
-    pub(crate) fn group_label(label: impl Into<String>) -> Self {
+    pub fn group_label(label: impl Into<String>) -> Self {
         Entry::Label(label.into())
     }
 
@@ -216,7 +216,7 @@ impl<S: 'static> Entry<S> {
     }
 }
 
-pub(crate) struct Menu<S: 'static> {
+pub struct Menu<S: 'static> {
     key: String,
     trigger: Option<El>,
     entries: Vec<Entry<S>>,
@@ -232,7 +232,7 @@ pub(crate) struct Menu<S: 'static> {
 }
 
 impl<S: 'static> Menu<S> {
-    pub(crate) fn new(key: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             trigger: None,
@@ -249,58 +249,58 @@ impl<S: 'static> Menu<S> {
         }
     }
 
-    pub(crate) fn trigger(mut self, trigger: El) -> Self {
+    pub fn trigger(mut self, trigger: El) -> Self {
         self.trigger = Some(trigger);
         self
     }
 
-    pub(crate) fn item(mut self, item: Item<S>) -> Self {
+    pub fn item(mut self, item: Item<S>) -> Self {
         self.entries.push(Entry::Item(item));
         self
     }
 
     /// Append items in order. Equivalent to calling `item` repeatedly.
-    pub(crate) fn items(mut self, items: impl IntoIterator<Item = Item<S>>) -> Self {
+    pub fn items(mut self, items: impl IntoIterator<Item = Item<S>>) -> Self {
         for item in items {
             self.entries.push(Entry::Item(item));
         }
         self
     }
 
-    pub(crate) fn separator(mut self) -> Self {
+    pub fn separator(mut self) -> Self {
         self.entries.push(Entry::Separator);
         self
     }
 
-    pub(crate) fn group_label(mut self, label: impl Into<String>) -> Self {
+    pub fn group_label(mut self, label: impl Into<String>) -> Self {
         self.entries.push(Entry::Label(label.into()));
         self
     }
 
-    pub(crate) fn open(mut self, open: bool) -> Self {
+    pub fn open(mut self, open: bool) -> Self {
         self.open = open;
         self
     }
 
-    pub(crate) fn min_width(mut self, w: f32) -> Self {
+    pub fn min_width(mut self, w: f32) -> Self {
         self.min_width = Some(w);
         self
     }
 
     /// Anchor the menu at a window point (e.g. a secondary press position).
-    pub(crate) fn at(mut self, x: f32, y: f32) -> Self {
+    pub fn at(mut self, x: f32, y: f32) -> Self {
         self.at = Some((x, y));
         self
     }
 
-    pub(crate) fn placement(mut self, placement: Placement) -> Self {
+    pub fn placement(mut self, placement: Placement) -> Self {
         self.placement = Some(placement);
         self
     }
 
     /// The gap between the anchor and the panel (the kit's default is 6pt;
     /// a dropdown with React's `mt-1` passes 4pt).
-    pub(crate) fn gutter(mut self, gutter: f32) -> Self {
+    pub fn gutter(mut self, gutter: f32) -> Self {
         self.gutter = Some(gutter);
         self
     }
@@ -308,14 +308,14 @@ impl<S: 'static> Menu<S> {
     /// The older bordered, raised look (the kit's `appearance="standard"`),
     /// for dropdowns React styles as bordered floating panels. Its default
     /// `min_width` is 128pt; an explicit `min_width` still wins.
-    pub(crate) fn standard(mut self, standard: bool) -> Self {
+    pub fn standard(mut self, standard: bool) -> Self {
         self.standard = standard;
         self
     }
 
     /// Called when the menu closes via Escape or an outside press, and (by default)
     /// after a leaf item is selected.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Box::new(f));
         self
     }
@@ -323,12 +323,12 @@ impl<S: 'static> Menu<S> {
     /// When `true` (default), selecting a leaf item runs its `on_select` then the
     /// close callback once. Set to `false` to keep the menu open after selection.
     /// Escape and outside presses still close through `on_close`.
-    pub(crate) fn close_on_select(mut self, close: bool) -> Self {
+    pub fn close_on_select(mut self, close: bool) -> Self {
         self.close_on_select = close;
         self
     }
 
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let Menu {
             key,
             trigger,
@@ -400,7 +400,7 @@ impl<S: 'static> Menu<S> {
 
 /// A menu opened at a secondary-press position. When `point` is `None` the
 /// menu stays closed and only the trigger is mounted.
-pub(crate) fn context_menu<S: 'static>(
+pub fn context_menu<S: 'static>(
     key: impl Into<String>,
     trigger: El,
     point: Option<PointerPress>,

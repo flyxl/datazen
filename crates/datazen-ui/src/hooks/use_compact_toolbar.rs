@@ -21,23 +21,23 @@
 //! are the React file's verbatim.
 
 /// Estimated width of one expanded toolbar button (icon + label + padding).
-pub(crate) const TOOLBAR_EXPANDED_BUTTON_WIDTH: f32 = 96.0;
+pub const TOOLBAR_EXPANDED_BUTTON_WIDTH: f32 = 96.0;
 /// The gap between toolbar buttons.
-pub(crate) const TOOLBAR_GAP: f32 = 8.0;
+pub const TOOLBAR_GAP: f32 = 8.0;
 /// The toolbar's horizontal padding.
-pub(crate) const TOOLBAR_HORIZONTAL_PADDING: f32 = 32.0;
+pub const TOOLBAR_HORIZONTAL_PADDING: f32 = 32.0;
 
 /// The hysteresis slack before an expanded toolbar may re-expand.
-pub(crate) const TOOLBAR_HYSTERESIS: f32 = 16.0;
+pub const TOOLBAR_HYSTERESIS: f32 = 16.0;
 
 /// The React hook's default threshold (`useCompactToolbar(threshold =
 /// 920)`).
-pub(crate) const DEFAULT_TOOLBAR_THRESHOLD: f32 = 920.0;
+pub const DEFAULT_TOOLBAR_THRESHOLD: f32 = 920.0;
 
 /// `estimateExpandedToolbarWidth`: the minimum toolbar width required to
 /// show text labels — padding, the buttons, the gaps between them and
 /// any fixed extras. A zero button count is the padding-only width.
-pub(crate) fn estimate_expanded_toolbar_width(
+pub fn estimate_expanded_toolbar_width(
     expanded_button_count: usize,
     fixed_extra_width: f32,
 ) -> f32 {
@@ -51,17 +51,17 @@ pub(crate) fn estimate_expanded_toolbar_width(
 /// The compact-toolbar state (React's `useState(compact)` plus the
 /// hysteresis closure's rule).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CompactToolbarState {
+pub struct CompactToolbarState {
     compact: bool,
 }
 
 impl CompactToolbarState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// Whether the toolbar renders icon-only (the labels hidden).
-    pub(crate) fn compact(&self) -> bool {
+    pub fn compact(&self) -> bool {
         self.compact
     }
 
@@ -69,7 +69,7 @@ impl CompactToolbarState {
     /// `<= 0` are ignored (no layout yet). The hysteresis rule —
     /// compact → needs `threshold + 16` to expand; expanded → compacts
     /// below `threshold`.
-    pub(crate) fn on_resize(&mut self, width: f32, threshold: f32) {
+    pub fn on_resize(&mut self, width: f32, threshold: f32) {
         if width <= 0.0 {
             return;
         }

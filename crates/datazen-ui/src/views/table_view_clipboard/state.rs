@@ -16,7 +16,7 @@ use super::{
 /// React's `GRID_PASTE_CHUNK_CELLS` loop: a confirmed paste is staged in this
 /// many patches. Exposed separately because the gate asks for confirmation first.
 #[allow(dead_code)] // pure helper; remove with the host.
-pub(crate) fn stage_chunks(writes: usize) -> usize {
+pub fn stage_chunks(writes: usize) -> usize {
     writes.div_ceil(crate::views::table_view_clipboard::GRID_PASTE_CHUNK_CELLS)
 }
 
@@ -55,7 +55,7 @@ fn normalize_clipboard_text(text: &str) -> String {
 /// matches what the clipboard holds may steer a paste-rows (a stale Excel copy
 /// must be treated as unknown text).
 #[allow(dead_code)] // pure helper; remove with the host.
-pub(crate) fn verify_row_copy(recorded: Option<(&RowCopy, &str)>, current: &str) -> Option<RowCopy> {
+pub fn verify_row_copy(recorded: Option<(&RowCopy, &str)>, current: &str) -> Option<RowCopy> {
     let (payload, text) = recorded?;
     if normalize_clipboard_text(text) == normalize_clipboard_text(current) {
         Some(payload.clone())
@@ -67,7 +67,7 @@ pub(crate) fn verify_row_copy(recorded: Option<(&RowCopy, &str)>, current: &str)
 /// React `copyRowsAsDrafts`'s gate, with the matrix-to-drafts mapping folded in.
 #[allow(dead_code)] // decision; remove with the host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DraftCopyDecision {
+pub enum DraftCopyDecision {
     NoCapability,
     NoRows,
     NoWritableColumn,
@@ -75,7 +75,7 @@ pub(crate) enum DraftCopyDecision {
 }
 
 #[allow(dead_code)] // decision; remove with the host.
-pub(crate) fn decide_copy_rows_as_drafts(
+pub fn decide_copy_rows_as_drafts(
     is_editable: bool,
     has_add_drafts: bool,
     covered: &[usize],
@@ -103,7 +103,7 @@ pub(crate) fn decide_copy_rows_as_drafts(
 /// clipboard and a cross-table confirmation are all host-facing intents.
 #[allow(dead_code)] // decision; remove with the host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PasteRowsDecision {
+pub enum PasteRowsDecision {
     NoCapability,
     ReadOnly,
     ReadFailed,
@@ -114,7 +114,7 @@ pub(crate) enum PasteRowsDecision {
 }
 
 #[allow(dead_code)] // decision; remove with the host.
-pub(crate) fn decide_paste_rows(
+pub fn decide_paste_rows(
     is_editable: bool,
     has_add_drafts: bool,
     recorded: Option<(&RowCopy, &str)>,
@@ -189,19 +189,19 @@ pub(crate) fn decide_paste_rows(
 /// Host-owned projection of the grid clipboard's mutable feedback state.
 #[allow(dead_code)] // VM surface; owned by the table host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ClipboardVm {
-    pub(crate) problems: Vec<PasteProblem>,
+pub struct ClipboardVm {
+    pub problems: Vec<PasteProblem>,
     /// `row:column` keys of cells the last paste reported a problem for.
-    pub(crate) cell_errors: Vec<String>,
-    pub(crate) last_paste: Option<PasteSummary>,
-    pub(crate) copied: bool,
-    pub(crate) copied_until: Option<f64>,
+    pub cell_errors: Vec<String>,
+    pub last_paste: Option<PasteSummary>,
+    pub copied: bool,
+    pub copied_until: Option<f64>,
     /// Monotonic request id: a late failure must not erase a newer success.
-    pub(crate) copy_request: u64,
+    pub copy_request: u64,
 }
 
 #[allow(dead_code)] // pure state update; remove with the host.
-pub(crate) fn report_problem(vm: &mut ClipboardVm, problem: PasteProblem) {
+pub fn report_problem(vm: &mut ClipboardVm, problem: PasteProblem) {
     if let (Some(row), Some(column)) = (problem.row.as_ref(), problem.column.as_ref()) {
         let key = format!("{row}:{column}");
         if !vm.cell_errors.contains(&key) {
@@ -214,7 +214,7 @@ pub(crate) fn report_problem(vm: &mut ClipboardVm, problem: PasteProblem) {
 }
 
 #[allow(dead_code)] // pure state update; remove with the host.
-pub(crate) fn clear_paste_result(vm: &mut ClipboardVm) {
+pub fn clear_paste_result(vm: &mut ClipboardVm) {
     vm.problems.clear();
     vm.cell_errors.clear();
     vm.last_paste = None;
@@ -223,7 +223,7 @@ pub(crate) fn clear_paste_result(vm: &mut ClipboardVm) {
 /// React `copyFeedback.copy`'s optimistic start: light up now, record the
 /// deadline, and bump the request id so older failures become stale.
 #[allow(dead_code)] // pure state update; remove with the host.
-pub(crate) fn begin_copy(vm: &mut ClipboardVm, now: f64) -> u64 {
+pub fn begin_copy(vm: &mut ClipboardVm, now: f64) -> u64 {
     vm.copy_request = vm.copy_request.wrapping_add(1);
     vm.copied = true;
     vm.copied_until = Some(now + COPY_FEEDBACK_MS);
@@ -233,7 +233,7 @@ pub(crate) fn begin_copy(vm: &mut ClipboardVm, now: f64) -> u64 {
 /// React's request-bound rollback: a failure only clears a still-current
 /// window; a stale failure leaves the newer copy's feedback alone.
 #[allow(dead_code)] // pure state update; remove with the host.
-pub(crate) fn end_copy(vm: &mut ClipboardVm, request_id: u64, ok: bool) {
+pub fn end_copy(vm: &mut ClipboardVm, request_id: u64, ok: bool) {
     if !ok && request_id == vm.copy_request {
         vm.copied = false;
         vm.copied_until = None;
@@ -243,7 +243,7 @@ pub(crate) fn end_copy(vm: &mut ClipboardVm, request_id: u64, ok: bool) {
 /// React's native-copy path: it writes inside the gesture, so the host reports
 /// success directly and this only owns the 1200ms window.
 #[allow(dead_code)] // pure state update; remove with the host.
-pub(crate) fn native_copied(vm: &mut ClipboardVm, ok: bool, now: f64) {
+pub fn native_copied(vm: &mut ClipboardVm, ok: bool, now: f64) {
     if ok {
         vm.copied = true;
         vm.copied_until = Some(now + COPY_FEEDBACK_MS);
@@ -255,7 +255,7 @@ pub(crate) fn native_copied(vm: &mut ClipboardVm, ok: bool, now: f64) {
 
 /// React's feedback window at the recorded deadline (host clock, no timer).
 #[allow(dead_code)] // pure state update; remove with the host.
-pub(crate) fn copy_visible(vm: &mut ClipboardVm, now: f64) -> bool {
+pub fn copy_visible(vm: &mut ClipboardVm, now: f64) -> bool {
     if vm.copied_until.is_some_and(|until| now >= until) {
         vm.copied = false;
         vm.copied_until = None;
@@ -266,6 +266,6 @@ pub(crate) fn copy_visible(vm: &mut ClipboardVm, now: f64) -> bool {
 /// React `useClipboardCopyFeedback`: an empty text (and no HTML flavor) is a
 /// failure — never light up "copied" for a write that puts nothing there.
 #[allow(dead_code)] // pure gate; remove with the host.
-pub(crate) fn empty_copy_allowed(text: &str, html: Option<&str>) -> bool {
+pub fn empty_copy_allowed(text: &str, html: Option<&str>) -> bool {
     !text.is_empty() || html.is_some_and(|rich| !rich.is_empty())
 }

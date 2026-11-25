@@ -17,7 +17,7 @@ use super::{
 
 /// Build the favorites aside into `layer`.
 #[allow(dead_code)] // panel builder; remove when the query host wires the sidebar.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &SidebarSectionVm,
     on_action: &Option<QuerySidebarActionFn<S>>,
     dark: bool,

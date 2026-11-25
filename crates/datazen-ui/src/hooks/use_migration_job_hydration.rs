@@ -49,12 +49,12 @@ use crate::hooks::migration_job_hydration_helpers::{
 
 /// The `watchJob` subscription interval the React source pins
 /// (`intervalMs: 2000`).
-pub(crate) const WATCH_INTERVAL_MS: u32 = 2000;
+pub const WATCH_INTERVAL_MS: u32 = 2000;
 
 /// What the host must do: start/stop one job watch. There is
 /// deliberately no cancel arm — the unmount rule.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum HydrationEffect {
+pub enum HydrationEffect {
     /// `client.watchJob(jobId, …, { intervalMs: 2000 })`.
     WatchJob { job_id: String },
     /// `watch.stop()` — emitted at most once per watch.
@@ -69,7 +69,7 @@ struct Watch {
 }
 
 /// `useMigrationJobHydration(window)`'s state machine.
-pub(crate) struct UseMigrationJobHydration {
+pub struct UseMigrationJobHydration {
     window: MigrationWindow,
     hydration: Option<MigrationJobHydration>,
     hydration_error: Option<String>,
@@ -81,7 +81,7 @@ pub(crate) struct UseMigrationJobHydration {
 impl UseMigrationJobHydration {
     /// `useMigrationJobHydration(window)` — the hook's initial state
     /// (null hydration, null error, nothing subscribed).
-    pub(crate) fn new(window: MigrationWindow) -> Self {
+    pub fn new(window: MigrationWindow) -> Self {
         Self {
             window,
             hydration: None,
@@ -92,14 +92,14 @@ impl UseMigrationJobHydration {
     }
 
     /// The window this instance hydrates.
-    pub(crate) fn window(&self) -> MigrationWindow {
+    pub fn window(&self) -> MigrationWindow {
         self.window
     }
 
     /// The mount's no-client branch: an empty hydration — all four
     /// buckets empty — and no error (nothing is bound, e.g. in
     /// tests).
-    pub(crate) fn mount_without_client(&mut self) {
+    pub fn mount_without_client(&mut self) {
         self.hydration = Some(MigrationJobHydration::default());
         self.hydration_error = None;
     }
@@ -107,7 +107,7 @@ impl UseMigrationJobHydration {
     /// The async block's success arm: install the hydration and
     /// start a watch per active job. Empty when the loop was already
     /// cancelled (the `unsubscribed || cancelledRef.current` gate).
-    pub(crate) fn on_hydrated(&mut self, result: MigrationJobHydration) -> Vec<HydrationEffect> {
+    pub fn on_hydrated(&mut self, result: MigrationJobHydration) -> Vec<HydrationEffect> {
         if self.cancelled {
             return Vec::new();
         }
@@ -126,7 +126,7 @@ impl UseMigrationJobHydration {
 
     /// The async block's failure arm: surface the message. A no-op
     /// once cancelled.
-    pub(crate) fn on_hydration_error(&mut self, message: String) {
+    pub fn on_hydration_error(&mut self, message: String) {
         if self.cancelled {
             return;
         }
@@ -137,7 +137,7 @@ impl UseMigrationJobHydration {
     /// stop the watch when the job left queued/running. `None` when
     /// the loop was already cancelled — no state may change after
     /// unmount.
-    pub(crate) fn on_watch_update(
+    pub fn on_watch_update(
         &mut self,
         latest: MigrationJobViewVm,
     ) -> Option<Vec<HydrationEffect>> {
@@ -165,7 +165,7 @@ impl UseMigrationJobHydration {
     /// The unmount rule: unsubscribe only — stop local polling, never
     /// cancel the job itself. Idempotent; a watch already stopped by
     /// its terminal update is not stopped twice.
-    pub(crate) fn unmount(&mut self) -> Vec<HydrationEffect> {
+    pub fn unmount(&mut self) -> Vec<HydrationEffect> {
         self.cancelled = true;
         self.watches
             .iter_mut()
@@ -178,12 +178,12 @@ impl UseMigrationJobHydration {
     }
 
     /// `result.hydration`.
-    pub(crate) fn hydration(&self) -> Option<&MigrationJobHydration> {
+    pub fn hydration(&self) -> Option<&MigrationJobHydration> {
         self.hydration.as_ref()
     }
 
     /// `result.hydrationError`.
-    pub(crate) fn hydration_error(&self) -> Option<&str> {
+    pub fn hydration_error(&self) -> Option<&str> {
         self.hydration_error.as_deref()
     }
 }

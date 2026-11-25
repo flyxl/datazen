@@ -38,7 +38,7 @@ use datazen_ui_api::SavedTunnel;
 /// name + kind, so no credential field can appear (G9).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SavedTunnelSummary {
+pub struct SavedTunnelSummary {
     pub id: String,
     pub name: String,
     pub kind: datazen_ui_api::SavedTunnelKind,
@@ -48,14 +48,14 @@ pub(crate) struct SavedTunnelSummary {
 /// (`get_tunnel_usage`'s answer).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TunnelUsage {
+pub struct TunnelUsage {
     pub connection_ids: Vec<String>,
     pub connection_names: Vec<String>,
 }
 
 /// The tunnel command family's invoke targets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TunnelMethod {
+pub enum TunnelMethod {
     GetTunnels,
     GetTunnelSummaries,
     GetTunnel,
@@ -67,7 +67,7 @@ pub(crate) enum TunnelMethod {
 
 impl TunnelMethod {
     /// The invoke command.
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::GetTunnels => "get_tunnels",
             Self::GetTunnelSummaries => "get_tunnel_summaries",
@@ -82,40 +82,40 @@ impl TunnelMethod {
 
 /// `getTunnels()` — full entities, credentials included; only the
 /// edit form may call it (the comment's own rule).
-pub(crate) fn get_tunnels_request() -> (TunnelMethod, Value) {
+pub fn get_tunnels_request() -> (TunnelMethod, Value) {
     (TunnelMethod::GetTunnels, json!({}))
 }
 
 /// `getTunnelSummaries()` — the G9 projection for lists and pickers.
-pub(crate) fn get_tunnel_summaries_request() -> (TunnelMethod, Value) {
+pub fn get_tunnel_summaries_request() -> (TunnelMethod, Value) {
     (TunnelMethod::GetTunnelSummaries, json!({}))
 }
 
 /// `getTunnel(id)` — one full entity, `null` when absent (the host's
 /// decode).
-pub(crate) fn get_tunnel_request(id: &str) -> (TunnelMethod, Value) {
+pub fn get_tunnel_request(id: &str) -> (TunnelMethod, Value) {
     (TunnelMethod::GetTunnel, json!({ "id": id }))
 }
 
 /// `getTunnelUsage(id)` — which connections reference the tunnel.
-pub(crate) fn get_tunnel_usage_request(id: &str) -> (TunnelMethod, Value) {
+pub fn get_tunnel_usage_request(id: &str) -> (TunnelMethod, Value) {
     (TunnelMethod::GetTunnelUsage, json!({ "id": id }))
 }
 
 /// `saveTunnel(tunnel)` — upsert by id.
-pub(crate) fn save_tunnel_request(tunnel: &SavedTunnel) -> (TunnelMethod, Value) {
+pub fn save_tunnel_request(tunnel: &SavedTunnel) -> (TunnelMethod, Value) {
     (TunnelMethod::SaveTunnel, json!({ "tunnel": tunnel }))
 }
 
 /// `deleteTunnel(id)`.
-pub(crate) fn delete_tunnel_request(id: &str) -> (TunnelMethod, Value) {
+pub fn delete_tunnel_request(id: &str) -> (TunnelMethod, Value) {
     (TunnelMethod::DeleteTunnel, json!({ "id": id }))
 }
 
 /// `testTunnel(id, targetHost, targetPort)` — the round-trip probe
 /// through a saved tunnel; the answer is elapsed milliseconds (the
 /// host's decode).
-pub(crate) fn test_tunnel_request(
+pub fn test_tunnel_request(
     id: &str,
     target_host: &str,
     target_port: u16,

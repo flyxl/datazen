@@ -34,7 +34,7 @@ use crate::ui::kit::kit;
 ///
 /// The component edits the drafts directly (React's `onCommit` fires on every
 /// keystroke); the parent reads the two `TextEdit`s when it builds a query.
-pub(crate) struct FilterBetweenInput<'a, S> {
+pub struct FilterBetweenInput<'a, S> {
     key: String,
     lower: &'a TextEdit,
     upper: &'a TextEdit,
@@ -49,7 +49,7 @@ impl<'a, S: 'static> FilterBetweenInput<'a, S> {
     /// The editor of `lower` / `upper`, 28 points tall, 80 points wide, with
     /// the caller's two draft accessors (a text field without `on_edit` cannot
     /// take focus).
-    pub(crate) fn new(
+    pub fn new(
         key: impl Into<String>,
         lower: &'a TextEdit,
         upper: &'a TextEdit,
@@ -69,24 +69,24 @@ impl<'a, S: 'static> FilterBetweenInput<'a, S> {
     }
 
     /// The hint shown inside both bounds (React `placeholder`).
-    pub(crate) fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.placeholder = placeholder.into();
         self
     }
 
     /// The text between the two fields, e.g. `AND` (React `connectorLabel`).
-    pub(crate) fn connector_label(mut self, label: impl Into<String>) -> Self {
+    pub fn connector_label(mut self, label: impl Into<String>) -> Self {
         self.connector_label = label.into();
         self
     }
 
     /// The warning shown when the lower bound is above the upper bound.
-    pub(crate) fn inverted_label(mut self, label: impl Into<String>) -> Self {
+    pub fn inverted_label(mut self, label: impl Into<String>) -> Self {
         self.inverted_label = label.into();
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let inverted = is_inverted(&self.lower.text, &self.upper.text);
 
@@ -134,7 +134,7 @@ impl<'a, S: 'static> FilterBetweenInput<'a, S> {
 /// Only comparable values count: two numbers, or two timestamps the date
 /// parser understands. Everything else is left alone — a warning that shows up
 /// for a value pair that is not comparable is noise.
-pub(crate) fn is_inverted(lower: &str, upper: &str) -> bool {
+pub fn is_inverted(lower: &str, upper: &str) -> bool {
     let low = lower.trim();
     let high = upper.trim();
     if low.is_empty() || high.is_empty() {

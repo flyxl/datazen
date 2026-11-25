@@ -23,15 +23,15 @@
 //! is deliberate and documented there.
 
 /// Fixed node width. The header and column names truncate to fit.
-pub(crate) const ER_NODE_WIDTH: f32 = 260.0;
+pub const ER_NODE_WIDTH: f32 = 260.0;
 /// Table-name header.
-pub(crate) const ER_HEADER_HEIGHT: f32 = 36.0;
+pub const ER_HEADER_HEIGHT: f32 = 36.0;
 /// One column row.
-pub(crate) const ER_COLUMN_ROW_HEIGHT: f32 = 24.0;
+pub const ER_COLUMN_ROW_HEIGHT: f32 = 24.0;
 /// The "N columns" strip shown in place of the column list when collapsed.
-pub(crate) const ER_COLLAPSED_FOOTER_HEIGHT: f32 = 24.0;
+pub const ER_COLLAPSED_FOOTER_HEIGHT: f32 = 24.0;
 /// The container border, top and bottom.
-pub(crate) const ER_NODE_BORDER: f32 = 1.0;
+pub const ER_NODE_BORDER: f32 = 1.0;
 /// Above this many columns a table starts collapsed.
 ///
 /// The column list does not scroll (see [`er_node_body_height`]), so a
@@ -40,7 +40,7 @@ pub(crate) const ER_NODE_BORDER: f32 = 1.0;
 /// columns it is hiding. A column count is never negative, so this stays a
 /// `usize` (the clamping functions below are the ones React tests with
 /// out-of-range values).
-pub(crate) const ER_AUTO_COLLAPSE_COLUMNS: usize = 30;
+pub const ER_AUTO_COLLAPSE_COLUMNS: usize = 30;
 
 /// Height of the column list.
 ///
@@ -50,7 +50,7 @@ pub(crate) const ER_AUTO_COLLAPSE_COLUMNS: usize = 30;
 /// edge endpoint outside the node, on top of whatever is drawn there.
 /// Precise per-column edges and an internal scroll are mutually exclusive;
 /// the diagram keeps the edges and collapses wide tables instead.
-pub(crate) fn er_node_body_height(column_count: i32) -> f32 {
+pub fn er_node_body_height(column_count: i32) -> f32 {
     column_count.max(0) as f32 * ER_COLUMN_ROW_HEIGHT
 }
 
@@ -58,7 +58,7 @@ pub(crate) fn er_node_body_height(column_count: i32) -> f32 {
 /// coordinates.
 ///
 /// This is where that column's handles sit, so an edge can meet the exact row.
-pub(crate) fn er_column_row_center_y(index: i32) -> f32 {
+pub fn er_column_row_center_y(index: i32) -> f32 {
     ER_NODE_BORDER
         + ER_HEADER_HEIGHT
         + index.max(0) as f32 * ER_COLUMN_ROW_HEIGHT
@@ -66,7 +66,7 @@ pub(crate) fn er_column_row_center_y(index: i32) -> f32 {
 }
 
 /// Total rendered node height, matching `TableNode` exactly.
-pub(crate) fn er_node_height(column_count: i32, collapsed: bool) -> f32 {
+pub fn er_node_height(column_count: i32, collapsed: bool) -> f32 {
     let inner = if collapsed {
         ER_HEADER_HEIGHT + ER_COLLAPSED_FOOTER_HEIGHT
     } else {

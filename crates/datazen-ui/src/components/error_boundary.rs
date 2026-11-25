@@ -84,7 +84,7 @@ use crate::ui::kit::kit;
 /// reports a failure as a plain string has no stack to give).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired at the app root
-pub(crate) struct CapturedError {
+pub struct CapturedError {
     pub message: String,
     pub stack: Option<String>,
 }
@@ -92,7 +92,7 @@ pub(crate) struct CapturedError {
 /// React's `State`: whether the fallback shows, and the error behind it.
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // reusable component; wired at the app root
-pub(crate) struct ErrorBoundaryState {
+pub struct ErrorBoundaryState {
     pub has_error: bool,
     pub error: Option<CapturedError>,
 }
@@ -102,7 +102,7 @@ impl ErrorBoundaryState {
     /// The host's report of a failure: React's `getDerivedStateFromError`
     /// entry. Sets `has_error` and keeps the error; a later capture
     /// replaces the previous error, as a second React throw would.
-    pub(crate) fn capture(&mut self, message: impl Into<String>, stack: Option<String>) {
+    pub fn capture(&mut self, message: impl Into<String>, stack: Option<String>) {
         self.has_error = true;
         self.error = Some(CapturedError {
             message: message.into(),
@@ -113,7 +113,7 @@ impl ErrorBoundaryState {
     /// React's `handleDismiss`: clears the state so the children render
     /// again. (React re-renders the same children, which may throw
     /// again — the host sees a fresh capture if they do.)
-    pub(crate) fn dismiss(&mut self) {
+    pub fn dismiss(&mut self) {
         self.has_error = false;
         self.error = None;
     }
@@ -121,7 +121,7 @@ impl ErrorBoundaryState {
     /// React's `{error?.message || t('backend.unknownError')}`: the
     /// message, or the fallback when there is no error or its message
     /// is empty.
-    pub(crate) fn display_message(&self) -> String {
+    pub fn display_message(&self) -> String {
         match self
             .error
             .as_ref()
@@ -136,7 +136,7 @@ impl ErrorBoundaryState {
     /// t('backend.unknownError')` — the stack when it has one, else the
     /// message, else the fallback. Empty strings count as absent on
     /// both steps, as JS `||` does.
-    pub(crate) fn copy_text(&self) -> String {
+    pub fn copy_text(&self) -> String {
         let stack = self
             .error
             .as_ref()
@@ -160,25 +160,25 @@ fn non_empty(value: &str) -> Option<&str> {
 
 /// Reads the boundary state out of the app's `S`.
 #[allow(dead_code)] // reusable component; wired at the app root
-pub(crate) type ReadBoundaryStateFn<S> = fn(&S) -> &ErrorBoundaryState;
+pub type ReadBoundaryStateFn<S> = fn(&S) -> &ErrorBoundaryState;
 
 /// React's `handleDismiss`, on the app's `S`.
 #[allow(dead_code)] // reusable component; wired at the app root
-pub(crate) type DismissBoundaryFn<S> = fn(&mut S);
+pub type DismissBoundaryFn<S> = fn(&mut S);
 
 /// React's `handleReload` (`window.location.reload()`), on the app's `S`.
 #[allow(dead_code)] // reusable component; wired at the app root
-pub(crate) type ReloadFn<S> = fn(&mut S);
+pub type ReloadFn<S> = fn(&mut S);
 
 /// The clipboard write for [`ErrorBoundaryState::copy_text`], on the app's
 /// `S` (React's `navigator.clipboard.writeText`).
 #[allow(dead_code)] // reusable component; wired at the app root
-pub(crate) type CopyErrorFn<S> = fn(&mut S, String);
+pub type CopyErrorFn<S> = fn(&mut S, String);
 
 /// The boundary. `build` renders `children` unchanged while there is no
 /// error, and the full-screen fallback once the host has captured one.
 #[allow(dead_code)] // reusable component; wired at the app root
-pub(crate) struct ErrorBoundary<S: 'static> {
+pub struct ErrorBoundary<S: 'static> {
     key: String,
     read_state: ReadBoundaryStateFn<S>,
     dismiss: DismissBoundaryFn<S>,
@@ -188,7 +188,7 @@ pub(crate) struct ErrorBoundary<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired at the app root
 impl<S: 'static> ErrorBoundary<S> {
-    pub(crate) fn new(read_state: ReadBoundaryStateFn<S>, dismiss: DismissBoundaryFn<S>) -> Self {
+    pub fn new(read_state: ReadBoundaryStateFn<S>, dismiss: DismissBoundaryFn<S>) -> Self {
         Self {
             key: "error-boundary".to_string(),
             read_state,
@@ -199,21 +199,21 @@ impl<S: 'static> ErrorBoundary<S> {
     }
 
     /// Override the key prefix.
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
 
     /// The host's reload for the retry button; without it the button
     /// renders but does nothing.
-    pub(crate) fn on_reload(mut self, on_reload: ReloadFn<S>) -> Self {
+    pub fn on_reload(mut self, on_reload: ReloadFn<S>) -> Self {
         self.on_reload = Some(on_reload);
         self
     }
 
     /// The host's clipboard write for the copy button; without it the
     /// button renders but does nothing.
-    pub(crate) fn on_copy(mut self, on_copy: CopyErrorFn<S>) -> Self {
+    pub fn on_copy(mut self, on_copy: CopyErrorFn<S>) -> Self {
         self.on_copy = Some(on_copy);
         self
     }
@@ -221,7 +221,7 @@ impl<S: 'static> ErrorBoundary<S> {
     /// Renders the children, or the fallback when the state carries an
     /// error. `children` is the host's app content, already keyed by
     /// its own builder.
-    pub(crate) fn build(self, s: &S, children: El, dark: bool) -> El {
+    pub fn build(self, s: &S, children: El, dark: bool) -> El {
         let state = (self.read_state)(s);
         if !state.has_error {
             return children;

@@ -56,7 +56,7 @@ fn no_op<S>() -> Rc<dyn Fn(&mut S)> {
 
 /// The builder. `S` is the host state that owns the execute / close
 /// actions.
-pub(crate) struct TransferExecuteConfirmDialog<S: 'static> {
+pub struct TransferExecuteConfirmDialog<S: 'static> {
     open: bool,
     open_epoch: u64,
     write_mode: WriteMode,
@@ -66,7 +66,7 @@ pub(crate) struct TransferExecuteConfirmDialog<S: 'static> {
 }
 
 impl<S: 'static> TransferExecuteConfirmDialog<S> {
-    pub(crate) fn new(
+    pub fn new(
         open: bool,
         write_mode: WriteMode,
         write_plans: Vec<TransferWritePlanVm>,
@@ -83,19 +83,19 @@ impl<S: 'static> TransferExecuteConfirmDialog<S> {
 
     /// The open generation (a reopened dialog restarts at the top);
     /// the window bumps it on open, exactly as the other dialogs do.
-    pub(crate) fn open_epoch(mut self, epoch: u64) -> Self {
+    pub fn open_epoch(mut self, epoch: u64) -> Self {
         self.open_epoch = epoch;
         self
     }
 
     /// React `onClose`: the cancel button, the header close, and Escape.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// React `onConfirm`: the proceed button.
-    pub(crate) fn on_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm = Some(Rc::new(f));
         self
     }
@@ -103,7 +103,7 @@ impl<S: 'static> TransferExecuteConfirmDialog<S> {
     /// The dialog on its own kit root. The root itself mounts nothing
     /// visible (React returns the `<Dialog>` only); the dialog lives in
     /// the overlay layer.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut layer = Vec::new();
         let root = self.build_inner(&k, &mut layer);
@@ -113,7 +113,7 @@ impl<S: 'static> TransferExecuteConfirmDialog<S> {
     /// The dialog pushed into the caller's layer; the root element is
     /// returned for the caller to place (an empty column, the fragment
     /// root of the React source).
-    pub(crate) fn build_inner(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build_inner(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let close = self.on_close.clone().unwrap_or_else(no_op::<S>);
         let confirm = self.on_confirm.clone().unwrap_or_else(no_op::<S>);
         let intro_key = match self.write_mode {

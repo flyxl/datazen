@@ -32,12 +32,12 @@ use chrono::{Local, TimeZone};
 use super::chart_field_inference::ChartValue;
 
 /// `Date.UTC(2000, 0, 1)`.
-pub(crate) const EPOCH_MS_MIN: f64 = 946_684_800_000.0;
+pub const EPOCH_MS_MIN: f64 = 946_684_800_000.0;
 /// `Date.UTC(2100, 0, 1)`.
-pub(crate) const EPOCH_MS_MAX: f64 = 4_102_444_800_000.0;
+pub const EPOCH_MS_MAX: f64 = 4_102_444_800_000.0;
 
 /// `formatNumber`.
-pub(crate) fn format_number(value: Option<f64>) -> String {
+pub fn format_number(value: Option<f64>) -> String {
     let Some(value) = value else {
         return String::new();
     };
@@ -66,7 +66,7 @@ pub(crate) fn format_number(value: Option<f64>) -> String {
 }
 
 /// `formatCompact`.
-pub(crate) fn format_compact(value: Option<f64>) -> String {
+pub fn format_compact(value: Option<f64>) -> String {
     let Some(value) = value else {
         return String::new();
     };
@@ -94,7 +94,7 @@ pub(crate) fn format_compact(value: Option<f64>) -> String {
 }
 
 /// `formatPercent`. `value` is a ratio: `0.5` → `50.0%`.
-pub(crate) fn format_percent(value: Option<f64>) -> String {
+pub fn format_percent(value: Option<f64>) -> String {
     let Some(value) = value else {
         return String::new();
     };
@@ -102,12 +102,12 @@ pub(crate) fn format_percent(value: Option<f64>) -> String {
 }
 
 /// `isEpochMs`: inclusive `[2000-01-01, 2100-01-01]` UTC.
-pub(crate) fn is_epoch_ms(value: f64) -> bool {
+pub fn is_epoch_ms(value: f64) -> bool {
     value >= EPOCH_MS_MIN && value <= EPOCH_MS_MAX
 }
 
 /// `formatEpochMs`: local `HH:mm:ss`.
-pub(crate) fn format_epoch_ms(ts: f64) -> String {
+pub fn format_epoch_ms(ts: f64) -> String {
     let millis = ts.trunc() as i64;
     match Local.timestamp_millis_opt(millis).single() {
         Some(dt) => dt.format("%H:%M:%S").to_string(),
@@ -116,7 +116,7 @@ pub(crate) fn format_epoch_ms(ts: f64) -> String {
 }
 
 /// `formatAxisTick`.
-pub(crate) fn format_axis_tick(value: &ChartValue) -> String {
+pub fn format_axis_tick(value: &ChartValue) -> String {
     match value {
         ChartValue::Null => String::new(),
         ChartValue::Number(number) => {

@@ -9,7 +9,7 @@ use super::aria::ContextMenuTarget;
 /// full journey without faking a host store.
 #[allow(dead_code)] // host port; consumer: the navigator host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum RowAction {
+pub enum RowAction {
     ToggleGroup(String),
     SelectConnection(String),
     OpenConnection(String),
@@ -26,7 +26,7 @@ pub(crate) enum RowAction {
 }
 
 #[allow(dead_code)] // host port; consumer: the navigator host (not wired).
-pub(crate) struct TreeRowHostPort<S> {
+pub struct TreeRowHostPort<S> {
     pub on_action: Option<Rc<dyn Fn(&mut S, RowAction) + 'static>>,
 }
 
@@ -37,7 +37,7 @@ impl<S> Default for TreeRowHostPort<S> {
 }
 
 impl<S: 'static> TreeRowHostPort<S> {
-    pub(crate) fn emit(&self, state: &mut S, action: RowAction) {
+    pub fn emit(&self, state: &mut S, action: RowAction) {
         if let Some(on_action) = &self.on_action {
             on_action(state, action);
         }

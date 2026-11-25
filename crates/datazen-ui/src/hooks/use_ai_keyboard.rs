@@ -26,7 +26,7 @@
 
 /// The hook's state: one composition flag (the rAF-clear window included).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct AiKeyboardInput {
+pub struct AiKeyboardInput {
     composing: bool,
     /// `compositionend` fired; the clear is pending the frame boundary.
     clear_pending: bool,
@@ -34,20 +34,20 @@ pub(crate) struct AiKeyboardInput {
 
 impl AiKeyboardInput {
     /// `compositionstart`.
-    pub(crate) fn composition_start(&mut self) {
+    pub fn composition_start(&mut self) {
         self.composing = true;
         self.clear_pending = false;
     }
 
     /// `compositionend` — the flag stays set until the frame boundary
     /// (React's `requestAnimationFrame` clear).
-    pub(crate) fn composition_end(&mut self) {
+    pub fn composition_end(&mut self) {
         self.clear_pending = true;
     }
 
     /// The frame boundary: a pending composition clear lands here, after
     /// any keydown that raced the composition end.
-    pub(crate) fn end_of_frame(&mut self) {
+    pub fn end_of_frame(&mut self) {
         if self.clear_pending {
             self.composing = false;
             self.clear_pending = false;
@@ -58,7 +58,7 @@ impl AiKeyboardInput {
     /// swallow the Enter); `None` for Shift+Enter (the newline), any
     /// composition-time Enter (both the tracked flag and the native
     /// `isComposing` guard), and every other key.
-    pub(crate) fn on_key(&self, key: &rune::Key, shift: bool, native_is_composing: bool) -> Option<()> {
+    pub fn on_key(&self, key: &rune::Key, shift: bool, native_is_composing: bool) -> Option<()> {
         if !matches!(key, rune::Key::Enter) {
             return None;
         }
@@ -70,13 +70,13 @@ impl AiKeyboardInput {
 
     /// Whether a composition is in flight (or its clear is pending — the
     /// rAF window still counts, like React's still-set ref).
-    pub(crate) fn is_composing(&self) -> bool {
+    pub fn is_composing(&self) -> bool {
         self.composing
     }
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     #[test]

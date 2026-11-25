@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 /// React `ArtifactExportResponse`: the Host's answer to the export.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status")]
-pub(crate) enum ArtifactExportResponse {
+pub enum ArtifactExportResponse {
     /// The native save dialog was cancelled — a normal exit, not an error.
     #[serde(rename = "cancelled")]
     Cancelled,
@@ -37,7 +37,7 @@ pub(crate) enum ArtifactExportResponse {
 
 /// `artifactCommands.exportArtifact(artifactId)`: the
 /// `export_artifact` legacy call's exact wire bag.
-pub(crate) fn export_artifact_request(artifact_id: &str) -> (&'static str, serde_json::Value) {
+pub fn export_artifact_request(artifact_id: &str) -> (&'static str, serde_json::Value) {
     (
         "export_artifact",
         serde_json::json!({ "request": { "artifactId": artifact_id } }),
@@ -45,7 +45,7 @@ pub(crate) fn export_artifact_request(artifact_id: &str) -> (&'static str, serde
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     #[test]

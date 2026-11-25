@@ -19,9 +19,9 @@ pub struct DataGrid {
     columns: Vec<String>,
     /// Per-column widths in points (A4), persisted per table.
     col_widths: Vec<u32>,
-    pub(crate) anchor: (u32, u32),
-    pub(crate) focus: (u32, u32),
-    pub(crate) editing: bool,
+    pub anchor: (u32, u32),
+    pub focus: (u32, u32),
+    pub editing: bool,
     editable: bool,
     page: u32,
     page_size: u32,
@@ -35,7 +35,7 @@ pub struct DataGrid {
     read_only: Option<String>,
     /// The loaded page's table name, for panel titles.
     table: Option<String>,
-    pub(crate) editor: TextEdit,
+    pub editor: TextEdit,
     /// Horizontal scroll, in points. `on_scroll_offset` writes it; it cannot touch this struct.
     scroll_x: rune::Live<f32>,
     origin_col: u32,
@@ -326,7 +326,7 @@ impl DataGrid {
     }
 
     /// The loaded page's value at a cell, or the POC fallback when no page is loaded.
-    pub(crate) fn original(&self, row: u32, col: u32) -> String {
+    pub fn original(&self, row: u32, col: u32) -> String {
         self.source
             .as_ref()
             .and_then(|rows| rows.get(row as usize))
@@ -482,7 +482,7 @@ impl DataGrid {
         }
     }
 
-    pub(crate) fn nudge(&mut self, dr: i32, dc: i32, extend: bool) {
+    pub fn nudge(&mut self, dr: i32, dc: i32, extend: bool) {
         if self.editing {
             return;
         }
@@ -504,7 +504,7 @@ impl DataGrid {
         }
     }
 
-    pub(crate) fn rect(&self) -> (u32, u32, u32, u32) {
+    pub fn rect(&self) -> (u32, u32, u32, u32) {
         let r0 = self.anchor.0.min(self.focus.0);
         let r1 = self.anchor.0.max(self.focus.0);
         let c0 = self.anchor.1.min(self.focus.1);
@@ -512,7 +512,7 @@ impl DataGrid {
         (r0, r1, c0, c1)
     }
 
-    pub(crate) fn covers(&self, row: u32, col: u32) -> bool {
+    pub fn covers(&self, row: u32, col: u32) -> bool {
         let (r0, r1, c0, c1) = self.rect();
         row >= r0 && row <= r1 && col >= c0 && col <= c1
     }

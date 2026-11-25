@@ -18,19 +18,19 @@
 //! `metadata_cache`'s module docs for the immediate-mode adaptations.
 #![allow(dead_code)] // consumers: the SQL editor / VQB completion layer (not landed yet)
 
-pub(crate) mod from_relation_metadata;
-pub(crate) mod identity;
-pub(crate) mod invalidation;
-pub(crate) mod metadata_cache;
-pub(crate) mod ordered_map;
-pub(crate) mod relation_prediction_types;
-pub(crate) mod schema;
-pub(crate) mod session_config;
+pub mod from_relation_metadata;
+pub mod identity;
+pub mod invalidation;
+pub mod metadata_cache;
+pub mod ordered_map;
+pub mod relation_prediction_types;
+pub mod schema;
+pub mod session_config;
 
-pub(crate) use from_relation_metadata::*;
-pub(crate) use identity::*;
-pub(crate) use invalidation::*;
-pub(crate) use metadata_cache::*;
-pub(crate) use relation_prediction_types::*;
-pub(crate) use schema::*;
-pub(crate) use session_config::*;
+pub use from_relation_metadata::*;
+pub use identity::*;
+pub use invalidation::*;
+pub use metadata_cache::*;
+pub use relation_prediction_types::*;
+pub use schema::*;
+pub use session_config::*;

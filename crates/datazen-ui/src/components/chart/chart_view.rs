@@ -115,37 +115,37 @@ use crate::icons::ICON_MINIMIZE_2;
 use crate::ui::kit::kit;
 
 /// The view root, React's `flex flex-1 flex-col min-h-0`.
-pub(crate) const ROOT_KEY: &str = "chart-view";
+pub const ROOT_KEY: &str = "chart-view";
 /// The toolbar + axis panel + chart area row, React's `flex flex-1 min-h-0`.
-pub(crate) const BODY_KEY: &str = "chart-view-body";
+pub const BODY_KEY: &str = "chart-view-body";
 /// The axis-configurator slot (React `<AxisConfigurator/>`).
-pub(crate) const AXIS_SLOT_KEY: &str = "chart-view-axis-slot";
+pub const AXIS_SLOT_KEY: &str = "chart-view-axis-slot";
 /// The honest note the unported configurator slot carries.
-pub(crate) const AXIS_SLOT_NOTE_KEY: &str = "chart-view-axis-slot-note";
+pub const AXIS_SLOT_NOTE_KEY: &str = "chart-view-axis-slot-note";
 /// The scrollable chart area, React's `div ref={chartRef}`.
-pub(crate) const AREA_KEY: &str = "chart-view-area";
+pub const AREA_KEY: &str = "chart-view-area";
 /// The split-view tile grid, React's `grid grid-cols-1 gap-2 p-2 md:grid-cols-2`.
-pub(crate) const SPLIT_GRID_KEY: &str = "chart-view-split-grid";
+pub const SPLIT_GRID_KEY: &str = "chart-view-split-grid";
 /// The expanded overlay, React's `fixed inset-0 top-10 z-50` portal.
-pub(crate) const OVERLAY_KEY: &str = "chart-view-expand";
+pub const OVERLAY_KEY: &str = "chart-view-expand";
 /// The overlay's toolbar row.
-pub(crate) const OVERLAY_BAR_KEY: &str = "chart-view-expand-bar";
+pub const OVERLAY_BAR_KEY: &str = "chart-view-expand-bar";
 /// The overlay's title (`t('chart.expandTitle')`).
-pub(crate) const OVERLAY_TITLE_KEY: &str = "chart-view-expand-title";
+pub const OVERLAY_TITLE_KEY: &str = "chart-view-expand-title";
 /// The overlay bar's `flex-1` spacer.
-pub(crate) const OVERLAY_SPACER_KEY: &str = "chart-view-expand-spacer";
+pub const OVERLAY_SPACER_KEY: &str = "chart-view-expand-spacer";
 /// The overlay's PNG button.
-pub(crate) const OVERLAY_PNG_KEY: &str = "chart-view-expand-png";
+pub const OVERLAY_PNG_KEY: &str = "chart-view-expand-png";
 /// The overlay's SVG button.
-pub(crate) const OVERLAY_SVG_KEY: &str = "chart-view-expand-svg";
+pub const OVERLAY_SVG_KEY: &str = "chart-view-expand-svg";
 /// The overlay bar's hairline before the close button.
-pub(crate) const OVERLAY_SEP_KEY: &str = "chart-view-expand-sep";
+pub const OVERLAY_SEP_KEY: &str = "chart-view-expand-sep";
 /// The overlay's close button (`t('chart.collapse')`).
-pub(crate) const OVERLAY_CLOSE_KEY: &str = "chart-view-expand-close";
+pub const OVERLAY_CLOSE_KEY: &str = "chart-view-expand-close";
 /// The overlay's configurator + canvas row.
-pub(crate) const OVERLAY_CONTENT_KEY: &str = "chart-view-expand-content";
+pub const OVERLAY_CONTENT_KEY: &str = "chart-view-expand-content";
 /// The overlay's chart area, React's `div ref={expandedChartRef}`.
-pub(crate) const OVERLAY_AREA_KEY: &str = "chart-view-expand-area";
+pub const OVERLAY_AREA_KEY: &str = "chart-view-expand-area";
 
 // Tailwind geometry, verbatim.
 /// React `top-10` — the overlay starts below the app's 40pt top band.
@@ -188,7 +188,7 @@ const CHIP_Y: f32 = 4.0;
 const AXIS_SLOT_W: f32 = 208.0;
 
 /// React `MAX_CHART_ROWS` — the plotted-rows cap (`chartResult`'s slice).
-pub(crate) const MAX_CHART_ROWS: usize = 1000;
+pub const MAX_CHART_ROWS: usize = 1000;
 
 type ChangeFn<S> = Rc<dyn Fn(&mut S, ChartConfig)>;
 type ActionFn<S> = Rc<dyn Fn(&mut S)>;
@@ -202,19 +202,19 @@ type DataPointClickFn<S> = Rc<dyn Fn(&mut S, usize)>;
 /// chart pipeline reads only the column descriptors and the row cells, so the
 /// mirror carries exactly those — `sql`, provenance, timing and flags are out.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct StatementResult {
+pub struct StatementResult {
     /// React `columns: ColumnInfo[]`.
-    pub(crate) columns: Vec<ColumnInfo>,
+    pub columns: Vec<ColumnInfo>,
     /// React `rows: (Value | null)[][]`.
-    pub(crate) rows: Vec<Vec<StatementCell>>,
+    pub rows: Vec<Vec<StatementCell>>,
 }
 
 /// Lean mirror of `ColumnInfo`: field inference reads `name` and `dataType`
 /// only (`nullable` stays with the T213 full mirror).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ColumnInfo {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
+pub struct ColumnInfo {
+    pub name: String,
+    pub data_type: String,
 }
 
 /// Lean mirror of the wire `Value` union's chart-relevant cell space. The
@@ -223,7 +223,7 @@ pub(crate) struct ColumnInfo {
 /// never cross into the chart VM (the same ruling `ChartField.sampleValues`
 /// documents).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum StatementCell {
+pub enum StatementCell {
     Text(String),
     Number(f64),
     Bool(bool),
@@ -237,21 +237,21 @@ pub(crate) enum StatementCell {
 /// lives with the `datazen-ui-api` chart vocabulary (T090) and the
 /// `lib/chart/recommend.ts` track.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ChartRecommendation {
-    pub(crate) chart_type: ChartType,
-    pub(crate) x_axis: Option<String>,
-    pub(crate) y_axes: Vec<String>,
-    pub(crate) group_by: Option<String>,
-    pub(crate) aggregation: super::chart_canvas::AggregationType,
+pub struct ChartRecommendation {
+    pub chart_type: ChartType,
+    pub x_axis: Option<String>,
+    pub y_axes: Vec<String>,
+    pub group_by: Option<String>,
+    pub aggregation: super::chart_canvas::AggregationType,
 }
 
 /// Lean mirror of `lib/chart/transform.ts`'s `TransformResult` — the pivot
 /// output the renderers and this view consume. Owned by that lib task; the
 /// family's `ChartDataPoint` (in `chart_canvas.rs`) is the row shape.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransformResult {
-    pub(crate) data: Vec<ChartDataPoint>,
-    pub(crate) series_keys: Vec<String>,
+pub struct TransformResult {
+    pub data: Vec<ChartDataPoint>,
+    pub series_keys: Vec<String>,
 }
 
 // ---- The lib/chart pipeline seam ---------------------------------------------
@@ -261,7 +261,7 @@ pub(crate) struct TransformResult {
 /// (`fieldInference.ts`, `recommend.ts`, `transform.ts`); until they land, a
 /// caller wires its own implementation and this module stays out of the
 /// inference/aggregation business.
-pub(crate) trait ChartPipeline {
+pub trait ChartPipeline {
     /// React `inferAllFields(result)` → the result's field descriptors.
     fn infer_fields(&self, result: &StatementResult) -> Vec<ChartField>;
     /// React `recommendChart(fields, rowCount)` → `None` when no rule fires.
@@ -276,10 +276,10 @@ pub(crate) trait ChartPipeline {
 /// `onConfigChange` payload when a derivation (not a saved config) produced
 /// it — React's effect notifies only on that path.
 #[derive(Clone, Debug)]
-pub(crate) struct ConfigSync {
-    pub(crate) config: ChartConfig,
+pub struct ConfigSync {
+    pub config: ChartConfig,
     /// `Some(config)` when the caller should forward it to `onConfigChange`.
-    pub(crate) notify: Option<ChartConfig>,
+    pub notify: Option<ChartConfig>,
 }
 
 /// React's config initialiser and its re-derivation effect, folded into one
@@ -287,7 +287,7 @@ pub(crate) struct ConfigSync {
 /// (React's `[savedConfig, recommendation, fields, onConfigChange]`
 /// dependency list): a saved config wins outright; otherwise the
 /// recommendation, else the default, and the derived value is notified.
-pub(crate) fn sync_config(
+pub fn sync_config(
     saved: Option<&ChartConfig>,
     recommendation: Option<&ChartRecommendation>,
     fields: &[ChartField],
@@ -312,7 +312,7 @@ pub(crate) fn sync_config(
 
 /// React `recommendationToConfig`: the default config with the
 /// recommendation's five fields copied over.
-pub(crate) fn recommendation_to_config(rec: &ChartRecommendation) -> ChartConfig {
+pub fn recommendation_to_config(rec: &ChartRecommendation) -> ChartConfig {
     ChartConfig {
         chart_type: rec.chart_type,
         x_axis: rec.x_axis.clone(),
@@ -325,7 +325,7 @@ pub(crate) fn recommendation_to_config(rec: &ChartRecommendation) -> ChartConfig
 
 /// React `defaultConfig`: the default config plotting the first numeric
 /// column, or no series when the result has none.
-pub(crate) fn default_config(fields: &[ChartField]) -> ChartConfig {
+pub fn default_config(fields: &[ChartField]) -> ChartConfig {
     let numerics: Vec<&ChartField> = fields
         .iter()
         .filter(|f| f.inferred_type == InferredFieldType::Numeric)
@@ -369,23 +369,23 @@ fn render_config(config: &ChartConfig, series_keys: &[String]) -> ChartConfig {
 /// (fields, config, recommendation, `onChange` as the view's own
 /// [`ChartView::on_change`] seam). T300 owns the panel; the slot closure can
 /// clone the `on_change` handle into its own press handlers.
-pub(crate) struct AxisSlot<'a, S: 'static> {
-    pub(crate) fields: &'a [ChartField],
-    pub(crate) config: &'a ChartConfig,
-    pub(crate) recommendation: Option<&'a ChartRecommendation>,
-    pub(crate) on_change: Option<ChangeFn<S>>,
+pub struct AxisSlot<'a, S: 'static> {
+    pub fields: &'a [ChartField],
+    pub config: &'a ChartConfig,
+    pub recommendation: Option<&'a ChartRecommendation>,
+    pub on_change: Option<ChangeFn<S>>,
 }
 
 /// The slot render seam: an injected configurator builds its element from the
 /// slot context.
-pub(crate) type AxisSlotFn<S> = Rc<dyn for<'a> Fn(&'a AxisSlot<'a, S>) -> El>;
+pub type AxisSlotFn<S> = Rc<dyn for<'a> Fn(&'a AxisSlot<'a, S>) -> El>;
 
 // ---- The view ----------------------------------------------------------------
 
 /// The chart family's container: toolbar, axis slot, chart area (single
 /// canvas, split tiles, or the no-config empty state) and the expanded
 /// overlay.
-pub(crate) struct ChartView<'a, S: 'static> {
+pub struct ChartView<'a, S: 'static> {
     result: &'a StatementResult,
     pipeline: &'a dyn ChartPipeline,
     config: &'a ChartConfig,
@@ -408,7 +408,7 @@ pub(crate) struct ChartView<'a, S: 'static> {
 impl<'a, S: 'static> ChartView<'a, S> {
     /// The React props' required trio: the result, the `lib/chart` pipeline
     /// and the live config.
-    pub(crate) fn new(
+    pub fn new(
         result: &'a StatementResult,
         pipeline: &'a dyn ChartPipeline,
         config: &'a ChartConfig,
@@ -435,13 +435,13 @@ impl<'a, S: 'static> ChartView<'a, S> {
     }
 
     /// React `expanded` — the overlay state, owned by the caller.
-    pub(crate) fn expanded(mut self, expanded: bool) -> Self {
+    pub fn expanded(mut self, expanded: bool) -> Self {
         self.expanded = expanded;
         self
     }
 
     /// React `splitView` — the split-tile state, owned by the caller.
-    pub(crate) fn split_view(mut self, split: bool) -> Self {
+    pub fn split_view(mut self, split: bool) -> Self {
         self.split_view = split;
         self
     }
@@ -449,14 +449,14 @@ impl<'a, S: 'static> ChartView<'a, S> {
     /// React `paletteEpoch` — bumped by the caller when the theme pack
     /// changes (React listens for `datazen:theme-pack-changed`; no Rune
     /// channel exists yet, so the counter is the seam).
-    pub(crate) fn palette_epoch(mut self, epoch: u32) -> Self {
+    pub fn palette_epoch(mut self, epoch: u32) -> Self {
         self.palette_epoch = epoch;
         self
     }
 
     /// React `exportOpen` (the toolbar dropdown's state, owned by the caller
     /// per the T059 immediate-mode split).
-    pub(crate) fn export_open(mut self, open: bool) -> Self {
+    pub fn export_open(mut self, open: bool) -> Self {
         self.export_open = open;
         self
     }
@@ -464,37 +464,37 @@ impl<'a, S: 'static> ChartView<'a, S> {
     /// React `setConfig`: toolbar/configurator edits arrive as a full
     /// replacement config; the caller sets its state and forwards the
     /// `onConfigChange` notification in this closure.
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, ChartConfig) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, ChartConfig) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
     /// React `onToggleSplit` (the toolbar's split button).
-    pub(crate) fn on_toggle_split(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_split(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_split = Some(Rc::new(f));
         self
     }
 
     /// React `onExpand` (the toolbar's expand button: `setExpanded(true)`).
-    pub(crate) fn on_expand(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_expand(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_expand = Some(Rc::new(f));
         self
     }
 
     /// The overlay's close button: React `onClose` (`setExpanded(false)`).
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// The toolbar export trigger's press (React flips `exportOpen`).
-    pub(crate) fn on_export_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_export_toggle = Some(Rc::new(f));
         self
     }
 
     /// The toolbar export dropdown's dismissal.
-    pub(crate) fn on_export_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_export_close = Some(Rc::new(f));
         self
     }
@@ -503,20 +503,20 @@ impl<'a, S: 'static> ChartView<'a, S> {
     /// the chart element. The encoding and the `chart-${Date.now()}` filename
     /// (with its clock) are the caller's; both the toolbar dropdown and the
     /// overlay's buttons route here.
-    pub(crate) fn on_export(mut self, f: impl Fn(&mut S, ExportFormat) + 'static) -> Self {
+    pub fn on_export(mut self, f: impl Fn(&mut S, ExportFormat) + 'static) -> Self {
         self.on_export = Some(Rc::new(f));
         self
     }
 
     /// React `onDataPointClick`, threaded to every non-overlay canvas.
-    pub(crate) fn on_data_point_click(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_data_point_click(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_data_point_click = Some(Rc::new(f));
         self
     }
 
     /// The AxisConfigurator slot (T300): an injected panel renders from
     /// [`AxisSlot`]. Unwired, the layout keeps an honest placeholder.
-    pub(crate) fn axis_configurator(
+    pub fn axis_configurator(
         mut self,
         f: impl for<'b> Fn(&'b AxisSlot<'b, S>) -> El + 'static,
     ) -> Self {
@@ -526,7 +526,7 @@ impl<'a, S: 'static> ChartView<'a, S> {
 
     /// The renderer factory passed through to every canvas — the
     /// dispatcher's documented injection point for the five chart engines.
-    pub(crate) fn renderer_factory(
+    pub fn renderer_factory(
         mut self,
         f: impl Fn(ChartType) -> Box<dyn ChartRenderer<S> + 'static> + 'static,
     ) -> Self {
@@ -537,7 +537,7 @@ impl<'a, S: 'static> ChartView<'a, S> {
     /// Builds the view. `layer` is the caller's top overlay channel (the
     /// `document.body` portal target): the toolbar's dropdowns and the
     /// expanded overlay mount there, the overlay last.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         // React's whole memo chain evaluates above the early returns — hooks
         // must precede them (source #310): fields → recommendation →
         // chartResult (the row cap) → transformData → renderConfig →

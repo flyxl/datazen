@@ -35,41 +35,41 @@ use crate::ui::kit::kit;
 use crate::ui::spinner::{Spinner, SpinnerSize};
 use crate::ui::table::Column;
 
-pub(crate) const ROOT_KEY: &str = "foreign-keys-view";
-pub(crate) const LOADING_KEY: &str = "foreign-keys-loading";
-pub(crate) const ERROR_KEY: &str = "foreign-keys-error";
-pub(crate) const EMPTY_KEY: &str = "foreign-keys-empty";
-pub(crate) const HEADER_KEY: &str = "foreign-keys-header";
-pub(crate) const TABLE_KEY: &str = "foreign-keys-table";
+pub const ROOT_KEY: &str = "foreign-keys-view";
+pub const LOADING_KEY: &str = "foreign-keys-loading";
+pub const ERROR_KEY: &str = "foreign-keys-error";
+pub const EMPTY_KEY: &str = "foreign-keys-empty";
+pub const HEADER_KEY: &str = "foreign-keys-header";
+pub const TABLE_KEY: &str = "foreign-keys-table";
 
 /// React props, kept as a contract mirror for the host.
 #[allow(dead_code)] // contract mirror; remove when the host panel store lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FkIdentity {
-    pub(crate) db_session_id: String,
-    pub(crate) table_name: String,
-    pub(crate) database: String,
+pub struct FkIdentity {
+    pub db_session_id: String,
+    pub table_name: String,
+    pub database: String,
 }
 
 /// The three `useState` values React owns.
 #[allow(dead_code)] // VM; owned by the host until the panel view lands.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct FkViewState {
-    pub(crate) foreign_keys: Vec<ForeignKeyInfo>,
-    pub(crate) loading: bool,
-    pub(crate) error: String,
+pub struct FkViewState {
+    pub foreign_keys: Vec<ForeignKeyInfo>,
+    pub loading: bool,
+    pub error: String,
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum FkAction {
+pub enum FkAction {
     Load,
 }
 
 #[allow(dead_code)] // state transitions; remove with the host.
 impl FkViewState {
     /// React's effect prologue: start the spinner and clear the prior result.
-    pub(crate) fn begin_load(&mut self) {
+    pub fn begin_load(&mut self) {
         self.loading = true;
         self.error.clear();
         self.foreign_keys.clear();
@@ -77,7 +77,7 @@ impl FkViewState {
 
     /// React's `.then` / `.catch`: any empty error message falls back to the
     /// translated load-failure sentence; both branches clear the spinner.
-    pub(crate) fn apply_load(&mut self, result: Result<Vec<ForeignKeyInfo>, String>) {
+    pub fn apply_load(&mut self, result: Result<Vec<ForeignKeyInfo>, String>) {
         self.loading = false;
         match result {
             Ok(keys) => {
@@ -116,7 +116,7 @@ type OpenFn<S> = Rc<dyn Fn(&mut S, &str, &str) + 'static>;
 /// Render the view. `on_action` is the host's cached-schema lookup trigger;
 /// `on_open_table` optionally navigates to a referenced table.
 #[allow(dead_code)] // view entry; remove when the host wires it.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     identity: &FkIdentity,
     state: &FkViewState,
     on_action: Option<ActionFn<S>>,

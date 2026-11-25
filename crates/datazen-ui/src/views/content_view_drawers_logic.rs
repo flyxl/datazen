@@ -12,11 +12,11 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 /// React `DEFAULT_PANE_ID`. A panel's default pane is keyed by its bare id.
-pub(crate) const DEFAULT_PANE_ID: &str = "main";
+pub const DEFAULT_PANE_ID: &str = "main";
 const PANE_SEPARATOR: &str = "::";
 
 /// React `paneKey(panelId, paneId)`.
-pub(crate) fn pane_key(panel_id: &str, pane_id: &str) -> String {
+pub fn pane_key(panel_id: &str, pane_id: &str) -> String {
     if pane_id == DEFAULT_PANE_ID {
         panel_id.to_owned()
     } else {
@@ -25,27 +25,27 @@ pub(crate) fn pane_key(panel_id: &str, pane_id: &str) -> String {
 }
 
 /// React `resolveFocusedPaneId`: `null` means the default pane.
-pub(crate) fn resolve_focused_pane_id(focused: Option<&str>) -> &str {
+pub fn resolve_focused_pane_id(focused: Option<&str>) -> &str {
     focused.unwrap_or(DEFAULT_PANE_ID)
 }
 
 /// A result column's name and driver type declaration.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnMeta {
+pub struct ColumnMeta {
     pub name: String,
     pub data_type: String,
 }
 
 /// The narrow write-back fact shipped by the backend for one result.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ResultSource {
+pub struct ResultSource {
     /// `source.writableMapping === 'verified'`.
     pub writable_mapping_verified: bool,
 }
 
 /// React `StatementResult` (only the fields the drawer reads).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct StatementResult {
+pub struct StatementResult {
     pub sql: String,
     pub columns: Vec<ColumnMeta>,
     pub rows: Vec<Vec<Value>>,
@@ -56,7 +56,7 @@ pub(crate) struct StatementResult {
 
 /// React `QueryExecState` (only the fields the drawer reads).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct QueryExec {
+pub struct QueryExec {
     pub sql: String,
     pub results: Vec<StatementResult>,
     pub active_result_idx: usize,
@@ -67,14 +67,14 @@ pub(crate) struct QueryExec {
 
 impl QueryExec {
     /// React `activeQueryResult`.
-    pub(crate) fn active_result(&self) -> Option<&StatementResult> {
+    pub fn active_result(&self) -> Option<&StatementResult> {
         self.results.get(self.active_result_idx)
     }
 }
 
 /// Which panel kind is active — the drawer's derivations branch on this.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PanelKind {
+pub enum PanelKind {
     #[allow(dead_code)] // consumer: panel-store wiring (not landed); remove when the real active panel feeds the drawer.
     Table,
     #[allow(dead_code)] // consumer: panel-store wiring (not landed); remove when the real active panel feeds the drawer.
@@ -87,7 +87,7 @@ pub(crate) enum PanelKind {
 /// Why a result cannot be written back (`GridReadOnlyReason`).
 #[allow(dead_code)] // every variant is a backend wire case; consumer: the panel-store/verdict wiring (not landed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ReadOnlyReason {
+pub enum ReadOnlyReason {
     UnknownOrigin,
     AmbiguousOrigin,
     MultiTable,
@@ -106,7 +106,7 @@ pub(crate) enum ReadOnlyReason {
 
 impl ReadOnlyReason {
     /// The `query.gridReadOnly.<reason>` i18n suffix.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::UnknownOrigin => "unknownOrigin",
             Self::AmbiguousOrigin => "ambiguousOrigin",
@@ -126,7 +126,7 @@ impl ReadOnlyReason {
     }
 
     /// React `gridReadOnlyMessageKey(reason)`.
-    pub(crate) fn message_key(self) -> String {
+    pub fn message_key(self) -> String {
         format!("query.gridReadOnly.{}", self.as_str())
     }
 }
@@ -135,7 +135,7 @@ impl ReadOnlyReason {
 /// fall back to `unknownOrigin`, exactly the default the drawer uses while a
 /// verdict is still unresolved.
 #[allow(dead_code)] // consumer: the verdict host port (not landed); remove when the backend reason is fed in.
-pub(crate) fn parse_reason(raw: Option<&str>) -> Option<ReadOnlyReason> {
+pub fn parse_reason(raw: Option<&str>) -> Option<ReadOnlyReason> {
     let raw = raw?;
     let reason = match raw {
         "unknownOrigin" | "unknown_origin" => ReadOnlyReason::UnknownOrigin,
@@ -158,7 +158,7 @@ pub(crate) fn parse_reason(raw: Option<&str>) -> Option<ReadOnlyReason> {
 }
 
 /// React `UNJUDGED`: a result nobody judged yet is read-only.
-pub(crate) fn unjudged() -> ServerEditability {
+pub fn unjudged() -> ServerEditability {
     ServerEditability {
         writable: false,
         identity_columns: Vec::new(),
@@ -169,7 +169,7 @@ pub(crate) fn unjudged() -> ServerEditability {
 
 /// React `ServerEditability` (identity/editable columns reduced to names).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ServerEditability {
+pub struct ServerEditability {
     pub writable: bool,
     pub identity_columns: Vec<String>,
     #[allow(dead_code)] // consumer: the origin-channel column guard (not landed); remove when that channel opens.
@@ -180,7 +180,7 @@ pub(crate) struct ServerEditability {
 /// React `resolveResultWriteBack`. The origin channel is closed in this build,
 /// so only the narrow `verified` mapping or an explicit session-read-only
 /// refusal can decide the verdict.
-pub(crate) fn resolve_result_write_back(
+pub fn resolve_result_write_back(
     legacy_verified: bool,
     server: &ServerEditability,
 ) -> bool {
@@ -195,7 +195,7 @@ pub(crate) fn resolve_result_write_back(
 
 /// React `resolveRowAddressability`: a NULL key or a duplicate identity on the
 /// page makes the row unaddressable, whatever channel granted the write.
-pub(crate) fn resolve_row_addressability(
+pub fn resolve_row_addressability(
     identity_columns: &[String],
     rows: &[Vec<Value>],
     columns: &[ColumnMeta],
@@ -243,7 +243,7 @@ pub(crate) fn resolve_row_addressability(
 
 /// React `queryResultEditable`: non-query panels are always editable here; a
 /// query result needs a granted write-back verdict.
-pub(crate) fn query_result_editable(
+pub fn query_result_editable(
     kind: PanelKind,
     result: Option<&StatementResult>,
     verdict: &ServerEditability,
@@ -261,7 +261,7 @@ pub(crate) fn query_result_editable(
 }
 
 /// React `queryReadOnlyReason` — the reason belongs to the drawer on this row.
-pub(crate) fn query_read_only_reason(
+pub fn query_read_only_reason(
     kind: PanelKind,
     result: Option<&StatementResult>,
     verdict: &ServerEditability,
@@ -280,7 +280,7 @@ pub(crate) fn query_read_only_reason(
 
 /// A cell of the row-capped AI preview. Strings are cut to 500 chars; complex
 /// values go through `JSON.stringify` and are cut as well.
-pub(crate) fn preview_cell(value: &Value) -> Value {
+pub fn preview_cell(value: &Value) -> Value {
     match value {
         Value::String(text) => Value::String(text.chars().take(500).collect()),
         Value::Number(_) | Value::Bool(_) | Value::Null => value.clone(),
@@ -296,7 +296,7 @@ pub(crate) fn preview_cell(value: &Value) -> Value {
 
 /// The row-capped result preview handed to the assistant.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ResultPreview {
+pub struct ResultPreview {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<Value>>,
     pub row_count: usize,
@@ -305,7 +305,7 @@ pub(crate) struct ResultPreview {
 
 /// React `autoContext`: the active query's current facts as a frozen snapshot.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct AutoContext {
+pub struct AutoContext {
     pub editor_sql: Option<String>,
     pub selection: Option<String>,
     pub last_error: Option<String>,
@@ -322,7 +322,7 @@ impl AutoContext {
 }
 
 /// Build the assistant's automatic context. Non-query panels get no snapshot.
-pub(crate) fn build_auto_context(
+pub fn build_auto_context(
     kind: PanelKind,
     exec: Option<&QueryExec>,
     editor_selection: &str,
@@ -373,7 +373,7 @@ pub(crate) fn build_auto_context(
 /// Resolve the exec the drawer must judge: exactly the focused pane's entry.
 /// React reads only `paneKey(activePanel.id, resolveFocusedPaneId(...))` — a
 /// missing entry means no row, never the default pane's row.
-pub(crate) fn resolve_active_exec<'a>(
+pub fn resolve_active_exec<'a>(
     panel_id: &str,
     focused_pane: Option<&str>,
     panes: &'a HashMap<String, QueryExec>,
@@ -383,6 +383,6 @@ pub(crate) fn resolve_active_exec<'a>(
 }
 
 /// React `useResizable` bounds for the AI sidebar.
-pub(crate) fn clamp_sidebar_width(width: f32) -> f32 {
+pub fn clamp_sidebar_width(width: f32) -> f32 {
     width.clamp(240.0, 600.0)
 }

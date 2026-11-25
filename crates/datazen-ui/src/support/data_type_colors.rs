@@ -13,7 +13,7 @@ use crate::ui::kit::kit;
 
 /// The render family of a value. `Null` belongs to the value, not the type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DataTypeFamily {
+pub enum DataTypeFamily {
     Null,
     Bool,
     Number,
@@ -24,7 +24,7 @@ pub(crate) enum DataTypeFamily {
 }
 
 impl DataTypeFamily {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Null => "null",
             Self::Bool => "bool",
@@ -42,7 +42,7 @@ impl DataTypeFamily {
 /// Mapping: `null` → faint text, `bool` → info, `number` → warning,
 /// `datetime` → success, `json` → accent, `text` → base text, `binary` →
 /// danger.
-pub(crate) fn family_color(family: DataTypeFamily, dark: bool) -> Color {
+pub fn family_color(family: DataTypeFamily, dark: bool) -> Color {
     let k = kit(dark);
     match family {
         DataTypeFamily::Null => k.c.text_faint,
@@ -57,7 +57,7 @@ pub(crate) fn family_color(family: DataTypeFamily, dark: bool) -> Color {
 
 /// The colour of a cell value: a NULL value always paints as the null family,
 /// whatever the column type says.
-pub(crate) fn cell_value_color(cell_type: CellType, value: &Value, dark: bool) -> Color {
+pub fn cell_value_color(cell_type: CellType, value: &Value, dark: bool) -> Color {
     if value.is_null() {
         return family_color(DataTypeFamily::Null, dark);
     }
@@ -68,7 +68,7 @@ pub(crate) fn cell_value_color(cell_type: CellType, value: &Value, dark: bool) -
 /// `CellType::Unknown`, and React normalizes `unknown` to the text family in
 /// `resolveCellType`/`cellTypeToDataTypeFamily`; the null family belongs to a
 /// NULL *value*, never to a missing type.
-pub(crate) fn data_type_color(
+pub fn data_type_color(
     data_type: Option<&str>,
     hints: Option<&CellTypeHints>,
     dark: bool,

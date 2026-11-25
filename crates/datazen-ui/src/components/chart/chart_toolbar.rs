@@ -86,23 +86,23 @@ use crate::ui::menu::{Item, Menu, Placement};
 use crate::ui::toggle::Checkbox;
 
 /// Root strip, React's `ToolbarShell` + `gap-1 px-2 py-1` override.
-pub(crate) const ROOT_KEY: &str = "chart-toolbar";
+pub const ROOT_KEY: &str = "chart-toolbar";
 /// The chart-type switch container (`rounded-md bg-surface p-0.5`).
-pub(crate) const TYPE_GROUP_KEY: &str = "chart-type-group";
+pub const TYPE_GROUP_KEY: &str = "chart-type-group";
 /// Separator after the type switch (always present).
-pub(crate) const SEP_TYPES_KEY: &str = "chart-toolbar-sep-types";
+pub const SEP_TYPES_KEY: &str = "chart-toolbar-sep-types";
 /// Separator before the split toggle (conditional).
-pub(crate) const SEP_SPLIT_KEY: &str = "chart-toolbar-sep-split";
+pub const SEP_SPLIT_KEY: &str = "chart-toolbar-sep-split";
 /// The split-view button.
-pub(crate) const SPLIT_KEY: &str = "chart-toolbar-split";
+pub const SPLIT_KEY: &str = "chart-toolbar-split";
 /// The `flex-1` spacer.
-pub(crate) const SPACER_KEY: &str = "chart-toolbar-spacer";
+pub const SPACER_KEY: &str = "chart-toolbar-spacer";
 /// The expand button (conditional).
-pub(crate) const EXPAND_KEY: &str = "chart-toolbar-expand";
+pub const EXPAND_KEY: &str = "chart-toolbar-expand";
 /// The export dropdown's kit menu root (trigger/menu/scrim derive from it).
-pub(crate) const EXPORT_KEY: &str = "chart-export";
+pub const EXPORT_KEY: &str = "chart-export";
 /// The export trigger's own button (inside the kit's `-trigger` row).
-pub(crate) const EXPORT_BUTTON_KEY: &str = "chart-export-button";
+pub const EXPORT_BUTTON_KEY: &str = "chart-export-button";
 
 // Tailwind geometry, verbatim.
 const SHELL_GAP: f32 = 4.0; // gap-1
@@ -145,14 +145,14 @@ fn chart_type_label_key(chart_type: ChartType) -> &'static str {
 /// React's `handleExport(format)` payload: the export format the dropdown
 /// selected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExportFormat {
+pub enum ExportFormat {
     Png,
     Svg,
 }
 
 impl ExportFormat {
     /// The dropdown entry's own label (React renders the literal "PNG"/"SVG").
-    pub(crate) fn menu_label(self) -> &'static str {
+    pub fn menu_label(self) -> &'static str {
         match self {
             Self::Png => "PNG",
             Self::Svg => "SVG",
@@ -168,7 +168,7 @@ type ExportFn<S> = Rc<dyn Fn(&mut S, ExportFormat)>;
 /// are `Option` so a probe can render any branch — a production caller wires
 /// all of them, and the split/expand parts follow React's own conditional
 /// rendering rather than the optional callbacks.
-pub(crate) struct ChartToolbar<'a, S: 'static> {
+pub struct ChartToolbar<'a, S: 'static> {
     config: &'a ChartConfig,
     split_view: bool,
     export_open: bool,
@@ -181,7 +181,7 @@ pub(crate) struct ChartToolbar<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> ChartToolbar<'a, S> {
-    pub(crate) fn new(config: &'a ChartConfig) -> Self {
+    pub fn new(config: &'a ChartConfig) -> Self {
         Self {
             config,
             split_view: false,
@@ -196,58 +196,58 @@ impl<'a, S: 'static> ChartToolbar<'a, S> {
     }
 
     /// React `splitView`.
-    pub(crate) fn split_view(mut self, split: bool) -> Self {
+    pub fn split_view(mut self, split: bool) -> Self {
         self.split_view = split;
         self
     }
 
     /// React `exportOpen` (the dropdown's `useState`, owned by the caller).
-    pub(crate) fn export_open(mut self, open: bool) -> Self {
+    pub fn export_open(mut self, open: bool) -> Self {
         self.export_open = open;
         self
     }
 
     /// React `onChange`: receives the full replacement config.
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, ChartConfig) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, ChartConfig) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
     /// React `onExpand`.
-    pub(crate) fn on_expand(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_expand(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_expand = Some(Rc::new(f));
         self
     }
 
     /// React `onToggleSplit`.
-    pub(crate) fn on_toggle_split(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_split(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_split = Some(Rc::new(f));
         self
     }
 
     /// The export trigger's press (React flips `exportOpen`).
-    pub(crate) fn on_export_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_export_toggle = Some(Rc::new(f));
         self
     }
 
     /// The dropdown closing (React's `setExportOpen(false)` on the click-away
     /// layer; here also Escape and leaf selection, via the kit's dismissal).
-    pub(crate) fn on_export_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_export_close = Some(Rc::new(f));
         self
     }
 
     /// The export request: the seam that replaces React's `handleExport`
     /// (`exportChartAsPng`/`exportChartAsSvg` on the DOM chart element).
-    pub(crate) fn on_export(mut self, f: impl Fn(&mut S, ExportFormat) + 'static) -> Self {
+    pub fn on_export(mut self, f: impl Fn(&mut S, ExportFormat) + 'static) -> Self {
         self.on_export = Some(Rc::new(f));
         self
     }
 
     /// Builds the strip. Overlays (the export dropdown) mount into `layer`;
     /// colours and type come from `kit(dark)`.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let c = &k.c;
         let config = self.config;

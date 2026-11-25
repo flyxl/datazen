@@ -81,7 +81,7 @@ use crate::views::settings::ai::model_profile_form::{
 use super::step_tag::step_tag;
 
 /// React `max-w-[680px]` (680px → 510pt): the step column's cap.
-pub(crate) const STEP_MAX_W: f32 = 510.0;
+pub const STEP_MAX_W: f32 = 510.0;
 
 /// React `max-w-[56ch]` on the subtitle: 56 × the "0" advance (≈ 0.5em at
 /// 13.5px → 6.75px) ≈ 378px → 283.5pt. Approximate by construction — the
@@ -92,14 +92,14 @@ const SUBTITLE_MAX_W: f32 = 283.5;
 /// variant) inside the step's own first-run framing. Built per frame over
 /// the host's `S` — the same slot list the settings form reads, so the
 /// wizard's one draft machine drives both.
-pub(crate) struct AiProviderStep<S: 'static> {
+pub struct AiProviderStep<S: 'static> {
     slots: ModelProfileFormSlots<S>,
 }
 
 impl<S: 'static> AiProviderStep<S> {
     /// The step over the wizard's draft-machine slots (React's `draft`
     /// prop — the `useModelProfileDraft` return value the wizard owns).
-    pub(crate) fn new(slots: ModelProfileFormSlots<S>) -> Self {
+    pub fn new(slots: ModelProfileFormSlots<S>) -> Self {
         Self { slots }
     }
 
@@ -108,7 +108,7 @@ impl<S: 'static> AiProviderStep<S> {
     /// optional hint. The high-risk egress confirmation (while the draft's
     /// `show_high_risk_modal` is set) pushes into `layer`, as in the
     /// settings dialog.
-    pub(crate) fn build(&self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(&self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let form = ModelProfileForm::new(self.slots)
             .variant(FormVariant::Inline)

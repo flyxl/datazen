@@ -99,7 +99,7 @@ fn recovery_details<'a>(
 }
 
 /// The status strip builder, generic over the owning state `S`.
-pub(crate) struct SchemaDiffJobStatusPanel<'a, S: 'static> {
+pub struct SchemaDiffJobStatusPanel<'a, S: 'static> {
     current_job: Option<&'a SchemaDiffTrackedJobVm>,
     latest_apply: Option<&'a SchemaDiffJobDetailsVm>,
     cancel_outcome: SchemaDiffCancelOutcome,
@@ -112,7 +112,7 @@ pub(crate) struct SchemaDiffJobStatusPanel<'a, S: 'static> {
 impl<'a, S: 'static> SchemaDiffJobStatusPanel<'a, S> {
     /// React's `currentJob` / `latestApply` / `cancelOutcome` /
     /// `verifying` / `targetReady` props.
-    pub(crate) fn new(
+    pub fn new(
         current_job: Option<&'a SchemaDiffTrackedJobVm>,
         latest_apply: Option<&'a SchemaDiffJobDetailsVm>,
         cancel_outcome: SchemaDiffCancelOutcome,
@@ -131,20 +131,20 @@ impl<'a, S: 'static> SchemaDiffJobStatusPanel<'a, S> {
     }
 
     /// React's `onCancel`.
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
 
     /// React's `onVerify(jobId)`.
-    pub(crate) fn on_verify(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_verify(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_verify = Some(Rc::new(f));
         self
     }
 
     /// Paint the strip (`None` when nothing is tracked, like React's
     /// `null`).
-    pub(crate) fn build(self, dark: bool) -> Option<El> {
+    pub fn build(self, dark: bool) -> Option<El> {
         if self.current_job.is_none() && self.latest_apply.is_none() {
             return None;
         }

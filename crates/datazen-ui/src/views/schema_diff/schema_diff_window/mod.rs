@@ -91,10 +91,10 @@ use crate::views::schema_diff::schema_diff_wizard_progress::{
     SCHEMA_DIFF_NARROW_STEPS, SchemaDiffWizardStep, schema_diff_wizard_progress,
 };
 
-pub(crate) mod actions;
-pub(crate) mod state;
+pub mod actions;
+pub mod state;
 
-pub(crate) use state::{SavedSetupState, SchemaDiffWindowState, TABLE_LIST_WIDTH, TABLE_LIST_WIDTH_KEY};
+pub use state::{SavedSetupState, SchemaDiffWindowState, TABLE_LIST_WIDTH, TABLE_LIST_WIDTH_KEY};
 
 /// The window's action slots (`Rc<dyn Fn(&mut S)>`, the crate
 /// convention).
@@ -128,93 +128,93 @@ const DOCS_GLYPH: f32 = 12.0;
 /// The wizard window, built over the state (React's component) plus
 /// the host-owned edit states and the two dialog slots.
 #[allow(dead_code)] // the desktop host wiring is the production consumer
-pub(crate) struct SchemaDiffWindow<'a, S: 'static> {
+pub struct SchemaDiffWindow<'a, S: 'static> {
     /// The window state (React's hooks, composed).
-    pub(crate) state: &'a SchemaDiffWindowState,
+    pub state: &'a SchemaDiffWindowState,
     /// The confirm input's edit (the deploy step's destructive confirm).
-    pub(crate) confirm_edit: &'a TextEdit,
+    pub confirm_edit: &'a TextEdit,
     /// The import dialog's paste field.
-    pub(crate) import_edit: &'a TextEdit,
+    pub import_edit: &'a TextEdit,
     /// The profile dialog's name field.
-    pub(crate) profile_name_edit: &'a TextEdit,
+    pub profile_name_edit: &'a TextEdit,
     /// The plan panel's type-override edit slots (the host's mirror).
-    pub(crate) override_edits: Option<&'a HashMap<String, TextEdit>>,
+    pub override_edits: Option<&'a HashMap<String, TextEdit>>,
 
     // ---- the chrome and dialog slots ---------------------------------------
     /// `MigrationRunHistoryDialog` (the migration area's own task):
     /// a host-built `El` mounted in the chrome's right actions.
-    pub(crate) migration_history_dialog: Option<El>,
+    pub migration_history_dialog: Option<El>,
     /// `LimitationsDialog` (the components/ui area's own task): a
     /// host-built `El`; the window owns the open flag.
-    pub(crate) limitations_dialog: Option<El>,
+    pub limitations_dialog: Option<El>,
     /// The profile select's listbox open flag (React keeps it inside
     /// `Select`).
-    pub(crate) profile_select_open: bool,
+    pub profile_select_open: bool,
 
     // ---- the actions ---------------------------------------------------------
-    pub(crate) on_open_docs: Option<Act<S>>,
-    pub(crate) on_close_limitations: Option<Act<S>>,
+    pub on_open_docs: Option<Act<S>>,
+    pub on_close_limitations: Option<Act<S>>,
     /// `setSchemaDiffLimitationsDismissed` (the pref write).
-    pub(crate) on_dismiss_limitations: Option<Act<S>>,
-    pub(crate) on_back: Option<Act<S>>,
-    pub(crate) on_next: Option<Act<S>>,
-    pub(crate) on_deploy: Option<Act<S>>,
-    pub(crate) on_cancel_job: Option<Act<S>>,
+    pub on_dismiss_limitations: Option<Act<S>>,
+    pub on_back: Option<Act<S>>,
+    pub on_next: Option<Act<S>>,
+    pub on_deploy: Option<Act<S>>,
+    pub on_cancel_job: Option<Act<S>>,
     /// `onVerify(jobId)` — the job section's verify rail.
-    pub(crate) on_verify_job: Option<Rc<dyn Fn(&mut S, String)>>,
-    pub(crate) on_profile_select: Option<Rc<dyn Fn(&mut S, String)>>,
-    pub(crate) on_toggle_profile_select: Option<Act<S>>,
-    pub(crate) on_close_profile_select: Option<Act<S>>,
-    pub(crate) on_load_profile: Option<Act<S>>,
-    pub(crate) on_open_profile_save: Option<Act<S>>,
-    pub(crate) on_delete_profile: Option<Act<S>>,
-    pub(crate) on_export_config: Option<Act<S>>,
-    pub(crate) on_open_import_config: Option<Act<S>>,
-    pub(crate) on_copy_sql: Option<Act<S>>,
-    pub(crate) on_copy_summary: Option<Act<S>>,
-    pub(crate) on_select_table: Option<Rc<dyn Fn(&mut S, String)>>,
-    pub(crate) on_regenerate: Option<Act<S>>,
-    pub(crate) on_allow_destructive: Option<Act<S>>,
-    pub(crate) on_include_indexes: Option<Act<S>>,
-    pub(crate) on_apply_type_overrides: Option<Act<S>>,
+    pub on_verify_job: Option<Rc<dyn Fn(&mut S, String)>>,
+    pub on_profile_select: Option<Rc<dyn Fn(&mut S, String)>>,
+    pub on_toggle_profile_select: Option<Act<S>>,
+    pub on_close_profile_select: Option<Act<S>>,
+    pub on_load_profile: Option<Act<S>>,
+    pub on_open_profile_save: Option<Act<S>>,
+    pub on_delete_profile: Option<Act<S>>,
+    pub on_export_config: Option<Act<S>>,
+    pub on_open_import_config: Option<Act<S>>,
+    pub on_copy_sql: Option<Act<S>>,
+    pub on_copy_summary: Option<Act<S>>,
+    pub on_select_table: Option<Rc<dyn Fn(&mut S, String)>>,
+    pub on_regenerate: Option<Act<S>>,
+    pub on_allow_destructive: Option<Act<S>>,
+    pub on_include_indexes: Option<Act<S>>,
+    pub on_apply_type_overrides: Option<Act<S>>,
     /// `onTypeOverrideChange` — the plan panel's edit projection
     /// (`table`, `column`, `target_type` → the cell's edit).
-    pub(crate) on_override_edit:
+    pub on_override_edit:
         Option<Rc<dyn for<'b, 'c> Fn(&'b mut S, &'c str, &'c str, &'c str) -> &'b mut TextEdit>>,
-    pub(crate) on_use_transaction: Option<Act<S>>,
-    pub(crate) on_require_rollback: Option<Act<S>>,
-    pub(crate) on_confirm_edit: Option<EditSlot<S>>,
-    pub(crate) on_source_change: Option<Rc<dyn Fn(&mut S, String)>>,
-    pub(crate) on_target_change: Option<Rc<dyn Fn(&mut S, String)>>,
-    pub(crate) on_source_database_change: Option<Rc<dyn Fn(&mut S, Option<String>)>>,
-    pub(crate) on_target_database_change: Option<Rc<dyn Fn(&mut S, Option<String>)>>,
-    pub(crate) on_source_schema_change: Option<Rc<dyn Fn(&mut S, Option<String>)>>,
-    pub(crate) on_target_schema_change: Option<Rc<dyn Fn(&mut S, Option<String>)>>,
-    pub(crate) on_toggle_table: Option<Rc<dyn Fn(&mut S, String)>>,
-    pub(crate) on_select_all: Option<Act<S>>,
-    pub(crate) on_select_none: Option<Act<S>>,
+    pub on_use_transaction: Option<Act<S>>,
+    pub on_require_rollback: Option<Act<S>>,
+    pub on_confirm_edit: Option<EditSlot<S>>,
+    pub on_source_change: Option<Rc<dyn Fn(&mut S, String)>>,
+    pub on_target_change: Option<Rc<dyn Fn(&mut S, String)>>,
+    pub on_source_database_change: Option<Rc<dyn Fn(&mut S, Option<String>)>>,
+    pub on_target_database_change: Option<Rc<dyn Fn(&mut S, Option<String>)>>,
+    pub on_source_schema_change: Option<Rc<dyn Fn(&mut S, Option<String>)>>,
+    pub on_target_schema_change: Option<Rc<dyn Fn(&mut S, Option<String>)>>,
+    pub on_toggle_table: Option<Rc<dyn Fn(&mut S, String)>>,
+    pub on_select_all: Option<Act<S>>,
+    pub on_select_none: Option<Act<S>>,
     /// `toggleUnifiedObject(side)(object)` — the picker's toggle rail
     /// (object-based, React's shape).
-    pub(crate) on_toggle_unified_object:
+    pub on_toggle_unified_object:
         Option<Rc<dyn Fn(&mut S, PickerSide, &SchemaDiffObjectIdentityVm)>>,
     /// The picker's `selectAll(side, selected)` rail.
-    pub(crate) on_select_all_unified: Option<Rc<dyn Fn(&mut S, PickerSide, bool)>>,
-    pub(crate) on_clear_object_selections: Option<Act<S>>,
-    pub(crate) on_retry_objects: Option<Act<S>>,
+    pub on_select_all_unified: Option<Rc<dyn Fn(&mut S, PickerSide, bool)>>,
+    pub on_clear_object_selections: Option<Act<S>>,
+    pub on_retry_objects: Option<Act<S>>,
     // The saved-setup dialogs' callbacks.
-    pub(crate) on_close_import: Option<Act<S>>,
-    pub(crate) on_import_text_edit: Option<EditSlot<S>>,
-    pub(crate) on_apply_import: Option<Act<S>>,
-    pub(crate) on_close_profile: Option<Act<S>>,
-    pub(crate) on_profile_name_edit: Option<EditSlot<S>>,
-    pub(crate) on_save_profile: Option<Act<S>>,
+    pub on_close_import: Option<Act<S>>,
+    pub on_import_text_edit: Option<EditSlot<S>>,
+    pub on_apply_import: Option<Act<S>>,
+    pub on_close_profile: Option<Act<S>>,
+    pub on_profile_name_edit: Option<EditSlot<S>>,
+    pub on_save_profile: Option<Act<S>>,
 }
 
 #[allow(dead_code)] // the desktop host wiring is the production consumer
 impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
     /// React's component over the state: the dialog slots start absent,
     /// the profile select closed, every action unwired.
-    pub(crate) fn new(
+    pub fn new(
         state: &'a SchemaDiffWindowState,
         confirm_edit: &'a TextEdit,
         import_edit: &'a TextEdit,
@@ -279,7 +279,7 @@ impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
     }
 
     /// The plan panel's type-override edit slots.
-    pub(crate) fn override_edits(
+    pub fn override_edits(
         mut self,
         edits: Option<&'a HashMap<String, TextEdit>>,
     ) -> Self {
@@ -288,164 +288,164 @@ impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
     }
 
     /// The chrome's `MigrationRunHistoryDialog` mount.
-    pub(crate) fn migration_history_dialog(mut self, dialog: El) -> Self {
+    pub fn migration_history_dialog(mut self, dialog: El) -> Self {
         self.migration_history_dialog = Some(dialog);
         self
     }
 
     /// The `LimitationsDialog` mount.
-    pub(crate) fn limitations_dialog(mut self, dialog: El) -> Self {
+    pub fn limitations_dialog(mut self, dialog: El) -> Self {
         self.limitations_dialog = Some(dialog);
         self
     }
 
     /// React `goBack`.
-    pub(crate) fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_back = Some(Rc::new(f));
         self
     }
 
     /// React `goNext`.
-    pub(crate) fn on_next(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_next(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_next = Some(Rc::new(f));
         self
     }
 
     /// React `handleDeploy` (the navigation's Deploy and the deploy
     /// panel's button share it).
-    pub(crate) fn on_deploy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_deploy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_deploy = Some(Rc::new(f));
         self
     }
 
     /// The job section's cancel rail (`requestCancel`).
-    pub(crate) fn on_cancel_job(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_job(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel_job = Some(Rc::new(f));
         self
     }
 
     /// The job section's verify rail (`verifyRecovery(jobId)`).
-    pub(crate) fn on_verify_job(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_verify_job(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_verify_job = Some(Rc::new(f));
         self
     }
 
     /// `openDocsWindow('schemaDiff')`.
-    pub(crate) fn on_open_docs(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_docs(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_docs = Some(Rc::new(f));
         self
     }
 
     /// The limitations dialog's `onClose`.
-    pub(crate) fn on_close_limitations(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_limitations(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_limitations = Some(Rc::new(f));
         self
     }
 
     /// The limitations dialog's `onDismiss`
     /// (`setSchemaDiffLimitationsDismissed`).
-    pub(crate) fn on_dismiss_limitations(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss_limitations(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_dismiss_limitations = Some(Rc::new(f));
         self
     }
 
     /// `setSelectedProfileId` (the select's `onChange`).
-    pub(crate) fn on_profile_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_profile_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_profile_select = Some(Rc::new(f));
         self
     }
 
     /// The profile select's listbox open state.
-    pub(crate) fn profile_select_open(mut self, open: bool) -> Self {
+    pub fn profile_select_open(mut self, open: bool) -> Self {
         self.profile_select_open = open;
         self
     }
 
-    pub(crate) fn on_toggle_profile_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_profile_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_profile_select = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_close_profile_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_profile_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_profile_select = Some(Rc::new(f));
         self
     }
 
     /// `savedSetups.handleLoadProfile`.
-    pub(crate) fn on_load_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_load_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_load_profile = Some(Rc::new(f));
         self
     }
 
     /// `savedSetups.openProfileSave`.
-    pub(crate) fn on_open_profile_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_profile_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_profile_save = Some(Rc::new(f));
         self
     }
 
     /// `savedSetups.handleDeleteProfile`.
-    pub(crate) fn on_delete_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_delete_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_delete_profile = Some(Rc::new(f));
         self
     }
 
     /// `savedSetups.handleExportConfig`.
-    pub(crate) fn on_export_config(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export_config(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_export_config = Some(Rc::new(f));
         self
     }
 
     /// `savedSetups.openImportConfig`.
-    pub(crate) fn on_open_import_config(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_import_config(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_import_config = Some(Rc::new(f));
         self
     }
 
     /// `handleCopySql`.
-    pub(crate) fn on_copy_sql(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy_sql(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_sql = Some(Rc::new(f));
         self
     }
 
     /// `handleCopySummary`.
-    pub(crate) fn on_copy_summary(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy_summary(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_summary = Some(Rc::new(f));
         self
     }
 
     /// The compare step's `onSelectTable` (`setSelectedTable`).
-    pub(crate) fn on_select_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_select_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_select_table = Some(Rc::new(f));
         self
     }
 
     /// `onRegenerate` (`buildPlan()`).
-    pub(crate) fn on_regenerate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_regenerate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_regenerate = Some(Rc::new(f));
         self
     }
 
     /// `onAllowDestructiveChange`.
-    pub(crate) fn on_allow_destructive(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_allow_destructive(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_allow_destructive = Some(Rc::new(f));
         self
     }
 
     /// `onIncludeIndexesChange`.
-    pub(crate) fn on_include_indexes(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_include_indexes(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_include_indexes = Some(Rc::new(f));
         self
     }
 
     /// `onApplyTypeOverrides`.
-    pub(crate) fn on_apply_type_overrides(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_apply_type_overrides(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_apply_type_overrides = Some(Rc::new(f));
         self
     }
 
     /// `onTypeOverrideChange` — the plan panel's edit projection
     /// (`table`, `column`, `target_type` → the cell's edit).
-    pub(crate) fn on_override_edit(
+    pub fn on_override_edit(
         mut self,
         f: impl for<'b, 'c> Fn(&'b mut S, &'c str, &'c str, &'c str) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -454,19 +454,19 @@ impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
     }
 
     /// `onUseTransactionChange`.
-    pub(crate) fn on_use_transaction(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_use_transaction(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_use_transaction = Some(Rc::new(f));
         self
     }
 
     /// `onRequireRollbackChange`.
-    pub(crate) fn on_require_rollback(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_require_rollback(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_require_rollback = Some(Rc::new(f));
         self
     }
 
     /// `onConfirmTextChange` (the confirm input's edit projection).
-    pub(crate) fn on_confirm_edit(
+    pub fn on_confirm_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -476,7 +476,7 @@ impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
 
     /// The endpoints step's six selects: the connection picks are ids,
     /// the database / schema picks carry `None` for the placeholder.
-    pub(crate) fn on_endpoint_changes(
+    pub fn on_endpoint_changes(
         mut self,
         source: impl Fn(&mut S, String) + 'static,
         target: impl Fn(&mut S, String) + 'static,
@@ -495,7 +495,7 @@ impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
     }
 
     /// The objects step's table rail actions.
-    pub(crate) fn on_table_actions(
+    pub fn on_table_actions(
         mut self,
         toggle: impl Fn(&mut S, String) + 'static,
         select_all: impl Fn(&mut S) + 'static,
@@ -510,7 +510,7 @@ impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
     /// The objects step's unified-picker actions: the toggle and
     /// select-all rails are object/side-based (React's shape), the
     /// clear and retry are the window's own callbacks.
-    pub(crate) fn on_unified_actions(
+    pub fn on_unified_actions(
         mut self,
         toggle: impl Fn(&mut S, PickerSide, &SchemaDiffObjectIdentityVm) + 'static,
         select_all: impl Fn(&mut S, PickerSide, bool) + 'static,
@@ -525,7 +525,7 @@ impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
     }
 
     /// The saved-setup dialogs' callbacks.
-    pub(crate) fn on_saved_setup_dialogs(
+    pub fn on_saved_setup_dialogs(
         mut self,
         close_import: impl Fn(&mut S) + 'static,
         import_edit: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
@@ -544,7 +544,7 @@ impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
     }
 
     /// `SchemaDiffWindow()`: the window's element tree.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let state = self.state;
         let narrow = SCHEMA_DIFF_NARROW_STEPS.contains(&state.step);
@@ -1063,7 +1063,7 @@ impl<'a, S: 'static> SchemaDiffWindow<'a, S> {
 
     /// The saved-setup dialogs (`SchemaDiffSavedSetupDialogs`), a
     /// separate mount the host drives over the same state.
-    pub(crate) fn saved_setup_dialogs(&self, dark: bool, layer: &mut Vec<El>) {
+    pub fn saved_setup_dialogs(&self, dark: bool, layer: &mut Vec<El>) {
         let state = self.state;
         let vm = SavedSetupDialogsVm {
             import_config_open: state.saved_setups.import_open,

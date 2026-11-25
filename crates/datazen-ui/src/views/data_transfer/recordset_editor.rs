@@ -86,7 +86,7 @@ use crate::ui::toggle::Checkbox;
 /// defaults to `true`, the value React substitutes with `?? true`
 /// everywhere it reads the bound.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferRecordsetBound {
+pub struct TransferRecordsetBound {
     pub value: String,
     pub inclusive: bool,
 }
@@ -102,7 +102,7 @@ impl Default for TransferRecordsetBound {
 
 /// React `TransferRecordsetTupleBound` (`commands/transfer.ts:70-73`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferRecordsetTupleBound {
+pub struct TransferRecordsetTupleBound {
     pub values: Vec<String>,
     pub inclusive: bool,
 }
@@ -118,7 +118,7 @@ impl Default for TransferRecordsetTupleBound {
 
 /// React `TransferRecordsetTupleRange` (`commands/transfer.ts:64-68`).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferRecordsetTupleRange {
+pub struct TransferRecordsetTupleRange {
     pub columns: Vec<String>,
     pub start: Option<TransferRecordsetTupleBound>,
     pub end: Option<TransferRecordsetTupleBound>,
@@ -129,7 +129,7 @@ pub(crate) struct TransferRecordsetTupleRange {
 /// `limit` is `f64` because React stores `Number(value)` — including
 /// `NaN` for a non-numeric edit (see [`parse_limit`]).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferRecordset {
+pub struct TransferRecordset {
     pub order_by: Option<String>,
     pub start: Option<TransferRecordsetBound>,
     pub end: Option<TransferRecordsetBound>,
@@ -139,14 +139,14 @@ pub(crate) struct TransferRecordset {
 
 /// Which end of a range a patch addresses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum BoundName {
+pub enum BoundName {
     Start,
     End,
 }
 
 /// React `Partial<TransferRecordsetBound>` as the bound editors report it.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct RecordsetBoundPatch {
+pub struct RecordsetBoundPatch {
     pub value: Option<String>,
     pub inclusive: Option<bool>,
 }
@@ -154,7 +154,7 @@ pub(crate) struct RecordsetBoundPatch {
 /// React `Partial<TransferRecordsetTupleBound>` as the tuple editors
 /// report it.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct RecordsetTupleBoundPatch {
+pub struct RecordsetTupleBoundPatch {
     pub values: Option<Vec<String>>,
     pub inclusive: Option<bool>,
 }
@@ -165,7 +165,7 @@ pub(crate) struct RecordsetTupleBoundPatch {
 /// "leave it" (`None`) from "clear it" (`Some(None)`, e.g. choosing the
 /// empty order option writes `orderBy: undefined`).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct RecordsetPatch {
+pub struct RecordsetPatch {
     pub order_by: Option<Option<String>>,
     pub start: Option<Option<TransferRecordsetBound>>,
     pub end: Option<Option<TransferRecordsetBound>>,
@@ -176,7 +176,7 @@ pub(crate) struct RecordsetPatch {
 impl RecordsetPatch {
     /// Apply the patch to a recordset, exactly as React's `update`
     /// spreads `{ ...(recordset ?? {}), ...patch }` over it.
-    pub(crate) fn apply_to(&self, recordset: &mut TransferRecordset) {
+    pub fn apply_to(&self, recordset: &mut TransferRecordset) {
         if let Some(order_by) = &self.order_by {
             recordset.order_by = order_by.clone();
         }
@@ -197,7 +197,7 @@ impl RecordsetPatch {
 
 /// React `defaultOrder` (line 213): the single primary key, if the table
 /// has exactly one; otherwise there is no automatic order.
-pub(crate) fn default_order(primary_keys: &[String]) -> Option<String> {
+pub fn default_order(primary_keys: &[String]) -> Option<String> {
     if primary_keys.len() == 1 {
         primary_keys.first().cloned()
     } else {
@@ -207,7 +207,7 @@ pub(crate) fn default_order(primary_keys: &[String]) -> Option<String> {
 
 /// React `orderBy` (line 216): the stored order, the single-PK default,
 /// or `''` when neither exists.
-pub(crate) fn effective_order(recordset: &TransferRecordset, primary_keys: &[String]) -> String {
+pub fn effective_order(recordset: &TransferRecordset, primary_keys: &[String]) -> String {
     recordset
         .order_by
         .clone()
@@ -221,7 +221,7 @@ pub(crate) fn effective_order(recordset: &TransferRecordset, primary_keys: &[Str
 /// otherwise. `required_label` is the resolved
 /// `transfer.mapping.recordsetOrderRequired` text; the caller owns the
 /// key, as in `ExportSuccessPanel`.
-pub(crate) fn order_options(
+pub fn order_options(
     columns: &[String],
     source_column_types: &[(String, String)],
     required_label: &str,
@@ -241,7 +241,7 @@ pub(crate) fn order_options(
 /// tuple mode with the key columns and no bounds; anything else starts
 /// with the single-PK default order (or no order when there is no
 /// single key).
-pub(crate) fn enable_recordset(primary_keys: &[String]) -> TransferRecordset {
+pub fn enable_recordset(primary_keys: &[String]) -> TransferRecordset {
     if primary_keys.len() > 1 {
         TransferRecordset {
             tuple_range: Some(TransferRecordsetTupleRange {
@@ -262,7 +262,7 @@ pub(crate) fn enable_recordset(primary_keys: &[String]) -> TransferRecordset {
 /// React `updateBound` (lines 233–246): merge the patch over the stored
 /// bound (defaulting to `{ value: '', inclusive: true }`), and drop the
 /// bound entirely when the merged value is blank.
-pub(crate) fn apply_bound_update(
+pub fn apply_bound_update(
     recordset: &TransferRecordset,
     name: BoundName,
     patch: RecordsetBoundPatch,
@@ -296,7 +296,7 @@ pub(crate) fn apply_bound_update(
 /// * Any non-blank value switches the recordset to tuple mode: the
 ///   scalar order and bounds are cleared and the tuple range carries
 ///   the edited bound plus the other bound, if it exists.
-pub(crate) fn apply_tuple_bound_update(
+pub fn apply_tuple_bound_update(
     recordset: &TransferRecordset,
     primary_keys: &[String],
     name: BoundName,
@@ -359,7 +359,7 @@ pub(crate) fn apply_tuple_bound_update(
 /// React's limit commit (lines 417–421): a blank edit clears the limit,
 /// anything else is `Number(value)` — including `NaN` for a
 /// non-numeric edit.
-pub(crate) fn parse_limit(raw: &str) -> Option<f64> {
+pub fn parse_limit(raw: &str) -> Option<f64> {
     let value = raw.trim();
     if value.is_empty() {
         None
@@ -371,7 +371,7 @@ pub(crate) fn parse_limit(raw: &str) -> Option<f64> {
 /// The limit buffer text for a stored limit: integers render without a
 /// fraction (`100`, not `100`), `NaN` renders as `NaN`, and no limit
 /// renders empty.
-pub(crate) fn format_limit(limit: Option<f64>) -> String {
+pub fn format_limit(limit: Option<f64>) -> String {
     match limit {
         None => String::new(),
         Some(value) if value.is_finite() && value.fract() == 0.0 => {
@@ -387,7 +387,7 @@ pub(crate) fn format_limit(limit: Option<f64>) -> String {
 /// `table.recordset`, `disabled`); `order_select_open` is the kit
 /// `Select` open flag the host owns, as in `ColumnMappingRowVm`.
 #[derive(Clone, Debug)]
-pub(crate) struct RecordsetEditorVm {
+pub struct RecordsetEditorVm {
     pub columns: Vec<String>,
     pub source_column_types: Vec<(String, String)>,
     pub primary_keys: Vec<String>,
@@ -397,7 +397,7 @@ pub(crate) struct RecordsetEditorVm {
 }
 
 impl RecordsetEditorVm {
-    pub(crate) fn source_type(&self, column: &str) -> Option<&str> {
+    pub fn source_type(&self, column: &str) -> Option<&str> {
         self.source_column_types
             .iter()
             .find(|(name, _)| name == column)
@@ -406,7 +406,7 @@ impl RecordsetEditorVm {
 
     /// Whether the tuple editor renders: React renders it whenever
     /// `recordset.tupleRange` is present.
-    pub(crate) fn is_tuple(&self) -> bool {
+    pub fn is_tuple(&self) -> bool {
         self.recordset
             .as_ref()
             .is_some_and(|recordset| recordset.tuple_range.is_some())
@@ -417,7 +417,7 @@ impl RecordsetEditorVm {
 /// `ColumnMappingRowHost`: the shell owns one and re-seeds it from the
 /// model whenever a patch lands (see [`RecordsetHost::resync`]).
 #[derive(Clone, Debug)]
-pub(crate) struct RecordsetHost {
+pub struct RecordsetHost {
     pub order_open: bool,
     pub start_edit: TextEdit,
     pub end_edit: TextEdit,
@@ -444,7 +444,7 @@ impl RecordsetHost {
     /// inputs (which re-render from `table.recordset` after every
     /// commit). The tuple buffers are re-sized to the primary keys, so a
     /// table whose keys change cannot leave a stale buffer behind.
-    pub(crate) fn resync(
+    pub fn resync(
         &mut self,
         recordset: &Option<TransferRecordset>,
         primary_keys: &[String],
@@ -500,7 +500,7 @@ type Action<S> = Rc<dyn Fn(&mut S)>;
 
 /// Builder for the recordset editor. `S` is the host state that owns
 /// the `TextEdit` buffers and the order select's open flag.
-pub(crate) struct RecordsetEditor<'a, S: 'static> {
+pub struct RecordsetEditor<'a, S: 'static> {
     vm: RecordsetEditorVm,
     dark: bool,
     start_edit: Option<&'a TextEdit>,
@@ -519,7 +519,7 @@ pub(crate) struct RecordsetEditor<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> RecordsetEditor<'a, S> {
-    pub(crate) fn new(vm: RecordsetEditorVm) -> Self {
+    pub fn new(vm: RecordsetEditorVm) -> Self {
         Self {
             vm,
             dark: true,
@@ -541,7 +541,7 @@ impl<'a, S: 'static> RecordsetEditor<'a, S> {
 
     /// React `onChange`: receives the next recordset, or `None` when
     /// the enable toggle switches the recordset off.
-    pub(crate) fn on_change(
+    pub fn on_change(
         mut self,
         f: impl Fn(&mut S, Option<TransferRecordset>) + 'static,
     ) -> Self {
@@ -551,39 +551,39 @@ impl<'a, S: 'static> RecordsetEditor<'a, S> {
 
     /// The `TextEdit` the start-bound input displays, seeded from
     /// `recordset.start.value`.
-    pub(crate) fn start_edit(mut self, edit: &'a TextEdit) -> Self {
+    pub fn start_edit(mut self, edit: &'a TextEdit) -> Self {
         self.start_edit = Some(edit);
         self
     }
 
     /// The `TextEdit` the end-bound input displays.
-    pub(crate) fn end_edit(mut self, edit: &'a TextEdit) -> Self {
+    pub fn end_edit(mut self, edit: &'a TextEdit) -> Self {
         self.end_edit = Some(edit);
         self
     }
 
     /// The per-key `TextEdit`s the tuple start-bound inputs display,
     /// one per primary key, in key order.
-    pub(crate) fn tuple_start_edits(mut self, edits: &'a [TextEdit]) -> Self {
+    pub fn tuple_start_edits(mut self, edits: &'a [TextEdit]) -> Self {
         self.tuple_start_edits = Some(edits);
         self
     }
 
     /// The per-key `TextEdit`s the tuple end-bound inputs display.
-    pub(crate) fn tuple_end_edits(mut self, edits: &'a [TextEdit]) -> Self {
+    pub fn tuple_end_edits(mut self, edits: &'a [TextEdit]) -> Self {
         self.tuple_end_edits = Some(edits);
         self
     }
 
     /// The `TextEdit` the limit input displays, seeded from
     /// `recordset.limit`.
-    pub(crate) fn limit_edit(mut self, edit: &'a TextEdit) -> Self {
+    pub fn limit_edit(mut self, edit: &'a TextEdit) -> Self {
         self.limit_edit = Some(edit);
         self
     }
 
     /// Where the start-bound input writes its keystrokes.
-    pub(crate) fn on_start_edit(
+    pub fn on_start_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -592,7 +592,7 @@ impl<'a, S: 'static> RecordsetEditor<'a, S> {
     }
 
     /// Where the end-bound input writes its keystrokes.
-    pub(crate) fn on_end_edit(
+    pub fn on_end_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -601,7 +601,7 @@ impl<'a, S: 'static> RecordsetEditor<'a, S> {
     }
 
     /// Where the tuple start-bound cell `index` writes its keystrokes.
-    pub(crate) fn on_tuple_start_edit(
+    pub fn on_tuple_start_edit(
         mut self,
         f: impl Fn(&mut S, usize) -> &mut TextEdit + 'static,
     ) -> Self {
@@ -610,7 +610,7 @@ impl<'a, S: 'static> RecordsetEditor<'a, S> {
     }
 
     /// Where the tuple end-bound cell `index` writes its keystrokes.
-    pub(crate) fn on_tuple_end_edit(
+    pub fn on_tuple_end_edit(
         mut self,
         f: impl Fn(&mut S, usize) -> &mut TextEdit + 'static,
     ) -> Self {
@@ -619,7 +619,7 @@ impl<'a, S: 'static> RecordsetEditor<'a, S> {
     }
 
     /// Where the limit input writes its keystrokes.
-    pub(crate) fn on_limit_edit(
+    pub fn on_limit_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -629,18 +629,18 @@ impl<'a, S: 'static> RecordsetEditor<'a, S> {
 
     /// Route the order select's open/close to host state. Without it
     /// the select builds but never opens (see `ui/select.rs`).
-    pub(crate) fn on_toggle_order(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_order(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_order = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_close_order(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_order(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_order = Some(Rc::new(f));
         self
     }
 
     /// The recordset editor on its own, exactly as the probes mount it.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let (root, layer) = self.build_inner(dark);
         rune_kit::root(root, layer)
     }
@@ -649,7 +649,7 @@ impl<'a, S: 'static> RecordsetEditor<'a, S> {
     /// the overlay layer (the order select's listbox) the caller must
     /// mount alongside it. The editor shell (T023-S2) calls this once
     /// and roots the whole editor once.
-    pub(crate) fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
+    pub fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
         self.dark = dark;
         let k = kit(dark);
         let vm = &self.vm;

@@ -46,7 +46,7 @@ use crate::ai::target_claim::{AiTargetClaim, editor_grant, independent};
 
 /// React `UseAiEditorGrantParams`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct UseAiEditorGrantParams {
+pub struct UseAiEditorGrantParams {
     pub connection_id: Option<String>,
     pub database: Option<String>,
     /// Stable owner id of the editor pane whose session may be shared.
@@ -57,7 +57,7 @@ pub(crate) struct UseAiEditorGrantParams {
 /// plus the claimed-client-instance ref. Embed in the owning state `S`
 /// and drive through `update_params` / `set_sharing` / the `on_*`
 /// reporters; execute the returned effects on the host.
-pub(crate) struct AiEditorGrant {
+pub struct AiEditorGrant {
     params: UseAiEditorGrantParams,
     machine: Option<GrantState>,
     /// React `claimedClientInstanceIdRef` (written when a grant resolves).
@@ -66,45 +66,45 @@ pub(crate) struct AiEditorGrant {
 
 impl AiEditorGrant {
     /// The hook mounted with its params (React's first render).
-    pub(crate) fn new(params: UseAiEditorGrantParams) -> Self {
+    pub fn new(params: UseAiEditorGrantParams) -> Self {
         Self::with_config(params, GrantConfig::default())
     }
 
     /// `new` with an injected clock/touch ratio (the host's seam; tests
     /// drive deterministic time through it).
-    pub(crate) fn with_config(params: UseAiEditorGrantParams, config: GrantConfig) -> Self {
+    pub fn with_config(params: UseAiEditorGrantParams, config: GrantConfig) -> Self {
         let machine = Self::machine_for(&params, config);
         Self { params, machine, claimed_client_instance_id: None }
     }
 
     /// React's `canShare = Boolean(connectionId && editorSessionId)`.
-    pub(crate) fn can_share(&self) -> bool {
+    pub fn can_share(&self) -> bool {
         self.params.connection_id.is_some() && self.params.editor_session_id.is_some()
     }
 
     /// The live params (the hook's props; a rebind is [`Self::update_params`]).
-    pub(crate) fn params(&self) -> &UseAiEditorGrantParams {
+    pub fn params(&self) -> &UseAiEditorGrantParams {
         &self.params
     }
 
     /// React's `sharing = phase === 'granting' || phase === 'granted'`.
-    pub(crate) fn sharing(&self) -> bool {
+    pub fn sharing(&self) -> bool {
         matches!(self.phase(), GrantPhase::Granting | GrantPhase::Granted)
     }
 
     /// React's `phase` (the `INDEPENDENT` constant when there is no
     /// machine — `state === null` keeps the initial snapshot).
-    pub(crate) fn phase(&self) -> GrantPhase {
+    pub fn phase(&self) -> GrantPhase {
         self.machine.as_ref().map_or(GrantPhase::Independent, |m| m.snapshot().phase)
     }
 
     /// React's `error`.
-    pub(crate) fn error(&self) -> Option<&str> {
+    pub fn error(&self) -> Option<&str> {
         self.machine.as_ref().and_then(|m| m.snapshot().error.as_deref())
     }
 
     /// The live snapshot (independent when there is no machine).
-    pub(crate) fn snapshot(&self) -> crate::ai::grant_state::GrantSnapshot {
+    pub fn snapshot(&self) -> crate::ai::grant_state::GrantSnapshot {
         self.machine
             .as_ref()
             .map_or_else(crate::ai::grant_state::GrantSnapshot::independent, |m| {
@@ -118,13 +118,13 @@ impl AiEditorGrant {
     /// still be executed. `database` is not part of the key (React's
     /// memo only keys on the identity pair); it only feeds the next
     /// grant input.
-    pub(crate) fn update_params(&mut self, params: UseAiEditorGrantParams) -> Vec<GrantEffect> {
+    pub fn update_params(&mut self, params: UseAiEditorGrantParams) -> Vec<GrantEffect> {
         self.update_params_with(params, GrantConfig::default())
     }
 
     /// `update_params` with the config a rebound machine takes (the
     /// injected clock survives a rekey).
-    pub(crate) fn update_params_with(
+    pub fn update_params_with(
         &mut self,
         params: UseAiEditorGrantParams,
         config: GrantConfig,
@@ -156,7 +156,7 @@ impl AiEditorGrant {
     /// `sessionHandle.dbSessionId`/`runtimeEpoch` stringified. Deliver
     /// with [`Self::on_grant_result`], which also records the claimed
     /// client instance id.
-    pub(crate) fn set_sharing(&mut self, next: bool) -> Vec<GrantEffect> {
+    pub fn set_sharing(&mut self, next: bool) -> Vec<GrantEffect> {
         let Some(machine) = self.machine.as_mut() else {
             return Vec::new();
         };
@@ -176,7 +176,7 @@ impl AiEditorGrant {
     /// inside the closure); `Err` is the closure's rejected promise
     /// (session-not-ready, IPC failure) and leaves the machine
     /// independent with the visible error.
-    pub(crate) fn on_grant_result(
+    pub fn on_grant_result(
         &mut self,
         token: u64,
         result: Result<(crate::ai::grant_state::AiGrantReceipt, String), String>,
@@ -197,7 +197,7 @@ impl AiEditorGrant {
 
     /// The revoke executor's report (the `CallRevoke` effect's answer):
     /// `Ok(())` or the rejection message (which surfaces as a `Warn`).
-    pub(crate) fn on_revoke_result(
+    pub fn on_revoke_result(
         &mut self,
         grant_id: &str,
         result: Result<(), String>,
@@ -211,7 +211,7 @@ impl AiEditorGrant {
     /// The touch executor's report (the `CallTouch` effect's answer):
     /// `Ok(true)` extends, `Ok(false)` is the `"touch rejected"` error,
     /// `Err` carries the rejection.
-    pub(crate) fn on_touch_result(
+    pub fn on_touch_result(
         &mut self,
         grant_id: &str,
         result: Result<bool, String>,
@@ -223,7 +223,7 @@ impl AiEditorGrant {
     }
 
     /// The host's touch-timer fire.
-    pub(crate) fn fire_touch_timer(&mut self, handle: GrantTimerHandle) -> Vec<GrantEffect> {
+    pub fn fire_touch_timer(&mut self, handle: GrantTimerHandle) -> Vec<GrantEffect> {
         self.machine
             .as_mut()
             .map(|m| m.fire_touch_timer(handle))
@@ -231,7 +231,7 @@ impl AiEditorGrant {
     }
 
     /// The host's local-expiry fire — the independent exit.
-    pub(crate) fn fire_expiry_timer(&mut self, handle: GrantTimerHandle) -> Vec<GrantEffect> {
+    pub fn fire_expiry_timer(&mut self, handle: GrantTimerHandle) -> Vec<GrantEffect> {
         self.machine
             .as_mut()
             .map(|m| m.fire_expiry_timer(handle))
@@ -241,7 +241,7 @@ impl AiEditorGrant {
     /// React `claimForSend()`: the claim to attach to the next `ai_chat`
     /// call. Granted + receipt + claimed id + editor session → the
     /// editor-grant claim; anything less → `independent()`.
-    pub(crate) fn claim_for_send(&self) -> AiTargetClaim {
+    pub fn claim_for_send(&self) -> AiTargetClaim {
         let snapshot = self.snapshot();
         if snapshot.phase == GrantPhase::Granted {
             if let (Some(receipt), Some(claimed), Some(editor_session_id)) = (
@@ -256,7 +256,7 @@ impl AiEditorGrant {
     }
 
     /// The unmount path: dispose the machine (the effect cleanup).
-    pub(crate) fn dispose(&mut self) -> Vec<GrantEffect> {
+    pub fn dispose(&mut self) -> Vec<GrantEffect> {
         self.machine.as_mut().map_or_else(Vec::new, GrantState::dispose)
     }
 

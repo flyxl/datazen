@@ -43,24 +43,24 @@
 /// React `ROW_HEIGHT` (`ProgressLog.tsx`): every log row is 20pt high,
 /// with a matching 20px `line-height`.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) const ROW_HEIGHT: f64 = 20.0;
+pub const ROW_HEIGHT: f64 = 20.0;
 
 /// React `overscan: 20` (`ProgressLog.tsx`): rows rendered above and
 /// below the visible window.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) const OVERSCAN: usize = 20;
+pub const OVERSCAN: usize = 20;
 
 /// React `COPIED_FEEDBACK_MS` (`ProgressLog.tsx`): how long the "log
 /// copied" label stays before reverting to the copy label.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) const COPIED_FEEDBACK_MS: u64 = 1500;
+pub const COPIED_FEEDBACK_MS: u64 = 1500;
 
 /// The near-bottom margin in React's scroll listener
 /// (`ProgressLog.tsx`): `scrollHeight - ROW_HEIGHT * 2`. A scroll
 /// position within two rows of the bottom still counts as "at the
 /// bottom", so appending lines keeps the view pinned.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) const NEAR_BOTTOM_MARGIN: f64 = ROW_HEIGHT * 2.0;
+pub const NEAR_BOTTOM_MARGIN: f64 = ROW_HEIGHT * 2.0;
 
 /// React's virtualizer window for a scroll position, as a half-open
 /// `(start, end)` row range. This is `@tanstack/virtual-core@3.13`
@@ -76,7 +76,7 @@ pub(crate) const NEAR_BOTTOM_MARGIN: f64 = ROW_HEIGHT * 2.0;
 /// A negative `scroll_top` cannot happen in a browser and is clamped
 /// to 0 before the search.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) fn visible_range(scroll_top: f64, viewport_height: f64, count: usize) -> (usize, usize) {
+pub fn visible_range(scroll_top: f64, viewport_height: f64, count: usize) -> (usize, usize) {
     if count == 0 || viewport_height <= 0.0 {
         return (0, 0);
     }
@@ -125,13 +125,13 @@ fn nearest_row_start(count: usize, value: f64) -> usize {
 /// React `virtualizer.getTotalSize()`: the inner spacer's height, one
 /// [`ROW_HEIGHT`] per line.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) fn total_size(count: usize) -> f64 {
+pub fn total_size(count: usize) -> f64 {
     count as f64 * ROW_HEIGHT
 }
 
 /// React `row.start`: the `translateY` offset of row `index`.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) fn row_offset(index: usize) -> f64 {
+pub fn row_offset(index: usize) -> f64 {
     index as f64 * ROW_HEIGHT
 }
 
@@ -142,7 +142,7 @@ pub(crate) fn row_offset(index: usize) -> f64 {
 /// the comparison still holds, so a fresh log starts pinned — which is
 /// what the auto-scroll effect needs.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) fn is_near_bottom(scroll_top: f64, client_height: f64, scroll_height: f64) -> bool {
+pub fn is_near_bottom(scroll_top: f64, client_height: f64, scroll_height: f64) -> bool {
     scroll_top + client_height >= scroll_height - NEAR_BOTTOM_MARGIN
 }
 
@@ -151,7 +151,7 @@ pub(crate) fn is_near_bottom(scroll_top: f64, client_height: f64, scroll_height:
 /// the bottom only when there is something to show and the user has
 /// not scrolled away from it.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) fn should_auto_scroll(lines_empty: bool, near_bottom: bool) -> bool {
+pub fn should_auto_scroll(lines_empty: bool, near_bottom: bool) -> bool {
     !lines_empty && near_bottom
 }
 
@@ -164,7 +164,7 @@ pub(crate) fn should_auto_scroll(lines_empty: bool, near_bottom: bool) -> bool {
 /// the Backup window, but the helper keeps React's exact rule rather
 /// than guessing a tidier one.
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) fn copy_text(lines: &[String]) -> Option<String> {
+pub fn copy_text(lines: &[String]) -> Option<String> {
     let text = lines.join("\n");
     if text.is_empty() {
         None
@@ -179,7 +179,7 @@ pub(crate) fn copy_text(lines: &[String]) -> Option<String> {
 /// (seeded `true`, like React).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T076-S2 wires this into the ProgressLog component
-pub(crate) struct ProgressLogState {
+pub struct ProgressLogState {
     /// React `copied`: the "log copied" confirmation is showing.
     pub copied: bool,
     /// Monotonic id of the most recent copy request; `useCopyFeedback`'s
@@ -205,7 +205,7 @@ impl Default for ProgressLogState {
 impl ProgressLogState {
     /// A fresh state: nothing copied, no request yet, pinned to the
     /// bottom like React's `useRef(true)`.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -214,7 +214,7 @@ impl ProgressLogState {
     /// returns that id for the host's failure / expiry report. The
     /// clipboard write itself stays on the host: this only records
     /// that a copy was requested.
-    pub(crate) fn copy_pressed(&mut self) -> u64 {
+    pub fn copy_pressed(&mut self) -> u64 {
         self.copy_request += 1;
         self.copied = true;
         self.copy_request
@@ -223,7 +223,7 @@ impl ProgressLogState {
     /// The `COPIED_FEEDBACK_MS` timer firing: clears the confirmation
     /// only when `request` is still the most recent one. Returns whether
     /// it cleared.
-    pub(crate) fn expire_copy_feedback(&mut self, request: u64) -> bool {
+    pub fn expire_copy_feedback(&mut self, request: u64) -> bool {
         if request == self.copy_request {
             self.copied = false;
             true
@@ -236,7 +236,7 @@ impl ProgressLogState {
     /// `request` is still the most recent one — a late failure cannot
     /// erase a newer, successful confirmation. Returns whether it
     /// rolled back.
-    pub(crate) fn fail_copy(&mut self, request: u64) -> bool {
+    pub fn fail_copy(&mut self, request: u64) -> bool {
         if request == self.copy_request {
             self.copied = false;
             true
@@ -247,7 +247,7 @@ impl ProgressLogState {
 
     /// React's scroll listener: recomputes `shouldAutoScroll` from the
     /// scroll geometry and returns the new value.
-    pub(crate) fn on_scroll(
+    pub fn on_scroll(
         &mut self,
         scroll_top: f64,
         client_height: f64,
@@ -259,7 +259,7 @@ impl ProgressLogState {
 
     /// React's auto-scroll effect for this state: scroll to the bottom
     /// when there are lines and the user has not scrolled away.
-    pub(crate) fn should_scroll(&self, lines_empty: bool) -> bool {
+    pub fn should_scroll(&self, lines_empty: bool) -> bool {
         should_auto_scroll(lines_empty, self.auto_scroll)
     }
 }

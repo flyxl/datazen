@@ -29,8 +29,8 @@ mod grant_dialog;
 mod grants;
 mod model;
 
-pub(crate) use grant_dialog::GrantDialogVm;
-pub(crate) use model::{
+pub use grant_dialog::GrantDialogVm;
+pub use model::{
     build_object_tree, build_user_tree, PrivilegeAction, PrivilegeGrantVm, PrivilegeHostPort,
     PrivilegeVm, ViewMode,
 };
@@ -42,7 +42,7 @@ type EditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 
 /// Build the whole privilege panel.
 #[allow(dead_code)] // view entry point; consumer: the panel host (not wired).
-pub(crate) fn privilege_view<S: 'static>(
+pub fn privilege_view<S: 'static>(
     vm: &PrivilegeVm,
     grant: Option<&GrantDialogVm>,
     privilege_options: &[String],

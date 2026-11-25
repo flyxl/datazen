@@ -68,13 +68,13 @@ use crate::views::settings::updater::{
 
 /// GitHub Releases hosts every SKU's installer, including the ones
 /// with no updater channel.
-pub(crate) const RELEASES_URL: &str = "https://github.com/flyxl/datazen/releases";
+pub const RELEASES_URL: &str = "https://github.com/flyxl/datazen/releases";
 
 /// `text-xs` — the status, error and variant lines.
 const TEXT_XS: TextStyle = TextStyle::new(12.0, 400.0);
 
 /// `progressLabel(progress, t)`.
-pub(crate) fn progress_label(progress: &UpdateProgress) -> String {
+pub fn progress_label(progress: &UpdateProgress) -> String {
     match progress.phase {
         UpdatePhase::Checking => t("settings.updater.checking").to_owned(),
         UpdatePhase::Downloading => {
@@ -99,7 +99,7 @@ pub(crate) fn progress_label(progress: &UpdateProgress) -> String {
 
 /// Which card renders.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum UpdateFace {
+pub enum UpdateFace {
     /// `updateChannel === 'none'` — nothing at all.
     Hidden,
     /// `updateChannel === 'manual'` — the variant sentence + the
@@ -111,7 +111,7 @@ pub(crate) enum UpdateFace {
 
 /// What the confirm answer asked for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RestartAsk {
+pub enum RestartAsk {
     /// "Restart now" — the host relaunches.
     Relaunch,
     /// "Restart later" — the hint line.
@@ -121,26 +121,26 @@ pub(crate) enum RestartAsk {
 /// `UpdateSection`'s state (the busy/status/error triple, the
 /// pending restart and the confirm hook's half).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct UpdateSectionState {
+pub struct UpdateSectionState {
     /// The build's channel (host-injected constant).
-    pub(crate) channel: Option<UpdateChannel>,
+    pub channel: Option<UpdateChannel>,
     /// The build's variant (host-injected constant).
-    pub(crate) variant: String,
+    pub variant: String,
     /// An action in flight.
-    pub(crate) busy: bool,
+    pub busy: bool,
     /// The status sentence (already the display text).
-    pub(crate) status: Option<String>,
+    pub status: Option<String>,
     /// The error sentence (already the display text).
-    pub(crate) error: Option<String>,
+    pub error: Option<String>,
     /// The installed version awaiting a restart.
-    pub(crate) pending_restart_version: Option<String>,
+    pub pending_restart_version: Option<String>,
     /// `useConfirmDialog`'s state.
-    pub(crate) confirm: ConfirmDialogState,
+    pub confirm: ConfirmDialogState,
 }
 
 impl UpdateSectionState {
     /// The host-injected build constants decide the face.
-    pub(crate) fn new(channel: UpdateChannel, variant: &str) -> Self {
+    pub fn new(channel: UpdateChannel, variant: &str) -> Self {
         Self {
             channel: Some(channel),
             variant: variant.to_owned(),
@@ -150,7 +150,7 @@ impl UpdateSectionState {
 
     /// Which card renders: `none` → nothing, `manual` → the manual
     /// card, otherwise the full card.
-    pub(crate) fn face(&self) -> UpdateFace {
+    pub fn face(&self) -> UpdateFace {
         match self.channel {
             Some(UpdateChannel::None) | None => UpdateFace::Hidden,
             Some(UpdateChannel::Manual) => UpdateFace::Manual,
@@ -161,7 +161,7 @@ impl UpdateSectionState {
     /// `handleCheck`'s preamble: the unsupported guard (the error,
     /// no invoke) then the busy + checking status. Answers whether
     /// the host should run the check.
-    pub(crate) fn begin_check(&mut self) -> bool {
+    pub fn begin_check(&mut self) -> bool {
         if !is_updater_supported(self.channel.unwrap_or(UpdateChannel::None)) {
             self.error = Some(t("settings.updater.unavailable").to_owned());
             return false;
@@ -174,7 +174,7 @@ impl UpdateSectionState {
 
     /// `checkForUpdates`'s answer: the three statuses (`installed`
     /// has no branch in the check handler — the status survives).
-    pub(crate) fn note_check_result(&mut self, result: &UpdateCheckResult) {
+    pub fn note_check_result(&mut self, result: &UpdateCheckResult) {
         match result {
             UpdateCheckResult::UpToDate => {
                 self.status = Some(t("settings.updater.upToDate").to_owned());
@@ -194,7 +194,7 @@ impl UpdateSectionState {
 
     /// `handleDownload`'s preamble: the same unsupported guard, the
     /// busy flag. Answers whether the host should run the download.
-    pub(crate) fn begin_download(&mut self) -> bool {
+    pub fn begin_download(&mut self) -> bool {
         if !is_updater_supported(self.channel.unwrap_or(UpdateChannel::None)) {
             self.error = Some(t("settings.updater.unavailable").to_owned());
             return false;
@@ -205,14 +205,14 @@ impl UpdateSectionState {
     }
 
     /// `downloadAndInstallUpdate`'s progress callback.
-    pub(crate) fn note_progress(&mut self, progress: &UpdateProgress) {
+    pub fn note_progress(&mut self, progress: &UpdateProgress) {
         self.status = Some(progress_label(progress));
     }
 
     /// `downloadAndInstallUpdate`'s answer. The installed arm arms
     /// the restart confirm and returns its request id (busy stays
     /// set until the answer); every other arm clears busy.
-    pub(crate) fn note_download_result(&mut self, result: &UpdateCheckResult) -> Option<u64> {
+    pub fn note_download_result(&mut self, result: &UpdateCheckResult) -> Option<u64> {
         match result {
             UpdateCheckResult::UpToDate => {
                 self.status = Some(t("settings.updater.upToDate").to_owned());
@@ -254,7 +254,7 @@ impl UpdateSectionState {
     /// The restart confirm's answer: "now" relaunches (busy stays
     /// set — the await never cleared it, and the app exits),
     /// "later" takes the hint.
-    pub(crate) fn note_confirm_answer(&mut self, answer: bool) -> RestartAsk {
+    pub fn note_confirm_answer(&mut self, answer: bool) -> RestartAsk {
         let _ = self.confirm.answer_pending(answer);
         if answer {
             RestartAsk::Relaunch
@@ -271,7 +271,7 @@ impl UpdateSectionState {
     /// The download path's relaunch failure: the error, the busy
     /// clear, then the hint line (the `catch` falls through to the
     /// `setStatus` after the `if`).
-    pub(crate) fn note_download_relaunch_error(&mut self, message: &str) {
+    pub fn note_download_relaunch_error(&mut self, message: &str) {
         self.error = Some(message.to_owned());
         self.busy = false;
         let version = self.pending_restart_version.clone().unwrap_or_default();
@@ -281,7 +281,7 @@ impl UpdateSectionState {
 
     /// `handleRestart`'s preamble: busy + a clean error slate (no
     /// unsupported guard — React's own has none either).
-    pub(crate) fn begin_restart(&mut self) -> bool {
+    pub fn begin_restart(&mut self) -> bool {
         self.busy = true;
         self.error = None;
         true
@@ -289,20 +289,20 @@ impl UpdateSectionState {
 
     /// The restart button's relaunch failure: the error and the
     /// busy clear, no hint line.
-    pub(crate) fn note_restart_error(&mut self, message: &str) {
+    pub fn note_restart_error(&mut self, message: &str) {
         self.error = Some(message.to_owned());
         self.busy = false;
     }
 
     /// `ManualUpdateSection`'s variant sentence.
-    pub(crate) fn manual_variant_line(&self) -> String {
+    pub fn manual_variant_line(&self) -> String {
         t("settings.updater.manualVariant").replace("{variant}", &self.variant)
     }
 }
 
 /// `UpdateSection({ … })`: the card over the state, the state lens
 /// and the host's action slots.
-pub(crate) struct UpdateSection<'a, S: 'static> {
+pub struct UpdateSection<'a, S: 'static> {
     state: &'a UpdateSectionState,
     dark: bool,
     section_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut UpdateSectionState>,
@@ -316,7 +316,7 @@ pub(crate) struct UpdateSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> UpdateSection<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a UpdateSectionState,
         dark: bool,
         section_edit: impl for<'b> Fn(&'b mut S) -> &'b mut UpdateSectionState + 'static,
@@ -334,39 +334,39 @@ impl<'a, S: 'static> UpdateSection<'a, S> {
     }
 
     /// The Check button's `handleCheck`.
-    pub(crate) fn on_check(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_check(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_check = Some(Rc::new(f));
         self
     }
 
     /// The Download & Install button's `handleDownload` (the host
     /// reports progress + the result).
-    pub(crate) fn on_download(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_download(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_download = Some(Rc::new(f));
         self
     }
 
     /// The Restart Now button's `handleRestart`.
-    pub(crate) fn on_restart(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_restart(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_restart = Some(Rc::new(f));
         self
     }
 
     /// The restart confirm's "restart now" relaunch.
-    pub(crate) fn on_confirm_restart(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_restart(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_restart = Some(Rc::new(f));
         self
     }
 
     /// The manual card's `openPath(RELEASES_URL)`.
-    pub(crate) fn on_open_releases(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_releases(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_releases = Some(Rc::new(f));
         self
     }
 
     /// The card (`None` face → an empty column that lays out
     /// nothing).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let mut section = col().key("update-section").w_full().gap(12.0);
         match state.face() {

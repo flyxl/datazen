@@ -28,7 +28,7 @@ use super::recordset_editor::TransferRecordset;
 /// create-new toggle); the rest are carried so the model stays the
 /// React union and T307 / the transfer view can match on it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TransferMappingStatus {
+pub enum TransferMappingStatus {
     #[default]
     Matched,
     CreateNew,
@@ -41,7 +41,7 @@ pub(crate) enum TransferMappingStatus {
 impl TransferMappingStatus {
     /// The TS union's own spelling (`'MATCHED' | 'CREATE_NEW' | …`,
     /// `commands/transfer.ts:7-13`) — what React's objects row renders.
-    pub(crate) fn spelling(self) -> &'static str {
+    pub fn spelling(self) -> &'static str {
         match self {
             TransferMappingStatus::Matched => "MATCHED",
             TransferMappingStatus::CreateNew => "CREATE_NEW",
@@ -63,7 +63,7 @@ impl TransferMappingStatus {
 /// `source_column_types` is the `Record<string, string>` as an ordered
 /// association list (a handful of columns; linear lookup is enough).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferTableVm {
+pub struct TransferTableVm {
     pub source_table: String,
     pub target_table: String,
     pub status: TransferMappingStatus,
@@ -82,7 +82,7 @@ pub(crate) struct TransferTableVm {
 
 impl TransferTableVm {
     /// `table.sourceColumnTypes?.[column]`.
-    pub(crate) fn source_type(&self, column: &str) -> Option<&str> {
+    pub fn source_type(&self, column: &str) -> Option<&str> {
         self.source_column_types
             .iter()
             .find(|(name, _)| name == column)
@@ -91,7 +91,7 @@ impl TransferTableVm {
 
     /// `table.sourceColumns ?? mappings.map((m) => m.sourceColumn)` — the
     /// source list `handleAutoMatch` works from (React 66).
-    pub(crate) fn auto_match_sources(&self, mappings: &[TransferColumnMapping]) -> Vec<String> {
+    pub fn auto_match_sources(&self, mappings: &[TransferColumnMapping]) -> Vec<String> {
         match &self.source_columns {
             Some(columns) => columns.clone(),
             None => mappings
@@ -110,7 +110,7 @@ impl TransferTableVm {
 /// distinguishes "leave it" (`None`) from "clear it" (`Some(None)`,
 /// the enable toggle switching the recordset off).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ColumnMappingTablePatch {
+pub struct ColumnMappingTablePatch {
     pub target_table: Option<String>,
     pub create_new: Option<bool>,
     pub column_mappings: Option<Vec<TransferColumnMapping>>,
@@ -120,7 +120,7 @@ pub(crate) struct ColumnMappingTablePatch {
 impl ColumnMappingTablePatch {
     /// Apply the patch to a table, exactly as the parent's `onChange`
     /// spreads it over the stored `TransferTableResult`.
-    pub(crate) fn apply_to(&self, table: &mut TransferTableVm) {
+    pub fn apply_to(&self, table: &mut TransferTableVm) {
         if let Some(target_table) = &self.target_table {
             table.target_table = target_table.clone();
         }
@@ -138,12 +138,12 @@ impl ColumnMappingTablePatch {
 
 /// React `showCreateNewToggle` (lines 39):
 /// `structureMode || table.status === 'CREATE_NEW' || table.createNew`.
-pub(crate) fn show_create_new_toggle(structure_mode: bool, table: &TransferTableVm) -> bool {
+pub fn show_create_new_toggle(structure_mode: bool, table: &TransferTableVm) -> bool {
     structure_mode || table.status == TransferMappingStatus::CreateNew || table.create_new
 }
 
 /// React `showTargetType` (line 40): `structureMode && table.createNew`.
-pub(crate) fn show_target_type(structure_mode: bool, table: &TransferTableVm) -> bool {
+pub fn show_target_type(structure_mode: bool, table: &TransferTableVm) -> bool {
     structure_mode && table.create_new
 }
 
@@ -159,7 +159,7 @@ pub(crate) fn show_target_type(structure_mode: bool, table: &TransferTableVm) ->
 /// is synthesised as `{ targetColumn: '', skip: true }`. When the stored
 /// mappings repeat a source, the last one wins — TS builds the lookup as
 /// `new Map(...)`, so a later entry overwrites the earlier one.
-pub(crate) fn normalize_column_mappings(table: &TransferTableVm) -> Vec<TransferColumnMapping> {
+pub fn normalize_column_mappings(table: &TransferTableVm) -> Vec<TransferColumnMapping> {
     let source_columns = match &table.source_columns {
         Some(columns) => columns.clone(),
         None => {
@@ -200,7 +200,7 @@ pub(crate) fn normalize_column_mappings(table: &TransferTableVm) -> Vec<Transfer
 /// existing rows repeat a source, the last one wins — TS builds
 /// `existingBySource` as a `Map`, so a later entry overwrites the
 /// earlier one.
-pub(crate) fn auto_match_column_mappings(
+pub fn auto_match_column_mappings(
     source_columns: &[String],
     target_columns: &[String],
     existing: &[TransferColumnMapping],
@@ -231,7 +231,7 @@ pub(crate) fn auto_match_column_mappings(
 /// `clearUnmappedColumnMappings` (ported)
 /// (`transferMappingView.ts:40-45`): rows without a target column are
 /// emptied and marked skipped; mapped rows pass through unchanged.
-pub(crate) fn clear_unmapped_column_mappings(
+pub fn clear_unmapped_column_mappings(
     mappings: &[TransferColumnMapping],
 ) -> Vec<TransferColumnMapping> {
     mappings
@@ -254,7 +254,7 @@ pub(crate) fn clear_unmapped_column_mappings(
 /// (`transferMappingView.ts:48-56`): target columns not referenced by any
 /// active (non-skipped, non-empty) mapping. A table being created, or one
 /// with no target columns, has no unmapped targets.
-pub(crate) fn unmapped_target_columns(table: &TransferTableVm) -> Vec<String> {
+pub fn unmapped_target_columns(table: &TransferTableVm) -> Vec<String> {
     if table.create_new {
         return Vec::new();
     }
@@ -313,7 +313,7 @@ fn row_clears_gate(row: &TransferTableVm) -> bool {
 /// call this on the *rows they hold at the moment they run*, so a rule
 /// written twice cannot drift into two components disagreeing about the
 /// same table.
-pub(crate) fn mapping_gate_allows_advance(rows: &[TransferTableVm]) -> bool {
+pub fn mapping_gate_allows_advance(rows: &[TransferTableVm]) -> bool {
     rows.iter().any(row_clears_gate)
 }
 
@@ -322,7 +322,7 @@ pub(crate) fn mapping_gate_allows_advance(rows: &[TransferTableVm]) -> bool {
 /// key. Only the unnamed-create-new case is reported. "Nothing is mapped
 /// yet" is the state the user is still working in, not a dead end that
 /// deserves a banner.
-pub(crate) fn mapping_gate_block_reason(rows: &[TransferTableVm]) -> Option<&'static str> {
+pub fn mapping_gate_block_reason(rows: &[TransferTableVm]) -> Option<&'static str> {
     if rows.iter().any(row_clears_gate) {
         return None;
     }

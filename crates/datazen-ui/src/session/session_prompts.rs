@@ -22,35 +22,35 @@ use crate::session::query_panel_session::SwitchResult;
 
 /// Exact React i18n keys (verified against `locales/zh-CN/query.ts`).
 #[allow(dead_code)] // key constants; remove with the query-panel view.
-pub(crate) const PROMPT_REVISION_CONFLICT: &str = "query.session.revisionConflict";
+pub const PROMPT_REVISION_CONFLICT: &str = "query.session.revisionConflict";
 #[allow(dead_code)] // key constants; remove with the query-panel view.
-pub(crate) const PROMPT_DISCONNECTED: &str = "query.session.disconnected";
+pub const PROMPT_DISCONNECTED: &str = "query.session.disconnected";
 #[allow(dead_code)] // key constants; remove with the query-panel view.
-pub(crate) const PROMPT_SWITCH_FAILED: &str = "query.session.switchFailed";
+pub const PROMPT_SWITCH_FAILED: &str = "query.session.switchFailed";
 #[allow(dead_code)] // key constants; remove with the query-panel view.
-pub(crate) const PROMPT_CANCELLED_RETRY: &str = "query.session.cancelledRetry";
+pub const PROMPT_CANCELLED_RETRY: &str = "query.session.cancelledRetry";
 #[allow(dead_code)] // key constants; remove with the query-panel view.
-pub(crate) const PROMPT_EXECUTION_FAILED: &str = "query.session.executionFailed";
+pub const PROMPT_EXECUTION_FAILED: &str = "query.session.executionFailed";
 
 /// Typed stand-in for React's `unknown` error: an `ApiError` carries a `code`,
 /// a plain `Error` only a message.
 #[allow(dead_code)] // stand-in; remove when a shared error DTO exposes the split.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PromptError {
+pub enum PromptError {
     ApiError { code: String, message: String },
     Error { message: String },
 }
 
 #[allow(dead_code)] // constructors; remove with the stand-in.
 impl PromptError {
-    pub(crate) fn api(code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn api(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::ApiError {
             code: code.into(),
             message: message.into(),
         }
     }
 
-    pub(crate) fn error(message: impl Into<String>) -> Self {
+    pub fn error(message: impl Into<String>) -> Self {
         Self::Error {
             message: message.into(),
         }
@@ -58,7 +58,7 @@ impl PromptError {
 
     /// Adapt the T083 `ApiError` mirror (whose battery codes live in
     /// `ApiErrorCode::Other`) into the same shape.
-    pub(crate) fn from_session(error: &SessionError) -> Self {
+    pub fn from_session(error: &SessionError) -> Self {
         Self::ApiError {
             code: api_code_string(&error.code),
             message: error.message.clone(),
@@ -69,13 +69,13 @@ impl PromptError {
 /// Whether a database switch must ask before leaving an open transaction. A
 /// closed or lost session has no transaction left, so no confirmation.
 #[allow(dead_code)] // helper; remove with the query-panel view.
-pub(crate) fn needs_transaction_switch_confirm(session: &SessionView) -> bool {
+pub fn needs_transaction_switch_confirm(session: &SessionView) -> bool {
     session.state != SessionState::Closed && session.state != SessionState::Lost
 }
 
 /// Prompt key for a `DatabaseSwitchResult` (silent on success or cancellation).
 #[allow(dead_code)] // helper; remove with the query-panel view.
-pub(crate) fn switch_result_prompt_key(result: &SwitchResult) -> Option<&'static str> {
+pub fn switch_result_prompt_key(result: &SwitchResult) -> Option<&'static str> {
     match result {
         SwitchResult::Switched { .. } | SwitchResult::Cancelled => None,
         SwitchResult::Conflict { .. } => Some(PROMPT_REVISION_CONFLICT),
@@ -88,7 +88,7 @@ pub(crate) fn switch_result_prompt_key(result: &SwitchResult) -> Option<&'static
 
 /// Map a session/execution error to its user-facing copy key.
 #[allow(dead_code)] // helper; remove with the query-panel view.
-pub(crate) fn session_error_prompt_key(error: &PromptError) -> &'static str {
+pub fn session_error_prompt_key(error: &PromptError) -> &'static str {
     if let PromptError::ApiError { code, .. } = error {
         match code.as_str() {
             "SessionLost" => return PROMPT_DISCONNECTED,
@@ -103,7 +103,7 @@ pub(crate) fn session_error_prompt_key(error: &PromptError) -> &'static str {
 /// Map a projection error: a lost-session API error or a disconnect-shaped
 /// message is a disconnect; everything else is a generic execution failure.
 #[allow(dead_code)] // helper; remove with the query-panel view.
-pub(crate) fn projection_error_prompt_key(error: &PromptError) -> &'static str {
+pub fn projection_error_prompt_key(error: &PromptError) -> &'static str {
     if let PromptError::ApiError { code, .. } = error {
         if code == "SessionLost" {
             return PROMPT_DISCONNECTED;

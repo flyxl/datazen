@@ -33,21 +33,21 @@
 
 /// The `TableSchema` slice the table-SQL generators read.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TableSchemaVm {
-    pub(crate) columns: Vec<ColumnVm>,
-    pub(crate) primary_keys: Vec<String>,
+pub struct TableSchemaVm {
+    pub columns: Vec<ColumnVm>,
+    pub primary_keys: Vec<String>,
 }
 
 /// One column's generator-relevant fields.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ColumnVm {
-    pub(crate) name: String,
-    pub(crate) is_primary_key: bool,
+pub struct ColumnVm {
+    pub name: String,
+    pub is_primary_key: bool,
 }
 
 /// React `BaseTableSqlGenerator.quote`: backtick and double-quote double
 /// themselves inside, bracket doubles `]`; any other char is a passthrough.
-pub(crate) fn quote_identifier(quote_char: char, ident: &str) -> String {
+pub fn quote_identifier(quote_char: char, ident: &str) -> String {
     match quote_char {
         '`' => format!("`{}`", ident.replace('`', "``")),
         '"' => format!("\"{}\"", ident.replace('"', "\"\"")),
@@ -96,7 +96,7 @@ fn escape_inner(quote_char: char, ident: &str) -> String {
 
 /// React `BaseTableSqlGenerator.generateUpdate` (the `super()` the
 /// ClickHouse override reaches on an empty schema).
-pub(crate) fn base_update_sql(quote_char: char, table_ref: &str, schema: &TableSchemaVm) -> String {
+pub fn base_update_sql(quote_char: char, table_ref: &str, schema: &TableSchemaVm) -> String {
     if schema.columns.is_empty() {
         return format!("/* No column metadata available for UPDATE {table_ref} */");
     }
@@ -116,7 +116,7 @@ pub(crate) fn base_update_sql(quote_char: char, table_ref: &str, schema: &TableS
 }
 
 /// React `BaseTableSqlGenerator.generateDelete`.
-pub(crate) fn base_delete_sql(quote_char: char, table_ref: &str, schema: &TableSchemaVm) -> String {
+pub fn base_delete_sql(quote_char: char, table_ref: &str, schema: &TableSchemaVm) -> String {
     if schema.columns.is_empty() {
         return format!("/* No column metadata available for DELETE {table_ref} */");
     }
@@ -128,7 +128,7 @@ pub(crate) fn base_delete_sql(quote_char: char, table_ref: &str, schema: &TableS
 
 /// React `ClickHouseTableSqlGenerator.generateUpdate`:
 /// `ALTER TABLE … UPDATE … WHERE …;` (the quote char is backtick).
-pub(crate) fn clickhouse_update_sql(table_ref: &str, schema: &TableSchemaVm) -> String {
+pub fn clickhouse_update_sql(table_ref: &str, schema: &TableSchemaVm) -> String {
     if schema.columns.is_empty() {
         return base_update_sql('`', table_ref, schema);
     }
@@ -149,7 +149,7 @@ pub(crate) fn clickhouse_update_sql(table_ref: &str, schema: &TableSchemaVm) -> 
 
 /// React `ClickHouseTableSqlGenerator.generateDelete`:
 /// `ALTER TABLE … DELETE WHERE …;`.
-pub(crate) fn clickhouse_delete_sql(table_ref: &str, schema: &TableSchemaVm) -> String {
+pub fn clickhouse_delete_sql(table_ref: &str, schema: &TableSchemaVm) -> String {
     if schema.columns.is_empty() {
         return base_delete_sql('`', table_ref, schema);
     }
@@ -161,15 +161,15 @@ pub(crate) fn clickhouse_delete_sql(table_ref: &str, schema: &TableSchemaVm) -> 
 
 /// React `ElasticsearchTableSqlGenerator` — every write throws; the exact
 /// error strings are the contract.
-pub(crate) fn elasticsearch_insert_sql() -> Result<String, String> {
+pub fn elasticsearch_insert_sql() -> Result<String, String> {
     Err("Elasticsearch SQL does not support INSERT statements".to_owned())
 }
 
-pub(crate) fn elasticsearch_update_sql() -> Result<String, String> {
+pub fn elasticsearch_update_sql() -> Result<String, String> {
     Err("Elasticsearch SQL does not support UPDATE statements".to_owned())
 }
 
-pub(crate) fn elasticsearch_delete_sql() -> Result<String, String> {
+pub fn elasticsearch_delete_sql() -> Result<String, String> {
     Err("Elasticsearch SQL does not support DELETE statements".to_owned())
 }
 
@@ -177,13 +177,13 @@ pub(crate) fn elasticsearch_delete_sql() -> Result<String, String> {
 
 /// React `noDdl.getTableDdlQuery().sql` — no rows, keeps the DDL tab
 /// harmless for non-SQL engines.
-pub(crate) const NO_DDL_TABLE_QUERY: &str = "SELECT NULL AS sql WHERE 0";
+pub const NO_DDL_TABLE_QUERY: &str = "SELECT NULL AS sql WHERE 0";
 
 // ---- the standard index DDL --------------------------------------------------
 
 /// Which `DROP INDEX` shape `standardIndex` emits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DropIndexPattern {
+pub enum DropIndexPattern {
     /// `DROP INDEX <index> ON <table>` (sqlserver / clickhouse).
     Table,
     /// `DROP INDEX <index>` (oracle / duckdb / elasticsearch / mongodb / generic).
@@ -191,7 +191,7 @@ pub(crate) enum DropIndexPattern {
 }
 
 /// React `standardIndex(dropPattern).getDropIndexSql`.
-pub(crate) fn drop_index_sql(
+pub fn drop_index_sql(
     pattern: DropIndexPattern,
     index_name: &str,
     table_name: &str,
@@ -208,10 +208,10 @@ pub(crate) fn drop_index_sql(
 }
 
 /// The supported index methods every `standardIndex` strategy declares.
-pub(crate) const SUPPORTED_INDEX_METHODS: &[&str] = &["btree", "hash"];
+pub const SUPPORTED_INDEX_METHODS: &[&str] = &["btree", "hash"];
 
 /// React `standardIndex(…).getCreateIndexSql`.
-pub(crate) fn create_index_sql(
+pub fn create_index_sql(
     unique: bool,
     index_name: &str,
     table_name: &str,
@@ -236,7 +236,7 @@ fn escape_single_quotes(value: &str) -> String {
 }
 
 /// React `sqlserverDialect.ddl.getTableDdlQuery`.
-pub(crate) fn sqlserver_table_ddl_query(table_name: &str) -> String {
+pub fn sqlserver_table_ddl_query(table_name: &str) -> String {
     format!(
         "SELECT OBJECT_DEFINITION(OBJECT_ID('{}'))",
         escape_single_quotes(table_name)
@@ -244,7 +244,7 @@ pub(crate) fn sqlserver_table_ddl_query(table_name: &str) -> String {
 }
 
 /// React `oracleDialect.ddl.getTableDdlQuery`.
-pub(crate) fn oracle_table_ddl_query(table_name: &str) -> String {
+pub fn oracle_table_ddl_query(table_name: &str) -> String {
     format!(
         "SELECT DBMS_METADATA.GET_DDL('TABLE', '{}') FROM DUAL",
         escape_single_quotes(table_name)
@@ -252,7 +252,7 @@ pub(crate) fn oracle_table_ddl_query(table_name: &str) -> String {
 }
 
 /// React `oracleDialect.ddl.getViewDdlQuery`.
-pub(crate) fn oracle_view_ddl_query(view_name: &str) -> String {
+pub fn oracle_view_ddl_query(view_name: &str) -> String {
     format!(
         "SELECT DBMS_METADATA.GET_DDL('VIEW', '{}') FROM DUAL",
         escape_single_quotes(view_name)
@@ -260,7 +260,7 @@ pub(crate) fn oracle_view_ddl_query(view_name: &str) -> String {
 }
 
 /// React `clickhouseDialect.ddl.getTableDdlQuery`.
-pub(crate) fn clickhouse_table_ddl_query(table_name: &str) -> String {
+pub fn clickhouse_table_ddl_query(table_name: &str) -> String {
     format!(
         "SELECT create_table_query FROM system.tables WHERE database = currentDatabase() AND name = '{}'",
         escape_single_quotes(table_name)
@@ -268,7 +268,7 @@ pub(crate) fn clickhouse_table_ddl_query(table_name: &str) -> String {
 }
 
 /// React `duckdbDialect.ddl.getTableDdlQuery`.
-pub(crate) fn duckdb_table_ddl_query(table_name: &str) -> String {
+pub fn duckdb_table_ddl_query(table_name: &str) -> String {
     format!(
         "SELECT sql FROM duckdb_tables() WHERE table_name = '{}'",
         escape_single_quotes(table_name)
@@ -276,7 +276,7 @@ pub(crate) fn duckdb_table_ddl_query(table_name: &str) -> String {
 }
 
 /// React `duckdbDialect.ddl.getViewDdlQuery`.
-pub(crate) fn duckdb_view_ddl_query(view_name: &str) -> String {
+pub fn duckdb_view_ddl_query(view_name: &str) -> String {
     format!(
         "SELECT sql FROM duckdb_views() WHERE view_name = '{}'",
         escape_single_quotes(view_name)
@@ -286,19 +286,19 @@ pub(crate) fn duckdb_view_ddl_query(view_name: &str) -> String {
 // ---- row limits ---------------------------------------------------------------
 
 /// React `sqlserverDialect.rowLimit`: `TOP n` inside the select list.
-pub(crate) fn sqlserver_row_limit_clause(limit: usize) -> String {
+pub fn sqlserver_row_limit_clause(limit: usize) -> String {
     format!("TOP {limit}")
 }
 
 /// React `oracleDialect.rowLimit`: `FETCH FIRST n ROWS ONLY` at the end.
-pub(crate) fn oracle_row_limit_clause(limit: usize) -> String {
+pub fn oracle_row_limit_clause(limit: usize) -> String {
     format!("FETCH FIRST {limit} ROWS ONLY")
 }
 
 // ---- backup options ------------------------------------------------------------
 
 /// React `sqlserverDialect.backupOptions`.
-pub(crate) const SQLSERVER_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
+pub const SQLSERVER_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
     super::strategy::BackupOption { id: "schema-only", label: "--schema-only" },
     super::strategy::BackupOption { id: "data-only", label: "--data-only" },
     super::strategy::BackupOption { id: "clean", label: "--clean" },
@@ -307,14 +307,14 @@ pub(crate) const SQLSERVER_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
 ];
 
 /// React `oracleDialect.backupOptions`.
-pub(crate) const ORACLE_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
+pub const ORACLE_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
     super::strategy::BackupOption { id: "schema-only", label: "--schema-only" },
     super::strategy::BackupOption { id: "data-only", label: "--data-only" },
     super::strategy::BackupOption { id: "clean", label: "--clean" },
 ];
 
 /// React `clickhouseDialect.backupOptions`.
-pub(crate) const CLICKHOUSE_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
+pub const CLICKHOUSE_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
     super::strategy::BackupOption { id: "schema-only", label: "--schema-only" },
     super::strategy::BackupOption { id: "data-only", label: "--data-only" },
     super::strategy::BackupOption { id: "clean", label: "--clean" },
@@ -322,7 +322,7 @@ pub(crate) const CLICKHOUSE_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &
 ];
 
 /// React `duckdbDialect.backupOptions`.
-pub(crate) const DUCKDB_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
+pub const DUCKDB_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
     super::strategy::BackupOption { id: "schema-only", label: "--schema-only" },
     super::strategy::BackupOption { id: "data-only", label: "--data-only" },
     super::strategy::BackupOption { id: "clean", label: "--clean" },
@@ -331,7 +331,7 @@ pub(crate) const DUCKDB_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[
 ];
 
 /// The engines with no backup options (elasticsearch, mongodb, generic).
-pub(crate) const NO_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[];
+pub const NO_BACKUP_OPTIONS: &[super::strategy::BackupOption] = &[];
 
 // ---- the assembled strategies (React's `export const xDialect`) ---------------
 
@@ -396,7 +396,7 @@ fn duckdb_view_ddl(view_name: &str, _schema: Option<&str>) -> DdlQuery {
 
 /// React `sqlserverDialect` — `TOP n` inside the select list, bracket
 /// quoting, double-quote table SQL.
-pub(crate) static SQLSERVER_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static SQLSERVER_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "sqlserver",
     ddl: DialectDdl { table_ddl: sqlserver_ddl, view_ddl: None },
     index: DialectIndex {
@@ -415,7 +415,7 @@ pub(crate) static SQLSERVER_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
 
 /// React `oracleDialect` — `FETCH FIRST n ROWS ONLY` trailing, DDL from
 /// `DBMS_METADATA`.
-pub(crate) static ORACLE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static ORACLE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "oracle",
     ddl: DialectDdl { table_ddl: oracle_ddl, view_ddl: Some(oracle_view_ddl) },
     index: DialectIndex {
@@ -433,7 +433,7 @@ pub(crate) static ORACLE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
 };
 
 /// React `clickhouseDialect` — backticks, `ALTER TABLE` write shapes.
-pub(crate) static CLICKHOUSE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static CLICKHOUSE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "clickhouse",
     ddl: DialectDdl { table_ddl: clickhouse_ddl, view_ddl: None },
     index: DialectIndex {
@@ -449,7 +449,7 @@ pub(crate) static CLICKHOUSE_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
 
 /// React `duckdbDialect` — DDL from the `duckdb_tables()`/`duckdb_views()`
 /// catalogs.
-pub(crate) static DUCKDB_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static DUCKDB_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "duckdb",
     ddl: DialectDdl { table_ddl: duckdb_ddl, view_ddl: Some(duckdb_view_ddl) },
     index: DialectIndex {
@@ -464,7 +464,7 @@ pub(crate) static DUCKDB_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
 };
 
 /// React `elasticsearchDialect` — no DDL, every write throws.
-pub(crate) static ELASTICSEARCH_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static ELASTICSEARCH_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "elasticsearch",
     ddl: DialectDdl { table_ddl: no_ddl_query, view_ddl: None },
     index: DialectIndex {
@@ -479,7 +479,7 @@ pub(crate) static ELASTICSEARCH_DIALECT: SqlDialectStrategy = SqlDialectStrategy
 };
 
 /// React `mongodbDialect` — no DDL, no table SQL, no backup flags.
-pub(crate) static MONGODB_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static MONGODB_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "mongodb",
     ddl: DialectDdl { table_ddl: no_ddl_query, view_ddl: None },
     index: DialectIndex {
@@ -494,7 +494,7 @@ pub(crate) static MONGODB_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
 };
 
 /// React `genericDialect` — the ANSI fallback.
-pub(crate) static GENERIC_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static GENERIC_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "generic",
     ddl: DialectDdl { table_ddl: no_ddl_query, view_ddl: None },
     index: DialectIndex {

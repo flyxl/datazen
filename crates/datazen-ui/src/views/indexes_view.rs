@@ -45,20 +45,20 @@ use crate::ui::spinner::{Spinner, SpinnerSize};
 
 mod dialogs;
 
-pub(crate) const ROOT_KEY: &str = "indexes-view";
-pub(crate) const LOADING_KEY: &str = "idx-loading";
-pub(crate) const ERROR_KEY: &str = "idx-error";
-pub(crate) const EMPTY_KEY: &str = "idx-empty";
-pub(crate) const HEADER_KEY: &str = "idx-header";
-pub(crate) const TABLE_KEY: &str = "idx-table";
-pub(crate) const HEAD_KEY: &str = "idx-head";
-pub(crate) const CREATE_KEY: &str = "idx-create-dialog";
-pub(crate) const DELETE_KEY: &str = "idx-delete-dialog";
+pub const ROOT_KEY: &str = "indexes-view";
+pub const LOADING_KEY: &str = "idx-loading";
+pub const ERROR_KEY: &str = "idx-error";
+pub const EMPTY_KEY: &str = "idx-empty";
+pub const HEADER_KEY: &str = "idx-header";
+pub const TABLE_KEY: &str = "idx-table";
+pub const HEAD_KEY: &str = "idx-head";
+pub const CREATE_KEY: &str = "idx-create-dialog";
+pub const DELETE_KEY: &str = "idx-delete-dialog";
 
 /// React's `INDEX_METHOD_LABELS`; the strings are authored in React, not i18n.
 #[allow(dead_code)] // literal port; remove when the dialect port owns method labels.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum IndexMethod {
+pub enum IndexMethod {
     #[default]
     BTree,
     Hash,
@@ -67,7 +67,7 @@ pub(crate) enum IndexMethod {
 }
 
 impl IndexMethod {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::BTree => "btree",
             Self::Hash => "hash",
@@ -89,32 +89,32 @@ impl IndexMethod {
 /// React props, kept as a contract mirror for the host.
 #[allow(dead_code)] // contract mirror; remove when the host panel store lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct IndexesIdentity {
-    pub(crate) db_session_id: String,
-    pub(crate) table_name: String,
-    pub(crate) database: String,
-    pub(crate) database_type: String,
-    pub(crate) safe_mode: bool,
-    pub(crate) create_index_trigger: u32,
+pub struct IndexesIdentity {
+    pub db_session_id: String,
+    pub table_name: String,
+    pub database: String,
+    pub database_type: String,
+    pub safe_mode: bool,
+    pub create_index_trigger: u32,
 }
 
 /// React's `useState` values plus the create dialog's local fields.
 #[allow(dead_code)] // VM; owned by the host until the panel view lands.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct IndexesViewState {
-    pub(crate) indexes: Vec<IndexInfo>,
-    pub(crate) columns: Vec<ColumnSchema>,
-    pub(crate) loading: bool,
-    pub(crate) error: String,
-    pub(crate) show_create: bool,
-    pub(crate) delete_target: Option<String>,
-    pub(crate) submitting: bool,
-    pub(crate) selected_cols: Vec<String>,
+pub struct IndexesViewState {
+    pub indexes: Vec<IndexInfo>,
+    pub columns: Vec<ColumnSchema>,
+    pub loading: bool,
+    pub error: String,
+    pub show_create: bool,
+    pub delete_target: Option<String>,
+    pub submitting: bool,
+    pub selected_cols: Vec<String>,
     /// React's `indexName` input; seeded by `suggestedIndexName` on open.
-    pub(crate) index_name: TextEdit,
-    pub(crate) name_touched: bool,
-    pub(crate) is_unique: bool,
-    pub(crate) index_type: IndexMethod,
+    pub index_name: TextEdit,
+    pub name_touched: bool,
+    pub is_unique: bool,
+    pub index_type: IndexMethod,
 }
 
 /// Every interaction the view asks the host to apply to `S`. Local UI edits
@@ -122,7 +122,7 @@ pub(crate) struct IndexesViewState {
 /// a host reducer can mirror React's `useState` in one place.
 #[allow(dead_code)] // host port; remove when the host wires the view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum IndexesAction {
+pub enum IndexesAction {
     Load,
     Retry,
     OpenCreate,
@@ -139,17 +139,17 @@ pub(crate) enum IndexesAction {
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the view.
-pub(crate) type IndexesActionFn<S> = Rc<dyn Fn(&mut S, IndexesAction) + 'static>;
+pub type IndexesActionFn<S> = Rc<dyn Fn(&mut S, IndexesAction) + 'static>;
 #[allow(dead_code)] // text accessor; remove when the host wires the form.
-pub(crate) type IndexesVmFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut IndexesViewState + 'static>;
+pub type IndexesVmFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut IndexesViewState + 'static>;
 type PressFn<S> = Rc<dyn Fn(&mut S) + 'static>;
 
 /// The two host-request channels: all actions, and the optional navigation to
 /// the table-structure editor (React's `onEditStructure` prop).
 #[allow(dead_code)] // host port; remove when the host wires the view.
-pub(crate) struct IndexesHostPort<S> {
-    pub(crate) on_action: Option<IndexesActionFn<S>>,
-    pub(crate) on_edit_structure: Option<Rc<dyn Fn(&mut S, &str) + 'static>>,
+pub struct IndexesHostPort<S> {
+    pub on_action: Option<IndexesActionFn<S>>,
+    pub on_edit_structure: Option<Rc<dyn Fn(&mut S, &str) + 'static>>,
 }
 
 impl<S> Default for IndexesHostPort<S> {
@@ -172,7 +172,7 @@ fn emit<S: 'static>(on_action: &Option<IndexesActionFn<S>>, action: IndexesActio
 
 /// React `suggestedIndexName` from `structure/StructureIndexTable.tsx`.
 #[allow(dead_code)] // pure helper; remove when the dialect port owns it.
-pub(crate) fn suggested_index_name(table_name: &str, columns: &[String]) -> String {
+pub fn suggested_index_name(table_name: &str, columns: &[String]) -> String {
     let trimmed = table_name.trim();
     let base = if trimmed.is_empty() { "table" } else { trimmed };
     if columns.is_empty() {
@@ -185,7 +185,7 @@ pub(crate) fn suggested_index_name(table_name: &str, columns: &[String]) -> Stri
 /// `DB_REGISTRY[dbType]?.quoteChar || '"'`, reduced to the quote chars the
 /// supported built-in dialects use.
 #[allow(dead_code)] // pure helper; remove when the dialect port owns it.
-pub(crate) fn quote_char(database_type: &str) -> &'static str {
+pub fn quote_char(database_type: &str) -> &'static str {
     match database_type {
         "mysql" | "mariadb" => "`",
         _ => "\"",
@@ -223,7 +223,7 @@ fn has_index_dialect(database_type: &str) -> bool {
 
 /// React `indexDialect?.supportedIndexMethods ?? ['btree']`.
 #[allow(dead_code)] // pure helper; remove when the dialect port owns it.
-pub(crate) fn supported_methods(database_type: &str) -> Vec<IndexMethod> {
+pub fn supported_methods(database_type: &str) -> Vec<IndexMethod> {
     match database_type {
         "postgresql" => vec![
             IndexMethod::BTree,
@@ -241,7 +241,7 @@ pub(crate) fn supported_methods(database_type: &str) -> Vec<IndexMethod> {
 /// Reproduces the three built-in `getCreateIndexSql` implementations. An
 /// unknown dialect yields an empty string, just like React's guard.
 #[allow(dead_code)] // pure helper; remove when the dialect port owns it.
-pub(crate) fn build_create_index_sql(
+pub fn build_create_index_sql(
     database_type: &str,
     table_name: &str,
     name: &str,
@@ -275,7 +275,7 @@ pub(crate) fn build_create_index_sql(
 /// Reproduces `getDropIndexSql`; the generic fallback matches React's
 /// `DROP INDEX "name"` when no dialect is available.
 #[allow(dead_code)] // pure helper; remove when the dialect port owns it.
-pub(crate) fn build_drop_index_sql(
+pub fn build_drop_index_sql(
     database_type: &str,
     index_name: &str,
     table_name: &str,
@@ -295,7 +295,7 @@ pub(crate) fn build_drop_index_sql(
 #[allow(dead_code)] // state transitions; remove with the host.
 impl IndexesViewState {
     /// React's `loadSchema` prologue: start the spinner, clear the old error.
-    pub(crate) fn begin_load(&mut self) {
+    pub fn begin_load(&mut self) {
         self.loading = true;
         self.error.clear();
     }
@@ -303,7 +303,7 @@ impl IndexesViewState {
     /// React's `.then` / `.catch`: the schema fills both lists; any empty error
     /// falls back to the translated load-failure sentence. Both clear loading
     /// and submitting because the host reloads after a successful command.
-    pub(crate) fn apply_load(&mut self, result: Result<(Vec<IndexInfo>, Vec<ColumnSchema>), String>) {
+    pub fn apply_load(&mut self, result: Result<(Vec<IndexInfo>, Vec<ColumnSchema>), String>) {
         self.loading = false;
         self.submitting = false;
         match result {
@@ -326,7 +326,7 @@ impl IndexesViewState {
 
     /// The reference host reducer: local edits are applied here, commands stay
     /// for the host to execute. `table_name` feeds the auto-name behaviour.
-    pub(crate) fn reduce(&mut self, action: &IndexesAction, table_name: &str) {
+    pub fn reduce(&mut self, action: &IndexesAction, table_name: &str) {
         match action {
             IndexesAction::Load | IndexesAction::Retry => self.begin_load(),
             IndexesAction::OpenCreate => {
@@ -360,7 +360,7 @@ impl IndexesViewState {
     }
 
     /// React's `indexName.trim() || autoName`.
-    pub(crate) fn effective_name(&self, table_name: &str) -> String {
+    pub fn effective_name(&self, table_name: &str) -> String {
         let typed = self.index_name.text.trim();
         if typed.is_empty() {
             suggested_index_name(table_name, &self.selected_cols)
@@ -412,7 +412,7 @@ fn button<S: 'static>(
 /// Render the view into `layer`. Dialogs are appended as absolute layers so
 /// they overlay the table without consuming layout space.
 #[allow(dead_code)] // view entry; remove when the host wires it.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     identity: &IndexesIdentity,
     state: &IndexesViewState,
     host: &IndexesHostPort<S>,

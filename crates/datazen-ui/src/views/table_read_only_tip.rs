@@ -23,7 +23,7 @@ use crate::ui::kit::kit;
 /// React `CellReadOnlyReason`.
 #[allow(dead_code)] // VM mirror; supplied by the cell editability host.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum CellReadOnlyReason {
+pub enum CellReadOnlyReason {
     #[default]
     ConnectionReadOnly,
     DriverCapability,
@@ -39,7 +39,7 @@ pub(crate) enum CellReadOnlyReason {
 
 /// React `readOnlyReasonMessageKey(reason)`.
 #[allow(dead_code)] // pure helper; consumed by the tip and tests.
-pub(crate) fn reason_message_key(reason: CellReadOnlyReason) -> &'static str {
+pub fn reason_message_key(reason: CellReadOnlyReason) -> &'static str {
     match reason {
         CellReadOnlyReason::ConnectionReadOnly => "cellEditor.readOnly.connection",
         CellReadOnlyReason::DriverCapability => "cellEditor.readOnly.driverCapability",
@@ -57,16 +57,16 @@ pub(crate) fn reason_message_key(reason: CellReadOnlyReason) -> &'static str {
 /// Host-owned projection of the tip props.
 #[allow(dead_code)] // VM surface; owned by the table host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TableReadOnlyTipVm {
+pub struct TableReadOnlyTipVm {
     /// `None` means there is no read-only reason to report (React would not mount).
-    pub(crate) reason: Option<CellReadOnlyReason>,
-    pub(crate) dismissible: bool,
+    pub reason: Option<CellReadOnlyReason>,
+    pub dismissible: bool,
 }
 
 /// The optional host intent from the dismiss affordance.
 #[allow(dead_code)] // host port; removed with the table wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TableReadOnlyTipAction {
+pub enum TableReadOnlyTipAction {
     Dismiss,
 }
 
@@ -86,7 +86,7 @@ fn emit<S: 'static>(
 
 /// Build the tip; a missing reason mounts only an inert empty marker.
 #[allow(dead_code)] // consumer: the table host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableReadOnlyTipVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

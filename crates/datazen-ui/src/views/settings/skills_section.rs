@@ -80,17 +80,17 @@ const TEXT_10: TextStyle = TextStyle::new(10.0, 400.0);
 
 /// The panel's state.
 #[derive(Clone, PartialEq)]
-pub(crate) struct SkillsSectionState {
+pub struct SkillsSectionState {
     /// The normalized skills settings (the optimistic copy).
-    pub(crate) skills: AiSkillsSettings,
+    pub skills: AiSkillsSettings,
     /// The custom-dir draft (trimmed to null on save).
-    pub(crate) custom_dir: TextEdit,
+    pub custom_dir: TextEdit,
     /// The discovered listing.
-    pub(crate) listing: Vec<AiSkillSummary>,
+    pub listing: Vec<AiSkillSummary>,
     /// The refresh/save error sentence.
-    pub(crate) error: Option<String>,
+    pub error: Option<String>,
     /// The refresh in flight.
-    pub(crate) loading: bool,
+    pub loading: bool,
     /// The enabled flag the last refresh armed under (the effect's
     /// dependency — a change re-fires; `None` is the never-armed
     /// mount).
@@ -113,7 +113,7 @@ impl std::fmt::Debug for SkillsSectionState {
 impl SkillsSectionState {
     /// The mount: normalize the config's skills; the draft mirrors
     /// `customDir ?? ''`.
-    pub(crate) fn new(config_skills: Option<&AiSkillsSettings>) -> Self {
+    pub fn new(config_skills: Option<&AiSkillsSettings>) -> Self {
         let skills = normalize_ai_skills_settings(config_skills);
         let custom_dir = skills.custom_dir.clone().unwrap_or_default();
         Self {
@@ -128,7 +128,7 @@ impl SkillsSectionState {
 
     /// The `useEffect([config.skills])` resync: a changed config
     /// re-normalizes and re-seeds the draft.
-    pub(crate) fn resync(&mut self, config_skills: Option<&AiSkillsSettings>) {
+    pub fn resync(&mut self, config_skills: Option<&AiSkillsSettings>) {
         let normalized = normalize_ai_skills_settings(config_skills);
         self.custom_dir = TextEdit::new(normalized.custom_dir.clone().unwrap_or_default());
         self.skills = normalized;
@@ -136,7 +136,7 @@ impl SkillsSectionState {
 
     /// Whether the refresh effect should fire now (the mount, or a
     /// changed `skills.enabled` since the last arm).
-    pub(crate) fn refresh_due(&mut self) -> bool {
+    pub fn refresh_due(&mut self) -> bool {
         if self.last_refresh_enabled != Some(self.skills.enabled) {
             self.last_refresh_enabled = Some(self.skills.enabled);
             true
@@ -148,7 +148,7 @@ impl SkillsSectionState {
     /// `refresh`'s head: a disabled panel clears the listing (no
     /// read); an enabled one arms loading and clears the error.
     /// Answers whether the host should run the `listSkills` read.
-    pub(crate) fn begin_refresh(&mut self) -> bool {
+    pub fn begin_refresh(&mut self) -> bool {
         if !self.skills.enabled {
             self.listing.clear();
             self.loading = false;
@@ -162,13 +162,13 @@ impl SkillsSectionState {
 
     /// The read's answer (`setListing(await listSkills())` + the
     /// `finally` arm's `setLoading(false)`).
-    pub(crate) fn note_listing(&mut self, listing: Vec<AiSkillSummary>) {
+    pub fn note_listing(&mut self, listing: Vec<AiSkillSummary>) {
         self.listing = listing;
         self.loading = false;
     }
 
     /// The read's failure (`cause.message` + the `finally` arm).
-    pub(crate) fn note_refresh_error(&mut self, message: &str) {
+    pub fn note_refresh_error(&mut self, message: &str) {
         self.error = Some(message.to_owned());
         self.loading = false;
     }
@@ -176,18 +176,18 @@ impl SkillsSectionState {
     /// `persist`'s optimistic half: the next settings land
     /// immediately; the host runs the save and answers through
     /// [`Self::note_save_failed`] on a refusal.
-    pub(crate) fn persist(&mut self, next: AiSkillsSettings) {
+    pub fn persist(&mut self, next: AiSkillsSettings) {
         self.skills = next;
     }
 
     /// `if (!ok) setError(t('settings.ai.skills.loadError'))` — the
     /// failure only raises the error (no revert; the React shape).
-    pub(crate) fn note_save_failed(&mut self) {
+    pub fn note_save_failed(&mut self) {
         self.error = Some(t("settings.ai.skills.loadError").to_owned());
     }
 
     /// `toggleSelected`: add (deduped) or remove one id.
-    pub(crate) fn toggle_selected(&mut self, id: &str, checked: bool) -> AiSkillsSettings {
+    pub fn toggle_selected(&mut self, id: &str, checked: bool) -> AiSkillsSettings {
         let mut selected = self.skills.selected.clone();
         if checked {
             if !selected.iter().any(|current| current == id) {
@@ -204,12 +204,12 @@ impl SkillsSectionState {
     /// One skill's rendered check (`skills.autoUse ||
     /// skills.selected.includes(skill.id)` — auto-use owns every
     /// selection).
-    pub(crate) fn skill_checked(&self, id: &str) -> bool {
+    pub fn skill_checked(&self, id: &str) -> bool {
         self.skills.auto_use || self.skills.selected.iter().any(|current| current == id)
     }
 
     /// `saveDirectory`'s settings: the trimmed draft (empty → null).
-    pub(crate) fn directory_settings(&self) -> AiSkillsSettings {
+    pub fn directory_settings(&self) -> AiSkillsSettings {
         let mut next = self.skills.clone();
         let trimmed = self.custom_dir.text.trim().to_owned();
         next.custom_dir = if trimmed.is_empty() { None } else { Some(trimmed) };
@@ -219,7 +219,7 @@ impl SkillsSectionState {
 
 /// `normalizeAiSkillsSettings` (`lib/aiSkills.ts`, the T17 backfill):
 /// the defaults under the config's fields, with the strict coercions.
-pub(crate) fn normalize_ai_skills_settings(
+pub fn normalize_ai_skills_settings(
     skills: Option<&AiSkillsSettings>,
 ) -> AiSkillsSettings {
     match skills {
@@ -246,7 +246,7 @@ pub(crate) fn normalize_ai_skills_settings(
 
 /// `SkillsSection({ config })`: the panel over the state and the
 /// host's action slots.
-pub(crate) struct SkillsSection<'a, S: 'static> {
+pub struct SkillsSection<'a, S: 'static> {
     state: &'a SkillsSectionState,
     dark: bool,
     custom_dir_edit: Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit>,
@@ -260,7 +260,7 @@ pub(crate) struct SkillsSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> SkillsSection<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a SkillsSectionState,
         dark: bool,
         custom_dir_edit: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
@@ -280,44 +280,44 @@ impl<'a, S: 'static> SkillsSection<'a, S> {
 
     /// The master switch (`persist({ ...skills, enabled })` — the
     /// host composes the next settings through the state and saves).
-    pub(crate) fn on_set_enabled(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_set_enabled(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_set_enabled = Some(Rc::new(f));
         self
     }
 
     /// The auto-use switch (`persist({ ...skills, autoUse })`).
-    pub(crate) fn on_set_auto_use(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_set_auto_use(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_set_auto_use = Some(Rc::new(f));
         self
     }
 
     /// One skill's checkbox (`toggleSelected(id, checked)`).
-    pub(crate) fn on_toggle_skill(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_skill(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_skill = Some(Rc::new(f));
         self
     }
 
     /// `saveDirectory` — persist the trimmed directory then refresh.
-    pub(crate) fn on_save_directory(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save_directory(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save_directory = Some(Rc::new(f));
         self
     }
 
     /// `refresh` — the host runs `aiCommands.listSkills()` and
     /// delivers through the note methods.
-    pub(crate) fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_refresh = Some(Rc::new(f));
         self
     }
 
     /// `pickPath` — the custom-dir input's browse.
-    pub(crate) fn on_browse(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_browse(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_browse = Some(Rc::new(f));
         self
     }
 
     /// The panel (`tid('ai-skills-section')`).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let mut panel = col()
             .key("ai-skills-section")

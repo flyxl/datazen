@@ -17,13 +17,13 @@
 //! `permissionLabels.ts` (the permission badges' tooltip texts) landed as
 //! T484's `permission_labels`.
 
-pub(crate) mod install_wapp_dialog;
+pub mod install_wapp_dialog;
 // T484: the permission badges' tooltip texts.
-pub(crate) mod permission_labels;
-pub(crate) mod wapp_card;
-pub(crate) mod wapp_management_page;
-pub(crate) mod wapp_summary;
+pub mod permission_labels;
+pub mod wapp_card;
+pub mod wapp_management_page;
+pub mod wapp_summary;
 
-pub(crate) use install_wapp_dialog::*;
-pub(crate) use wapp_management_page::*;
-pub(crate) use wapp_summary::*;
+pub use install_wapp_dialog::*;
+pub use wapp_management_page::*;
+pub use wapp_summary::*;

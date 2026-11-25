@@ -85,7 +85,7 @@ use crate::table_data_dirty_index::normalize_edit_value;
 
 /// The temporal shape of a cell type, for the date editor (React
 /// 122-126).
-pub(crate) fn temporal_kind_of(cell_type: CellType) -> &'static str {
+pub fn temporal_kind_of(cell_type: CellType) -> &'static str {
     match cell_type {
         CellType::Time => "time",
         CellType::DateTime => "datetime",
@@ -95,7 +95,7 @@ pub(crate) fn temporal_kind_of(cell_type: CellType) -> &'static str {
 
 /// Whether the focus moved into a surface the editor owns (React
 /// 148-151) — the four selectors as key predicates.
-pub(crate) fn is_owned_editor_target(key: Option<&str>, role: Option<&str>) -> bool {
+pub fn is_owned_editor_target(key: Option<&str>, role: Option<&str>) -> bool {
     let key = key.unwrap_or_default();
     // The editor's own root, and anything it marks as its own
     // (`[data-dt-editor-owned]` — the host's root and its subtree).
@@ -119,7 +119,7 @@ pub(crate) fn is_owned_editor_target(key: Option<&str>, role: Option<&str>) -> b
 
 /// What one state-machine transition asked the host to do.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum EditAction {
+pub enum EditAction {
     /// Nothing (guarded, composing, or already done).
     None,
     /// `onCancel()` — the editor closes without writing.
@@ -139,7 +139,7 @@ pub(crate) enum EditAction {
 
 /// `onCommitAndMove`'s direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EditMove {
+pub enum EditMove {
     Next,
     Prev,
 }
@@ -147,7 +147,7 @@ pub(crate) enum EditMove {
 /// The host's state machine — React's `useState`/`useRef` cells as one
 /// host-held struct.
 #[derive(Clone, Debug)]
-pub(crate) struct CellEditorHostState {
+pub struct CellEditorHostState {
     /// `initial` — the seed text (re-seeded when the value changes).
     pub initial: String,
     /// `draft` — the control's text.
@@ -185,13 +185,13 @@ pub(crate) struct CellEditorHostState {
 impl CellEditorHostState {
     /// The state over the resolved kind (`toEditString(originalValue)`
     /// seeds both the initial and the draft).
-    pub(crate) fn new(kind: &EditableCellKind, original_value: &Value, nullable: bool) -> Self {
+    pub fn new(kind: &EditableCellKind, original_value: &Value, nullable: bool) -> Self {
         Self::seed(kind.kind, kind.cell_type, original_value, nullable)
     }
 
     /// The seed itself (the value-change effect's re-seed, React
     /// 184-188).
-    pub(crate) fn seed(
+    pub fn seed(
         kind: CellEditorKind,
         cell_type: CellType,
         original_value: &Value,
@@ -220,7 +220,7 @@ impl CellEditorHostState {
 
     /// The value-change effect (React 184-188): re-seed the initial
     /// and the draft from the new value.
-    pub(crate) fn value_changed(&mut self, original_value: &Value) {
+    pub fn value_changed(&mut self, original_value: &Value) {
         let text = to_edit_string(original_value);
         self.initial = text.clone();
         self.draft = text;
@@ -229,7 +229,7 @@ impl CellEditorHostState {
 
     /// `cancel` (React 194-198): the editor closes without writing —
     /// at most once.
-    pub(crate) fn cancel(&mut self) -> EditAction {
+    pub fn cancel(&mut self) -> EditAction {
         if self.done {
             return EditAction::None;
         }
@@ -241,7 +241,7 @@ impl CellEditorHostState {
     /// closes without writing; a refused coercion keeps the editor
     /// open with its inline error; a landed write sets done, clears
     /// the error, and commits (optionally moving).
-    pub(crate) fn commit(&mut self, direction: Option<EditMove>) -> EditAction {
+    pub fn commit(&mut self, direction: Option<EditMove>) -> EditAction {
         if self.done {
             return EditAction::None;
         }
@@ -279,7 +279,7 @@ impl CellEditorHostState {
     /// `NULL` (both arms write; `normalizeEditValue` passes the null
     /// through). The port's `Option<Value>` mirrors the T278 boolean
     /// editor's own channel, whose `None` is React's `null`.
-    pub(crate) fn pick(&mut self, value: Option<Value>) -> EditAction {
+    pub fn pick(&mut self, value: Option<Value>) -> EditAction {
         if self.done {
             return EditAction::None;
         }
@@ -293,7 +293,7 @@ impl CellEditorHostState {
 
     /// `onDraftChange` (React 358-364): the control's text — a change
     /// clears the error.
-    pub(crate) fn draft_changed(&mut self, next: impl Into<String>) {
+    pub fn draft_changed(&mut self, next: impl Into<String>) {
         self.draft = next.into();
         if self.error.is_some() {
             self.error = None;
@@ -303,7 +303,7 @@ impl CellEditorHostState {
     /// `handleKeyDown` (React 256-277): Enter commits, Escape cancels,
     /// Tab commits and moves (shift = previous) — none while composing
     /// (the IME owns the keyboard).
-    pub(crate) fn key(&mut self, key: &str, shift: bool) -> EditAction {
+    pub fn key(&mut self, key: &str, shift: bool) -> EditAction {
         if self.composing {
             return EditAction::None;
         }
@@ -319,7 +319,7 @@ impl CellEditorHostState {
     /// unfinished composition owns the focus, a right-click is on its
     /// way (the context menu may still change this very cell), or the
     /// focus moved into a surface the editor owns.
-    pub(crate) fn blur(&mut self, target_key: Option<&str>, target_role: Option<&str>) -> EditAction {
+    pub fn blur(&mut self, target_key: Option<&str>, target_role: Option<&str>) -> EditAction {
         if self.composing {
             return EditAction::None;
         }
@@ -335,15 +335,15 @@ impl CellEditorHostState {
 
     /// The right-click's mousedown (React 306-312): the host calls it
     /// before the blur the menu causes.
-    pub(crate) fn context_menu_opened(&mut self) {
+    pub fn context_menu_opened(&mut self) {
         self.context_menu = true;
     }
 
     /// `handleCompositionStart` / `handleCompositionEnd`.
-    pub(crate) fn composition_started(&mut self) {
+    pub fn composition_started(&mut self) {
         self.composing = true;
     }
-    pub(crate) fn composition_ended(&mut self) {
+    pub fn composition_ended(&mut self) {
         self.composing = false;
     }
 
@@ -351,7 +351,7 @@ impl CellEditorHostState {
     /// loading, not failed, no message; the host runs the loader and
     /// reports back through `candidates_landed` /
     /// `candidates_failed`.
-    pub(crate) fn load_candidates(&mut self) -> EditAction {
+    pub fn load_candidates(&mut self) -> EditAction {
         if self.candidates_loading {
             return EditAction::None;
         }
@@ -362,7 +362,7 @@ impl CellEditorHostState {
     }
 
     /// The loader's success half: the values land, the loading ends.
-    pub(crate) fn candidates_landed(&mut self, values: Vec<String>) {
+    pub fn candidates_landed(&mut self, values: Vec<String>) {
         self.candidates = Some(values);
         self.candidates_loading = false;
     }
@@ -371,7 +371,7 @@ impl CellEditorHostState {
     /// a loader that explains itself (the selector's uniqueness
     /// refusal, DB-20) is quoted; a silent one keeps the generic
     /// wording.
-    pub(crate) fn candidates_failed(&mut self, message: Option<String>) {
+    pub fn candidates_failed(&mut self, message: Option<String>) {
         self.candidates_failed = true;
         self.candidates_loading = false;
         self.candidates_message = message;
@@ -381,7 +381,7 @@ impl CellEditorHostState {
 /// The host — the state machine's mount: the control for the resolved
 /// kind (binary and boolean real, the six pending families as labelled
 /// seams), the inline error, and the active-editor registration.
-pub(crate) struct CellEditorHost<'a, S: 'static> {
+pub struct CellEditorHost<'a, S: 'static> {
     pub state: &'a CellEditorHostState,
     /// The column's aria label base (React `cellEditor.ariaLabel`).
     pub aria_label: String,
@@ -400,7 +400,7 @@ pub(crate) struct CellEditorHost<'a, S: 'static> {
 
 impl<'a, S: 'static> CellEditorHost<'a, S> {
     /// The host over the open state.
-    pub(crate) fn new(state: &'a CellEditorHostState) -> Self {
+    pub fn new(state: &'a CellEditorHostState) -> Self {
         Self {
             state,
             aria_label: t("cellEditor.ariaLabel").to_owned(),
@@ -414,38 +414,38 @@ impl<'a, S: 'static> CellEditorHost<'a, S> {
     }
 
     /// React `panelId` — the registration's owner.
-    pub(crate) fn panel_id(mut self, panel_id: impl Into<String>) -> Self {
+    pub fn panel_id(mut self, panel_id: impl Into<String>) -> Self {
         self.panel_id = Some(panel_id.into());
         self
     }
 
     /// React `onCommit`.
-    pub(crate) fn on_commit(mut self, f: impl Fn(&mut S, Option<Value>) + 'static) -> Self {
+    pub fn on_commit(mut self, f: impl Fn(&mut S, Option<Value>) + 'static) -> Self {
         self.on_commit = Some(Rc::new(f));
         self
     }
 
     /// React `onCancel`.
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
 
     /// React `onCommitAndMove`.
-    pub(crate) fn on_commit_and_move(mut self, f: impl Fn(&mut S, EditMove) + 'static) -> Self {
+    pub fn on_commit_and_move(mut self, f: impl Fn(&mut S, EditMove) + 'static) -> Self {
         self.on_commit_and_move = Some(Rc::new(f));
         self
     }
 
     /// The boolean control's three-state select listbox toggle (the
     /// host's `select_open` cell — the enabled-select rule).
-    pub(crate) fn on_toggle_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_select = Some(Rc::new(f));
         self
     }
 
     /// Presses outside and Escape close the boolean select's listbox.
-    pub(crate) fn on_close_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_select = Some(Rc::new(f));
         self
     }
@@ -458,7 +458,7 @@ impl<'a, S: 'static> CellEditorHost<'a, S> {
     /// when written or already closed). **Without a panel id the
     /// editor is not registered, and the guard is silently
     /// disarmed** — the omission the React source reports in dev.
-    pub(crate) fn register(
+    pub fn register(
         &self,
         run_commit: impl Fn() -> Option<CellValueErrorReason> + 'static,
     ) -> Option<ActiveCellEditorRegistration> {
@@ -470,7 +470,7 @@ impl<'a, S: 'static> CellEditorHost<'a, S> {
     /// The host root: the control mount and the inline error (React
     /// 422-441). The boolean control's listbox rides `layer`; the
     /// caller roots once.
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let mut root = col()
             .key("cell-editor")

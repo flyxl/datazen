@@ -7,12 +7,12 @@ use super::model::{
 
 /// React `FK_NAV_MAX_DEPTH`.
 #[allow(dead_code)] // contract constant; consumed by history and tests.
-pub(crate) const FK_NAV_MAX_DEPTH: usize = 32;
+pub const FK_NAV_MAX_DEPTH: usize = 32;
 
 /// React `targetLabelOf`: a single column uses `table.column`, a composite key
 /// uses `table.(a, b)`.
 #[allow(dead_code)] // pure helper; consumed by indexing and tests.
-pub(crate) fn target_label_of(reference_table: &str, target_columns: &[String]) -> String {
+pub fn target_label_of(reference_table: &str, target_columns: &[String]) -> String {
     if target_columns.len() == 1 {
         format!("{reference_table}.{}", target_columns[0])
     } else {
@@ -23,7 +23,7 @@ pub(crate) fn target_label_of(reference_table: &str, target_columns: &[String]) 
 /// React `indexForeignKeys`: every member column maps to the same group; the
 /// first constraint covering a column wins.
 #[allow(dead_code)] // pure rule; consumed by the navigation decision and tests.
-pub(crate) fn index_foreign_keys(foreign_keys: &[ForeignKeyInfoVm]) -> FkIndexVm {
+pub fn index_foreign_keys(foreign_keys: &[ForeignKeyInfoVm]) -> FkIndexVm {
     let mut index = FkIndexVm::new();
     for foreign_key in foreign_keys {
         let group = FkGroupAffordanceVm {
@@ -49,7 +49,7 @@ pub(crate) fn index_foreign_keys(foreign_keys: &[ForeignKeyInfoVm]) -> FkIndexVm
 /// React `isFkCellNavigable` input.
 #[allow(dead_code)] // VM surface; supplied by the grid host.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct NavigableInput<'a> {
+pub struct NavigableInput<'a> {
     pub column_name: &'a str,
     pub row: Option<&'a std::collections::BTreeMap<String, FkValue>>,
     pub index: &'a FkIndexVm,
@@ -60,7 +60,7 @@ pub(crate) struct NavigableInput<'a> {
 /// React `isFkCellNavigable`: not editing, group present, every member valued,
 /// and the cell is the first visible member (one arrow per composite key).
 #[allow(dead_code)] // pure rule; consumed by the grid and tests.
-pub(crate) fn is_fk_cell_navigable(input: &NavigableInput<'_>) -> bool {
+pub fn is_fk_cell_navigable(input: &NavigableInput<'_>) -> bool {
     if input.editing {
         return false;
     }
@@ -85,7 +85,7 @@ pub(crate) fn is_fk_cell_navigable(input: &NavigableInput<'_>) -> bool {
 /// React `buildFkFilters`: positional `eq` conditions, `None` when lengths differ
 /// or a value is absent — a NULL never degrades into `IS NULL`.
 #[allow(dead_code)] // pure rule; consumed by the jump and tests.
-pub(crate) fn build_fk_filters(
+pub fn build_fk_filters(
     columns: &[String],
     values: &[FkValue],
 ) -> Option<Vec<FkFilterVm>> {
@@ -109,7 +109,7 @@ pub(crate) fn build_fk_filters(
 /// React `fkNavKey`: `JSON.stringify([database, schema, table, columns, values])`.
 /// A missing schema (`null`) is distinct from an empty string.
 #[allow(dead_code)] // pure rule; consumed by the jump and tests.
-pub(crate) fn fk_nav_key(target: &FkNavTargetIdentityVm, values: &[FkValue]) -> String {
+pub fn fk_nav_key(target: &FkNavTargetIdentityVm, values: &[FkValue]) -> String {
     let schema = target
         .schema
         .as_ref()
@@ -139,7 +139,7 @@ pub(crate) fn fk_nav_key(target: &FkNavTargetIdentityVm, values: &[FkValue]) -> 
 /// React `findForeignKey`: a matching constraint name wins; otherwise the
 /// ordered local columns must match exactly.
 #[allow(dead_code)] // pure rule; consumed by the request path and tests.
-pub(crate) fn find_foreign_key(
+pub fn find_foreign_key(
     foreign_keys: &[ForeignKeyInfoVm],
     columns: &[String],
     constraint_name: Option<&str>,
@@ -158,7 +158,7 @@ pub(crate) fn find_foreign_key(
 /// React `pickAnchorRow`: the active row only while it is on screen; otherwise
 /// the first visible row.
 #[allow(dead_code)] // pure rule; consumed by viewport snapshotting and tests.
-pub(crate) fn pick_anchor_row(
+pub fn pick_anchor_row(
     scroll_top: f64,
     row_height: f64,
     viewport_height: f64,
@@ -176,7 +176,7 @@ pub(crate) fn pick_anchor_row(
 
 /// React `scrollTopForAnchorRow`: clamps non-finite inputs and negatives to 0.
 #[allow(dead_code)] // pure rule; consumed by viewport restore and tests.
-pub(crate) fn scroll_top_for_anchor_row(anchor_row: f64, row_height: f64) -> f64 {
+pub fn scroll_top_for_anchor_row(anchor_row: f64, row_height: f64) -> f64 {
     if !anchor_row.is_finite() || !row_height.is_finite() {
         return 0.0;
     }
@@ -185,7 +185,7 @@ pub(crate) fn scroll_top_for_anchor_row(anchor_row: f64, row_height: f64) -> f64
 
 /// React `findEntryIdByNavKey` search order: newest first.
 #[allow(dead_code)] // pure helper; consumed by the history machine and tests.
-pub(crate) fn find_entry_id_by_nav_key(
+pub fn find_entry_id_by_nav_key(
     back: &[super::model::FkNavEntryVm],
     nav_key: &str,
 ) -> Option<String> {

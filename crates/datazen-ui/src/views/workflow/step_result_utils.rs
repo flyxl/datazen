@@ -57,7 +57,7 @@ const DEFAULT_COLUMN_TYPE: &str = "text";
 /// Mirror of `StepStatus` (`'success' | 'failed' | 'skipped' | 'timed_out'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable VM; the panel reads it, tests pin all four
-pub(crate) enum WorkflowStepStatus {
+pub enum WorkflowStepStatus {
     Success,
     Failed,
     Skipped,
@@ -75,7 +75,7 @@ impl WorkflowStepStatus {
     /// WorkflowPage (T147) is the first consumer — the same reusable-VM
     /// stance as the enum's own allow, pinned by the tests.
     #[allow(dead_code)]
-    pub(crate) fn from_str(value: &str) -> Self {
+    pub fn from_str(value: &str) -> Self {
         match value {
             "success" => Self::Success,
             "skipped" => Self::Skipped,
@@ -94,7 +94,7 @@ impl WorkflowStepStatus {
     /// React source, whose colour ladder does not special-case `timed_out`;
     /// this utils ladder does, painting it the warning yellow).
     #[allow(dead_code)] // WorkflowPage (T147) is the first consumer; tests pin it
-    pub(crate) fn icon_glyph(self) -> &'static str {
+    pub fn icon_glyph(self) -> &'static str {
         match self {
             Self::Success => "✓",
             Self::Skipped => "⏭",
@@ -107,7 +107,7 @@ impl WorkflowStepStatus {
     /// skipped and timed-out, red for the failure bucket every unnamed
     /// status parses into.
     #[allow(dead_code)] // WorkflowPage (T147) is the first consumer; tests pin it
-    pub(crate) fn icon_ink(self) -> StatusInk {
+    pub fn icon_ink(self) -> StatusInk {
         match self {
             Self::Success => StatusInk::Success,
             Self::Skipped | Self::TimedOut => StatusInk::Warning,
@@ -124,7 +124,7 @@ impl WorkflowStepStatus {
 /// in `ui/palette.rs`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // WorkflowPage (T147) is the first consumer; tests pin it
-pub(crate) enum StatusInk {
+pub enum StatusInk {
     Success,
     Warning,
     Danger,
@@ -134,7 +134,7 @@ impl StatusInk {
     /// The ink resolved through the kit's semantic palette for one
     /// appearance.
     #[allow(dead_code)] // WorkflowPage (T147) is the first consumer; tests pin it
-    pub(crate) fn color(self, dark: bool) -> Color {
+    pub fn color(self, dark: bool) -> Color {
         let palette = &kit(dark).c;
         match self {
             Self::Success => palette.success.fg,
@@ -149,35 +149,35 @@ impl StatusInk {
 /// no steps, and the panel omits the `[{type}]` chip rather than displaying a
 /// type nobody reported (the chip returns when the typed contract lands).
 #[derive(Clone, Debug)]
-pub(crate) struct StepExecutionResult {
-    pub(crate) step_id: String,
-    pub(crate) step_type: Option<String>,
-    pub(crate) status: WorkflowStepStatus,
+pub struct StepExecutionResult {
+    pub step_id: String,
+    pub step_type: Option<String>,
+    pub status: WorkflowStepStatus,
     /// `result?: Record<string, unknown>` — carried as the raw JSON the
     /// host's engine would send; `None` is React's `undefined`.
-    pub(crate) result: Option<Value>,
-    pub(crate) execution_time_ms: u64,
-    pub(crate) error: Option<String>,
-    pub(crate) connection_name: Option<String>,
-    pub(crate) sql_executed: Option<String>,
+    pub result: Option<Value>,
+    pub execution_time_ms: u64,
+    pub error: Option<String>,
+    pub connection_name: Option<String>,
+    pub sql_executed: Option<String>,
 }
 
 /// Mirror of `WorkflowExecutionResult`.
 #[derive(Clone, Debug)]
-pub(crate) struct WorkflowExecutionResult {
-    pub(crate) success: bool,
-    pub(crate) final_output: String,
-    pub(crate) steps: Vec<StepExecutionResult>,
-    pub(crate) total_time_ms: u64,
-    pub(crate) error: Option<String>,
+pub struct WorkflowExecutionResult {
+    pub success: bool,
+    pub final_output: String,
+    pub steps: Vec<StepExecutionResult>,
+    pub total_time_ms: u64,
+    pub error: Option<String>,
 }
 
 /// One preview column: React's `{ name, dataType? }` from
 /// `extractStepColumnNames`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StepColumn {
-    pub(crate) name: String,
-    pub(crate) data_type: Option<String>,
+pub struct StepColumn {
+    pub name: String,
+    pub data_type: Option<String>,
 }
 
 /// Mirror of `ColumnInfo` (`driverCommands.ts`) the way
@@ -186,10 +186,10 @@ pub(crate) struct StepColumn {
 /// statement results carry real declarations and nullability instead; this
 /// assembly never lies about either, it just fills React's defaults.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnInfo {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
-    pub(crate) nullable: bool,
+pub struct ColumnInfo {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
 }
 
 /// Mirror of `StatementResult` (`driverCommands.ts`) the way
@@ -199,11 +199,11 @@ pub(crate) struct ColumnInfo {
 /// belong to the driver's own results — the step conversion never sets them,
 /// so the mirror does not carry them.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct StatementResult {
-    pub(crate) sql: String,
-    pub(crate) columns: Vec<ColumnInfo>,
-    pub(crate) rows: Vec<Vec<Option<Value>>>,
-    pub(crate) execution_time_ms: u64,
+pub struct StatementResult {
+    pub sql: String,
+    pub columns: Vec<ColumnInfo>,
+    pub rows: Vec<Vec<Option<Value>>>,
+    pub execution_time_ms: u64,
 }
 
 /// The display-safe projection of [`StatementResult`] the panel renders:
@@ -211,10 +211,10 @@ pub(crate) struct StatementResult {
 /// full row list (the >1000 sampling warning and the `... N more` row read
 /// it), and the row count the host reported (`rows_count`, when it did).
 #[derive(Clone, Debug)]
-pub(crate) struct StatementPreview {
-    pub(crate) columns: Vec<StepColumn>,
-    pub(crate) rows: Vec<Vec<Option<Value>>>,
-    pub(crate) rows_count: usize,
+pub struct StatementPreview {
+    pub columns: Vec<StepColumn>,
+    pub rows: Vec<Vec<Option<Value>>>,
+    pub rows_count: usize,
 }
 
 impl WorkflowExecutionResult {
@@ -225,7 +225,7 @@ impl WorkflowExecutionResult {
     /// payloads, no workflow-level output or error. The typed contract
     /// replaces this projection when the host formalises the full step
     /// shapes (WorkflowPage, T147, is the first consumer that needs them).
-    pub(crate) fn from_step_results(results: &[datazen_ui_api::WorkflowStepResult]) -> Self {
+    pub fn from_step_results(results: &[datazen_ui_api::WorkflowStepResult]) -> Self {
         let steps = results
             .iter()
             .map(|r| StepExecutionResult {
@@ -263,7 +263,7 @@ impl WorkflowExecutionResult {
 /// mapping (`obj[undefined]` → null cells), the port refuses to invent a
 /// column nobody can read — and if that empties the set, the row-key
 /// fallback takes over exactly like React's `cols.length > 0` check.
-pub(crate) fn extract_step_column_names(result: &Value) -> Vec<StepColumn> {
+pub fn extract_step_column_names(result: &Value) -> Vec<StepColumn> {
     if let Some(cols) = result.get("columns").and_then(Value::as_array) {
         let named: Vec<StepColumn> = cols
             .iter()
@@ -304,7 +304,7 @@ pub(crate) fn extract_step_column_names(result: &Value) -> Vec<StepColumn> {
 /// `result.execution_time_ms ?? step.executionTimeMs` (a JSON number the
 /// `u64` field cannot hold honestly — negative or fractional — falls back
 /// to the step's own clock rather than lying about the type).
-pub(crate) fn step_to_statement_result(step: &StepExecutionResult) -> Option<StatementResult> {
+pub fn step_to_statement_result(step: &StepExecutionResult) -> Option<StatementResult> {
     // React: `const r = step.result; if (!r?.rows) return null`.
     let result = step.result.as_ref()?;
     // A host may deliver the statement result nested under `rows` (the
@@ -403,7 +403,7 @@ fn statement_rows(raw_rows: &[Value], cols: &[StepColumn]) -> Option<Vec<Vec<Opt
 /// the row count — React's panel reads `rows_count` off the raw result the
 /// same way (`(step.result?.rows_count as number) ?? rows.length ?? 0`), so
 /// the count is read here, not carried by the statement result.
-pub(crate) fn step_to_statement_preview(step: &StepExecutionResult) -> Option<StatementPreview> {
+pub fn step_to_statement_preview(step: &StepExecutionResult) -> Option<StatementPreview> {
     let statement = step_to_statement_result(step)?;
     // A nested `{ rows: [...], rows_count }` host shape keeps the count on
     // the `rows` object; the flat shape keeps it on `result`. Read both.
@@ -439,7 +439,7 @@ pub(crate) fn step_to_statement_preview(step: &StepExecutionResult) -> Option<St
 /// file (the full `inferFieldType` / `inferAllFields` ladder — date-like
 /// strings, distinct counts) is T079's port, not this one's; this slice
 /// stays because the panel's table/chart toggle is this module's consumer.
-pub(crate) fn is_chartable_preview(preview: &StatementPreview) -> bool {
+pub fn is_chartable_preview(preview: &StatementPreview) -> bool {
     if preview.rows.is_empty() || preview.columns.is_empty() {
         return false;
     }
@@ -450,7 +450,7 @@ pub(crate) fn is_chartable_preview(preview: &StatementPreview) -> bool {
         .any(|(index, column)| column_infers_numeric(column, preview, index))
 }
 
-pub(crate) fn column_infers_numeric(column: &StepColumn, preview: &StatementPreview, index: usize) -> bool {
+pub fn column_infers_numeric(column: &StepColumn, preview: &StatementPreview, index: usize) -> bool {
     let declared = column
         .data_type
         .as_deref()
@@ -509,7 +509,7 @@ fn numeric_like(value: &Value) -> bool {
 /// React's `String(value)` projection for preview cells and AI results:
 /// arrays join their elements with commas, objects become
 /// `[object Object]`; `null`/`undefined` are the caller's null branch.
-pub(crate) fn js_string(value: &Value) -> String {
+pub fn js_string(value: &Value) -> String {
     match value {
         Value::Null => "null".to_owned(),
         Value::Bool(flag) => flag.to_string(),

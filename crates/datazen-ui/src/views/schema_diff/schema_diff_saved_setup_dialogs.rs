@@ -43,7 +43,7 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 
 /// The dialogs' projection of `useSchemaDiffSavedSetups` (T411's hook).
-pub(crate) struct SavedSetupDialogsVm<'a> {
+pub struct SavedSetupDialogsVm<'a> {
     /// `importConfigOpen`.
     pub import_config_open: bool,
     /// `importConfigText`'s edit (the pasted JSON).
@@ -59,7 +59,7 @@ pub(crate) struct SavedSetupDialogsVm<'a> {
 }
 
 /// The two saved-setup dialogs, built per frame over the host's `S`.
-pub(crate) struct SchemaDiffSavedSetupDialogs<'a, S: 'static> {
+pub struct SchemaDiffSavedSetupDialogs<'a, S: 'static> {
     vm: SavedSetupDialogsVm<'a>,
     // The import dialog's callbacks.
     on_close_import: Option<Act<S>>,
@@ -76,7 +76,7 @@ type EditSlot<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit>;
 
 impl<'a, S: 'static> SchemaDiffSavedSetupDialogs<'a, S> {
     /// Build over the projection (one frame's borrow).
-    pub(crate) fn over(vm: SavedSetupDialogsVm<'a>) -> Self {
+    pub fn over(vm: SavedSetupDialogsVm<'a>) -> Self {
         Self {
             vm,
             on_close_import: None,
@@ -90,14 +90,14 @@ impl<'a, S: 'static> SchemaDiffSavedSetupDialogs<'a, S> {
 
     /// The import dialog's close (cancel / Escape / X): close, clear the
     /// text and the error.
-    pub(crate) fn on_close_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_import = Some(Rc::new(f));
         self
     }
 
     /// The pasted-JSON field's edit slot (the host also clears a present
     /// error on every edit).
-    pub(crate) fn on_import_text_edit(
+    pub fn on_import_text_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -107,19 +107,19 @@ impl<'a, S: 'static> SchemaDiffSavedSetupDialogs<'a, S> {
 
     /// The confirm press (disabled until the text trims non-empty): the
     /// host applies the pasted config.
-    pub(crate) fn on_apply_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_apply_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_apply_import = Some(Rc::new(f));
         self
     }
 
     /// The profile dialog's close: close and clear the error.
-    pub(crate) fn on_close_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_profile = Some(Rc::new(f));
         self
     }
 
     /// The name field's edit slot.
-    pub(crate) fn on_profile_name_edit(
+    pub fn on_profile_name_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -128,13 +128,13 @@ impl<'a, S: 'static> SchemaDiffSavedSetupDialogs<'a, S> {
     }
 
     /// The save press (disabled until the name trims non-empty).
-    pub(crate) fn on_save_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save_profile = Some(Rc::new(f));
         self
     }
 
     /// Paint both dialogs into `layer` (each only while open).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         let k = kit(dark);
         if self.vm.import_config_open {
             self.build_import_dialog(&k, layer);

@@ -35,11 +35,11 @@ use serde::Deserialize;
 /// One shaped legacy command: the `legacyInvoke` name plus its payload
 /// (the `ai::wire::AiRequest` shape, command-specific).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct BackupRequest {
+pub struct BackupRequest {
     /// The legacy command name.
-    pub(crate) command: &'static str,
+    pub command: &'static str,
     /// The exact `args` object the React wrapper passes.
-    pub(crate) value: serde_json::Value,
+    pub value: serde_json::Value,
 }
 
 impl BackupRequest {
@@ -51,7 +51,7 @@ impl BackupRequest {
 /// `backupCommands.exportAppData(defaultFileName)`: merged native save
 /// dialog + ZIP export. The receipt is `false` when the dialog was
 /// dismissed.
-pub(crate) fn export_app_data_request(default_file_name: &str) -> BackupRequest {
+pub fn export_app_data_request(default_file_name: &str) -> BackupRequest {
     BackupRequest::native("export_app_data", serde_json::json!({ "defaultFileName": default_file_name }))
 }
 
@@ -59,19 +59,19 @@ pub(crate) fn export_app_data_request(default_file_name: &str) -> BackupRequest 
 /// an app-data ZIP (path only, no import). Form-split F4c merged it into
 /// the shared `pick_import_file` host command; `kind` picks the filter.
 /// The receipt is the chosen path or `null` when cancelled.
-pub(crate) fn pick_app_data_import_file_request() -> BackupRequest {
+pub fn pick_app_data_import_file_request() -> BackupRequest {
     BackupRequest::native("pick_import_file", serde_json::json!({ "kind": "app-data" }))
 }
 
 /// `backupCommands.importAppData(sourcePath)`: the ZIP import from a
 /// path chosen (and confirmed) in the UI.
-pub(crate) fn import_app_data_request(source_path: &str) -> BackupRequest {
+pub fn import_app_data_request(source_path: &str) -> BackupRequest {
     BackupRequest::native("import_app_data", serde_json::json!({ "sourcePath": source_path }))
 }
 
 /// `backupCommands.saveEncryptionKeyWithDialog(defaultFileName)`: the
 /// merged save-dialog + key-file write.
-pub(crate) fn save_encryption_key_with_dialog_request(default_file_name: &str) -> BackupRequest {
+pub fn save_encryption_key_with_dialog_request(default_file_name: &str) -> BackupRequest {
     BackupRequest::native(
         "save_encryption_key_with_dialog",
         serde_json::json!({ "defaultFileName": default_file_name }),
@@ -79,7 +79,7 @@ pub(crate) fn save_encryption_key_with_dialog_request(default_file_name: &str) -
 }
 
 /// `backupCommands.restartApp()`: restart the app (no payload).
-pub(crate) fn restart_app_request() -> BackupRequest {
+pub fn restart_app_request() -> BackupRequest {
     BackupRequest::native("restart_app", serde_json::json!({}))
 }
 
@@ -87,10 +87,10 @@ pub(crate) fn restart_app_request() -> BackupRequest {
 /// dialog was dismissed.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
-pub(crate) struct PickedImportFile(pub(crate) Option<String>);
+pub struct PickedImportFile(pub Option<String>);
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
     use serde_json::json;
 

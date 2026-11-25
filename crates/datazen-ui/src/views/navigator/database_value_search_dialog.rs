@@ -30,10 +30,10 @@ use crate::ui::kit::kit;
 use crate::ui::select::Select;
 use crate::ui::toggle::Checkbox;
 
-pub(crate) const DIALOG_KEY: &str = "database-value-search-dialog";
+pub const DIALOG_KEY: &str = "database-value-search-dialog";
 
 mod value_search_model;
-pub(crate) use value_search_model::*;
+pub use value_search_model::*;
 type PickFn<S> = Rc<dyn Fn(&mut S, &str) + 'static>;
 
 /// Kit select wrapper with per-key open state; the built trigger is renamed to
@@ -106,7 +106,7 @@ fn button<S: 'static>(
 
 /// Build the dialog into `layer`. A closed dialog mounts nothing.
 #[allow(dead_code)] // view entry point; consumer: the navigator host (not wired).
-pub(crate) fn database_value_search_dialog<S: 'static>(
+pub fn database_value_search_dialog<S: 'static>(
     vm: &ValueSearchVm,
     dark: bool,
     layer: &mut Vec<El>,

@@ -26,7 +26,7 @@ use super::strategy::GeneratedSqlType;
 /// Which `generate*` overrides a dialect's generator carries — React's
 /// `BaseTableSqlGenerator` subclasses, as data.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum GeneratorKind {
+pub enum GeneratorKind {
     /// The base ANSI shapes.
     Ansi,
     /// `ClickHouseTableSqlGenerator`: `ALTER TABLE … UPDATE/DELETE …;`
@@ -39,7 +39,7 @@ pub(crate) enum GeneratorKind {
 
 /// Base ANSI SQL generator for table template statements.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct BaseTableSqlGenerator {
+pub struct BaseTableSqlGenerator {
     kind: GeneratorKind,
     quote_char: char,
 }
@@ -47,35 +47,35 @@ pub(crate) struct BaseTableSqlGenerator {
 impl BaseTableSqlGenerator {
     /// `new BaseTableSqlGenerator(quoteChar)` — React's default is `'"'`;
     /// every landed dialect passes its own char. The base (ANSI) shapes.
-    pub(crate) const fn new(quote_char: char) -> Self {
+    pub const fn new(quote_char: char) -> Self {
         Self { kind: GeneratorKind::Ansi, quote_char }
     }
 
     /// `new ClickHouseTableSqlGenerator()` — backtick quoting with the
     /// `ALTER TABLE` write shapes.
-    pub(crate) const fn clickhouse() -> Self {
+    pub const fn clickhouse() -> Self {
         Self { kind: GeneratorKind::ClickHouse, quote_char: '`' }
     }
 
     /// `new ElasticsearchTableSqlGenerator()` — double-quote wrapping
     /// whose writes throw.
-    pub(crate) const fn elasticsearch() -> Self {
+    pub const fn elasticsearch() -> Self {
         Self { kind: GeneratorKind::Elasticsearch, quote_char: '"' }
     }
 
     /// The constructor's kind (the subclass a React dialect passed).
-    pub(crate) fn kind(&self) -> GeneratorKind {
+    pub fn kind(&self) -> GeneratorKind {
         self.kind
     }
 
     /// The constructor's quote char (dialects' overrides read it).
-    pub(crate) fn quote_char(&self) -> char {
+    pub fn quote_char(&self) -> char {
         self.quote_char
     }
 
     /// `quote`: backtick and double-quote double themselves inside,
     /// bracket doubles `]`; any other char is a passthrough.
-    pub(crate) fn quote(&self, ident: &str) -> String {
+    pub fn quote(&self, ident: &str) -> String {
         match self.quote_char {
             '`' => format!("`{}`", ident.replace('`', "``")),
             '"' => format!("\"{}\"", ident.replace('"', "\"\"")),
@@ -86,7 +86,7 @@ impl BaseTableSqlGenerator {
 
     /// `formatTableRef(tableName, schemaPrefix?)`: a non-blank prefix
     /// joins as `<quoted-prefix>.<quoted-table>`.
-    pub(crate) fn format_table_ref(&self, table_name: &str, schema_prefix: Option<&str>) -> String {
+    pub fn format_table_ref(&self, table_name: &str, schema_prefix: Option<&str>) -> String {
         if let Some(prefix) = schema_prefix {
             if !prefix.trim().is_empty() {
                 return format!("{}.{}", self.quote(prefix.trim()), self.quote(table_name));
@@ -96,7 +96,7 @@ impl BaseTableSqlGenerator {
     }
 
     /// `generateSelect`: all columns, or `*` with no column metadata.
-    pub(crate) fn generate_select(&self, table_ref: &str, schema: &TableSchema) -> String {
+    pub fn generate_select(&self, table_ref: &str, schema: &TableSchema) -> String {
         if schema.columns.is_empty() {
             return format!("SELECT *\nFROM {table_ref};");
         }
@@ -113,7 +113,7 @@ impl BaseTableSqlGenerator {
     /// placeholder values — the declared default, `0` for int/numeric
     /// types, `''` otherwise; `DEFAULT VALUES` when nothing is insertable.
     /// Elasticsearch's override throws.
-    pub(crate) fn generate_insert(
+    pub fn generate_insert(
         &self,
         table_ref: &str,
         schema: &TableSchema,
@@ -162,7 +162,7 @@ impl BaseTableSqlGenerator {
     /// `generateUpdate`: SET the non-PK columns (all columns when every
     /// column keys the row), WHERE the effective primary keys.
     /// ClickHouse spells `ALTER TABLE … UPDATE`; Elasticsearch throws.
-    pub(crate) fn generate_update(
+    pub fn generate_update(
         &self,
         table_ref: &str,
         schema: &TableSchema,
@@ -178,7 +178,7 @@ impl BaseTableSqlGenerator {
 
     /// `generateDelete`: WHERE the effective primary keys. ClickHouse
     /// spells `ALTER TABLE … DELETE WHERE`; Elasticsearch throws.
-    pub(crate) fn generate_delete(
+    pub fn generate_delete(
         &self,
         table_ref: &str,
         schema: &TableSchema,
@@ -193,7 +193,7 @@ impl BaseTableSqlGenerator {
     }
 
     /// `generateSql`: dispatch over the statement type.
-    pub(crate) fn generate_sql(
+    pub fn generate_sql(
         &self,
         kind: GeneratedSqlType,
         table_ref: &str,

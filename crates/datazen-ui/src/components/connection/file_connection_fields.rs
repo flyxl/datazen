@@ -36,14 +36,14 @@ use crate::ui::toggle::Checkbox;
 /// `AdbPackage` from React `commands/adb.ts`.
 #[allow(dead_code)] // DTO mirror; remove when the adb command layer is ported.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AdbPackage {
+pub struct AdbPackage {
     pub package_name: String,
 }
 
 /// `AdbDatabaseFile` from React `commands/adb.ts`.
 #[allow(dead_code)] // DTO mirror; remove when the adb command layer is ported.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AdbDatabaseFile {
+pub struct AdbDatabaseFile {
     pub path: String,
     pub name: String,
 }
@@ -51,7 +51,7 @@ pub(crate) struct AdbDatabaseFile {
 /// Which select listbox is open (Rune's select needs its open state from us).
 #[allow(dead_code)] // VM surface; consumed by build and the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FileSelect {
+pub enum FileSelect {
     Package,
     Database,
 }
@@ -59,7 +59,7 @@ pub(crate) enum FileSelect {
 /// All `useState` values of the React component, owned by the host.
 #[allow(dead_code)] // VM surface; owned by the connection form host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct FileFieldsState {
+pub struct FileFieldsState {
     pub adb_mode: bool,
     pub packages: Vec<AdbPackage>,
     pub databases: Vec<AdbDatabaseFile>,
@@ -77,7 +77,7 @@ pub(crate) struct FileFieldsState {
 /// Presses the component asks its owner to perform.
 #[allow(dead_code)] // VM surface; handled by the host via handle_action.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum FileFieldsAction {
+pub enum FileFieldsAction {
     PickPath,
     ToggleAdb,
     ToggleSelect(Option<FileSelect>),
@@ -89,7 +89,7 @@ pub(crate) enum FileFieldsAction {
 /// Async answers the host feeds back into [`FileFieldsState::apply`].
 #[allow(dead_code)] // VM surface; delivered by the host port.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum FileFieldsEvent {
+pub enum FileFieldsEvent {
     PackagesLoaded(Result<Vec<AdbPackage>, String>),
     DatabasesLoaded(Result<Vec<AdbDatabaseFile>, String>),
     DatabasePulled(Result<Option<String>, String>),
@@ -99,13 +99,13 @@ pub(crate) enum FileFieldsEvent {
 /// What the surrounding form must do with an answer.
 #[allow(dead_code)] // VM surface; applied by the host to `form.database`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum FileFieldsOutput {
+pub enum FileFieldsOutput {
     SetDatabase(String),
 }
 
 /// Injected host port: native path picker plus the three ADB commands.
 #[allow(dead_code)] // host port; remove when the connection form host wires it.
-pub(crate) trait FileFieldsPort {
+pub trait FileFieldsPort {
     fn pick_path(&mut self);
     fn list_packages(&mut self);
     fn list_databases(&mut self, package: &str);
@@ -115,7 +115,7 @@ pub(crate) trait FileFieldsPort {
 impl FileFieldsState {
     /// React's package filter: case-insensitive substring, soft (no hard drop
     /// of the current choice).
-    pub(crate) fn filtered_packages(&self) -> Vec<&AdbPackage> {
+    pub fn filtered_packages(&self) -> Vec<&AdbPackage> {
         if self.package_filter.text.is_empty() {
             return self.packages.iter().collect();
         }
@@ -128,18 +128,18 @@ impl FileFieldsState {
 
     /// React's pull-button *visibility*: `selectedPackage && selectedDbPath`.
     /// `pulling` must not unmount the button — it only disables it (D1).
-    pub(crate) fn has_selection(&self) -> bool {
+    pub fn has_selection(&self) -> bool {
         !self.selected_package.is_empty() && !self.selected_db_path.is_empty()
     }
 
     /// Whether a pull press should be staged (in-flight pulls are ignored).
-    pub(crate) fn can_pull(&self) -> bool {
+    pub fn can_pull(&self) -> bool {
         self.has_selection() && !self.pulling
     }
 
     /// Translate a press into state changes plus a host-port call.
     #[allow(dead_code)] // consumer: connection form host wiring (not landed); remove when wired.
-    pub(crate) fn handle_action(&mut self, action: FileFieldsAction, port: &mut dyn FileFieldsPort) {
+    pub fn handle_action(&mut self, action: FileFieldsAction, port: &mut dyn FileFieldsPort) {
         match action {
             FileFieldsAction::PickPath => port.pick_path(),
             FileFieldsAction::ToggleAdb => {
@@ -182,7 +182,7 @@ impl FileFieldsState {
 
     /// Apply one host answer and return the change the form must make.
     #[allow(dead_code)] // consumer: adb command layer / form host (not landed); remove when wired.
-    pub(crate) fn apply(&mut self, event: FileFieldsEvent) -> Vec<FileFieldsOutput> {
+    pub fn apply(&mut self, event: FileFieldsEvent) -> Vec<FileFieldsOutput> {
         match event {
             FileFieldsEvent::PackagesLoaded(result) => {
                 self.loading_packages = false;
@@ -236,7 +236,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S, FileFieldsAction) + 'static>;
 
 /// Builder for the field group. `S` owns the two text edits and the host port.
 #[allow(dead_code)] // consumer: ConnectionFormBody (wired by T193).
-pub(crate) struct FileConnectionFields<'a, S: 'static> {
+pub struct FileConnectionFields<'a, S: 'static> {
     state: &'a FileFieldsState,
     database: &'a TextEdit,
     database_error: &'a str,
@@ -247,7 +247,7 @@ pub(crate) struct FileConnectionFields<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: ConnectionFormBody (wired by T193).
 impl<'a, S: 'static> FileConnectionFields<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a FileFieldsState,
         database: &'a TextEdit,
         database_error: &'a str,
@@ -262,7 +262,7 @@ impl<'a, S: 'static> FileConnectionFields<'a, S> {
         }
     }
 
-    pub(crate) fn filter_edit(
+    pub fn filter_edit(
         mut self,
         edit: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -270,7 +270,7 @@ impl<'a, S: 'static> FileConnectionFields<'a, S> {
         self
     }
 
-    pub(crate) fn database_edit(
+    pub fn database_edit(
         mut self,
         edit: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -278,12 +278,12 @@ impl<'a, S: 'static> FileConnectionFields<'a, S> {
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, FileFieldsAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, FileFieldsAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let state = self.state;
         let database = self.database;

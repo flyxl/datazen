@@ -54,14 +54,14 @@ use crate::support::value_presentation::timestamp_config::{
 
 /// Pathed validation problem (same shape as T02's).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnPresentationOverrideProblem {
-    pub(crate) path: String,
-    pub(crate) message: String,
+pub struct ColumnPresentationOverrideProblem {
+    pub path: String,
+    pub message: String,
 }
 
 /// `validate_column_presentation_override`'s result.
 #[derive(Debug, PartialEq)]
-pub(crate) enum ColumnPresentationOverrideValidation {
+pub enum ColumnPresentationOverrideValidation {
     Ok(ColumnPresentationOverride),
     Err(Vec<ColumnPresentationOverrideProblem>),
 }
@@ -69,15 +69,15 @@ pub(crate) enum ColumnPresentationOverrideValidation {
 /// The source-identity half of a [`ColumnSource`] (the column name is
 /// supplied per call).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnSourceBase<'a> {
-    pub(crate) connection_id: &'a str,
-    pub(crate) database: Option<&'a str>,
-    pub(crate) namespace: Option<&'a str>,
-    pub(crate) table: &'a str,
+pub struct ColumnSourceBase<'a> {
+    pub connection_id: &'a str,
+    pub database: Option<&'a str>,
+    pub namespace: Option<&'a str>,
+    pub table: &'a str,
 }
 
 impl<'b> ColumnSourceBase<'b> {
-    pub(crate) fn with_column<'a>(&self, column: &'a str) -> ColumnSource<'a>
+    pub fn with_column<'a>(&self, column: &'a str) -> ColumnSource<'a>
     where
         'b: 'a,
     {
@@ -95,7 +95,7 @@ impl<'b> ColumnSourceBase<'b> {
 /// the canonical override (validated fields only — custom options come
 /// back normalized, never the raw unknown); failure returns every pathed
 /// problem.
-pub(crate) fn validate_column_presentation_override(
+pub fn validate_column_presentation_override(
     input: &serde_json::Value,
 ) -> ColumnPresentationOverrideValidation {
     let Some(object) = input.as_object() else {
@@ -209,7 +209,7 @@ pub(crate) fn validate_column_presentation_override(
 /// The column's current override from the snapshot: `inherit` when there
 /// is no source (query results) or no entry. The source identity is the
 /// caller's; no guessing table sources from SQL aliases (PRD §3.2).
-pub(crate) fn column_override_from_snapshot(
+pub fn column_override_from_snapshot(
     snapshot: &ValuePresentationSnapshot,
     source: Option<ColumnSourceBase<'_>>,
     column_name: &str,
@@ -227,7 +227,7 @@ pub(crate) fn column_override_from_snapshot(
 /// A copy of the snapshot with this column's override removed
 /// (T09-BUG-001): an inherit draft previews against the cleared state.
 /// The input snapshot is never mutated.
-pub(crate) fn snapshot_without_column_override(
+pub fn snapshot_without_column_override(
     snapshot: &ValuePresentationSnapshot,
     source: Option<ColumnSourceBase<'_>>,
     column_name: &str,
@@ -249,7 +249,7 @@ pub(crate) fn snapshot_without_column_override(
 /// no real row value): number → Unix milliseconds anchor, instant → the
 /// zoned anchor, local-datetime → wall text, date / time → their shapes;
 /// text / other have no temporal sample.
-pub(crate) fn fallback_sample_for_column(
+pub fn fallback_sample_for_column(
     column: &PresentationPlanColumn<'_>,
 ) -> Option<serde_json::Value> {
     match resolve_presentation_semantic_kind(column) {
@@ -264,7 +264,7 @@ pub(crate) fn fallback_sample_for_column(
 
 /// A sample value's display text: null stays NULL; arrays and objects
 /// render as compact JSON; scalars as their own text.
-pub(crate) fn format_column_presentation_sample_value(value: &serde_json::Value) -> String {
+pub fn format_column_presentation_sample_value(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Null => "NULL".to_string(),
         serde_json::Value::String(text) => text.clone(),
@@ -276,7 +276,7 @@ pub(crate) fn format_column_presentation_sample_value(value: &serde_json::Value)
 
 /// The panel preview result (the T07 preview shape).
 #[derive(Debug, PartialEq)]
-pub(crate) enum ColumnPresentationPreview {
+pub enum ColumnPresentationPreview {
     Unavailable { sample: serde_json::Value },
     Invalid { problems: Vec<ColumnPresentationOverrideProblem>, sample: serde_json::Value },
     Text { text: String, interpretation: Option<String>, sample: serde_json::Value },
@@ -298,24 +298,24 @@ fn map_presentation_result(
 }
 
 /// `compute_column_presentation_preview`'s input.
-pub(crate) struct ComputeColumnPresentationPreviewInput<'a> {
+pub struct ComputeColumnPresentationPreviewInput<'a> {
     /// The candidate override (the panel draft); `inherit` previews the
     /// currently-effective plan with the stored override stripped.
-    pub(crate) candidate: &'a ColumnPresentationOverride,
-    pub(crate) column: PresentationPlanColumn<'a>,
+    pub candidate: &'a ColumnPresentationOverride,
+    pub column: PresentationPlanColumn<'a>,
     /// The table identity; absent for query-result columns.
-    pub(crate) source: Option<ColumnSourceBase<'a>>,
-    pub(crate) snapshot: &'a ValuePresentationSnapshot,
-    pub(crate) environment: PresentationEnvironment<'a>,
-    pub(crate) sample_value: serde_json::Value,
-    pub(crate) registry: &'a ValuePresentationRegistry,
+    pub source: Option<ColumnSourceBase<'a>>,
+    pub snapshot: &'a ValuePresentationSnapshot,
+    pub environment: PresentationEnvironment<'a>,
+    pub sample_value: serde_json::Value,
+    pub registry: &'a ValuePresentationRegistry,
 }
 
 /// The column-configuration preview — the same road the runtime takes:
 /// inherit goes through the plan builder (with the stored override
 /// stripped), raw answers the raw fallback, custom goes
 /// validateConfig → prepare → present through the registry.
-pub(crate) fn compute_column_presentation_preview(
+pub fn compute_column_presentation_preview(
     input: &ComputeColumnPresentationPreviewInput<'_>,
 ) -> ColumnPresentationPreview {
     let sample = input.sample_value.clone();

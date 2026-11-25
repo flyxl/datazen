@@ -6,7 +6,7 @@ use std::rc::Rc;
 /// React `Panel['type']`.
 #[allow(dead_code)] // view VM; consumer: the content-view host (not wired).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PanelType {
+pub enum PanelType {
     Table,
     View,
     Query,
@@ -20,7 +20,7 @@ pub(crate) enum PanelType {
 }
 
 impl PanelType {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Table => "table",
             Self::View => "view",
@@ -39,7 +39,7 @@ impl PanelType {
 /// React `SubTabId`.
 #[allow(dead_code)] // view VM; consumer: the content-view host (not wired).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SubTabId {
+pub enum SubTabId {
     Data,
     Structure,
     Indexes,
@@ -48,7 +48,7 @@ pub(crate) enum SubTabId {
 }
 
 impl SubTabId {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Data => "data",
             Self::Structure => "structure",
@@ -68,7 +68,7 @@ impl SubTabId {
         }
     }
 
-    pub(crate) fn label(self, t: &dyn Fn(&str) -> String) -> String {
+    pub fn label(self, t: &dyn Fn(&str) -> String) -> String {
         if self == Self::Ddl {
             "DDL".to_owned()
         } else {
@@ -79,7 +79,7 @@ impl SubTabId {
 
 /// React `getSubTabs`.
 #[allow(dead_code)] // pure rule; pinned by the renderer tests.
-pub(crate) fn sub_tabs(read_only: bool, t: &dyn Fn(&str) -> String) -> Vec<(SubTabId, String)> {
+pub fn sub_tabs(read_only: bool, t: &dyn Fn(&str) -> String) -> Vec<(SubTabId, String)> {
     let mut tabs = vec![
         (SubTabId::Data, SubTabId::Data.label(t)),
         (SubTabId::Structure, SubTabId::Structure.label(t)),
@@ -94,7 +94,7 @@ pub(crate) fn sub_tabs(read_only: bool, t: &dyn Fn(&str) -> String) -> Vec<(SubT
 
 /// React `getViewSubTabs`.
 #[allow(dead_code)] // pure rule; pinned by the renderer tests.
-pub(crate) fn view_sub_tabs(t: &dyn Fn(&str) -> String) -> Vec<(SubTabId, String)> {
+pub fn view_sub_tabs(t: &dyn Fn(&str) -> String) -> Vec<(SubTabId, String)> {
     vec![
         (SubTabId::Data, SubTabId::Data.label(t)),
         (SubTabId::Structure, SubTabId::Structure.label(t)),
@@ -105,7 +105,7 @@ pub(crate) fn view_sub_tabs(t: &dyn Fn(&str) -> String) -> Vec<(SubTabId, String
 /// React `formatPanelContextPath` — connection name verbatim, trimmed database
 /// and schema appended when non-empty, all joined with `.`.
 #[allow(dead_code)] // pure rule; pinned by the renderer tests.
-pub(crate) fn format_context_path(
+pub fn format_context_path(
     connection_name: &str,
     database: Option<&str>,
     schema: Option<&str>,
@@ -128,12 +128,12 @@ pub(crate) fn format_context_path(
 
 /// The driver registries this renderer consults: only the two facts it needs.
 #[allow(dead_code)] // registry stand-in; replaced by the shared driver meta port.
-pub(crate) fn is_key_value_driver(database_type: &str) -> bool {
+pub fn is_key_value_driver(database_type: &str) -> bool {
     matches!(database_type, "kvredis" | "redis")
 }
 
 #[allow(dead_code)] // registry stand-in; replaced by the shared driver meta port.
-pub(crate) fn is_read_only_driver(database_type: &str) -> bool {
+pub fn is_read_only_driver(database_type: &str) -> bool {
     matches!(database_type, "sqlite")
 }
 
@@ -142,22 +142,22 @@ pub(crate) fn is_read_only_driver(database_type: &str) -> bool {
 /// atom would fork the workbench publish side from the slot read side.
 #[allow(dead_code)] // host contract; consumer: the KV workbench host (not wired).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct KvSlotState {
+pub struct KvSlotState {
     pub selected_key: String,
     pub dirty: bool,
 }
 
-pub(crate) type KvSlotAtom = Rc<RefCell<KvSlotState>>;
+pub type KvSlotAtom = Rc<RefCell<KvSlotState>>;
 
 #[allow(dead_code)] // host contract; consumer: the KV workbench host (not wired).
-pub(crate) fn create_kv_slot_state() -> KvSlotAtom {
+pub fn create_kv_slot_state() -> KvSlotAtom {
     Rc::new(RefCell::new(KvSlotState::default()))
 }
 
 /// The panel state the renderer reads.
 #[allow(dead_code)] // view VM; consumer: the content-view host (not wired).
 #[derive(Clone, Debug)]
-pub(crate) struct PanelVm {
+pub struct PanelVm {
     pub id: String,
     pub panel_type: PanelType,
     pub connection_id: String,
@@ -203,7 +203,7 @@ impl Default for PanelVm {
 /// Props the KV driver view receives (mirrors the React branch).
 #[allow(dead_code)] // host contract; consumer: the KV workbench host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct KvViewProps {
+pub struct KvViewProps {
     pub panel_id: String,
     pub db_session_id: String,
     pub connection_id: String,

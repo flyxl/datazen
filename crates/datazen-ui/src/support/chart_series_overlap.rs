@@ -27,7 +27,7 @@ use std::collections::HashMap;
 use crate::support::chart_field_inference::ChartValue;
 
 /// React's `STROKE_DASH_PATTERNS` (`lib/chart/colors.ts`), in order.
-pub(crate) const STROKE_DASH_PATTERNS: [Option<&str>; 6] = [
+pub const STROKE_DASH_PATTERNS: [Option<&str>; 6] = [
     None,            // solid
     Some("8 4"),     // dashed
     Some("2 4"),     // dotted
@@ -43,11 +43,11 @@ const OVERLAP_RATIO: f64 = 0.05;
 
 /// One chart data point: series key → cell value (React's `ChartDataPoint`,
 /// a `[key: string]: string | number | null` bag).
-pub(crate) type ChartSeriesPoint = HashMap<String, ChartValue>;
+pub type ChartSeriesPoint = HashMap<String, ChartValue>;
 
 /// JS's `Number(value)` for the value subset a chart point carries:
 /// `None` is the NaN outcome (React's non-finite filter skips it).
-pub(crate) fn js_number(value: &ChartValue) -> Option<f64> {
+pub fn js_number(value: &ChartValue) -> Option<f64> {
     match value {
         ChartValue::Null => Some(0.0),
         ChartValue::Bool(true) => Some(1.0),
@@ -72,7 +72,7 @@ pub(crate) fn js_number(value: &ChartValue) -> Option<f64> {
 /// `None` for solid. Only series that overlap too closely with another get
 /// a pattern; when every value is identical (zero range) all series dash so
 /// they stay distinguishable.
-pub(crate) fn build_overlap_dash_map(
+pub fn build_overlap_dash_map(
     data: &[ChartSeriesPoint],
     y_axes: &[String],
 ) -> HashMap<String, Option<&'static str>> {

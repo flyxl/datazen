@@ -11,14 +11,14 @@ use crate::views::dashboard::dashboard_panel::{RefreshModeVm, RefreshPolicyVm};
 
 /// React `MIN_REFRESH_SEC`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) const MIN_REFRESH_SEC: u32 = 30;
+pub const MIN_REFRESH_SEC: u32 = 30;
 /// React `REFRESH_WARN_BELOW_SEC`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) const REFRESH_WARN_BELOW_SEC: u32 = 60;
+pub const REFRESH_WARN_BELOW_SEC: u32 = 60;
 
 /// React `clampRefreshSec`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn clamp_refresh_sec(n: u32) -> u32 {
+pub fn clamp_refresh_sec(n: u32) -> u32 {
     n.max(MIN_REFRESH_SEC)
 }
 
@@ -26,7 +26,7 @@ pub(crate) fn clamp_refresh_sec(n: u32) -> u32 {
 /// `refreshSec` (the minimum standing in for a missing one); every other
 /// mode drops it.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn normalize_refresh_policy(refresh: &RefreshPolicyVm) -> RefreshPolicyVm {
+pub fn normalize_refresh_policy(refresh: &RefreshPolicyVm) -> RefreshPolicyVm {
     match refresh.mode {
         RefreshModeVm::Interval => RefreshPolicyVm {
             mode: RefreshModeVm::Interval,
@@ -40,7 +40,7 @@ pub(crate) fn normalize_refresh_policy(refresh: &RefreshPolicyVm) -> RefreshPoli
 
 /// React `shouldWarnRefreshSec`: interval mode with a sub-warning interval.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn should_warn_refresh_sec(refresh: &RefreshPolicyVm) -> bool {
+pub fn should_warn_refresh_sec(refresh: &RefreshPolicyVm) -> bool {
     matches!(refresh.mode, RefreshModeVm::Interval)
         && refresh.refresh_sec.is_some_and(|sec| sec < REFRESH_WARN_BELOW_SEC)
 }
@@ -48,7 +48,7 @@ pub(crate) fn should_warn_refresh_sec(refresh: &RefreshPolicyVm) -> bool {
 /// React's `RefreshPreset` — the preset vocabulary the refresh select shows.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RefreshPreset {
+pub enum RefreshPreset {
     Manual,
     OnOpen,
     Daily,
@@ -59,11 +59,11 @@ pub(crate) enum RefreshPreset {
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl RefreshPreset {
     /// The select's option order (React's inline options array).
-    pub(crate) const ALL: [Self; 5] =
+    pub const ALL: [Self; 5] =
         [Self::Manual, Self::OnOpen, Self::Daily, Self::Hourly, Self::Custom];
 
     /// The select's option value (React's wire spelling).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Manual => "manual",
             Self::OnOpen => "onOpen",
@@ -75,7 +75,7 @@ impl RefreshPreset {
 
     /// Parse the select's value; unknown values fall back to `custom` (the
     /// select never offers one).
-    pub(crate) fn from_str(value: &str) -> Self {
+    pub fn from_str(value: &str) -> Self {
         match value {
             "manual" => Self::Manual,
             "onOpen" => Self::OnOpen,
@@ -86,7 +86,7 @@ impl RefreshPreset {
     }
 
     /// The option's label key.
-    pub(crate) fn label_key(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
             Self::Manual => "dashboard.refreshMode.manual",
             Self::OnOpen => "dashboard.refreshMode.onOpen",
@@ -99,7 +99,7 @@ impl RefreshPreset {
 
 /// React's `refreshPolicyToPreset`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn refresh_policy_to_preset(mode: RefreshModeVm, sec: Option<u32>) -> RefreshPreset {
+pub fn refresh_policy_to_preset(mode: RefreshModeVm, sec: Option<u32>) -> RefreshPreset {
     match mode {
         RefreshModeVm::Manual => RefreshPreset::Manual,
         RefreshModeVm::OnOpen => RefreshPreset::OnOpen,
@@ -114,7 +114,7 @@ pub(crate) fn refresh_policy_to_preset(mode: RefreshModeVm, sec: Option<u32>) ->
 /// React's `IntervalUnit`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum IntervalUnit {
+pub enum IntervalUnit {
     Days,
     Hours,
     Minutes,
@@ -124,10 +124,10 @@ pub(crate) enum IntervalUnit {
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl IntervalUnit {
     /// The select's option order (React's inline options array).
-    pub(crate) const ALL: [Self; 4] =
+    pub const ALL: [Self; 4] =
         [Self::Days, Self::Hours, Self::Minutes, Self::Seconds];
 
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Days => "days",
             Self::Hours => "hours",
@@ -137,7 +137,7 @@ impl IntervalUnit {
     }
 
     /// Parse the select's value; unknown values fall back to `seconds`.
-    pub(crate) fn from_str(value: &str) -> Self {
+    pub fn from_str(value: &str) -> Self {
         match value {
             "days" => Self::Days,
             "hours" => Self::Hours,
@@ -147,7 +147,7 @@ impl IntervalUnit {
     }
 
     /// The option's label key.
-    pub(crate) fn label_key(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
             Self::Days => "dashboard.intervalUnit.days",
             Self::Hours => "dashboard.intervalUnit.hours",
@@ -157,7 +157,7 @@ impl IntervalUnit {
     }
 
     /// React's `INTERVAL_MULTIPLIERS`.
-    pub(crate) fn multiplier(self) -> u32 {
+    pub fn multiplier(self) -> u32 {
         match self {
             Self::Days => 86400,
             Self::Hours => 3600,
@@ -170,7 +170,7 @@ impl IntervalUnit {
 /// React's `secToUnitAndValue`: the largest unit that divides the interval
 /// exactly (days → hours → minutes), else seconds.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn sec_to_unit_and_value(sec: u32) -> (IntervalUnit, u32) {
+pub fn sec_to_unit_and_value(sec: u32) -> (IntervalUnit, u32) {
     if sec >= 86400 && sec % 86400 == 0 {
         (IntervalUnit::Days, sec / 86400)
     } else if sec >= 3600 && sec % 3600 == 0 {
@@ -184,7 +184,7 @@ pub(crate) fn sec_to_unit_and_value(sec: u32) -> (IntervalUnit, u32) {
 
 /// JS `Number(text)`: `None` for text that does not parse (JS's `NaN`);
 /// empty and blank text are JS's `0`.
-pub(crate) fn js_number(text: &str) -> Option<f64> {
+pub fn js_number(text: &str) -> Option<f64> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return Some(0.0);
@@ -194,7 +194,7 @@ pub(crate) fn js_number(text: &str) -> Option<f64> {
 
 /// React's interval parse: `Math.max(1, Number(v) || 1)` — `0` and `NaN`
 /// both fall to `1`.
-pub(crate) fn js_number_or_one(text: &str) -> f64 {
+pub fn js_number_or_one(text: &str) -> f64 {
     let n = js_number(text).unwrap_or(0.0);
     let n = if n == 0.0 { 1.0 } else { n };
     n.max(1.0)

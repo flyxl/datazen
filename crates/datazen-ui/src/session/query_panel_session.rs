@@ -51,7 +51,7 @@ const PANE_SEPARATOR: &str = "::";
 /// `panel::pane` key names a secondary pane of the same panel.
 // local stand-in for stores/paneKeys.ts; remove when that file is ported.
 #[allow(dead_code)]
-pub(crate) fn panel_id_of_pane_key(key: &str) -> &str {
+pub fn panel_id_of_pane_key(key: &str) -> &str {
     match key.find(PANE_SEPARATOR) {
         Some(at) => &key[..at],
         None => key,
@@ -61,23 +61,23 @@ pub(crate) fn panel_id_of_pane_key(key: &str) -> &str {
 /// React `isPaneKeyOfPanel`.
 // local stand-in for stores/paneKeys.ts; remove when that file is ported.
 #[allow(dead_code)]
-pub(crate) fn is_pane_key_of_panel(key: &str, panel_id: &str) -> bool {
+pub fn is_pane_key_of_panel(key: &str, panel_id: &str) -> bool {
     panel_id_of_pane_key(key) == panel_id
 }
 
 /// The close work emitted by `QueryPanelSessionRegistry::begin_remove`.
 #[allow(dead_code)] // host-side teardown; remove with the query-panel view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RemoveStep {
+pub struct RemoveStep {
     /// Identity of the controller being closed. `finish_remove` uses it so a
     /// concurrent replacement can never be removed by a late close.
-    pub(crate) controller_id: u64,
-    pub(crate) effects: Vec<SessionEffect>,
+    pub controller_id: u64,
+    pub effects: Vec<SessionEffect>,
 }
 
 /// Per-editor lazy session registry, keyed by pane key.
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
-pub(crate) struct QueryPanelSessionRegistry {
+pub struct QueryPanelSessionRegistry {
     controllers: HashMap<String, EditorSessionController>,
     ids: HashMap<String, u64>,
     next_id: u64,
@@ -85,7 +85,7 @@ pub(crate) struct QueryPanelSessionRegistry {
 
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
 impl QueryPanelSessionRegistry {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             controllers: HashMap::new(),
             ids: HashMap::new(),
@@ -95,7 +95,7 @@ impl QueryPanelSessionRegistry {
 
     /// Returns the existing controller for `key`, or lazily creates one with a
     /// fresh owner id — exactly React's `get`.
-    pub(crate) fn get(
+    pub fn get(
         &mut self,
         key: &str,
         target: &ExecutionTarget,
@@ -112,19 +112,19 @@ impl QueryPanelSessionRegistry {
     }
 
     /// React `peek`: no creation, no ownership change.
-    pub(crate) fn peek(&self, key: &str) -> Option<&EditorSessionController> {
+    pub fn peek(&self, key: &str) -> Option<&EditorSessionController> {
         self.controllers.get(key)
     }
 
     /// Mutable peek for driving the controller at a known pane key.
-    pub(crate) fn peek_mut(&mut self, key: &str) -> Option<&mut EditorSessionController> {
+    pub fn peek_mut(&mut self, key: &str) -> Option<&mut EditorSessionController> {
         self.controllers.get_mut(key)
     }
 
     /// Every pane key of `panelId` that owns a controller right now. The
     /// controller map — not the exec table — is the source of truth: a pane
     /// that mounted but never executed still holds a runtime session.
-    pub(crate) fn keys_of_panel(&self, panel_id: &str) -> Vec<String> {
+    pub fn keys_of_panel(&self, panel_id: &str) -> Vec<String> {
         let mut keys: Vec<String> = self
             .controllers
             .keys()
@@ -138,7 +138,7 @@ impl QueryPanelSessionRegistry {
     /// Copy semantics: a new owner id and a fresh controller, never the source
     /// runtime handle. A destination that already owns a session is a
     /// `ContextConflict` (React throws `ApiError('ContextConflict', ...)`).
-    pub(crate) fn duplicate(
+    pub fn duplicate(
         &mut self,
         _source_key: &str,
         target_key: &str,
@@ -160,7 +160,7 @@ impl QueryPanelSessionRegistry {
     /// Begin removal: close the controller with `requireNoTransaction`. A
     /// backend refusal keeps ownership reachable (the controller stays in the
     /// map), so a failed close never orphans the session.
-    pub(crate) fn begin_remove(&mut self, key: &str) -> Option<RemoveStep> {
+    pub fn begin_remove(&mut self, key: &str) -> Option<RemoveStep> {
         let id = *self.ids.get(key)?;
         let controller = self.controllers.get_mut(key)?;
         Some(RemoveStep {
@@ -171,7 +171,7 @@ impl QueryPanelSessionRegistry {
 
     /// Finish removal only when the same controller still owns the key. A
     /// concurrent replacement that took the key in the meantime survives.
-    pub(crate) fn finish_remove(&mut self, key: &str, controller_id: u64) -> bool {
+    pub fn finish_remove(&mut self, key: &str, controller_id: u64) -> bool {
         if self.ids.get(key) != Some(&controller_id) {
             return false;
         }
@@ -185,15 +185,15 @@ impl QueryPanelSessionRegistry {
 // remove when ExecutionView gains a state field.
 #[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SwitchExecutionView {
-    pub(crate) state: ExecutionState,
-    pub(crate) error_code: Option<String>,
+pub struct SwitchExecutionView {
+    pub state: ExecutionState,
+    pub error_code: Option<String>,
 }
 
 /// Work the host performs to drive a database switch.
 #[allow(dead_code)] // emitted work; remove with the query-panel view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SwitchEffect {
+pub enum SwitchEffect {
     /// `await controller.refresh()`.
     Refresh,
     /// Ask the caller whether to leave an active/aborted transaction.
@@ -212,7 +212,7 @@ pub(crate) enum SwitchEffect {
 /// Host answers fed back into [`DatabaseSwitch::step`].
 #[allow(dead_code)] // result feed; remove with the query-panel view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SwitchInput {
+pub enum SwitchInput {
     /// `refresh()` result; `None` falls back to the snapshot.
     Refreshed(Option<SessionView>),
     /// The caller's transaction confirmation (absent callback means `false`).
@@ -230,15 +230,15 @@ pub(crate) enum SwitchInput {
 /// A switch failure: React returns `{ status: 'failed', error: unknown }`.
 #[allow(dead_code)] // result mirror; remove with the query-panel view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SwitchError {
-    pub(crate) code: String,
-    pub(crate) message: String,
+pub struct SwitchError {
+    pub code: String,
+    pub message: String,
 }
 
 /// React `DatabaseSwitchResult`.
 #[allow(dead_code)] // result mirror; remove with the query-panel view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SwitchResult {
+pub enum SwitchResult {
     Switched { session: SessionView },
     Cancelled,
     Conflict { session: Option<SessionView> },
@@ -248,7 +248,7 @@ pub(crate) enum SwitchResult {
 /// React `DatabaseSwitchResult.status` for tests and the view.
 #[allow(dead_code)] // result mirror; remove with the query-panel view.
 impl SwitchResult {
-    pub(crate) fn status(&self) -> &'static str {
+    pub fn status(&self) -> &'static str {
         match self {
             Self::Switched { .. } => "switched",
             Self::Cancelled => "cancelled",
@@ -273,14 +273,14 @@ enum SwitchPhase {
 /// A step's observable outputs.
 #[allow(dead_code)] // step result; remove with the query-panel view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SwitchStep {
-    pub(crate) effects: Vec<SwitchEffect>,
-    pub(crate) result: Option<SwitchResult>,
+pub struct SwitchStep {
+    pub effects: Vec<SwitchEffect>,
+    pub result: Option<SwitchResult>,
 }
 
 /// The two-phase database switch as an explicit machine.
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
-pub(crate) struct DatabaseSwitch {
+pub struct DatabaseSwitch {
     desired: NamespaceTarget,
     snapshot: Option<SessionView>,
     current: Option<SessionView>,
@@ -291,7 +291,7 @@ pub(crate) struct DatabaseSwitch {
 #[allow(dead_code)] // consumer: the query-panel view; remove when it lands.
 impl DatabaseSwitch {
     /// Begin a switch. React's first await is `controller.refresh()`.
-    pub(crate) fn new(desired: NamespaceTarget, snapshot: Option<SessionView>) -> (Self, SwitchStep) {
+    pub fn new(desired: NamespaceTarget, snapshot: Option<SessionView>) -> (Self, SwitchStep) {
         let machine = Self {
             desired,
             snapshot,
@@ -309,7 +309,7 @@ impl DatabaseSwitch {
     }
 
     /// Current phase name, for host observability and tests.
-    pub(crate) fn phase(&self) -> &'static str {
+    pub fn phase(&self) -> &'static str {
         match self.phase {
             SwitchPhase::AwaitRefresh => "awaitRefresh",
             SwitchPhase::AwaitConfirm => "awaitConfirm",
@@ -324,7 +324,7 @@ impl DatabaseSwitch {
 
     /// Advance the machine with one host answer. Inputs that do not match the
     /// current phase are ignored (a stale late result cannot move the switch).
-    pub(crate) fn step(&mut self, input: SwitchInput) -> SwitchStep {
+    pub fn step(&mut self, input: SwitchInput) -> SwitchStep {
         match (self.phase, input) {
             (SwitchPhase::AwaitRefresh, SwitchInput::Refreshed(view))
             | (SwitchPhase::AwaitRefreshAfterRollback, SwitchInput::Refreshed(view)) => {
@@ -455,7 +455,7 @@ impl DatabaseSwitch {
 impl SwitchError {
     /// Map the T083 error shape into React's `{ code, message }`.
     #[allow(dead_code)] // helper for the query-panel view; remove when it lands.
-    pub(crate) fn from_session(error: &SessionError) -> Self {
+    pub fn from_session(error: &SessionError) -> Self {
         let code = match &error.code {
             ApiErrorCode::SessionLost => "SessionLost",
             ApiErrorCode::SessionNotFound => "SessionNotFound",

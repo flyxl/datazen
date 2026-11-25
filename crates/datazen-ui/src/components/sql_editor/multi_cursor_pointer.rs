@@ -66,7 +66,7 @@ use crate::components::sql_editor::sql_editor_context_menu::Platform;
 /// input (CodeMirror's `clickAddsSelectionRange` predicate face: a
 /// click, never a drag).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PointerModifiers {
+pub struct PointerModifiers {
     /// Alt / Option.
     pub alt: bool,
     /// Control.
@@ -83,7 +83,7 @@ pub(crate) struct PointerModifiers {
 /// A pure predicate over the modifier flags (the platform resolved by
 /// the host), so the modifier table above can be asserted directly,
 /// without mounting an editor.
-pub(crate) fn click_adds_cursor(modifiers: PointerModifiers, platform: Platform) -> bool {
+pub fn click_adds_cursor(modifiers: PointerModifiers, platform: Platform) -> bool {
     // Shift+click extends the current selection. It is deliberately
     // excluded on every platform: it was excluded before this change
     // and is a distinct, still-supported gesture.
@@ -105,7 +105,7 @@ pub(crate) fn click_adds_cursor(modifiers: PointerModifiers, platform: Platform)
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
 
     fn evt(alt: bool, ctrl: bool, meta: bool, shift: bool) -> PointerModifiers {

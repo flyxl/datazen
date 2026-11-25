@@ -41,24 +41,24 @@ use rune::{col, row, El};
 use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone, SpinnerVariant};
 
 /// The fallback chrome.
-pub(crate) struct WindowChromeFallback {
+pub struct WindowChromeFallback {
     chrome: Option<El>,
 }
 
 impl WindowChromeFallback {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { chrome: None }
     }
 
     /// The registered chrome slot (React's `useWindowChrome()` — the
     /// desktop TitleBar, registered at assembly time). `None` renders no
     /// bar.
-    pub(crate) fn chrome(mut self, chrome: Option<El>) -> Self {
+    pub fn chrome(mut self, chrome: Option<El>) -> Self {
         self.chrome = chrome;
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let mut root = col()
             .key("window-chrome-fallback")

@@ -26,8 +26,8 @@ use crate::ui::kit::kit;
 mod actions;
 mod aria;
 
-pub(crate) use actions::{RowAction, TreeRowHostPort};
-pub(crate) use aria::{
+pub use actions::{RowAction, TreeRowHostPort};
+pub use aria::{
     aria_expanded, aria_level_of, indent_of, is_decoration, is_navigator_branch, searched,
     section_group_key, ContextMenuTarget, RowConnectionStatus, RowKind, RowVm, TREE_TOP_LEVEL,
     PINNED_GROUP_KEY, RECENT_GROUP_KEY,
@@ -103,7 +103,7 @@ fn status_dot<S: 'static>(connection_id: &str, status: RowConnectionStatus, dark
 }
 
 #[allow(dead_code)] // view entry point; consumer: the navigator tree host (not wired).
-pub(crate) fn navigator_tree_row<S: 'static>(
+pub fn navigator_tree_row<S: 'static>(
     vm: &RowVm,
     dark: bool,
     host: &TreeRowHostPort<S>,

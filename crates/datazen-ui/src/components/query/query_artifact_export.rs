@@ -73,7 +73,7 @@ use crate::ui::kit::kit;
 /// | 'truncated'`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) enum ResultCompleteness {
+pub enum ResultCompleteness {
     Pending,
     #[default]
     Complete,
@@ -83,7 +83,7 @@ pub(crate) enum ResultCompleteness {
 #[allow(dead_code)] // reusable component; wired by the query-view track
 impl ResultCompleteness {
     /// The wire spelling, for the host that decodes the stream event.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "pending",
             Self::Complete => "complete",
@@ -93,7 +93,7 @@ impl ResultCompleteness {
 
     /// Parses the wire spelling; anything else is not a completeness React
     /// could have produced, so it is `None` rather than a silent default.
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "pending" => Some(Self::Pending),
             "complete" => Some(Self::Complete),
@@ -107,7 +107,7 @@ impl ResultCompleteness {
 /// published execution's artifact ids and how complete its result is.
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) struct QueryResultArtifacts {
+pub struct QueryResultArtifacts {
     pub execution_id: String,
     pub artifact_ids: Vec<String>,
     pub result_completeness: ResultCompleteness,
@@ -116,7 +116,7 @@ pub(crate) struct QueryResultArtifacts {
 /// React's `[...new Set(artifacts.artifactIds)]`: duplicates collapse,
 /// first-seen order kept, so a repeated id gets exactly one button.
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) fn dedup_artifact_ids(artifacts: &QueryResultArtifacts) -> Vec<String> {
+pub fn dedup_artifact_ids(artifacts: &QueryResultArtifacts) -> Vec<String> {
     let mut ids: Vec<String> = Vec::with_capacity(artifacts.artifact_ids.len());
     for id in &artifacts.artifact_ids {
         if !ids.iter().any(|seen| seen == id) {
@@ -129,7 +129,7 @@ pub(crate) fn dedup_artifact_ids(artifacts: &QueryResultArtifacts) -> Vec<String
 /// React's early return: nothing while the result is pending, and nothing
 /// when dedup leaves no artifact id.
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) fn should_render(artifacts: &QueryResultArtifacts) -> bool {
+pub fn should_render(artifacts: &QueryResultArtifacts) -> bool {
     artifacts.result_completeness != ResultCompleteness::Pending
         && !dedup_artifact_ids(artifacts).is_empty()
 }
@@ -138,7 +138,7 @@ pub(crate) fn should_render(artifacts: &QueryResultArtifacts) -> bool {
 /// several get `query.artifactExport.numberedAction` with `{index}` replaced
 /// by the 1-based position, exactly as React's `t(…, { index: index + 1 })`.
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) fn button_label(artifact_count: usize, index: usize) -> String {
+pub fn button_label(artifact_count: usize, index: usize) -> String {
     if artifact_count == 1 {
         t("query.artifactExport.action").to_owned()
     } else {
@@ -149,13 +149,13 @@ pub(crate) fn button_label(artifact_count: usize, index: usize) -> String {
 /// React `ArtifactExportResponse` — the single source is
 /// `commands::artifact::ArtifactExportResponse` (T130); this alias keeps
 /// the component's original name.
-pub(crate) use crate::commands::artifact::ArtifactExportResponse as ArtifactExportReceipt;
+pub use crate::commands::artifact::ArtifactExportResponse as ArtifactExportReceipt;
 
 /// The message a rejection shows: the failure's own message when it has one,
 /// else `query.artifactExport.failed` — React's `failure instanceof Error ?
 /// failure.message : t('query.artifactExport.failed')`.
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) fn export_error_message(failure_message: Option<&str>) -> String {
+pub fn export_error_message(failure_message: Option<&str>) -> String {
     match failure_message {
         Some(message) => message.to_owned(),
         None => t("query.artifactExport.failed").to_owned(),
@@ -166,7 +166,7 @@ pub(crate) fn export_error_message(failure_message: Option<&str>) -> String {
 /// the app's state `S` because Rune has no component-local `useState`.
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) struct ArtifactExportState {
+pub struct ArtifactExportState {
     /// An export is running; all buttons are disabled while set.
     pub busy: bool,
     /// The last export finished with a `saved` receipt.
@@ -181,7 +181,7 @@ impl ArtifactExportState {
     /// (and changes nothing) when an export is already running; otherwise
     /// marks busy and clears the previous outcome, exactly as React's
     /// `setBusy(true); setSaved(false); setError(null)` before the await.
-    pub(crate) fn begin_export(&mut self) -> bool {
+    pub fn begin_export(&mut self) -> bool {
         if self.busy {
             return false;
         }
@@ -194,7 +194,7 @@ impl ArtifactExportState {
     /// React's `finally` + receipt handling: busy always clears. Only a
     /// `saved` receipt sets the saved mark; a cancellation leaves the
     /// previous outcome cleared and shows nothing, as React does.
-    pub(crate) fn finish_export(&mut self, receipt: &ArtifactExportReceipt) {
+    pub fn finish_export(&mut self, receipt: &ArtifactExportReceipt) {
         self.busy = false;
         if matches!(receipt, ArtifactExportReceipt::Saved { .. }) {
             self.saved = true;
@@ -202,7 +202,7 @@ impl ArtifactExportState {
     }
 
     /// React's `catch`: busy clears and the resolved message shows.
-    pub(crate) fn fail_export(&mut self, message: impl Into<String>) {
+    pub fn fail_export(&mut self, message: impl Into<String>) {
         self.busy = false;
         self.error = Some(message.into());
     }
@@ -210,22 +210,22 @@ impl ArtifactExportState {
 
 /// Reads the export state out of the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) type ReadExportStateFn<S> = fn(&S) -> &ArtifactExportState;
+pub type ReadExportStateFn<S> = fn(&S) -> &ArtifactExportState;
 
 /// Runs the `inFlight` guard on the app's `S`: the host's one-line call into
 /// [`ArtifactExportState::begin_export`]. Returns whether the export may start.
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) type BeginExportFn<S> = fn(&mut S) -> bool;
+pub type BeginExportFn<S> = fn(&mut S) -> bool;
 
 /// Starts the host-owned async export of one artifact id (the
 /// `export_artifact` IPC). Only called after [`BeginExportFn`] allowed it.
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) type ExportArtifactFn<S> = fn(&mut S, String);
+pub type ExportArtifactFn<S> = fn(&mut S, String);
 
 /// The export bar. `read_state` and `begin_export` locate the state slot in
 /// the app's `S`; `on_export` is the host's async export starter.
 #[allow(dead_code)] // reusable component; wired by the query-view track
-pub(crate) struct QueryArtifactExport<S: 'static> {
+pub struct QueryArtifactExport<S: 'static> {
     key: String,
     artifacts: QueryResultArtifacts,
     read_state: ReadExportStateFn<S>,
@@ -235,7 +235,7 @@ pub(crate) struct QueryArtifactExport<S: 'static> {
 
 #[allow(dead_code)] // reusable component; wired by the query-view track
 impl<S: 'static> QueryArtifactExport<S> {
-    pub(crate) fn new(
+    pub fn new(
         artifacts: QueryResultArtifacts,
         read_state: ReadExportStateFn<S>,
         begin_export: BeginExportFn<S>,
@@ -251,20 +251,20 @@ impl<S: 'static> QueryArtifactExport<S> {
 
     /// Override the key prefix (two bars can then share one state slot only
     /// if their callers keep the prefixes distinct).
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
 
     /// The host's async export starter; without it the buttons render but
     /// do nothing, like a React bar whose command never resolves.
-    pub(crate) fn on_export(mut self, on_export: ExportArtifactFn<S>) -> Self {
+    pub fn on_export(mut self, on_export: ExportArtifactFn<S>) -> Self {
         self.on_export = Some(on_export);
         self
     }
 
     /// Builds the bar, or `el()` (nothing) while pending or with no ids.
-    pub(crate) fn build(self, s: &S, dark: bool) -> El {
+    pub fn build(self, s: &S, dark: bool) -> El {
         if !should_render(&self.artifacts) {
             return el();
         }

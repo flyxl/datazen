@@ -12,9 +12,9 @@ use datazen_ui_api::ContextEntry;
 
 /// One shaped legacy command: the `legacyInvoke` name plus its payload.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ContextRequest {
-    pub(crate) command: &'static str,
-    pub(crate) value: serde_json::Value,
+pub struct ContextRequest {
+    pub command: &'static str,
+    pub value: serde_json::Value,
 }
 
 impl ContextRequest {
@@ -26,14 +26,14 @@ impl ContextRequest {
 /// `contextCommands.getDir()` — the AI context directory's path (the
 /// settings section's default-dir placeholder and the open-dir action
 /// both read it).
-pub(crate) fn get_dir_request() -> ContextRequest {
+pub fn get_dir_request() -> ContextRequest {
     ContextRequest::native("context_get_dir", serde_json::json!({}))
 }
 
 /// `contextCommands.listFiles(query?)` — the context tree's file list,
 /// optionally filtered; `query ?? null` on the wire (absent and empty
 /// both collapse to null, the "list everything" filter).
-pub(crate) fn list_files_request(query: Option<&str>) -> ContextRequest {
+pub fn list_files_request(query: Option<&str>) -> ContextRequest {
     ContextRequest::native(
         "context_list_files",
         serde_json::json!({ "query": query.filter(|q| !q.is_empty()) }),
@@ -42,15 +42,15 @@ pub(crate) fn list_files_request(query: Option<&str>) -> ContextRequest {
 
 /// `contextCommands.readFiles(paths)` — read the chosen files' contents;
 /// the receipt is one `[path, content]` pair per requested path.
-pub(crate) fn read_files_request(paths: &[&str]) -> ContextRequest {
+pub fn read_files_request(paths: &[&str]) -> ContextRequest {
     ContextRequest::native("context_read_files", serde_json::json!({ "paths": paths }))
 }
 
 /// `readFiles`' receipt: `(path, content)` pairs.
-pub(crate) type ContextFileContents = Vec<(String, String)>;
+pub type ContextFileContents = Vec<(String, String)>;
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
     use serde_json::json;
 

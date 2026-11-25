@@ -25,7 +25,7 @@ use crate::commands::ai::workflow::{AiSubmissionTokenVm, with_submission_token};
 /// The Dashboard `MethodMap` slice — one variant per domain method;
 /// `wire_name` is the transport call name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DashboardMethod {
+pub enum DashboardMethod {
     GetMonitorScheduleGrant,
     AuthorizeMonitorSchedule,
     RevokeMonitorSchedule,
@@ -45,7 +45,7 @@ pub(crate) enum DashboardMethod {
 
 impl DashboardMethod {
     /// The transport call name (`transport.call(name, payload)`).
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::GetMonitorScheduleGrant => "getMonitorScheduleGrant",
             Self::AuthorizeMonitorSchedule => "authorizeMonitorSchedule",
@@ -69,7 +69,7 @@ impl DashboardMethod {
 // ---- the monitor-schedule grant faces ---------------------------------------
 
 /// `getMonitorScheduleGrant(dashboardId, widgetId)`.
-pub(crate) fn get_monitor_schedule_grant_request(
+pub fn get_monitor_schedule_grant_request(
     dashboard_id: &str,
     widget_id: &str,
 ) -> (DashboardMethod, Value) {
@@ -81,7 +81,7 @@ pub(crate) fn get_monitor_schedule_grant_request(
 
 /// `authorizeMonitorSchedule(dashboardId, widgetId)`: the fixed one-hour
 /// ttl plus the saveUserAsset token (the authorized write face).
-pub(crate) fn authorize_monitor_schedule_request(
+pub fn authorize_monitor_schedule_request(
     dashboard_id: &str,
     widget_id: &str,
     token: &AiSubmissionTokenVm,
@@ -97,7 +97,7 @@ pub(crate) fn authorize_monitor_schedule_request(
 
 /// `revokeMonitorSchedule(dashboardId, widgetId)` (bodyless DELETE face,
 /// no token).
-pub(crate) fn revoke_monitor_schedule_request(
+pub fn revoke_monitor_schedule_request(
     dashboard_id: &str,
     widget_id: &str,
 ) -> (DashboardMethod, Value) {
@@ -110,17 +110,17 @@ pub(crate) fn revoke_monitor_schedule_request(
 // ---- the dashboard CRUD faces -----------------------------------------------
 
 /// `listDashboards()`.
-pub(crate) fn list_dashboards_request() -> (DashboardMethod, Value) {
+pub fn list_dashboards_request() -> (DashboardMethod, Value) {
     (DashboardMethod::ListDashboards, json!({}))
 }
 
 /// `getDashboard(id)`.
-pub(crate) fn get_dashboard_request(id: &str) -> (DashboardMethod, Value) {
+pub fn get_dashboard_request(id: &str) -> (DashboardMethod, Value) {
     (DashboardMethod::GetDashboard, json!({ "id": id }))
 }
 
 /// `saveDashboard(dashboard)`: the `{ dashboard }` bag plus the token.
-pub(crate) fn save_dashboard_request(
+pub fn save_dashboard_request(
     dashboard: &Value,
     token: &AiSubmissionTokenVm,
 ) -> (DashboardMethod, Value) {
@@ -131,12 +131,12 @@ pub(crate) fn save_dashboard_request(
 }
 
 /// `deleteDashboard(id)` (bodyless, no token).
-pub(crate) fn delete_dashboard_request(id: &str) -> (DashboardMethod, Value) {
+pub fn delete_dashboard_request(id: &str) -> (DashboardMethod, Value) {
     (DashboardMethod::DeleteDashboard, json!({ "id": id }))
 }
 
 /// `setDashboardRefreshPaused(id, paused)` — a write face, token-carrying.
-pub(crate) fn set_dashboard_refresh_paused_request(
+pub fn set_dashboard_refresh_paused_request(
     id: &str,
     paused: bool,
     token: &AiSubmissionTokenVm,
@@ -148,7 +148,7 @@ pub(crate) fn set_dashboard_refresh_paused_request(
 }
 
 /// `findDashboardWorkflowRefs(workflowId)`.
-pub(crate) fn find_dashboard_workflow_refs_request(
+pub fn find_dashboard_workflow_refs_request(
     workflow_id: &str,
 ) -> (DashboardMethod, Value) {
     (
@@ -160,7 +160,7 @@ pub(crate) fn find_dashboard_workflow_refs_request(
 // ---- the run faces ------------------------------------------------------------
 
 /// `listWidgetRuns(dashboardId, widgetId, limit)`.
-pub(crate) fn list_widget_runs_request(
+pub fn list_widget_runs_request(
     dashboard_id: &str,
     widget_id: &str,
     limit: u32,
@@ -172,7 +172,7 @@ pub(crate) fn list_widget_runs_request(
 }
 
 /// `getWidgetRun(dashboardId, widgetId, runId)`.
-pub(crate) fn get_widget_run_request(
+pub fn get_widget_run_request(
     dashboard_id: &str,
     widget_id: &str,
     run_id: &str,
@@ -185,7 +185,7 @@ pub(crate) fn get_widget_run_request(
 
 /// `runDashboardWidget(dashboardId, widgetId)`: the write face that
 /// carries only the token.
-pub(crate) fn run_dashboard_widget_request(
+pub fn run_dashboard_widget_request(
     dashboard_id: &str,
     widget_id: &str,
     token: &AiSubmissionTokenVm,
@@ -202,7 +202,7 @@ pub(crate) fn run_dashboard_widget_request(
 /// `createWidgetFromSql(params)`: the `{ dashboardId, params }` bag plus
 /// the token; the caller runs the returned dashboard's enabled widgets
 /// once ([`run_widgets_once_requests`]).
-pub(crate) fn create_widget_from_sql_request(
+pub fn create_widget_from_sql_request(
     params: &Value,
     token: &AiSubmissionTokenVm,
 ) -> (DashboardMethod, Value) {
@@ -219,7 +219,7 @@ pub(crate) fn create_widget_from_sql_request(
 }
 
 /// `createWidgetFromWorkflow(params)`: the same bag shape.
-pub(crate) fn create_widget_from_workflow_request(
+pub fn create_widget_from_workflow_request(
     params: &Value,
     token: &AiSubmissionTokenVm,
 ) -> (DashboardMethod, Value) {
@@ -236,7 +236,7 @@ pub(crate) fn create_widget_from_workflow_request(
 }
 
 /// `updateHiddenWidgetSql(params)`: the `{ params }` bag plus the token.
-pub(crate) fn update_hidden_widget_sql_request(
+pub fn update_hidden_widget_sql_request(
     params: &Value,
     token: &AiSubmissionTokenVm,
 ) -> (DashboardMethod, Value) {
@@ -250,7 +250,7 @@ pub(crate) fn update_hidden_widget_sql_request(
 
 /// One dashboard widget the ripple reads (the `DashboardWidget` fields
 /// `runDashboardWidgetsOnce` filters on).
-pub(crate) struct RippleWidget {
+pub struct RippleWidget {
     pub id: String,
     pub enabled: bool,
 }
@@ -259,7 +259,7 @@ pub(crate) struct RippleWidget {
 /// **enabled** widget of the dashboard the create/import flow just
 /// produced — fire-and-forget, each failure swallowed (`.catch(() =>
 /// undefined)`; the host drops a failed run's error and keeps going).
-pub(crate) fn run_widgets_once_requests(
+pub fn run_widgets_once_requests(
     dashboard_id: &str,
     widgets: &[RippleWidget],
     token: &AiSubmissionTokenVm,
@@ -274,14 +274,14 @@ pub(crate) fn run_widgets_once_requests(
 /// One shaped legacy command (the two dialog faces stay on the legacy
 /// rail).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DashboardLegacyRequest {
-    pub(crate) command: &'static str,
-    pub(crate) value: Value,
+pub struct DashboardLegacyRequest {
+    pub command: &'static str,
+    pub value: Value,
 }
 
 /// `exportWithDialog(dashboardId, defaultFileName)` — merged IPC (native
 /// save dialog + export), deliberately legacy (contract §6.15).
-pub(crate) fn export_with_dialog_request(
+pub fn export_with_dialog_request(
     dashboard_id: &str,
     default_file_name: &str,
 ) -> DashboardLegacyRequest {
@@ -294,6 +294,6 @@ pub(crate) fn export_with_dialog_request(
 /// `importWithDialog()` — the native open dialog + import, legacy; the
 /// answered dashboard's enabled widgets run once
 /// ([`run_widgets_once_requests`]), a dismissed dialog answers null.
-pub(crate) fn import_with_dialog_request() -> DashboardLegacyRequest {
+pub fn import_with_dialog_request() -> DashboardLegacyRequest {
     DashboardLegacyRequest { command: "import_dashboard_with_dialog", value: json!({}) }
 }

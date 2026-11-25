@@ -13,23 +13,23 @@ use super::CellValueErrorReason;
 /// draft was written (or the editor was closed) without an error.
 #[allow(dead_code)] // VM mirror; drop when the host owns the active editor.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct OpenEditorVm {
-    pub(crate) panel_id: String,
-    pub(crate) commit: Option<CellValueErrorReason>,
+pub struct OpenEditorVm {
+    pub panel_id: String,
+    pub commit: Option<CellValueErrorReason>,
 }
 
 /// React `EditorNavigationGuard` (`{ ok: true }` / `{ ok: false, reason }`).
 #[allow(dead_code)] // decision; drop when the host owns navigation.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct EditorNavigationGuardVm {
-    pub(crate) ok: bool,
-    pub(crate) reason: Option<CellValueErrorReason>,
+pub struct EditorNavigationGuardVm {
+    pub ok: bool,
+    pub reason: Option<CellValueErrorReason>,
 }
 
 /// React `resolveEditorBeforeNavigation`: an editor that is not ours (or none
 /// at all) cannot hold our draft, so the navigation is unconditionally allowed.
 #[allow(dead_code)] // pure gate; drop when the host owns navigation.
-pub(crate) fn resolve_editor_before_navigation(
+pub fn resolve_editor_before_navigation(
     panel_id: &str,
     active: Option<&OpenEditorVm>,
 ) -> EditorNavigationGuardVm {
@@ -62,16 +62,16 @@ pub(crate) fn resolve_editor_before_navigation(
 /// was refused. No callback is invoked here — the host executes the plan.
 #[allow(dead_code)] // host intent; drop when the host owns navigation.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct NavigationPlanVm {
-    pub(crate) commit_editor: bool,
-    pub(crate) navigate: bool,
-    pub(crate) reason: Option<CellValueErrorReason>,
+pub struct NavigationPlanVm {
+    pub commit_editor: bool,
+    pub navigate: bool,
+    pub reason: Option<CellValueErrorReason>,
 }
 
 /// React `guardNavigation`: run the action and return `true` only after the
 /// guard accepted the navigation; a refusal keeps the editor open.
 #[allow(dead_code)] // pure decision; drop when the host owns navigation.
-pub(crate) fn guard_navigation(
+pub fn guard_navigation(
     panel_id: &str,
     active: Option<&OpenEditorVm>,
 ) -> NavigationPlanVm {

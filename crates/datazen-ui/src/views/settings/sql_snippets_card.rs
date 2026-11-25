@@ -111,7 +111,7 @@ const TEXT_11_MEDIUM: TextStyle = TextStyle::new(11.0, 500.0);
 /// `resolveSnippetDesc`: the translated description, or the key
 /// itself when the table lacks it (`t()`'s own fallback — the React
 /// ternary spells the identity out; the port keeps it).
-pub(crate) fn resolve_snippet_desc(description_key: &str) -> &str {
+pub fn resolve_snippet_desc(description_key: &str) -> &str {
     let translated = t(description_key);
     if translated == description_key {
         description_key
@@ -125,23 +125,23 @@ pub(crate) fn resolve_snippet_desc(description_key: &str) -> &str {
 /// the host syncs it from its store; every field is optional exactly
 /// as the React `?` fields).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct EditorSettingsExportInput {
-    pub(crate) editor_font_size: Option<f64>,
-    pub(crate) editor_font_family: Option<String>,
+pub struct EditorSettingsExportInput {
+    pub editor_font_size: Option<f64>,
+    pub editor_font_family: Option<String>,
     /// `'unquoted' | 'always' | 'both'`.
-    pub(crate) completion_quote_policy: Option<String>,
-    pub(crate) completion_include_table_prefix: Option<bool>,
+    pub completion_quote_policy: Option<String>,
+    pub completion_include_table_prefix: Option<bool>,
     /// `'default' | 'dbeaver' | 'navicat'`.
-    pub(crate) keymap_preset: Option<String>,
-    pub(crate) custom_keymap: Vec<(String, String)>,
+    pub keymap_preset: Option<String>,
+    pub custom_keymap: Vec<(String, String)>,
     /// The format options ride the wire opaque (the value's own
     /// schema is the format engine's).
-    pub(crate) sql_format_options: Option<Value>,
+    pub sql_format_options: Option<Value>,
     /// `'current_statement' | 'entire_script' | 'largest_statement'
     /// | 'ask'`.
-    pub(crate) sql_execution_strategy: Option<String>,
+    pub sql_execution_strategy: Option<String>,
     /// `settings.sqlSnippets ?? []`.
-    pub(crate) sql_snippets: Vec<SqlSnippetItem>,
+    pub sql_snippets: Vec<SqlSnippetItem>,
 }
 
 /// `exportEditorSettings`: the safe whitelist export — the editor
@@ -150,7 +150,7 @@ pub(crate) struct EditorSettingsExportInput {
 /// `exportedAt`, pretty-printed the way `JSON.stringify(…, null, 2)`
 /// prints. No credential, connection or driver field can appear:
 /// the builder copies only the keys below.
-pub(crate) fn export_editor_settings(input: &EditorSettingsExportInput, exported_at: &str) -> String {
+pub fn export_editor_settings(input: &EditorSettingsExportInput, exported_at: &str) -> String {
     let mut editor = Map::new();
     if let Some(size) = input.editor_font_size {
         editor.insert("fontSize".to_owned(), json!(size));
@@ -196,7 +196,7 @@ pub(crate) fn export_editor_settings(input: &EditorSettingsExportInput, exported
 /// Error(…)` messages; the card's caller surfaces the generic
 /// invalid status for every one of them).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ImportEditorSettingsError {
+pub enum ImportEditorSettingsError {
     /// 'Invalid JSON format'.
     InvalidJson,
     /// 'Root must be an object'.
@@ -207,26 +207,26 @@ pub(crate) enum ImportEditorSettingsError {
 /// fields the JSON actually carried (absent stays `None` — "leaves
 /// the current preference unchanged").
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ImportedEditorSettings {
-    pub(crate) editor_font_size: Option<f64>,
-    pub(crate) editor_font_family: Option<String>,
-    pub(crate) completion_quote_policy: Option<String>,
-    pub(crate) completion_include_table_prefix: Option<bool>,
-    pub(crate) keymap_preset: Option<String>,
+pub struct ImportedEditorSettings {
+    pub editor_font_size: Option<f64>,
+    pub editor_font_family: Option<String>,
+    pub completion_quote_policy: Option<String>,
+    pub completion_include_table_prefix: Option<bool>,
+    pub keymap_preset: Option<String>,
     /// The object rides opaque (React casts without checking the
     /// values; the host's coercion is its own).
-    pub(crate) custom_keymap: Option<Map<String, Value>>,
-    pub(crate) sql_format_options: Option<Value>,
-    pub(crate) sql_execution_strategy: Option<String>,
+    pub custom_keymap: Option<Map<String, Value>>,
+    pub sql_format_options: Option<Value>,
+    pub sql_execution_strategy: Option<String>,
     /// `None` when the JSON carried no `sqlSnippets` array.
-    pub(crate) sql_snippets: Option<Vec<SqlSnippetItem>>,
+    pub sql_snippets: Option<Vec<SqlSnippetItem>>,
 }
 
 /// `importEditorSettings`: validate and map only the safe
 /// editor/snippet fields. Every field check is the React one: a
 /// wrong-typed or out-of-vocabulary value is skipped (not an error);
 /// only a broken parse or a non-object root refuses the whole read.
-pub(crate) fn import_editor_settings(text: &str) -> Result<ImportedEditorSettings, ImportEditorSettingsError> {
+pub fn import_editor_settings(text: &str) -> Result<ImportedEditorSettings, ImportEditorSettingsError> {
     let parsed: Value = match serde_json::from_str(text) {
         Ok(parsed) => parsed,
         Err(_) => return Err(ImportEditorSettingsError::InvalidJson),
@@ -315,24 +315,24 @@ pub(crate) fn import_editor_settings(text: &str) -> Result<ImportedEditorSetting
 /// T417 draft, the status line with its timer, and the delete
 /// confirm.
 #[derive(Clone)]
-pub(crate) struct SqlSnippetsCardState {
+pub struct SqlSnippetsCardState {
     /// The `settings` prop's read side (the custom snippets + the
     /// export whitelist).
-    pub(crate) settings: EditorSettingsExportInput,
+    pub settings: EditorSettingsExportInput,
     /// The T417 dialog's draft (its `open` is the triple's first
     /// field).
-    pub(crate) dialog: SnippetEditDialogState,
+    pub dialog: SnippetEditDialogState,
     /// The snippet being edited or duplicated (`None` = an add).
-    pub(crate) dialog_snippet: Option<SqlSnippetItem>,
+    pub dialog_snippet: Option<SqlSnippetItem>,
     /// `isDuplicate` — the duplicate title and the fresh-id save.
-    pub(crate) dialog_is_duplicate: bool,
+    pub dialog_is_duplicate: bool,
     /// The status line (`None` = nothing to say).
-    pub(crate) status_message: Option<String>,
+    pub status_message: Option<String>,
     /// The live status timer's id (`None` = none armed).
-    pub(crate) status_timer: Option<u32>,
+    pub status_timer: Option<u32>,
     status_timer_next: u32,
     /// The `useConfirmDialog` state (the card is the hook's host).
-    pub(crate) confirm: ConfirmDialogState,
+    pub confirm: ConfirmDialogState,
     /// The id the pending delete confirm targets.
     pending_delete: Option<String>,
 }
@@ -355,7 +355,7 @@ impl std::fmt::Debug for SqlSnippetsCardState {
 impl SqlSnippetsCardState {
     /// The mount: the settings prop's first read
     /// (`sqlSnippets ?? []` rides the input).
-    pub(crate) fn new(settings: &EditorSettingsExportInput) -> Self {
+    pub fn new(settings: &EditorSettingsExportInput) -> Self {
         Self {
             settings: settings.clone(),
             dialog: SnippetEditDialogState::new(),
@@ -371,25 +371,25 @@ impl SqlSnippetsCardState {
 
     /// The settings prop's next read (the store's change; the
     /// dialog state is independent of it).
-    pub(crate) fn resync(&mut self, settings: &EditorSettingsExportInput) {
+    pub fn resync(&mut self, settings: &EditorSettingsExportInput) {
         self.settings = settings.clone();
     }
 
     /// `customSnippets` — `settings.sqlSnippets ?? []`.
-    pub(crate) fn custom_snippets(&self) -> &[SqlSnippetItem] {
+    pub fn custom_snippets(&self) -> &[SqlSnippetItem] {
         &self.settings.sql_snippets
     }
 
     /// The Add button: `setDialogState({ open: true, snippet: null,
     /// isDuplicate: false })` + the seed.
-    pub(crate) fn begin_add(&mut self) {
+    pub fn begin_add(&mut self) {
         self.dialog_snippet = None;
         self.dialog_is_duplicate = false;
         self.dialog.seed(true, None, false);
     }
 
     /// One custom row's edit: `snippet: item, isDuplicate: false`.
-    pub(crate) fn begin_edit(&mut self, item: &SqlSnippetItem) {
+    pub fn begin_edit(&mut self, item: &SqlSnippetItem) {
         self.dialog_snippet = Some(item.clone());
         self.dialog_is_duplicate = false;
         self.dialog.seed(true, Some(item), false);
@@ -397,14 +397,14 @@ impl SqlSnippetsCardState {
 
     /// One builtin row's duplicate: `snippet: item,
     /// isDuplicate: true`.
-    pub(crate) fn begin_duplicate(&mut self, item: &SqlSnippetItem) {
+    pub fn begin_duplicate(&mut self, item: &SqlSnippetItem) {
         self.dialog_snippet = Some(item.clone());
         self.dialog_is_duplicate = true;
         self.dialog.seed(true, Some(item), true);
     }
 
     /// The dialog's `onClose`: the triple resets closed.
-    pub(crate) fn close_dialog(&mut self) {
+    pub fn close_dialog(&mut self) {
         self.dialog.seed(false, None, false);
         self.dialog_snippet = None;
         self.dialog_is_duplicate = false;
@@ -413,7 +413,7 @@ impl SqlSnippetsCardState {
     /// `existingPrefixes`: every builtin and custom prefix, minus
     /// the edited snippet's own (a duplicate keeps the source's
     /// prefix in the set — hence the `_copy` seed).
-    pub(crate) fn existing_prefixes(&self) -> Vec<String> {
+    pub fn existing_prefixes(&self) -> Vec<String> {
         let mut all: Vec<String> = builtin_sql_snippets()
             .iter()
             .map(|s| s.prefix.clone())
@@ -431,7 +431,7 @@ impl SqlSnippetsCardState {
     /// `handleSave`'s validation gate alone (the host mints the
     /// fresh id only past it — React's order: `crypto.randomUUID`
     /// runs after the checks).
-    pub(crate) fn validate_snippet(&mut self) -> Result<(), SnippetSaveError> {
+    pub fn validate_snippet(&mut self) -> Result<(), SnippetSaveError> {
         let edited_id: Option<&str> = if self.dialog_is_duplicate {
             None
         } else {
@@ -448,7 +448,7 @@ impl SqlSnippetsCardState {
     /// validation failure keeps the dialog open with its error
     /// (the host gates its mint through [`Self::validate_snippet`]
     /// first — a refused save never consumes one).
-    pub(crate) fn save_snippet(
+    pub fn save_snippet(
         &mut self,
         fresh_id: String,
     ) -> Result<Vec<SqlSnippetItem>, SnippetSaveError> {
@@ -475,7 +475,7 @@ impl SqlSnippetsCardState {
 
     /// `handleDeleteSnippet`'s confirm half: arm the warning confirm
     /// with the `{prefix}` message and remember the target.
-    pub(crate) fn request_delete(&mut self, item: &SqlSnippetItem) -> u64 {
+    pub fn request_delete(&mut self, item: &SqlSnippetItem) -> u64 {
         let message = t("query.snippets.deleteConfirmMessage").replace("{prefix}", &item.prefix);
         self.pending_delete = Some(item.id.clone());
         self.confirm.open(ConfirmOptionsVm {
@@ -488,14 +488,14 @@ impl SqlSnippetsCardState {
 
     /// The id the pending delete confirm targets (the audit's
     /// observation; the host never reads it).
-    pub(crate) fn pending_delete_id(&self) -> Option<&str> {
+    pub fn pending_delete_id(&self) -> Option<&str> {
         self.pending_delete.as_deref()
     }
 
     /// The confirm's resolution: OK filters the target out and
     /// answers the updated list for `onUpdateSnippets`; every other
     /// answer (or a stale request) keeps it.
-    pub(crate) fn resolve_confirm(&mut self, result: bool) -> Option<Vec<SqlSnippetItem>> {
+    pub fn resolve_confirm(&mut self, result: bool) -> Option<Vec<SqlSnippetItem>> {
         let ok = matches!(self.confirm.answer_pending(result), Some(true));
         let target = self.pending_delete.take();
         if !ok {
@@ -509,7 +509,7 @@ impl SqlSnippetsCardState {
     /// `showStatus`: stamp the message and hand out the timer id
     /// (the host arms the 3s timeout; a newer status supersedes the
     /// previous timer the way `clearTimeout` does).
-    pub(crate) fn show_status(&mut self, message: &str) -> u32 {
+    pub fn show_status(&mut self, message: &str) -> u32 {
         self.status_timer_next = self.status_timer_next.saturating_add(1);
         let id = self.status_timer_next;
         self.status_message = Some(message.to_owned());
@@ -519,7 +519,7 @@ impl SqlSnippetsCardState {
 
     /// The 3s timeout's firing: only the live timer clears (a
     /// superseded one lands here and is discarded).
-    pub(crate) fn status_fired(&mut self, timer: u32) -> bool {
+    pub fn status_fired(&mut self, timer: u32) -> bool {
         if self.status_timer == Some(timer) {
             self.status_message = None;
             self.status_timer = None;
@@ -532,7 +532,7 @@ impl SqlSnippetsCardState {
     /// `exportEditorSettings(settings)` — the pure build; the
     /// host supplies the `exportedAt` stamp (React's
     /// `new Date().toISOString()`).
-    pub(crate) fn export_json(&self, exported_at: &str) -> String {
+    pub fn export_json(&self, exported_at: &str) -> String {
         export_editor_settings(&self.settings, exported_at)
     }
 
@@ -542,7 +542,7 @@ impl SqlSnippetsCardState {
     /// (its `updateSettings`); the success status comes after that
     /// write, through [`Self::note_import_ok`] (a rejected write
     /// lands in [`Self::note_import_invalid`], the same `catch`).
-    pub(crate) fn import_text(&mut self, text: &str) -> Option<ImportedEditorSettings> {
+    pub fn import_text(&mut self, text: &str) -> Option<ImportedEditorSettings> {
         match import_editor_settings(text) {
             Ok(imported) => Some(imported),
             Err(_) => {
@@ -553,31 +553,31 @@ impl SqlSnippetsCardState {
     }
 
     /// `showStatus(t('query.exportSettingsSuccess'))`.
-    pub(crate) fn note_export_ok(&mut self) -> u32 {
+    pub fn note_export_ok(&mut self) -> u32 {
         self.show_status(t("query.exportSettingsSuccess"))
     }
 
     /// `showStatus(String(e))` — the clipboard write's failure.
-    pub(crate) fn note_export_error(&mut self, message: &str) -> u32 {
+    pub fn note_export_error(&mut self, message: &str) -> u32 {
         self.show_status(message)
     }
 
     /// `showStatus(t('query.importSettingsSuccess'))` — after the
     /// store write accepted the import.
-    pub(crate) fn note_import_ok(&mut self) -> u32 {
+    pub fn note_import_ok(&mut self) -> u32 {
         self.show_status(t("query.importSettingsSuccess"))
     }
 
     /// `showStatus(t('query.importSettingsInvalid'))` — the parse,
     /// clipboard or store-write failure.
-    pub(crate) fn note_import_invalid(&mut self) -> u32 {
+    pub fn note_import_invalid(&mut self) -> u32 {
         self.show_status(t("query.importSettingsInvalid"))
     }
 }
 
 /// `SqlSnippetsCard({ settings, onUpdateSnippets })`: the card over
 /// the state, the card's state lens and the host's action slots.
-pub(crate) struct SqlSnippetsCard<'a, S: 'static> {
+pub struct SqlSnippetsCard<'a, S: 'static> {
     state: &'a SqlSnippetsCardState,
     dark: bool,
     /// The lens into the owning state (the draft edits, the dialog
@@ -597,7 +597,7 @@ pub(crate) struct SqlSnippetsCard<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> SqlSnippetsCard<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a SqlSnippetsCardState,
         dark: bool,
         card_edit: impl for<'b> Fn(&'b mut S) -> &'b mut SqlSnippetsCardState + 'static,
@@ -615,7 +615,7 @@ impl<'a, S: 'static> SqlSnippetsCard<'a, S> {
 
     /// The `onUpdateSnippets` prop: persist the next custom list
     /// (the save and the confirmed delete both fire it).
-    pub(crate) fn on_update_snippets(
+    pub fn on_update_snippets(
         mut self,
         f: impl Fn(&mut S, Vec<SqlSnippetItem>) + 'static,
     ) -> Self {
@@ -624,20 +624,20 @@ impl<'a, S: 'static> SqlSnippetsCard<'a, S> {
     }
 
     /// The export button's clipboard half.
-    pub(crate) fn on_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_export = Some(Rc::new(f));
         self
     }
 
     /// The import button's clipboard half.
-    pub(crate) fn on_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_import(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_import = Some(Rc::new(f));
         self
     }
 
     /// The `crypto.randomUUID` seam (the fresh id an add/duplicate
     /// takes).
-    pub(crate) fn fresh_id(mut self, f: impl Fn(&mut S) -> String + 'static) -> Self {
+    pub fn fresh_id(mut self, f: impl Fn(&mut S) -> String + 'static) -> Self {
         self.fresh_id = Some(Rc::new(f));
         self
     }
@@ -717,7 +717,7 @@ impl<'a, S: 'static> SqlSnippetsCard<'a, S> {
     }
 
     /// The card (`space-y-4 rounded-lg border bg-surface-alt`).
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let mut card = col()
             .key("sql-snippets-card")

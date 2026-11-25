@@ -28,13 +28,13 @@ mod history;
 mod logic;
 mod model;
 
-pub(crate) use history::FkNavigationMachine;
-pub(crate) use logic::{
+pub use history::FkNavigationMachine;
+pub use logic::{
     build_fk_filters, find_entry_id_by_nav_key, find_foreign_key, fk_nav_key, index_foreign_keys,
     is_fk_cell_navigable, pick_anchor_row, scroll_top_for_anchor_row, target_label_of,
     NavigableInput, FK_NAV_MAX_DEPTH,
 };
-pub(crate) use model::{
+pub use model::{
     json_quote, FkFilterVm, FkGroupAffordanceVm, FkIndexVm, FkNavEntryVm, FkNavOriginVm,
     FkNavTargetIdentityVm, FkValue, ForeignKeyInfoVm, GridViewportVm,
 };
@@ -42,7 +42,7 @@ pub(crate) use model::{
 /// What the hook decides when a cell's arrow is pressed.
 #[allow(dead_code)] // decision; consumed by the table host (not wired).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum JumpDecision {
+pub enum JumpDecision {
     /// No group, no row, or a NULL in any member — nothing may happen.
     Refuse,
     /// The full foreign key, the group values in pairing order, and the
@@ -58,7 +58,7 @@ pub(crate) enum JumpDecision {
 /// values (a single NULL refuses) → `ForeignKeyInfo` + cell key. The actual
 /// `openForeignKeyTarget` call stays with the host.
 #[allow(dead_code)] // pure decision; remove with the host wiring.
-pub(crate) fn resolve_jump(
+pub fn resolve_jump(
     column_name: &str,
     row_index: usize,
     rows: &[std::collections::BTreeMap<String, FkValue>],
@@ -93,7 +93,7 @@ pub(crate) fn resolve_jump(
 
 /// React `setResolving(current => new Set(current).add(cellKey))`.
 #[allow(dead_code)] // pure set transition; remove with the host wiring.
-pub(crate) fn resolving_add(
+pub fn resolving_add(
     resolving: &BTreeSet<String>,
     cell_key: &str,
 ) -> BTreeSet<String> {
@@ -104,7 +104,7 @@ pub(crate) fn resolving_add(
 
 /// React's `.finally(() => setResolving(current => { ...delete(cellKey) }))`.
 #[allow(dead_code)] // pure set transition; remove with the host wiring.
-pub(crate) fn resolving_remove(
+pub fn resolving_remove(
     resolving: &BTreeSet<String>,
     cell_key: &str,
 ) -> BTreeSet<String> {
@@ -117,7 +117,7 @@ pub(crate) fn resolving_remove(
 /// the truncated flag and the two `length > 0` gates.
 #[allow(dead_code)] // VM mirror; remove with the host wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct BreadcrumbVm {
+pub struct BreadcrumbVm {
     pub origin: FkOrigin,
     pub truncated: bool,
     pub can_go_back: bool,
@@ -126,7 +126,7 @@ pub(crate) struct BreadcrumbVm {
 
 /// Pure projection of the hook's `breadcrumb` useMemo.
 #[allow(dead_code)] // pure decision; remove with the host wiring.
-pub(crate) fn derive_breadcrumb(
+pub fn derive_breadcrumb(
     origin: Option<&FkOrigin>,
     truncated: bool,
     back_len: usize,
@@ -143,7 +143,7 @@ pub(crate) fn derive_breadcrumb(
 /// React `handleShowReferencingRows`'s decision: only a row that exists can be
 /// opened; the host performs `openReferencingRows`.
 #[allow(dead_code)] // pure decision; remove with the host wiring.
-pub(crate) fn resolve_referencing_rows(
+pub fn resolve_referencing_rows(
     row_index: usize,
     row_count: usize,
 ) -> Option<usize> {

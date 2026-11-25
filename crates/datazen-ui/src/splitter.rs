@@ -8,7 +8,7 @@ use crate::ui::palette;
 
 /// The direction a split bar divides space.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SplitAxis {
+pub enum SplitAxis {
     /// The bar runs vertically and the drag changes a width (left/right).
     Vertical,
     /// The bar runs horizontally and the drag changes a height (up/down).
@@ -19,7 +19,7 @@ pub(crate) enum SplitAxis {
 /// travel along the split axis in window points (positive = right/down,
 /// negative = left/up), `start` is the size held at the press, and the result
 /// stays inside `[min, max]`.
-pub(crate) fn size_after_drag(travel: f32, start: u32, min: u32, max: u32) -> u32 {
+pub fn size_after_drag(travel: f32, start: u32, min: u32, max: u32) -> u32 {
     let (lo, hi) = if min <= max { (min, max) } else { (max, min) };
     let size = start as f32 + travel;
     size.round().clamp(lo as f32, hi as f32) as u32
@@ -27,7 +27,7 @@ pub(crate) fn size_after_drag(travel: f32, start: u32, min: u32, max: u32) -> u3
 
 /// The step a keyboard nudge moves the split, in points: arrows move one,
 /// Page keys move ten (rune's `on_step` already maps keys to ±1/±10).
-pub(crate) fn size_after_step(current: u32, delta: i32, min: u32, max: u32) -> u32 {
+pub fn size_after_step(current: u32, delta: i32, min: u32, max: u32) -> u32 {
     let (lo, hi) = if min <= max { (min, max) } else { (max, min) };
     let size = current as i64 + delta as i64;
     size.clamp(lo as i64, hi as i64) as u32
@@ -35,7 +35,7 @@ pub(crate) fn size_after_step(current: u32, delta: i32, min: u32, max: u32) -> u
 
 /// The size in effect for one region: a drag in progress shows its preview,
 /// otherwise the persisted setting, otherwise the built-in default.
-pub(crate) fn splitter_size(state: &AppState, key: &str, default: u32) -> u32 {
+pub fn splitter_size(state: &AppState, key: &str, default: u32) -> u32 {
     if let Some((region, value)) = &state.splitter_preview {
         if region == key {
             return *value;
@@ -66,7 +66,7 @@ fn apply_move(state: &mut AppState, key: &str, value: u32, start: u32, drag: &mu
 
 /// Finish a gesture: `None` means cancelled (discard the preview), `Some`
 /// commits the size.
-pub(crate) fn finish_drag(state: &mut AppState, key: &str, commit: Option<u32>) {
+pub fn finish_drag(state: &mut AppState, key: &str, commit: Option<u32>) {
     state.splitter_preview = None;
     if let Some(value) = commit {
         let _ = state.set_layout_size(key, value);
@@ -74,7 +74,7 @@ pub(crate) fn finish_drag(state: &mut AppState, key: &str, commit: Option<u32>) 
 }
 
 /// The committed size for a finished gesture, or `None` when cancelled.
-pub(crate) fn drag_commit(
+pub fn drag_commit(
     cancelled: bool, travel: f32, start: u32, min: u32, max: u32,
 ) -> Option<u32> {
     if cancelled {
@@ -86,7 +86,7 @@ pub(crate) fn drag_commit(
 
 /// Build the drag handle for one split. `key` names the region in the layout
 /// settings; `default` is the size before the first resize.
-pub(crate) fn splitter_handle(
+pub fn splitter_handle(
     state: &AppState,
     key: &'static str,
     axis: SplitAxis,
@@ -101,7 +101,7 @@ pub(crate) fn splitter_handle(
 /// aside). Dragging left grows it — React's `useResizable({ reverse:
 /// true })` on the AI sidebar — so the travel sign flips, and the
 /// keyboard step flips with it.
-pub(crate) fn splitter_handle_reversed(
+pub fn splitter_handle_reversed(
     state: &AppState,
     key: &'static str,
     axis: SplitAxis,

@@ -10,13 +10,13 @@
 
 /// Canonical relation key: `dbSessionId::<normalized identity>`.
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) type EditorRelationKey = String;
+pub type EditorRelationKey = String;
 
 /// One SQL identifier segment. Unquoted segments are folded by the dialect;
 /// quoted ones keep their spelling.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct SqlIdentifierSegment {
+pub struct SqlIdentifierSegment {
     pub name: String,
     pub quoted: bool,
 }
@@ -34,7 +34,7 @@ impl SqlIdentifierSegment {
 /// Database / schema / relation path without alias.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct QualifiedRelationId {
+pub struct QualifiedRelationId {
     pub namespace_path: Vec<SqlIdentifierSegment>,
     pub name: SqlIdentifierSegment,
 }
@@ -68,7 +68,7 @@ impl QualifiedRelationId {
 /// How the semantic model reported a relation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) enum SqlRelationSourceKind {
+pub enum SqlRelationSourceKind {
     Table,
     View,
     Cte,
@@ -78,7 +78,7 @@ pub(crate) enum SqlRelationSourceKind {
 /// A loadable relation kind (`cte`/`subquery` are filtered out before loading).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) enum EditorRelationKind {
+pub enum EditorRelationKind {
     Table,
     View,
 }
@@ -87,7 +87,7 @@ pub(crate) enum EditorRelationKind {
 /// (`relationMetadata/types.ts` re-exports it unchanged); the alias keeps the
 /// editor contract name addressable from Rust.
 #[allow(dead_code)] // T081: remove with the T032 reusable-API allow stage.
-pub(crate) type EditorRelationSourceKind = SqlRelationSourceKind;
+pub type EditorRelationSourceKind = SqlRelationSourceKind;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FoldCase {
@@ -187,7 +187,7 @@ fn fold_segment(segment: &SqlIdentifierSegment, dialect_id: &str) -> String {
 
 /// Normalized cross-namespace identity key (no `dbSessionId`).
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) fn relation_identity_key(identity: &QualifiedRelationId, dialect_id: &str) -> String {
+pub fn relation_identity_key(identity: &QualifiedRelationId, dialect_id: &str) -> String {
     identity
         .all_segments()
         .map(|segment| fold_segment(segment, dialect_id))
@@ -197,7 +197,7 @@ pub(crate) fn relation_identity_key(identity: &QualifiedRelationId, dialect_id: 
 
 /// `dbSessionId::<normalized identity>` — the single canonical cache key.
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) fn build_editor_relation_key(
+pub fn build_editor_relation_key(
     db_session_id: &str,
     identity: &QualifiedRelationId,
     dialect_id: &str,
@@ -211,7 +211,7 @@ pub(crate) fn build_editor_relation_key(
 
 /// Driver-accepted qualified identifier text (preserves quote style).
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) fn qualified_name_text(identity: &QualifiedRelationId, dialect_id: &str) -> String {
+pub fn qualified_name_text(identity: &QualifiedRelationId, dialect_id: &str) -> String {
     let profile = resolve_dialect_profile(dialect_id);
     identity
         .all_segments()
@@ -228,19 +228,19 @@ pub(crate) fn qualified_name_text(identity: &QualifiedRelationId, dialect_id: &s
 
 /// The unqualified, normalized relation name.
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) fn relation_base_name(identity: &QualifiedRelationId, dialect_id: &str) -> String {
+pub fn relation_base_name(identity: &QualifiedRelationId, dialect_id: &str) -> String {
     fold_segment(&identity.name, dialect_id)
 }
 
 /// Whether the relation carries an explicit namespace.
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) fn has_namespace(identity: &QualifiedRelationId) -> bool {
+pub fn has_namespace(identity: &QualifiedRelationId) -> bool {
     !identity.namespace_path.is_empty()
 }
 
 /// Utility export mirroring React's `editorRelationKey`.
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) fn editor_relation_key(
+pub fn editor_relation_key(
     db_session_id: &str,
     identity: &QualifiedRelationId,
     dialect_id: &str,

@@ -33,7 +33,7 @@ use crate::relation_metadata::ordered_map::OrderedMap;
 /// the React side never defines. Consumers compare the *outputs* (labels,
 /// column lists), which stay plain `Vec`s.
 #[derive(Clone, Debug)]
-pub(crate) enum SqlNamespace {
+pub enum SqlNamespace {
     /// A schema/catalog/database node: child name → sub-tree.
     Branch(OrderedMap<String, SqlNamespace>),
     /// A table leaf: the table's column names, in tree order.
@@ -42,12 +42,12 @@ pub(crate) enum SqlNamespace {
 
 impl SqlNamespace {
     /// An empty branch — the shape `buildEditorSchema` starts from.
-    pub(crate) fn empty_branch() -> Self {
+    pub fn empty_branch() -> Self {
         SqlNamespace::Branch(OrderedMap::new())
     }
 
     /// Build a branch from ordered `(name, child)` pairs.
-    pub(crate) fn branch<I, S>(entries: I) -> Self
+    pub fn branch<I, S>(entries: I) -> Self
     where
         I: IntoIterator<Item = (S, SqlNamespace)>,
         S: Into<String>,
@@ -60,7 +60,7 @@ impl SqlNamespace {
     }
 
     /// Build a table leaf from column names.
-    pub(crate) fn table<I, S>(columns: I) -> Self
+    pub fn table<I, S>(columns: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
@@ -70,12 +70,12 @@ impl SqlNamespace {
 
     /// A table leaf with no columns — React's `table: []` (e.g.
     /// `flatFromTables`), the "table known, columns not loaded" shape.
-    pub(crate) fn empty_table() -> Self {
+    pub fn empty_table() -> Self {
         SqlNamespace::Table(Vec::new())
     }
 }
 
 /// `isLeaf` — the single discriminator between branch and table leaf.
-pub(crate) fn is_leaf(node: &SqlNamespace) -> bool {
+pub fn is_leaf(node: &SqlNamespace) -> bool {
     matches!(node, SqlNamespace::Table(_))
 }

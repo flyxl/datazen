@@ -31,7 +31,7 @@ use super::shared::Label;
 /// The dialog's observable state.
 #[allow(dead_code)] // VM surface; consumer: the connection form host.
 #[derive(Clone, Debug)]
-pub(crate) struct SaveTunnelVm {
+pub struct SaveTunnelVm {
     pub open: bool,
     pub name: TextEdit,
     /// Local in-flight flag, set while the host persists.
@@ -58,25 +58,25 @@ impl Default for SaveTunnelVm {
 #[allow(dead_code)] // open/reset contract; wired by the host view.
 impl SaveTunnelVm {
     /// React's effect: every open starts from an empty name and idle state.
-    pub(crate) fn open(&mut self) {
+    pub fn open(&mut self) {
         self.open = true;
         self.name.replace_text(String::new());
         self.submitting = false;
         self.error.clear();
     }
 
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.open = false;
         self.submitting = false;
     }
 
     /// React's `pending = busy || submitting`.
-    pub(crate) fn pending(&self) -> bool {
+    pub fn pending(&self) -> bool {
         self.busy || self.submitting
     }
 
     /// React's `trimmed`; the guard and the submitted value both use it.
-    pub(crate) fn trimmed(&self) -> String {
+    pub fn trimmed(&self) -> String {
         self.name.text.trim().to_owned()
     }
 }
@@ -85,7 +85,7 @@ impl SaveTunnelVm {
 /// via [`SaveTunnelVm::submitting`] / [`SaveTunnelVm::error`].
 #[allow(dead_code)] // VM surface; consumer: the connection form host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SaveTunnelAction {
+pub enum SaveTunnelAction {
     Close,
     /// The trimmed tunnel name was submitted.
     Submit(String),
@@ -122,7 +122,7 @@ fn footer_button<S: 'static>(
 
 /// Builder for the ported dialog.
 #[allow(dead_code)] // consumer: the connection form host (not landed).
-pub(crate) struct SaveTunnelDialog<'a, S: 'static> {
+pub struct SaveTunnelDialog<'a, S: 'static> {
     vm: &'a SaveTunnelVm,
     on_vm: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut SaveTunnelVm>>,
     on_action: Option<ActionFn<S>>,
@@ -130,7 +130,7 @@ pub(crate) struct SaveTunnelDialog<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: the connection form host (not landed).
 impl<'a, S: 'static> SaveTunnelDialog<'a, S> {
-    pub(crate) fn new(vm: &'a SaveTunnelVm) -> Self {
+    pub fn new(vm: &'a SaveTunnelVm) -> Self {
         Self {
             vm,
             on_vm: None,
@@ -138,7 +138,7 @@ impl<'a, S: 'static> SaveTunnelDialog<'a, S> {
         }
     }
 
-    pub(crate) fn on_vm(
+    pub fn on_vm(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut SaveTunnelVm + 'static,
     ) -> Self {
@@ -146,12 +146,12 @@ impl<'a, S: 'static> SaveTunnelDialog<'a, S> {
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, SaveTunnelAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, SaveTunnelAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let vm = self.vm;
         let k = kit(dark);
         let root = col()

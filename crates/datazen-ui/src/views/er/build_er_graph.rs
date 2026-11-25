@@ -65,7 +65,7 @@ const DECLARED_LABEL_FILL: &str = "var(--c-fg-muted, #888)";
 /// One column pair of an inferred relationship.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ErColumnPair {
+pub struct ErColumnPair {
     pub left: String,
     pub right: String,
 }
@@ -77,7 +77,7 @@ pub(crate) struct ErColumnPair {
 /// its input shape.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ErPredictedRelation {
+pub struct ErPredictedRelation {
     /// Stable id from the engine, so a dismissal could survive re-prediction.
     pub id: String,
     pub from_table: String,
@@ -97,7 +97,7 @@ pub(crate) struct ErPredictedRelation {
 /// collapsed set — rather than forcing collapse in the graph builder —
 /// keeps the chevron working in both directions: the user can expand such a
 /// table, and it stays expanded.
-pub(crate) fn default_collapsed_tables(schemas: &[TableSchema]) -> HashSet<String> {
+pub fn default_collapsed_tables(schemas: &[TableSchema]) -> HashSet<String> {
     schemas
         .iter()
         .filter(|schema| schema.columns.len() > ER_AUTO_COLLAPSE_COLUMNS)
@@ -134,7 +134,7 @@ fn handle_column(schema: Option<&TableSchema>, wanted: Option<&str>) -> String {
 /// The output keeps first-occurrence order (the React `Map` semantics), and
 /// the stats readout counts the lines that are actually drawn — hence the
 /// export.
-pub(crate) fn dedupe_symmetric_predictions(
+pub fn dedupe_symmetric_predictions(
     relations: &[ErPredictedRelation],
 ) -> Vec<ErPredictedRelation> {
     let mut order: Vec<String> = Vec::new();
@@ -174,7 +174,7 @@ pub(crate) fn dedupe_symmetric_predictions(
 /// declared ones; `collapsed_tables` is the collapse state, seeded by
 /// [`default_collapsed_tables`] and owned by the caller from then on.
 #[allow(dead_code)] // canvas model; consumer: the ER canvas host (not wired).
-pub(crate) fn build_er_graph(
+pub fn build_er_graph(
     schemas: &[TableSchema],
     focus_table: Option<&str>,
     predicted: &[ErPredictedRelation],

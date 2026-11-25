@@ -8,7 +8,7 @@
 //! module so the component file stays under the 800-line limit.
 
 /// `isInsideQuotes` from `lib/sqlPathPrefix.ts`.
-pub(crate) fn is_inside_quotes(text: &str, pos: usize) -> bool {
+pub fn is_inside_quotes(text: &str, pos: usize) -> bool {
     let mut in_single = false;
     let mut in_double = false;
     let end = pos.min(text.len());
@@ -43,7 +43,7 @@ pub(crate) fn is_inside_quotes(text: &str, pos: usize) -> bool {
     in_single || in_double
 }
 
-pub(crate) fn is_ident_char(ch: char) -> bool {
+pub fn is_ident_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_' || ch == '$'
 }
 
@@ -54,7 +54,7 @@ pub(crate) fn is_ident_char(ch: char) -> bool {
 /// character to be an identifier or dot), the identifier-only back-scan, the
 /// `.segment` walk that extends `start` left, and the forward scan from
 /// `start` that consumes `ident`/`ident.` pairs.
-pub(crate) fn extract_qualified_token(text: &str, pos: usize) -> Option<(String, bool)> {
+pub fn extract_qualified_token(text: &str, pos: usize) -> Option<(String, bool)> {
     if is_inside_quotes(text, pos) {
         return None;
     }
@@ -154,7 +154,7 @@ pub(crate) fn extract_qualified_token(text: &str, pos: usize) -> Option<(String,
 
 /// `parseQualifiedPathParents` from `lib/sqlPathPrefix.ts` (byte offsets).
 #[allow(dead_code)] // reusable port; wired by the workspace view wiring
-pub(crate) fn parse_qualified_path_parents(text: &str, cursor: usize) -> Vec<String> {
+pub fn parse_qualified_path_parents(text: &str, cursor: usize) -> Vec<String> {
     let pos = cursor.min(text.len());
     if is_inside_quotes(text, pos) {
         return Vec::new();

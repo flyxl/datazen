@@ -54,31 +54,31 @@ use crate::table_data_connection_state::{CellCoord, GridSelection, GridSelection
 /// The hook's per-frame environment (React's `UseGridKeyboardNavOptions`
 /// plus the two optional-action presences — in immediate mode the host
 /// reports "the action exists" instead of passing a `vi.fn`).
-pub(crate) struct GridKeyboardNavEnv<'a> {
+pub struct GridKeyboardNavEnv<'a> {
     /// `columnOrder`: displayed column names in render order.
-    pub(crate) column_order: &'a [String],
+    pub column_order: &'a [String],
     /// `rowCount`.
-    pub(crate) row_count: usize,
+    pub row_count: usize,
     /// The controlled selection — the store is the only truth.
-    pub(crate) selection: &'a GridSelection,
+    pub selection: &'a GridSelection,
     /// `lastSelectedIndex`, read-only: the anchor of a row selection.
-    pub(crate) last_selected_index: Option<usize>,
+    pub last_selected_index: Option<usize>,
     /// An editor is open (`editingCell !== null`).
-    pub(crate) editing: bool,
+    pub editing: bool,
     /// Visible rows of the viewport; the caller injects it, the hook
     /// never measures.
-    pub(crate) viewport_row_count: usize,
+    pub viewport_row_count: usize,
     /// Off by default: a grid without it intercepts no key at all.
-    pub(crate) enabled: bool,
+    pub enabled: bool,
     /// `typeof onToggleSelectAll === 'function'`.
-    pub(crate) has_select_all: bool,
+    pub has_select_all: bool,
     /// `onRequestScrollIntoView` is supplied.
-    pub(crate) has_scroll_into_view: bool,
+    pub has_scroll_into_view: bool,
 }
 
 impl<'a> GridKeyboardNavEnv<'a> {
     /// React's default: `enabled = true`, both optional actions absent.
-    pub(crate) fn new(
+    pub fn new(
         column_order: &'a [String],
         row_count: usize,
         selection: &'a GridSelection,
@@ -105,7 +105,7 @@ impl<'a> GridKeyboardNavEnv<'a> {
 /// are `Idle` and never prevent (02 §3.2: the clipboard, the undo and
 /// the browser keep their keys).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum GridKeyboardNavEffect {
+pub enum GridKeyboardNavEffect {
     /// `pass` or `ignored`: neither preventDefault nor stopPropagation
     /// — or the hook declined the event entirely (disabled, or the
     /// editor target owns it).
@@ -136,14 +136,14 @@ pub(crate) enum GridKeyboardNavEffect {
 /// The render half's answers (`activeCoord` / `activeRowIndex` plus the
 /// cursor the caller may need).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct GridKeyboardNavFrame {
+pub struct GridKeyboardNavFrame {
     /// The clamped cursor the command layer works with.
-    pub(crate) cursor: Option<CellCoord>,
+    pub cursor: Option<CellCoord>,
     /// The cell that carries `data-dt-active="true"` (cell mode only).
-    pub(crate) active_coord: Option<CellCoord>,
+    pub active_coord: Option<CellCoord>,
     /// The row that carries the keyboard cursor (row mode uses the row
     /// anchor).
-    pub(crate) active_row_index: Option<usize>,
+    pub active_row_index: Option<usize>,
 }
 
 /// The hook: the remembered cursor of the last cell the user was on.
@@ -153,14 +153,14 @@ pub(crate) struct GridKeyboardNavFrame {
 /// when the data is fetched again (02 §K-9). It is the landing spot of
 /// the next arrow key after `Escape` cleared the selection (02 §4.7).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct GridKeyboardNavHook {
+pub struct GridKeyboardNavHook {
     /// `rememberedRef.current`.
     remembered: Option<CellCoord>,
 }
 
 impl GridKeyboardNavHook {
     /// `useGridKeyboardNav()`: nothing remembered yet.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -169,7 +169,7 @@ impl GridKeyboardNavHook {
     /// during the render, not in an effect, so that the very next key
     /// press already sees it), the clamp, and the two active
     /// projections.
-    pub(crate) fn frame(&mut self, env: &GridKeyboardNavEnv) -> GridKeyboardNavFrame {
+    pub fn frame(&mut self, env: &GridKeyboardNavEnv) -> GridKeyboardNavFrame {
         let derived =
             resolve_keyboard_cursor(env.selection, env.last_selected_index, env.column_order);
         // In `none` mode the live cursor is gone, and only the
@@ -189,14 +189,14 @@ impl GridKeyboardNavHook {
     }
 
     /// The remembered cursor (the landing spot after `Escape`).
-    pub(crate) fn remembered(&self) -> Option<&CellCoord> {
+    pub fn remembered(&self) -> Option<&CellCoord> {
         self.remembered.as_ref()
     }
 
     /// `handleKeyDown`: the grid's single keyboard entry point. The
     /// event is the host projection (the T341 `ShortcutEvent`
     /// convention — no DOM handle crosses the seam).
-    pub(crate) fn handle_key_down(
+    pub fn handle_key_down(
         &mut self,
         env: &GridKeyboardNavEnv,
         event: &GridKeyDownEvent,

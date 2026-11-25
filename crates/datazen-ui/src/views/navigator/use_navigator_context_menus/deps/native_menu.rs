@@ -11,7 +11,7 @@
 /// One entry of a context menu. Items carry the action selecting them
 /// dispatches; separators and submenus carry none.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum MenuNode<A> {
+pub enum MenuNode<A> {
     Item { id: String, label: String, action: Option<A> },
     Separator,
     Submenu { id: String, label: String, items: Vec<MenuNode<A>> },
@@ -19,7 +19,7 @@ pub(crate) enum MenuNode<A> {
 
 impl<A> MenuNode<A> {
     /// React's `{ kind: 'item', id, label, action }`.
-    pub(crate) fn item(id: &str, label: &str, action: A) -> Self {
+    pub fn item(id: &str, label: &str, action: A) -> Self {
         Self::Item {
             id: id.to_owned(),
             label: label.to_owned(),
@@ -30,17 +30,17 @@ impl<A> MenuNode<A> {
     /// React's `item(id, label, action)` helper from
     /// `schemaTreeContextMenu.ts`: `undefined` action returns `null` and the
     /// caller drops it.
-    pub(crate) fn maybe_item(id: &str, label: &str, action: Option<A>) -> Option<Self> {
+    pub fn maybe_item(id: &str, label: &str, action: Option<A>) -> Option<Self> {
         action.map(|a| Self::item(id, label, a))
     }
 
-    pub(crate) fn separator() -> Self {
+    pub fn separator() -> Self {
         Self::Separator
     }
 
     /// The item id, flattened through submenus — the stable identity the
     /// tests (and the host's menu keys) read.
-    pub(crate) fn id(&self) -> Option<&str> {
+    pub fn id(&self) -> Option<&str> {
         match self {
             Self::Item { id, .. } => Some(id),
             Self::Submenu { id, .. } => Some(id),

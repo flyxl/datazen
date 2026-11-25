@@ -37,23 +37,23 @@ use crate::ui::palette;
 
 /// React `COPIED_FEEDBACK_MS`.
 #[allow(dead_code)] // feedback constant; consumed by the home wiring and tests.
-pub(crate) const MCP_COPIED_FEEDBACK_MS: u64 = 2000;
+pub const MCP_COPIED_FEEDBACK_MS: u64 = 2000;
 
 /// Synthetic row id for the single bar-level copy marker. The A1 home uses the
 /// same marker so the shared `home_copy_tick` reverts it without extra state.
 #[allow(dead_code)] // marker id; consumed by the action handler and tests.
-pub(crate) const MCP_COPY_ROW_ID: &str = "__mcp__";
+pub const MCP_COPY_ROW_ID: &str = "__mcp__";
 
 /// React `formatMcpCliCommand` default when no executable path is available.
 #[allow(dead_code)] // default command; consumed by the VM and tests.
-pub(crate) const MCP_DEFAULT_COMMAND: &str = "datazen --mcp";
+pub const MCP_DEFAULT_COMMAND: &str = "datazen --mcp";
 
 /// Host-owned snapshot of `McpPromoBar` props plus its feedback deadline. The
 /// deadline lives in [`AppState`] (`home_copied_until` / `home_copied_id`) so
 /// the app poll can revert the label when the real wake fires at expiry.
 #[allow(dead_code)] // VM surface; consumed by the home wiring and tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct McpPromoVm {
+pub struct McpPromoVm {
     /// The CLI command shown and copied (React `mcpCliCommand`).
     pub cli_command: String,
 }
@@ -61,7 +61,7 @@ pub(crate) struct McpPromoVm {
 #[allow(dead_code)] // VM constructor; consumed by the home wiring and tests.
 impl McpPromoVm {
     /// A VM using React's default launch command.
-    pub(crate) fn with_default_command() -> Self {
+    pub fn with_default_command() -> Self {
         Self {
             cli_command: MCP_DEFAULT_COMMAND.to_owned(),
         }
@@ -73,7 +73,7 @@ impl McpPromoVm {
 /// clipboard write and arms the real wake.
 #[allow(dead_code)] // host port; remove when the shared copy-feedback host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum McpPromoAction {
+pub enum McpPromoAction {
     Copy(String),
 }
 
@@ -81,7 +81,7 @@ pub(crate) enum McpPromoAction {
 /// real 2000 ms wake and record the matching deadline in host state. The app
 /// poll's `home_copy_tick` clears the marker once the runtime clock reaches it.
 #[allow(dead_code)] // host port; remove when the shared copy-feedback host lands.
-pub(crate) fn apply_mcp_promo_action(
+pub fn apply_mcp_promo_action(
     state: &mut AppState,
     action: McpPromoAction,
     tx: &mut Tx,
@@ -99,7 +99,7 @@ pub(crate) fn apply_mcp_promo_action(
 
 /// Whether the bar-level "Copied" marker is currently active.
 #[allow(dead_code)] // rendering helper; delete with the host wiring.
-pub(crate) fn mcp_copied(state: &AppState) -> bool {
+pub fn mcp_copied(state: &AppState) -> bool {
     state.home_copied_until.is_some()
         && state.home_copied_id.as_deref() == Some(MCP_COPY_ROW_ID)
 }
@@ -107,7 +107,7 @@ pub(crate) fn mcp_copied(state: &AppState) -> bool {
 /// Build the promo bar. The copy button emits [`McpPromoAction::Copy`] through
 /// [`apply_mcp_promo_action`] so the feedback is a real timed wake, not a flag.
 #[allow(dead_code)] // consumer: the connections-home host that mounts this view (not landed); delete when it replaces the inline promo bar.
-pub(crate) fn build_mcp_promo_bar(
+pub fn build_mcp_promo_bar(
     vm: &McpPromoVm,
     state: &AppState,
     theme: tok::Theme,

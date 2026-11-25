@@ -19,7 +19,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant
 /// Toolbar button variants aligned to React's ToolbarButton where meaningful.
 #[allow(dead_code)] // reusable base; remove when view callers land
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(crate) enum ToolbarButtonVariant {
+pub enum ToolbarButtonVariant {
     #[default]
     Ghost,
     Primary,
@@ -30,7 +30,7 @@ pub(crate) enum ToolbarButtonVariant {
 
 /// A toolbar action button. Icon+label or icon-only, backed by rune-kit button primitives.
 #[allow(dead_code)] // reusable base; remove when view callers land
-pub(crate) struct ToolbarButton<S: 'static> {
+pub struct ToolbarButton<S: 'static> {
     key: String,
     label: String,
     icon: Option<&'static Icon>,
@@ -43,7 +43,7 @@ pub(crate) struct ToolbarButton<S: 'static> {
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 impl<S: 'static> ToolbarButton<S> {
-    pub(crate) fn new(key: impl Into<String>, label: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             label: label.into(),
@@ -56,37 +56,37 @@ impl<S: 'static> ToolbarButton<S> {
         }
     }
 
-    pub(crate) fn icon(mut self, icon: &'static Icon) -> Self {
+    pub fn icon(mut self, icon: &'static Icon) -> Self {
         self.icon = Some(icon);
         self
     }
 
-    pub(crate) fn variant(mut self, variant: ToolbarButtonVariant) -> Self {
+    pub fn variant(mut self, variant: ToolbarButtonVariant) -> Self {
         self.variant = variant;
         self
     }
 
-    pub(crate) fn compact(mut self, compact: bool) -> Self {
+    pub fn compact(mut self, compact: bool) -> Self {
         self.compact = compact;
         self
     }
 
-    pub(crate) fn icon_only(mut self, icon_only: bool) -> Self {
+    pub fn icon_only(mut self, icon_only: bool) -> Self {
         self.icon_only = icon_only;
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
-    pub(crate) fn on_press(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_press(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_press = Some(Box::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let tip = self.label.clone();
         let use_icon_button = self.icon.is_some() && (self.icon_only || self.compact);
@@ -141,7 +141,7 @@ impl<S: 'static> ToolbarButton<S> {
 
 /// Horizontal toolbar container with optional leading/trailing groups.
 #[allow(dead_code)] // reusable base; remove when view callers land
-pub(crate) struct ToolbarShell {
+pub struct ToolbarShell {
     key: String,
     leading: Vec<El>,
     trailing: Vec<El>,
@@ -150,7 +150,7 @@ pub(crate) struct ToolbarShell {
 
 #[allow(dead_code)] // reusable base; remove when view callers land
 impl ToolbarShell {
-    pub(crate) fn new(key: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             leading: Vec::new(),
@@ -159,22 +159,22 @@ impl ToolbarShell {
         }
     }
 
-    pub(crate) fn leading(mut self, items: Vec<El>) -> Self {
+    pub fn leading(mut self, items: Vec<El>) -> Self {
         self.leading = items;
         self
     }
 
-    pub(crate) fn trailing(mut self, items: Vec<El>) -> Self {
+    pub fn trailing(mut self, items: Vec<El>) -> Self {
         self.trailing = items;
         self
     }
 
-    pub(crate) fn children(mut self, items: Vec<El>) -> Self {
+    pub fn children(mut self, items: Vec<El>) -> Self {
         self.children = items;
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let mut bar = row()
             .key(self.key.clone())

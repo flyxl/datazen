@@ -18,7 +18,7 @@ use crate::ui::table::{CellValue as TableCell, Column, DataTable, Row};
 
 /// Build the panel into one column.
 #[allow(dead_code)] // consumer: the table host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableViewVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

@@ -69,7 +69,7 @@ use crate::support::value_presentation::value_presentation_save::ValuePresentati
 
 /// The column-override entry cap (storage-volume guard; over the cap the
 /// save is refused, never silently truncated).
-pub(crate) const MAX_VALUE_PRESENTATION_COLUMN_OVERRIDES: usize = 200;
+pub const MAX_VALUE_PRESENTATION_COLUMN_OVERRIDES: usize = 200;
 
 /// The override key's shape check: a JSON array
 /// `[connectionId, database|null, namespace|null, table, column]` with
@@ -98,7 +98,7 @@ fn is_valid_column_override_key(key: &str) -> bool {
 /// are validated (invalid keys / invalid overrides / `inherit` entries
 /// drop — the original stays in the store); at most
 /// [`MAX_VALUE_PRESENTATION_COLUMN_OVERRIDES`] valid entries survive.
-pub(crate) fn validate_stored_column_overrides(
+pub fn validate_stored_column_overrides(
     input: &serde_json::Value,
 ) -> BTreeMap<String, ColumnPresentationOverride> {
     let mut overrides: BTreeMap<String, ColumnPresentationOverride> = BTreeMap::new();
@@ -135,7 +135,7 @@ pub(crate) fn validate_stored_column_overrides(
 ///   input; over the cap with a new key returns the input — the save
 ///   path reports `too-many-overrides`);
 /// - structurally unchanged → the input verbatim (no phantom save).
-pub(crate) fn with_column_override(
+pub fn with_column_override(
     stored: &StoredValuePresentationSettings,
     source: ColumnSourceBase<'_>,
     column_name: &str,
@@ -182,7 +182,7 @@ pub(crate) fn with_column_override(
 /// `save_column_override`'s failure reasons (the caller reports them in
 /// place).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SaveColumnOverrideReason {
+pub enum SaveColumnOverrideReason {
     NoSource,
     InvalidOverride,
     UnknownVersion,
@@ -190,26 +190,26 @@ pub(crate) enum SaveColumnOverrideReason {
     SaveFailed,
 }
 
-pub(crate) type SaveColumnOverrideResult = Result<(), SaveColumnOverrideReason>;
+pub type SaveColumnOverrideResult = Result<(), SaveColumnOverrideReason>;
 
 /// `save_column_override`'s input. `persist` is the injected persistence
 /// entry (the settings store's update function); the session is the
 /// optimistic-write layer.
-pub(crate) struct SaveColumnOverrideInput<'a> {
-    pub(crate) stored: &'a StoredValuePresentationSettings,
+pub struct SaveColumnOverrideInput<'a> {
+    pub stored: &'a StoredValuePresentationSettings,
     /// The table identity; absent for query-result columns (save denied).
-    pub(crate) source: Option<ColumnSourceBase<'a>>,
-    pub(crate) column_name: &'a str,
-    pub(crate) override_value: &'a ColumnPresentationOverride,
-    pub(crate) session: &'a mut ColumnPresentationSession,
-    pub(crate) persist:
+    pub source: Option<ColumnSourceBase<'a>>,
+    pub column_name: &'a str,
+    pub override_value: &'a ColumnPresentationOverride,
+    pub session: &'a mut ColumnPresentationSession,
+    pub persist:
         &'a mut dyn FnMut(ValuePresentationSettingsUpdate) -> Result<(), ()>,
 }
 
 /// Save one column's override: optimistic session write → persist via
 /// the updater → clear the session entry on success. Never panics; every
 /// failure path returns its reason (see the module header's road).
-pub(crate) fn save_column_override(
+pub fn save_column_override(
     input: &mut SaveColumnOverrideInput<'_>,
 ) -> SaveColumnOverrideResult {
     let Some(source) = input.source else {

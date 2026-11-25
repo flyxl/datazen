@@ -9,47 +9,47 @@
 use crate::types::Section;
 
 // Lucide-semantic icons (24x24, stroke outline, currentColor).
-pub(crate) static ICON_CONNECTIONS: rune::Icon = rune::Icon {
+pub static ICON_CONNECTIONS: rune::Icon = rune::Icon {
     name: "database",
     view: 24.0,
     body: "<ellipse stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"5\" rx=\"9\" ry=\"3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 5V19A9 3 0 0 0 21 19V5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12A9 3 0 0 0 21 12\"/>",
 };
-pub(crate) static ICON_WORKFLOWS: rune::Icon = rune::Icon {
+pub static ICON_WORKFLOWS: rune::Icon = rune::Icon {
     name: "workflow",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"8\" height=\"8\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 11v4a2 2 0 0 0 2 2h4\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"8\" height=\"8\" x=\"13\" y=\"13\" rx=\"2\"/>",
 };
-pub(crate) static ICON_DASHBOARDS: rune::Icon = rune::Icon {
+pub static ICON_DASHBOARDS: rune::Icon = rune::Icon {
     name: "gauge",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 14 4-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3.34 19a10 10 0 1 1 17.32 0\"/>",
 };
-pub(crate) static ICON_WORKSPACE: rune::Icon = rune::Icon {
+pub static ICON_WORKSPACE: rune::Icon = rune::Icon {
     name: "layout-grid",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/>",
 };
-pub(crate) static ICON_WAPPS: rune::Icon = rune::Icon {
+pub static ICON_WAPPS: rune::Icon = rune::Icon {
     name: "puzzle",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z\"/>",
 };
-pub(crate) static ICON_SETTINGS: rune::Icon = rune::Icon {
+pub static ICON_SETTINGS: rune::Icon = rune::Icon {
     name: "settings",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"3\"/>",
 };
-pub(crate) static ICON_TOOLS: rune::Icon = rune::Icon {
+pub static ICON_TOOLS: rune::Icon = rune::Icon {
     name: "wrench",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z\"/>",
 };
-pub(crate) static ICON_PANEL_LEFT_CLOSE: rune::Icon = rune::Icon {
+pub static ICON_PANEL_LEFT_CLOSE: rune::Icon = rune::Icon {
     name: "panel-left-close",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 3v18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m16 15-3-3 3-3\"/>",
 };
-pub(crate) static ICON_PANEL_LEFT_OPEN: rune::Icon = rune::Icon {
+pub static ICON_PANEL_LEFT_OPEN: rune::Icon = rune::Icon {
     name: "panel-left-open",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 3v18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m14 9 3 3-3 3\"/>",
@@ -58,85 +58,85 @@ pub(crate) static ICON_PANEL_LEFT_OPEN: rune::Icon = rune::Icon {
 // `panel-right-open`): the divider sits at x=15 and the chevron shows the
 // direction it moves on a press — right to close the right drawer, left to
 // reopen it.
-pub(crate) static ICON_PANEL_RIGHT_CLOSE: rune::Icon = rune::Icon {
+pub static ICON_PANEL_RIGHT_CLOSE: rune::Icon = rune::Icon {
     name: "panel-right-close",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 3v18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m8 9 3 3-3 3\"/>",
 };
-pub(crate) static ICON_PANEL_RIGHT_OPEN: rune::Icon = rune::Icon {
+pub static ICON_PANEL_RIGHT_OPEN: rune::Icon = rune::Icon {
     name: "panel-right-open",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 3v18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m10 15-3-3 3-3\"/>",
 };
-pub(crate) static ICON_X: rune::Icon = rune::Icon {
+pub static ICON_X: rune::Icon = rune::Icon {
     name: "x",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 6 6 18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 6 12 12\"/>",
 };
-pub(crate) static ICON_SEARCH: rune::Icon = rune::Icon {
+pub static ICON_SEARCH: rune::Icon = rune::Icon {
     name: "search",
     view: 24.0,
     body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"11\" cy=\"11\" r=\"8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21 21-4.3-4.3\"/>",
 };
-pub(crate) static ICON_DOWNLOAD: rune::Icon = rune::Icon {
+pub static ICON_DOWNLOAD: rune::Icon = rune::Icon {
     name: "download",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"7 10 12 15 17 10\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"12\" x2=\"12\" y1=\"15\" y2=\"3\"/>",
 };
-pub(crate) static ICON_PLUS: rune::Icon = rune::Icon {
+pub static ICON_PLUS: rune::Icon = rune::Icon {
     name: "plus",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 12h14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 5v14\"/>",
 };
-pub(crate) static ICON_CLOCK: rune::Icon = rune::Icon {
+pub static ICON_CLOCK: rune::Icon = rune::Icon {
     name: "clock",
     view: 24.0,
     body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"10\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 6 12 12 16 14\"/>",
 };
-pub(crate) static ICON_CHEVRON_RIGHT: rune::Icon = rune::Icon {
+pub static ICON_CHEVRON_RIGHT: rune::Icon = rune::Icon {
     name: "chevron-right",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m9 18 6-6-6-6\"/>",
 };
-pub(crate) static ICON_CHEVRON_DOWN: rune::Icon = rune::Icon {
+pub static ICON_CHEVRON_DOWN: rune::Icon = rune::Icon {
     name: "chevron-down",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 9 6 6 6-6\"/>",
 };
-pub(crate) static ICON_FILE: rune::Icon = rune::Icon {
+pub static ICON_FILE: rune::Icon = rune::Icon {
     name: "file",
     view: 24.0,
     // lucide-react 0.487.0 `File` (verified against lucide-static@0.487.0).
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v4a2 2 0 0 0 2 2h4\"/>",
 };
-pub(crate) static ICON_FILE_JSON: rune::Icon = rune::Icon {
+pub static ICON_FILE_JSON: rune::Icon = rune::Icon {
     name: "file-json",
     view: 24.0,
     // lucide-react 0.487.0 `FileJson` (verified against lucide-static@0.487.0).
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1\"/>",
 };
-pub(crate) static ICON_FILE_TEXT: rune::Icon = rune::Icon {
+pub static ICON_FILE_TEXT: rune::Icon = rune::Icon {
     name: "file-text",
     view: 24.0,
     // lucide-react 0.487.0 `FileText` (verified against lucide-static@0.487.0).
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 9H8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M16 13H8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M16 17H8\"/>",
 };
-pub(crate) static ICON_FOLDER: rune::Icon = rune::Icon {
+pub static ICON_FOLDER: rune::Icon = rune::Icon {
     name: "folder",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"/>",
 };
-pub(crate) static ICON_FOLDER_OPEN: rune::Icon = rune::Icon {
+pub static ICON_FOLDER_OPEN: rune::Icon = rune::Icon {
     name: "folder-open",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2\"/>",
 };
-pub(crate) static ICON_TABLE: rune::Icon = rune::Icon {
+pub static ICON_TABLE: rune::Icon = rune::Icon {
     name: "table",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 3v18\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 9h18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 15h18\"/>",
 };
-pub(crate) static ICON_REFRESH: rune::Icon = rune::Icon {
+pub static ICON_REFRESH: rune::Icon = rune::Icon {
     name: "refresh-cw",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 3v5h-5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 16H3v5\"/>",
@@ -144,38 +144,38 @@ pub(crate) static ICON_REFRESH: rune::Icon = rune::Icon {
 /// T067: lucide `rotate-cw`, the reload/retry glyph in `WappPageShell`'s
 /// failure rows (`WappPageShell.tsx` uses `RotateCw`; the registry forbids a
 /// second copy). Body verified against lucide-react 0.487.0's `rotate-cw`.
-pub(crate) static ICON_ROTATE_CW: rune::Icon = rune::Icon {
+pub static ICON_ROTATE_CW: rune::Icon = rune::Icon {
     name: "rotate-cw",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 3v5h-5\"/>",
 };
-pub(crate) static ICON_LAYOUT: rune::Icon = rune::Icon {
+pub static ICON_LAYOUT: rune::Icon = rune::Icon {
     name: "layout",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 9h18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 21V9\"/>",
 };
-pub(crate) static ICON_PLAY: rune::Icon = rune::Icon {
+pub static ICON_PLAY: rune::Icon = rune::Icon {
     name: "play",
     view: 24.0,
     body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"6 3 20 12 6 21 6 3\"/>",
 };
-pub(crate) static ICON_COPY: rune::Icon = rune::Icon {
+pub static ICON_COPY: rune::Icon = rune::Icon {
     name: "copy",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/>",
 };
-pub(crate) static ICON_TERMINAL: rune::Icon = rune::Icon {
+pub static ICON_TERMINAL: rune::Icon = rune::Icon {
     name: "terminal",
     view: 24.0,
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"4 17 10 11 4 5\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"12\" x2=\"20\" y1=\"19\" y2=\"19\"/>",
 };
-pub(crate) static ICON_SPARKLES: rune::Icon = rune::Icon {
+pub static ICON_SPARKLES: rune::Icon = rune::Icon {
     name: "sparkles",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 3v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 17v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 5h4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 19h4\"/>",
 };
 // T260: the AI-analysis suggestions' glyph (lucide `zap`).
-pub(crate) static ICON_ZAP: rune::Icon = rune::Icon {
+pub static ICON_ZAP: rune::Icon = rune::Icon {
     name: "zap",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.914 4a1.5 1.5 0 0 0-2.474-1.561l-9 9A1.5 1.5 0 0 0 5.5 14h4.002a.5.5 0 0 1 .471.666L8.086 20a1.5 1.5 0 0 0 2.475 1.56l9-9A1.5 1.5 0 0 0 18.5 10h-3.997a.5.5 0 0 1-.472-.667z\"/>",
@@ -184,13 +184,13 @@ pub(crate) static ICON_ZAP: rune::Icon = rune::Icon {
 /// T198: lucide `bot`, the AI tool bridge's plugins header glyph
 /// (`AiToolBridgeSection.tsx` uses `Bot`). Paths verified against
 /// lucide-react@0.487.0's bot icon.
-pub(crate) static ICON_BOT: rune::Icon = rune::Icon {
+pub static ICON_BOT: rune::Icon = rune::Icon {
     name: "bot",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 8V4H8\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"12\" x=\"4\" y=\"8\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M2 14h2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 14h2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 13v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 13v2\"/>",
 };
 
-pub(crate) static ICON_SEND: rune::Icon = rune::Icon {
+pub static ICON_SEND: rune::Icon = rune::Icon {
     name: "send",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m22 2-7 20-4-9-9-4Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M22 2 11 13\"/>",
@@ -199,7 +199,7 @@ pub(crate) static ICON_SEND: rune::Icon = rune::Icon {
 /// `ChatBubble` (`AiChatPanel.tsx` uses `BookOpen`). Paths verified against
 /// the repo's installed `lucide-react@0.487.0`
 /// (`node_modules/lucide-react/dist/esm/icons/book-open.js`).
-pub(crate) static ICON_BOOK_OPEN: rune::Icon = rune::Icon {
+pub static ICON_BOOK_OPEN: rune::Icon = rune::Icon {
     name: "book-open",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 7v14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\"/>",
@@ -208,7 +208,7 @@ pub(crate) static ICON_BOOK_OPEN: rune::Icon = rune::Icon {
 /// (`AiChatPanel.tsx` uses `MessageSquare`). Paths verified against the
 /// repo's installed `lucide-react@0.487.0`
 /// (`node_modules/lucide-react/dist/esm/icons/message-square.js`).
-pub(crate) static ICON_MESSAGE_SQUARE: rune::Icon = rune::Icon {
+pub static ICON_MESSAGE_SQUARE: rune::Icon = rune::Icon {
     name: "message-square",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/>",
@@ -216,7 +216,7 @@ pub(crate) static ICON_MESSAGE_SQUARE: rune::Icon = rune::Icon {
 /// T009-S3: lucide `wand-sparkles` (imported as `Wand2` in `AiChatPanel.tsx`;
 /// in `lucide-react@0.487.0` `wand-2.js` is an alias re-exporting
 /// `wand-sparkles.js`). Paths verified against that package.
-pub(crate) static ICON_WAND_SPARKLES: rune::Icon = rune::Icon {
+pub static ICON_WAND_SPARKLES: rune::Icon = rune::Icon {
     name: "wand-sparkles",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m14 7 3 3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 6v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 14v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 8H3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 16h-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M11 3H9\"/>",
@@ -225,7 +225,7 @@ pub(crate) static ICON_WAND_SPARKLES: rune::Icon = rune::Icon {
 /// `AiChatPanel` (`AiChatPanel.tsx` uses `History`). Paths verified against
 /// the repo's installed `lucide-react@0.487.0`
 /// (`node_modules/lucide-react/dist/esm/icons/history.js`).
-pub(crate) static ICON_HISTORY: rune::Icon = rune::Icon {
+pub static ICON_HISTORY: rune::Icon = rune::Icon {
     name: "history",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v5h5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 7v5l4 2\"/>",
@@ -234,7 +234,7 @@ pub(crate) static ICON_HISTORY: rune::Icon = rune::Icon {
 /// (`AiChatPanel.tsx` uses `Shield`). Paths verified against the repo's
 /// installed `lucide-react@0.487.0`
 /// (`node_modules/lucide-react/dist/esm/icons/shield.js`).
-pub(crate) static ICON_SHIELD: rune::Icon = rune::Icon {
+pub static ICON_SHIELD: rune::Icon = rune::Icon {
     name: "shield",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/>",
@@ -243,7 +243,7 @@ pub(crate) static ICON_SHIELD: rune::Icon = rune::Icon {
 /// `AiWriteProposalHost` (`AiWriteProposalHost.tsx` uses `ShieldAlert`).
 /// Paths verified against the repo's installed `lucide-react@0.487.0`
 /// (`node_modules/lucide-react/dist/esm/icons/shield-alert.js`).
-pub(crate) static ICON_SHIELD_ALERT: rune::Icon = rune::Icon {
+pub static ICON_SHIELD_ALERT: rune::Icon = rune::Icon {
     name: "shield-alert",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 8v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 16h.01\"/>",
@@ -252,7 +252,7 @@ pub(crate) static ICON_SHIELD_ALERT: rune::Icon = rune::Icon {
 /// `AiWriteProposalHost` (`AiWriteProposalHost.tsx` uses `ShieldCheck`).
 /// Paths verified against the repo's installed `lucide-react@0.487.0`
 /// (`node_modules/lucide-react/dist/esm/icons/shield-check.js`).
-pub(crate) static ICON_SHIELD_CHECK: rune::Icon = rune::Icon {
+pub static ICON_SHIELD_CHECK: rune::Icon = rune::Icon {
     name: "shield-check",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m9 12 2 2 4-4\"/>",
@@ -261,7 +261,7 @@ pub(crate) static ICON_SHIELD_CHECK: rune::Icon = rune::Icon {
 /// `BackupWindow` (`BackupWindow.tsx` uses `HardDrive`). Paths
 /// verified against the repo's installed `lucide-react@0.487.0`
 /// (`node_modules/lucide-react/dist/esm/icons/hard-drive.js`).
-pub(crate) static ICON_HARD_DRIVE: rune::Icon = rune::Icon {
+pub static ICON_HARD_DRIVE: rune::Icon = rune::Icon {
     name: "hard-drive",
     view: 24.0,
     body: "<line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"22\" x2=\"2\" y1=\"12\" y2=\"12\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"6\" x2=\"6.01\" y1=\"16\" y2=\"16\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"10\" x2=\"10.01\" y1=\"16\" y2=\"16\"/>",
@@ -271,32 +271,32 @@ pub(crate) static ICON_HARD_DRIVE: rune::Icon = rune::Icon {
 /// for `kind: 'warning'`). Paths verified against the repo's
 /// installed `lucide-react@0.487.0`
 /// (`node_modules/lucide-react/dist/esm/icons/triangle-alert.js`).
-pub(crate) static ICON_ALERT_TRIANGLE: rune::Icon = rune::Icon {
+pub static ICON_ALERT_TRIANGLE: rune::Icon = rune::Icon {
     name: "triangle-alert",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 9v4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 17h.01\"/>",
 };
-pub(crate) static ICON_CHEVRON_LEFT: rune::Icon = rune::Icon {
+pub static ICON_CHEVRON_LEFT: rune::Icon = rune::Icon {
     name: "chevron-left",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m15 18-6-6 6-6\"/>",
 };
-pub(crate) static ICON_ARROW_UP: rune::Icon = rune::Icon {
+pub static ICON_ARROW_UP: rune::Icon = rune::Icon {
     name: "arrow-up",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m5 12 7-7 7 7\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 19V5\"/>",
 };
-pub(crate) static ICON_ARROW_DOWN: rune::Icon = rune::Icon {
+pub static ICON_ARROW_DOWN: rune::Icon = rune::Icon {
     name: "arrow-down",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 5v14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m19 12-7 7-7-7\"/>",
 };
-pub(crate) static ICON_FILTER: rune::Icon = rune::Icon {
+pub static ICON_FILTER: rune::Icon = rune::Icon {
     name: "filter",
     view: 24.0,
     body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3\"/>",
 };
-pub(crate) static ICON_CHECK: rune::Icon = rune::Icon {
+pub static ICON_CHECK: rune::Icon = rune::Icon {
     name: "check",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 6 9 17l-5-5\"/>",
@@ -306,12 +306,12 @@ pub(crate) static ICON_CHECK: rune::Icon = rune::Icon {
 /// stroke-width 2.4), slightly bolder and lower-anchored than lucide's
 /// `check` above. Body verbatim from the React file (its own SVG, not a
 /// lucide icon).
-pub(crate) static ICON_DONE_CHECK: rune::Icon = rune::Icon {
+pub static ICON_DONE_CHECK: rune::Icon = rune::Icon {
     name: "done-check",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2.4\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m4 12.5 5 5L20 6.5\"/>",
 };
-pub(crate) static ICON_STAR: rune::Icon = rune::Icon {
+pub static ICON_STAR: rune::Icon = rune::Icon {
     name: "star",
     view: 24.0,
     body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/>",
@@ -319,24 +319,24 @@ pub(crate) static ICON_STAR: rune::Icon = rune::Icon {
 /// T141: lucide `star` with `fill-current` — the model-profile list item's
 /// default badge renders `<Star className="h-2.5 w-2.5 fill-current" />`, the
 /// same 24-view outline with its polygon filled by the ink.
-pub(crate) static ICON_STAR_FILLED: rune::Icon = rune::Icon {
+pub static ICON_STAR_FILLED: rune::Icon = rune::Icon {
     name: "star-filled",
     view: 24.0,
     body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2\"/>",
 };
-pub(crate) static ICON_EXTERNAL_LINK: rune::Icon = rune::Icon {
+pub static ICON_EXTERNAL_LINK: rune::Icon = rune::Icon {
     name: "external-link",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 3h6v6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 14 21 3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\"/>",
 };
-pub(crate) static ICON_TRASH: rune::Icon = rune::Icon {
+pub static ICON_TRASH: rune::Icon = rune::Icon {
     name: "trash-2",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 6h18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"10\" x2=\"10\" y1=\"11\" y2=\"17\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"14\" x2=\"14\" y1=\"11\" y2=\"17\"/>",
 };
 // Lucide "pencil" 0.487.0 (T015's edit affordance, the registry addition of
 // that port; body data from the pinned lucide-static package).
-pub(crate) static ICON_PENCIL: rune::Icon = rune::Icon {
+pub static ICON_PENCIL: rune::Icon = rune::Icon {
     name: "pencil",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m15 5 4 4\"/>",
@@ -344,7 +344,7 @@ pub(crate) static ICON_PENCIL: rune::Icon = rune::Icon {
 /// T107: lucide `settings-2`, the basic-tab glyph in `ModelProfileForm`
 /// (`ModelProfileForm.tsx` uses `Settings2`). Body from the pinned
 /// lucide-react@0.487.0 icon set.
-pub(crate) static ICON_SETTINGS_2: rune::Icon = rune::Icon {
+pub static ICON_SETTINGS_2: rune::Icon = rune::Icon {
     name: "settings-2",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 7h-9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 17H5\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"17\" cy=\"17\" r=\"3\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"7\" cy=\"7\" r=\"3\"/>",
@@ -352,7 +352,7 @@ pub(crate) static ICON_SETTINGS_2: rune::Icon = rune::Icon {
 /// T107: lucide `layers`, the enterprise-balanced preset glyph in
 /// `ModelProfileForm` (`ModelProfileForm.tsx` uses `Layers`). Body from the
 /// pinned lucide-react@0.487.0 icon set.
-pub(crate) static ICON_LAYERS: rune::Icon = rune::Icon {
+pub static ICON_LAYERS: rune::Icon = rune::Icon {
     name: "layers",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65\"/>",
@@ -361,18 +361,18 @@ pub(crate) static ICON_LAYERS: rune::Icon = rune::Icon {
 /// `CheckCircle2`), the validated badge in `ModelProfileForm` and the
 /// active mark in `ModelProfileListItem` (T141). Body from the pinned
 /// lucide-react@0.487.0 icon set.
-pub(crate) static ICON_CIRCLE_CHECK: rune::Icon = rune::Icon {
+pub static ICON_CIRCLE_CHECK: rune::Icon = rune::Icon {
     name: "circle-check-big",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21.801 10A10 10 0 1 1 17 3.335\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m9 11 3 3L22 4\"/>",
 };
 
-pub(crate) static ICON_LOADER2: rune::Icon = rune::Icon {
+pub static ICON_LOADER2: rune::Icon = rune::Icon {
     name: "loader-2",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12a9 9 0 1 1-6.219-8.56\"/>",
 };
-pub(crate) static ICON_RING_ARC: rune::Icon = rune::Icon {
+pub static ICON_RING_ARC: rune::Icon = rune::Icon {
     name: "spinner-ring-arc",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2.5\" fill=\"none\" stroke-linecap=\"round\" d=\"M12 3a9 9 0 1 1-9 9\"/>",
@@ -381,7 +381,7 @@ pub(crate) static ICON_RING_ARC: rune::Icon = rune::Icon {
 /// (`AiInput.tsx` uses `Square`). The single rect is the whole icon;
 /// geometry verified against the lucide `square` icon (18×18 rect at
 /// 3,3 with rx 2, same rect the square-family icons share).
-pub(crate) static ICON_SQUARE: rune::Icon = rune::Icon {
+pub static ICON_SQUARE: rune::Icon = rune::Icon {
     name: "square",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/>",
@@ -390,12 +390,12 @@ pub(crate) static ICON_SQUARE: rune::Icon = rune::Icon {
 // T019 (workflow result panel): the React panel's ⏭/⏱ status marks are text
 // glyphs the app font pool cannot shape (no cmap entry in Inter, Noto Sans SC
 // or IBM Plex Mono), so those two marks render as their lucide counterparts.
-pub(crate) static ICON_SKIP_FORWARD: rune::Icon = rune::Icon {
+pub static ICON_SKIP_FORWARD: rune::Icon = rune::Icon {
     name: "skip-forward",
     view: 24.0,
     body: "<polygon stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"5 4 15 12 5 20 5 4\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"19\" x2=\"19\" y1=\"5\" y2=\"19\"/>",
 };
-pub(crate) static ICON_BAR_CHART_3: rune::Icon = rune::Icon {
+pub static ICON_BAR_CHART_3: rune::Icon = rune::Icon {
     name: "bar-chart-3",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v18h18\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 17V9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M13 17V5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 17v-3\"/>",
@@ -405,31 +405,31 @@ pub(crate) static ICON_BAR_CHART_3: rune::Icon = rune::Icon {
 // icons to the renamed `chart-*` artwork, so these bodies are that release's
 // (fetched from lucide-react@0.487.0's icon nodes), not the older
 // `bar-chart-3` artwork already registered above.
-pub(crate) static ICON_CHART_COLUMN: rune::Icon = rune::Icon {
+pub static ICON_CHART_COLUMN: rune::Icon = rune::Icon {
     // lucide-react 0.487 `BarChart3` resolves to `chart-column`.
     name: "chart-column",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v16a2 2 0 0 0 2 2h16\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 17V9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M13 17V5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 17v-3\"/>",
 };
-pub(crate) static ICON_CHART_LINE: rune::Icon = rune::Icon {
+pub static ICON_CHART_LINE: rune::Icon = rune::Icon {
     // lucide-react 0.487 `LineChart` resolves to `chart-line`.
     name: "chart-line",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v16a2 2 0 0 0 2 2h16\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m19 9-5 5-4-4-3 3\"/>",
 };
-pub(crate) static ICON_CHART_PIE: rune::Icon = rune::Icon {
+pub static ICON_CHART_PIE: rune::Icon = rune::Icon {
     // lucide-react 0.487 `PieChart` resolves to `chart-pie`.
     name: "chart-pie",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21.21 15.89A10 10 0 1 1 8 2.83\"/>",
 };
-pub(crate) static ICON_CHART_SCATTER: rune::Icon = rune::Icon {
+pub static ICON_CHART_SCATTER: rune::Icon = rune::Icon {
     // lucide-react 0.487 `ScatterChart` resolves to `chart-scatter`.
     name: "chart-scatter",
     view: 24.0,
     body: "<circle cx=\"7.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"18.5\" cy=\"5.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"11.5\" cy=\"11.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"7.5\" cy=\"16.5\" r=\".5\" fill=\"currentColor\"/><circle cx=\"17.5\" cy=\"14.5\" r=\".5\" fill=\"currentColor\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v16a2 2 0 0 0 2 2h16\"/>",
 };
-pub(crate) static ICON_TRENDING_UP: rune::Icon = rune::Icon {
+pub static ICON_TRENDING_UP: rune::Icon = rune::Icon {
     name: "trending-up",
     view: 24.0,
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"22 7 13.5 15.5 8.5 10.5 2 17\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"16 7 22 7 22 13\"/>",
@@ -438,14 +438,14 @@ pub(crate) static ICON_TRENDING_UP: rune::Icon = rune::Icon {
 /// (`AiCodeBlock.tsx` uses `Code2`). The two chevrons are the whole icon;
 /// geometry verified against the lucide `code-2` icon (polylines
 /// `16 18 22 12 16 6` and `8 6 2 12 8 18`).
-pub(crate) static ICON_CODE: rune::Icon = rune::Icon {
+pub static ICON_CODE: rune::Icon = rune::Icon {
     name: "code-2",
     view: 24.0,
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"16 18 22 12 16 6\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"8 6 2 12 8 18\"/>",
 };
 /// T060: lucide `maximize-2`, the enter-fullscreen glyph in `AiCodeBlock`
 /// (`AiCodeBlock.tsx` uses `Maximize2`).
-pub(crate) static ICON_MAXIMIZE_2: rune::Icon = rune::Icon {
+pub static ICON_MAXIMIZE_2: rune::Icon = rune::Icon {
     name: "maximize-2",
     view: 24.0,
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"15 3 21 3 21 9\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"9 21 3 21 3 15\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"21\" x2=\"14\" y1=\"3\" y2=\"10\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
@@ -454,7 +454,7 @@ pub(crate) static ICON_MAXIMIZE_2: rune::Icon = rune::Icon {
 // lucide-react 0.487.0 `Minimize2` alias as the `Maximize2` above: the two
 // diagonal shafts are shared and the arrowheads sit at the inner ends, so the
 // arrows converge — the minimize counterpart of the toolbar's expand glyph.
-pub(crate) static ICON_MINIMIZE_2: rune::Icon = rune::Icon {
+pub static ICON_MINIMIZE_2: rune::Icon = rune::Icon {
     name: "minimize-2",
     view: 24.0,
     body: "<polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"4 14 10 14 10 20\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"20 10 14 10 14 4\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"14\" x2=\"21\" y1=\"10\" y2=\"3\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"3\" x2=\"10\" y1=\"21\" y2=\"14\"/>",
@@ -465,13 +465,13 @@ pub(crate) static ICON_MINIMIZE_2: rune::Icon = rune::Icon {
 // source as the `package-open` entry above). `Wand2` resolves to
 // `wand-sparkles` in that release — the renamed icon whose alias table keeps
 // the old export name pointing at the new artwork.
-pub(crate) static ICON_ARROW_DOWN_UP: rune::Icon = rune::Icon {
+pub static ICON_ARROW_DOWN_UP: rune::Icon = rune::Icon {
     // lucide-react 0.487.0 `ArrowDownUp` (the step-result order toggle).
     name: "arrow-down-up",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m3 16 4 4 4-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 20V4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21 8-4-4-4 4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 4v16\"/>",
 };
-pub(crate) static ICON_TABLE_PROPERTIES: rune::Icon = rune::Icon {
+pub static ICON_TABLE_PROPERTIES: rune::Icon = rune::Icon {
     // lucide-react 0.487.0 `TableProperties` (the step detail's table-view
     // toggle glyph — the same icon the React page imports for it).
     name: "table-properties",
@@ -479,7 +479,7 @@ pub(crate) static ICON_TABLE_PROPERTIES: rune::Icon = rune::Icon {
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 3v18\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 9H3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15H3\"/>",
 };
 
-pub(crate) static ICON_PACKAGE_OPEN: rune::Icon = rune::Icon {
+pub static ICON_PACKAGE_OPEN: rune::Icon = rune::Icon {
     // lucide-react 0.487.0's `PackageOpen` node (the wapps page's empty state).
     name: "package-open",
     view: 24.0,
@@ -489,7 +489,7 @@ pub(crate) static ICON_PACKAGE_OPEN: rune::Icon = rune::Icon {
 /// T100: lucide `lightbulb`, the explain-error glyph in `QueryErrorPanel`
 /// (`QueryErrorPanel.tsx` uses `Lightbulb`). Paths verified against
 /// `lucide-static@0.487.0/icons/lightbulb.svg`.
-pub(crate) static ICON_LIGHTBULB: rune::Icon = rune::Icon {
+pub static ICON_LIGHTBULB: rune::Icon = rune::Icon {
     name: "lightbulb",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 18h6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M10 22h4\"/>",
@@ -497,7 +497,7 @@ pub(crate) static ICON_LIGHTBULB: rune::Icon = rune::Icon {
 /// T100: lucide `rotate-ccw`, the retry glyph in `QueryErrorPanel`
 /// (`QueryErrorPanel.tsx` uses `RotateCcw`). Paths verified against
 /// `lucide-static@0.487.0/icons/rotate-ccw.svg`.
-pub(crate) static ICON_ROTATE_CCW: rune::Icon = rune::Icon {
+pub static ICON_ROTATE_CCW: rune::Icon = rune::Icon {
     name: "rotate-ccw",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v5h5\"/>",
@@ -505,7 +505,7 @@ pub(crate) static ICON_ROTATE_CCW: rune::Icon = rune::Icon {
 /// T100: lucide `stethoscope`, the diagnose glyph in `QueryErrorPanel`
 /// (`QueryErrorPanel.tsx` uses `Stethoscope`). Paths verified against
 /// `lucide-static@0.487.0/icons/stethoscope.svg`.
-pub(crate) static ICON_STETHOSCOPE: rune::Icon = rune::Icon {
+pub static ICON_STETHOSCOPE: rune::Icon = rune::Icon {
     name: "stethoscope",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M11 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 15a6 6 0 0 0 12 0v-3\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"20\" cy=\"10\" r=\"2\"/>",
@@ -515,7 +515,7 @@ pub(crate) static ICON_STETHOSCOPE: rune::Icon = rune::Icon {
 /// diagnosis panel (`DiagnosisPanel.tsx` uses `ArrowDownToLine`). Paths
 /// verified against `lucide-static@0.487.0/icons/arrow-down-to-line.svg`
 /// (the shaft to y=17, the head at the bottom, the underline at y=21).
-pub(crate) static ICON_ARROW_DOWN_TO_LINE: rune::Icon = rune::Icon {
+pub static ICON_ARROW_DOWN_TO_LINE: rune::Icon = rune::Icon {
     name: "arrow-down-to-line",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 17V3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 11 6 6 6-6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 21H5\"/>",
@@ -525,14 +525,14 @@ pub(crate) static ICON_ARROW_DOWN_TO_LINE: rune::Icon = rune::Icon {
 /// toolbar (`DashboardPanel.tsx` uses `Pause`; `Play` above is its resume
 /// twin). Body verified against lucide-react 0.487.0's `pause` node (two
 /// rounded 4×16 bars at x=6 and x=14).
-pub(crate) static ICON_PAUSE: rune::Icon = rune::Icon {
+pub static ICON_PAUSE: rune::Icon = rune::Icon {
     name: "pause",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"4\" height=\"16\" x=\"6\" y=\"4\" rx=\"1\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"4\" height=\"16\" x=\"14\" y=\"4\" rx=\"1\"/>",
 };
 /// T112: lucide `upload`, the import glyph in the dashboard panel's tab-bar
 /// actions (`DashboardPanel.tsx` uses `Upload`; it is `download`'s mirror).
-pub(crate) static ICON_UPLOAD: rune::Icon = rune::Icon {
+pub static ICON_UPLOAD: rune::Icon = rune::Icon {
     name: "upload",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" points=\"7 8 12 3 17 8\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"12\" x2=\"12\" y1=\"3\" y2=\"15\"/>",
@@ -542,7 +542,7 @@ pub(crate) static ICON_UPLOAD: rune::Icon = rune::Icon {
 /// AI provider step (`AiProviderStep.tsx` uses `Info`). Body verified
 /// against lucide-react 0.487.0's `info` node (a 10-radius circle with the
 /// stem and the dot of the "i").
-pub(crate) static ICON_INFO: rune::Icon = rune::Icon {
+pub static ICON_INFO: rune::Icon = rune::Icon {
     name: "info",
     view: 24.0,
     body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"10\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 16v-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 8h.01\"/>",
@@ -552,7 +552,7 @@ pub(crate) static ICON_INFO: rune::Icon = rune::Icon {
 /// three S0 entry cards (`WelcomeStep.tsx` uses `ArrowRight`). Body verified
 /// against lucide-react 0.487.0's `arrow-right` (a west-east stem plus the
 /// east chevron).
-pub(crate) static ICON_ARROW_RIGHT: rune::Icon = rune::Icon {
+pub static ICON_ARROW_RIGHT: rune::Icon = rune::Icon {
     name: "arrow-right",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 12h14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 5 7 7-7 7\"/>",
@@ -562,7 +562,7 @@ pub(crate) static ICON_ARROW_RIGHT: rune::Icon = rune::Icon {
 /// journey's third S0 entry card (`WelcomeStep.tsx` uses `FlaskConical`).
 /// Body verified against lucide-react 0.487.0's `flask-conical` (the conical
 /// flask outline, its fill line and the neck cap).
-pub(crate) static ICON_FLASK_CONICAL: rune::Icon = rune::Icon {
+pub static ICON_FLASK_CONICAL: rune::Icon = rune::Icon {
     name: "flask-conical",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6.453 15h11.094\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8.5 2h7\"/>",
@@ -572,7 +572,7 @@ pub(crate) static ICON_FLASK_CONICAL: rune::Icon = rune::Icon {
 /// (`SettingsContent.tsx` uses `ArrowLeft`). Body verified against
 /// lucide-static 0.487.0's `arrow-left` (the west chevron plus the
 /// east-west stem).
-pub(crate) static ICON_ARROW_LEFT: rune::Icon = rune::Icon {
+pub static ICON_ARROW_LEFT: rune::Icon = rune::Icon {
     name: "arrow-left",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m12 19-7-7 7-7\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 12H5\"/>",
@@ -581,7 +581,7 @@ pub(crate) static ICON_ARROW_LEFT: rune::Icon = rune::Icon {
 /// T390: lucide `globe`, the settings nav's General glyph (the
 /// `SETTINGS_SECTION_LUCIDE_MAP` entry `general: 'Globe'`). Body
 /// verified against lucide-static 0.487.0's `globe`.
-pub(crate) static ICON_GLOBE: rune::Icon = rune::Icon {
+pub static ICON_GLOBE: rune::Icon = rune::Icon {
     name: "globe",
     view: 24.0,
     body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"10\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M2 12h20\"/>",
@@ -590,7 +590,7 @@ pub(crate) static ICON_GLOBE: rune::Icon = rune::Icon {
 /// T390: lucide `palette`, the settings nav's Appearance glyph. Body
 /// verified against lucide-static 0.487.0's `palette` (the paint-blob
 /// outline plus its four fill dots).
-pub(crate) static ICON_PALETTE: rune::Icon = rune::Icon {
+pub static ICON_PALETTE: rune::Icon = rune::Icon {
     name: "palette",
     view: 24.0,
     body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"13.5\" cy=\"6.5\" r=\".5\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"17.5\" cy=\"10.5\" r=\".5\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"8.5\" cy=\"7.5\" r=\".5\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"6.5\" cy=\"12.5\" r=\".5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z\"/>",
@@ -599,7 +599,7 @@ pub(crate) static ICON_PALETTE: rune::Icon = rune::Icon {
 /// T390: lucide `table-2`, the settings nav's Data Browsing glyph.
 /// Body verified against lucide-static 0.487.0's `table-2` (the
 /// split-cell grid outline).
-pub(crate) static ICON_TABLE_2: rune::Icon = rune::Icon {
+pub static ICON_TABLE_2: rune::Icon = rune::Icon {
     name: "table-2",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18\"/>",
@@ -609,7 +609,7 @@ pub(crate) static ICON_TABLE_2: rune::Icon = rune::Icon {
 /// `Code2`, the spelling `SETTINGS_SECTION_LUCIDE_MAP` uses), the
 /// settings nav's Editor glyph. Body verified against lucide-static
 /// 0.487.0's `code-xml`.
-pub(crate) static ICON_CODE_2: rune::Icon = rune::Icon {
+pub static ICON_CODE_2: rune::Icon = rune::Icon {
     name: "code-xml",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m18 16 4-4-4-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 8-4 4 4 4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m14.5 4-5 16\"/>",
@@ -618,7 +618,7 @@ pub(crate) static ICON_CODE_2: rune::Icon = rune::Icon {
 /// T390: lucide `mouse-pointer-click`, the settings nav's Behavior
 /// glyph. Body verified against lucide-static 0.487.0's
 /// `mouse-pointer-click` (the pointer arrow plus its four burst rays).
-pub(crate) static ICON_MOUSE_POINTER_CLICK: rune::Icon = rune::Icon {
+pub static ICON_MOUSE_POINTER_CLICK: rune::Icon = rune::Icon {
     name: "mouse-pointer-click",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M14 4.1 12 6\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m5.1 8-2.9-.8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6 12-1.9 2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7.2 2.2 8 5.1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z\"/>",
@@ -631,7 +631,7 @@ pub(crate) static ICON_MOUSE_POINTER_CLICK: rune::Icon = rune::Icon {
 /// glyph (distinct from the panel's bare `message-square`: the two
 /// text lines). Body verified against lucide-static 0.487.0's
 /// `message-square-text`.
-pub(crate) static ICON_MESSAGE_SQUARE_TEXT: rune::Icon = rune::Icon {
+pub static ICON_MESSAGE_SQUARE_TEXT: rune::Icon = rune::Icon {
     name: "message-square-text",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M13 8H7\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 12H7\"/>",
@@ -640,7 +640,7 @@ pub(crate) static ICON_MESSAGE_SQUARE_TEXT: rune::Icon = rune::Icon {
 /// T390: lucide `server`, the settings nav's MCP Server glyph. Body
 /// verified against lucide-static 0.487.0's `server` (the two rack
 /// units with their status dots).
-pub(crate) static ICON_SERVER: rune::Icon = rune::Icon {
+pub static ICON_SERVER: rune::Icon = rune::Icon {
     name: "server",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"20\" height=\"8\" x=\"2\" y=\"2\" rx=\"2\" ry=\"2\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"20\" height=\"8\" x=\"2\" y=\"14\" rx=\"2\" ry=\"2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6 6h.01\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6 18h.01\"/>",
@@ -649,7 +649,7 @@ pub(crate) static ICON_SERVER: rune::Icon = rune::Icon {
 /// T390: lucide `plug`, the settings nav's MCP Client glyph. Body
 /// verified against lucide-static 0.487.0's `plug` (the two pins, the
 /// cord stem and the plug body).
-pub(crate) static ICON_PLUG: rune::Icon = rune::Icon {
+pub static ICON_PLUG: rune::Icon = rune::Icon {
     name: "plug",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 22v-5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 8V2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 8V2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z\"/>",
@@ -658,7 +658,7 @@ pub(crate) static ICON_PLUG: rune::Icon = rune::Icon {
 /// T390: lucide `cable`, the settings nav's Tunnels glyph. Body
 /// verified against lucide-static 0.487.0's `cable` (the S-curved wire
 /// between its two plug housings).
-pub(crate) static ICON_CABLE: rune::Icon = rune::Icon {
+pub static ICON_CABLE: rune::Icon = rune::Icon {
     name: "cable",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M19 15V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 21v-2h-4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 5h4V3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M7 5a1 1 0 0 1 1 1v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1V3\"/>",
@@ -667,16 +667,10 @@ pub(crate) static ICON_CABLE: rune::Icon = rune::Icon {
 /// T390: lucide `puzzle`, the settings nav's Extensions glyph. Body
 /// verified against lucide-static 0.487.0's `puzzle` (the jigsaw
 /// outline with its two knobs and two sockets).
-pub(crate) static ICON_PUZZLE: rune::Icon = rune::Icon {
-    name: "puzzle",
-    view: 24.0,
-    body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15.39 4.39a1 1 0 0 0 1.68-.474 2.5 2.5 0 1 1 3.014 3.015 1 1 0 0 0-.474 1.68l1.683 1.682a2.414 2.414 0 0 1 0 3.414L19.61 15.39a1 1 0 0 1-1.68-.474 2.5 2.5 0 1 0-3.014 3.015 1 1 0 0 1 .474 1.68l-1.683 1.682a2.414 2.414 0 0 1-3.414 0L8.61 19.61a1 1 0 0 0-1.68.474 2.5 2.5 0 1 1-3.014-3.015 1 1 0 0 0 .474-1.68l-1.683-1.682a2.414 2.414 0 0 1 0-3.414L4.39 8.61a1 1 0 0 1 1.68.474 2.5 2.5 0 1 0 3.014-3.015 1 1 0 0 1-.474-1.68l1.683-1.682a2.414 2.414 0 0 1 3.414 0z\"/>",
-};
-
 /// T390: `settingsSectionIconId` (`lib/hostLucideMap.ts`) — the
 /// settings nav's icon per section id. `ai` maps through the
 /// `ai.chat` id (`Bot`), the rest through their `settings.<id>` entry.
-pub(crate) fn settings_section_icon(section: &str) -> Option<&'static rune::Icon> {
+pub fn settings_section_icon(section: &str) -> Option<&'static rune::Icon> {
     match section {
         "general" => Some(&ICON_GLOBE),
         "appearance" => Some(&ICON_PALETTE),
@@ -689,12 +683,12 @@ pub(crate) fn settings_section_icon(section: &str) -> Option<&'static rune::Icon
         "mcpServer" => Some(&ICON_SERVER),
         "mcpClient" => Some(&ICON_PLUG),
         "tunnels" => Some(&ICON_CABLE),
-        "extensions" => Some(&ICON_PUZZLE),
+        "extensions" => Some(&ICON_WAPPS),
         _ => None,
     }
 }
 
-pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
+pub fn section_icon(section: Section) -> &'static rune::Icon {
     match section {
         Section::Connections => &ICON_CONNECTIONS,
         Section::Workspace => &ICON_WORKSPACE,
@@ -708,51 +702,51 @@ pub(crate) fn section_icon(section: Section) -> &'static rune::Icon {
 // T262: ThemedIcon's LUCIDE_MAP defaults (the 20 names the registry did
 // not yet hold, downloaded element-for-element from the lucide repo;
 // the stroke wrap is the registry's own convention).
-pub(crate) static ICON_ACTIVITY: rune::Icon = rune::Icon {
+pub static ICON_ACTIVITY: rune::Icon = rune::Icon {
     name: "activity",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/>",
 };
-pub(crate) static ICON_BRACES: rune::Icon = rune::Icon {
+pub static ICON_BRACES: rune::Icon = rune::Icon {
     name: "braces",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1\"/>",
 };
 // ICON_CABLE from seg4's T390 port is defined above; seg3's older-variant
 // copy is dropped here.
-pub(crate) static ICON_DATABASE_BACKUP: rune::Icon = rune::Icon {
+pub static ICON_DATABASE_BACKUP: rune::Icon = rune::Icon {
     name: "database-backup",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 3 0 0 0 5 2.69\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 9.3V5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 5v14a9 3 0 0 0 6.47 2.88\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 12v4h4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M13 20a5 5 0 0 0 9-3 4.5 4.5 0 0 0-4.5-4.5c-1.33 0-2.54.54-3.41 1.41L12 16\"/>",
 };
-pub(crate) static ICON_EYE: rune::Icon = rune::Icon {
+pub static ICON_EYE: rune::Icon = rune::Icon {
     name: "eye",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"3\"/>",
 };
-pub(crate) static ICON_GIT_FORK: rune::Icon = rune::Icon {
+pub static ICON_GIT_FORK: rune::Icon = rune::Icon {
     name: "git-fork",
     view: 24.0,
     body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"18\" r=\"3\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"6\" cy=\"6\" r=\"3\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"18\" cy=\"6\" r=\"3\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 12v3\"/>",
 };
-pub(crate) static ICON_HASH: rune::Icon = rune::Icon {
+pub static ICON_HASH: rune::Icon = rune::Icon {
     name: "hash",
     view: 24.0,
     body: "<line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"4\" x2=\"20\" y1=\"9\" y2=\"9\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"4\" x2=\"20\" y1=\"15\" y2=\"15\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"10\" x2=\"8\" y1=\"3\" y2=\"21\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"16\" x2=\"14\" y1=\"3\" y2=\"21\"/>",
 };
 // ICON_GLOBE from seg4's T390 port is defined above; seg3's duplicate dropped.
-pub(crate) static ICON_KEY_ROUND: rune::Icon = rune::Icon {
+pub static ICON_KEY_ROUND: rune::Icon = rune::Icon {
     name: "key-round",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"16.5\" cy=\"7.5\" r=\".5\"/>",
 };
 // ICON_MESSAGE_SQUARE_TEXT from seg4's T390 port is defined above; duplicate dropped.
-pub(crate) static ICON_MONITOR: rune::Icon = rune::Icon {
+pub static ICON_MONITOR: rune::Icon = rune::Icon {
     name: "monitor",
     view: 24.0,
     body: "<rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" rx=\"2\" x=\"2\" y=\"3\" width=\"20\" height=\"14\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"8\" x2=\"16\" y1=\"21\" y2=\"21\"/><line stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" x1=\"12\" x2=\"12\" y1=\"17\" y2=\"21\"/>",
 };
-pub(crate) static ICON_MOON: rune::Icon = rune::Icon {
+pub static ICON_MOON: rune::Icon = rune::Icon {
     name: "moon",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401\"/>",
@@ -762,17 +756,17 @@ pub(crate) static ICON_MOON: rune::Icon = rune::Icon {
 // above with the canonical lucide 0.487.0 bodies (seg4's T390 settings-nav
 // port); seg3's T262-S3 ThemedIcon port added older-variant copies of the
 // same four names, which the merge reconciled here.
-pub(crate) static ICON_REFRESH_CCW: rune::Icon = rune::Icon {
+pub static ICON_REFRESH_CCW: rune::Icon = rune::Icon {
     name: "refresh-ccw",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 3v5h5\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M16 16h5v5\"/>",
 };
-pub(crate) static ICON_SHAPES: rune::Icon = rune::Icon {
+pub static ICON_SHAPES: rune::Icon = rune::Icon {
     name: "shapes",
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z\"/><rect stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" rx=\"1\" x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"17.5\" cy=\"17.5\" r=\"3.5\"/>",
 };
-pub(crate) static ICON_SUN: rune::Icon = rune::Icon {
+pub static ICON_SUN: rune::Icon = rune::Icon {
     name: "sun",
     view: 24.0,
     body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"12\" cy=\"12\" r=\"4\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 2v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 20v2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m4.93 4.93 1.41 1.41\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m17.66 17.66 1.41 1.41\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M2 12h2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20 12h2\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m6.34 17.66-1.41 1.41\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m19.07 4.93-1.41 1.41\"/>",

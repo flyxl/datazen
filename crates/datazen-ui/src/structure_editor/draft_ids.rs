@@ -43,13 +43,13 @@ fn next_suffix() -> String {
 /// Port of `newColumnId()` — `col_` + 6 base-36 characters.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn new_column_id() -> String {
+pub fn new_column_id() -> String {
     format!("col_{}", next_suffix())
 }
 
 /// Port of `newIndexId()` — `idx_` + 6 base-36 characters.
 // consumers: the future structure-editor view; delete this allow when it lands.
 #[allow(dead_code)]
-pub(crate) fn new_index_id() -> String {
+pub fn new_index_id() -> String {
     format!("idx_{}", next_suffix())
 }

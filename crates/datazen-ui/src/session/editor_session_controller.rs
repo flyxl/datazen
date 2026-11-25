@@ -30,18 +30,18 @@ use std::collections::{HashMap, VecDeque};
 use super::counters::{counter_value, same_handle, CounterInput};
 
 #[path = "editor_session_types.rs"]
-pub(crate) mod types;
+pub mod types;
 
 // Re-export so a single import path serves the tests and the future view; this
 // also brings every DTO (including SessionHandle) into scope below.
-pub(crate) use types::*;
+pub use types::*;
 
 type SessionListener = Box<dyn FnMut()>;
 
 /// Result of the most recent queued operation, kept for host observability.
 #[allow(dead_code)] // diagnostic surface; remove with the controller-driven view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum OpResult {
+pub enum OpResult {
     Session(SessionView),
     Execution(ExecutionReceipt),
     ExecutionView(ExecutionView),
@@ -122,7 +122,7 @@ enum PublicCall {
 /// `EditorSessionController` — embed in the host state slice, drive with the
 /// `on_*` methods and execute the returned effects against a [`SessionPort`].
 #[allow(dead_code)] // T083; the editor view that embeds this has not landed. Remove then.
-pub(crate) struct EditorSessionController {
+pub struct EditorSessionController {
     id: u64,
     initial_target: ExecutionTarget,
     latest_target: ExecutionTarget,
@@ -138,14 +138,14 @@ pub(crate) struct EditorSessionController {
     page_closer_armed: bool,
     next_call_id: u64,
     pending_public: HashMap<u64, PublicCall>,
-    pub(crate) last_result: Option<Result<OpResult, SessionError>>,
+    pub last_result: Option<Result<OpResult, SessionError>>,
 }
 
 impl EditorSessionController {
     /// Mirrors the React constructor. `id` is the stable identity the host uses
     /// to register/unregister the one page-unload closer.
     #[allow(dead_code)] // constructor; remove with the controller-driven view.
-    pub(crate) fn new(id: u64, initial_target: ExecutionTarget, owner: OwnerRef) -> Self {
+    pub fn new(id: u64, initial_target: ExecutionTarget, owner: OwnerRef) -> Self {
         Self {
             id,
             latest_target: initial_target.clone(),
@@ -168,33 +168,33 @@ impl EditorSessionController {
 
     /// `get snapshot`.
     #[allow(dead_code)] // read each frame by the view; remove then.
-    pub(crate) fn snapshot(&self) -> Option<&SessionView> {
+    pub fn snapshot(&self) -> Option<&SessionView> {
         self.session.as_ref()
     }
 
     /// `get activeExecution`.
     #[allow(dead_code)] // read by the view to drive cancel; remove then.
-    pub(crate) fn active_execution(&self) -> Option<&ExecutionReceipt> {
+    pub fn active_execution(&self) -> Option<&ExecutionReceipt> {
         self.execution.as_ref()
     }
 
     /// The current attachment token, observed by the host after a context
     /// change decides whether to keep or replace it.
     #[allow(dead_code)] // read by the host attachment bridge; remove then.
-    pub(crate) fn attachment_token(&self) -> Option<&str> {
+    pub fn attachment_token(&self) -> Option<&str> {
         self.attachment_token.as_deref()
     }
 
     /// `latestTarget` — updated to the confirmed observed namespace whenever a
     /// session is accepted, opened or rebound.
     #[allow(dead_code)] // read by the host when opening a replacement; remove then.
-    pub(crate) fn latest_target(&self) -> &ExecutionTarget {
+    pub fn latest_target(&self) -> &ExecutionTarget {
         &self.latest_target
     }
 
     /// `subscribe(listener)` — returns an id for [`Self::unsubscribe`].
     #[allow(dead_code)] // observer API; remove when the view reads snapshot only.
-    pub(crate) fn subscribe(&mut self, listener: SessionListener) -> u64 {
+    pub fn subscribe(&mut self, listener: SessionListener) -> u64 {
         let id = self.next_listener_id;
         self.next_listener_id += 1;
         self.listeners.push((id, listener));
@@ -202,7 +202,7 @@ impl EditorSessionController {
     }
 
     #[allow(dead_code)] // observer API; remove with subscribe.
-    pub(crate) fn unsubscribe(&mut self, id: u64) {
+    pub fn unsubscribe(&mut self, id: u64) {
         self.listeners.retain(|(candidate, _)| *candidate != id);
     }
 
@@ -246,7 +246,7 @@ impl EditorSessionController {
     /// `markSessionLost(handle?)` — keeps the handle and execution receipt,
     /// only flips state and the observed transaction state.
     #[allow(dead_code)] // public recovery hook; remove with the controller-driven view.
-    pub(crate) fn mark_session_lost(&mut self, handle: Option<&SessionHandle>) -> bool {
+    pub fn mark_session_lost(&mut self, handle: Option<&SessionHandle>) -> bool {
         let matches = matches!((self.session.as_ref(), handle), (Some(session), Some(handle)) if same_handle(Some(handle), Some(&session.handle)));
         if !matches {
             return false;
@@ -269,7 +269,7 @@ impl EditorSessionController {
 
     /// `acceptSession(view)` — handle, lost-revival and revision guards.
     #[allow(dead_code)] // public observation hook; remove with the controller-driven view.
-    pub(crate) fn accept_session(&mut self, view: SessionView) -> bool {
+    pub fn accept_session(&mut self, view: SessionView) -> bool {
         let Some(current) = self.session.clone() else {
             return false;
         };
@@ -310,7 +310,7 @@ impl EditorSessionController {
     /// `ensureSession()` — refuses reuse, dedups concurrent opens via
     /// `opening`. Returns the error React would throw instead of a promise.
     #[allow(dead_code)] // public entry; remove with the controller-driven view.
-    pub(crate) fn ensure_session(&mut self) -> Result<Vec<SessionEffect>, SessionError> {
+    pub fn ensure_session(&mut self) -> Result<Vec<SessionEffect>, SessionError> {
         self.ensure_session_internal(false)
     }
 
@@ -454,31 +454,31 @@ impl EditorSessionController {
 
     /// `execute(call)` — serialized, captured expected revision.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn execute(&mut self, call: CommandCall) -> Vec<SessionEffect> {
+    pub fn execute(&mut self, call: CommandCall) -> Vec<SessionEffect> {
         self.enqueue(Operation::new(OpKind::Execute, Some(call), None, CloseMode::RequireNoTransaction))
     }
 
     /// `setContext(desired)` — two-phase with revision.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn set_context(&mut self, desired: NamespaceTarget) -> Vec<SessionEffect> {
+    pub fn set_context(&mut self, desired: NamespaceTarget) -> Vec<SessionEffect> {
         self.enqueue(Operation::new(OpKind::SetContext, None, Some(desired), CloseMode::RequireNoTransaction))
     }
 
     /// `close(mode)` — serialized; awaits an in-flight open first.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn close(&mut self, mode: CloseMode) -> Vec<SessionEffect> {
+    pub fn close(&mut self, mode: CloseMode) -> Vec<SessionEffect> {
         self.enqueue(Operation::new(OpKind::Close, None, None, mode))
     }
 
     /// `openNewSession()` — serialized replacement.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn open_new_session(&mut self) -> Vec<SessionEffect> {
+    pub fn open_new_session(&mut self) -> Vec<SessionEffect> {
         self.enqueue(Operation::new(OpKind::OpenNew, None, None, CloseMode::RequireNoTransaction))
     }
 
     /// `getExecution(executionId)` — captures the handle before the call.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn get_execution(&mut self, execution_id: String) -> Vec<SessionEffect> {
+    pub fn get_execution(&mut self, execution_id: String) -> Vec<SessionEffect> {
         let handle = self.session.as_ref().map(|session| session.handle.clone());
         let id = self.alloc_call_id();
         self.pending_public.insert(id, PublicCall::GetExecution { handle });
@@ -487,7 +487,7 @@ impl EditorSessionController {
 
     /// `refresh()` — captures the handle, then `acceptSession`.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn refresh(&mut self) -> Vec<SessionEffect> {
+    pub fn refresh(&mut self) -> Vec<SessionEffect> {
         let Some(handle) = self.session.as_ref().map(|session| session.handle.clone()) else {
             return Vec::new();
         };
@@ -498,7 +498,7 @@ impl EditorSessionController {
 
     /// `detach()` — only when both session and attachment token exist.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn detach(&mut self) -> Vec<SessionEffect> {
+    pub fn detach(&mut self) -> Vec<SessionEffect> {
         let (handle, token) = match (self.session.as_ref(), self.attachment_token.as_ref()) {
             (Some(session), Some(token)) => (session.handle.clone(), token.clone()),
             _ => return Vec::new(),
@@ -510,7 +510,7 @@ impl EditorSessionController {
 
     /// `attach()` — only when both session and attachment token exist.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn attach(&mut self) -> Vec<SessionEffect> {
+    pub fn attach(&mut self) -> Vec<SessionEffect> {
         let (handle, token) = match (self.session.as_ref(), self.attachment_token.as_ref()) {
             (Some(session), Some(token)) => (session.handle.clone(), token.clone()),
             _ => return Vec::new(),
@@ -522,7 +522,7 @@ impl EditorSessionController {
 
     /// `cancel()` — token first, then the cancel call with the captured id.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn cancel(&mut self) -> Vec<SessionEffect> {
+    pub fn cancel(&mut self) -> Vec<SessionEffect> {
         let Some(execution_id) = self.execution.as_ref().map(|execution| execution.execution_id.clone()) else {
             return Vec::new();
         };
@@ -534,7 +534,7 @@ impl EditorSessionController {
     /// Fire the one-shot page-unload closer with the *current* handle and
     /// `rollbackAndClose` (never `requireNoTransaction`, which would leak).
     #[allow(dead_code)] // host teardown hook; remove with the controller-driven view.
-    pub(crate) fn fire_page_unload(&mut self) -> Vec<SessionEffect> {
+    pub fn fire_page_unload(&mut self) -> Vec<SessionEffect> {
         if !self.page_closer_armed {
             return Vec::new();
         }
@@ -563,7 +563,7 @@ impl EditorSessionController {
     /// `clone(owner)` — rejects a second editor with the same pane id. `id` is
     /// the host-assigned key for the clone's own page-unload closer.
     #[allow(dead_code)] // public command; remove with the controller-driven view.
-    pub(crate) fn clone(&self, id: u64, owner: OwnerRef) -> Result<Self, &'static str> {
+    pub fn clone(&self, id: u64, owner: OwnerRef) -> Result<Self, &'static str> {
         if owner.same_editor_session(&self.owner) {
             return Err("Cloned editors require a distinct owner ID");
         }
@@ -579,7 +579,7 @@ mod results;
 /// host resolves it against [`SessionPort::get_platform_identity`] and calls
 /// [`ControllerCreation::complete`].
 #[allow(dead_code)] // factory; remove with the controller-driven view.
-pub(crate) struct ControllerCreation {
+pub struct ControllerCreation {
     call_id: u64,
     effects: Vec<SessionEffect>,
     initial_target: ExecutionTarget,
@@ -587,7 +587,7 @@ pub(crate) struct ControllerCreation {
 }
 
 #[allow(dead_code)] // factory; remove with the controller-driven view.
-pub(crate) fn create_editor_session_controller(
+pub fn create_editor_session_controller(
     initial_target: ExecutionTarget,
     editor_session_id: String,
 ) -> ControllerCreation {
@@ -601,14 +601,14 @@ pub(crate) fn create_editor_session_controller(
 
 impl ControllerCreation {
     #[allow(dead_code)] // factory completion; remove with the controller-driven view.
-    pub(crate) fn effects(&self) -> &[SessionEffect] {
+    pub fn effects(&self) -> &[SessionEffect] {
         &self.effects
     }
 
     /// Mirrors the React factory: a blank `clientInstanceId`/`editorSessionId`
     /// throws `Missing editor owner identity`.
     #[allow(dead_code)] // factory completion; remove with the controller-driven view.
-    pub(crate) fn complete(
+    pub fn complete(
         self,
         call_id: u64,
         result: Result<PlatformIdentity, SessionError>,

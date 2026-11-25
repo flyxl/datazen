@@ -23,7 +23,7 @@ use rune::{
 };
 
 impl AppState {
-    pub(crate) fn show_table(&mut self, title: &str) -> bool {
+    pub fn show_table(&mut self, title: &str) -> bool {
         // N1: a live host takes the read as a job and answers on its own
         // schedule. Until the delivery lands the grid keeps its previous
         // page and the footer says the read is in flight; a declined job
@@ -70,21 +70,21 @@ impl AppState {
     }
 
     /// Reopen the selected table tab at the current page, sort and filter.
-    pub(crate) fn reload_table_page(&mut self) {
+    pub fn reload_table_page(&mut self) {
         if let Some(tab) = self.tabs.selected() {
             if tab.kind == TabKind::Table {
                 self.show_table(&tab.title.clone());
             }
         }
     }
-    pub(crate) fn next_table_page(&mut self) {
+    pub fn next_table_page(&mut self) {
         if !self.grid.has_page() || self.grid.page() + 1 >= self.grid.pages() {
             return;
         }
         self.table_page += 1;
         self.reload_table_page();
     }
-    pub(crate) fn prev_table_page(&mut self) {
+    pub fn prev_table_page(&mut self) {
         if !self.grid.has_page() || self.grid.page() == 0 {
             return;
         }
@@ -93,7 +93,7 @@ impl AppState {
     }
 
     /// A header click cycles its column: none, ascending, descending, back to none.
-    pub(crate) fn cycle_sort(&mut self, column: u32) {
+    pub fn cycle_sort(&mut self, column: u32) {
         let Some(name) = self.grid.column_name(column).map(str::to_owned) else {
             return;
         };
@@ -110,7 +110,7 @@ impl AppState {
     }
 
     /// The filter bar's Enter: read the editor, target the chosen column, return to page 1.
-    pub(crate) fn apply_filter(&mut self) {
+    pub fn apply_filter(&mut self) {
         let column = self.grid.column_name(self.filter_column).map(str::to_owned);
         let text = self.filter_editor.text.trim().to_owned();
         self.filter = match (column, text.is_empty()) {
@@ -120,7 +120,7 @@ impl AppState {
         self.table_page = 0;
         self.reload_table_page();
     }
-    pub(crate) fn cycle_filter_column(&mut self) {
+    pub fn cycle_filter_column(&mut self) {
         if self.grid.cols == 0 {
             return;
         }
@@ -131,7 +131,7 @@ impl AppState {
     }
 
     /// Commit every staged edit to the stored rows, then reload the page.
-    pub(crate) fn commit_staged_edits(&mut self) {
+    pub fn commit_staged_edits(&mut self) {
         // N1/N6: a live host takes the batch as a job. The dirty marks stay
         // until the delivery lands — the job twin of H5's rule that a real
         // failure keeps them.
@@ -161,7 +161,7 @@ impl AppState {
     }
 
     /// Drop every staged edit and reload the page back to the stored values.
-    pub(crate) fn rollback_staged_edits(&mut self) {
+    pub fn rollback_staged_edits(&mut self) {
         self.workspace.rollback_staged();
         self.reload_table_page();
     }
@@ -210,7 +210,7 @@ impl AppState {
     }
 
     /// A3: select a query result sub-tab by id.
-    pub(crate) fn select_query_result_tab(&mut self, id: u32) -> bool {
+    pub fn select_query_result_tab(&mut self, id: u32) -> bool {
         if !self.query_result_tabs.iter().any(|t| t.id == id) {
             return false;
         }
@@ -222,14 +222,14 @@ impl AppState {
     }
 
     /// A3: toggle pin state for a result sub-tab.
-    pub(crate) fn toggle_pin_query_result_tab(&mut self, id: u32) {
+    pub fn toggle_pin_query_result_tab(&mut self, id: u32) {
         if let Some(tab) = self.query_result_tabs.iter_mut().find(|t| t.id == id) {
             tab.pinned = !tab.pinned;
         }
     }
 
     /// A3: close a result sub-tab (pinned or not) if present.
-    pub(crate) fn close_query_result_tab(&mut self, id: u32) -> bool {
+    pub fn close_query_result_tab(&mut self, id: u32) -> bool {
         let Some(index) = self.query_result_tabs.iter().position(|t| t.id == id) else {
             return false;
         };
@@ -249,25 +249,25 @@ impl AppState {
     }
 
     /// A3: honest toolbar affordances when no host capability exists.
-    pub(crate) fn query_action_notice(&mut self, notice: impl Into<String>) {
+    pub fn query_action_notice(&mut self, notice: impl Into<String>) {
         self.query_notice = Some(notice.into());
     }
 
-    pub(crate) fn format_query(&mut self) {
+    pub fn format_query(&mut self) {
         // No formatter capability in the current Rune/editor contract; keep the
         // document unchanged and report honestly.
         self.query_action_notice("Format is not available in this host");
     }
 
-    pub(crate) fn explain_query(&mut self) {
+    pub fn explain_query(&mut self) {
         self.query_action_notice("Explain is not available in this host");
     }
 
-    pub(crate) fn query_transaction(&mut self, action: &str) {
+    pub fn query_transaction(&mut self, action: &str) {
         self.query_action_notice(format!("{action} is not available in this host"));
     }
 
-    pub(crate) fn insert_snippet_sql(&mut self, sql: &str) {
+    pub fn insert_snippet_sql(&mut self, sql: &str) {
         if !sql.is_empty() {
             self.sql.insert(sql);
             self.result_focused = false;
@@ -275,7 +275,7 @@ impl AppState {
     }
 
     /// Load a query result into the selected result tab's grid (and legacy mirror).
-    pub(crate) fn load_result_page(&mut self, columns: Vec<String>, rows: Vec<Vec<String>>) {
+    pub fn load_result_page(&mut self, columns: Vec<String>, rows: Vec<Vec<String>>) {
         let page = self.workspace.open_result(columns, rows);
         let mut grid = DataGrid::new();
         grid.load_page(&page);
@@ -289,7 +289,7 @@ impl AppState {
 
     /// Bump and return the next query generation. Every run and every cancel
     /// starts one.
-    pub(crate) fn next_query_generation(&mut self) -> u32 {
+    pub fn next_query_generation(&mut self) -> u32 {
         self.query_generation += 1;
         self.query_generation
     }
@@ -297,7 +297,7 @@ impl AppState {
     /// A result page arrives for a generation. Stale generations — superseded by
     /// a newer run or invalidated by a cancel — are dropped on the floor.
     /// A3: lands in the matching result tab and makes it selected.
-    pub(crate) fn deliver_query_result(&mut self, generation: u32, page: TablePage) {
+    pub fn deliver_query_result(&mut self, generation: u32, page: TablePage) {
         if generation != self.query_generation {
             return;
         }
@@ -314,7 +314,7 @@ impl AppState {
     /// outstanding one, so their results are dropped when they arrive. A
     /// query job in flight also stops waiting: its marker leaves with the
     /// generation, and a late delivery finds only the stale check.
-    pub(crate) fn cancel_query(&mut self) {
+    pub fn cancel_query(&mut self) {
         self.next_query_generation();
         self.query_loading = None;
     }
@@ -324,7 +324,7 @@ impl AppState {
     /// A3: creates a new result tab for this run and selects it (pinned tabs
     /// remain; unpinned prior tabs are kept for switching). A synchronous
     /// failure restores the previously selected result so the UI stays as it was.
-    pub(crate) fn run_query(&mut self) {
+    pub fn run_query(&mut self) {
         let previous_selected = self.selected_query_result;
         let generation = self.next_query_generation();
         let Some(sql) = self.sql.statement_at_cursor() else {
@@ -363,7 +363,7 @@ impl AppState {
     /// Bump and return the next table read generation. Every read request —
     /// a fresh open, a page turn, a reload — starts one, so a delivery from
     /// a read the state has moved past is dropped (N1, plan invariant 3).
-    pub(crate) fn next_read_generation(&mut self) -> u32 {
+    pub fn next_read_generation(&mut self) -> u32 {
         self.read_generation += 1;
         self.read_generation
     }
@@ -371,7 +371,7 @@ impl AppState {
     /// Bump and return the next structure generation (E1). Every structure
     /// request — a table open, a view switch, an ER open — starts one, so a
     /// delivery from a read the table's entry has moved past is dropped.
-    pub(crate) fn next_structure_generation(&mut self) -> u32 {
+    pub fn next_structure_generation(&mut self) -> u32 {
         self.structure_generation += 1;
         self.structure_generation
     }
@@ -382,7 +382,7 @@ impl AppState {
     /// the decline promises the synchronous methods serve, and the demo
     /// process's memory port is memory-speed — the same cache fills on the
     /// spot and the render path stays adapter-free either way.
-    pub(crate) fn begin_structure_read(&mut self, table: &str) {
+    pub fn begin_structure_read(&mut self, table: &str) {
         let generation = self.next_structure_generation();
         let job = AdapterJob::ReadStructure { generation, table: table.to_owned() };
         if self.desktop.begin_job(job) {
@@ -408,7 +408,7 @@ impl AppState {
     /// request — a dashboards open, a widget save, a manual refresh —
     /// starts one, so a delivery from a read the widget's entry has moved
     /// past is dropped.
-    pub(crate) fn next_widget_bars_generation(&mut self) -> u32 {
+    pub fn next_widget_bars_generation(&mut self) -> u32 {
         self.widget_bars_generation += 1;
         self.widget_bars_generation
     }
@@ -417,7 +417,7 @@ impl AppState {
     /// over the live session on the worker's runtime. A host that declines
     /// the job keeps the synchronous bars read (the demo process's memory
     /// port) and the same cache fills on the spot.
-    pub(crate) fn begin_widget_bars_read(&mut self, id: u64) {
+    pub fn begin_widget_bars_read(&mut self, id: u64) {
         let generation = self.next_widget_bars_generation();
         let job = AdapterJob::WidgetBars { generation, id };
         if self.desktop.begin_job(job) {
@@ -436,7 +436,7 @@ impl AppState {
 
     /// E2: ask for every widget's bars — the page's open, a save and the
     /// manual refresh button all restart the whole chart set.
-    pub(crate) fn refresh_widget_bars(&mut self) {
+    pub fn refresh_widget_bars(&mut self) {
         let ids: Vec<u64> = self.host_widgets().iter().map(|widget| widget.id).collect();
         for id in ids {
             self.begin_widget_bars_read(id);
@@ -444,12 +444,12 @@ impl AppState {
     }
 
     /// A5: switch the query result presentation (table/chart).
-    pub(crate) fn set_result_view(&mut self, view: crate::types::ResultView) {
+    pub fn set_result_view(&mut self, view: crate::types::ResultView) {
         self.result_view = view;
     }
 
     /// A5: apply the current find-bar text to the result grid.
-    pub(crate) fn apply_result_find(&mut self) {
+    pub fn apply_result_find(&mut self) {
         let needle = self.result_find.text.clone();
         if let Some(grid) = self.result_grid.as_mut() {
             grid.set_find_needle(&needle);
@@ -457,14 +457,14 @@ impl AppState {
     }
 
     /// A5: move to the next find hit in the result grid.
-    pub(crate) fn result_find_next(&mut self) {
+    pub fn result_find_next(&mut self) {
         if let Some(grid) = self.result_grid.as_mut() {
             grid.find_next();
         }
     }
 
     /// A5: move to the previous find hit in the result grid.
-    pub(crate) fn result_find_prev(&mut self) {
+    pub fn result_find_prev(&mut self) {
         if let Some(grid) = self.result_grid.as_mut() {
             grid.find_prev();
         }
@@ -473,7 +473,7 @@ impl AppState {
     /// A host job's answer arrived on the poll path. The loading marker of
     /// the finished request always clears; the state itself is written only
     /// when the delivery's generation is still the current one.
-    pub(crate) fn deliver_host_job(&mut self, delivery: AdapterDelivery) {
+    pub fn deliver_host_job(&mut self, delivery: AdapterDelivery) {
         match delivery {
             AdapterDelivery::ConnectionOpened { generation, id, catalog } => {
                 if self.connect_loading == Some(generation) {
@@ -659,7 +659,7 @@ impl AppState {
 
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
-    pub(crate) fn sync_grid_to_selected_tab(&mut self) {
+    pub fn sync_grid_to_selected_tab(&mut self) {
         self.active = Section::Workspace;
         self.er_schema = None;
         self.table_page = 0;
@@ -674,7 +674,7 @@ impl AppState {
             Some((TabKind::Query, _)) | None => {}
         }
     }
-    pub(crate) fn close_tab(&mut self, id: u32) -> bool {
+    pub fn close_tab(&mut self, id: u32) -> bool {
         let previous = self.tabs.selected().map(|tab| tab.id);
         if !self.tabs.close(id) {
             return false;
@@ -684,7 +684,7 @@ impl AppState {
         }
         true
     }
-    pub(crate) fn commit_grid_edit(&mut self) {
+    pub fn commit_grid_edit(&mut self) {
         if !self.grid.is_editable() {
             return;
         }

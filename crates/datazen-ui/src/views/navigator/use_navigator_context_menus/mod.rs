@@ -18,7 +18,7 @@
 //! the menu builders this file consumes (shard 2's T555/T599/T567/T340, plus
 //! the utils additions in `build_flat_rows::deps`, removal stage T582).
 
-pub(crate) mod deps;
+pub mod deps;
 
 use std::collections::HashMap;
 
@@ -40,8 +40,8 @@ use crate::views::navigator::utils::{
 
 /// React `SERVER_STATUS_SNAPSHOT_COMMAND` / `LIST_PROCESSES_COMMAND`
 /// (`lib/driverCommandIds.ts`).
-pub(crate) const SERVER_STATUS_SNAPSHOT_COMMAND: &str = "server_status_snapshot";
-pub(crate) const LIST_PROCESSES_COMMAND: &str = "list_processes";
+pub const SERVER_STATUS_SNAPSHOT_COMMAND: &str = "server_status_snapshot";
+pub const LIST_PROCESSES_COMMAND: &str = "list_processes";
 
 // ---------------------------------------------------------------------------
 // The snapshot the handlers read (React `NavigatorContextMenuDeps`, as data)
@@ -49,7 +49,7 @@ pub(crate) const LIST_PROCESSES_COMMAND: &str = "list_processes";
 
 /// The read set the menus have off a connection config.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct MenuConnectionSnapshot {
+pub struct MenuConnectionSnapshot {
     pub id: String,
     pub name: String,
     pub database_type: String,
@@ -66,14 +66,14 @@ pub(crate) struct MenuConnectionSnapshot {
 
 /// React `ConnectionEntry`, read set.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct MenuActiveEntry {
+pub struct MenuActiveEntry {
     pub status: String,
     pub db_session_id: Option<String>,
 }
 
 /// The driver meta read set the menus have (off `DB_REGISTRY`).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct MenuDriverMeta {
+pub struct MenuDriverMeta {
     pub has_multi_database: bool,
     /// `'name' | 'path' | 'index' | 'domain'`.
     pub database_field_type: String,
@@ -107,7 +107,7 @@ impl MenuDriverMeta {
 /// Which `viewActions` the host wired: a menu item exists only when its
 /// action does, exactly as React's optional handlers read.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ViewActionsAvailable {
+pub struct ViewActionsAvailable {
     pub new_query: bool,
     pub open_sql_file: bool,
     pub create_table: bool,
@@ -124,13 +124,13 @@ pub(crate) struct ViewActionsAvailable {
 /// The label tables (React's two `useMemo`s over `t()`); the host builds
 /// them from its i18n, tests build them literally.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct MenuLabels {
+pub struct MenuLabels {
     pub context: MainWindowContextMenuLabels,
     pub schema: SchemaTreeContextMenuLabels,
 }
 
 /// Everything the seven handlers read, in one snapshot.
-pub(crate) struct NavigatorMenuInputs<'a> {
+pub struct NavigatorMenuInputs<'a> {
     pub labels: &'a MenuLabels,
     pub safe_mode: bool,
     pub features: ProductFeatures,
@@ -184,7 +184,7 @@ impl NavigatorMenuInputs<'_> {
 /// file. The host executes each; the doc on each variant is the React body
 /// it must reproduce.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum NavigatorMenuAction {
+pub enum NavigatorMenuAction {
     // ── Group menu ──────────────────────────────────────────────
     /// Reset the new-group dialog and open it.
     NewGroupDialog,
@@ -382,12 +382,12 @@ pub(crate) enum NavigatorMenuAction {
 
 /// React `handleTableContextMenu`'s truncate SQL: the dialect's
 /// `getTruncateTableSql(quoted)` when it has one, else the plain form.
-pub(crate) fn truncate_table_sql(quoted: &str, dialect_sql: Option<String>) -> String {
+pub fn truncate_table_sql(quoted: &str, dialect_sql: Option<String>) -> String {
     dialect_sql.unwrap_or_else(|| format!("TRUNCATE TABLE {quoted}"))
 }
 
 /// React's drop SQL: `DROP VIEW` for views, `DROP TABLE` otherwise.
-pub(crate) fn drop_relation_sql(is_view: bool, quoted: &str) -> String {
+pub fn drop_relation_sql(is_view: bool, quoted: &str) -> String {
     if is_view {
         format!("DROP VIEW {quoted}")
     } else {
@@ -410,7 +410,7 @@ fn quote_char_of(meta: &MenuDriverMeta) -> &str {
 // ---------------------------------------------------------------------------
 
 /// React `handleGroupContextMenu`.
-pub(crate) fn group_context_menu(
+pub fn group_context_menu(
     labels: &MainWindowContextMenuLabels,
     group_name: &str,
 ) -> Vec<MenuNode<NavigatorMenuAction>> {
@@ -450,7 +450,7 @@ pub(crate) fn group_context_menu(
 }
 
 /// React `handleConnectionContextMenu`.
-pub(crate) fn connection_context_menu(
+pub fn connection_context_menu(
     inputs: &NavigatorMenuInputs<'_>,
     conn: &MenuConnectionSnapshot,
     section_group: &str,
@@ -562,7 +562,7 @@ pub(crate) fn connection_context_menu(
 }
 
 /// React `handleDatabaseContextMenu`.
-pub(crate) fn database_context_menu(
+pub fn database_context_menu(
     inputs: &NavigatorMenuInputs<'_>,
     db_name: &str,
     connection_id: &str,
@@ -670,7 +670,7 @@ pub(crate) fn database_context_menu(
 }
 
 /// React `handleSchemaContextMenu`.
-pub(crate) fn schema_context_menu(
+pub fn schema_context_menu(
     inputs: &NavigatorMenuInputs<'_>,
     schema_name: &str,
     db_name: &str,
@@ -752,7 +752,7 @@ pub(crate) fn schema_context_menu(
 }
 
 /// React `handleTableContextMenu`'s argument tuple.
-pub(crate) struct TableMenuArgs<'a> {
+pub struct TableMenuArgs<'a> {
     /// `'table' | 'view'`.
     pub is_table: bool,
     pub name: &'a str,
@@ -763,7 +763,7 @@ pub(crate) struct TableMenuArgs<'a> {
 }
 
 /// React `handleTableContextMenu`.
-pub(crate) fn table_context_menu(
+pub fn table_context_menu(
     inputs: &NavigatorMenuInputs<'_>,
     args: TableMenuArgs<'_>,
 ) -> Vec<MenuNode<NavigatorMenuAction>> {
@@ -874,7 +874,7 @@ pub(crate) fn table_context_menu(
 }
 
 /// React `handleCategoryContextMenu`.
-pub(crate) fn category_context_menu(
+pub fn category_context_menu(
     inputs: &NavigatorMenuInputs<'_>,
     cat_key: &str,
     cat_id: &str,
@@ -934,7 +934,7 @@ pub(crate) fn category_context_menu(
 }
 
 /// React `handleObjectContextMenu` — a bare copy-name menu.
-pub(crate) fn object_context_menu(
+pub fn object_context_menu(
     inputs: &NavigatorMenuInputs<'_>,
     name: &str,
 ) -> Vec<MenuNode<NavigatorMenuAction>> {

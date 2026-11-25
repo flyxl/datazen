@@ -61,7 +61,7 @@ const DEFAULT_DIALECT: &str = "standard";
 
 /// Result of a host schema load. `Err` is React's rejected promise.
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) type LoadResult = Result<TableSchema, ()>;
+pub type LoadResult = Result<TableSchema, ()>;
 
 /// A queued/loading request.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,7 +83,7 @@ struct ErrorMarker {
 }
 
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct MetadataCacheDeps {
+pub struct MetadataCacheDeps {
     pub load_table_schema: Option<Box<dyn Fn(&str, &str, &str, Option<&str>) -> LoadResult>>,
     pub config_resolver: Option<Box<ConfigResolver>>,
     pub invalidation_bus: Option<Rc<RefCell<SchemaInvalidationBus>>>,
@@ -648,7 +648,7 @@ impl CacheInner {
 /// invalidation listener without a static global).
 #[derive(Clone)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct MetadataCache {
+pub struct MetadataCache {
     inner: Rc<RefCell<CacheInner>>,
 }
 
@@ -837,7 +837,7 @@ impl MetadataCache {
 /// The "process-wide" default cache, wired to a schema invalidation bus. The
 /// host owns the bus/cache handles instead of a process-global static.
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) fn default_metadata_cache(bus: &Rc<RefCell<SchemaInvalidationBus>>) -> MetadataCache {
+pub fn default_metadata_cache(bus: &Rc<RefCell<SchemaInvalidationBus>>) -> MetadataCache {
     MetadataCache::new(MetadataCacheDeps {
         invalidation_bus: Some(Rc::clone(bus)),
         ..Default::default()

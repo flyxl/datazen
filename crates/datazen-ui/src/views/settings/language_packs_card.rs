@@ -72,18 +72,18 @@ use crate::views::settings::settings_ui::{section_title, setting_row};
 
 /// The confirm dialog's subject (React `PendingRemoval`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PendingRemoval {
+pub struct PendingRemoval {
     /// The pack code awaiting removal.
-    pub(crate) code: String,
-    pub(crate) label: String,
+    pub code: String,
+    pub label: String,
     /// Whether the pack is the active language.
-    pub(crate) is_active: bool,
+    pub is_active: bool,
 }
 
 /// What the host executes for a confirmed removal — the ordering IS
 /// the contract (the active pack's English fallback persists FIRST).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum RemovalPlan {
+pub enum RemovalPlan {
     /// `!pendingRemoval || removing`: nothing happens.
     Refused,
     /// The active pack: persist `language: 'en'` first (the UI
@@ -97,47 +97,47 @@ pub(crate) enum RemovalPlan {
 /// The card's state (React's `useState` fields plus the store's
 /// delivered projections).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct LanguagePacksCardState {
+pub struct LanguagePacksCardState {
     /// `packs` (the store's list, host-delivered).
-    pub(crate) packs: Vec<LanguagePackSummary>,
+    pub packs: Vec<LanguagePackSummary>,
     /// `loaded` (the store's first-fetch flag).
-    pub(crate) loaded: bool,
+    pub loaded: bool,
     /// `storeError` (the store's own error — shown when the card has
     /// no fresher one).
-    pub(crate) store_error: Option<String>,
+    pub store_error: Option<String>,
     /// `installOpen`.
-    pub(crate) install_open: bool,
+    pub install_open: bool,
     /// `pendingRemoval`.
-    pub(crate) pending_removal: Option<PendingRemoval>,
+    pub pending_removal: Option<PendingRemoval>,
     /// `removing`.
-    pub(crate) removing: bool,
+    pub removing: bool,
     /// `error` (the removal flow's own error).
-    pub(crate) error: Option<String>,
+    pub error: Option<String>,
     /// `settings?.language ?? 'en'` — the host keeps it current.
-    pub(crate) active_language: String,
+    pub active_language: String,
 }
 
 impl LanguagePacksCardState {
     /// React's start: English, nothing fetched, nothing pending.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { active_language: "en".to_owned(), ..Default::default() }
     }
 
     /// The mount effect: the fetch request the host runs (settings can
     /// be opened after a pack was installed in another window — the
     /// list must never be a stale snapshot).
-    pub(crate) fn on_mount(&self) -> LanguagePackRequest {
+    pub fn on_mount(&self) -> LanguagePackRequest {
         list_language_packs_request()
     }
 
     /// The store's fetch answer.
-    pub(crate) fn on_packs(&mut self, packs: Vec<LanguagePackSummary>) {
+    pub fn on_packs(&mut self, packs: Vec<LanguagePackSummary>) {
         self.packs = packs;
         self.loaded = true;
     }
 
     /// The store's fetch error.
-    pub(crate) fn on_packs_error(&mut self, message: String) {
+    pub fn on_packs_error(&mut self, message: String) {
         self.store_error = Some(message);
         self.loaded = true;
     }
@@ -145,7 +145,7 @@ impl LanguagePacksCardState {
     /// `requestRemoval(code, label)`: the confirm dialog's subject,
     /// with the active-language answer decided now (the dialog's
     /// description reads it).
-    pub(crate) fn request_removal(&mut self, code: &str, label: &str) {
+    pub fn request_removal(&mut self, code: &str, label: &str) {
         self.error = None;
         self.pending_removal = Some(PendingRemoval {
             code: code.to_owned(),
@@ -157,7 +157,7 @@ impl LanguagePacksCardState {
     /// `handleRemove`'s begin: the gate, then the plan. The `removing`
     /// flag is armed for every accepted plan; the host reports back
     /// through `note_remove_ok` / `note_remove_error`.
-    pub(crate) fn begin_remove(&mut self) -> RemovalPlan {
+    pub fn begin_remove(&mut self) -> RemovalPlan {
         let Some(pending) = self.pending_removal.clone() else {
             return RemovalPlan::Refused;
         };
@@ -178,21 +178,21 @@ impl LanguagePacksCardState {
 
     /// The removal succeeded: the subject clears (the `removing` flag
     /// ends on both paths — React's `finally`).
-    pub(crate) fn note_remove_ok(&mut self) {
+    pub fn note_remove_ok(&mut self) {
         self.pending_removal = None;
         self.removing = false;
     }
 
     /// The removal failed: the message surfaces inline (the dialog
     /// stays open with the subject — a retry is a fresh confirm).
-    pub(crate) fn note_remove_error(&mut self, message: String) {
+    pub fn note_remove_error(&mut self, message: String) {
         self.error = Some(message);
         self.removing = false;
     }
 
     /// The dialog's cancel / onClose (gated by `removing` in React:
     /// `onClose={() => (removing ? undefined : setPendingRemoval(null))}`).
-    pub(crate) fn cancel_removal(&mut self) {
+    pub fn cancel_removal(&mut self) {
         if !self.removing {
             self.pending_removal = None;
         }
@@ -200,46 +200,46 @@ impl LanguagePacksCardState {
 
     /// The card's error display: the flow's own error first, the
     /// store's second (`error ?? storeError`).
-    pub(crate) fn error_display(&self) -> Option<&str> {
+    pub fn error_display(&self) -> Option<&str> {
         self.error.as_deref().or(self.store_error.as_deref())
     }
 
     /// The install dialog's open flag.
-    pub(crate) fn open_install(&mut self) {
+    pub fn open_install(&mut self) {
         self.install_open = true;
     }
 
     /// `onClose` of the install dialog.
-    pub(crate) fn close_install(&mut self) {
+    pub fn close_install(&mut self) {
         self.install_open = false;
     }
 }
 
 /// `LanguagePacksCard()`: the card, built over the state (plus the
 /// install dialog's own state) and the host actions.
-pub(crate) struct LanguagePacksCard<'a, S: 'static> {
+pub struct LanguagePacksCard<'a, S: 'static> {
     /// The card state.
-    pub(crate) state: &'a LanguagePacksCardState,
+    pub state: &'a LanguagePacksCardState,
     /// The install dialog's own state (T285).
-    pub(crate) install: &'a InstallLanguagePackDialogState,
+    pub install: &'a InstallLanguagePackDialogState,
     /// The install dialog's actions, forwarded.
-    pub(crate) on_install_close: Option<Rc<dyn Fn(&mut S)>>,
-    pub(crate) on_install_pick: Option<Rc<dyn Fn(&mut S)>>,
-    pub(crate) on_install_back: Option<Rc<dyn Fn(&mut S)>>,
-    pub(crate) on_install_confirm: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_install_close: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_install_pick: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_install_back: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_install_confirm: Option<Rc<dyn Fn(&mut S)>>,
     /// The install-open button.
-    pub(crate) on_open_install: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_open_install: Option<Rc<dyn Fn(&mut S)>>,
     /// One pack's remove button (`requestRemoval`).
-    pub(crate) on_request_removal: Option<Rc<dyn Fn(&mut S, String)>>,
+    pub on_request_removal: Option<Rc<dyn Fn(&mut S, String)>>,
     /// The confirm dialog's cancel.
-    pub(crate) on_cancel_removal: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_cancel_removal: Option<Rc<dyn Fn(&mut S)>>,
     /// The confirm dialog's confirm (`handleRemove`).
-    pub(crate) on_confirm_removal: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_confirm_removal: Option<Rc<dyn Fn(&mut S)>>,
 }
 
 impl<'a, S: 'static> LanguagePacksCard<'a, S> {
     /// React's component over the two states: every action unwired.
-    pub(crate) fn new(
+    pub fn new(
         state: &'a LanguagePacksCardState,
         install: &'a InstallLanguagePackDialogState,
     ) -> Self {
@@ -258,55 +258,55 @@ impl<'a, S: 'static> LanguagePacksCard<'a, S> {
     }
 
     /// The install dialog's close.
-    pub(crate) fn on_install_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_install_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_install_close = Some(Rc::new(f));
         self
     }
 
     /// The install dialog's pick step.
-    pub(crate) fn on_install_pick(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_install_pick(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_install_pick = Some(Rc::new(f));
         self
     }
 
     /// The install dialog's review-step back.
-    pub(crate) fn on_install_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_install_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_install_back = Some(Rc::new(f));
         self
     }
 
     /// The install dialog's confirm.
-    pub(crate) fn on_install_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_install_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_install_confirm = Some(Rc::new(f));
         self
     }
     /// `setInstallOpen(true)`.
-    pub(crate) fn on_open_install(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_install(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_install = Some(Rc::new(f));
         self
     }
 
     /// One pack's remove button.
-    pub(crate) fn on_request_removal(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_request_removal(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_request_removal = Some(Rc::new(f));
         self
     }
 
     /// The confirm dialog's cancel (`setPendingRemoval(null)`).
-    pub(crate) fn on_cancel_removal(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_removal(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel_removal = Some(Rc::new(f));
         self
     }
 
     /// The confirm dialog's confirm (`handleRemove`).
-    pub(crate) fn on_confirm_removal(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_removal(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_removal = Some(Rc::new(f));
         self
     }
 
     /// The card body; the two dialogs land in `layer` (the kit's
     /// overlay convention).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let i18n = UseI18n::new();
         let state = self.state;

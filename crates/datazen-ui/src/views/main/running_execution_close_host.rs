@@ -70,22 +70,22 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 /// finished is taken away — React `RunningExecutionRequest`
 /// (`stores/runningExecutionClose.ts:56-65`).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct RunningExecutionCloseRequest {
+pub struct RunningExecutionCloseRequest {
     /// The tab's panel id (React `panelId`).
     #[allow(dead_code)] // the close guard reads it when it ports (T396); carried for the ask payload's parity
-    pub(crate) panel_id: String,
+    pub panel_id: String,
     /// The tab title, so the prompt can say which tab it is asking about
     /// (React `title` — the badge next to the message).
-    pub(crate) title: String,
+    pub title: String,
     /// The pane whose SQL the prompt shows (React `paneId`).
     #[allow(dead_code)] // the close guard keys its cancels by it when it ports (T396)
-    pub(crate) pane_id: String,
+    pub pane_id: String,
     /// The pane's SQL (React `sql` — the code preview; empty means no
     /// preview, as React's `{preview && ...}` leaves it out for `''`).
-    pub(crate) sql: String,
+    pub sql: String,
     /// How many panes of this tab are still running (React `runningPanes`)
     /// — the message's singular/plural branch.
-    pub(crate) running_panes: u32,
+    pub running_panes: u32,
 }
 
 /// The code preview's line cap (React `ConfirmDialog.tsx`'s
@@ -98,7 +98,7 @@ const CODE_PREVIEW_MAX_CHARS: usize = 2000;
 /// The host's layer entry — React's `return dialog`: nothing while no ask is
 /// pending, the confirm dialog the gate opened while one is. Mounted by
 /// `main_page` next to the root modal layer, on the healthy branch only.
-pub(crate) fn running_execution_close_host(state: &AppState, dark: bool) -> Vec<El> {
+pub fn running_execution_close_host(state: &AppState, dark: bool) -> Vec<El> {
     let mut layer = Vec::new();
     if let Some(request) = &state.running_close_request {
         running_close_dialog(

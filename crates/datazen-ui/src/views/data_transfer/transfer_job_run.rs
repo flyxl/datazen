@@ -93,7 +93,7 @@ use crate::components::migration::migration_job_verdict_panel::{
 
 /// React `TransferRunPhase` (`useTransferJobRun.ts:49-57`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TransferRunPhase {
+pub enum TransferRunPhase {
     #[default]
     Idle,
     Preparing,
@@ -109,7 +109,7 @@ pub(crate) enum TransferRunPhase {
 /// React `TransferRunFailureKind` (`useTransferJobRun.ts:64-73`): how a
 /// command refusal must be phrased. Each arm is fail-closed on purpose.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TransferRunFailureKind {
+pub enum TransferRunFailureKind {
     /// Backend scope: endpoints could not prove they are the local desktop
     /// backend.
     BackendScope,
@@ -124,7 +124,7 @@ pub(crate) enum TransferRunFailureKind {
 
 /// React `TransferRunFailure` (`useTransferJobRun.ts:75-78`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferRunFailure {
+pub struct TransferRunFailure {
     pub kind: TransferRunFailureKind,
     pub message: String,
 }
@@ -167,7 +167,7 @@ fn is_stale_plan_error(message: &str) -> bool {
 
 /// React `classifyTransferRunFailure` (`useTransferJobRun.ts:134-141`):
 /// classify a refused command so the UI can phrase it correctly.
-pub(crate) fn classify_transfer_run_failure(message: &str) -> TransferRunFailure {
+pub fn classify_transfer_run_failure(message: &str) -> TransferRunFailure {
     if is_backend_scope_rejection(message) {
         return TransferRunFailure {
             kind: TransferRunFailureKind::BackendScope,
@@ -205,7 +205,7 @@ pub(crate) fn classify_transfer_run_failure(message: &str) -> TransferRunFailure
 /// React `TransferPrepareJobView` (`commands/transferJobs.ts:84-99`) — the
 /// admission receipt the prepare Job returns.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferPrepareJobViewVm {
+pub struct TransferPrepareJobViewVm {
     pub job_id: String,
     pub kind: String,
     pub state: JobState,
@@ -233,7 +233,7 @@ pub(crate) struct TransferPrepareJobViewVm {
 /// acceptance receipt the apply Job returns, progressively merged by the
 /// poll / details projections.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferApplyJobViewVm {
+pub struct TransferApplyJobViewVm {
     pub job_id: String,
     pub kind: String,
     pub state: JobState,
@@ -265,7 +265,7 @@ pub(crate) struct TransferApplyJobViewVm {
 /// React `TransferApplyJobRequest` (`commands/transferJobs.ts:74-82`) as
 /// the Vm assembles it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferApplyRequestVm {
+pub struct TransferApplyRequestVm {
     pub plan_id: String,
     pub plan_digest: String,
     pub selection_revision: i64,
@@ -278,7 +278,7 @@ pub(crate) struct TransferApplyRequestVm {
 
 /// React `TransferApplyInput` (`useTransferJobRun.ts:80-90`).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferApplyInput {
+pub struct TransferApplyInput {
     /// Empty / absent for a SQL-file run with no explicit table list.
     pub source_tables: Option<Vec<String>>,
     pub confirmed_destructive: bool,
@@ -292,7 +292,7 @@ pub(crate) struct TransferApplyInput {
 /// (`useTransferJobRun.ts:143-154`): an apply may have been accepted even
 /// though its receipt was lost (OutcomeUnknown / ServiceUnavailable /
 /// Timeout codes, or a transport-flavoured message).
-pub(crate) fn is_ambiguous_apply_submission_error(message: &str) -> bool {
+pub fn is_ambiguous_apply_submission_error(message: &str) -> bool {
     let lower = message.to_ascii_lowercase();
     // React matches /timed?\s*out|timeout|transport|connection
     // (closed|lost)|ack...|outcome unknown/i — the word boundaries are
@@ -321,7 +321,7 @@ fn is_active_job_state(state: JobState) -> bool {
 /// 205-213) plus the refs it reads inside stable callbacks (React
 /// 224-237).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct TransferJobRunVm {
+pub struct TransferJobRunVm {
     pub phase: TransferRunPhase,
     pub prepare_view: Option<TransferPrepareJobViewVm>,
     pub apply_view: Option<TransferApplyJobViewVm>,
@@ -354,7 +354,7 @@ impl TransferJobRunVm {
 
     /// The verdict, folded from the apply view by the shared engine
     /// (React 517-535). `None` only once a verdict can be stated.
-    pub(crate) fn verdict(&self) -> Option<MigrationJobVerdict> {
+    pub fn verdict(&self) -> Option<MigrationJobVerdict> {
         let apply = self.apply_view.as_ref()?;
         let input = MigrationJobVerdictInput {
             state: apply.state,
@@ -378,7 +378,7 @@ impl TransferJobRunVm {
     /// The addressable active apply Job id, or the prepare Job id before
     /// apply (React 537-543). `None` during admission (no apply id exists
     /// yet to guess) and once the apply has left its active states.
-    pub(crate) fn cancel_target_job_id(&self) -> Option<&str> {
+    pub fn cancel_target_job_id(&self) -> Option<&str> {
         if self.apply_job_id.is_some() {
             let active = self
                 .apply_view
@@ -401,7 +401,7 @@ impl TransferJobRunVm {
 
     /// True while the apply Job is queued/running — disables "apply" but
     /// not "cancel" (React 544).
-    pub(crate) fn is_in_flight(&self) -> bool {
+    pub fn is_in_flight(&self) -> bool {
         match &self.apply_view {
             Some(view) => is_migration_job_in_flight(&view.state),
             None => self.phase == TransferRunPhase::Applying,
@@ -409,7 +409,7 @@ impl TransferJobRunVm {
     }
 
     /// React `lastFailure` (React 233): the same-tick readable failure.
-    pub(crate) fn last_failure(&self) -> Option<&TransferRunFailure> {
+    pub fn last_failure(&self) -> Option<&TransferRunFailure> {
         self.failure_slot.as_ref()
     }
 
@@ -418,7 +418,7 @@ impl TransferJobRunVm {
     /// The prepare's opening bracket (React 241-246): the phase turns
     /// `preparing`, the failure clears, and the previous apply's residue
     /// (an old receipt, an old cancel intent) goes with it.
-    pub(crate) fn begin_prepare(&mut self) {
+    pub fn begin_prepare(&mut self) {
         self.phase = TransferRunPhase::Preparing;
         self.fail(None);
         self.apply_view = None;
@@ -431,7 +431,7 @@ impl TransferJobRunVm {
     /// The prepare's success (React 248-258): the admission receipt is
     /// published, the phase follows `canExecute`, and the prepare Job id
     /// becomes the cancel address before apply exists.
-    pub(crate) fn finish_prepare(&mut self, view: TransferPrepareJobViewVm) {
+    pub fn finish_prepare(&mut self, view: TransferPrepareJobViewVm) {
         self.prepare_job_id = Some(view.job_id.clone());
         self.prepare_view = Some(view);
         self.phase = if self.prepare_view.as_ref().is_some_and(|v| v.can_execute) {
@@ -443,7 +443,7 @@ impl TransferJobRunVm {
 
     /// The prepare's refusal (React 259-264): the receipt is not
     /// published, the failure is classified and readable the same tick.
-    pub(crate) fn fail_prepare(&mut self, message: &str) {
+    pub fn fail_prepare(&mut self, message: &str) {
         self.prepare_job_id = None;
         self.fail(Some(classify_transfer_run_failure(message)));
         self.phase = TransferRunPhase::Blocked;
@@ -457,7 +457,7 @@ impl TransferJobRunVm {
     /// machine has already spent (the local refusal keeps the window from
     /// offering an action that cannot succeed, and keeps `planConsumed`
     /// a first-class outcome).
-    pub(crate) fn begin_apply(&mut self) -> Result<(), TransferRunFailure> {
+    pub fn begin_apply(&mut self) -> Result<(), TransferRunFailure> {
         if self.prepare_view.is_none() {
             return Err(TransferRunFailure {
                 kind: TransferRunFailureKind::Other,
@@ -483,7 +483,7 @@ impl TransferJobRunVm {
 
     /// A local refusal lands exactly like a backend one (React 272-273,
     /// 279-283): classified, phase `blocked`, no apply submitted.
-    pub(crate) fn apply_local_refusal(&mut self, failure: TransferRunFailure) {
+    pub fn apply_local_refusal(&mut self, failure: TransferRunFailure) {
         self.fail(Some(failure));
         self.phase = TransferRunPhase::Blocked;
     }
@@ -491,7 +491,7 @@ impl TransferJobRunVm {
     /// The request the host sends (React 287-299): the plan's admission
     /// identity, the caller's selection and confirm, and the receipt key —
     /// the caller's, or the plan-scoped default (React 296-299).
-    pub(crate) fn apply_request(&self, input: &TransferApplyInput) -> TransferApplyRequestVm {
+    pub fn apply_request(&self, input: &TransferApplyInput) -> TransferApplyRequestVm {
         let prepare = self.prepare_view.as_ref().expect("begin_apply admitted a plan");
         TransferApplyRequestVm {
             plan_id: prepare.plan_id.clone(),
@@ -519,7 +519,7 @@ impl TransferJobRunVm {
     /// The Vm keeps its state (`applying`, no failure): React's catch
     /// retries without touching the failure slots until the retry itself
     /// settles.
-    pub(crate) fn begin_apply_retry(&mut self) {
+    pub fn begin_apply_retry(&mut self) {
         // No state change beyond staying on the apply path; recorded so
         // the host's contract has one entry point per hop.
     }
@@ -530,7 +530,7 @@ impl TransferJobRunVm {
     /// receipt keeps `applying`; a terminal one is downgraded to
     /// `unknown` + `pendingVerification` until the details query returns
     /// boundaries and the exact recovery disposition (React 328-338).
-    pub(crate) fn finish_apply(&mut self, mut view: TransferApplyJobViewVm) {
+    pub fn finish_apply(&mut self, mut view: TransferApplyJobViewVm) {
         self.apply_job_id = Some(view.job_id.clone());
         let active = is_active_job_state(view.state);
         if active {
@@ -553,7 +553,7 @@ impl TransferJobRunVm {
 
     /// The apply's refusal (React 309-320): classified, phase `blocked`,
     /// nothing submitted.
-    pub(crate) fn fail_apply(&mut self, message: &str) {
+    pub fn fail_apply(&mut self, message: &str) {
         self.fail(Some(classify_transfer_run_failure(message)));
         self.phase = TransferRunPhase::Blocked;
     }
@@ -564,7 +564,7 @@ impl TransferJobRunVm {
     /// lightweight Job summary merges over the live apply receipt. A
     /// terminal summary is not the durable report — the outcome stays
     /// unknown until the details query returns boundaries.
-    pub(crate) fn apply_job_view(&mut self, job_id: &str, state: JobState, effect_outcome: Option<&str>, cancel_requested: bool) {
+    pub fn apply_job_view(&mut self, job_id: &str, state: JobState, effect_outcome: Option<&str>, cancel_requested: bool) {
         let Some(view) = self.apply_view.as_mut() else {
             return;
         };
@@ -592,7 +592,7 @@ impl TransferJobRunVm {
     /// React `projectApplyJobDetails` (`useTransferJobRun.ts:178-202`):
     /// the durable terminal read model merges over the live receipt — the
     /// boundaries, the exact recovery disposition, and the error.
-    pub(crate) fn apply_terminal_details(
+    pub fn apply_terminal_details(
         &mut self,
         job_id: &str,
         state: JobState,
@@ -647,7 +647,7 @@ impl TransferJobRunVm {
     /// the lightweight summary cannot prove terminal boundaries or a
     /// recovery verdict, so the receipt degrades to
     /// `pendingVerification` / `jobDetailsUnavailable`.
-    pub(crate) fn apply_details_unavailable(&mut self, job_id: &str) {
+    pub fn apply_details_unavailable(&mut self, job_id: &str) {
         let Some(view) = self.apply_view.as_mut() else {
             return;
         };
@@ -670,7 +670,7 @@ impl TransferJobRunVm {
     ///
     /// Returns the id the host may address, or `None` for the
     /// unknown-Job disposition (React 486-489).
-    pub(crate) fn begin_cancel(&mut self) -> Option<String> {
+    pub fn begin_cancel(&mut self) -> Option<String> {
         self.cancel_requested = true;
         if let Some(apply_job_id) = self.apply_job_id.clone() {
             let active = self
@@ -705,14 +705,14 @@ impl TransferJobRunVm {
     /// The backend's answer (React 491-495): `true` only when the cancel
     /// was actually sent *and* the backend answered `true` (it knows the
     /// Job).
-    pub(crate) fn finish_cancel(&mut self, acknowledged: bool) {
+    pub fn finish_cancel(&mut self, acknowledged: bool) {
         self.cancel_acknowledged = acknowledged;
         self.cancel_unknown_job = !acknowledged;
     }
 
     /// The cancel command's own failure (React 496-500): classified, the
     /// unknown-Job disposition set.
-    pub(crate) fn fail_cancel(&mut self, message: &str) {
+    pub fn fail_cancel(&mut self, message: &str) {
         self.cancel_unknown_job = true;
         self.fail(Some(classify_transfer_run_failure(message)));
     }
@@ -722,7 +722,7 @@ impl TransferJobRunVm {
     /// React `reset` (React 503-515) — and `reprepare` (React 561-562)
     /// is the same function: return to `idle` for a fresh run; keeps
     /// nothing a recovery needs.
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.phase = TransferRunPhase::Idle;
         self.prepare_view = None;
         self.apply_view = None;
@@ -737,7 +737,7 @@ impl TransferJobRunVm {
     }
 
     /// React `reprepare` alias (React 122-123, 561-562).
-    pub(crate) fn reprepare(&mut self) {
+    pub fn reprepare(&mut self) {
         self.reset();
     }
 

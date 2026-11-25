@@ -56,14 +56,14 @@ struct BridgeEntry {
 
 /// The module-level `Map<string, WorkflowDraft>`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct WorkflowDraftBridge {
+pub struct WorkflowDraftBridge {
     drafts: HashMap<String, BridgeEntry>,
 }
 
 impl WorkflowDraftBridge {
     /// `rememberWorkflowDraft(draft)` — only a draft with an id
     /// parks.
-    pub(crate) fn remember(&mut self, draft: &WorkflowDraft) {
+    pub fn remember(&mut self, draft: &WorkflowDraft) {
         let id = draft.id.text.trim().to_owned();
         if id.is_empty() {
             return;
@@ -84,12 +84,12 @@ impl WorkflowDraftBridge {
     }
 
     /// `forgetWorkflowDraft(id)`.
-    pub(crate) fn forget(&mut self, id: &str) {
+    pub fn forget(&mut self, id: &str) {
         self.drafts.remove(id);
     }
 
     /// Whether a draft is parked under `id`.
-    pub(crate) fn has(&self, id: &str) -> bool {
+    pub fn has(&self, id: &str) -> bool {
         self.drafts.contains_key(id)
     }
 
@@ -98,7 +98,7 @@ impl WorkflowDraftBridge {
     /// `command` / `input` come back from the parked draft (the
     /// legacy callback reconstructed them away). Everything else
     /// rides through verbatim.
-    pub(crate) fn merge_command_fields(&self, workflow: &Value) -> Value {
+    pub fn merge_command_fields(&self, workflow: &Value) -> Value {
         let Some(id) = workflow.get("id").and_then(Value::as_str) else {
             return workflow.clone();
         };

@@ -99,7 +99,7 @@ fn require_columns(columns: &[ProvidedColumn]) -> Result<Vec<String>, ExportForm
 /// throws its own errors, and the kernel maps the same two limits to
 /// actionable text, which this mirror copies).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ExportFormatError {
+pub enum ExportFormatError {
     /// `formatRowsAsText` / `formatRowsAsXlsx` with no columns
     /// (`'export needs at least one column'`).
     NoColumns,
@@ -150,7 +150,7 @@ fn xlsx_error(err: XlsxError) -> ExportFormatError {
 
 /// Text result — `TextExportResult` in `exportFormat.ts`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TextExportResult {
+pub struct TextExportResult {
     pub content: String,
     pub extension: &'static str,
     pub mime_type: &'static str,
@@ -160,14 +160,14 @@ pub(crate) struct TextExportResult {
 /// workbook as base64, so the caller can decode it without touching the
 /// backend.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct BinaryExportResult {
+pub struct BinaryExportResult {
     pub data_base64: String,
     pub extension: &'static str,
     pub mime_type: &'static str,
 }
 
 /// `XLSX_MIME_TYPE` in `exportFormat.ts`.
-pub(crate) const XLSX_MIME_TYPE: &str =
+pub const XLSX_MIME_TYPE: &str =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 /// Multi-row INSERT batch size (TablePlus-style), same as Rust
@@ -505,7 +505,7 @@ fn rows_as_json_records(cols: &[String], rows: &[Vec<Value>]) -> String {
 /// positional shape over `columns`; a missing cell reads as `null`, an
 /// over-long row's extras are ignored (`formatRowsAsText` in
 /// `exportFormat.ts`).
-pub(crate) fn format_rows_as_text(
+pub fn format_rows_as_text(
     table_name: &str,
     columns: &[ProvidedColumn],
     rows: &[Vec<Value>],
@@ -658,7 +658,7 @@ fn write_xlsx_cell(
 /// backend (`formatRowsAsXlsx` in `exportFormat.ts`). React takes the
 /// table name but never uses it — the sheet is always `Sheet1` — so
 /// this mirror takes only the columns and rows it actually formats.
-pub(crate) fn format_rows_as_xlsx(
+pub fn format_rows_as_xlsx(
     columns: &[ProvidedColumn],
     rows: &[Vec<Value>],
 ) -> Result<BinaryExportResult, ExportFormatError> {

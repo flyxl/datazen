@@ -53,7 +53,7 @@ use crate::views::data_sync::mapping_view::CompareSummaryStats;
 
 /// The summary builder. `S` is the host state that owns the report and the
 /// explain-diff action.
-pub(crate) struct CompareSummary<S: 'static> {
+pub struct CompareSummary<S: 'static> {
     stats: CompareSummaryStats,
     copied: bool,
     on_copy_report: Option<Rc<dyn Fn(&mut S)>>,
@@ -62,7 +62,7 @@ pub(crate) struct CompareSummary<S: 'static> {
 }
 
 impl<S: 'static> CompareSummary<S> {
-    pub(crate) fn new(stats: CompareSummaryStats) -> Self {
+    pub fn new(stats: CompareSummaryStats) -> Self {
         Self {
             stats,
             copied: false,
@@ -73,30 +73,30 @@ impl<S: 'static> CompareSummary<S> {
     }
 
     /// The host's `copied` cell value for this frame.
-    pub(crate) fn copied(mut self, copied: bool) -> Self {
+    pub fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
     }
 
     /// `onCopyReport` — optional in React; wiring it mounts the button.
-    pub(crate) fn on_copy_report(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy_report(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_report = Some(Rc::new(f));
         self
     }
 
     /// `onExplainDiff` — optional; wiring it mounts the button.
-    pub(crate) fn on_explain_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_explain_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_explain_diff = Some(Rc::new(f));
         self
     }
 
     /// `explainLoading` — the explain button's disabled flag.
-    pub(crate) fn explain_loading(mut self, loading: bool) -> Self {
+    pub fn explain_loading(mut self, loading: bool) -> Self {
         self.explain_loading = loading;
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let stats = &self.stats;
 

@@ -37,55 +37,55 @@ use crate::views::{WorkflowListItem, WorkflowPanel, WorkflowSideTab};
 /// positions.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) struct WorkflowWorkspaceSnapshot {
-    pub(crate) panels: Vec<WorkflowPanel>,
+pub struct WorkflowWorkspaceSnapshot {
+    pub panels: Vec<WorkflowPanel>,
     /// The active panel's id (`wf-{n}` / `edit-{n}` / …), or none.
-    pub(crate) active_panel_id: Option<String>,
+    pub active_panel_id: Option<String>,
     /// The active step of the open workflow, or none.
-    pub(crate) active_step_index: Option<usize>,
+    pub active_step_index: Option<usize>,
     /// `'workflows' | 'history'`.
-    pub(crate) side_tab: WorkflowSideTab,
+    pub side_tab: WorkflowSideTab,
     /// The panel's variable inputs (`Record<string, string>`).
-    pub(crate) variables: BTreeMap<String, String>,
+    pub variables: BTreeMap<String, String>,
 }
 
 /// React `editorHiddenSql?: { connectionId: string; sql: string }`: the SQL
 /// a widget edit started from, kept so the editor round-trips it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) struct EditorHiddenSql {
-    pub(crate) connection_id: String,
-    pub(crate) sql: String,
+pub struct EditorHiddenSql {
+    pub connection_id: String,
+    pub sql: String,
 }
 
 /// React `DashboardWorkspaceSnapshot`: the dashboard mode's board, editor,
 /// history and renaming positions.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) struct DashboardWorkspaceSnapshot {
-    pub(crate) active_dashboard_id: String,
-    pub(crate) editor_open: bool,
+pub struct DashboardWorkspaceSnapshot {
+    pub active_dashboard_id: String,
+    pub editor_open: bool,
     /// The widget being edited, or none.
-    pub(crate) editing_widget: Option<WidgetDraftVm>,
+    pub editing_widget: Option<WidgetDraftVm>,
     /// Whether the editor is creating a new widget (vs. editing one).
-    pub(crate) is_new_widget: bool,
+    pub is_new_widget: bool,
     /// The hidden-SQL seed of the editor round-trip.
-    pub(crate) editor_hidden_sql: Option<EditorHiddenSql>,
+    pub editor_hidden_sql: Option<EditorHiddenSql>,
     /// The workflows the widget pickers may choose from.
-    pub(crate) user_workflows: Vec<WorkflowListItem>,
-    pub(crate) history_open: bool,
+    pub user_workflows: Vec<WorkflowListItem>,
+    pub history_open: bool,
     /// The widget the history drawer shows, or none.
-    pub(crate) history_widget: Option<WidgetDraftVm>,
+    pub history_widget: Option<WidgetDraftVm>,
     /// Whether the board rename input is showing.
-    pub(crate) renaming: bool,
+    pub renaming: bool,
     /// The rename input's draft.
-    pub(crate) name_draft: String,
+    pub name_draft: String,
 }
 
 /// React `ExtensionFilter = 'all' | 'workspace' | 'theme'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) enum ExtensionFilter {
+pub enum ExtensionFilter {
     All,
     Workspace,
     Theme,
@@ -95,47 +95,47 @@ pub(crate) enum ExtensionFilter {
 /// filter.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) struct ExtensionWorkspaceSnapshot {
-    pub(crate) search: String,
-    pub(crate) filter: ExtensionFilter,
+pub struct ExtensionWorkspaceSnapshot {
+    pub search: String,
+    pub filter: ExtensionFilter,
 }
 
 /// The store (`useWorkspacePanelStateStore`'s state): one optional snapshot
 /// per mode.
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) struct WorkspacePanelStateStore {
-    pub(crate) workflow: Option<WorkflowWorkspaceSnapshot>,
-    pub(crate) dashboard: Option<DashboardWorkspaceSnapshot>,
-    pub(crate) extension: Option<ExtensionWorkspaceSnapshot>,
+pub struct WorkspacePanelStateStore {
+    pub workflow: Option<WorkflowWorkspaceSnapshot>,
+    pub dashboard: Option<DashboardWorkspaceSnapshot>,
+    pub extension: Option<ExtensionWorkspaceSnapshot>,
 }
 
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
 impl WorkspacePanelStateStore {
     /// `saveWorkflowSnapshot(snapshot)`.
-    pub(crate) fn save_workflow_snapshot(&mut self, snapshot: WorkflowWorkspaceSnapshot) {
+    pub fn save_workflow_snapshot(&mut self, snapshot: WorkflowWorkspaceSnapshot) {
         self.workflow = Some(snapshot);
     }
 
     /// `saveDashboardSnapshot(snapshot)`.
-    pub(crate) fn save_dashboard_snapshot(&mut self, snapshot: DashboardWorkspaceSnapshot) {
+    pub fn save_dashboard_snapshot(&mut self, snapshot: DashboardWorkspaceSnapshot) {
         self.dashboard = Some(snapshot);
     }
 
     /// `saveExtensionSnapshot(snapshot)`.
-    pub(crate) fn save_extension_snapshot(&mut self, snapshot: ExtensionWorkspaceSnapshot) {
+    pub fn save_extension_snapshot(&mut self, snapshot: ExtensionWorkspaceSnapshot) {
         self.extension = Some(snapshot);
     }
 
     /// `clearDashboardSnapshot()`: drops the dashboard snapshot so an
     /// explicit open request shows the requested board. The other modes
     /// keep theirs.
-    pub(crate) fn clear_dashboard_snapshot(&mut self) {
+    pub fn clear_dashboard_snapshot(&mut self) {
         self.dashboard = None;
     }
 
     /// `clearWorkspacePanelSnapshots()`: drops all three.
-    pub(crate) fn clear_workspace_panel_snapshots(&mut self) {
+    pub fn clear_workspace_panel_snapshots(&mut self) {
         self.workflow = None;
         self.dashboard = None;
         self.extension = None;

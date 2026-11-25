@@ -188,15 +188,15 @@ const SAMPLE_LIMIT: usize = 1000;
 /// projection carries none, so the page's variables row renders empty
 /// exactly like React's own empty-variables case.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WorkflowVariableItem {
-    pub(crate) name: String,
+pub struct WorkflowVariableItem {
+    pub name: String,
     /// `'string' | 'number' | 'connection'`.
-    pub(crate) var_type: String,
-    pub(crate) description: Option<String>,
-    pub(crate) required: bool,
+    pub var_type: String,
+    pub description: Option<String>,
+    pub required: bool,
     /// The contract's `default` — the value the select flow seeds the input
     /// with (React's `v.default != null ? String(v.default) : ''`).
-    pub(crate) default: Option<String>,
+    pub default: Option<String>,
 }
 
 /// Mirror of the contract's `WorkflowListItem` (`id`, `name`, `description`,
@@ -208,17 +208,17 @@ pub(crate) struct WorkflowVariableItem {
 /// workspace-tabs tests already pin. The typed list use case replaces this
 /// projection when the host formalises it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WorkflowListItem {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) description: Option<String>,
-    pub(crate) variables: Vec<WorkflowVariableItem>,
-    pub(crate) scheduled: bool,
+pub struct WorkflowListItem {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub variables: Vec<WorkflowVariableItem>,
+    pub scheduled: bool,
 }
 
 impl WorkflowListItem {
     /// The honest projection of the host's lite workflow shape.
-    pub(crate) fn from_workflow(flow: &datazen_ui_api::Workflow) -> Self {
+    pub fn from_workflow(flow: &datazen_ui_api::Workflow) -> Self {
         Self {
             id: flow.name.clone(),
             name: flow.name.clone(),
@@ -231,14 +231,14 @@ impl WorkflowListItem {
 
 /// The run panel (React `WorkflowRunPanel`).
 #[derive(Clone, Debug)]
-pub(crate) struct WorkflowRunPanel {
-    pub(crate) id: String,
-    pub(crate) workflow_id: String,
-    pub(crate) workflow_name: String,
+pub struct WorkflowRunPanel {
+    pub id: String,
+    pub workflow_id: String,
+    pub workflow_name: String,
     /// `new Date().toISOString()` at open time — the tab label's clock read.
-    pub(crate) started_at: String,
-    pub(crate) result: Option<WorkflowExecutionResult>,
-    pub(crate) is_executing: bool,
+    pub started_at: String,
+    pub result: Option<WorkflowExecutionResult>,
+    pub is_executing: bool,
 }
 
 /// The edit panel (React `EditPanel`). The draft, the yaml text and the editor
@@ -248,25 +248,25 @@ pub(crate) struct WorkflowRunPanel {
 /// (React co-keeps both; the single-draft slot is the documented boundary,
 /// and React's own reuse-by-editingId rule covers the common flows).
 #[derive(Clone, Debug)]
-pub(crate) struct WorkflowEditPanel {
-    pub(crate) id: String,
+pub struct WorkflowEditPanel {
+    pub id: String,
     /// `None` is React's create flow (an unsaved draft).
-    pub(crate) editing_id: Option<String>,
+    pub editing_id: Option<String>,
 }
 
 /// The history detail panel (React `HistoryDetailPanel`).
 #[derive(Clone, Debug)]
-pub(crate) struct WorkflowHistoryPanel {
-    pub(crate) id: String,
-    pub(crate) history_id: String,
-    pub(crate) workflow_name: String,
-    pub(crate) created_at: String,
-    pub(crate) result: WorkflowExecutionResult,
+pub struct WorkflowHistoryPanel {
+    pub id: String,
+    pub history_id: String,
+    pub workflow_name: String,
+    pub created_at: String,
+    pub result: WorkflowExecutionResult,
 }
 
 /// One open panel (React `WorkflowPanel`'s tagged union).
 #[derive(Clone, Debug)]
-pub(crate) enum WorkflowPanel {
+pub enum WorkflowPanel {
     Run(WorkflowRunPanel),
     Edit(WorkflowEditPanel),
     History(WorkflowHistoryPanel),
@@ -276,7 +276,7 @@ pub(crate) enum WorkflowPanel {
 impl WorkflowPanel {
     /// The panel's tab id (React's `panel.id`, `wf-{n}` / `edit-{n}` /
     /// `hist-{n}` / `ai-{n}`).
-    pub(crate) fn id(&self) -> &str {
+    pub fn id(&self) -> &str {
         match self {
             Self::Run(panel) => &panel.id,
             Self::Edit(panel) => &panel.id,
@@ -289,35 +289,35 @@ impl WorkflowPanel {
     /// edit and ai-create panels carry none. The T223 port
     /// (`workflow_panel_guards.rs`) owns the definition; this method is the
     /// enum-side delegation.
-    pub(crate) fn execution_result(&self) -> Option<&WorkflowExecutionResult> {
+    pub fn execution_result(&self) -> Option<&WorkflowExecutionResult> {
         super::workflow_panel_guards::panel_execution_result(self)
     }
 }
 
 /// React's `sideTab: 'workflows' | 'history'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WorkflowSideTab {
+pub enum WorkflowSideTab {
     Workflows,
     History,
 }
 
 /// React's `editorMode: 'visual' | 'yaml'`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WorkflowEditorMode {
+pub enum WorkflowEditorMode {
     Visual,
     Yaml,
 }
 
 /// React's `stepResultOrder: 'asc' | 'desc'` (the settings slot's `?? 'desc'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WorkflowStepOrder {
+pub enum WorkflowStepOrder {
     Asc,
     Desc,
 }
 
 impl WorkflowStepOrder {
     /// The label the toggle shows (React's `stepOrder.desc` / `stepOrder.asc`).
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Asc => t("workflows.stepOrder.asc"),
             Self::Desc => t("workflows.stepOrder.desc"),
@@ -328,7 +328,7 @@ impl WorkflowStepOrder {
 /// The confirm dialog's ask kinds — the two `useConfirmDialog` asks the page
 /// makes (delete a workflow, clear the history).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum WorkflowConfirmKind {
+pub enum WorkflowConfirmKind {
     DeleteWorkflow(String),
     ClearHistory,
 }
@@ -336,10 +336,10 @@ pub(crate) enum WorkflowConfirmKind {
 /// The pending ask — React's options object at ask time (title, message, the
 /// warning kind), resolved by `answer_workflow_confirm`.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WorkflowConfirmRequest {
-    pub(crate) kind: WorkflowConfirmKind,
-    pub(crate) title: String,
-    pub(crate) message: String,
+pub struct WorkflowConfirmRequest {
+    pub kind: WorkflowConfirmKind,
+    pub title: String,
+    pub message: String,
 }
 
 /// The list row's secondary press — the native context-menu seam's trigger
@@ -347,17 +347,17 @@ pub(crate) struct WorkflowConfirmRequest {
 /// press named and the window point it happened at, recorded so the builder
 /// can replay the ask when it lands.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WorkflowContextMenuRequest {
-    pub(crate) workflow_id: String,
+pub struct WorkflowContextMenuRequest {
+    pub workflow_id: String,
     /// The window point (`e.clientX`/`e.clientY` in React's ask).
-    pub(crate) point: (f32, f32),
+    pub point: (f32, f32),
 }
 
 // ── pure helpers (React's module scope) ─────────────────────────────────────
 
 /// React's `firstShownIndex`: the step the result tab opens on — the last for
 /// `desc`, the first for `asc`.
-pub(crate) fn first_shown_index(count: usize, order: WorkflowStepOrder) -> Option<usize> {
+pub fn first_shown_index(count: usize, order: WorkflowStepOrder) -> Option<usize> {
     if count == 0 {
         return None;
     }
@@ -370,7 +370,7 @@ pub(crate) fn first_shown_index(count: usize, order: WorkflowStepOrder) -> Optio
 /// React's `stepNeedsDatabase` — true when any query/command step's effective
 /// database (its own, or the inherited workflow default) is still missing for
 /// a multi-db connection. Drives the shared Save button's disabled rule.
-pub(crate) fn step_needs_database(
+pub fn step_needs_database(
     draft: &WorkflowDraft,
     connections: &[WorkflowConnectionOption],
 ) -> bool {
@@ -397,7 +397,7 @@ pub(crate) fn step_needs_database(
 /// build backs it with), and the run/history clocks. The T223 port
 /// (`workflow_panel_guards.rs`) owns the ladder; this caller builds the
 /// labels bag from `t()` and passes the app-level draft's name.
-pub(crate) fn panel_tab_label(state: &AppState, panel: &WorkflowPanel) -> String {
+pub fn panel_tab_label(state: &AppState, panel: &WorkflowPanel) -> String {
     let labels = super::workflow_panel_guards::PanelTabLabels {
         ai_create: t("workflows.aiCreate.title").to_owned(),
         edit: t("workflows.edit").to_owned(),
@@ -417,7 +417,7 @@ pub(crate) fn panel_tab_label(state: &AppState, panel: &WorkflowPanel) -> String
 /// `WorkflowDefinition` the host's full seam (a cross-segment adapter task)
 /// will hand this page; the round trip ([`workflow_draft_to_steps`])
 /// preserves the lite projection.
-pub(crate) fn workflow_definition_to_draft(flow: &datazen_ui_api::Workflow) -> WorkflowDraft {
+pub fn workflow_definition_to_draft(flow: &datazen_ui_api::Workflow) -> WorkflowDraft {
     let mut draft = WorkflowDraft::empty();
     draft.id = TextEdit::new(flow.name.clone());
     draft.name = TextEdit::new(flow.name.clone());
@@ -437,7 +437,7 @@ pub(crate) fn workflow_definition_to_draft(flow: &datazen_ui_api::Workflow) -> W
 /// React's `workflowDraftToDefinition` (T225) — the lean back-conversion the
 /// save path takes: the draft's name and one text per step (the SQL it rides,
 /// or the step id when the SQL is empty).
-pub(crate) fn workflow_draft_to_steps(draft: &WorkflowDraft) -> Vec<String> {
+pub fn workflow_draft_to_steps(draft: &WorkflowDraft) -> Vec<String> {
     draft
         .steps
         .iter()
@@ -455,7 +455,7 @@ pub(crate) fn workflow_draft_to_steps(draft: &WorkflowDraft) -> Vec<String> {
 /// serializes — `name: X` then a `steps:` list. The full
 /// `parseWorkflowYaml`/`yamlObjectToDraft` pair is T646's; this reads what
 /// this build can write. `None` (no name, or no steps) is the invalid shape.
-pub(crate) fn parse_lite_workflow_yaml(document: &str) -> Option<(String, Vec<String>)> {
+pub fn parse_lite_workflow_yaml(document: &str) -> Option<(String, Vec<String>)> {
     let mut name: Option<String> = None;
     let mut steps = Vec::new();
     for line in document.lines() {
@@ -634,7 +634,7 @@ fn chartability_preview(result: &ChartStatementResult) -> crate::views::workflow
 /// variables + execute row, the run status and steps bars, the active panel's
 /// content) and the dialogs the root modal layer mounts. The confirm dialog
 /// and the add-to-dashboard pending dialog live in `views/modals.rs`.
-pub(crate) fn workflow_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn workflow_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let _ = theme; // the kit tokens carry the page's paint (the wapps ruling)
     let k = kit(dark);
     let mut layer = Vec::new();

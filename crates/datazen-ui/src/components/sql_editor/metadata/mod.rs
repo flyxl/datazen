@@ -18,8 +18,8 @@
 //!
 //! Pure logic: no Rune tree, no `oklch`, no i18n, no IPC.
 
-pub(crate) mod find_relation;
-pub(crate) mod metadata_cache;
-pub(crate) mod types;
+pub mod find_relation;
+pub mod metadata_cache;
+pub mod types;
 
-pub(crate) use find_relation::{extract_columns_from_schema, find_relation_metadata};
+pub use find_relation::{extract_columns_from_schema, find_relation_metadata};

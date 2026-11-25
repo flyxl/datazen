@@ -73,7 +73,7 @@ use crate::views::wapp_icon::{WappIcon, WappIconImages};
 
 /// React's fixed rail width when the host passes no `width` prop
 /// (`w-[180px]`).
-pub(crate) const DEFAULT_WIDTH_PT: f32 = 180.0;
+pub const DEFAULT_WIDTH_PT: f32 = 180.0;
 
 /// React's `WorkspacePageEntry` (`windows/workspace/workspacePages.ts`): the
 /// flattened enabled-wapp × contributed-page row the navigator lists. The
@@ -84,36 +84,36 @@ pub(crate) const DEFAULT_WIDTH_PT: f32 = 180.0;
 /// `author` ride the entry for the future tab payload — this rail renders
 /// neither.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WorkspacePageEntry {
+pub struct WorkspacePageEntry {
     /// `${wappId}:${pageId}` — the workspace tab key (React's
     /// `workspaceTabKey`; the T067 `WorkspaceTabVm::key` form).
-    pub(crate) key: String,
-    pub(crate) wapp_id: String,
-    pub(crate) page_id: String,
+    pub key: String,
+    pub wapp_id: String,
+    pub page_id: String,
     /// `page.title || wapp.name` — the entry's display title.
-    pub(crate) title: String,
+    pub title: String,
     /// The page contribution's optional icon path (the item's `WappIcon`).
-    pub(crate) icon: Option<String>,
+    pub icon: Option<String>,
     /// The wapp's version (the future tab's `v{version}` chip).
-    pub(crate) version: String,
+    pub version: String,
     /// The wapp's author (carried, not rendered here).
-    pub(crate) author: Option<String>,
+    pub author: Option<String>,
     /// The wapp's description — the item's second line and tooltip body.
-    pub(crate) description: Option<String>,
+    pub description: Option<String>,
 }
 
 /// The empty state's jump-to-extensions slot — React's `onOpenExtensions`
 /// prop; without it the button does not render.
-pub(crate) type OpenExtensionsSlot<S> = Rc<dyn Fn(&mut S)>;
+pub type OpenExtensionsSlot<S> = Rc<dyn Fn(&mut S)>;
 
 /// The per-item open slot — React's item press
 /// `openWappPage(page.wappId, page.pageId)`, with the wapp and page ids.
-pub(crate) type OpenWappPageSlot<S> = Rc<dyn Fn(&mut S, &str, &str)>;
+pub type OpenWappPageSlot<S> = Rc<dyn Fn(&mut S, &str, &str)>;
 
 /// The `WorkspaceNavigator` React props plus the Rune seams: the two store
 /// projections (`pages`, `active_key`), the `width` prop, the two host
 /// press slots and the T017 picture wire.
-pub(crate) struct WorkspaceNavigator<'a, S: 'static> {
+pub struct WorkspaceNavigator<'a, S: 'static> {
     pages: &'a [WorkspacePageEntry],
     active_key: Option<&'a str>,
     width: Option<f32>,
@@ -126,7 +126,7 @@ impl<'a, S: 'static> WorkspaceNavigator<'a, S> {
     /// React `WorkspaceNavigatorProps` (`onOpenExtensions?`, `width?`) over
     /// the two store projections: the derived page list and the active tab
     /// key (`null` when no wapp tab is open).
-    pub(crate) fn new(pages: &'a [WorkspacePageEntry], active_key: Option<&'a str>) -> Self {
+    pub fn new(pages: &'a [WorkspacePageEntry], active_key: Option<&'a str>) -> Self {
         Self {
             pages,
             active_key,
@@ -139,13 +139,13 @@ impl<'a, S: 'static> WorkspaceNavigator<'a, S> {
 
     /// The `width` prop (pixels) for the resizable sidebar; without it the
     /// rail keeps its fixed `w-[180px]`.
-    pub(crate) fn width(mut self, width: f32) -> Self {
+    pub fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
         self
     }
 
     /// The `onOpenExtensions` prop — the empty-state button's host slot.
-    pub(crate) fn on_open_extensions(mut self, slot: OpenExtensionsSlot<S>) -> Self {
+    pub fn on_open_extensions(mut self, slot: OpenExtensionsSlot<S>) -> Self {
         self.on_open_extensions = Some(slot);
         self
     }
@@ -153,19 +153,19 @@ impl<'a, S: 'static> WorkspaceNavigator<'a, S> {
     /// The per-item host slot the press routes through (React's
     /// `openWappPage`); without it the items render but their presses
     /// no-op — the not-yet-wired host's case.
-    pub(crate) fn on_open_page(mut self, slot: OpenWappPageSlot<S>) -> Self {
+    pub fn on_open_page(mut self, slot: OpenWappPageSlot<S>) -> Self {
         self.on_open_page = Some(slot);
         self
     }
 
     /// The items' icon picture wire (the T017 port's `WappIconImages`).
-    pub(crate) fn images(mut self, images: WappIconImages) -> Self {
+    pub fn images(mut self, images: WappIconImages) -> Self {
         self.images = Some(images);
         self
     }
 
     /// Build the rail at the given theme.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         col()
             .key("workspace-navigator")

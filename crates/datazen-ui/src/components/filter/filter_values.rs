@@ -26,7 +26,7 @@ use super::filter_condition_chip::FilterValue;
 use super::filter_operators::split_tokens;
 
 /// The value of a set operator (`in` / `notIn`) as a list of strings.
-pub(crate) fn to_tokens(value: &FilterValue) -> Vec<String> {
+pub fn to_tokens(value: &FilterValue) -> Vec<String> {
     match value {
         FilterValue::Tokens(tokens) => tokens.clone(),
         // React treats an array as the list itself, whatever produced it.
@@ -37,7 +37,7 @@ pub(crate) fn to_tokens(value: &FilterValue) -> Vec<String> {
 }
 
 /// The value of a range operator (`between` / `notBetween`) as its two bounds.
-pub(crate) fn to_pair(value: &FilterValue) -> (String, String) {
+pub fn to_pair(value: &FilterValue) -> (String, String) {
     match value {
         FilterValue::Pair(lower, upper) => (lower.clone(), upper.clone()),
         FilterValue::Tokens(tokens) => (

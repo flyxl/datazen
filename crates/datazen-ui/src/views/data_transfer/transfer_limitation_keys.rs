@@ -9,7 +9,7 @@
 
 /// `TRANSFER_LIMITATION_KEYS`: the five sentences the transfer window
 /// shows about what this version cannot do.
-pub(crate) const TRANSFER_LIMITATION_KEYS: [&str; 5] = [
+pub const TRANSFER_LIMITATION_KEYS: [&str; 5] = [
     "transfer.limitations.noViews",
     "transfer.limitations.noFkIndexes",
     "transfer.limitations.crossDialect",

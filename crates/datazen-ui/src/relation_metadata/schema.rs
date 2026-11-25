@@ -13,7 +13,7 @@ use super::identity::{
 /// Immutable metadata entry for one loaded relation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct EditorRelationMetadata {
+pub struct EditorRelationMetadata {
     pub key: EditorRelationKey,
     pub identity: QualifiedRelationId,
     pub kind: EditorRelationKind,
@@ -28,7 +28,7 @@ pub(crate) struct EditorRelationMetadata {
 /// Immutable snapshot read synchronously by completion / hover / inlay.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct EditorMetadataSnapshot {
+pub struct EditorMetadataSnapshot {
     pub db_session_id: String,
     /// Tab-bound database the relations were resolved against.
     pub database: String,
@@ -36,7 +36,7 @@ pub(crate) struct EditorMetadataSnapshot {
     pub schema: Option<String>,
     /// Monotonic generation counter; bumps on any relations/context change.
     pub epoch: u64,
-    pub(crate) relations: std::collections::BTreeMap<EditorRelationKey, EditorRelationMetadata>,
+    pub relations: std::collections::BTreeMap<EditorRelationKey, EditorRelationMetadata>,
 }
 
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
@@ -54,7 +54,7 @@ impl EditorMetadataSnapshot {
 /// Context needed to resolve/normalize a relation for a session.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct EditorMetadataContext {
+pub struct EditorMetadataContext {
     /// Tab/panel-bound database — every relation lookup runs against it.
     pub database: String,
     pub schema: Option<String>,
@@ -65,7 +65,7 @@ pub(crate) struct EditorMetadataContext {
 /// A queued request from the semantic model.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct EditorRelationRequest {
+pub struct EditorRelationRequest {
     pub identity: QualifiedRelationId,
     /// `table`/`view` load; `cte`/`subquery` are skipped. `None` defaults to table.
     pub kind: Option<EditorRelationSourceKind>,
@@ -83,7 +83,7 @@ impl EditorRelationRequest {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct ColumnSchema {
+pub struct ColumnSchema {
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
@@ -95,7 +95,7 @@ pub(crate) struct ColumnSchema {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct IndexInfo {
+pub struct IndexInfo {
     pub name: String,
     pub columns: Vec<String>,
     pub is_unique: bool,
@@ -105,7 +105,7 @@ pub(crate) struct IndexInfo {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) enum Deferrability {
+pub enum Deferrability {
     Unknown,
     NotDeferrable,
     DeferrableInitiallyImmediate,
@@ -114,7 +114,7 @@ pub(crate) enum Deferrability {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct ForeignKeyInfo {
+pub struct ForeignKeyInfo {
     pub name: String,
     pub columns: Vec<String>,
     pub referenced_table: String,
@@ -129,7 +129,7 @@ pub(crate) struct ForeignKeyInfo {
 /// optional field.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) struct TableSchema {
+pub struct TableSchema {
     pub table_name: String,
     pub columns: Vec<ColumnSchema>,
     pub primary_keys: Vec<String>,
@@ -140,7 +140,7 @@ pub(crate) struct TableSchema {
 
 /// Build immutable metadata from a fetched schema.
 #[allow(dead_code)] // T032 reusable API: remove once a SQL editor / VQB consumer lands.
-pub(crate) fn schema_to_metadata(
+pub fn schema_to_metadata(
     key: EditorRelationKey,
     identity: &QualifiedRelationId,
     kind: EditorRelationKind,

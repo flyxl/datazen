@@ -14,7 +14,7 @@ use super::ServerStatusVm;
 
 /// React `detailRows`: ordered/labeled key/value pairs from the status record.
 #[allow(dead_code)] // pure projection; consumed by the details table and tests.
-pub(crate) fn detail_rows(vm: &ServerStatusVm) -> Vec<(String, String)> {
+pub fn detail_rows(vm: &ServerStatusVm) -> Vec<(String, String)> {
     let status = match &vm.status {
         Some(status) => status,
         None => return Vec::new(),
@@ -30,7 +30,7 @@ pub(crate) fn detail_rows(vm: &ServerStatusVm) -> Vec<(String, String)> {
 
 /// Build the Variables tab: the table when variables exist, else the empty note.
 #[allow(dead_code)] // view part; remove when the connection host wires the panel.
-pub(crate) fn variables(vm: &ServerStatusVm, dark: bool) -> El {
+pub fn variables(vm: &ServerStatusVm, dark: bool) -> El {
     let k = kit(dark);
     if vm.variables.is_empty() {
         return col()
@@ -77,7 +77,7 @@ pub(crate) fn variables(vm: &ServerStatusVm, dark: bool) -> El {
 
 /// Build the Details tab: one row per visible status field.
 #[allow(dead_code)] // view part; remove when the connection host wires the panel.
-pub(crate) fn details(vm: &ServerStatusVm, dark: bool) -> El {
+pub fn details(vm: &ServerStatusVm, dark: bool) -> El {
     let k = kit(dark);
     let mut table = col()
         .key("server-status-details-table")

@@ -34,19 +34,19 @@ use crate::views::schema_diff::schema_diff_wizard_progress::SchemaDiffWizardStep
 
 /// `SchemaDiffWindowNavigation`'s props (the React prop set verbatim;
 /// the callbacks are the host's).
-pub(crate) struct SchemaDiffWindowNavigation<S: 'static> {
-    pub(crate) step_index: usize,
-    pub(crate) loading: bool,
-    pub(crate) step: SchemaDiffWizardStep,
-    pub(crate) deploy_allowed: bool,
-    pub(crate) can_next: bool,
-    pub(crate) on_back: Option<Rc<dyn Fn(&mut S)>>,
-    pub(crate) on_deploy: Option<Rc<dyn Fn(&mut S)>>,
-    pub(crate) on_next: Option<Rc<dyn Fn(&mut S)>>,
+pub struct SchemaDiffWindowNavigation<S: 'static> {
+    pub step_index: usize,
+    pub loading: bool,
+    pub step: SchemaDiffWizardStep,
+    pub deploy_allowed: bool,
+    pub can_next: bool,
+    pub on_back: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_deploy: Option<Rc<dyn Fn(&mut S)>>,
+    pub on_next: Option<Rc<dyn Fn(&mut S)>>,
 }
 
 /// `SchemaDiffWindowNavigation({...})`.
-pub(crate) fn schema_diff_window_navigation<S: 'static>(
+pub fn schema_diff_window_navigation<S: 'static>(
     k: &Kit,
     dark: bool,
     props: SchemaDiffWindowNavigation<S>,

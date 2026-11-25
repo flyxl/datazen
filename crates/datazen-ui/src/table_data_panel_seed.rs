@@ -52,7 +52,7 @@ use crate::table_data_filter_utils::clone_filters;
 /// React `PanelSeed`: the first-frame conditions a foreign-key jump
 /// opens the tab with.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct PanelSeed {
+pub struct PanelSeed {
     /// The conditions the first fetch has to carry.
     pub filters: Vec<FilterCondition>,
     /// How the conditions combine; `and` is the default.
@@ -70,7 +70,7 @@ pub(crate) struct PanelSeed {
 /// Creates the state the store writes; it never bumps
 /// `requestRevision` and never reloads (the state itself carries no
 /// load — the panel's own first load is the one fetch).
-pub(crate) fn seed_panel(context: TableChangeContext, seed: &PanelSeed) -> TableState {
+pub fn seed_panel(context: TableChangeContext, seed: &PanelSeed) -> TableState {
     // React 52: the filters clone once for the live list…
     let filters = clone_filters(&seed.filters);
     // …and once again for the drafts (`cloneFilters(filters)`, React

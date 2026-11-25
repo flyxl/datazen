@@ -20,35 +20,35 @@ use std::collections::BTreeMap;
 use crate::i18n::t;
 use crate::views::table_clipboard_status::{PasteProblem, PasteSummary};
 
-pub(crate) mod state;
+pub mod state;
 
 // ── Limits (React `gridClipboard.ts` / `useGridClipboard.ts`) ────────────────
 
 /// React `GRID_PASTE_MAX_BYTES` — 10 MiB of source text.
 #[allow(dead_code)] // limit mirror; consumed by the parser and tests.
-pub(crate) const GRID_PASTE_MAX_BYTES: usize = 10 * 1024 * 1024;
+pub const GRID_PASTE_MAX_BYTES: usize = 10 * 1024 * 1024;
 /// React `GRID_PASTE_MAX_CELLS`.
 #[allow(dead_code)] // limit mirror; consumed by the parser and tests.
-pub(crate) const GRID_PASTE_MAX_CELLS: usize = 100_000;
+pub const GRID_PASTE_MAX_CELLS: usize = 100_000;
 /// React `GRID_PASTE_CONFIRM_CELLS` — above this a paste asks first.
 #[allow(dead_code)] // limit mirror; consumed by the gate and tests.
-pub(crate) const GRID_PASTE_CONFIRM_CELLS: usize = 2_000;
+pub const GRID_PASTE_CONFIRM_CELLS: usize = 2_000;
 /// React `GRID_PASTE_CHUNK_CELLS` — cells per staging patch.
 #[allow(dead_code)] // limit mirror; consumed by the gate and tests.
-pub(crate) const GRID_PASTE_CHUNK_CELLS: usize = 5_000;
+pub const GRID_PASTE_CHUNK_CELLS: usize = 5_000;
 /// React `COPY_FEEDBACK_MS` — the grid's own "copied" window.
 #[allow(dead_code)] // limit mirror; consumed by the feedback state.
-pub(crate) const COPY_FEEDBACK_MS: f64 = 1_200.0;
+pub const COPY_FEEDBACK_MS: f64 = 1_200.0;
 /// React `MAX_REPORTED_PROBLEMS` — a big block must not flood the status line.
 #[allow(dead_code)] // limit mirror; consumed by report_problem.
-pub(crate) const MAX_REPORTED_PROBLEMS: usize = 100;
+pub const MAX_REPORTED_PROBLEMS: usize = 100;
 
 // ── Value / target mirrors ─────────────────────────────────────────────────
 
 /// One cell value, the Rune spelling of React's `unknown` cell.
 #[allow(dead_code)] // VM mirror; supplied by the host row feed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ClipValue {
+pub enum ClipValue {
     Null,
     Text(String),
     Number(String),
@@ -72,7 +72,7 @@ impl ClipValue {
 /// The formats React's one serializer speaks.
 #[allow(dead_code)] // VM mirror; consumed by the serializer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ClipboardFormat {
+pub enum ClipboardFormat {
     Tsv,
     Csv,
     Json,
@@ -84,31 +84,31 @@ pub(crate) enum ClipboardFormat {
 /// A target column's writable metadata (React `ColumnSchema`'s copy-relevant half).
 #[allow(dead_code)] // VM mirror; supplied by the host result feed.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ClipboardColumn {
-    pub(crate) name: String,
-    pub(crate) data_type: String,
-    pub(crate) is_primary_key: bool,
-    pub(crate) is_auto_increment: bool,
+pub struct ClipboardColumn {
+    pub name: String,
+    pub data_type: String,
+    pub is_primary_key: bool,
+    pub is_auto_increment: bool,
 }
 
 /// One row record, keyed by column name (React `Record<string, unknown>`).
 #[allow(dead_code)] // VM mirror; supplied by the host row feed.
-pub(crate) type ClipboardRow = BTreeMap<String, ClipValue>;
+pub type ClipboardRow = BTreeMap<String, ClipValue>;
 
 /// A normalized rectangular selection (React's `CellRange`).
 #[allow(dead_code)] // VM mirror; supplied by the grid selection slice.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CellRange {
-    pub(crate) top_row: usize,
-    pub(crate) bottom_row: usize,
-    pub(crate) left_column: String,
-    pub(crate) right_column: String,
+pub struct CellRange {
+    pub top_row: usize,
+    pub bottom_row: usize,
+    pub left_column: String,
+    pub right_column: String,
 }
 
 /// React `GridCopyTarget`.
 #[allow(dead_code)] // decision mirror; consumed by the host and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum CopyTarget {
+pub enum CopyTarget {
     Cell {
         top_row: usize,
         bottom_row: usize,
@@ -123,26 +123,26 @@ pub(crate) enum CopyTarget {
 /// Matrix plus the column names it spans, before serialization.
 #[allow(dead_code)] // decision mirror; consumed by the host and tests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CopyMatrix {
-    pub(crate) matrix: Vec<Vec<ClipValue>>,
-    pub(crate) column_names: Vec<String>,
+pub struct CopyMatrix {
+    pub matrix: Vec<Vec<ClipValue>>,
+    pub column_names: Vec<String>,
 }
 
 /// A cell coordinate in the selection model (column **name**, not index).
 #[allow(dead_code)] // VM mirror; supplied by the grid selection slice.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CellCoord {
-    pub(crate) row_index: usize,
-    pub(crate) column_name: String,
+pub struct CellCoord {
+    pub row_index: usize,
+    pub column_name: String,
 }
 
 /// A recorded DataZen row copy (React `RowCopyPayload`).
 #[allow(dead_code)] // VM mirror; recorded by a row copy, read by paste-rows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RowCopy {
-    pub(crate) table_key: String,
-    pub(crate) column_names: Vec<String>,
-    pub(crate) rows: Vec<Vec<ClipValue>>,
+pub struct RowCopy {
+    pub table_key: String,
+    pub column_names: Vec<String>,
+    pub rows: Vec<Vec<ClipValue>>,
 }
 
 // ── Clipboard text parsing ─────────────────────────────────────────────────
@@ -151,7 +151,7 @@ pub(crate) struct RowCopy {
 /// problem text; the success half carries the matrix and its quoting bits).
 #[allow(dead_code)] // deps mirror; consumed by the paste gate and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ParseResult {
+pub enum ParseResult {
     Empty { byte_length: usize },
     TooLarge { cells: usize, byte_length: usize },
     Ragged { row: usize, expected: usize, actual: usize },
@@ -210,7 +210,7 @@ fn sniff_delimiter(text: &str) -> u8 {
 
 /// React `scanBlock` + `parseClipboardMatrix` in one total function.
 #[allow(dead_code)] // pure helper; consumed by the paste gate and tests.
-pub(crate) fn parse_clipboard_text(text: &str) -> ParseResult {
+pub fn parse_clipboard_text(text: &str) -> ParseResult {
     let byte_length = utf8_byte_length(text);
     let has_delimiter = text.chars().any(|c| matches!(c, '\t' | ',' | ';' | '"'));
     if !has_delimiter && text.trim().is_empty() {
@@ -354,7 +354,7 @@ fn json_string(text: &str) -> String {
 
 /// React `serializeCells` — the one TSV/CSV/JSON/plain/HTML/Markdown kernel.
 #[allow(dead_code)] // pure helper; consumed by the copy intents and tests.
-pub(crate) fn serialize_cells(
+pub fn serialize_cells(
     rows: &[Vec<ClipValue>],
     format: ClipboardFormat,
     column_names: &[String],
@@ -482,7 +482,7 @@ pub(crate) fn serialize_cells(
 /// React `buildSelectionMatrix`: coordinates in row-major order → a matrix,
 /// reading each value from the row record by column **name**.
 #[allow(dead_code)] // pure helper; consumed by copy and tests.
-pub(crate) fn build_selection_matrix(rows: &[ClipboardRow], coords: &[CellCoord]) -> Vec<Vec<ClipValue>> {
+pub fn build_selection_matrix(rows: &[ClipboardRow], coords: &[CellCoord]) -> Vec<Vec<ClipValue>> {
     let mut out: Vec<Vec<ClipValue>> = Vec::new();
     let mut current_row = None;
     for coord in coords {
@@ -505,7 +505,7 @@ pub(crate) fn build_selection_matrix(rows: &[ClipboardRow], coords: &[CellCoord]
 /// React `buildRowsMatrix`: row indices → a matrix over `column_order`,
 /// dropping invalid indices and sorting ascending.
 #[allow(dead_code)] // pure helper; consumed by copy and tests.
-pub(crate) fn build_rows_matrix(
+pub fn build_rows_matrix(
     rows: &[ClipboardRow],
     column_order: &[String],
     row_indices: &[usize],
@@ -532,7 +532,7 @@ pub(crate) fn build_rows_matrix(
 /// keys, auto-increment and unknown columns are never copied; an explicit null
 /// stays a null and only present keys are written.
 #[allow(dead_code)] // pure helper; consumed by paste-rows and tests.
-pub(crate) fn rows_to_draft_values(
+pub fn rows_to_draft_values(
     column_names: &[String],
     matrix: &[Vec<ClipValue>],
     columns: &[ClipboardColumn],
@@ -564,7 +564,7 @@ pub(crate) fn rows_to_draft_values(
 /// React `copySelectedCellsAs`'s target choice: a normalized cell selection
 /// wins; otherwise the covered rows; otherwise there is nothing to copy.
 #[allow(dead_code)] // decision; remove with the host.
-pub(crate) fn copy_target(selection: Option<&CellRange>, covered: &[usize]) -> Option<CopyTarget> {
+pub fn copy_target(selection: Option<&CellRange>, covered: &[usize]) -> Option<CopyTarget> {
     if let Some(range) = selection {
         return Some(CopyTarget::Cell {
             top_row: range.top_row,
@@ -582,17 +582,17 @@ pub(crate) fn copy_target(selection: Option<&CellRange>, covered: &[usize]) -> O
 }
 
 #[allow(dead_code)] // gate; remove with the host.
-pub(crate) fn can_copy(selection: Option<&CellRange>, covered: &[usize]) -> bool {
+pub fn can_copy(selection: Option<&CellRange>, covered: &[usize]) -> bool {
     selection.is_some() || !covered.is_empty()
 }
 
 #[allow(dead_code)] // gate; remove with the host.
-pub(crate) fn can_paste(is_editable: bool, selection: Option<&CellRange>) -> bool {
+pub fn can_paste(is_editable: bool, selection: Option<&CellRange>) -> bool {
     is_editable && selection.is_some()
 }
 
 #[allow(dead_code)] // gate; remove with the host.
-pub(crate) fn can_use_row_copy(is_editable: bool, has_add_drafts: bool) -> bool {
+pub fn can_use_row_copy(is_editable: bool, has_add_drafts: bool) -> bool {
     is_editable && has_add_drafts
 }
 
@@ -600,20 +600,20 @@ pub(crate) fn can_use_row_copy(is_editable: bool, has_add_drafts: bool) -> bool 
 /// gate and confirmation read. The planner itself stays a host concern.
 #[allow(dead_code)] // VM mirror; supplied by the paste planner.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PastePlanInput {
-    pub(crate) writes: usize,
-    pub(crate) skipped: usize,
-    pub(crate) overwritten_pending: usize,
-    pub(crate) bounds: Option<CellRange>,
-    pub(crate) matched_columns: usize,
-    pub(crate) total_columns: usize,
+pub struct PastePlanInput {
+    pub writes: usize,
+    pub skipped: usize,
+    pub overwritten_pending: usize,
+    pub bounds: Option<CellRange>,
+    pub matched_columns: usize,
+    pub total_columns: usize,
     /// Displayed columns in the landing rectangle (React: right-left index + 1).
-    pub(crate) columns: usize,
-    pub(crate) dropped_columns: Vec<String>,
-    pub(crate) requires_confirmation: bool,
+    pub columns: usize,
+    pub dropped_columns: Vec<String>,
+    pub requires_confirmation: bool,
     /// `None` = unknown source (React `crossTable === null`).
-    pub(crate) cross_table: Option<bool>,
-    pub(crate) source_key: String,
+    pub cross_table: Option<bool>,
+    pub source_key: String,
 }
 
 fn fmt(key: &str, pairs: &[(&str, String)]) -> String {
@@ -626,7 +626,7 @@ fn fmt(key: &str, pairs: &[(&str, String)]) -> String {
 
 /// React `confirmOptionsFor` (large paste / cross-table headings, exact keys).
 #[allow(dead_code)] // pure helper; remove with the host.
-pub(crate) fn confirm_texts(plan: &PastePlanInput, table_label: &str) -> ConfirmTexts {
+pub fn confirm_texts(plan: &PastePlanInput, table_label: &str) -> ConfirmTexts {
     let rows_written = plan
         .bounds
         .as_ref()
@@ -692,18 +692,18 @@ pub(crate) fn confirm_texts(plan: &PastePlanInput, table_label: &str) -> Confirm
 /// React's confirm dialog copy. `warning` is always the kind.
 #[allow(dead_code)] // VM mirror; consumed by the host dialog.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConfirmTexts {
-    pub(crate) title: String,
-    pub(crate) message: String,
-    pub(crate) description: Option<String>,
-    pub(crate) confirm_label: String,
-    pub(crate) cancel_label: String,
+pub struct ConfirmTexts {
+    pub title: String,
+    pub message: String,
+    pub description: Option<String>,
+    pub confirm_label: String,
+    pub cancel_label: String,
 }
 
 /// React `pasteText`'s ordered gate: read-only → parse refusal → no writes →
 /// confirmation → staged chunks. Read-only still consumes the gesture.
 #[allow(dead_code)] // decision; remove with the host.
-pub(crate) fn decide_paste(
+pub fn decide_paste(
     is_editable: bool,
     parse: &ParseResult,
     plan: &PastePlanInput,
@@ -732,7 +732,7 @@ pub(crate) fn decide_paste(
 
 #[allow(dead_code)] // decision; remove with the host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PasteDecision {
+pub enum PasteDecision {
     ReadOnly,
     ParseRefused,
     NoWrites(PasteSummary),
@@ -762,18 +762,18 @@ fn summary(plan: &PastePlanInput, staged: usize, skipped: usize, cancelled: bool
 }
 
 #[allow(dead_code)] // pure helper; remove with the host.
-pub(crate) fn cancelled_summary(plan: &PastePlanInput) -> PasteSummary {
+pub fn cancelled_summary(plan: &PastePlanInput) -> PasteSummary {
     zero_shape(summary(plan, 0, 0, true))
 }
 
 #[allow(dead_code)] // pure helper; remove with the host.
-pub(crate) fn staged_summary(plan: &PastePlanInput, staged: usize, skipped: usize) -> PasteSummary {
+pub fn staged_summary(plan: &PastePlanInput, staged: usize, skipped: usize) -> PasteSummary {
     summary(plan, staged, skipped, false)
 }
 
 /// React `parseClipboardMatrix` failure → the problem the status line reports.
 #[allow(dead_code)] // pure helper; remove with the host.
-pub(crate) fn parse_problem(parse: &ParseResult) -> Option<PasteProblem> {
+pub fn parse_problem(parse: &ParseResult) -> Option<PasteProblem> {
     let (code, detail) = match parse {
         ParseResult::Empty { .. } => ("grid.paste.empty", None),
         ParseResult::TooLarge { cells, .. } => ("grid.paste.tooLarge", Some(cells.to_string())),

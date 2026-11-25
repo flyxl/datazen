@@ -39,14 +39,14 @@ use crate::ui::kit::kit;
 /// error: screen readers announce the reason twice — once for the
 /// visible row, once for the live region the error belongs to. Rune's
 /// a11y hidden channel is the sr-only semantics.
-pub(crate) struct BinaryCellEditor {
+pub struct BinaryCellEditor {
     aria_label: String,
     error: bool,
 }
 
 impl BinaryCellEditor {
     /// The control over the fields it reads (`ariaLabel`, `error`).
-    pub(crate) fn new(aria_label: impl Into<String>, error: bool) -> Self {
+    pub fn new(aria_label: impl Into<String>, error: bool) -> Self {
         Self {
             aria_label: aria_label.into(),
             error,
@@ -54,7 +54,7 @@ impl BinaryCellEditor {
     }
 
     /// The status row.
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let reason = t("cellEditor.binaryNotEditable");
         let mut row = row()
             .key("cell-editor-binary")

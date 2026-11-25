@@ -81,7 +81,7 @@ use crate::views::settings::ai::use_model_profile_draft::{ModelProfileDraft, Sav
 /// `useModelProfileDraft` (`{ onSave, onSaved: () => onClose() }`) plus the
 /// reaches the save glue reads at press time. The owning state implements
 /// it (this port's audits; the settings AI section, T172).
-pub(crate) trait ModelProfileDialogHost {
+pub trait ModelProfileDialogHost {
     /// The draft being edited (the hook's state, held in `S`).
     fn model_profile_dialog_draft(&mut self) -> &mut ModelProfileDraft;
     /// The store's raw provider list (the save payload's name fallbacks).
@@ -127,23 +127,23 @@ fn confirm_high_risk<S: ModelProfileDialogHost>(s: &mut S) {
 
 /// Where the dialog's state lives in the host's `S` (function pointers, the
 /// `workflow_form.rs` slot pattern — the struct is `Copy`).
-pub(crate) struct ModelProfileDialogSlots<S: 'static> {
+pub struct ModelProfileDialogSlots<S: 'static> {
     /// React's `open` prop: while false the dialog mounts nothing at all.
-    pub(crate) open: fn(&S) -> bool,
+    pub open: fn(&S) -> bool,
     /// The open generation for the base's scroll reset (the host bumps it
     /// every time the dialog opens, next to the `open` flag).
-    pub(crate) open_epoch: fn(&S) -> u64,
+    pub open_epoch: fn(&S) -> u64,
     /// React's `profile` prop: `Some` edits that profile (the edit title),
     /// `None` adds (the add title).
-    pub(crate) profile: fn(&S) -> Option<&AiModelProfile>,
+    pub profile: fn(&S) -> Option<&AiModelProfile>,
     /// The kit appearance.
-    pub(crate) dark: fn(&S) -> bool,
+    pub dark: fn(&S) -> bool,
     /// The form's slots. The dialog owns `on_cancel`, `on_save`,
     /// `on_confirm_high_risk` and `on_cancel_high_risk` (React's dialog
     /// passes `onCancel={onClose}` and configures the hook's save); the
     /// host's values for those four are overwritten in
     /// [`ModelProfileDialog::build`] and never run.
-    pub(crate) form: ModelProfileFormSlots<S>,
+    pub form: ModelProfileFormSlots<S>,
 }
 
 impl<S: 'static> Clone for ModelProfileDialogSlots<S> {
@@ -155,12 +155,12 @@ impl<S: 'static> Copy for ModelProfileDialogSlots<S> {}
 
 /// The model profile dialog, built per frame over the host's `S` (React's
 /// `<ModelProfileDialog open onClose profile onSave />`).
-pub(crate) struct ModelProfileDialog<S: ModelProfileDialogHost + 'static> {
+pub struct ModelProfileDialog<S: ModelProfileDialogHost + 'static> {
     slots: ModelProfileDialogSlots<S>,
 }
 
 impl<S: ModelProfileDialogHost + 'static> ModelProfileDialog<S> {
-    pub(crate) fn new(slots: ModelProfileDialogSlots<S>) -> Self {
+    pub fn new(slots: ModelProfileDialogSlots<S>) -> Self {
         Self { slots }
     }
 
@@ -168,7 +168,7 @@ impl<S: ModelProfileDialogHost + 'static> ModelProfileDialog<S> {
     /// closed `Dialog open={false}` renders null); while open the form's
     /// high-risk confirmation lands in `layer` after this dialog's panel,
     /// so it paints above (React's nested portal z-order).
-    pub(crate) fn build(&self, s: &S, layer: &mut Vec<El>) {
+    pub fn build(&self, s: &S, layer: &mut Vec<El>) {
         if !(self.slots.open)(s) {
             return;
         }

@@ -77,15 +77,15 @@ use crate::ui::select::Select;
 /// React's `Dashboard` projection — the dialog reads only `id` and `name`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DashboardOptionVm {
-    pub(crate) id: String,
-    pub(crate) name: String,
+pub struct DashboardOptionVm {
+    pub id: String,
+    pub name: String,
 }
 
 /// The confirm payload: React's `onConfirm(dashboardId | 'new', newName?)`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum AddToDashboardTarget {
+pub enum AddToDashboardTarget {
     /// `onConfirm('new', name)` — the name defaults to
     /// `t('dashboard.defaultName')` when blank.
     New { name: String },
@@ -97,25 +97,25 @@ pub(crate) enum AddToDashboardTarget {
 /// owning state `S`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, Default)]
-pub(crate) struct AddToDashboardState {
+pub struct AddToDashboardState {
     /// React's `open` prop; `false` paints nothing at all.
-    pub(crate) open: bool,
+    pub open: bool,
     /// Bumped on each open; the [`Dialog`](crate::ui::dialog::Dialog) reset
     /// token for scroll and focus.
-    pub(crate) open_epoch: u64,
+    pub open_epoch: u64,
     /// The load this state waits for; deliveries carrying an older token are
     /// dropped (React's effect-cleanup `cancelled` flag).
-    pub(crate) request_epoch: u64,
-    pub(crate) dashboards: Vec<DashboardOptionVm>,
-    pub(crate) loading: bool,
+    pub request_epoch: u64,
+    pub dashboards: Vec<DashboardOptionVm>,
+    pub loading: bool,
     /// React's `selection` (`""` = nothing selected).
-    pub(crate) selection: String,
-    pub(crate) creating_new: bool,
-    pub(crate) new_name: TextEdit,
+    pub selection: String,
+    pub creating_new: bool,
+    pub new_name: TextEdit,
     /// The picker listbox's open flag. React's `Select` keeps this inside the
     /// component; the kit's `Select` is host-driven, so the dialog state owns
     /// it and the host wires `on_toggle_picker` / `on_close_picker`.
-    pub(crate) picker_open: bool,
+    pub picker_open: bool,
 }
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
@@ -125,7 +125,7 @@ impl AddToDashboardState {
     /// `selection` deliberately survive (React's state does too) until the
     /// delivery overwrites them. The host bumps `request_epoch` here (it
     /// mirrors `open_epoch`) and fetches.
-    pub(crate) fn begin_open(&mut self) {
+    pub fn begin_open(&mut self) {
         self.open = true;
         self.open_epoch = self.open_epoch.saturating_add(1);
         self.request_epoch = self.open_epoch;
@@ -136,13 +136,13 @@ impl AddToDashboardState {
     }
 
     /// The picker trigger's press (React's `Select` opens its listbox).
-    pub(crate) fn toggle_picker(&mut self) {
+    pub fn toggle_picker(&mut self) {
         self.picker_open = !self.picker_open;
     }
 
     /// Outside press / Escape while the listbox is open (React's `Select`
     /// closes itself); choosing an option closes it too.
-    pub(crate) fn close_picker(&mut self) {
+    pub fn close_picker(&mut self) {
         self.picker_open = false;
     }
 
@@ -150,7 +150,7 @@ impl AddToDashboardState {
     /// spinner stops (the `finally`). Returns `false` — with the state
     /// untouched — when the token is stale or the dialog closed, which is
     /// React's `cancelled` guard; an applied delivery returns `true`.
-    pub(crate) fn deliver_list(&mut self, list: Vec<DashboardOptionVm>, token: u64) -> bool {
+    pub fn deliver_list(&mut self, list: Vec<DashboardOptionVm>, token: u64) -> bool {
         if !self.open || token != self.request_epoch {
             return false;
         }
@@ -168,27 +168,27 @@ impl AddToDashboardState {
     }
 
     /// The `open` prop turning false (header close, Escape, scrim, cancel).
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.open = false;
         self.picker_open = false;
     }
 
     /// The select's `onChange`.
-    pub(crate) fn select(&mut self, id: &str) {
+    pub fn select(&mut self, id: &str) {
         self.selection = id.to_owned();
         self.picker_open = false;
     }
 
     /// The create-new link (`setCreatingNew(true)`); the name keeps whatever
     /// it holds (React does not reset it here either).
-    pub(crate) fn begin_create_new(&mut self) {
+    pub fn begin_create_new(&mut self) {
         self.creating_new = true;
         self.picker_open = false;
     }
 
     /// The select-existing link: back to the picker, selection back to the
     /// first dashboard (React `setSelection(dashboards[0]!.id)`).
-    pub(crate) fn back_to_existing(&mut self) {
+    pub fn back_to_existing(&mut self) {
         if let Some(first) = self.dashboards.first() {
             self.selection = first.id.clone();
             self.creating_new = false;
@@ -197,7 +197,7 @@ impl AddToDashboardState {
 
     /// The OK button's `disabled` expression, verbatim:
     /// `loading || (creatingNew && !newName.trim()) || (!creatingNew && !selection)`.
-    pub(crate) fn can_confirm(&self) -> bool {
+    pub fn can_confirm(&self) -> bool {
         !(self.loading
             || (self.creating_new && self.new_name.text.trim().is_empty())
             || (!self.creating_new && self.selection.is_empty()))
@@ -206,7 +206,7 @@ impl AddToDashboardState {
     /// `handleConfirm`'s payload: the trimmed name (defaulting to
     /// `t('dashboard.defaultName')` when blank) for the create-new branch,
     /// the selection for the picker branch.
-    pub(crate) fn confirm(&self) -> AddToDashboardTarget {
+    pub fn confirm(&self) -> AddToDashboardTarget {
         if self.creating_new {
             let name = self.new_name.text.trim();
             let name = if name.is_empty() { t("dashboard.defaultName") } else { name };
@@ -229,7 +229,7 @@ type ConfirmFn<S> = Rc<dyn Fn(&mut S, AddToDashboardTarget) + 'static>;
 /// Builder for the dialog, generic over the app state `S` that owns the
 /// state (the ported-dialog pattern of `components/connection`).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) struct AddToDashboardDialog<'a, S: 'static> {
+pub struct AddToDashboardDialog<'a, S: 'static> {
     key: &'a str,
     state: &'a AddToDashboardState,
     on_close: Option<CloseFn<S>>,
@@ -244,7 +244,7 @@ pub(crate) struct AddToDashboardDialog<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl<'a, S: 'static> AddToDashboardDialog<'a, S> {
-    pub(crate) fn new(key: &'a str, state: &'a AddToDashboardState) -> Self {
+    pub fn new(key: &'a str, state: &'a AddToDashboardState) -> Self {
         Self {
             key,
             state,
@@ -260,19 +260,19 @@ impl<'a, S: 'static> AddToDashboardDialog<'a, S> {
     }
 
     /// Header close / Escape / scrim / footer cancel.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// A dashboard picked from the list.
-    pub(crate) fn on_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_select(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_select = Some(Rc::new(f));
         self
     }
 
     /// The create-new link.
-    pub(crate) fn on_begin_new(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_begin_new(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_begin_new = Some(Rc::new(f));
         self
     }
@@ -281,18 +281,18 @@ impl<'a, S: 'static> AddToDashboardDialog<'a, S> {
     /// The picker trigger's press: flip the host's `picker_open`. The kit
     /// `Select` contract requires an enabled select to open; React's `Select`
     /// owns the flag inside the component, the host owns it here.
-    pub(crate) fn on_toggle_picker(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_picker(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_picker = Some(Rc::new(f));
         self
     }
 
     /// Outside press / Escape closing the listbox.
-    pub(crate) fn on_close_picker(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_picker(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_picker = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_back_existing(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_back_existing(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_back_existing = Some(Rc::new(f));
         self
     }
@@ -300,14 +300,14 @@ impl<'a, S: 'static> AddToDashboardDialog<'a, S> {
     /// The OK action: the only place the confirm payload leaves the dialog.
     /// The payload is computed from the state at build time — the immediate
     /// mode equivalent of React reading the state inside `handleConfirm`.
-    pub(crate) fn on_confirm(mut self, f: impl Fn(&mut S, AddToDashboardTarget) + 'static) -> Self {
+    pub fn on_confirm(mut self, f: impl Fn(&mut S, AddToDashboardTarget) + 'static) -> Self {
         self.on_confirm = Some(Rc::new(f));
         self
     }
 
     /// The name input's edit projection into `S` (`React onChange`), the
     /// `TextField::on_edit` convention of `ui/field.rs`.
-    pub(crate) fn on_edit_name(
+    pub fn on_edit_name(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -317,7 +317,7 @@ impl<'a, S: 'static> AddToDashboardDialog<'a, S> {
 
     /// Paints the modal into `layer`; nothing at all while closed (React's
     /// `Dialog open={false}` renders null).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         if !self.state.open {
             return;
         }

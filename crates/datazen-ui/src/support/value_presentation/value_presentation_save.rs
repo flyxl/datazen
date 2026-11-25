@@ -24,7 +24,7 @@ use crate::support::value_presentation::settings::StoredValuePresentationSetting
 /// A save's input: the old whole-object form (wholesale replacement) or
 /// the updater form (own paths only, everything else from `fresh`). The
 /// lifetime is the updater's captured borrow (the source identity).
-pub(crate) enum ValuePresentationSettingsUpdate<'a> {
+pub enum ValuePresentationSettingsUpdate<'a> {
     Whole(StoredValuePresentationSettings),
     Apply(
         Box<
@@ -35,7 +35,7 @@ pub(crate) enum ValuePresentationSettingsUpdate<'a> {
 
 /// Resolve one save input into the next stored value (objects pass
 /// through; updaters apply to `fresh`).
-pub(crate) fn apply_value_presentation_update(
+pub fn apply_value_presentation_update(
     fresh: StoredValuePresentationSettings,
     update: ValuePresentationSettingsUpdate<'_>,
 ) -> StoredValuePresentationSettings {
@@ -53,7 +53,7 @@ use crate::support::value_presentation::value_presentation_rules::ValuePresentat
 /// options in their stored JSON shape): every other renderer entry, the
 /// rules, the column overrides, the version and all unknown fields come
 /// from `fresh` verbatim — an unknown version never loses its fields.
-pub(crate) fn with_timestamp_renderer(
+pub fn with_timestamp_renderer(
     fresh: &StoredValuePresentationSettings,
     enabled: bool,
     options: &serde_json::Value,
@@ -71,7 +71,7 @@ pub(crate) fn with_timestamp_renderer(
 /// external updates with unsaved edits). Only version 1 writes `rules`;
 /// an unknown version returns `fresh` verbatim (never interpreted, never
 /// written back).
-pub(crate) fn with_value_presentation_rules(
+pub fn with_value_presentation_rules(
     fresh: &StoredValuePresentationSettings,
     rules: &[ValuePresentationRule],
 ) -> StoredValuePresentationSettings {

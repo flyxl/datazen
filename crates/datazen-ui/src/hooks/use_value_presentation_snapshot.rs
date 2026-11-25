@@ -55,7 +55,7 @@ use crate::support::value_presentation::settings::{
 
 /// `useValuePresentationSnapshot()`'s state machine.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct ValuePresentationSnapshotHookState {
+pub struct ValuePresentationSnapshotHookState {
     /// The store's raw stored value (`settings.valuePresentation`).
     stored_raw: Value,
     /// The store's revision counter (`valuePresentationRevision ??
@@ -91,13 +91,13 @@ impl Default for ValuePresentationSnapshotHookState {
 }
 
 impl ValuePresentationSnapshotHookState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The store's change report: the raw stored value, its revision
     /// counter and the UI language (the three store reads).
-    pub(crate) fn note_store(
+    pub fn note_store(
         &mut self,
         stored_raw: Value,
         settings_revision: u64,
@@ -110,24 +110,24 @@ impl ValuePresentationSnapshotHookState {
 
     /// The registry's revision report (the external store's change
     /// notification).
-    pub(crate) fn note_registry_revision(&mut self, revision: u64) {
+    pub fn note_registry_revision(&mut self, revision: u64) {
         self.registry_revision = revision;
     }
 
     /// The observed registry revision.
-    pub(crate) fn registry_revision(&self) -> u64 {
+    pub fn registry_revision(&self) -> u64 {
         self.registry_revision
     }
 
     /// The observed settings revision (`?? 0`).
-    pub(crate) fn settings_revision(&self) -> u64 {
+    pub fn settings_revision(&self) -> u64 {
         self.settings_revision
     }
 
     /// The snapshot (the memo's output; the default snapshot before
     /// the first reconcile — temporal columns answer `disabled` and
     /// render with the default display).
-    pub(crate) fn snapshot(&self) -> &ValuePresentationSnapshot {
+    pub fn snapshot(&self) -> &ValuePresentationSnapshot {
         &self.snapshot
     }
 
@@ -138,7 +138,7 @@ impl ValuePresentationSnapshotHookState {
     /// the stored JSON, the environment, the registry revision,
     /// the settings revision; equal bundle, equal snapshot, no
     /// rebuild). Answers whether the build ran.
-    pub(crate) fn reconcile(&mut self) -> bool {
+    pub fn reconcile(&mut self) -> bool {
         let environment = self.environment();
         let bundle = (
             self.stored_raw.to_string(),

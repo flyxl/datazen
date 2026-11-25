@@ -71,7 +71,7 @@ const LAYER_PAD: f32 = 16.0;
 const SCRIM_ALPHA: f32 = 0.5;
 
 /// A dialog panel plus the scrim under it, pushed into the app's layer.
-pub(crate) struct Dialog {
+pub struct Dialog {
     key: String,
     title: String,
     description: Option<String>,
@@ -98,7 +98,7 @@ pub(crate) struct Dialog {
 }
 
 impl Dialog {
-    pub(crate) fn new(key: impl Into<String>, title: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, title: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             title: title.into(),
@@ -126,7 +126,7 @@ impl Dialog {
 
     /// Whether the dialog currently belongs on the layer. A closed dialog
     /// pushes nothing.
-    pub(crate) fn open(mut self, open: bool) -> Self {
+    pub fn open(mut self, open: bool) -> Self {
         self.open = open;
         self
     }
@@ -137,7 +137,7 @@ impl Dialog {
     /// reopens at the top instead of at the remembered offset (see the module
     /// docs). While the dialog stays open the value does not change, so a view
     /// may rebuild freely without losing the offset.
-    pub(crate) fn open_epoch(mut self, epoch: u64) -> Self {
+    pub fn open_epoch(mut self, epoch: u64) -> Self {
         self.open_epoch = epoch;
         self
     }
@@ -145,13 +145,13 @@ impl Dialog {
     /// The dialog's description line under the title (React's `description`
     /// prop). Carried by the dialogs after T0-05; the install-wapp dialog
     /// (T022) is its first caller.
-    pub(crate) fn description(mut self, description: impl Into<String>) -> Self {
+    pub fn description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
     }
 
     /// The panel's maximum width; its layer pads 16pt on every side.
-    pub(crate) fn width(mut self, width: f32) -> Self {
+    pub fn width(mut self, width: f32) -> Self {
         self.width = width;
         self
     }
@@ -160,7 +160,7 @@ impl Dialog {
     /// 368pt height, for short dialogs such as a confirmation. The body is not
     /// grown: give it [`Dialog::body_max_height`] when its content can outgrow
     /// the window.
-    pub(crate) fn fit(mut self) -> Self {
+    pub fn fit(mut self) -> Self {
         self.fit = true;
         self
     }
@@ -168,7 +168,7 @@ impl Dialog {
     /// Fills the layer's height (the window less its 16pt padding), capped by
     /// [`Dialog::max_height`]. The body grows into what the header and footer
     /// leave, and scrolls, so a tall form never pushes the actions out.
-    pub(crate) fn fill_height(mut self) -> Self {
+    pub fn fill_height(mut self) -> Self {
         self.fill = true;
         self
     }
@@ -177,19 +177,19 @@ impl Dialog {
     /// changes.
     /// Part of the base's surface for the dialogs after T0-05; unused today.
     #[allow(dead_code)]
-    pub(crate) fn height(mut self, height: f32) -> Self {
+    pub fn height(mut self, height: f32) -> Self {
         self.height = Some(height);
         self
     }
 
-    pub(crate) fn max_height(mut self, max_height: f32) -> Self {
+    pub fn max_height(mut self, max_height: f32) -> Self {
         self.max_height = Some(max_height);
         self
     }
 
     /// Caps a [`Dialog::fit`] body, so tall content scrolls instead of growing
     /// the panel past the window.
-    pub(crate) fn body_max_height(mut self, height: f32) -> Self {
+    pub fn body_max_height(mut self, height: f32) -> Self {
         self.body_max_height = Some(height);
         self
     }
@@ -198,49 +198,49 @@ impl Dialog {
     /// scrim only dims, as the React dialogs' backdrop does.
     /// Part of the base's surface for the dialogs after T0-05; unused today.
     #[allow(dead_code)]
-    pub(crate) fn click_outside(mut self, close: bool) -> Self {
+    pub fn click_outside(mut self, close: bool) -> Self {
         self.click_outside = close;
         self
     }
 
     /// Header padding, `(x, y)`.
-    pub(crate) fn header_pad(mut self, pad: (f32, f32)) -> Self {
+    pub fn header_pad(mut self, pad: (f32, f32)) -> Self {
         self.header_pad = pad;
         self
     }
 
     /// Body padding, `(x, y)`.
-    pub(crate) fn body_pad(mut self, pad: (f32, f32)) -> Self {
+    pub fn body_pad(mut self, pad: (f32, f32)) -> Self {
         self.body_pad = pad;
         self
     }
 
     /// Footer padding, `(x, y)`; the footer's buttons are right aligned.
-    pub(crate) fn footer_pad(mut self, pad: (f32, f32)) -> Self {
+    pub fn footer_pad(mut self, pad: (f32, f32)) -> Self {
         self.footer_pad = pad;
         self
     }
 
-    pub(crate) fn footer_height(mut self, height: f32) -> Self {
+    pub fn footer_height(mut self, height: f32) -> Self {
         self.footer_height = height;
         self
     }
 
     /// A column left of the body and footer, spanning the panel below the
     /// header (React's `NewConnectionDialog` type picker).
-    pub(crate) fn sidebar(mut self, sidebar: El) -> Self {
+    pub fn sidebar(mut self, sidebar: El) -> Self {
         self.sidebar = Some(sidebar);
         self
     }
 
     /// A body child. The body scrolls when the panel bounds its height.
-    pub(crate) fn child(mut self, child: El) -> Self {
+    pub fn child(mut self, child: El) -> Self {
         self.body.push(child);
         self
     }
 
     /// A footer child (one button per call); buttons sit right aligned.
-    pub(crate) fn footer(mut self, child: El) -> Self {
+    pub fn footer(mut self, child: El) -> Self {
         self.footer.push(child);
         self
     }
@@ -248,14 +248,14 @@ impl Dialog {
     /// The dismissal policy: the header close control presses it, and so does
     /// Escape and, when [`Dialog::click_outside`] is on, a press on the scrim.
     /// A dialog without it mounts nothing, as `rune_kit::Dialog` does.
-    pub(crate) fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + Clone + 'static) -> Self {
+    pub fn on_close<S: 'static>(mut self, f: impl Fn(&mut S) + Clone + 'static) -> Self {
         let button = f.clone();
         self.dismiss = Some(Box::new(move |e| e.on_press(button)));
         self.close = Some(Box::new(move |e| e.modal(true, f)));
         self
     }
 
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) {
         if !self.open {
             return;
         }

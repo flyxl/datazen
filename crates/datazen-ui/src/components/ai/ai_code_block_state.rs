@@ -14,13 +14,13 @@ use std::rc::Rc;
 /// How long the copied confirmation stays up before reverting to the copy
 /// icon (React `COPIED_FEEDBACK_MS`).
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) const COPIED_FEEDBACK_MS: u64 = 1500;
+pub const COPIED_FEEDBACK_MS: u64 = 1500;
 
 /// React `SQL_DIALECTS` (`AiCodeBlock.tsx`): the seven dialects the dialect
 /// select offers, in React's order.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) enum SqlDialect {
+pub enum SqlDialect {
     /// `postgresql` — also the `sqlDialect` prop default.
     #[default]
     PostgreSql,
@@ -41,7 +41,7 @@ pub(crate) enum SqlDialect {
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
 impl SqlDialect {
     /// Every dialect, in the select's order.
-    pub(crate) const ALL: [SqlDialect; 7] = [
+    pub const ALL: [SqlDialect; 7] = [
         SqlDialect::PostgreSql,
         SqlDialect::MySql,
         SqlDialect::Sqlite,
@@ -52,7 +52,7 @@ impl SqlDialect {
     ];
 
     /// The value React stores (`SelectOption.value`).
-    pub(crate) fn value(self) -> &'static str {
+    pub fn value(self) -> &'static str {
         match self {
             Self::PostgreSql => "postgresql",
             Self::MySql => "mysql",
@@ -65,7 +65,7 @@ impl SqlDialect {
     }
 
     /// The label React shows (`SelectOption.label`).
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::PostgreSql => "PostgreSQL",
             Self::MySql => "MySQL",
@@ -79,7 +79,7 @@ impl SqlDialect {
 
     /// The stored value back to its dialect; `None` for a value React's
     /// list does not know.
-    pub(crate) fn from_value(value: &str) -> Option<Self> {
+    pub fn from_value(value: &str) -> Option<Self> {
         Self::ALL
             .into_iter()
             .find(|dialect| dialect.value() == value)
@@ -99,7 +99,7 @@ const SQL_KEYWORDS: [&str; 21] = [
 /// its language tag is a SQL language (case-insensitive) or its first line
 /// starts with a SQL keyword.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) fn is_sql_code_block(language: &str, code: &str) -> bool {
+pub fn is_sql_code_block(language: &str, code: &str) -> bool {
     const SQL_LANGUAGES: [&str; 6] = [
         "sql",
         "mysql",
@@ -119,7 +119,7 @@ pub(crate) fn is_sql_code_block(language: &str, code: &str) -> bool {
 /// candidate word, so `SELECTED` is not `SELECT`, and a digit or `_`
 /// immediately after the run defeats the boundary, exactly as `\b` does.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) fn looks_like_sql(code: &str) -> bool {
+pub fn looks_like_sql(code: &str) -> bool {
     let first_line = code.lines().next().unwrap_or("");
     let trimmed = first_line.trim_start();
     let run_end = trimmed
@@ -142,7 +142,7 @@ pub(crate) fn looks_like_sql(code: &str) -> bool {
 /// React's header label: the language tag as given, else `sql` for a
 /// SQL-looking block, else `code`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) fn code_block_label<'a>(language: &'a str, is_sql: bool) -> &'a str {
+pub fn code_block_label<'a>(language: &'a str, is_sql: bool) -> &'a str {
     if !language.is_empty() {
         language
     } else if is_sql {
@@ -154,14 +154,14 @@ pub(crate) fn code_block_label<'a>(language: &'a str, is_sql: bool) -> &'a str {
 
 /// The label as rendered: React uppercases it with CSS (`uppercase`).
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) fn display_label(language: &str, is_sql: bool) -> String {
+pub fn display_label(language: &str, is_sql: bool) -> String {
     code_block_label(language, is_sql).to_uppercase()
 }
 
 /// The language `onRunCode` receives: React passes `language || 'sql'`,
 /// even for a block that is only SQL-looking through its content.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) fn run_language<'a>(language: &'a str) -> &'a str {
+pub fn run_language<'a>(language: &'a str) -> &'a str {
     if language.is_empty() {
         "sql"
     } else {
@@ -173,7 +173,7 @@ pub(crate) fn run_language<'a>(language: &'a str) -> &'a str {
 /// in the app's state `S` because Rune has no component-local state.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) struct AiCodeBlockState {
+pub struct AiCodeBlockState {
     /// React `fullscreen`.
     pub fullscreen: bool,
     /// React `selectedDialect`, seeded from the `sqlDialect` prop.
@@ -204,7 +204,7 @@ impl Default for AiCodeBlockState {
 impl AiCodeBlockState {
     /// Seeds the dialect from the `sqlDialect` prop; an unknown value
     /// falls back to PostgreSQL (see the module docs).
-    pub(crate) fn new(sql_dialect: &str) -> Self {
+    pub fn new(sql_dialect: &str) -> Self {
         Self {
             selected_dialect: SqlDialect::from_value(sql_dialect).unwrap_or_default(),
             ..Self::default()
@@ -212,31 +212,31 @@ impl AiCodeBlockState {
     }
 
     /// React `toggleFullscreen`: flips `fullscreen`.
-    pub(crate) fn toggle_fullscreen(&mut self) {
+    pub fn toggle_fullscreen(&mut self) {
         self.fullscreen = !self.fullscreen;
     }
 
     /// React `handleDialectChange`: picks a dialect; the listbox closes
     /// in the same press (the kit select closes on choose).
-    pub(crate) fn set_dialect(&mut self, dialect: SqlDialect) {
+    pub fn set_dialect(&mut self, dialect: SqlDialect) {
         self.selected_dialect = dialect;
         self.dialect_open = false;
     }
 
     /// The dialect trigger's press: opens or closes the listbox.
-    pub(crate) fn toggle_dialect_open(&mut self) {
+    pub fn toggle_dialect_open(&mut self) {
         self.dialect_open = !self.dialect_open;
     }
 
     /// Presses outside and Escape close the listbox.
-    pub(crate) fn close_dialect(&mut self) {
+    pub fn close_dialect(&mut self) {
         self.dialect_open = false;
     }
 
     /// React `copy`: the optimistic mark. Sets the confirmation, arms a
     /// fresh full window (a second click owns a new request id), and
     /// returns that id for the host's failure / expiry report.
-    pub(crate) fn copy_pressed(&mut self) -> u64 {
+    pub fn copy_pressed(&mut self) -> u64 {
         self.copy_request += 1;
         self.copied = true;
         self.copy_request
@@ -245,7 +245,7 @@ impl AiCodeBlockState {
     /// The `COPIED_FEEDBACK_MS` timer firing: clears the confirmation
     /// only when `request` is still the most recent one. Returns whether
     /// it cleared.
-    pub(crate) fn expire_copy_feedback(&mut self, request: u64) -> bool {
+    pub fn expire_copy_feedback(&mut self, request: u64) -> bool {
         if request == self.copy_request {
             self.copied = false;
             true
@@ -258,7 +258,7 @@ impl AiCodeBlockState {
     /// `request` is still the most recent one — a late failure cannot
     /// erase a newer, successful confirmation. Returns whether it
     /// rolled back.
-    pub(crate) fn fail_copy(&mut self, request: u64) -> bool {
+    pub fn fail_copy(&mut self, request: u64) -> bool {
         if request == self.copy_request {
             self.copied = false;
             true
@@ -273,7 +273,7 @@ impl AiCodeBlockState {
 /// naming its host.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) struct AiCodeBlockProps {
+pub struct AiCodeBlockProps {
     /// React `language`: the fenced block's tag, possibly empty.
     pub language: String,
     /// React `code`: the block's text.
@@ -299,7 +299,7 @@ impl Default for AiCodeBlockProps {
 impl AiCodeBlockProps {
     /// A block with React's defaults: `postgresql` dialect, actions
     /// shown, not streaming.
-    pub(crate) fn new(language: impl Into<String>, code: impl Into<String>) -> Self {
+    pub fn new(language: impl Into<String>, code: impl Into<String>) -> Self {
         Self {
             language: language.into(),
             code: code.into(),
@@ -310,19 +310,19 @@ impl AiCodeBlockProps {
     }
 
     /// React `sqlDialect`.
-    pub(crate) fn sql_dialect(mut self, dialect: SqlDialect) -> Self {
+    pub fn sql_dialect(mut self, dialect: SqlDialect) -> Self {
         self.sql_dialect = dialect;
         self
     }
 
     /// React `showActions`.
-    pub(crate) fn show_actions(mut self, show: bool) -> Self {
+    pub fn show_actions(mut self, show: bool) -> Self {
         self.show_actions = show;
         self
     }
 
     /// React `isStreaming`.
-    pub(crate) fn is_streaming(mut self, streaming: bool) -> Self {
+    pub fn is_streaming(mut self, streaming: bool) -> Self {
         self.is_streaming = streaming;
         self
     }
@@ -333,7 +333,7 @@ impl AiCodeBlockProps {
 /// values, so this guards a stale stored value rather than a row the
 /// listbox can show); the listbox closes either way.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) fn apply_dialect_choice<S>(
+pub fn apply_dialect_choice<S>(
     set_dialect: SetDialectFn<S>,
     close_dialect: CloseDialectFn<S>,
     s: &mut S,
@@ -349,24 +349,24 @@ pub(crate) fn apply_dialect_choice<S>(
 /// wiring addresses one slot per rendered block, which a bare fn pointer
 /// cannot express — see `ai_message_content.rs`).
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type ReadCodeBlockStateFn<S> = Rc<dyn Fn(&S) -> AiCodeBlockState>;
+pub type ReadCodeBlockStateFn<S> = Rc<dyn Fn(&S) -> AiCodeBlockState>;
 
 /// Flips `fullscreen` on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type ToggleFullscreenFn<S> = Rc<dyn Fn(&mut S)>;
+pub type ToggleFullscreenFn<S> = Rc<dyn Fn(&mut S)>;
 
 /// Picks a dialect on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type SetDialectFn<S> = Rc<dyn Fn(&mut S, SqlDialect)>;
+pub type SetDialectFn<S> = Rc<dyn Fn(&mut S, SqlDialect)>;
 
 /// Opens or closes the dialect listbox on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type ToggleDialectOpenFn<S> = Rc<dyn Fn(&mut S)>;
+pub type ToggleDialectOpenFn<S> = Rc<dyn Fn(&mut S)>;
 
 /// Closes the dialect listbox on the app's `S`.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type CloseDialectFn<S> = Rc<dyn Fn(&mut S)>;
+pub type CloseDialectFn<S> = Rc<dyn Fn(&mut S)>;
 
 /// The optimistic copy mark on the app's `S`; returns the request id.
 #[allow(dead_code)] // reusable component; wired by the AiMessageContent track (T169)
-pub(crate) type CopyPressedFn<S> = Rc<dyn Fn(&mut S) -> u64>;
+pub type CopyPressedFn<S> = Rc<dyn Fn(&mut S) -> u64>;

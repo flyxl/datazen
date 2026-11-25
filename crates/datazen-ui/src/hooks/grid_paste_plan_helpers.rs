@@ -50,7 +50,7 @@ fn column_index_from_coord(coord: &CellCoord, column_order: &[String]) -> Option
 /// order — never lexicographic (`id` sorts before `name` while the grid
 /// may show the opposite). An unknown column has no position to compare,
 /// so the range is "not found".
-pub(crate) fn normalize_cell_range(
+pub fn normalize_cell_range(
     range: &CellRange,
     column_order: &[String],
 ) -> Option<CellRange> {
@@ -71,7 +71,7 @@ pub(crate) fn normalize_cell_range(
 
 /// Normalized anchor→focus rectangle; `None` unless both corners exist
 /// and are displayable.
-pub(crate) fn normalize_selection_range(
+pub fn normalize_selection_range(
     selection: &GridSelection,
     column_order: &[String],
 ) -> Option<CellRange> {
@@ -83,7 +83,7 @@ pub(crate) fn normalize_selection_range(
 /// Row indices covered by the selection (unordered, de-duplicated). The
 /// only source for row-level batch actions in `cell` mode; it is never
 /// written back into `selected_rows` (00-contracts §4.2, rule 3).
-pub(crate) fn rows_covered_by_selection(
+pub fn rows_covered_by_selection(
     selection: &GridSelection,
     selected_rows: &std::collections::HashSet<usize>,
 ) -> std::collections::HashSet<usize> {
@@ -117,7 +117,7 @@ pub(crate) fn rows_covered_by_selection(
 
 /// Every coordinate of a normalized rectangle, row-major. The **one**
 /// place a region is expanded into coordinates (00-contracts §4.1).
-pub(crate) fn cell_coords_in_range(range: &CellRange, column_order: &[String]) -> Vec<CellCoord> {
+pub fn cell_coords_in_range(range: &CellRange, column_order: &[String]) -> Vec<CellCoord> {
     let Some(normalized) = normalize_cell_range(range, column_order) else {
         return Vec::new();
     };
@@ -144,7 +144,7 @@ pub(crate) fn cell_coords_in_range(range: &CellRange, column_order: &[String]) -
 /// cells are simply absent from a plan's list; `value: None` always
 /// means "write SQL NULL" and nothing else.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CellPasteWrite {
+pub struct CellPasteWrite {
     /// 0-based row index inside the current page. Render-only: never
     /// used to build SQL.
     pub row_index: usize,
@@ -157,7 +157,7 @@ pub(crate) struct CellPasteWrite {
 
 /// Whether a column may be written by a **paste** (`ColumnWritability`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnWritability {
+pub struct ColumnWritability {
     pub writable: bool,
     /// Why not, when not writable. `None` when writable.
     pub reason: Option<&'static str>,
@@ -170,7 +170,7 @@ pub(crate) struct ColumnWritability {
 /// `isGenerated`, so a generated column cannot be told apart from an
 /// ordinary one with a default — using the default instead would mark
 /// perfectly writable columns read-only.
-pub(crate) fn column_writability(column: Option<&ColumnSchema>) -> ColumnWritability {
+pub fn column_writability(column: Option<&ColumnSchema>) -> ColumnWritability {
     match column {
         None => ColumnWritability { writable: false, reason: Some("unknown-column") },
         Some(column) if column.is_auto_increment => {
@@ -186,7 +186,7 @@ pub(crate) fn column_writability(column: Option<&ColumnSchema>) -> ColumnWritabi
 /// table supplies it, exactly as the React hook receives it via
 /// options.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct StagePasteWritesResult {
+pub struct StagePasteWritesResult {
     /// Cells that really entered `pendingChanges`.
     pub staged: usize,
     /// Cells that were skipped (the reason is in `problems`).
@@ -196,7 +196,7 @@ pub(crate) struct StagePasteWritesResult {
 
 /// One staging refusal (`PasteCellProblem`): which cell, and why.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PasteCellProblem {
+pub struct PasteCellProblem {
     pub row_index: usize,
     pub column_name: String,
     pub code: &'static str,
@@ -208,7 +208,7 @@ pub(crate) struct PasteCellProblem {
 /// Where the last in-app copy came from. `column_names[index]` belongs
 /// to matrix column `index`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ClipboardSource {
+pub struct ClipboardSource {
     /// Table identity, from [`table_change_key`].
     pub table_key: String,
     /// Source column names, in matrix order. A TSV copy carries no
@@ -264,7 +264,7 @@ fn normalize_clipboard_text(text: &str) -> String {
 /// that proves it. A caller that cannot say what it copied leaves the
 /// text unknown, so the source stops being usable for paste decisions —
 /// the failure direction is a confirmation, not a write.
-pub(crate) fn record_clipboard_source(source: ClipboardSource, text: Option<&str>) {
+pub fn record_clipboard_source(source: ClipboardSource, text: Option<&str>) {
     COPY_SOURCE.with(|record| {
         let mut record = record.borrow_mut();
         record.source = Some(source);
@@ -273,14 +273,14 @@ pub(crate) fn record_clipboard_source(source: ClipboardSource, text: Option<&str
 }
 
 /// Read-only probe; tests may also use it.
-pub(crate) fn peek_clipboard_source() -> Option<ClipboardSource> {
+pub fn peek_clipboard_source() -> Option<ClipboardSource> {
     COPY_SOURCE.with(|record| record.borrow().source.clone())
 }
 
 /// The recorded source **if and only if** the clipboard still holds
 /// what we copied. This is the function a paste must use;
 /// `peek_clipboard_source` answers a different (wrong) question.
-pub(crate) fn source_for_clipboard_text(text: &str) -> Option<ClipboardSource> {
+pub fn source_for_clipboard_text(text: &str) -> Option<ClipboardSource> {
     COPY_SOURCE.with(|record| {
         let record = record.borrow();
         let source = record.source.as_ref()?;
@@ -290,7 +290,7 @@ pub(crate) fn source_for_clipboard_text(text: &str) -> Option<ClipboardSource> {
 }
 
 /// `clearClipboardSource` (the tests' reset).
-pub(crate) fn clear_clipboard_source() {
+pub fn clear_clipboard_source() {
     COPY_SOURCE.with(|record| *record.borrow_mut() = CopySourceRecord::default());
 }
 
@@ -302,7 +302,7 @@ pub(crate) fn clear_clipboard_source() {
 /// itself. Like the source, this payload is only a claim about the past
 /// until it is verified against the clipboard text at paste time.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct RowCopyPayload {
+pub struct RowCopyPayload {
     /// Table identity, from [`table_change_key`].
     pub table_key: String,
     /// Source column names, in matrix column order.
@@ -318,14 +318,14 @@ thread_local! {
 }
 
 /// Record a row copy together with the clipboard text that proves it.
-pub(crate) fn record_row_copy(payload: RowCopyPayload, text: &str) {
+pub fn record_row_copy(payload: RowCopyPayload, text: &str) {
     ROW_COPY.with(|record| {
         *record.borrow_mut() = (Some(payload), Some(normalize_clipboard_text(text)));
     });
 }
 
 /// Read-only probe; tests may also use it.
-pub(crate) fn peek_row_copy() -> Option<RowCopyPayload> {
+pub fn peek_row_copy() -> Option<RowCopyPayload> {
     ROW_COPY.with(|record| record.borrow().0.clone())
 }
 
@@ -333,7 +333,7 @@ pub(crate) fn peek_row_copy() -> Option<RowCopyPayload> {
 /// exactly what the row copy put there. An Excel copy in between leaves
 /// a payload that describes data the clipboard no longer carries — the
 /// paste must not trust it.
-pub(crate) fn row_copy_for_clipboard_text(text: &str) -> Option<RowCopyPayload> {
+pub fn row_copy_for_clipboard_text(text: &str) -> Option<RowCopyPayload> {
     ROW_COPY.with(|record| {
         let record = record.borrow();
         let payload = record.0.as_ref()?;
@@ -343,7 +343,7 @@ pub(crate) fn row_copy_for_clipboard_text(text: &str) -> Option<RowCopyPayload> 
 }
 
 /// `clearRowCopy` (the tests' reset).
-pub(crate) fn clear_row_copy() {
+pub fn clear_row_copy() {
     ROW_COPY.with(|record| *record.borrow_mut() = (None, None));
 }
 
@@ -352,7 +352,7 @@ pub(crate) fn clear_row_copy() {
 /// reconnect); lower-case everything (schemas are case-sensitive in
 /// PostgreSQL and not in MySQL); `null` and `''` are the same table
 /// (`database` is null for SQLite).
-pub(crate) fn table_change_key(context: Option<&TableChangeContext>) -> String {
+pub fn table_change_key(context: Option<&TableChangeContext>) -> String {
     let Some(context) = context else { return String::new() };
     let normalize = |value: Option<&str>| -> String {
         value.unwrap_or_default().trim().to_lowercase()
@@ -369,7 +369,7 @@ pub(crate) fn table_change_key(context: Option<&TableChangeContext>) -> String {
 
 /// `(rowIndex, columnName)` → stable key, shared with
 /// `pending_cell_keys` and the tests.
-pub(crate) fn pending_cell_key(row_index: usize, column_name: &str) -> String {
+pub fn pending_cell_key(row_index: usize, column_name: &str) -> String {
     format!("{row_index}:{column_name}")
 }
 
@@ -378,7 +378,7 @@ pub(crate) fn pending_cell_key(row_index: usize, column_name: &str) -> String {
 /// `PasteOverflow`: `Expand` grows the region (the PRD behaviour),
 /// `Clip` keeps the paste inside the selected rectangle.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PasteOverflow {
+pub enum PasteOverflow {
     #[default]
     Expand,
     Clip,
@@ -386,7 +386,7 @@ pub(crate) enum PasteOverflow {
 
 /// `PastePlanOptions` (the defaults resolved: `overflow` = Expand,
 /// `null_literal` = "NULL").
-pub(crate) struct PastePlanOptions<'a> {
+pub struct PastePlanOptions<'a> {
     pub matrix: &'a ClipboardMatrix,
     /// Landing cell — always the **top-left** of the normalized region,
     /// never the raw anchor.
@@ -417,7 +417,7 @@ pub(crate) struct PastePlanOptions<'a> {
 
 /// How the block was aligned.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum PasteAlignment {
+pub enum PasteAlignment {
     ByName,
     ByPosition,
     /// The block never reached planning (empty/oversized).
@@ -428,7 +428,7 @@ pub(crate) enum PasteAlignment {
 /// `PastePlan`: only the cells to write; "do not write" cells are
 /// absent from `writes`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct PastePlan {
+pub struct PastePlan {
     pub writes: Vec<CellPasteWrite>,
     /// Area actually written; `None` when nothing is written.
     pub bounds: Option<GridClipboardRange>,
@@ -492,7 +492,7 @@ fn is_null_text(text: &str, null_literal: &str) -> bool {
 /// confirmation (L3) is the last line of defence when the source is
 /// unknown (an unknown source is treated as "possibly another table",
 /// never as "probably the same one").
-pub(crate) fn plan_paste(options: &PastePlanOptions) -> PastePlan {
+pub fn plan_paste(options: &PastePlanOptions) -> PastePlan {
     let matrix = options.matrix;
     let height = matrix.cells.len();
     let width = matrix.cells.first().map_or(0, Vec::len);
@@ -762,6 +762,6 @@ pub(crate) fn plan_paste(options: &PastePlanOptions) -> PastePlan {
 /// column classifies into (`classifyDataType` with no driver hints —
 /// the hint-less call is exactly the behaviour a caller that has no
 /// `DatabaseTypeMeta` at hand gets, 00-contracts R4).
-pub(crate) fn classify_data_type_family(data_type: Option<&str>) -> DataTypeFamily {
+pub fn classify_data_type_family(data_type: Option<&str>) -> DataTypeFamily {
     cell_type_to_data_type_family(resolve_cell_type(data_type, None))
 }

@@ -79,9 +79,9 @@ use crate::support::formatters::number_text;
 /// `localTimeZone` 缺省 `UTC`（与 TS `resolvePresentationEnvironment`
 /// 的回退一致）；宿主在快照构建时填真实值。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PresentationEnvironment {
-    pub(crate) locale: String,
-    pub(crate) local_time_zone: String,
+pub struct PresentationEnvironment {
+    pub locale: String,
+    pub local_time_zone: String,
 }
 
 impl Default for PresentationEnvironment {
@@ -94,7 +94,7 @@ impl Default for PresentationEnvironment {
 }
 
 impl PresentationEnvironment {
-    pub(crate) fn new(locale: impl Into<String>, local_time_zone: impl Into<String>) -> Self {
+    pub fn new(locale: impl Into<String>, local_time_zone: impl Into<String>) -> Self {
         Self {
             locale: locale.into(),
             local_time_zone: local_time_zone.into(),
@@ -105,31 +105,31 @@ impl PresentationEnvironment {
 /// 表身份（TS 的 `Omit<ColumnSource, 'column'>`：列名不属于来源，
 /// 调用时再拼；无来源即查询结果列，覆盖不可用）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ColumnSource {
-    pub(crate) connection_id: String,
-    pub(crate) database: Option<String>,
-    pub(crate) namespace: Option<String>,
-    pub(crate) table: String,
+pub struct ColumnSource {
+    pub connection_id: String,
+    pub database: Option<String>,
+    pub namespace: Option<String>,
+    pub table: String,
 }
 
 /// 展示值（TS 的 `PresentationValue`：`null` / 数字 / 字符串 /
 /// 布尔 / 数组 / 对象；`bigint` 在 JSON 层无对应，超大整数由宿主
 /// 以十进制字符串传入，见 `timestampContribution.ts` 裁决 5）。
-pub(crate) type PresentationValue = Value;
+pub type PresentationValue = Value;
 
 /// 计划输入的列（`PresentationPlanColumn`：TS 还可带 `cellType`，
 /// 对话框调用处从不传，本片只从 `dataType` + `hints` 推导）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PresentationPlanColumn {
-    pub(crate) name: String,
-    pub(crate) data_type: Option<String>,
-    pub(crate) hints: Option<CellTypeHints>,
+pub struct PresentationPlanColumn {
+    pub name: String,
+    pub data_type: Option<String>,
+    pub hints: Option<CellTypeHints>,
 }
 
 /// 表列覆盖键：`JSON.stringify([connectionId, database ?? null,
 /// namespace ?? null, table, column])`，不做大小写归一；缺省字段
 /// 用 null、空字符串保留为空串，二者键不同。
-pub(crate) fn column_override_key(source: &ColumnSource, column: &str) -> String {
+pub fn column_override_key(source: &ColumnSource, column: &str) -> String {
     serde_json::to_string(&json!([
         source.connection_id,
         source.database,
@@ -141,7 +141,7 @@ pub(crate) fn column_override_key(source: &ColumnSource, column: &str) -> String
 }
 
 /// 从快照取一列的当前覆盖：无来源（查询结果）或无条目时为 `inherit`。
-pub(crate) fn column_override_from_snapshot(
+pub fn column_override_from_snapshot(
     snapshot: &ValuePresentationSnapshot,
     source: Option<&ColumnSource>,
     column_name: &str,
@@ -159,7 +159,7 @@ pub(crate) fn column_override_from_snapshot(
 /// 剥离本列覆盖后的快照副本（T09-BUG-001）：键从复制的 overrides
 /// 里删除（不是置 `undefined`），原快照不动；无来源列或本列无条目
 /// 时返回原快照的克隆。
-pub(crate) fn snapshot_without_column_override(
+pub fn snapshot_without_column_override(
     snapshot: &ValuePresentationSnapshot,
     source: Option<&ColumnSource>,
     column_name: &str,
@@ -180,7 +180,7 @@ pub(crate) fn snapshot_without_column_override(
 /// datetime → zoned ? `instant` : `local-datetime`；date → `date`；
 /// time → `time`；number → `number`；text / enum / uuid → `text`；
 /// bool / json / bytes / unknown → `other`。
-pub(crate) fn resolve_presentation_semantic_kind(
+pub fn resolve_presentation_semantic_kind(
     data_type: Option<&str>,
     hints: Option<&CellTypeHints>,
 ) -> PresentationSemanticKind {
@@ -208,7 +208,7 @@ pub(crate) fn resolve_presentation_semantic_kind(
 /// 不以位数自动决定）；instant → `'2026-01-15T14:30:00Z'`；
 /// local-datetime → `'2026-01-15 14:30:00'`；date → `'2026-01-15'`；
 /// time → `'14:30:00'`；text / other → `None`（无可预览的时间样本）。
-pub(crate) fn fallback_sample_for_column(
+pub fn fallback_sample_for_column(
     column: &PresentationPlanColumn,
 ) -> Option<PresentationValue> {
     let kind =
@@ -224,7 +224,7 @@ pub(crate) fn fallback_sample_for_column(
 }
 
 /// 样本值的展示文本：NULL 仍为 NULL；对象与数组用 JSON，不抛异常。
-pub(crate) fn format_column_presentation_sample_value(value: &PresentationValue) -> String {
+pub fn format_column_presentation_sample_value(value: &PresentationValue) -> String {
     match value {
         Value::Null => "NULL".to_owned(),
         Value::String(text) => text.clone(),
@@ -240,7 +240,7 @@ pub(crate) fn format_column_presentation_sample_value(value: &PresentationValue)
 
 /// 列展示计划状态（`ColumnPresentationStatus`）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ColumnPresentationStatus {
+pub enum ColumnPresentationStatus {
     Ready,
     Default,
     Raw,
@@ -257,7 +257,7 @@ pub(crate) enum ColumnPresentationStatus {
 /// missing-config → `'missing-config'`、invalid-config →
 /// `'invalid-config'`、error → `'plan-error'`；ready 一定携带
 /// prepared，不应走到回退，防御性取值与 error 一致。
-pub(crate) fn fallback_presentation_reason(status: ColumnPresentationStatus) -> &'static str {
+pub fn fallback_presentation_reason(status: ColumnPresentationStatus) -> &'static str {
     match status {
         ColumnPresentationStatus::Ready => "plan-error",
         ColumnPresentationStatus::Default => "no-renderer",
@@ -273,7 +273,7 @@ pub(crate) fn fallback_presentation_reason(status: ColumnPresentationStatus) -> 
 /// 一次展示的结果（`PresentationResult`）：格式化文本，或原值直出
 /// 的原因。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PresentationResult {
+pub enum PresentationResult {
     Text {
         text: String,
         interpretation: Option<String>,
@@ -295,7 +295,7 @@ impl PresentationResult {
 /// 生效配置 + 语义种 + 样本值 + 环境 → 展示结果。T253/T209/T274
 /// 的时间引擎接上后由它注入；此前传 `None`，`ready` 计划按
 /// `plan-error` 回退。
-pub(crate) type TimestampPresenter = Rc<
+pub type TimestampPresenter = Rc<
     dyn Fn(
         &TimestampOptions,
         PresentationSemanticKind,
@@ -306,7 +306,7 @@ pub(crate) type TimestampPresenter = Rc<
 
 /// 一列的展示计划：状态与统一 `present` 入口。`present` 永不抛异常；
 /// 回退计划的 `present` 一律返回对应原因的 `unchanged`。
-pub(crate) struct ColumnPresentationPlan {
+pub struct ColumnPresentationPlan {
     column_name: String,
     status: ColumnPresentationStatus,
     renderer_id: Option<String>,
@@ -316,31 +316,31 @@ pub(crate) struct ColumnPresentationPlan {
 }
 
 impl ColumnPresentationPlan {
-    pub(crate) fn column_name(&self) -> &str {
+    pub fn column_name(&self) -> &str {
         &self.column_name
     }
 
-    pub(crate) fn status(&self) -> ColumnPresentationStatus {
+    pub fn status(&self) -> ColumnPresentationStatus {
         self.status
     }
 
-    pub(crate) fn renderer_id(&self) -> Option<&str> {
+    pub fn renderer_id(&self) -> Option<&str> {
         self.renderer_id.as_deref()
     }
 
-    pub(crate) fn reason(&self) -> Option<&str> {
+    pub fn reason(&self) -> Option<&str> {
         self.reason.as_deref()
     }
 
     /// 命中的全局规则名（T08，PRD §3.3 配置来源提示用）；无规则命
     /// 中时缺省。
-    pub(crate) fn matched_rule_name(&self) -> Option<&str> {
+    pub fn matched_rule_name(&self) -> Option<&str> {
         self.matched_rule_name.as_deref()
     }
 
     /// 展示一个值：`ready` 时走时间引擎（或无引擎时的 `plan-error`
     /// 回退），其余状态一律回退原值。
-    pub(crate) fn present(&self, value: &PresentationValue) -> PresentationResult {
+    pub fn present(&self, value: &PresentationValue) -> PresentationResult {
         (self.present)(value)
     }
 }
@@ -403,7 +403,7 @@ fn ready_plan(
 /// - e. 默认路由：非时间语义列 → `default`；时间语义列依次检查
 ///   `enabled` 门禁、贡献缺失、配置缺失、版本（快照配置版本与贡献
 ///   声明不一致 → `invalid-config`）。
-pub(crate) fn build_column_presentation_plan(
+pub fn build_column_presentation_plan(
     column: &PresentationPlanColumn,
     source: Option<&ColumnSource>,
     snapshot: &ValuePresentationSnapshot,
@@ -570,7 +570,7 @@ pub(crate) fn build_column_presentation_plan(
 /// 无样本时对话框渲染的 `noSample`（由调用方按 `has_sample` 决定，
 /// 不属于本结果）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ColumnPresentationPreview {
+pub enum ColumnPresentationPreview {
     Unavailable {
         sample: PresentationValue,
     },
@@ -617,7 +617,7 @@ fn map_presentation_result(
 ///   `invalid` 与路径化问题；成功则经 presenter `present(sample)`
 ///   （无 presenter 时 `plan-error` 回退，见模块头）。
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn compute_column_presentation_preview(
+pub fn compute_column_presentation_preview(
     candidate: &ColumnPresentationOverride,
     column: &PresentationPlanColumn,
     source: Option<&ColumnSource>,

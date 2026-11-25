@@ -41,11 +41,11 @@ use serde_json::{json, Value};
 
 /// `WAPPS_CHANGED_EVENT` — mirrors the Rust command's own constant
 /// (`src-tauri/src/commands/wapps.rs`).
-pub(crate) const WAPPS_CHANGED_EVENT: &str = "wapps:changed";
+pub const WAPPS_CHANGED_EVENT: &str = "wapps:changed";
 
 /// `WappPermission` — the closed five-string union.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum WappPermission {
+pub enum WappPermission {
     #[serde(rename = "context:connections")]
     ContextConnections,
     #[serde(rename = "command:invoke")]
@@ -62,7 +62,7 @@ pub(crate) enum WappPermission {
 /// host.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappPageContribution {
+pub struct WappPageContribution {
     pub id: String,
     pub title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -74,7 +74,7 @@ pub(crate) struct WappPageContribution {
 /// `WappThemeContribution` — a theme a wapp contributes.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappThemeContribution {
+pub struct WappThemeContribution {
     pub id: String,
     pub name: String,
     /// Package-relative path to the tokens CSS file.
@@ -99,7 +99,7 @@ pub(crate) struct WappThemeContribution {
 /// `WappContributions`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappContributions {
+pub struct WappContributions {
     #[serde(default)]
     pub pages: Vec<WappPageContribution>,
     #[serde(default)]
@@ -109,7 +109,7 @@ pub(crate) struct WappContributions {
 /// `WappAiTool` — an opt-in AI tool a manifest declares.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappAiTool {
+pub struct WappAiTool {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -127,7 +127,7 @@ pub(crate) struct WappAiTool {
 /// `WappAiContribution`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappAiContribution {
+pub struct WappAiContribution {
     #[serde(default)]
     pub tools: Vec<WappAiTool>,
 }
@@ -135,7 +135,7 @@ pub(crate) struct WappAiContribution {
 /// `WappManifest` — the full manifest `get_wapp_manifest` answers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappManifest {
+pub struct WappManifest {
     pub id: String,
     pub name: String,
     pub version: String,
@@ -166,7 +166,7 @@ pub(crate) struct WappManifest {
 /// `WappPageSummary` — a page entry inside a `WappSummary` payload.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappPageSummary {
+pub struct WappPageSummary {
     pub id: String,
     pub title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -177,7 +177,7 @@ pub(crate) struct WappPageSummary {
 /// payload.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappThemeSummary {
+pub struct WappThemeSummary {
     pub id: String,
     pub name: String,
     pub modes: Vec<String>,
@@ -186,7 +186,7 @@ pub(crate) struct WappThemeSummary {
 /// `WappAiToolSummary`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappAiToolSummary {
+pub struct WappAiToolSummary {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -196,7 +196,7 @@ pub(crate) struct WappAiToolSummary {
 /// `WappSummary` — an installed wapp row as `list_wapps` answers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappSummary {
+pub struct WappSummary {
     pub id: String,
     pub name: String,
     pub version: String,
@@ -223,14 +223,14 @@ pub(crate) struct WappSummary {
 /// `WappPackageKind` — which native picker the inspect opens (the
 /// view-side twin lives in `views/wapps/install_wapp_dialog.rs`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WappPackageKind {
+pub enum WappPackageKind {
     Zip,
     Folder,
 }
 
 impl WappPackageKind {
     /// The wire spelling.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Zip => "zip",
             Self::Folder => "folder",
@@ -242,7 +242,7 @@ impl WappPackageKind {
 /// inspect answers (no install).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappPackagePreview {
+pub struct WappPackagePreview {
     pub pick_token: String,
     pub package_label: String,
     pub manifest: WappManifest,
@@ -251,7 +251,7 @@ pub(crate) struct WappPackagePreview {
 /// `executeDriverCommand`'s request.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct WappDriverCommandRequest {
+pub struct WappDriverCommandRequest {
     pub wapp_id: String,
     pub connection_id: String,
     pub command: String,
@@ -261,7 +261,7 @@ pub(crate) struct WappDriverCommandRequest {
 
 /// The wapp command family's invoke targets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WappMethod {
+pub enum WappMethod {
     ListWapps,
     GetWappManifest,
     ExecuteDriverCommand,
@@ -278,7 +278,7 @@ pub(crate) enum WappMethod {
 
 impl WappMethod {
     /// The invoke command.
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::ListWapps => "list_wapps",
             Self::GetWappManifest => "get_wapp_manifest",
@@ -297,18 +297,18 @@ impl WappMethod {
 }
 
 /// `listWapps()`.
-pub(crate) fn list_wapps_request() -> (WappMethod, Value) {
+pub fn list_wapps_request() -> (WappMethod, Value) {
     (WappMethod::ListWapps, json!({}))
 }
 
 /// `getWappManifest(id)`.
-pub(crate) fn get_wapp_manifest_request(id: &str) -> (WappMethod, Value) {
+pub fn get_wapp_manifest_request(id: &str) -> (WappMethod, Value) {
     (WappMethod::GetWappManifest, json!({ "id": id }))
 }
 
 /// `executeDriverCommand({ wappId, connectionId, command, args })` —
 /// the request rides under its own key.
-pub(crate) fn execute_driver_command_request(
+pub fn execute_driver_command_request(
     request: &WappDriverCommandRequest,
 ) -> (WappMethod, Value) {
     (WappMethod::ExecuteDriverCommand, json!({ "request": request }))
@@ -316,7 +316,7 @@ pub(crate) fn execute_driver_command_request(
 
 /// `inspectWappPackageWithDialog(packageKind, overridePath?)` — the
 /// cancelled pick answers `null` (the host's decode).
-pub(crate) fn inspect_wapp_package_with_dialog_request(
+pub fn inspect_wapp_package_with_dialog_request(
     package_kind: WappPackageKind,
     override_path: Option<&str>,
 ) -> (WappMethod, Value) {
@@ -328,7 +328,7 @@ pub(crate) fn inspect_wapp_package_with_dialog_request(
 }
 
 /// `installWapp(pickToken, overridePath?)`.
-pub(crate) fn install_wapp_request(
+pub fn install_wapp_request(
     pick_token: &str,
     override_path: Option<&str>,
 ) -> (WappMethod, Value) {
@@ -340,22 +340,22 @@ pub(crate) fn install_wapp_request(
 }
 
 /// `removeWapp(id)`.
-pub(crate) fn remove_wapp_request(id: &str) -> (WappMethod, Value) {
+pub fn remove_wapp_request(id: &str) -> (WappMethod, Value) {
     (WappMethod::RemoveWapp, json!({ "id": id }))
 }
 
 /// `setWappEnabled(id, enabled)`.
-pub(crate) fn set_wapp_enabled_request(id: &str, enabled: bool) -> (WappMethod, Value) {
+pub fn set_wapp_enabled_request(id: &str, enabled: bool) -> (WappMethod, Value) {
     (WappMethod::SetWappEnabled, json!({ "id": id, "enabled": enabled }))
 }
 
 /// `wappStorageGet(wappId, key)`.
-pub(crate) fn wapp_storage_get_request(wapp_id: &str, key: &str) -> (WappMethod, Value) {
+pub fn wapp_storage_get_request(wapp_id: &str, key: &str) -> (WappMethod, Value) {
     (WappMethod::WappStorageGet, json!({ "wappId": wapp_id, "key": key }))
 }
 
 /// `wappStorageSet(wappId, key, value)`.
-pub(crate) fn wapp_storage_set_request(
+pub fn wapp_storage_set_request(
     wapp_id: &str,
     key: &str,
     value: &Value,
@@ -367,13 +367,13 @@ pub(crate) fn wapp_storage_set_request(
 }
 
 /// `wappStorageRemove(wappId, key)`.
-pub(crate) fn wapp_storage_remove_request(wapp_id: &str, key: &str) -> (WappMethod, Value) {
+pub fn wapp_storage_remove_request(wapp_id: &str, key: &str) -> (WappMethod, Value) {
     (WappMethod::WappStorageRemove, json!({ "wappId": wapp_id, "key": key }))
 }
 
 /// `readWappFile(id, relativePath)` — the answer is the byte array
 /// (the host's decode).
-pub(crate) fn read_wapp_file_request(id: &str, relative_path: &str) -> (WappMethod, Value) {
+pub fn read_wapp_file_request(id: &str, relative_path: &str) -> (WappMethod, Value) {
     (
         WappMethod::ReadWappFile,
         json!({ "id": id, "relativePath": relative_path }),
@@ -383,7 +383,7 @@ pub(crate) fn read_wapp_file_request(id: &str, relative_path: &str) -> (WappMeth
 /// `auditLog(wappId, event, detail)` — fire-and-forget; the
 /// transport swallows a down IPC (the host's policy). The detail
 /// must never contain argument contents.
-pub(crate) fn wapp_audit_log_request(
+pub fn wapp_audit_log_request(
     wapp_id: &str,
     event: &str,
     detail: &str,

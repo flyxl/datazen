@@ -78,7 +78,7 @@ const SIZE_LIMIT_MARKER: &str = "Data Sync SQL preview exceeds the 16 MiB IPC li
 /// results (statements, error, loading) and the two local flags React
 /// kept in `useState` (the operation filter, the copied feedback).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SqlPreviewVm {
+pub struct SqlPreviewVm {
     pub op_filter: OpFilter,
     /// `None` = no statements yet (the load is in flight or failed).
     pub statements: Option<Vec<DataSyncSqlStatement>>,
@@ -88,7 +88,7 @@ pub(crate) struct SqlPreviewVm {
 }
 
 /// The builder. `S` is the host state that owns the load and the copy.
-pub(crate) struct SqlPreview<S: 'static> {
+pub struct SqlPreview<S: 'static> {
     vm: SqlPreviewVm,
     on_filter: Option<Rc<dyn Fn(&mut S, OpFilter)>>,
     on_refresh: Option<Rc<dyn Fn(&mut S)>>,
@@ -96,7 +96,7 @@ pub(crate) struct SqlPreview<S: 'static> {
 }
 
 impl<S: 'static> SqlPreview<S> {
-    pub(crate) fn new(vm: SqlPreviewVm) -> Self {
+    pub fn new(vm: SqlPreviewVm) -> Self {
         Self {
             vm,
             on_filter: None,
@@ -106,26 +106,26 @@ impl<S: 'static> SqlPreview<S> {
     }
 
     /// React's `setOpFilter` (a chip press).
-    pub(crate) fn on_filter(mut self, f: impl Fn(&mut S, OpFilter) + 'static) -> Self {
+    pub fn on_filter(mut self, f: impl Fn(&mut S, OpFilter) + 'static) -> Self {
         self.on_filter = Some(Rc::new(f));
         self
     }
 
     /// React's `loadPreview` entry (the refresh button).
-    pub(crate) fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_refresh = Some(Rc::new(f));
         self
     }
 
     /// React's `handleCopy`: the host copies the preview text and runs
     /// the copied feedback deadline.
-    pub(crate) fn on_copy(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_copy(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_copy = Some(Rc::new(f));
         self
     }
 
     /// The preview on its own kit root.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut layer = Vec::new();
         let root = self.build_inner(dark, &k, &mut layer);
@@ -134,7 +134,7 @@ impl<S: 'static> SqlPreview<S> {
 
     /// The same preview without its kit root (for a parent that roots the
     /// overlay once).
-    pub(crate) fn build_inner(self, dark: bool, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build_inner(self, dark: bool, k: &Kit, layer: &mut Vec<El>) -> El {
         let preview_text = match &self.vm.statements {
             Some(statements) => statements_to_preview_text(statements, self.vm.op_filter),
             None => String::new(),

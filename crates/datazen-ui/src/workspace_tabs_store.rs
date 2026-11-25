@@ -15,30 +15,30 @@
 //! inactive tab never moves the activation.
 
 /// Stable workspace tab key: `` `${wappId}:${pageId}` ``.
-pub(crate) fn workspace_tab_key(wapp_id: &str, page_id: &str) -> String {
+pub fn workspace_tab_key(wapp_id: &str, page_id: &str) -> String {
     format!("{wapp_id}:{page_id}")
 }
 
 /// React `WorkspaceTab`: one open workspace-app page.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) struct WorkspaceTab {
+pub struct WorkspaceTab {
     /// `` `${wappId}:${pageId}` `` — the store's identity.
-    pub(crate) key: String,
-    pub(crate) wapp_id: String,
-    pub(crate) page_id: String,
-    pub(crate) title: String,
+    pub key: String,
+    pub wapp_id: String,
+    pub page_id: String,
+    pub title: String,
     /// Optional icon id; absent in most tabs.
-    pub(crate) icon: Option<String>,
+    pub icon: Option<String>,
     /// The page version last read.
-    pub(crate) version: String,
+    pub version: String,
 }
 
 impl WorkspaceTab {
     /// Build a tab with its derived key (the caller that constructed a
     /// `{wappId, pageId, …}` literal without a key).
     #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-    pub(crate) fn with_key(
+    pub fn with_key(
         wapp_id: impl Into<String>,
         page_id: impl Into<String>,
         title: impl Into<String>,
@@ -62,10 +62,10 @@ impl WorkspaceTab {
 /// active.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) struct WorkspaceTabsStore {
-    pub(crate) tabs: Vec<WorkspaceTab>,
+pub struct WorkspaceTabsStore {
+    pub tabs: Vec<WorkspaceTab>,
     /// The active tab's key, or none when no tab is open.
-    pub(crate) active_key: Option<String>,
+    pub active_key: Option<String>,
 }
 
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
@@ -73,7 +73,7 @@ impl WorkspaceTabsStore {
     /// `open(tab)`: opens (or refocuses/updates) a tab; idempotent per
     /// `key` — a key conflict refreshes the metadata **in place** (order
     /// kept) and re-activates; a new key appends and activates.
-    pub(crate) fn open(&mut self, tab: WorkspaceTab) {
+    pub fn open(&mut self, tab: WorkspaceTab) {
         match self.tabs.iter().position(|existing| existing.key == tab.key) {
             Some(index) => {
                 self.tabs[index] = tab.clone();
@@ -89,7 +89,7 @@ impl WorkspaceTabsStore {
     /// `close(key)`: closes a tab. When the closed tab was active, activates
     /// its right neighbor first (now at `index`), otherwise the left one;
     /// `null` when nothing remains. A key that matches no tab is a no-op.
-    pub(crate) fn close(&mut self, key: &str) {
+    pub fn close(&mut self, key: &str) {
         let Some(index) = self.tabs.iter().position(|tab| tab.key == key) else {
             return;
         };
@@ -102,7 +102,7 @@ impl WorkspaceTabsStore {
     }
 
     /// `activate(key)`: only a key that belongs to an open tab activates.
-    pub(crate) fn activate(&mut self, key: &str) {
+    pub fn activate(&mut self, key: &str) {
         if self.tabs.iter().any(|tab| tab.key == key) {
             self.active_key = Some(key.to_string());
         }
@@ -111,7 +111,7 @@ impl WorkspaceTabsStore {
     /// `closeByWapp(wappId)`: closes every tab of a workspace app
     /// (uninstall/disable). The same neighbor rule — but when the active
     /// tab survives (it belongs to another wapp), only the tabs change.
-    pub(crate) fn close_by_wapp(&mut self, wapp_id: &str) {
+    pub fn close_by_wapp(&mut self, wapp_id: &str) {
         let Some(first_removed_index) = self.tabs.iter().position(|tab| tab.wapp_id == wapp_id)
         else {
             return;

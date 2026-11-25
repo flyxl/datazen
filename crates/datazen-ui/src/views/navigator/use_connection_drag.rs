@@ -33,7 +33,7 @@ use crate::views::navigator::build_flat_rows::deps::locator::{
 /// if it were dropped now.
 #[allow(dead_code)] // drag port payload; consumer: the navigator tree host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConnectionDropTarget {
+pub struct ConnectionDropTarget {
     pub id: String,
     /// `'before' | 'after'` — which edge of the target row.
     pub before: bool,
@@ -47,7 +47,7 @@ pub(crate) struct ConnectionDropTarget {
 /// header, or on a group's empty-state hint row.
 #[allow(dead_code)] // drag port payload; consumer: the navigator tree host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct GroupDropTarget {
+pub struct GroupDropTarget {
     pub group_name: String,
     /// `'header' | 'empty'`.
     pub empty: bool,
@@ -64,7 +64,7 @@ pub(crate) struct GroupDropTarget {
 ///   untouched, so the SQL editor's drop handler still sees it).
 #[allow(dead_code)] // drag port; consumer: the navigator tree host (not wired).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DragFeedback {
+pub enum DragFeedback {
     AllowMove,
     RejectNone,
     Ignore,
@@ -74,7 +74,7 @@ pub(crate) enum DragFeedback {
 /// paints, and the group a cross-group drop would move it out of.
 #[allow(dead_code)] // drag port payload; consumer: the navigator tree host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct DragConnectionSnapshot {
+pub struct DragConnectionSnapshot {
     pub id: String,
     pub name: String,
     pub group: Option<String>,
@@ -83,7 +83,7 @@ pub(crate) struct DragConnectionSnapshot {
 /// Every side effect a drag transition can ask the host for.
 #[allow(dead_code)] // drag port; consumer: the navigator tree host (not wired).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum DragEffect {
+pub enum DragEffect {
     /// `dataTransfer.setData('text/plain' + 'application/datazen-connection')`
     /// — the fallback payload for drops this window did not start.
     SetDragPayload { conn_id: String },
@@ -108,7 +108,7 @@ pub(crate) enum DragEffect {
 /// feeds it the events its rows forward.
 #[allow(dead_code)] // drag port; consumer: the navigator tree host (not wired).
 #[derive(Default)]
-pub(crate) struct ConnectionDragMachine {
+pub struct ConnectionDragMachine {
     drag_conn_id: Option<String>,
     drop_target: Option<ConnectionDropTarget>,
     group_drop_target: Option<GroupDropTarget>,
@@ -119,7 +119,7 @@ impl ConnectionDragMachine {
     /// payload, and show the ghost. The React text-selection clear
     /// (`window.getSelection().removeAllRanges()`) is a platform concern the
     /// host handles with its own focus/selection API.
-    pub(crate) fn drag_start(
+    pub fn drag_start(
         &mut self,
         conn_id: &str,
         connections: &[DragConnectionSnapshot],
@@ -137,25 +137,25 @@ impl ConnectionDragMachine {
     }
 
     /// The in-memory drag id, if a connection drag is in flight.
-    pub(crate) fn drag_conn_id(&self) -> Option<&str> {
+    pub fn drag_conn_id(&self) -> Option<&str> {
         self.drag_conn_id.as_deref()
     }
 
-    pub(crate) fn drop_target(&self) -> Option<&ConnectionDropTarget> {
+    pub fn drop_target(&self) -> Option<&ConnectionDropTarget> {
         self.drop_target.as_ref()
     }
 
-    pub(crate) fn group_drop_target(&self) -> Option<&GroupDropTarget> {
+    pub fn group_drop_target(&self) -> Option<&GroupDropTarget> {
         self.group_drop_target.as_ref()
     }
 
     /// The exposed setters — the scroll container's `dragleave` has to be
     /// able to clear a target that was set by a row `dragover` it never saw.
-    pub(crate) fn set_drop_target(&mut self, target: Option<ConnectionDropTarget>) {
+    pub fn set_drop_target(&mut self, target: Option<ConnectionDropTarget>) {
         self.drop_target = target;
     }
 
-    pub(crate) fn set_group_drop_target(&mut self, target: Option<GroupDropTarget>) {
+    pub fn set_group_drop_target(&mut self, target: Option<GroupDropTarget>) {
         self.group_drop_target = target;
     }
 
@@ -175,7 +175,7 @@ impl ConnectionDragMachine {
     /// Geometry: `target_top`/`target_height` stand in for
     /// `e.currentTarget.getBoundingClientRect()`; the drop line flips at the
     /// row's vertical midpoint.
-    pub(crate) fn drag_over(
+    pub fn drag_over(
         &mut self,
         target_id: &str,
         target_section_group: Option<&str>,
@@ -218,14 +218,14 @@ impl ConnectionDragMachine {
     /// target on row dragleave would wipe it on every mouse move across
     /// children. The target is updated by every dragover and cleared by
     /// dragend or the container's dragleave.
-    pub(crate) fn drag_leave_row(&mut self) {}
+    pub fn drag_leave_row(&mut self) {}
 
     /// React `handleGroupDragLeave` — same rule as [`Self::drag_leave_row`]:
     /// do not clear on child leave; dragover updates, dragend clears.
-    pub(crate) fn group_drag_leave(&mut self) {}
+    pub fn group_drag_leave(&mut self) {}
 
     /// React `handleDragEnd` — the one place a drag fully unwinds.
-    pub(crate) fn drag_end(&mut self) -> Vec<DragEffect> {
+    pub fn drag_end(&mut self) -> Vec<DragEffect> {
         self.drag_conn_id = None;
         self.drop_target = None;
         self.group_drop_target = None;
@@ -233,7 +233,7 @@ impl ConnectionDragMachine {
     }
 
     /// React `handleGroupDragOver(e, groupName, target = 'header')`.
-    pub(crate) fn group_drag_over(
+    pub fn group_drag_over(
         &mut self,
         group_name: &str,
         empty: bool,
@@ -256,7 +256,7 @@ impl ConnectionDragMachine {
     /// connection reordering drags; table/view drops must pass through to
     /// the SQL editor drop handler. Returns `None` (and touches nothing)
     /// when the drop is not ours.
-    pub(crate) fn group_drop(
+    pub fn group_drop(
         &mut self,
         transfer_conn_id: Option<&str>,
         group_name: &str,
@@ -281,7 +281,7 @@ impl ConnectionDragMachine {
 
     /// React `handleSectionDragOver(e, section)` — the pinned/recent section
     /// headers swallow the drag so nothing below them can accept it.
-    pub(crate) fn section_drag_over(&mut self, section: &str) -> DragFeedback {
+    pub fn section_drag_over(&mut self, section: &str) -> DragFeedback {
         if self.drag_conn_id.is_none() {
             return DragFeedback::Ignore;
         }
@@ -293,7 +293,7 @@ impl ConnectionDragMachine {
 
     /// React `handleSectionDrop(e, _section)` — consume the drop (it landed
     /// in a section, not on a row or group) and unwind the drag markers.
-    pub(crate) fn section_drop(&mut self) -> Option<Vec<DragEffect>> {
+    pub fn section_drop(&mut self) -> Option<Vec<DragEffect>> {
         if self.drag_conn_id.is_none() {
             return None;
         }
@@ -306,7 +306,7 @@ impl ConnectionDragMachine {
     ///
     /// Returns `None` when the drop is not ours to consume; `Some(effects)`
     /// otherwise (possibly empty: a no-op reorder still unwinds the drag).
-    pub(crate) fn drop(
+    pub fn drop(
         &mut self,
         transfer_conn_id: Option<&str>,
         connections: &[DragConnectionSnapshot],

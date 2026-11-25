@@ -107,7 +107,7 @@ type EditorFn<S> = Rc<dyn Fn(&mut S) -> &mut ColumnMappingEditorState>;
 /// React 32: `tables.filter((tbl) => tbl.enabled && tbl.sourceTable)` —
 /// the enabled tables with a non-empty source (the sidebar's rows and
 /// the effect's universe).
-pub(crate) fn enabled_tables(tables: &[TransferTableVm]) -> Vec<&TransferTableVm> {
+pub fn enabled_tables(tables: &[TransferTableVm]) -> Vec<&TransferTableVm> {
     tables
         .iter()
         .filter(|table| table.enabled && !table.source_table.is_empty())
@@ -116,7 +116,7 @@ pub(crate) fn enabled_tables(tables: &[TransferTableVm]) -> Vec<&TransferTableVm
 
 /// React 33-34: the enabled row for `selectedSourceTable`, else the
 /// first enabled row (the same cell the effect would correct to).
-pub(crate) fn selected_table<'a>(
+pub fn selected_table<'a>(
     tables: &'a [TransferTableVm],
     selected_source_table: &str,
 ) -> Option<&'a TransferTableVm> {
@@ -133,7 +133,7 @@ pub(crate) fn selected_table<'a>(
 /// selected table not among the enabled), else `None`. The host
 /// applies the write through its select channel when it lands — a
 /// render pass cannot write host state.
-pub(crate) fn selection_correction(
+pub fn selection_correction(
     tables: &[TransferTableVm],
     selected_source_table: &str,
 ) -> Option<String> {
@@ -151,7 +151,7 @@ pub(crate) fn selection_correction(
 }
 
 /// React 43: `mode === 'structure' || mode === 'structureAndData'`.
-pub(crate) fn structure_mode(mode: TransferMode) -> bool {
+pub fn structure_mode(mode: TransferMode) -> bool {
     matches!(mode, TransferMode::Structure | TransferMode::StructureAndData)
 }
 
@@ -159,7 +159,7 @@ pub(crate) fn structure_mode(mode: TransferMode) -> bool {
 /// builds its one editor state from the selected table — the `mode`
 /// and `disabled` props are the editor's own inputs (the shell's
 /// host-state trade) — whenever the selection changes.
-pub(crate) fn seed_editor_state(
+pub fn seed_editor_state(
     selected: &TransferTableVm,
     mode: TransferMode,
     disabled: bool,
@@ -169,7 +169,7 @@ pub(crate) fn seed_editor_state(
 
 /// The mapping step shell (React 22-88): the sidebar and the editor
 /// over the selected table, or the empty notice.
-pub(crate) struct TransferMappingStep<'a, S: 'static> {
+pub struct TransferMappingStep<'a, S: 'static> {
     tables: &'a [TransferTableVm],
     selected_source_table: &'a str,
     editor: &'a ColumnMappingEditorState,
@@ -183,7 +183,7 @@ impl<'a, S: 'static> TransferMappingStep<'a, S> {
     /// The render inputs: the inspected tables, the selected source
     /// table, and the host-held editor state seeded for it (React's
     /// `mode` / `disabled` enter through [`seed_editor_state`]).
-    pub(crate) fn new(
+    pub fn new(
         tables: &'a [TransferTableVm],
         selected_source_table: &'a str,
         editor: &'a ColumnMappingEditorState,
@@ -202,7 +202,7 @@ impl<'a, S: 'static> TransferMappingStep<'a, S> {
     /// The editor's state accessor (the shell's `editor_mut`): one
     /// accessor wires the whole embedded editor; without it the shell
     /// renders read-only (the shell's own documented trade).
-    pub(crate) fn editor_mut(
+    pub fn editor_mut(
         mut self,
         f: impl Fn(&mut S) -> &mut ColumnMappingEditorState + 'static,
     ) -> Self {
@@ -214,14 +214,14 @@ impl<'a, S: 'static> TransferMappingStep<'a, S> {
     /// item, unguarded (the props' doc comment: picking a different
     /// table is a read-only act and must not be blocked while a
     /// prepare is in flight).
-    pub(crate) fn on_select_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_select_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_select_table = Some(Rc::new(f));
         self
     }
 
     /// React `onUpdateTable(sourceTable, patch)` (83): the editor's
     /// patch applied with the selected table's source.
-    pub(crate) fn on_update_table(
+    pub fn on_update_table(
         mut self,
         f: impl Fn(&mut S, String, ColumnMappingTablePatch) + 'static,
     ) -> Self {
@@ -231,7 +231,7 @@ impl<'a, S: 'static> TransferMappingStep<'a, S> {
 
     /// React `onTargetTableCommit(sourceTable)` (84): the editor's
     /// target-table submit with the selected table's source.
-    pub(crate) fn on_target_table_commit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_target_table_commit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_target_table_commit = Some(Rc::new(f));
         self
     }
@@ -240,7 +240,7 @@ impl<'a, S: 'static> TransferMappingStep<'a, S> {
     /// selected table, in the step's `flex min-h-0 flex-1 gap-4` row.
     /// The caller roots the result once (the shell's mounting
     /// ruling); the editor's overlay layer rides `layer`.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let enabled = enabled_tables(self.tables);
 

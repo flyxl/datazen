@@ -72,23 +72,23 @@ use std::collections::HashMap;
 
 /// Slot hosting `createExtraKeymap` output (`KEYMAP_COMPARTMENT_ID`).
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) const KEYMAP_COMPARTMENT_ID: &str = "keymap";
+pub const KEYMAP_COMPARTMENT_ID: &str = "keymap";
 /// Generic slot hosting `createExtraExtensions` output and any overflow
 /// (`EXTRA_COMPARTMENT_ID`).
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) const EXTRA_COMPARTMENT_ID: &str = "extra";
+pub const EXTRA_COMPARTMENT_ID: &str = "extra";
 /// Slot hosting `createFoldExtensions` output — code folding
 /// (`FOLD_COMPARTMENT_ID`). A dedicated slot rather than a corner of
 /// `extra` because folding carries its own keymap: it needs a known
 /// position in the mount order and independent reconfigurability.
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) const FOLD_COMPARTMENT_ID: &str = "fold";
+pub const FOLD_COMPARTMENT_ID: &str = "fold";
 
 /// Priority-ordered ids every editor instance mounts out of the box
 /// (`BASE_PRO_COMPARTMENT_IDS`). The order is the mount order, which is
 /// the order extension precedence resolves in.
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) const BASE_PRO_COMPARTMENT_IDS: [&str; 9] = [
+pub const BASE_PRO_COMPARTMENT_IDS: [&str; 9] = [
     "statement",
     "completion",
     "intention",
@@ -109,13 +109,13 @@ pub(crate) const BASE_PRO_COMPARTMENT_IDS: [&str; 9] = [
 /// `ensureProCompartment` hands back on repeat calls).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct ProCompartment {
+pub struct ProCompartment {
     /// The compartment id — the registry key and the per-state mounted
     /// map's key.
-    pub(crate) id: String,
+    pub id: String,
     /// Registration sequence: the identity two `ensure` calls for one
     /// id share.
-    pub(crate) seq: u64,
+    pub seq: u64,
 }
 
 /// The compartment registry (React's module-level `compartmentRegistry`
@@ -124,7 +124,7 @@ pub(crate) struct ProCompartment {
 /// [`ProCompartmentState`].
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct ProCompartmentRegistry {
+pub struct ProCompartmentRegistry {
     /// Registered ids in registration order (base ids first —
     /// [`ProCompartmentRegistry::default`] seeds them).
     order: Vec<String>,
@@ -137,7 +137,7 @@ impl ProCompartmentRegistry {
     /// module init `for (const id of BASE_PRO_COMPARTMENT_IDS)
     /// ensureProCompartment(id)`.
     #[allow(dead_code)] // reusable port; the workspace view track wires it
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         let mut registry = ProCompartmentRegistry::default();
         for id in BASE_PRO_COMPARTMENT_IDS {
             registry.ensure(id);
@@ -152,7 +152,7 @@ impl ProCompartmentRegistry {
     /// the [`EXTRA_COMPARTMENT_ID`] overflow instead (the
     /// classification in [`reconfigure_pro_compartments`], never a
     /// throw).
-    pub(crate) fn ensure(&mut self, id: &str) -> ProCompartment {
+    pub fn ensure(&mut self, id: &str) -> ProCompartment {
         if let Some(existing) = self.map.get(id) {
             return existing.clone();
         }
@@ -165,14 +165,14 @@ impl ProCompartmentRegistry {
 
     /// `getProCompartment(id)`: the compartment registered for `id`, or
     /// `None` when it is unknown.
-    pub(crate) fn get(&self, id: &str) -> Option<&ProCompartment> {
+    pub fn get(&self, id: &str) -> Option<&ProCompartment> {
         self.map.get(id)
     }
 
     /// `registeredProCompartmentIds()`: registered ids in registration
     /// order (base ids first).
     #[allow(dead_code)] // reusable port; the workspace view track wires it
-    pub(crate) fn ids(&self) -> Vec<String> {
+    pub fn ids(&self) -> Vec<String> {
         self.order.clone()
     }
 }
@@ -190,7 +190,7 @@ impl Default for ProCompartmentRegistry {
 /// The React `Extension` values are opaque to this module (CodeMirror
 /// opaque values); the engine seam carries them as tokens the host
 /// resolves. Identity and order are all the machinery reads.
-pub(crate) type ProExtension = String;
+pub type ProExtension = String;
 
 /// `ProCompartmentPayload = Record<string, Extension[]>`: per-slot
 /// extension bags keyed by compartment id, open by design (an extension
@@ -199,20 +199,20 @@ pub(crate) type ProExtension = String;
 /// the reconfigure classification and the overflow merge both walk.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct ProCompartmentPayload {
+pub struct ProCompartmentPayload {
     entries: Vec<(String, Vec<ProExtension>)>,
 }
 
 impl ProCompartmentPayload {
     #[allow(dead_code)] // reusable port; the workspace view track wires it
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         ProCompartmentPayload::default()
     }
 
     /// Record assignment `payload[id] = extensions`: a fresh key
     /// appends, an existing key replaces in place (position kept).
     #[allow(dead_code)] // reusable port; the workspace view track wires it
-    pub(crate) fn insert(&mut self, id: &str, extensions: Vec<ProExtension>) -> &mut Self {
+    pub fn insert(&mut self, id: &str, extensions: Vec<ProExtension>) -> &mut Self {
         match self.entries.iter_mut().find(|(key, _)| key == id) {
             Some((_, slot)) => *slot = extensions,
             None => self.entries.push((id.to_owned(), extensions)),
@@ -221,17 +221,17 @@ impl ProCompartmentPayload {
     }
 
     /// `payload[id]` — `None` when the payload does not name the id.
-    pub(crate) fn get(&self, id: &str) -> Option<&[ProExtension]> {
+    pub fn get(&self, id: &str) -> Option<&[ProExtension]> {
         self.entries.iter().find(|(key, _)| key == id).map(|(_, slot)| slot.as_slice())
     }
 
     /// `Object.keys(payload)` in insertion order.
-    pub(crate) fn keys(&self) -> Vec<String> {
+    pub fn keys(&self) -> Vec<String> {
         self.entries.iter().map(|(id, _)| id.clone()).collect()
     }
 
     /// Entry iteration in insertion order (id, extensions).
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&str, &[ProExtension])> {
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &[ProExtension])> {
         self.entries.iter().map(|(id, slot)| (id.as_str(), slot.as_slice()))
     }
 }
@@ -240,9 +240,9 @@ impl ProCompartmentPayload {
 /// initial contents, in payload order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct MountedProCompartment {
-    pub(crate) id: String,
-    pub(crate) extensions: Vec<ProExtension>,
+pub struct MountedProCompartment {
+    pub id: String,
+    pub extensions: Vec<ProExtension>,
 }
 
 /// `mountProCompartments(payload)`: the extension list installed into
@@ -251,7 +251,7 @@ pub(crate) struct MountedProCompartment {
 /// extension-owned slot — then yields one mount entry per payload key,
 /// in payload order.
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) fn mount_pro_compartments(
+pub fn mount_pro_compartments(
     registry: &mut ProCompartmentRegistry,
     payload: &ProCompartmentPayload,
 ) -> Vec<MountedProCompartment> {
@@ -278,7 +278,7 @@ pub(crate) fn mount_pro_compartments(
 /// instance it is applied to.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct ProCompartmentState {
+pub struct ProCompartmentState {
     mounted: Vec<(String, Vec<ProExtension>)>,
 }
 
@@ -286,19 +286,19 @@ impl ProCompartmentState {
     /// Install the mount list [`mount_pro_compartments`] produced (the
     /// editor state's initial per-compartment contents).
     #[allow(dead_code)] // reusable port; the workspace view track wires it
-    pub(crate) fn mount(&mut self, mounts: &[MountedProCompartment]) {
+    pub fn mount(&mut self, mounts: &[MountedProCompartment]) {
         self.mounted = mounts.iter().map(|m| (m.id.clone(), m.extensions.clone())).collect();
     }
 
     /// `Compartment.get(state) !== undefined` — the only reliable
     /// presence check CM6 offers, and the classification's predicate.
-    pub(crate) fn is_mounted(&self, id: &str) -> bool {
+    pub fn is_mounted(&self, id: &str) -> bool {
         self.mounted.iter().any(|(key, _)| key == id)
     }
 
     /// The slot's current contents, or `None` when unmounted.
     #[allow(dead_code)] // reusable port; the workspace view track wires it
-    pub(crate) fn contents(&self, id: &str) -> Option<&[ProExtension]> {
+    pub fn contents(&self, id: &str) -> Option<&[ProExtension]> {
         self.mounted.iter().find(|(key, _)| key == id).map(|(_, slot)| slot.as_slice())
     }
 
@@ -313,7 +313,7 @@ impl ProCompartmentState {
     /// classification only ever emits effects for mounted slots (that
     /// is its whole job); the arm exists for host integration parity.
     #[allow(dead_code)] // reusable port; the workspace view track wires it
-    pub(crate) fn apply(&mut self, reconfigure: &ProReconfigure) -> Result<(), String> {
+    pub fn apply(&mut self, reconfigure: &ProReconfigure) -> Result<(), String> {
         for effect in &reconfigure.effects {
             match self.mounted.iter_mut().find(|(id, _)| *id == effect.compartment_id) {
                 Some((_, slot)) => *slot = effect.extensions.clone(),
@@ -336,9 +336,9 @@ impl ProCompartmentState {
 /// One `compartment.reconfigure(extensions)` effect.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct ProReconfigureEffect {
-    pub(crate) compartment_id: String,
-    pub(crate) extensions: Vec<ProExtension>,
+pub struct ProReconfigureEffect {
+    pub compartment_id: String,
+    pub extensions: Vec<ProExtension>,
 }
 
 /// What `reconfigureProCompartments` built: the single transaction it
@@ -346,21 +346,21 @@ pub(crate) struct ProReconfigureEffect {
 /// the React function only logged.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct ProReconfigure {
+pub struct ProReconfigure {
     /// The reconfigure effects in dispatch order: every direct id in
     /// payload order, then the merged `extra` overflow when it applies.
     /// One transaction — all or nothing ([`ProReconfigure::dispatched`]
     /// is the early return).
-    pub(crate) effects: Vec<ProReconfigureEffect>,
+    pub effects: Vec<ProReconfigureEffect>,
     /// Late ids folded into [`EXTRA_COMPARTMENT_ID`] (announced after
     /// this view was built, but `extra` was mounted so they ride it).
-    pub(crate) folded_into_extra: Vec<String>,
+    pub folded_into_extra: Vec<String>,
     /// Late ids skipped with the warning (no mounted slot at all — the
     /// host formats the message the React `console.warn` carried).
-    pub(crate) skipped_unmounted: Vec<String>,
+    pub skipped_unmounted: Vec<String>,
     /// `Transaction.addToHistory.of(false)`: the reconfigure is
     /// invisible to undo. Verbatim — always `false` when dispatched.
-    pub(crate) add_to_history: bool,
+    pub add_to_history: bool,
 }
 
 impl ProReconfigure {
@@ -368,7 +368,7 @@ impl ProReconfigure {
     /// when nothing applies (an all-overflow payload with `extra`
     /// unmounted dispatches nothing).
     #[allow(dead_code)] // reusable port; the workspace view track wires it
-    pub(crate) fn dispatched(&self) -> bool {
+    pub fn dispatched(&self) -> bool {
         !self.effects.is_empty()
     }
 }
@@ -387,7 +387,7 @@ impl ProReconfigure {
 /// Call [`ProCompartmentState::apply`] on the target view to land the
 /// plan; other views are structurally untouched.
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) fn reconfigure_pro_compartments(
+pub fn reconfigure_pro_compartments(
     registry: &ProCompartmentRegistry,
     state: &ProCompartmentState,
     payload: &ProCompartmentPayload,
@@ -460,12 +460,12 @@ pub(crate) fn reconfigure_pro_compartments(
 /// `driverSettings[extensionId]` (a JSON object; the flag reader
 /// tolerates anything else exactly as JS's `bag?.[key]` yields
 /// undefined).
-pub(crate) type ProSettingsBag = serde_json::Value;
+pub type ProSettingsBag = serde_json::Value;
 
 /// Settings namespaces owned by the SQL editor privileged EP
 /// (`PRO_SETTINGS_EXTENSION_IDS`). Order matters: the first id whose
 /// value is a real object wins.
-pub(crate) const PRO_SETTINGS_EXTENSION_IDS: [&str; 2] =
+pub const PRO_SETTINGS_EXTENSION_IDS: [&str; 2] =
     ["sql-editor-enhanced", "sql-editor-pro"];
 
 /// `readProSettingsBag`: read the privileged settings bag for the
@@ -480,7 +480,7 @@ pub(crate) const PRO_SETTINGS_EXTENSION_IDS: [&str; 2] =
 /// `useMemo`/selector sees a stable identity; the Rust port returns a
 /// structurally empty object (see the module header's known deltas).
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) fn read_pro_settings_bag(
+pub fn read_pro_settings_bag(
     driver_settings: Option<&serde_json::Value>,
 ) -> ProSettingsBag {
     if let Some(serde_json::Value::Object(map)) = driver_settings {
@@ -500,7 +500,7 @@ pub(crate) fn read_pro_settings_bag(
 /// settings corruption degrades to the documented default instead of
 /// silently disabling a feature.
 #[allow(dead_code)] // consumed via fold's re-export; wired with the workspace view
-pub(crate) fn pro_setting_flag(bag: Option<&ProSettingsBag>, key: &str, fallback: bool) -> bool {
+pub fn pro_setting_flag(bag: Option<&ProSettingsBag>, key: &str, fallback: bool) -> bool {
     match bag.and_then(|bag| bag.get(key)) {
         Some(serde_json::Value::Bool(value)) => *value,
         _ => fallback,
@@ -516,7 +516,7 @@ pub(crate) fn pro_setting_flag(bag: Option<&ProSettingsBag>, key: &str, fallback
 /// wrapper's paths applies.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) enum EpHookAnswer<T> {
+pub enum EpHookAnswer<T> {
     /// The EP is not registered, or does not implement the hook:
     /// `enhanced.createXxx?.(opts) ?? []` (the contract 1.1.0
     /// absent-means-empty rule — no `EXTENSION_POINTS_VERSION` bump).
@@ -534,11 +534,11 @@ pub(crate) enum EpHookAnswer<T> {
 /// NEXT call is the unregistered path, not another throw).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct SafeCompartment<T> {
-    pub(crate) value: T,
+pub struct SafeCompartment<T> {
+    pub value: T,
     /// Whether the host must unregister the EP from the extension
     /// registry.
-    pub(crate) unregister: bool,
+    pub unregister: bool,
 }
 
 /// `SafeCompartmentWrapper({ point, featureName }, thunk, fallback)`:
@@ -547,7 +547,7 @@ pub(crate) struct SafeCompartment<T> {
 /// taking the editor down. `feature_name` rides for the host's
 /// diagnostics (the wrapper logs it before unregistering).
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) fn safe_compartment_wrapper<T>(
+pub fn safe_compartment_wrapper<T>(
     _feature_name: &str,
     answer: EpHookAnswer<T>,
     fallback: T,
@@ -564,7 +564,7 @@ pub(crate) fn safe_compartment_wrapper<T>(
 /// `createProExtraExtensions` → the generic `extra` compartment's EP
 /// half. Circuit-broken like every other privileged factory.
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) fn create_pro_extra_extensions(
+pub fn create_pro_extra_extensions(
     answer: EpHookAnswer<Vec<ProExtension>>,
 ) -> SafeCompartment<Vec<ProExtension>> {
     safe_compartment_wrapper("createExtraExtensions", answer, Vec::new())
@@ -575,7 +575,7 @@ pub(crate) fn create_pro_extra_extensions(
 /// hook: an extension that predates code folding simply does not
 /// implement it and the slot reconfigures to `[]`.
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) fn create_fold_extensions(
+pub fn create_fold_extensions(
     answer: EpHookAnswer<Vec<ProExtension>>,
 ) -> SafeCompartment<Vec<ProExtension>> {
     safe_compartment_wrapper("createFoldExtensions", answer, Vec::new())
@@ -586,11 +586,11 @@ pub(crate) fn create_fold_extensions(
 /// module — only the wrapping precedence does).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct ProKeyBinding {
+pub struct ProKeyBinding {
     /// The `key:` spelling (`Mod-` is Cmd on macOS, Ctrl elsewhere).
-    pub(crate) key: String,
+    pub key: String,
     /// The `mac:` variant, when the chord differs.
-    pub(crate) mac: Option<String>,
+    pub mac: Option<String>,
 }
 
 /// The precedence the Pro keymap mounts at. `Prec.highest` is
@@ -606,7 +606,7 @@ pub(crate) struct ProKeyBinding {
 /// does not make the hook greedy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) enum ProKeymapPrecedence {
+pub enum ProKeymapPrecedence {
     /// `Prec.highest(keymap.of(bindings))`.
     Highest,
 }
@@ -615,15 +615,15 @@ pub(crate) enum ProKeymapPrecedence {
 /// [`ProKeymapPrecedence::Highest`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) struct ProKeymapExtension {
-    pub(crate) bindings: Vec<ProKeyBinding>,
-    pub(crate) precedence: ProKeymapPrecedence,
+pub struct ProKeymapExtension {
+    pub bindings: Vec<ProKeyBinding>,
+    pub precedence: ProKeymapPrecedence,
 }
 
 /// `createProKeymapExtension(opts)`: the EP's `createExtraKeymap`
 /// bindings, circuit-broken, wrapped at highest precedence.
 #[allow(dead_code)] // reusable port; the workspace view track wires it
-pub(crate) fn create_pro_keymap_extension(
+pub fn create_pro_keymap_extension(
     answer: EpHookAnswer<Vec<ProKeyBinding>>,
 ) -> SafeCompartment<ProKeymapExtension> {
     let SafeCompartment { value: bindings, unregister } =

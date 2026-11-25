@@ -32,7 +32,7 @@ use rune::{col, row, El};
 use crate::ui::kit::kit;
 
 /// The 40-point footer bar.
-pub(crate) struct StatusBar {
+pub struct StatusBar {
     key: String,
     left: Option<El>,
     right: Option<El>,
@@ -41,7 +41,7 @@ pub(crate) struct StatusBar {
 impl StatusBar {
     /// `StatusBar::new("status-bar")` — the key is this port's own
     /// (React has no `data-testid` on the footer).
-    pub(crate) fn new(key: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             left: None,
@@ -50,19 +50,19 @@ impl StatusBar {
     }
 
     /// React's `left` — the shrinking half.
-    pub(crate) fn left(mut self, el: El) -> Self {
+    pub fn left(mut self, el: El) -> Self {
         self.left = Some(el);
         self
     }
 
     /// React's `right` — the fixed half.
-    pub(crate) fn right(mut self, el: El) -> Self {
+    pub fn right(mut self, el: El) -> Self {
         self.right = Some(el);
         self
     }
 
     /// Paint the footer.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let key = self.key;
         row()

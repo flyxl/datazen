@@ -20,7 +20,7 @@ use crate::views::schema_diff::use_schema_diff_job_lifecycle::SchemaDiffTrackedJ
 /// The effect: the deploy result a locally-submitted job's details
 /// carry, or `None` when the job is historical (not this wizard's)
 /// or has no result yet.
-pub(crate) fn restore_deploy_result(
+pub fn restore_deploy_result(
     current_job: Option<&SchemaDiffTrackedJobVm>,
 ) -> Option<SchemaDiffDeployResultVm> {
     let job = current_job?;

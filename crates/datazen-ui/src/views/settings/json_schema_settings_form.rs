@@ -56,7 +56,7 @@ use crate::ui::toggle::Checkbox;
 /// One `type: 'boolean'` property of the schema, with the fields the
 /// form renders.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SchemaPropertyEntry {
+pub struct SchemaPropertyEntry {
     pub key: String,
     /// `prop.title` — the label; falls back to the key when absent.
     pub title: Option<String>,
@@ -67,7 +67,7 @@ pub(crate) struct SchemaPropertyEntry {
 }
 
 /// `readBooleanField`: a boolean stored value, else the default.
-pub(crate) fn read_boolean_field(
+pub fn read_boolean_field(
     obj: &serde_json::Map<String, Value>,
     key: &str,
     default_value: bool,
@@ -82,7 +82,7 @@ pub(crate) fn read_boolean_field(
 /// key (`undefined` — a stored `null` is a value and stays) with the
 /// schema property's `default`. A schema that is not
 /// `{"type": "object"}` with `properties` returns the value unchanged.
-pub(crate) fn apply_schema_defaults(
+pub fn apply_schema_defaults(
     schema: &Value,
     value: &serde_json::Map<String, Value>,
 ) -> serde_json::Map<String, Value> {
@@ -104,7 +104,7 @@ pub(crate) fn apply_schema_defaults(
 
 /// `listSchemaPropertyEntries`: the schema's `type: 'boolean'`
 /// properties, in the schema's own (dictionary-ordered) listing.
-pub(crate) fn list_schema_property_entries(schema: &Value) -> Vec<SchemaPropertyEntry> {
+pub fn list_schema_property_entries(schema: &Value) -> Vec<SchemaPropertyEntry> {
     let Some(properties) = schema_properties(schema) else {
         return Vec::new();
     };
@@ -137,7 +137,7 @@ fn schema_properties(schema: &Value) -> Option<&serde_json::Map<String, Value>> 
 ///
 /// Generic over the host state `S` (the toggle closures write through
 /// `on_change`, exactly as React's `onChange` prop did).
-pub(crate) struct JsonSchemaSettingsForm<'a, S: 'static> {
+pub struct JsonSchemaSettingsForm<'a, S: 'static> {
     key: &'a str,
     schema: &'a Value,
     /// The stored settings value (`unknown` in React: only a plain
@@ -147,26 +147,26 @@ pub(crate) struct JsonSchemaSettingsForm<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> JsonSchemaSettingsForm<'a, S> {
-    pub(crate) fn new(schema: &'a Value, value: &'a Value) -> Self {
+    pub fn new(schema: &'a Value, value: &'a Value) -> Self {
         Self { key: "json-schema-settings-form", schema, value, on_change: None }
     }
 
     /// Override the key base (one form per driver entry: the caller
     /// passes the section's block key so rows stay unique).
-    pub(crate) fn key(mut self, key: &'a str) -> Self {
+    pub fn key(mut self, key: &'a str) -> Self {
         self.key = key;
         self
     }
 
     /// `onChange(next)`: the whole merged object, one call per toggle.
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, Value) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, Value) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
     /// Build the form. `None` when the schema lists no boolean
     /// properties (React renders `null`).
-    pub(crate) fn build(self, dark: bool) -> Option<El> {
+    pub fn build(self, dark: bool) -> Option<El> {
         let fields = list_schema_property_entries(self.schema);
         if fields.is_empty() {
             return None;
@@ -222,7 +222,7 @@ fn merged_toggle_value(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
     use super::*;
     use serde_json::json;
 

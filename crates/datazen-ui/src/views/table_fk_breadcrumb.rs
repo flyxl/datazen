@@ -22,32 +22,32 @@ use crate::ui::kit::kit;
 /// React `FkOrigin` (the fields the breadcrumb reads).
 #[allow(dead_code)] // VM mirror; supplied by the FK navigation host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct FkOrigin {
-    pub(crate) source_panel_id: String,
-    pub(crate) source_table: String,
-    pub(crate) local_columns: Vec<String>,
-    pub(crate) target_table: String,
-    pub(crate) target_columns: Vec<String>,
-    pub(crate) nav_entry_id: String,
+pub struct FkOrigin {
+    pub source_panel_id: String,
+    pub source_table: String,
+    pub local_columns: Vec<String>,
+    pub target_table: String,
+    pub target_columns: Vec<String>,
+    pub nav_entry_id: String,
 }
 
 /// Host-owned projection of the component props.
 #[allow(dead_code)] // VM surface; owned by the table host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TableFkBreadcrumbVm {
+pub struct TableFkBreadcrumbVm {
     /// `None` means there is no FK jump to describe (React would not mount).
-    pub(crate) origin: Option<FkOrigin>,
-    pub(crate) truncated: bool,
-    pub(crate) can_go_back: bool,
-    pub(crate) can_go_forward: bool,
+    pub origin: Option<FkOrigin>,
+    pub truncated: bool,
+    pub can_go_back: bool,
+    pub can_go_forward: bool,
     /// Whether the host supplied `onDismiss`.
-    pub(crate) dismissible: bool,
+    pub dismissible: bool,
 }
 
 /// React `fkOriginLabel`: `orders.customer_id → customers.id`, with every
 /// column of a composite key shown on both sides.
 #[allow(dead_code)] // pure helper; consumed by the view and tests.
-pub(crate) fn fk_origin_label(model: &FkOrigin) -> String {
+pub fn fk_origin_label(model: &FkOrigin) -> String {
     let side = |table: &str, columns: &[String]| -> String {
         match columns.len() {
             0 => table.to_owned(),
@@ -65,7 +65,7 @@ pub(crate) fn fk_origin_label(model: &FkOrigin) -> String {
 /// Host intents from the three buttons.
 #[allow(dead_code)] // host port; removed with the table wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TableFkAction {
+pub enum TableFkAction {
     Back,
     Forward,
     Dismiss,
@@ -87,7 +87,7 @@ fn emit<S: 'static>(
 
 /// Build the breadcrumb; a missing origin mounts only an inert empty marker.
 #[allow(dead_code)] // consumer: the table host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableFkBreadcrumbVm,
     on_action: Option<ActionFn<S>>,
     dark: bool,

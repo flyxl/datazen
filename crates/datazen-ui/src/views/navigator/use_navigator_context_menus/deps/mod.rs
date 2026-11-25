@@ -15,7 +15,7 @@
 //! live in `build_flat_rows::deps` (T570/T578's port of the same React
 //! sources; removal stage T582/T394).
 
-pub(crate) mod connection_url;
-pub(crate) mod main_menu;
-pub(crate) mod native_menu;
-pub(crate) mod schema_tree_menu;
+pub mod connection_url;
+pub mod main_menu;
+pub mod native_menu;
+pub mod schema_tree_menu;

@@ -20,7 +20,7 @@ use super::kit::kit;
 ///
 /// The kit-delegated field centres through its outer row; the legacy
 /// (custom-ink) path uses this padding directly.
-pub(crate) fn centered_pad(style: TextStyle, height: f32) -> f32 {
+pub fn centered_pad(style: TextStyle, height: f32) -> f32 {
     ((height - style.line_px()) / 2.0).max(0.0)
 }
 
@@ -42,7 +42,7 @@ pub(crate) fn centered_pad(style: TextStyle, height: f32) -> f32 {
 /// of the built element so the caller's intent wins. Placeholder colour and
 /// the default text colour are decided by the kit; `.ink(...)` opts into the
 /// direct-build path so the requested text colour reaches the editor.
-pub(crate) struct TextField<'a> {
+pub struct TextField<'a> {
     key: String,
     edit: &'a TextEdit,
     style: TextStyle,
@@ -75,7 +75,7 @@ pub(crate) struct TextField<'a> {
 
 impl<'a> TextField<'a> {
     /// A field over `edit`, 28 points tall, set in the label type, filling the parent.
-    pub(crate) fn new(key: impl Into<String>, edit: &'a TextEdit) -> TextField<'a> {
+    pub fn new(key: impl Into<String>, edit: &'a TextEdit) -> TextField<'a> {
         TextField {
             key: key.into(),
             edit,
@@ -107,84 +107,84 @@ impl<'a> TextField<'a> {
     }
 
     /// The text's type; the height keeps its line in the middle of it.
-    pub(crate) fn text_style(mut self, style: TextStyle) -> Self {
+    pub fn text_style(mut self, style: TextStyle) -> Self {
         self.style = style;
         self
     }
 
     /// The box's height in points (default 28).
-    pub(crate) fn height(mut self, height: f32) -> Self {
+    pub fn height(mut self, height: f32) -> Self {
         self.height = height;
         self
     }
 
     /// A fixed width in points; without it the field fills its parent.
-    pub(crate) fn width(mut self, width: f32) -> Self {
+    pub fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
         self
     }
 
     /// Fill the parent's width (the default; spelled out where it matters).
-    pub(crate) fn w_full(mut self) -> Self {
+    pub fn w_full(mut self) -> Self {
         self.width = None;
         self
     }
 
     /// Take the rest of the row, so a field among buttons shrinks with the window.
-    pub(crate) fn grow(mut self) -> Self {
+    pub fn grow(mut self) -> Self {
         self.grow = true;
         self
     }
 
     /// Let the field shrink below its width instead of pushing its row wider.
-    pub(crate) fn min_width(mut self, width: f32) -> Self {
+    pub fn min_width(mut self, width: f32) -> Self {
         self.min_width = Some(width);
         self
     }
 
     /// Allow the field to shrink when the row is tight.
-    pub(crate) fn shrink(mut self) -> Self {
+    pub fn shrink(mut self) -> Self {
         self.shrink = true;
         self
     }
 
     /// Horizontal padding inside the box, for a field that draws its own border (default 0).
-    pub(crate) fn pad_x(mut self, pad: f32) -> Self {
+    pub fn pad_x(mut self, pad: f32) -> Self {
         self.pad_x = pad;
         self
     }
 
-    pub(crate) fn radius(mut self, radius: f32) -> Self {
+    pub fn radius(mut self, radius: f32) -> Self {
         self.radius = Some(radius);
         self
     }
 
-    pub(crate) fn fill(mut self, fill: Color) -> Self {
+    pub fn fill(mut self, fill: Color) -> Self {
         self.fill = Some(fill);
         self
     }
 
-    pub(crate) fn border(mut self, width: f32, color: Color) -> Self {
+    pub fn border(mut self, width: f32, color: Color) -> Self {
         self.border = Some((width, color));
         self
     }
 
     /// Placeholder text shown until the field has a value. The colour is
     /// determined by the kit's theme tokens.
-    pub(crate) fn placeholder(mut self, text: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, text: impl Into<String>) -> Self {
         self.placeholder = Some(text.into());
         self
     }
 
     /// The typed text's colour, in place of the kit/theme default. Setting
     /// this opts into the direct-build path so the colour reaches the editor.
-    pub(crate) fn ink(mut self, ink: Color) -> Self {
+    pub fn ink(mut self, ink: Color) -> Self {
         self.ink = Some(ink);
         self
     }
 
     /// Protect the value like a password field.
-    pub(crate) fn secure(mut self) -> Self {
+    pub fn secure(mut self) -> Self {
         self.secure = true;
         self
     }
@@ -193,18 +193,18 @@ impl<'a> TextField<'a> {
     /// tab stop nor editable and dims. T070's workflow form disables the id
     /// field while editing a saved workflow. T023-S1's column-mapping rows
     /// also honour it; the kit renders the disabled state and takes no caret.
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// The accessible name, when no visible label names the field.
-    pub(crate) fn label(mut self, label: impl Into<String>) -> Self {
+    pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
     }
 
-    pub(crate) fn on_edit<S: 'static>(
+    pub fn on_edit<S: 'static>(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -215,7 +215,7 @@ impl<'a> TextField<'a> {
         self
     }
 
-    pub(crate) fn on_submit<S: 'static>(mut self, f: impl Fn(&mut S, &mut rune::Tx) + Clone + 'static) -> Self {
+    pub fn on_submit<S: 'static>(mut self, f: impl Fn(&mut S, &mut rune::Tx) + Clone + 'static) -> Self {
         let f1 = f.clone();
         self.on_submit_act = Some(Box::new(move |e| e.on_submit(f1)));
         self.on_submit_el = Some(Box::new(move |e: El| e.on_submit(f)));
@@ -227,7 +227,7 @@ impl<'a> TextField<'a> {
     /// commits on `Tab` and moves focus itself. Rune routes keys typed into a
     /// focused text box through the input key (`on_input_key`), never the
     /// element key, so both build paths install this there.
-    pub(crate) fn on_key<S: 'static>(
+    pub fn on_key<S: 'static>(
         mut self,
         f: impl Fn(&mut S, &rune::KeyEvent, &mut rune::Tx) -> bool + Clone + 'static,
     ) -> Self {
@@ -241,7 +241,7 @@ impl<'a> TextField<'a> {
     /// `TextEdit` (the kit's `on_change`, installed on both build paths via
     /// the input change event). T070's workflow command-input fields coerce
     /// their typed text into the draft here.
-    pub(crate) fn on_change<S: 'static>(
+    pub fn on_change<S: 'static>(
         mut self,
         f: impl Fn(&mut S, &mut rune::Tx) + Clone + 'static,
     ) -> Self {
@@ -251,7 +251,7 @@ impl<'a> TextField<'a> {
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         // Rune focuses a text box only when it can reach the `TextEdit` it
         // edits (`can_focus` asks the input for its accessor), and that comes
         // from `on_edit`: a field without it never takes a caret.

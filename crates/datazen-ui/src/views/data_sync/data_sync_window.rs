@@ -102,7 +102,7 @@ use super::use_data_sync_wizard_state::WizardStep;
 
 /// The Data Sync window. `S` is the host state that owns the Vm, the
 /// edits, and every action the window forwards.
-pub(crate) struct DataSyncWindow<'a, S: 'static> {
+pub struct DataSyncWindow<'a, S: 'static> {
     vm: DataSyncWindowVm,
     edits: &'a DataSyncWindowEdits,
     dark: bool,
@@ -168,7 +168,7 @@ pub(crate) struct DataSyncWindow<'a, S: 'static> {
 
 impl<'a, S: 'static> DataSyncWindow<'a, S> {
     /// The window over its Vm and the host's edits.
-    pub(crate) fn new(vm: DataSyncWindowVm, edits: &'a DataSyncWindowEdits) -> Self {
+    pub fn new(vm: DataSyncWindowVm, edits: &'a DataSyncWindowEdits) -> Self {
         Self {
             vm,
             edits,
@@ -219,39 +219,39 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     }
 
     /// The window's theme.
-    pub(crate) fn dark(mut self, dark: bool) -> Self {
+    pub fn dark(mut self, dark: bool) -> Self {
         self.dark = dark;
         self
     }
 
     /// The endpoint step's profile-select listbox open flag.
-    pub(crate) fn profile_select_open(mut self, open: bool) -> Self {
+    pub fn profile_select_open(mut self, open: bool) -> Self {
         self.profile_select_open = open;
         self
     }
 
     /// The setup step's conflict-policy select listbox open flag.
-    pub(crate) fn policy_select_open(mut self, open: bool) -> Self {
+    pub fn policy_select_open(mut self, open: bool) -> Self {
         self.policy_select_open = open;
         self
     }
 
     /// The conflict-policy select's open press (T203's contract — the
     /// select asserts without a toggle when enabled).
-    pub(crate) fn on_toggle_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_policy = Some(Rc::new(f));
         self
     }
 
     /// The conflict-policy select's close (presses outside, Escape).
-    pub(crate) fn on_close_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_policy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_policy = Some(Rc::new(f));
         self
     }
 
     /// The run-history dialog's open flag and epoch (the T140 port's
     /// controlled contract).
-    pub(crate) fn history_open(mut self, open: bool, epoch: u64) -> Self {
+    pub fn history_open(mut self, open: bool, epoch: u64) -> Self {
         self.history_open = open;
         self.history_open_epoch = epoch;
         self
@@ -261,7 +261,7 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
 
     /// React 139: `profiles.reconcileUnknownRun` — the run-history
     /// dialog's reconcile action.
-    pub(crate) fn on_reconcile_unknown_run(
+    pub fn on_reconcile_unknown_run(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -270,19 +270,19 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     }
 
     /// The run-history dialog's open press (React 136-141's trigger).
-    pub(crate) fn on_history_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_history_open(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_history_open = Some(Rc::new(f));
         self
     }
 
     /// The run-history dialog's close (its header close / Escape).
-    pub(crate) fn on_history_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_history_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_history_close = Some(Rc::new(f));
         self
     }
 
     /// React 151: `onVerifyRecovery(details)`.
-    pub(crate) fn on_verify_recovery(
+    pub fn on_verify_recovery(
         mut self,
         f: impl Fn(&mut S, super::data_sync_job_status_panel::DataSyncJobDetailsVm) + 'static,
     ) -> Self {
@@ -291,19 +291,19 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     }
 
     /// React 152: `onCancelJob(jobId)`.
-    pub(crate) fn on_cancel_job(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_cancel_job(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_cancel_job = Some(Rc::new(f));
         self
     }
 
     /// React 167: `runState.setScopeReconfirmationRequired(false)`.
-    pub(crate) fn on_confirm_scope(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_scope(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_scope = Some(Rc::new(f));
         self
     }
 
     /// The profile-name field's edit accessor (T114's contract).
-    pub(crate) fn on_profile_name_edit(
+    pub fn on_profile_name_edit(
         mut self,
         f: impl Fn(&mut S) -> &mut rune::TextEdit + 'static,
     ) -> Self {
@@ -312,7 +312,7 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     }
 
     /// React 169: `profiles.setProfileName`.
-    pub(crate) fn on_profile_name_change(
+    pub fn on_profile_name_change(
         mut self,
         f: impl Fn(&mut S, &mut rune::Tx) + 'static,
     ) -> Self {
@@ -321,44 +321,44 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     }
 
     /// React 172: `profiles.setSelectedProfileId`.
-    pub(crate) fn on_select_profile(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_select_profile(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_select_profile = Some(Rc::new(f));
         self
     }
 
     /// React 173: `profiles.saveCurrentProfile()`.
-    pub(crate) fn on_save_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save_profile = Some(Rc::new(f));
         self
     }
 
     /// React 174: `profiles.loadSelectedProfile`.
-    pub(crate) fn on_load_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_load_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_load_profile = Some(Rc::new(f));
         self
     }
 
     /// React 175: `profiles.deleteSelectedProfile()`.
-    pub(crate) fn on_delete_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_delete_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_delete_profile = Some(Rc::new(f));
         self
     }
 
     /// The profile select's listbox toggle (T114's contract).
-    pub(crate) fn on_select_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_toggle = Some(Rc::new(f));
         self
     }
 
     /// Presses outside and Escape close the profile select (T114's
     /// contract).
-    pub(crate) fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_close = Some(Rc::new(f));
         self
     }
 
     /// React 214: `options.handleOptionsChange`.
-    pub(crate) fn on_options_change(
+    pub fn on_options_change(
         mut self,
         f: impl Fn(&mut S, super::data_sync_compare_step::SyncOptions) + 'static,
     ) -> Self {
@@ -367,31 +367,31 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     }
 
     /// React 215: `options.handleEnableDelete`.
-    pub(crate) fn on_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_enable_delete = Some(Rc::new(f));
         self
     }
 
     /// React 224: `comparison.toggleDisabledTable`.
-    pub(crate) fn on_toggle_disabled(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_disabled(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_disabled = Some(Rc::new(f));
         self
     }
 
     /// React 226: `openSchemaDiffWindow`.
-    pub(crate) fn on_open_schema_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_schema_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_schema_diff = Some(Rc::new(f));
         self
     }
 
     /// React 227: `openDataTransferWindow`.
-    pub(crate) fn on_open_data_transfer(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_data_transfer(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_data_transfer = Some(Rc::new(f));
         self
     }
 
     /// React 225: `comparison.updateSourceFilter`.
-    pub(crate) fn on_update_source_filter(
+    pub fn on_update_source_filter(
         mut self,
         f: impl Fn(&mut S, String, Option<StructuredSourceFilter>) + 'static,
     ) -> Self {
@@ -400,7 +400,7 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     }
 
     /// The mapping panel's expand toggle (React 225's editor pair).
-    pub(crate) fn on_toggle_filter_editor(
+    pub fn on_toggle_filter_editor(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -409,31 +409,31 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     }
 
     /// React 240: `comparison.handleCancel()`.
-    pub(crate) fn on_cancel_compare(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_compare(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel_compare = Some(Rc::new(f));
         self
     }
 
     /// React 288: `comparison.handleCopyCompareReport`.
-    pub(crate) fn on_copy_report(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy_report(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_report = Some(Rc::new(f));
         self
     }
 
     /// React 289/238: `explain.handleExplainDiff`.
-    pub(crate) fn on_explain_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_explain_diff(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_explain_diff = Some(Rc::new(f));
         self
     }
 
     /// React 291: `comparison.handleReCompare`.
-    pub(crate) fn on_re_compare(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_re_compare(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_re_compare = Some(Rc::new(f));
         self
     }
 
     /// The preview's op filter press (T371's contract).
-    pub(crate) fn on_preview_filter(
+    pub fn on_preview_filter(
         mut self,
         f: impl Fn(&mut S, super::client_sql_preview::OpFilter) + 'static,
     ) -> Self {
@@ -442,62 +442,62 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     }
 
     /// The preview's refresh press (T371's contract).
-    pub(crate) fn on_preview_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_preview_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_preview_refresh = Some(Rc::new(f));
         self
     }
 
     /// The preview's copy press (T371's contract).
-    pub(crate) fn on_preview_copy(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_preview_copy(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_preview_copy = Some(Rc::new(f));
         self
     }
 
     /// React 314: `navigation.goBack`.
-    pub(crate) fn on_go_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_go_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_go_back = Some(Rc::new(f));
         self
     }
 
     /// React 315: `navigation.goNext()`.
-    pub(crate) fn on_go_next(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_go_next(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_go_next = Some(Rc::new(f));
         self
     }
 
     /// React 325: `feedback.setErrorOpen(false)`.
-    pub(crate) fn on_close_error(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_error(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_error = Some(Rc::new(f));
         self
     }
 
     /// React 327: `options.setDeleteConfirmOpen(false)`.
-    pub(crate) fn on_close_delete_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_delete_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_delete_confirm = Some(Rc::new(f));
         self
     }
 
     /// React 328: `options.confirmEnableDelete`.
-    pub(crate) fn on_confirm_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_enable_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_enable_delete = Some(Rc::new(f));
         self
     }
 
     /// React 332: `explain.setExplainOpen(false)`.
-    pub(crate) fn on_close_explain(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_explain(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_explain = Some(Rc::new(f));
         self
     }
 
     /// React 334: `execution.setExecuteConfirmOpen(false)`.
-    pub(crate) fn on_close_execute_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_execute_confirm(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_execute_confirm = Some(Rc::new(f));
         self
     }
 
     /// React 335-338: the execute-confirm's run — closes the dialog
     /// and starts the execution.
-    pub(crate) fn on_confirm_execute(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_execute(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_execute = Some(Rc::new(f));
         self
     }
@@ -505,7 +505,7 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     // -- the mount --------------------------------------------------------
 
     /// The window on its own kit root.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let (root, layer) = self.build_inner(dark);
         rune_kit::root(root, layer)
     }
@@ -513,7 +513,7 @@ impl<'a, S: 'static> DataSyncWindow<'a, S> {
     /// The same window without its kit root: the window element plus
     /// the overlay layer (the run-history dialog, the profile select's
     /// listbox, the compare step's, the four dialogs).
-    pub(crate) fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
+    pub fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
         self.dark = dark;
         let k = kit(dark);
         let mut layer: Vec<El> = Vec::new();

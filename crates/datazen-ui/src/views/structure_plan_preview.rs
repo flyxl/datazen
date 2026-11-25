@@ -29,15 +29,15 @@ use crate::structure_editor::{PlanStatement, StatementRisk, StructureChangePlan}
 use crate::ui::kit::kit;
 use crate::ui::spinner::{Spinner, SpinnerSize};
 
-pub(crate) const ROOT_KEY: &str = "struct-plan-preview";
+pub const ROOT_KEY: &str = "struct-plan-preview";
 
 /// A host-owned projection: the plan plus a loading flag the React parent
 /// controls by mounting or not mounting this component.
 #[allow(dead_code)] // VM surface; remove when the host wires the preview.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct StructurePlanPreviewVm {
-    pub(crate) plan: StructureChangePlan,
-    pub(crate) loading: bool,
+pub struct StructurePlanPreviewVm {
+    pub plan: StructureChangePlan,
+    pub loading: bool,
 }
 
 #[allow(dead_code)] // VM surface; remove when the host wires the preview.
@@ -56,12 +56,12 @@ impl Default for StructurePlanPreviewVm {
 #[allow(dead_code)] // VM helper; remove with the host.
 impl StructurePlanPreviewVm {
     /// React's warnings block gate.
-    pub(crate) fn has_warnings(&self) -> bool {
+    pub fn has_warnings(&self) -> bool {
         self.plan.warnings.as_ref().is_some_and(|warnings| !warnings.is_empty())
     }
 
     /// React's statement-count line: `"{count} {t('structEditor.statements')}"`.
-    pub(crate) fn count_text(&self) -> String {
+    pub fn count_text(&self) -> String {
         format!(
             "{} {}",
             self.plan.statements.len(),
@@ -70,7 +70,7 @@ impl StructurePlanPreviewVm {
     }
 
     /// The semantic colour token for a risk (React `riskClass`).
-    pub(crate) fn risk_is_destructive(risk: StatementRisk) -> bool {
+    pub fn risk_is_destructive(risk: StatementRisk) -> bool {
         risk == StatementRisk::Destructive
     }
 }
@@ -78,16 +78,16 @@ impl StructurePlanPreviewVm {
 /// The sole React callback (`onClose`).
 #[allow(dead_code)] // host port; remove when the host wires the preview.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StructurePlanAction {
+pub enum StructurePlanAction {
     Close,
 }
 
 #[allow(dead_code)] // host port; remove when the host wires the preview.
-pub(crate) type StructurePlanActionFn<S> = Rc<dyn Fn(&mut S, StructurePlanAction) + 'static>;
+pub type StructurePlanActionFn<S> = Rc<dyn Fn(&mut S, StructurePlanAction) + 'static>;
 
 /// Build the preview into `layer`.
 #[allow(dead_code)] // view entry; remove when the host wires the preview.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &StructurePlanPreviewVm,
     on_action: &Option<StructurePlanActionFn<S>>,
     dark: bool,

@@ -37,18 +37,18 @@ use crate::ui::spinner::{Spinner, SpinnerSize};
 
 mod menus;
 
-pub(crate) const ROOT_KEY: &str = "object-browser";
-pub(crate) const TAB_PREFIX: &str = "object-browser-";
-pub(crate) const ITEM_KEY: &str = "object-browser-item";
-pub(crate) const LIST_KEY: &str = "object-browser-list";
-pub(crate) const EDITOR_KEY: &str = "object-browser-editor";
-pub(crate) const LIST_MENU_KEY: &str = "object-browser-list-menu";
-pub(crate) const EDITOR_MENU_KEY: &str = "object-browser-editor-menu";
+pub const ROOT_KEY: &str = "object-browser";
+pub const TAB_PREFIX: &str = "object-browser-";
+pub const ITEM_KEY: &str = "object-browser-item";
+pub const LIST_KEY: &str = "object-browser-list";
+pub const EDITOR_KEY: &str = "object-browser-editor";
+pub const LIST_MENU_KEY: &str = "object-browser-list-menu";
+pub const EDITOR_MENU_KEY: &str = "object-browser-editor-menu";
 
 /// React `DatabaseObjectKind` and the tab order from `KINDS`.
 #[allow(dead_code)] // contract mirror; remove when the host owns the panel.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum BrowserKind {
+pub enum BrowserKind {
     #[default]
     Function,
     Procedure,
@@ -58,7 +58,7 @@ pub(crate) enum BrowserKind {
 }
 
 impl BrowserKind {
-    pub(crate) const ALL: [Self; 5] = [
+    pub const ALL: [Self; 5] = [
         Self::Function,
         Self::Procedure,
         Self::Trigger,
@@ -66,7 +66,7 @@ impl BrowserKind {
         Self::Type,
     ];
 
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Function => "function",
             Self::Procedure => "procedure",
@@ -77,7 +77,7 @@ impl BrowserKind {
     }
 
     /// The tab label React renders for each kind.
-    pub(crate) fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::Function => t("objects.function"),
             Self::Procedure => t("objects.procedure"),
@@ -92,13 +92,13 @@ impl BrowserKind {
 /// DDL command reads.
 #[allow(dead_code)] // VM mirror; remove when the host owns the panel store.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct BrowserObject {
-    pub(crate) kind: BrowserKind,
-    pub(crate) schema: Option<String>,
-    pub(crate) name: String,
-    pub(crate) signature: Option<String>,
-    pub(crate) target_schema: Option<String>,
-    pub(crate) target_name: Option<String>,
+pub struct BrowserObject {
+    pub kind: BrowserKind,
+    pub schema: Option<String>,
+    pub name: String,
+    pub signature: Option<String>,
+    pub target_schema: Option<String>,
+    pub target_name: Option<String>,
 }
 
 fn json_string(value: &str) -> String {
@@ -124,7 +124,7 @@ fn json_nullable(value: Option<&str>) -> String {
 /// React `databaseObjectIdentityKey`: the JSON of six identity fields, so two
 /// overloaded routines with the same name stay independently selectable.
 #[allow(dead_code)] // pure helper; remove when the shared helper is ported.
-pub(crate) fn identity_key(object: &BrowserObject) -> String {
+pub fn identity_key(object: &BrowserObject) -> String {
     format!(
         "[{},{},{},{},{},{}]",
         json_string(object.kind.as_str()),
@@ -138,36 +138,36 @@ pub(crate) fn identity_key(object: &BrowserObject) -> String {
 
 /// React `sameObjectIdentity`.
 #[allow(dead_code)] // pure helper; remove when the shared helper is ported.
-pub(crate) fn same_object_identity(left: Option<&BrowserObject>, right: &BrowserObject) -> bool {
+pub fn same_object_identity(left: Option<&BrowserObject>, right: &BrowserObject) -> bool {
     left.is_some_and(|left| identity_key(left) == identity_key(right))
 }
 
 /// React's eight `useState` values plus the two context-menu anchors.
 #[allow(dead_code)] // VM; owned by the host until the panel view lands.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ObjectBrowserVm {
-    pub(crate) kind: BrowserKind,
-    pub(crate) objects: Vec<BrowserObject>,
-    pub(crate) loading: bool,
-    pub(crate) error: String,
-    pub(crate) selected: Option<BrowserObject>,
-    pub(crate) ddl: TextEdit,
-    pub(crate) running: bool,
-    pub(crate) run_message: String,
-    pub(crate) list_menu: Option<PointerPress>,
-    pub(crate) menu_object: Option<BrowserObject>,
-    pub(crate) editor_menu: Option<PointerPress>,
+pub struct ObjectBrowserVm {
+    pub kind: BrowserKind,
+    pub objects: Vec<BrowserObject>,
+    pub loading: bool,
+    pub error: String,
+    pub selected: Option<BrowserObject>,
+    pub ddl: TextEdit,
+    pub running: bool,
+    pub run_message: String,
+    pub list_menu: Option<PointerPress>,
+    pub menu_object: Option<BrowserObject>,
+    pub editor_menu: Option<PointerPress>,
 }
 
 #[allow(dead_code)] // VM helpers; remove with the host.
 impl ObjectBrowserVm {
     /// React `disabled={running || !ddl.trim()}` on the execute button.
-    pub(crate) fn execute_disabled(&self) -> bool {
+    pub fn execute_disabled(&self) -> bool {
         self.running || self.ddl.text.trim().is_empty()
     }
 
     /// React's header label: `kind · name` once selected, else `objects.pick`.
-    pub(crate) fn selection_label(&self) -> String {
+    pub fn selection_label(&self) -> String {
         match &self.selected {
             Some(object) => format!("{} · {}", object.kind.as_str(), object.name),
             None => t("objects.pick").to_owned(),
@@ -175,20 +175,20 @@ impl ObjectBrowserVm {
     }
 
     /// Whether an object is still selected after a kind switch (React clears it).
-    pub(crate) fn begin_kind(&mut self, kind: BrowserKind) {
+    pub fn begin_kind(&mut self, kind: BrowserKind) {
         self.kind = kind;
         self.selected = None;
         self.ddl = TextEdit::new(String::new());
     }
 
     /// React `load` prologue.
-    pub(crate) fn begin_load(&mut self) {
+    pub fn begin_load(&mut self) {
         self.loading = true;
         self.error.clear();
     }
 
     /// React's `.then` / `.catch` / `finally` of `load`.
-    pub(crate) fn apply_load(&mut self, result: Result<Vec<BrowserObject>, String>) {
+    pub fn apply_load(&mut self, result: Result<Vec<BrowserObject>, String>) {
         self.loading = false;
         match result {
             Ok(objects) => {
@@ -204,13 +204,13 @@ impl ObjectBrowserVm {
 
     /// React `openObject`: selects, clears the run message, then the host feeds
     /// DDL through [`ObjectBrowserVm::apply_ddl`].
-    pub(crate) fn select_object(&mut self, object: &BrowserObject) {
+    pub fn select_object(&mut self, object: &BrowserObject) {
         self.selected = Some(object.clone());
         self.run_message.clear();
     }
 
     /// A failed DDL fetch is shown as a SQL comment in the editor.
-    pub(crate) fn apply_ddl(&mut self, result: Result<String, String>) {
+    pub fn apply_ddl(&mut self, result: Result<String, String>) {
         self.ddl = TextEdit::new(match result {
             Ok(text) => text,
             Err(message) => format!("-- {message}"),
@@ -218,7 +218,7 @@ impl ObjectBrowserVm {
     }
 
     /// React's execute answer: success shows `objects.executeOk`.
-    pub(crate) fn apply_execute(&mut self, result: Result<(), String>) {
+    pub fn apply_execute(&mut self, result: Result<(), String>) {
         self.running = false;
         self.run_message = match result {
             Ok(()) => t("objects.executeOk").to_owned(),
@@ -228,7 +228,7 @@ impl ObjectBrowserVm {
 
     /// Reference host reducer for the view-owned state; commands stay with the
     /// host. Consumers: the panel host (not landed) and the observation tests.
-    pub(crate) fn reduce(&mut self, action: &ObjectBrowserAction) {
+    pub fn reduce(&mut self, action: &ObjectBrowserAction) {
         match action {
             ObjectBrowserAction::SetKind(kind) => self.begin_kind(*kind),
             ObjectBrowserAction::Load { .. } | ObjectBrowserAction::Refresh { .. } => {
@@ -260,7 +260,7 @@ impl ObjectBrowserVm {
 /// Every interaction the view asks the host to perform.
 #[allow(dead_code)] // host port; remove when the panel wires the view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ObjectBrowserAction {
+pub enum ObjectBrowserAction {
     SetKind(BrowserKind),
     Load { kind: BrowserKind },
     Refresh { kind: BrowserKind },
@@ -276,7 +276,7 @@ pub(crate) enum ObjectBrowserAction {
 }
 
 #[allow(dead_code)] // host port; remove when the panel wires the view.
-pub(crate) type ObjectBrowserActionFn<S> = Rc<dyn Fn(&mut S, ObjectBrowserAction) + 'static>;
+pub type ObjectBrowserActionFn<S> = Rc<dyn Fn(&mut S, ObjectBrowserAction) + 'static>;
 
 fn emit<S: 'static>(
     on_action: &Option<ObjectBrowserActionFn<S>>,
@@ -292,7 +292,7 @@ fn emit<S: 'static>(
 
 /// Render the browser into `layer`, including either context menu when open.
 #[allow(dead_code)] // view entry; remove when the panel wires it.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ObjectBrowserVm,
     on_action: &Option<ObjectBrowserActionFn<S>>,
     dark: bool,

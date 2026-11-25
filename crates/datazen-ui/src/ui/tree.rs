@@ -111,7 +111,7 @@ fn set_last_revealed_cursor(key: &str, cursor: Option<String>) {
 /// pre-order row contract: ancestors are determined by a depth-stack scan over `[0, top)` with no
 /// parent pointers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TreeRowData {
+pub struct TreeRowData {
     pub depth: u32,
     pub is_branch: bool,
 }
@@ -121,7 +121,7 @@ pub(crate) struct TreeRowData {
 ///
 /// Matches React `firstVisibleTreeIndex`: returns 0 when `row_count <= 0` or `row_height <= 0`,
 /// otherwise clamps `floor(max(0, scroll_top) / row_height)` to the last row.
-pub(crate) fn first_visible_index(scroll_top: f32, row_count: usize, row_height: f32) -> usize {
+pub fn first_visible_index(scroll_top: f32, row_count: usize, row_height: f32) -> usize {
     if row_count == 0 || row_height <= 0.0 {
         return 0;
     }
@@ -143,7 +143,7 @@ pub(crate) fn first_visible_index(scroll_top: f32, row_count: usize, row_height:
 /// push the row if it is a branch. `top` is clamped to `[0, rows.len()]`; a row at `top` that is
 /// itself a branch is not included (it has not been "entered" yet), and a past-the-end `top`
 /// yields the chain still open at the end.
-pub(crate) fn ancestor_indices(rows: &[TreeRowData], top: usize) -> Vec<usize> {
+pub fn ancestor_indices(rows: &[TreeRowData], top: usize) -> Vec<usize> {
     let limit = top.min(rows.len());
     let mut stack: Vec<usize> = Vec::new();
     for i in 0..limit {
@@ -167,7 +167,7 @@ pub(crate) fn ancestor_indices(rows: &[TreeRowData], top: usize) -> Vec<usize> {
 /// "Auto" alignment (React parity): if the row's top is above `scroll_top`, align to top; if the
 /// row's bottom is below the viewport bottom, align to bottom (`top + row_height - viewport_h`);
 /// otherwise no change. Non-positive `row_height` or `viewport_h` yields `None`.
-pub(crate) fn reveal_offset(
+pub fn reveal_offset(
     index: usize,
     row_height: f32,
     scroll_top: f32,
@@ -190,7 +190,7 @@ pub(crate) fn reveal_offset(
 
 /// A tree over a [`TreeModel`] in the app's state `S`, drawing the rows with DataZen's keys.
 #[allow(dead_code)] // Used once the connection tree and schema outline migrate to this base.
-pub(crate) struct DataTree<S, T> {
+pub struct DataTree<S, T> {
     key: String,
     get: fn(&S) -> &TreeModel<T>,
     get_mut: fn(&mut S) -> &mut TreeModel<T>,
@@ -213,7 +213,7 @@ pub(crate) struct DataTree<S, T> {
 impl<S: 'static, T: 'static> DataTree<S, T> {
     /// `get` and `get_mut` find the model in the state; `label` names a node for its row (and
     /// for typing to jump). `key` names the tree; the model should carry the same key.
-    pub(crate) fn new(
+    pub fn new(
         key: impl Into<String>,
         get: fn(&S) -> &TreeModel<T>,
         get_mut: fn(&mut S) -> &mut TreeModel<T>,
@@ -240,49 +240,49 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
     }
 
     /// The glyph before the label (a folder or file icon); rows without one keep the lane.
-    pub(crate) fn icon(mut self, f: fn(&T) -> Option<&'static Icon>) -> DataTree<S, T> {
+    pub fn icon(mut self, f: fn(&T) -> Option<&'static Icon>) -> DataTree<S, T> {
         self.icon = Some(f);
         self
     }
 
     /// The cursor moved to `id`, by key or pointer.
-    pub(crate) fn on_select(mut self, f: impl Fn(&mut S, &str) + 'static) -> DataTree<S, T> {
+    pub fn on_select(mut self, f: impl Fn(&mut S, &str) + 'static) -> DataTree<S, T> {
         self.on_select = Some(Rc::new(f));
         self
     }
 
     /// A leaf was opened: Return/Space or a double press.
-    pub(crate) fn on_open(mut self, f: impl Fn(&mut S, &str) + 'static) -> DataTree<S, T> {
+    pub fn on_open(mut self, f: impl Fn(&mut S, &str) + 'static) -> DataTree<S, T> {
         self.on_open = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn style(mut self, style: TreeStyle) -> DataTree<S, T> {
+    pub fn style(mut self, style: TreeStyle) -> DataTree<S, T> {
         self.style = Some(style);
         self
     }
 
     /// The tree's accessibility label ("Files").
-    pub(crate) fn name(mut self, name: impl Into<String>) -> DataTree<S, T> {
+    pub fn name(mut self, name: impl Into<String>) -> DataTree<S, T> {
         self.name = Some(name.into());
         self
     }
 
     /// The text an empty model shows (the table's "no rows" string by default).
-    pub(crate) fn empty_text(mut self, text: impl Into<String>) -> DataTree<S, T> {
+    pub fn empty_text(mut self, text: impl Into<String>) -> DataTree<S, T> {
         self.empty_text = Some(text.into());
         self
     }
 
     /// A fixed height; by default the tree fills the height its parent gives it.
-    pub(crate) fn height(mut self, height: f32) -> DataTree<S, T> {
+    pub fn height(mut self, height: f32) -> DataTree<S, T> {
         self.height = Some(height);
         self
     }
 
     /// Fill the parent's height. Without either this or [`Self::height`] the tree hugs (and a
     /// virtual viewport with no height shows nothing).
-    pub(crate) fn grow(mut self) -> DataTree<S, T> {
+    pub fn grow(mut self) -> DataTree<S, T> {
         self.grow = true;
         self
     }
@@ -290,7 +290,7 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
     /// Where the app keeps this instance's measured viewport height. Page Up/Page Down read it
     /// back and the viewport writes it on layout. Use this for a `.grow()` tree; a `.height(h)`
     /// tree pages by `h` already. Storing it in `S` keeps two trees with the same key apart.
-    pub(crate) fn viewport(
+    pub fn viewport(
         mut self,
         read: fn(&S) -> f32,
         write: impl Fn(&mut S, f32) + 'static,
@@ -303,7 +303,7 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
     /// Where the app keeps this instance's vertical scroll offset (scrollTop). Programmatic
     /// reveals update it when a writer is provided; callers may also update it from scroll
     /// observation if available. Used with [`Self::viewport`] to compute reveal/ancestor geometry.
-    pub(crate) fn scroll_y(
+    pub fn scroll_y(
         mut self,
         read: fn(&S) -> f32,
         write: impl Fn(&mut S, f32) + 'static,
@@ -314,7 +314,7 @@ impl<S: 'static, T: 'static> DataTree<S, T> {
     }
 
     /// Builds the tree. `s` is read for the model; handlers write it back.
-    pub(crate) fn build(self, s: &S, dark: bool) -> El {
+    pub fn build(self, s: &S, dark: bool) -> El {
         let DataTree {
             key,
             get,

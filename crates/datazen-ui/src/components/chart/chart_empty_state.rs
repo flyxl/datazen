@@ -31,11 +31,11 @@ use crate::icons::ICON_CHART_COLUMN;
 use crate::ui::kit::kit;
 
 /// Root pane, React's `flex flex-1 flex-col items-center justify-center`.
-pub(crate) const EMPTY_KEY: &str = "chart-empty-state";
+pub const EMPTY_KEY: &str = "chart-empty-state";
 /// The dimmed chart glyph.
-pub(crate) const EMPTY_ICON_KEY: &str = "chart-empty-state-icon";
+pub const EMPTY_ICON_KEY: &str = "chart-empty-state-icon";
 /// The translated reason line.
-pub(crate) const EMPTY_TEXT_KEY: &str = "chart-empty-state-text";
+pub const EMPTY_TEXT_KEY: &str = "chart-empty-state-text";
 
 /// React `h-12 w-12` — the glyph is 48pt square.
 const ICON_SIZE: f32 = 48.0;
@@ -47,7 +47,7 @@ const ICON_ALPHA: f32 = 0.3;
 /// Mirror of `ChartEmptyStateProps['reason']`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // the ChartView track (T104) is the production caller
-pub(crate) enum ChartEmptyReason {
+pub enum ChartEmptyReason {
     NoNumericField,
     NoData,
     NoConfig,
@@ -56,7 +56,7 @@ pub(crate) enum ChartEmptyReason {
 #[allow(dead_code)] // the ChartView track (T104) is the production caller
 impl ChartEmptyReason {
     /// The TS union member, verbatim.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::NoNumericField => "noNumericField",
             Self::NoData => "noData",
@@ -65,7 +65,7 @@ impl ChartEmptyReason {
     }
 
     /// The key React's `messages` record maps this reason to.
-    pub(crate) fn message_key(self) -> &'static str {
+    pub fn message_key(self) -> &'static str {
         match self {
             Self::NoNumericField => "chart.empty.noNumericField",
             Self::NoData => "chart.empty.noData",
@@ -75,7 +75,7 @@ impl ChartEmptyReason {
 
     /// Parse a TS reason; unknown values are not React states, so the caller
     /// decides — the mirror deliberately has no silent fallback.
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "noNumericField" => Some(Self::NoNumericField),
             "noData" => Some(Self::NoData),
@@ -86,18 +86,18 @@ impl ChartEmptyReason {
 }
 
 /// The centered "nothing to chart" pane.
-pub(crate) struct ChartEmptyState {
+pub struct ChartEmptyState {
     reason: ChartEmptyReason,
 }
 
 impl ChartEmptyState {
-    pub(crate) fn new(reason: ChartEmptyReason) -> Self {
+    pub fn new(reason: ChartEmptyReason) -> Self {
         Self { reason }
     }
 
     /// Builds the pane. React's `flex-1` grows into the space the parent
     /// leaves; the glyph and the line are centred inside it.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let muted = k.c.text_muted; // React `text-fg-muted`
         col()

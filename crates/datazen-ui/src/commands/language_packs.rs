@@ -26,67 +26,67 @@ use serde_json::{json, Value};
 
 /// `LANGUAGE_PACKS_CHANGED_EVENT` (the desktop host's cross-window
 /// bus event the settings card listens for).
-pub(crate) const LANGUAGE_PACKS_CHANGED_EVENT: &str = "language-packs:changed";
+pub const LANGUAGE_PACKS_CHANGED_EVENT: &str = "language-packs:changed";
 
 /// One shaped legacy command (the `backup.rs` shaper shape).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct LanguagePackRequest {
+pub struct LanguagePackRequest {
     /// The legacy command name.
-    pub(crate) command: &'static str,
+    pub command: &'static str,
     /// The exact args object the React wrapper passes.
-    pub(crate) value: Value,
+    pub value: Value,
 }
 
 /// `LanguagePackManifest`: a manifest.json inside a language pack ZIP
 /// (wire shape, camelCase).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LanguagePackManifest {
-    pub(crate) pack_version: i64,
-    pub(crate) code: String,
-    pub(crate) label: String,
-    pub(crate) version: String,
+pub struct LanguagePackManifest {
+    pub pack_version: i64,
+    pub code: String,
+    pub label: String,
+    pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) author: Option<String>,
+    pub author: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) description: Option<String>,
+    pub description: Option<String>,
 }
 
 /// `LanguagePackSummary`: one installed pack.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LanguagePackSummary {
-    pub(crate) code: String,
-    pub(crate) label: String,
-    pub(crate) version: String,
+pub struct LanguagePackSummary {
+    pub code: String,
+    pub label: String,
+    pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) author: Option<String>,
+    pub author: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) description: Option<String>,
+    pub description: Option<String>,
     /// Total translated messages across all domain files.
-    pub(crate) message_count: i64,
+    pub message_count: i64,
     /// Install directory name (always equals `code`).
-    pub(crate) file_name: String,
+    pub file_name: String,
 }
 
 /// `LanguagePackDomainStat`: one domain's message count in the
 /// install preview.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LanguagePackDomainStat {
-    pub(crate) domain: String,
-    pub(crate) message_count: i64,
+pub struct LanguagePackDomainStat {
+    pub domain: String,
+    pub message_count: i64,
 }
 
 /// `LanguagePackPreview`: the validate-only inspect's receipt.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LanguagePackPreview {
-    pub(crate) pick_token: String,
-    pub(crate) package_label: String,
-    pub(crate) manifest: LanguagePackManifest,
-    pub(crate) message_count: i64,
-    pub(crate) domains: Vec<LanguagePackDomainStat>,
+pub struct LanguagePackPreview {
+    pub pick_token: String,
+    pub package_label: String,
+    pub manifest: LanguagePackManifest,
+    pub message_count: i64,
+    pub domains: Vec<LanguagePackDomainStat>,
 }
 
 /// `LanguagePackMessages`: `read_language_pack_messages`'s receipt —
@@ -94,26 +94,26 @@ pub(crate) struct LanguagePackPreview {
 /// needs in one IPC.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LanguagePackMessages {
-    pub(crate) code: String,
-    pub(crate) label: String,
-    pub(crate) messages: std::collections::BTreeMap<String, String>,
+pub struct LanguagePackMessages {
+    pub code: String,
+    pub label: String,
+    pub messages: std::collections::BTreeMap<String, String>,
 }
 
 /// `languagePackCommands.listLanguagePacks()`.
-pub(crate) fn list_language_packs_request() -> LanguagePackRequest {
+pub fn list_language_packs_request() -> LanguagePackRequest {
     LanguagePackRequest { command: "list_language_packs", value: json!({}) }
 }
 
 /// `languagePackCommands.readLanguagePack(code)`.
-pub(crate) fn read_language_pack_request(code: &str) -> LanguagePackRequest {
+pub fn read_language_pack_request(code: &str) -> LanguagePackRequest {
     LanguagePackRequest { command: "read_language_pack_messages", value: json!({ "code": code }) }
 }
 
 /// `languagePackCommands.inspectLanguagePackFileWithDialog(overridePath?)`:
 /// native picker + validate-only inspect; the receipt is the preview
 /// or `null` when cancelled.
-pub(crate) fn inspect_language_pack_file_with_dialog_request(
+pub fn inspect_language_pack_file_with_dialog_request(
     override_path: Option<&str>,
 ) -> LanguagePackRequest {
     // JS drops `undefined` keys; the override rides only when given.
@@ -125,7 +125,7 @@ pub(crate) fn inspect_language_pack_file_with_dialog_request(
 }
 
 /// `languagePackCommands.installLanguagePack(pickToken?, overridePath?)`.
-pub(crate) fn install_language_pack_request(
+pub fn install_language_pack_request(
     pick_token: Option<&str>,
     override_path: Option<&str>,
 ) -> LanguagePackRequest {
@@ -140,7 +140,7 @@ pub(crate) fn install_language_pack_request(
 }
 
 /// `languagePackCommands.removeLanguagePack(code)`.
-pub(crate) fn remove_language_pack_request(code: &str) -> LanguagePackRequest {
+pub fn remove_language_pack_request(code: &str) -> LanguagePackRequest {
     LanguagePackRequest { command: "remove_language_pack", value: json!({ "code": code }) }
 }
 

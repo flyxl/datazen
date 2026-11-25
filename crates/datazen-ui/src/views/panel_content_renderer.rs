@@ -26,8 +26,8 @@ use crate::ui::kit::kit;
 mod kv_slot;
 mod model;
 
-pub(crate) use kv_slot::KvViewHostPort;
-pub(crate) use model::{
+pub use kv_slot::KvViewHostPort;
+pub use model::{
     create_kv_slot_state, format_context_path, is_key_value_driver, is_read_only_driver, sub_tabs,
     view_sub_tabs, KvSlotAtom, KvSlotState, KvViewProps, PanelType, PanelVm, SubTabId,
 };
@@ -37,7 +37,7 @@ use kv_slot::kv_view;
 /// Every command the renderer asks the host to perform.
 #[allow(dead_code)] // host port; consumer: the content-view host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PanelAction {
+pub enum PanelAction {
     SetSubTab { panel_id: String, sub_tab: SubTabId },
     ExitStructureEditing(String),
     EditTableStructure { panel_id: String, name: String },
@@ -50,7 +50,7 @@ pub(crate) enum PanelAction {
 }
 
 #[allow(dead_code)] // host port; consumer: the content-view host (not wired).
-pub(crate) struct PanelHostPort<S> {
+pub struct PanelHostPort<S> {
     pub on_action: Option<Rc<dyn Fn(&mut S, PanelAction) + 'static>>,
     pub kv: KvViewHostPort<S>,
 }
@@ -140,7 +140,7 @@ fn slot(key: &str, label: &str, dark: bool) -> El {
 /// Build the renderer. `None` means React's `return null` (no panel or an
 /// ER diagram without a database) — nothing is mounted.
 #[allow(dead_code)] // view entry point; consumer: the content-view host (not wired).
-pub(crate) fn panel_content_renderer<S: 'static>(
+pub fn panel_content_renderer<S: 'static>(
     panel: Option<&PanelVm>,
     _focused_pane_id: Option<&str>,
     current_database: Option<&str>,

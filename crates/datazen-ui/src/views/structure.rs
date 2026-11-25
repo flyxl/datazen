@@ -20,7 +20,7 @@ use rune::{col, row, text, Color, Cx, El};
 use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
-pub(crate) fn er_view(
+pub fn er_view(
     state: &AppState,
     database: &str,
     schema: &str,
@@ -87,7 +87,7 @@ pub(crate) fn er_view(
 
 /// One table box. Collapsed boxes show the column count instead of every
 /// column; a box whose structure read has not landed says so (E1).
-pub(crate) fn er_box(
+pub fn er_box(
     table: &str,
     columns: Option<&[datazen_ui_api::ColumnSpec]>,
     x: f32,
@@ -165,7 +165,7 @@ pub(crate) fn er_box(
 }
 
 /// A table tab shows the view switcher above either the data grid or the DDL.
-pub(crate) fn structure_notice(state: &AppState, table: &str) -> Option<String> {
+pub fn structure_notice(state: &AppState, table: &str) -> Option<String> {
     match state.structures.get(table) {
         None => {
             Some("the table's structure is not loaded — switch the view or reopen the table".into())
@@ -183,7 +183,7 @@ pub(crate) fn structure_notice(state: &AppState, table: &str) -> Option<String> 
 
 /// One thin notice row for a structure view (E1): the loading, error or
 /// not-loaded sentence in the list's own skin.
-pub(crate) fn notice_row(key: &str, sentence: &str, theme: tok::Theme) -> El {
+pub fn notice_row(key: &str, sentence: &str, theme: tok::Theme) -> El {
     row()
         .key(key.to_owned())
         .w_full()
@@ -199,7 +199,7 @@ pub(crate) fn notice_row(key: &str, sentence: &str, theme: tok::Theme) -> El {
 
 /// The column list: name, type, nullability — one row per column, plus the
 /// drafts section. The official list is read-only; drafts are separate.
-pub(crate) fn columns_view(state: &AppState, title: &str, theme: tok::Theme, dark: bool) -> El {
+pub fn columns_view(state: &AppState, title: &str, theme: tok::Theme, dark: bool) -> El {
     // E1: the cache is the only read — the job's columns segment renders.
     let columns = state
         .structures
@@ -257,7 +257,7 @@ pub(crate) fn columns_view(state: &AppState, title: &str, theme: tok::Theme, dar
 
 /// The drafts area under the column list: inputs, the queued drafts, separate
 /// from the official columns.
-pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme, dark: bool) -> El {
+pub fn column_drafts_section(state: &AppState, title: &str, theme: tok::Theme, dark: bool) -> El {
     let drafts = state.column_drafts.get(title).cloned().unwrap_or_default();
     let mut section = col().key("column-drafts").w_full().gap(6.0).child(
         row()
@@ -359,7 +359,7 @@ pub(crate) fn column_drafts_section(state: &AppState, title: &str, theme: tok::T
 }
 
 /// The index list: name, columns in index order, uniqueness.
-pub(crate) fn indexes_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+pub fn indexes_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
     // E1: the cache is the only read — the job's indexes segment renders.
     let indexes = state
         .structures
@@ -413,7 +413,7 @@ pub(crate) fn indexes_view(state: &AppState, title: &str, theme: tok::Theme) -> 
     }
     list
 }
-pub(crate) fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+pub fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
     // E1: the cache is the only read — the job's foreign-key segment
     // renders.
     let keys = state
@@ -472,7 +472,7 @@ pub(crate) fn foreign_keys_view(state: &AppState, title: &str, theme: tok::Theme
 
 /// The DDL page: the port's string, verbatim, one line per row. An empty string
 /// is its own empty state.
-pub(crate) fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
+pub fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
     // E1: the cache is the only read — the job's DDL segment renders; a
     // read that has not landed says so instead of an empty page.
     if let Some(sentence) = structure_notice(state, title) {

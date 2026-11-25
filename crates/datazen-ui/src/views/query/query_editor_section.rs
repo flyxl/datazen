@@ -37,14 +37,14 @@ use crate::ui::kit::kit;
 mod context;
 mod toolbar;
 
-pub(crate) use context::{qb_context_key, qb_is_open, qb_needs_rebind};
+pub use context::{qb_context_key, qb_is_open, qb_needs_rebind};
 #[allow(unused_imports)] // host/test seam; consumer: the query-panel host + tests; drop when the host reads the rebind action directly.
-pub(crate) use context::qb_rebind_action;
+pub use context::qb_rebind_action;
 
 /// React `SqlExecutionStrategy`.
 #[allow(dead_code)] // VM mirror; consumed by the dropdown and tests.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ExecutionStrategy {
+pub enum ExecutionStrategy {
     #[default]
     CurrentStatement,
     EntireScript,
@@ -53,14 +53,14 @@ pub(crate) enum ExecutionStrategy {
 }
 
 impl ExecutionStrategy {
-    pub(crate) const ALL: [Self; 4] = [
+    pub const ALL: [Self; 4] = [
         Self::CurrentStatement,
         Self::EntireScript,
         Self::LargestStatement,
         Self::Ask,
     ];
 
-    pub(crate) fn label_key(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
             Self::CurrentStatement => "query.executionStrategy.currentStatement",
             Self::EntireScript => "query.executionStrategy.entireScript",
@@ -73,45 +73,45 @@ impl ExecutionStrategy {
 /// Host-owned projection of the section props that affect painting.
 #[allow(dead_code)] // VM surface; owned by the query-panel host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct QueryEditorSectionVm {
-    pub(crate) panel_id: String,
-    pub(crate) db_session_id: String,
-    pub(crate) connection_id: String,
-    pub(crate) sql: String,
+pub struct QueryEditorSectionVm {
+    pub panel_id: String,
+    pub db_session_id: String,
+    pub connection_id: String,
+    pub sql: String,
     /// Live editor value the host keeps in sync with `sql` (React's onChange).
-    pub(crate) sql_edit: TextEdit,
-    pub(crate) running: bool,
-    pub(crate) compact_toolbar: bool,
-    pub(crate) safe_mode: bool,
-    pub(crate) in_transaction: bool,
-    pub(crate) tx_busy: bool,
-    pub(crate) supports_explain: bool,
-    pub(crate) has_context_selectors: bool,
-    pub(crate) selected_database: Option<String>,
-    pub(crate) selected_schema: Option<String>,
-    pub(crate) execution_strategy: ExecutionStrategy,
-    pub(crate) execution_strategy_open: bool,
-    pub(crate) query_builder_available: bool,
+    pub sql_edit: TextEdit,
+    pub running: bool,
+    pub compact_toolbar: bool,
+    pub safe_mode: bool,
+    pub in_transaction: bool,
+    pub tx_busy: bool,
+    pub supports_explain: bool,
+    pub has_context_selectors: bool,
+    pub selected_database: Option<String>,
+    pub selected_schema: Option<String>,
+    pub execution_strategy: ExecutionStrategy,
+    pub execution_strategy_open: bool,
+    pub query_builder_available: bool,
     /// React `openPanelId` from the Pro contribution.
-    pub(crate) qb_open_panel: Option<String>,
+    pub qb_open_panel: Option<String>,
     /// React's `boundQbContextRef.current.contextKey`.
-    pub(crate) qb_bound_context_key: Option<String>,
-    pub(crate) nl2sql_visible: bool,
-    pub(crate) history_visible: bool,
-    pub(crate) favorites_visible: bool,
-    pub(crate) show_idle_hint: bool,
-    pub(crate) editor_height: f32,
-    pub(crate) editor_height_pinned: bool,
-    pub(crate) execution_time_ms: Option<u64>,
-    pub(crate) row_count: Option<u64>,
-    pub(crate) affected_rows: Option<u64>,
-    pub(crate) qb_toast: Option<String>,
+    pub qb_bound_context_key: Option<String>,
+    pub nl2sql_visible: bool,
+    pub history_visible: bool,
+    pub favorites_visible: bool,
+    pub show_idle_hint: bool,
+    pub editor_height: f32,
+    pub editor_height_pinned: bool,
+    pub execution_time_ms: Option<u64>,
+    pub row_count: Option<u64>,
+    pub affected_rows: Option<u64>,
+    pub qb_toast: Option<String>,
 }
 
 /// The host intents this section can emit.
 #[allow(dead_code)] // host port; remove when the query-panel host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum QueryEditorAction {
+pub enum QueryEditorAction {
     Execute,
     Cancel,
     OpenAddFavorite(String),
@@ -132,10 +132,10 @@ pub(crate) enum QueryEditorAction {
     UpdateSql(String),
 }
 
-pub(crate) type ActionFn<S> = Rc<dyn Fn(&mut S, QueryEditorAction) + 'static>;
-pub(crate) type EditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit>;
+pub type ActionFn<S> = Rc<dyn Fn(&mut S, QueryEditorAction) + 'static>;
+pub type EditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit>;
 
-pub(crate) fn emit<S: 'static>(
+pub fn emit<S: 'static>(
     on_action: &Option<ActionFn<S>>,
     action: QueryEditorAction,
 ) -> impl Fn(&mut S) + Clone {
@@ -150,7 +150,7 @@ pub(crate) fn emit<S: 'static>(
 /// Build the section into a single column. A closed/omitted surface is simply
 /// not added, matching React's conditional JSX.
 #[allow(dead_code)] // consumer: the query-panel host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &QueryEditorSectionVm,
     sql_edit: Option<EditFn<S>>,
     on_action: Option<ActionFn<S>>,

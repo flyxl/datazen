@@ -10,11 +10,11 @@
 //! `t("export.success")` as its message.
 
 #[allow(unused_imports)] // the export-dialog wiring is the production consumer
-pub(crate) use export_column_picker::{
+pub use export_column_picker::{
     ExportColumnPicker, ExportColumnPickerColumn, IsSelectedFn, PickerActionFn, ToggleColumnFn,
 };
 #[allow(unused_imports)] // the export-dialog wiring is the production consumer
-pub(crate) use export_success_panel::ExportSuccessPanel;
+pub use export_success_panel::ExportSuccessPanel;
 
-pub(crate) mod export_column_picker;
-pub(crate) mod export_success_panel;
+pub mod export_column_picker;
+pub mod export_success_panel;

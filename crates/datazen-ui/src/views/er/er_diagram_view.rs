@@ -40,26 +40,26 @@ use super::er_relation_legend::{er_relation_legend, ErRelationLegendVm};
 use super::table_node::{er_node_height, table_node, TableColumnVm, TableNodeHostPort, TableNodeVm, ER_NODE_WIDTH};
 
 /// Keys mirrored from the React `data-testid`s.
-pub(crate) const ROOT_KEY: &str = "er-diagram-view";
-pub(crate) const FLOW_KEY: &str = "er-diagram-flow";
-pub(crate) const CONTROLS_KEY: &str = "er-diagram-controls";
-pub(crate) const ZOOM_IN_KEY: &str = "er-diagram-zoom-in";
-pub(crate) const ZOOM_OUT_KEY: &str = "er-diagram-zoom-out";
-pub(crate) const RELAYOUT_KEY: &str = "er-diagram-relayout";
-pub(crate) const FIT_VIEW_KEY: &str = "er-diagram-fit-view";
-pub(crate) const SEARCH_KEY: &str = "er-diagram-search";
-pub(crate) const STATS_KEY: &str = "er-diagram-stats";
-pub(crate) const EXPORT_PNG_KEY: &str = "er-diagram-export-png";
-pub(crate) const EXPORT_SVG_KEY: &str = "er-diagram-export-svg";
+pub const ROOT_KEY: &str = "er-diagram-view";
+pub const FLOW_KEY: &str = "er-diagram-flow";
+pub const CONTROLS_KEY: &str = "er-diagram-controls";
+pub const ZOOM_IN_KEY: &str = "er-diagram-zoom-in";
+pub const ZOOM_OUT_KEY: &str = "er-diagram-zoom-out";
+pub const RELAYOUT_KEY: &str = "er-diagram-relayout";
+pub const FIT_VIEW_KEY: &str = "er-diagram-fit-view";
+pub const SEARCH_KEY: &str = "er-diagram-search";
+pub const STATS_KEY: &str = "er-diagram-stats";
+pub const EXPORT_PNG_KEY: &str = "er-diagram-export-png";
+pub const EXPORT_SVG_KEY: &str = "er-diagram-export-svg";
 
 /// Shared exporter options from the React source.
-pub(crate) const EXPORT_BACKGROUND: &str = "#1a1a2e";
-pub(crate) const EXPORT_PNG_QUALITY: u8 = 1;
+pub const EXPORT_BACKGROUND: &str = "#1a1a2e";
+pub const EXPORT_PNG_QUALITY: u8 = 1;
 
 /// React `Viewport`, rounded to whole points for crisp rendering.
 #[allow(dead_code)] // stand-in; remove with the Rune canvas.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Viewport {
+pub struct Viewport {
     pub x: i32,
     pub y: i32,
     pub zoom: f32,
@@ -74,15 +74,15 @@ impl Default for Viewport {
 /// The exact arguments React passes to `databaseCommands.getErData`.
 #[allow(dead_code)] // request mirror; remove with the canvas host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ErDataRequest {
-    pub(crate) db_session_id: String,
-    pub(crate) database: String,
-    pub(crate) schema: Option<String>,
+pub struct ErDataRequest {
+    pub db_session_id: String,
+    pub database: String,
+    pub schema: Option<String>,
 }
 
 #[allow(dead_code)] // helper; remove with the canvas host.
 impl ErDataRequest {
-    pub(crate) fn new(db_session_id: &str, database: &str, schema: Option<&str>) -> Self {
+    pub fn new(db_session_id: &str, database: &str, schema: Option<&str>) -> Self {
         Self {
             db_session_id: db_session_id.to_owned(),
             database: database.to_owned(),
@@ -94,41 +94,41 @@ impl ErDataRequest {
 /// One relation edge as drawn by the container.
 #[allow(dead_code)] // graph VM; remove with the Rune canvas layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ErEdge {
-    pub(crate) id: String,
-    pub(crate) from_table: String,
-    pub(crate) to_table: String,
-    pub(crate) predicted: bool,
-    pub(crate) ambiguous: bool,
-    pub(crate) score: i64,
+pub struct ErEdge {
+    pub id: String,
+    pub from_table: String,
+    pub to_table: String,
+    pub predicted: bool,
+    pub ambiguous: bool,
+    pub score: i64,
 }
 
 /// The diagram's owned state (the React hooks, minus xyflow internals).
 #[allow(dead_code)] // state; remove with the canvas host.
 #[derive(Clone, Debug)]
-pub(crate) struct ErDiagramState {
-    pub(crate) db_session_id: String,
-    pub(crate) database: String,
-    pub(crate) schema: Option<String>,
-    pub(crate) schemas: Vec<TableSchema>,
-    pub(crate) loading: bool,
-    pub(crate) error: Option<String>,
-    pub(crate) search_query: String,
-    pub(crate) active_focus: Option<String>,
-    pub(crate) collapsed: Vec<String>,
-    pub(crate) pinned: Vec<(String, Viewport)>,
-    pub(crate) hovered_table: Option<String>,
-    pub(crate) viewport: Viewport,
-    pub(crate) prediction_enabled: bool,
-    pub(crate) predicted: Vec<ErEdge>,
+pub struct ErDiagramState {
+    pub db_session_id: String,
+    pub database: String,
+    pub schema: Option<String>,
+    pub schemas: Vec<TableSchema>,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub search_query: String,
+    pub active_focus: Option<String>,
+    pub collapsed: Vec<String>,
+    pub pinned: Vec<(String, Viewport)>,
+    pub hovered_table: Option<String>,
+    pub viewport: Viewport,
+    pub prediction_enabled: bool,
+    pub predicted: Vec<ErEdge>,
     /// React finds the canvas viewport in the DOM; the host reports whether it
     /// exists so export can no-op exactly as the source does.
-    pub(crate) viewport_available: bool,
+    pub viewport_available: bool,
 }
 
 #[allow(dead_code)] // state; remove with the canvas host.
 impl ErDiagramState {
-    pub(crate) fn new(db_session_id: &str, database: &str, schema: Option<&str>) -> Self {
+    pub fn new(db_session_id: &str, database: &str, schema: Option<&str>) -> Self {
         Self {
             db_session_id: db_session_id.to_owned(),
             database: database.to_owned(),
@@ -148,13 +148,13 @@ impl ErDiagramState {
         }
     }
 
-    pub(crate) fn request(&self) -> ErDataRequest {
+    pub fn request(&self) -> ErDataRequest {
         ErDataRequest::new(&self.db_session_id, &self.database, self.schema.as_deref())
     }
 
     /// Replace the schema set (the host's `getErData` answer). Wide tables start
     /// collapsed, but only as a seed: user toggles afterwards stick.
-    pub(crate) fn set_schemas(&mut self, schemas: Vec<TableSchema>) {
+    pub fn set_schemas(&mut self, schemas: Vec<TableSchema>) {
         self.collapsed = schemas
             .iter()
             .filter(|schema| schema.columns.len() > WIDE_TABLE_COLUMNS)
@@ -165,19 +165,19 @@ impl ErDiagramState {
         self.error = None;
     }
 
-    pub(crate) fn set_schema(&mut self, schema: Option<&str>) {
+    pub fn set_schema(&mut self, schema: Option<&str>) {
         self.schema = schema.map(str::to_owned);
     }
 
-    pub(crate) fn set_search(&mut self, query: &str) {
+    pub fn set_search(&mut self, query: &str) {
         self.search_query = query.to_owned();
     }
 
-    pub(crate) fn focus(&mut self, table: &str) {
+    pub fn focus(&mut self, table: &str) {
         self.active_focus = Some(table.to_owned());
     }
 
-    pub(crate) fn toggle_collapse(&mut self, table: &str) {
+    pub fn toggle_collapse(&mut self, table: &str) {
         if let Some(index) = self.collapsed.iter().position(|name| name == table) {
             self.collapsed.remove(index);
         } else {
@@ -185,7 +185,7 @@ impl ErDiagramState {
         }
     }
 
-    pub(crate) fn pin(&mut self, table: &str, viewport: Viewport) {
+    pub fn pin(&mut self, table: &str, viewport: Viewport) {
         if let Some(entry) = self.pinned.iter_mut().find(|(name, _)| name == table) {
             entry.1 = viewport;
         } else {
@@ -193,11 +193,11 @@ impl ErDiagramState {
         }
     }
 
-    pub(crate) fn relayout(&mut self) {
+    pub fn relayout(&mut self) {
         self.pinned.clear();
     }
 
-    pub(crate) fn set_viewport(&mut self, x: f32, y: f32, zoom: f32) {
+    pub fn set_viewport(&mut self, x: f32, y: f32, zoom: f32) {
         // React rounds x/y but leaves zoom as reported.
         self.viewport = Viewport {
             x: math_round(x) as i32,
@@ -206,28 +206,28 @@ impl ErDiagramState {
         };
     }
 
-    pub(crate) fn zoom_in(&mut self) {
+    pub fn zoom_in(&mut self) {
         self.viewport.zoom = (self.viewport.zoom * ZOOM_STEP).min(MAX_ZOOM);
     }
 
-    pub(crate) fn zoom_out(&mut self) {
+    pub fn zoom_out(&mut self) {
         self.viewport.zoom = (self.viewport.zoom / ZOOM_STEP).max(MIN_ZOOM);
     }
 
-    pub(crate) fn fit_view(&mut self) {
+    pub fn fit_view(&mut self) {
         self.viewport = Viewport::default();
     }
 
     /// React's `stats`: declared + deduplicated predicted relations.
-    pub(crate) fn declared_count(&self) -> usize {
+    pub fn declared_count(&self) -> usize {
         self.schemas.iter().map(|schema| schema.foreign_keys.len()).sum()
     }
 
-    pub(crate) fn predicted_count(&self) -> usize {
+    pub fn predicted_count(&self) -> usize {
         self.predicted.len()
     }
 
-    pub(crate) fn relation_count(&self) -> usize {
+    pub fn relation_count(&self) -> usize {
         self.declared_count() + self.predicted_count()
     }
 }
@@ -250,7 +250,7 @@ const MAX_ZOOM: f32 = 10.0;
 
 /// Host operations React owns (IPC, clipboard, native menus, export, settings).
 #[allow(dead_code)] // host port; remove with the canvas host.
-pub(crate) trait ErDiagramHost<S: 'static> {
+pub trait ErDiagramHost<S: 'static> {
     fn export_png(&self, state: &mut S, filename: &str, background: &str, quality: u8) -> Result<(), String> {
         let _ = (state, filename, background, quality);
         Ok(())
@@ -278,7 +278,7 @@ pub(crate) trait ErDiagramHost<S: 'static> {
 
 /// Build the diagram. The loading/error/empty states are exclusive, as in React.
 #[allow(dead_code)] // view entry; remove with the canvas host.
-pub(crate) fn er_diagram_view<S: 'static>(
+pub fn er_diagram_view<S: 'static>(
     state: &ErDiagramState,
     dark: bool,
     host: Rc<dyn ErDiagramHost<S>>,

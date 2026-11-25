@@ -54,7 +54,7 @@ use rune::{col, row, El};
 
 /// The AI aside: resize handle + fixed-width body holding the S6
 /// panel shell. Rendered by `workspace_body` when `ai_chat_open`.
-pub(crate) fn ai_chat_aside(
+pub fn ai_chat_aside(
     state: &AppState,
     theme: tok::Theme,
     dark: bool,

@@ -44,7 +44,7 @@ use crate::views::create_user_dialog::{
 /// React's export capability union (mirrors `lib/exportCapability.ts`).
 #[allow(dead_code)] // VM surface; removed when the child dialog port lands
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ExportCapability {
+pub enum ExportCapability {
     None,
     LoadedOnly,
     #[default]
@@ -54,38 +54,38 @@ pub(crate) enum ExportCapability {
 /// React `ConnectionContext` fields the dialogs actually read.
 #[allow(dead_code)] // VM surface; removed when the child dialog port lands
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DialogConnectionCtx {
-    pub(crate) db_session_id: String,
-    pub(crate) connection_id: String,
-    pub(crate) connection_name: String,
-    pub(crate) database_type: String,
+pub struct DialogConnectionCtx {
+    pub db_session_id: String,
+    pub connection_id: String,
+    pub connection_name: String,
+    pub database_type: String,
 }
 
 /// React `ContentViewDialogsProps` as a cloneable value.
 #[allow(dead_code)] // VM surface; removed when the child dialog port lands
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct DialogsVm {
-    pub(crate) conn_ctx: Option<DialogConnectionCtx>,
-    pub(crate) current_database: Option<String>,
-    pub(crate) initial_database: Option<String>,
-    pub(crate) export_capability: ExportCapability,
-    pub(crate) export_open: bool,
-    pub(crate) export_table_name: Option<String>,
-    pub(crate) table_columns: Vec<String>,
-    pub(crate) table_rows: usize,
-    pub(crate) selected_rows: usize,
-    pub(crate) total_rows: u64,
-    pub(crate) batch_export_open: bool,
-    pub(crate) batch_export_initial_selected: Vec<String>,
-    pub(crate) exportable_table_names: Vec<String>,
-    pub(crate) import_open: bool,
-    pub(crate) import_table_name: Option<String>,
-    pub(crate) import_schema: Option<String>,
-    pub(crate) import_database: Option<String>,
-    pub(crate) sql_file_open: bool,
-    pub(crate) create_db_open: bool,
-    pub(crate) create_schema_open: bool,
-    pub(crate) create_user_open: bool,
+pub struct DialogsVm {
+    pub conn_ctx: Option<DialogConnectionCtx>,
+    pub current_database: Option<String>,
+    pub initial_database: Option<String>,
+    pub export_capability: ExportCapability,
+    pub export_open: bool,
+    pub export_table_name: Option<String>,
+    pub table_columns: Vec<String>,
+    pub table_rows: usize,
+    pub selected_rows: usize,
+    pub total_rows: u64,
+    pub batch_export_open: bool,
+    pub batch_export_initial_selected: Vec<String>,
+    pub exportable_table_names: Vec<String>,
+    pub import_open: bool,
+    pub import_table_name: Option<String>,
+    pub import_schema: Option<String>,
+    pub import_database: Option<String>,
+    pub sql_file_open: bool,
+    pub create_db_open: bool,
+    pub create_schema_open: bool,
+    pub create_user_open: bool,
 }
 
 /// The callbacks React hands to the child dialogs, flattened into one enum a
@@ -93,7 +93,7 @@ pub(crate) struct DialogsVm {
 /// effects (schema reload / privileges panel refresh).
 #[allow(dead_code)] // VM surface; removed when the child dialog port lands
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DialogAction {
+pub enum DialogAction {
     CloseExport,
     CloseBatchExport,
     CloseImport {
@@ -114,7 +114,7 @@ pub(crate) enum DialogAction {
 /// Compose every open dialog into `layer` (a closed React `Dialog` mounts
 /// nothing, so the open gate is applied here too).
 #[allow(dead_code)] // reusable component; mounted by views::content_view
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &DialogsVm,
     dark: bool,
     layer: &mut Vec<El>,
@@ -127,7 +127,7 @@ pub(crate) fn build<S: 'static>(
 /// `build` keeps T223's structural shell; a host that owns the export form can
 /// compose the real dialog here.
 #[allow(dead_code)] // composition entry point; remove when the host owns the export form.
-pub(crate) fn build_with_export<S: 'static>(
+pub fn build_with_export<S: 'static>(
     vm: &DialogsVm,
     dark: bool,
     layer: &mut Vec<El>,
@@ -142,7 +142,7 @@ pub(crate) fn build_with_export<S: 'static>(
 /// real port here. Its actions map onto T223's existing callback surface so
 /// callers keep their contract.
 #[allow(dead_code)] // composition entry point; remove when the host owns the import wizard.
-pub(crate) fn build_with_import<S: 'static>(
+pub fn build_with_import<S: 'static>(
     vm: &DialogsVm,
     dark: bool,
     layer: &mut Vec<El>,

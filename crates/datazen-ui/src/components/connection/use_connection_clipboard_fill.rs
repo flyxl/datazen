@@ -16,7 +16,7 @@
 /// (`Record<string, unknown>` does not cross into the Rune VM).
 #[allow(dead_code)] // contract mirror; remove when the driver-sdk DTO lands in Rune.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ConnectionClipboardFill {
+pub struct ConnectionClipboardFill {
     pub host: Option<String>,
     pub port: Option<String>,
     pub database: Option<String>,
@@ -32,7 +32,7 @@ pub(crate) struct ConnectionClipboardFill {
 /// Mirror of driver-sdk `MatchedConnectionClipboard`.
 #[allow(dead_code)] // contract mirror; remove when the driver-sdk DTO lands in Rune.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct MatchedConnectionClipboard {
+pub struct MatchedConnectionClipboard {
     pub database_type: String,
     pub fill: ConnectionClipboardFill,
 }
@@ -40,7 +40,7 @@ pub(crate) struct MatchedConnectionClipboard {
 /// `UseConnectionClipboardFillOptions` (`autoRead` defaults to `true`).
 #[allow(dead_code)] // host options; consumed by the connection form host.
 #[derive(Clone, Debug)]
-pub(crate) struct ClipboardFillOptions {
+pub struct ClipboardFillOptions {
     pub enabled: bool,
     pub auto_read: bool,
     pub available_types: Option<Vec<String>>,
@@ -59,7 +59,7 @@ impl Default for ClipboardFillOptions {
 
 #[allow(dead_code)] // host options; consumed by the connection form host.
 impl ClipboardFillOptions {
-    pub(crate) fn new(enabled: bool) -> Self {
+    pub fn new(enabled: bool) -> Self {
         Self {
             enabled,
             ..Self::default()
@@ -71,7 +71,7 @@ impl ClipboardFillOptions {
 /// explicit paste (Rune's host maps its paste input into the latter).
 #[allow(dead_code)] // host event; consumed by the connection form host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ClipboardFillEvent {
+pub enum ClipboardFillEvent {
     AutoRead(String),
     Paste {
         text: String,
@@ -83,7 +83,7 @@ pub(crate) enum ClipboardFillEvent {
 /// meaningful for a paste, so auto-read never asks for it).
 #[allow(dead_code)] // host outcome; consumed by the connection form host.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ClipboardFillOutcome {
+pub enum ClipboardFillOutcome {
     Ignored,
     Applied {
         database_type: String,
@@ -94,7 +94,7 @@ pub(crate) enum ClipboardFillOutcome {
 /// Everything the step needs from the host. `match_clipboard` is a pure parser;
 /// `apply_matched` writes the form; `on_applied` reports the chosen type.
 #[allow(dead_code)] // host port; consumed by the connection form host.
-pub(crate) trait ClipboardFillHost {
+pub trait ClipboardFillHost {
     /// `current.name.trim() || current.password` — never overwrite user input.
     fn form_has_input(&self) -> bool;
     /// React's `appliedRef.current`.
@@ -112,7 +112,7 @@ pub(crate) trait ClipboardFillHost {
 /// Apply the hook's guard rules to one clip event. Pure with respect to I/O:
 /// all reads and writes go through `host`.
 #[allow(dead_code)] // host port; consumed by the connection form host.
-pub(crate) fn handle_event<H: ClipboardFillHost>(
+pub fn handle_event<H: ClipboardFillHost>(
     host: &mut H,
     options: &ClipboardFillOptions,
     event: ClipboardFillEvent,

@@ -69,7 +69,7 @@ use crate::ui::kit::kit;
 /// mistaken for renderable text.
 #[allow(dead_code)] // Consumers: the presentation-plan caller lands with the grid.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PresentationResultVm {
+pub enum PresentationResultVm {
     /// Render this text in the datetime branch's style.
     Text(String),
     /// Fall through to the normal family branches.
@@ -81,16 +81,16 @@ pub(crate) enum PresentationResultVm {
 /// column context React keeps on the plan object.
 #[allow(dead_code)] // Consumers: the valuePresentation layer is not ported yet.
 #[derive(Clone)]
-pub(crate) struct CellPresentationVm {
+pub struct CellPresentationVm {
     /// The column the plan belongs to; kept for diagnostics/key parity.
-    pub(crate) column_name: String,
+    pub column_name: String,
     present: Rc<dyn Fn(&Value) -> PresentationResultVm>,
 }
 
 #[allow(dead_code)] // Consumers: the valuePresentation layer is not ported yet.
 impl CellPresentationVm {
     /// A plan that answers `present` for each value.
-    pub(crate) fn new(
+    pub fn new(
         column_name: impl Into<String>,
         present: impl Fn(&Value) -> PresentationResultVm + 'static,
     ) -> Self {
@@ -102,7 +102,7 @@ impl CellPresentationVm {
 
     /// A plan that always presents the same text — the common case in tests
     /// and the shape a timestamp contribution produces for an instant column.
-    pub(crate) fn text(column_name: impl Into<String>, text: impl Into<String>) -> Self {
+    pub fn text(column_name: impl Into<String>, text: impl Into<String>) -> Self {
         let text = text.into();
         Self::new(column_name, move |_| {
             PresentationResultVm::Text(text.clone())
@@ -110,7 +110,7 @@ impl CellPresentationVm {
     }
 
     /// The same call site as React's `presentationPlan?.present(value)`.
-    pub(crate) fn present(&self, value: &Value) -> PresentationResultVm {
+    pub fn present(&self, value: &Value) -> PresentationResultVm {
         (self.present)(value)
     }
 }
@@ -120,45 +120,45 @@ impl CellPresentationVm {
 /// [`CellRenderer`] so the data can be inspected without a runtime.
 #[allow(dead_code)] // Consumers: GridCell lands in a later task.
 #[derive(Clone)]
-pub(crate) struct CellRendererVm {
+pub struct CellRendererVm {
     /// Caller-unique element key prefix (`<key>-value` / `<key>-editor`).
-    pub(crate) key: String,
+    pub key: String,
     /// `columnName` — only used when a plan asks for candidates.
-    pub(crate) column_name: String,
+    pub column_name: String,
     /// The driver's raw type name, e.g. `bigint` (DB-05).
-    pub(crate) data_type: Option<String>,
+    pub data_type: Option<String>,
     /// The value: `Value::Null` covers React's `null` and `undefined`.
-    pub(crate) value: Value,
+    pub value: Value,
     /// Whether the cell is being edited.
-    pub(crate) is_editing: bool,
+    pub is_editing: bool,
     /// The normalised type computed once by the grid; `None` re-resolves.
-    pub(crate) cell_type: Option<CellType>,
+    pub cell_type: Option<CellType>,
     /// Whether the column accepts SQL `NULL` (handed to the editor).
-    pub(crate) nullable: bool,
+    pub nullable: bool,
     /// Whether the column holds whole numbers (handed to the editor).
-    pub(crate) integer_only: bool,
+    pub integer_only: bool,
     /// The panel the cell belongs to (handed to the editor).
-    pub(crate) panel_id: Option<String>,
+    pub panel_id: Option<String>,
     /// DB-20 override, e.g. a pickable FK edits as a candidates dropdown.
-    pub(crate) editor_kind_override: Option<CellEditorKind>,
+    pub editor_kind_override: Option<CellEditorKind>,
     /// The column's presentation plan (issue-32 T05); `None` is default-off.
-    pub(crate) presentation_plan: Option<CellPresentationVm>,
+    pub presentation_plan: Option<CellPresentationVm>,
     /// Reserved: a primary-key cell. No visual branch in the React source.
-    pub(crate) is_primary_key: bool,
+    pub is_primary_key: bool,
     /// Reserved: a cell that navigates elsewhere. Adds a Rune link affordance.
-    pub(crate) is_link: bool,
+    pub is_link: bool,
     /// Reserved: an aggregate total row.
-    pub(crate) is_total: bool,
+    pub is_total: bool,
     /// Reserved: an aggregate summary row.
-    pub(crate) is_summary: bool,
+    pub is_summary: bool,
     /// Reserved: a cell the driver marked read-only (no press-to-edit).
-    pub(crate) read_only: bool,
+    pub read_only: bool,
 }
 
 #[allow(dead_code)] // Consumers: GridCell lands in a later task.
 impl CellRendererVm {
     /// A cell with React's defaults: nullable, not editing, no plan.
-    pub(crate) fn new(
+    pub fn new(
         key: impl Into<String>,
         column_name: impl Into<String>,
         value: Value,
@@ -183,37 +183,37 @@ impl CellRendererVm {
         }
     }
 
-    pub(crate) fn data_type(mut self, data_type: impl Into<String>) -> Self {
+    pub fn data_type(mut self, data_type: impl Into<String>) -> Self {
         self.data_type = Some(data_type.into());
         self
     }
 
-    pub(crate) fn cell_type(mut self, cell_type: CellType) -> Self {
+    pub fn cell_type(mut self, cell_type: CellType) -> Self {
         self.cell_type = Some(cell_type);
         self
     }
 
-    pub(crate) fn editing(mut self, editing: bool) -> Self {
+    pub fn editing(mut self, editing: bool) -> Self {
         self.is_editing = editing;
         self
     }
 
-    pub(crate) fn presentation_plan(mut self, plan: CellPresentationVm) -> Self {
+    pub fn presentation_plan(mut self, plan: CellPresentationVm) -> Self {
         self.presentation_plan = Some(plan);
         self
     }
 
-    pub(crate) fn primary_key(mut self, primary_key: bool) -> Self {
+    pub fn primary_key(mut self, primary_key: bool) -> Self {
         self.is_primary_key = primary_key;
         self
     }
 
-    pub(crate) fn link(mut self, link: bool) -> Self {
+    pub fn link(mut self, link: bool) -> Self {
         self.is_link = link;
         self
     }
 
-    pub(crate) fn read_only(mut self, read_only: bool) -> Self {
+    pub fn read_only(mut self, read_only: bool) -> Self {
         self.read_only = read_only;
         self
     }
@@ -222,7 +222,7 @@ impl CellRendererVm {
 /// Which JSX branch a cell takes, in React's order.
 #[allow(dead_code)] // Consumers: GridCell lands in a later task.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CellBranch {
+pub enum CellBranch {
     Editing,
     Null,
     Presented,
@@ -238,22 +238,22 @@ pub(crate) enum CellBranch {
 /// accessibility tree cannot expose, while still probing the real element.
 #[allow(dead_code)] // Consumers: GridCell lands in a later task.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CellPlan {
-    pub(crate) branch: CellBranch,
-    pub(crate) text: String,
+pub struct CellPlan {
+    pub branch: CellBranch,
+    pub text: String,
     /// React's `title` becomes Rune's `help` (also the copy source).
-    pub(crate) help: Option<String>,
+    pub help: Option<String>,
     /// `font-mono` → kit's mono type.
-    pub(crate) mono: bool,
+    pub mono: bool,
     /// `text-xs` → kit's `text_xsmall`; otherwise `text-sm` → `text_small`.
-    pub(crate) xsmall: bool,
+    pub xsmall: bool,
     /// `text-right` → `Align::End`.
-    pub(crate) right: bool,
+    pub right: bool,
     /// `italic` on the NULL span.
-    pub(crate) italic: bool,
-    pub(crate) color: rune::Color,
+    pub italic: bool,
+    pub color: rune::Color,
     /// Resolved even for a non-editing cell, exactly like React's `useMemo`.
-    pub(crate) editor_kind: CellEditorKind,
+    pub editor_kind: CellEditorKind,
 }
 
 /// Resolve the editor kind the same way React's `useMemo` does: an override
@@ -273,7 +273,7 @@ fn resolve_editor_kind(vm: &CellRendererVm, resolved: CellType, edit_text: &str)
 
 /// Compute a cell's render plan without building a Rune element.
 #[allow(dead_code)] // Consumers: GridCell lands in a later task.
-pub(crate) fn plan(vm: &CellRendererVm, dark: bool) -> CellPlan {
+pub fn plan(vm: &CellRendererVm, dark: bool) -> CellPlan {
     let resolved = vm
         .cell_type
         .unwrap_or_else(|| resolve_cell_type(vm.data_type.as_deref(), None));
@@ -402,7 +402,7 @@ pub(crate) fn plan(vm: &CellRendererVm, dark: bool) -> CellPlan {
 /// commas (`Array.prototype.toString`), objects become `[object Object]`.
 /// Shared with the dirty-cell tooltip (T405), whose non-object branch is the
 /// same `String(value)`.
-pub(crate) fn js_string(value: &Value) -> String {
+pub fn js_string(value: &Value) -> String {
     match value {
         Value::Null => "null".to_owned(),
         Value::Bool(flag) => flag.to_string(),
@@ -426,7 +426,7 @@ fn truncate_120(text: &str) -> String {
 
 /// The cell element builder. The VM owns data; callbacks are optional so a
 /// read-only probe can render the same element without any state wiring.
-pub(crate) struct CellRenderer<S: 'static> {
+pub struct CellRenderer<S: 'static> {
     vm: CellRendererVm,
     on_edit: Option<Rc<dyn Fn(&mut S)>>,
     on_commit: Option<Rc<dyn Fn(&mut S, Option<Value>)>>,
@@ -436,7 +436,7 @@ pub(crate) struct CellRenderer<S: 'static> {
 
 #[allow(dead_code)] // Consumers: GridCell lands in a later task.
 impl<S: 'static> CellRenderer<S> {
-    pub(crate) fn new(vm: CellRendererVm) -> Self {
+    pub fn new(vm: CellRendererVm) -> Self {
         Self {
             vm,
             on_edit: None,
@@ -446,31 +446,31 @@ impl<S: 'static> CellRenderer<S> {
     }
 
     /// Pressing a non-editing, writable cell asks the grid to open the editor.
-    pub(crate) fn on_edit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_edit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_edit = Some(Rc::new(f));
         self
     }
 
     /// The editing handoff reports the raw value (React's `onCellValue ?? onCommit`).
-    pub(crate) fn on_commit(mut self, f: impl Fn(&mut S, Option<Value>) + 'static) -> Self {
+    pub fn on_commit(mut self, f: impl Fn(&mut S, Option<Value>) + 'static) -> Self {
         self.on_commit = Some(Rc::new(f));
         self
     }
 
     /// Escape while editing cancels; kept for parity with React's `onCancel`.
     #[allow(dead_code)] // The editor host owns cancellation until it lands.
-    pub(crate) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
         self
     }
 
     /// The data VM, for callers that need to inspect the cell without a runtime.
-    pub(crate) fn vm(&self) -> &CellRendererVm {
+    pub fn vm(&self) -> &CellRendererVm {
         &self.vm
     }
 
     /// Paint the single element for this cell into its parent.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let plan = plan(&self.vm, dark);
         let k: &Kit = kit(dark);
         let editing = plan.branch == CellBranch::Editing;

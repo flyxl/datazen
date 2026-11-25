@@ -125,7 +125,7 @@ use crate::ui::toggle::Switch;
 
 /// React's panel tab (`useState<'chat' | 'workflows'>`, default `'chat'`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum AiChatTab {
+pub enum AiChatTab {
     #[default]
     Chat,
     Workflows,
@@ -133,7 +133,7 @@ pub(crate) enum AiChatTab {
 
 /// React's `AiAgentMode` (`types/ai.ts`): `'ask'` (default) or `'agent'`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum AiAgentMode {
+pub enum AiAgentMode {
     #[default]
     Ask,
     Agent,
@@ -143,7 +143,7 @@ pub(crate) enum AiAgentMode {
 /// `detectSafetyPreset` reads. Kept as strings so the preset detection
 /// below can mirror the TypeScript comparisons field for field.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiSafetyGate {
+pub struct AiSafetyGate {
     pub data_egress_level: String,
     pub db_tool_policy: String,
     pub mcp_tool_policy: String,
@@ -151,7 +151,7 @@ pub(crate) struct AiSafetyGate {
 }
 
 impl AiSafetyGate {
-    pub(crate) fn new(
+    pub fn new(
         data_egress_level: impl Into<String>,
         db_tool_policy: impl Into<String>,
         mcp_tool_policy: impl Into<String>,
@@ -166,24 +166,24 @@ impl AiSafetyGate {
     }
 
     /// `AI_SAFETY_PRESETS.cloud_strict`.
-    pub(crate) fn cloud_strict() -> Self {
+    pub fn cloud_strict() -> Self {
         Self::new("strict", "read_only", "disabled", true)
     }
 
     /// `AI_SAFETY_PRESETS.enterprise_balanced`.
-    pub(crate) fn enterprise_balanced() -> Self {
+    pub fn enterprise_balanced() -> Self {
         Self::new("sample_masked", "require_confirm", "require_confirm", true)
     }
 
     /// `AI_SAFETY_PRESETS.local_trust`.
-    pub(crate) fn local_trust() -> Self {
+    pub fn local_trust() -> Self {
         Self::new("unrestricted", "unrestricted", "unrestricted", false)
     }
 }
 
 /// React's `AiSafetyPresetType | 'custom'` (`lib/aiSafetyPresets.ts`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AiSafetyPreset {
+pub enum AiSafetyPreset {
     CloudStrict,
     EnterpriseBalanced,
     LocalTrust,
@@ -193,7 +193,7 @@ pub(crate) enum AiSafetyPreset {
 /// React's `detectSafetyPreset` (`lib/aiSafetyPresets.ts`), line for line:
 /// each preset is an exact conjunction of the four gate fields, anything
 /// else is `custom`.
-pub(crate) fn detect_safety_preset(gate: &AiSafetyGate) -> AiSafetyPreset {
+pub fn detect_safety_preset(gate: &AiSafetyGate) -> AiSafetyPreset {
     if gate.data_egress_level == "strict"
         && gate.db_tool_policy == "read_only"
         && gate.mcp_tool_policy == "disabled"
@@ -221,20 +221,20 @@ pub(crate) fn detect_safety_preset(gate: &AiSafetyGate) -> AiSafetyPreset {
 /// template option is `{ value: template.id, label: template.name ||
 /// template.id }` — an empty name falls back to the id, as JS `||` does.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiPromptTemplate {
+pub struct AiPromptTemplate {
     pub id: String,
     pub name: String,
 }
 
 impl AiPromptTemplate {
-    pub(crate) fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
         }
     }
 
-    pub(crate) fn label(&self) -> String {
+    pub fn label(&self) -> String {
         if self.name.is_empty() {
             self.id.clone()
         } else {
@@ -246,7 +246,7 @@ impl AiPromptTemplate {
 /// One AI profile (`AiSettingsConfig.profiles`): the id, the display name
 /// and model, whether it is the default, and its safety gate.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AiProfile {
+pub struct AiProfile {
     pub id: String,
     pub name: String,
     pub model: String,
@@ -255,7 +255,7 @@ pub(crate) struct AiProfile {
 }
 
 impl AiProfile {
-    pub(crate) fn new(
+    pub fn new(
         id: impl Into<String>,
         name: impl Into<String>,
         model: impl Into<String>,
@@ -269,19 +269,19 @@ impl AiProfile {
         }
     }
 
-    pub(crate) fn is_default(mut self, is_default: bool) -> Self {
+    pub fn is_default(mut self, is_default: bool) -> Self {
         self.is_default = is_default;
         self
     }
 
-    pub(crate) fn safety_gate(mut self, safety_gate: AiSafetyGate) -> Self {
+    pub fn safety_gate(mut self, safety_gate: AiSafetyGate) -> Self {
         self.safety_gate = safety_gate;
         self
     }
 
     /// React's profile-option label: `p.name || p.model` (may be empty
     /// when both are, exactly as in React).
-    pub(crate) fn display_name(&self) -> String {
+    pub fn display_name(&self) -> String {
         if self.name.is_empty() {
             self.model.clone()
         } else {
@@ -298,7 +298,7 @@ impl AiProfile {
 /// `useState` initials: chat tab, history closed, ask mode, no template,
 /// nothing shared, no migration notice, no messages.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct AiChatHeaderState {
+pub struct AiChatHeaderState {
     tab: AiChatTab,
     session_history_open: bool,
     agent_mode: AiAgentMode,
@@ -317,114 +317,114 @@ pub(crate) struct AiChatHeaderState {
 }
 
 impl AiChatHeaderState {
-    pub(crate) fn tab(&self) -> AiChatTab {
+    pub fn tab(&self) -> AiChatTab {
         self.tab
     }
 
-    pub(crate) fn session_history_open(&self) -> bool {
+    pub fn session_history_open(&self) -> bool {
         self.session_history_open
     }
 
-    pub(crate) fn agent_mode(&self) -> AiAgentMode {
+    pub fn agent_mode(&self) -> AiAgentMode {
         self.agent_mode
     }
 
-    pub(crate) fn template_id(&self) -> &str {
+    pub fn template_id(&self) -> &str {
         &self.template_id
     }
 
-    pub(crate) fn templates(&self) -> &[AiPromptTemplate] {
+    pub fn templates(&self) -> &[AiPromptTemplate] {
         &self.templates
     }
 
-    pub(crate) fn template_open(&self) -> bool {
+    pub fn template_open(&self) -> bool {
         self.template_open
     }
 
-    pub(crate) fn profiles(&self) -> &[AiProfile] {
+    pub fn profiles(&self) -> &[AiProfile] {
         &self.profiles
     }
 
-    pub(crate) fn active_profile_id(&self) -> &str {
+    pub fn active_profile_id(&self) -> &str {
         &self.active_profile_id
     }
 
-    pub(crate) fn profile_open(&self) -> bool {
+    pub fn profile_open(&self) -> bool {
         self.profile_open
     }
 
-    pub(crate) fn sharing(&self) -> bool {
+    pub fn sharing(&self) -> bool {
         self.sharing
     }
 
-    pub(crate) fn can_share(&self) -> bool {
+    pub fn can_share(&self) -> bool {
         self.can_share
     }
 
-    pub(crate) fn share_error(&self) -> Option<&str> {
+    pub fn share_error(&self) -> Option<&str> {
         self.share_error.as_deref()
     }
 
-    pub(crate) fn session_migration_error(&self) -> Option<&str> {
+    pub fn session_migration_error(&self) -> Option<&str> {
         self.session_migration_error.as_deref()
     }
 
-    pub(crate) fn session_migration_success(&self) -> u32 {
+    pub fn session_migration_success(&self) -> u32 {
         self.session_migration_success
     }
 
-    pub(crate) fn has_messages(&self) -> bool {
+    pub fn has_messages(&self) -> bool {
         self.has_messages
     }
 
     /// React's `setTab`.
-    pub(crate) fn set_tab(&mut self, tab: AiChatTab) {
+    pub fn set_tab(&mut self, tab: AiChatTab) {
         self.tab = tab;
     }
 
     /// React's `setSessionHistoryOpen((open) => !open)` on the toggle.
-    pub(crate) fn toggle_session_history(&mut self) {
+    pub fn toggle_session_history(&mut self) {
         self.session_history_open = !self.session_history_open;
     }
 
     /// React's `setSessionHistoryOpen(false)` — the history panel's
     /// `onClose`, kept for the later slice that renders it.
-    pub(crate) fn set_session_history_open(&mut self, open: bool) {
+    pub fn set_session_history_open(&mut self, open: bool) {
         self.session_history_open = open;
     }
 
     /// React's `setAgentMode`.
-    pub(crate) fn set_agent_mode(&mut self, mode: AiAgentMode) {
+    pub fn set_agent_mode(&mut self, mode: AiAgentMode) {
         self.agent_mode = mode;
     }
 
     /// A template choice: React's `setTemplateId` plus closing the
     /// listbox, which the kit select leaves to the app (see `ui/select.rs`).
-    pub(crate) fn choose_template(&mut self, template_id: &str) {
+    pub fn choose_template(&mut self, template_id: &str) {
         self.template_id = template_id.to_string();
         self.template_open = false;
     }
 
-    pub(crate) fn toggle_template_open(&mut self) {
+    pub fn toggle_template_open(&mut self) {
         self.template_open = !self.template_open;
     }
 
-    pub(crate) fn close_template_select(&mut self) {
+    pub fn close_template_select(&mut self) {
         self.template_open = false;
     }
 
     /// A profile choice: React's `setActiveProfile` plus closing the
     /// listbox.
-    pub(crate) fn choose_profile(&mut self, profile_id: &str) {
+    pub fn choose_profile(&mut self, profile_id: &str) {
         self.active_profile_id = profile_id.to_string();
         self.profile_open = false;
     }
 
-    pub(crate) fn toggle_profile_open(&mut self) {
+    pub fn toggle_profile_open(&mut self) {
         self.profile_open = !self.profile_open;
     }
 
-    pub(crate) fn close_profile_select(&mut self) {
+    pub fn close_profile_select(&mut self) {
         self.profile_open = false;
     }
 
@@ -432,7 +432,7 @@ impl AiChatHeaderState {
     /// disabled while `!can_share`, so a share change can only arrive
     /// when sharing is possible; the gate keeps the state machine honest
     /// if a caller drives it directly.
-    pub(crate) fn set_sharing(&mut self, sharing: bool) {
+    pub fn set_sharing(&mut self, sharing: bool) {
         if self.can_share {
             self.sharing = sharing;
         }
@@ -440,7 +440,7 @@ impl AiChatHeaderState {
 
     /// React's `activeProfile` (`AiChatPanel.tsx:168–171`): the active id,
     /// else the default profile, else the first profile.
-    pub(crate) fn active_profile(&self) -> Option<&AiProfile> {
+    pub fn active_profile(&self) -> Option<&AiProfile> {
         self.profiles
             .iter()
             .find(|profile| profile.id == self.active_profile_id)
@@ -449,7 +449,7 @@ impl AiChatHeaderState {
     }
 
     /// React's profile-row label: `{name || model || 'AI Model'}:`.
-    pub(crate) fn profile_display_label(&self) -> String {
+    pub fn profile_display_label(&self) -> String {
         let name = self
             .active_profile()
             .map(|profile| profile.display_name())
@@ -464,7 +464,7 @@ impl AiChatHeaderState {
 
     /// The shield preset for the active profile; with no profile React
     /// falls back to `'cloud_strict'`.
-    pub(crate) fn shield_preset(&self) -> AiSafetyPreset {
+    pub fn shield_preset(&self) -> AiSafetyPreset {
         self.active_profile()
             .map(|profile| detect_safety_preset(&profile.safety_gate))
             .unwrap_or(AiSafetyPreset::CloudStrict)
@@ -472,7 +472,7 @@ impl AiChatHeaderState {
 
     /// React's profile-row gate: chat tab, a settings config, and at least
     /// one profile. The config itself is the VM's `profiles` list.
-    pub(crate) fn show_profile_row(&self) -> bool {
+    pub fn show_profile_row(&self) -> bool {
         self.tab == AiChatTab::Chat && !self.profiles.is_empty()
     }
 
@@ -480,35 +480,35 @@ impl AiChatHeaderState {
     // lands. Until then tests (and the panel slice's placeholder) drive
     // these directly. --
 
-    pub(crate) fn set_templates(&mut self, templates: Vec<AiPromptTemplate>) {
+    pub fn set_templates(&mut self, templates: Vec<AiPromptTemplate>) {
         self.templates = templates;
     }
 
-    pub(crate) fn set_profiles(&mut self, profiles: Vec<AiProfile>) {
+    pub fn set_profiles(&mut self, profiles: Vec<AiProfile>) {
         self.profiles = profiles;
     }
 
-    pub(crate) fn set_active_profile_id(&mut self, profile_id: impl Into<String>) {
+    pub fn set_active_profile_id(&mut self, profile_id: impl Into<String>) {
         self.active_profile_id = profile_id.into();
     }
 
-    pub(crate) fn set_can_share(&mut self, can_share: bool) {
+    pub fn set_can_share(&mut self, can_share: bool) {
         self.can_share = can_share;
     }
 
-    pub(crate) fn set_share_error(&mut self, error: Option<String>) {
+    pub fn set_share_error(&mut self, error: Option<String>) {
         self.share_error = error;
     }
 
-    pub(crate) fn set_session_migration_error(&mut self, error: Option<String>) {
+    pub fn set_session_migration_error(&mut self, error: Option<String>) {
         self.session_migration_error = error;
     }
 
-    pub(crate) fn set_session_migration_success(&mut self, count: u32) {
+    pub fn set_session_migration_success(&mut self, count: u32) {
         self.session_migration_success = count;
     }
 
-    pub(crate) fn set_has_messages(&mut self, has_messages: bool) {
+    pub fn set_has_messages(&mut self, has_messages: bool) {
         self.has_messages = has_messages;
     }
 }
@@ -519,7 +519,7 @@ impl AiChatHeaderState {
 /// the callbacks; the header itself keeps no state. The two selects push
 /// their listboxes into `layer` (the `ui/select.rs` two-part build), so
 /// `build` takes the layer the panel slice renders alongside the header.
-pub(crate) struct AiChatHeader<'a, S: 'static> {
+pub struct AiChatHeader<'a, S: 'static> {
     state: &'a AiChatHeaderState,
     on_select_tab: Option<Rc<dyn Fn(&mut S, AiChatTab)>>,
     on_toggle_session_history: Option<Rc<dyn Fn(&mut S)>>,
@@ -537,7 +537,7 @@ pub(crate) struct AiChatHeader<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> AiChatHeader<'a, S> {
-    pub(crate) fn new(state: &'a AiChatHeaderState) -> Self {
+    pub fn new(state: &'a AiChatHeaderState) -> Self {
         Self {
             state,
             on_select_tab: None,
@@ -558,41 +558,41 @@ impl<'a, S: 'static> AiChatHeader<'a, S> {
 
     /// Called with the tab when a tab button is pressed; the caller drives
     /// [`AiChatHeaderState::set_tab`].
-    pub(crate) fn on_select_tab(mut self, f: impl Fn(&mut S, AiChatTab) + 'static) -> Self {
+    pub fn on_select_tab(mut self, f: impl Fn(&mut S, AiChatTab) + 'static) -> Self {
         self.on_select_tab = Some(Rc::new(f));
         self
     }
 
     /// Called when the session-history toggle is pressed; the caller drives
     /// [`AiChatHeaderState::toggle_session_history`].
-    pub(crate) fn on_toggle_session_history(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_session_history(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_session_history = Some(Rc::new(f));
         self
     }
 
     /// Called when the AI help button is pressed; the caller owns
     /// `openDocsWindow('context')`.
-    pub(crate) fn on_open_ai_help(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_ai_help(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_ai_help = Some(Rc::new(f));
         self
     }
 
     /// Called when the workflow help button is pressed; the caller owns
     /// `openDocsWindow('workflows')`.
-    pub(crate) fn on_open_workflow_help(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_workflow_help(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_workflow_help = Some(Rc::new(f));
         self
     }
 
     /// Called when the clear button is pressed; the caller owns `clearChat`.
-    pub(crate) fn on_clear_chat(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear_chat(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear_chat = Some(Rc::new(f));
         self
     }
 
     /// Called with the mode when an agent-mode button is pressed; the
     /// caller drives [`AiChatHeaderState::set_agent_mode`].
-    pub(crate) fn on_select_agent_mode(
+    pub fn on_select_agent_mode(
         mut self,
         f: impl Fn(&mut S, AiAgentMode) + 'static,
     ) -> Self {
@@ -602,21 +602,21 @@ impl<'a, S: 'static> AiChatHeader<'a, S> {
 
     /// Called when the template select's trigger is pressed; the caller
     /// drives [`AiChatHeaderState::toggle_template_open`].
-    pub(crate) fn on_toggle_template(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_template(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_template = Some(Rc::new(f));
         self
     }
 
     /// Called when the template listbox closes; the caller drives
     /// [`AiChatHeaderState::close_template_select`].
-    pub(crate) fn on_close_template(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_template(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_template = Some(Rc::new(f));
         self
     }
 
     /// Called with the chosen template id; the caller drives
     /// [`AiChatHeaderState::choose_template`].
-    pub(crate) fn on_choose_template(
+    pub fn on_choose_template(
         mut self,
         f: impl Fn(&mut S, &str, &mut Tx) + 'static,
     ) -> Self {
@@ -626,33 +626,33 @@ impl<'a, S: 'static> AiChatHeader<'a, S> {
 
     /// Called when the profile select's trigger is pressed; the caller
     /// drives [`AiChatHeaderState::toggle_profile_open`].
-    pub(crate) fn on_toggle_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_profile = Some(Rc::new(f));
         self
     }
 
     /// Called when the profile listbox closes; the caller drives
     /// [`AiChatHeaderState::close_profile_select`].
-    pub(crate) fn on_close_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_profile = Some(Rc::new(f));
         self
     }
 
     /// Called with the chosen profile id; the caller drives
     /// [`AiChatHeaderState::choose_profile`].
-    pub(crate) fn on_choose_profile(mut self, f: impl Fn(&mut S, &str, &mut Tx) + 'static) -> Self {
+    pub fn on_choose_profile(mut self, f: impl Fn(&mut S, &str, &mut Tx) + 'static) -> Self {
         self.on_choose_profile = Some(Rc::new(f));
         self
     }
 
     /// Called when the share-editor switch is toggled; the caller drives
     /// [`AiChatHeaderState::set_sharing`].
-    pub(crate) fn on_toggle_sharing(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_sharing(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_sharing = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let state = self.state;
         let edge = k.alpha(k.c.border_base, 0.6);

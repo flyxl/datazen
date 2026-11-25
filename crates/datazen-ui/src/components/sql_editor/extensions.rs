@@ -45,7 +45,7 @@ use crate::components::sql_editor::sql_editor_context_menu::{Platform, format_mo
 /// `SqlStatementKind` (semanticTypes): the coarse statement vocabulary.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the statement scanner track wires it
-pub(crate) enum SqlStatementKind {
+pub enum SqlStatementKind {
     Select,
     Insert,
     Update,
@@ -59,7 +59,7 @@ pub(crate) enum SqlStatementKind {
 /// `confidence`: how the range was derived.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the statement scanner track wires it
-pub(crate) enum SqlStatementConfidence {
+pub enum SqlStatementConfidence {
     Exact,
     Degraded,
 }
@@ -68,7 +68,7 @@ pub(crate) enum SqlStatementConfidence {
 /// content span, delimiter span, the first executable line, kind hint.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the statement scanner track wires it
-pub(crate) struct SqlStatementRange {
+pub struct SqlStatementRange {
     pub from: usize,
     pub to: usize,
     pub index: usize,
@@ -84,7 +84,7 @@ pub(crate) struct SqlStatementRange {
 /// `SqlExecutionTarget['source']` — where the execute request came from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the execute dispatch track wires it
-pub(crate) enum SqlExecutionSource {
+pub enum SqlExecutionSource {
     Selection,
     CurrentStatement,
     Gutter,
@@ -94,7 +94,7 @@ pub(crate) enum SqlExecutionSource {
 /// `SqlExecutionTarget` (semanticTypes): what an execute dispatch carries.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; the execute dispatch track wires it
-pub(crate) struct SqlExecutionTarget {
+pub struct SqlExecutionTarget {
     pub source: SqlExecutionSource,
     pub sql: String,
     pub range: Option<SqlTextRange>,
@@ -108,18 +108,18 @@ pub(crate) struct SqlExecutionTarget {
 
 /// The default degrade threshold (React `isDocumentDegraded`'s
 /// `maxLineCount = 500`).
-pub(crate) const DEGRADE_MAX_LINES_DEFAULT: usize = 500;
+pub const DEGRADE_MAX_LINES_DEFAULT: usize = 500;
 
 /// `isDocumentDegraded`: a document beyond the threshold degrades the
 /// statement frame. Pure — no DOM / CodeMirror dependency (extracted for
 /// testability, the React comment says the same).
-pub(crate) fn is_document_degraded(line_count: usize, max_line_count: usize) -> bool {
+pub fn is_document_degraded(line_count: usize, max_line_count: usize) -> bool {
     line_count > max_line_count
 }
 
 /// `shouldHideFrame`'s options, verbatim (including the declared-but-
 /// unread `doc_line_count`).
-pub(crate) struct ShouldHideFrameOpts<'a> {
+pub struct ShouldHideFrameOpts<'a> {
     pub degraded: bool,
     pub selection_empty: bool,
     pub selection_from: usize,
@@ -133,7 +133,7 @@ pub(crate) struct ShouldHideFrameOpts<'a> {
 /// `shouldHideFrame`: the frame hides when the document is degraded, or
 /// when a non-empty selection spans more than one line (a newline inside
 /// the selected text).
-pub(crate) fn should_hide_frame(opts: &ShouldHideFrameOpts<'_>) -> bool {
+pub fn should_hide_frame(opts: &ShouldHideFrameOpts<'_>) -> bool {
     if opts.degraded {
         return true;
     }
@@ -153,13 +153,13 @@ pub(crate) fn should_hide_frame(opts: &ShouldHideFrameOpts<'_>) -> bool {
 /// `isMacOS()` — platform detection, consistent with
 /// `lib/sqlEditorContextMenu.ts` (the React comment); the engine takes
 /// the platform the host resolved instead of reading `navigator`.
-pub(crate) fn is_macos(platform: Platform) -> bool {
+pub fn is_macos(platform: Platform) -> bool {
     platform == Platform::Macos
 }
 
 /// `executeShortcutLabel()` — the platform-aware shortcut label for the
 /// execute action (`⌘+Enter` on macOS, `Ctrl+Enter` elsewhere).
-pub(crate) fn execute_shortcut_label(platform: Platform) -> String {
+pub fn execute_shortcut_label(platform: Platform) -> String {
     format!("{}+Enter", format_mod_key(platform))
 }
 
@@ -170,18 +170,18 @@ pub(crate) fn execute_shortcut_label(platform: Platform) -> String {
 /// `EditorExecutionState`: the immutable snapshot of the running
 /// execution (§Track S4-A step 6 — the spinner matches
 /// documentVersion + targetRange).
-pub(crate) type EditorExecutionState = EditorExecutionStateValue;
+pub type EditorExecutionState = EditorExecutionStateValue;
 
 /// The state value (React's `EditorExecutionState` shape).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct EditorExecutionStateValue {
+pub struct EditorExecutionStateValue {
     pub status: ExecutionStatus,
     pub target_range: Option<SqlTextRange>,
     pub document_version: Option<u64>,
 }
 
 /// `INITIAL_EXECUTION_STATE`.
-pub(crate) const INITIAL_EXECUTION_STATE: EditorExecutionState = EditorExecutionState {
+pub const INITIAL_EXECUTION_STATE: EditorExecutionState = EditorExecutionState {
     status: ExecutionStatus::Idle,
     target_range: None,
     document_version: None,
@@ -191,7 +191,7 @@ pub(crate) const INITIAL_EXECUTION_STATE: EditorExecutionState = EditorExecution
 /// Cancel (→ cancelling, target kept), Finish (→ idle, everything
 /// cleared).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExecutionEffect {
+pub enum ExecutionEffect {
     /// `StartExecutionEffect.of({ targetRange, documentVersion })`.
     Start { target_range: Option<SqlTextRange>, document_version: u64 },
     /// `CancelExecutionEffect.of()`.
@@ -204,7 +204,7 @@ impl EditorExecutionStateValue {
     /// The StateField's `update`: walk the transaction's effects and
     /// return at the **first** one that matches (a transaction carrying
     /// several effects lets the first decide — the React loop's shape).
-    pub(crate) fn update(&self, effects: &[ExecutionEffect]) -> Self {
+    pub fn update(&self, effects: &[ExecutionEffect]) -> Self {
         for effect in effects {
             match effect {
                 ExecutionEffect::Start { target_range, document_version } => {
@@ -229,7 +229,7 @@ impl EditorExecutionStateValue {
 /// `matchesRunningTarget` (aka `isStatementRunning`): the spinner shows
 /// only when the status is running AND the documentVersion AND the
 /// targetRange match exactly.
-pub(crate) fn matches_running_target(
+pub fn matches_running_target(
     state: &EditorExecutionState,
     document_version: u64,
     range: SqlTextRange,
@@ -248,6 +248,6 @@ pub(crate) fn matches_running_target(
 
 /// `isIdleOrCancelled`: the execution is no longer running (idle or
 /// cancelling).
-pub(crate) fn is_idle_or_cancelled(state: &EditorExecutionState) -> bool {
+pub fn is_idle_or_cancelled(state: &EditorExecutionState) -> bool {
     matches!(state.status, ExecutionStatus::Idle | ExecutionStatus::Cancelling)
 }

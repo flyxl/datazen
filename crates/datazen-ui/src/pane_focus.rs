@@ -30,10 +30,10 @@ use std::collections::{HashMap, HashSet};
 /// state has, spelled out here so this module does not have to know
 /// the store's private state type.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct PaneFocusPatch {
-    pub(crate) focused_pane_id_by_panel: HashMap<String, String>,
-    pub(crate) focused_pane_id: Option<String>,
-    pub(crate) active_panel_id: Option<String>,
+pub struct PaneFocusPatch {
+    pub focused_pane_id_by_panel: HashMap<String, String>,
+    pub focused_pane_id: Option<String>,
+    pub active_panel_id: Option<String>,
 }
 
 /// `syncPaneFocus`: the one writer of pane focus.
@@ -49,7 +49,7 @@ pub(crate) struct PaneFocusPatch {
 /// `pane_id` of `None` (or the empty string, JS's null/undefined/null
 /// default-pane readings) means "this tab's default pane": the entry
 /// is removed rather than stored.
-pub(crate) fn sync_pane_focus(
+pub fn sync_pane_focus(
     prev: &HashMap<String, String>,
     panel_ids: &[&str],
     active_panel_id: Option<&str>,

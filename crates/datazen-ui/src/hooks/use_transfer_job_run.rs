@@ -75,7 +75,7 @@ use crate::hooks::transfer_job_run_helpers::{
 
 /// `TransferRunPhase`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TransferRunPhase {
+pub enum TransferRunPhase {
     #[default]
     Idle,
     Preparing,
@@ -95,7 +95,7 @@ pub(crate) enum TransferRunPhase {
 /// recorded receipt instead of committing a second time (never
 /// shared with the prepare call; absent lets the machine mint one).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TransferApplyInput {
+pub struct TransferApplyInput {
     pub source_tables: Option<Vec<String>>,
     pub confirmed_destructive: bool,
     pub idempotency_key: Option<String>,
@@ -108,7 +108,7 @@ pub(crate) struct TransferApplyInput {
 /// verdict can tell "wrote nothing" from "wrote something nobody
 /// recorded".
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferVerdictInput {
+pub struct TransferVerdictInput {
     pub state: String,
     pub effect_outcome: String,
     pub cancel_requested: bool,
@@ -122,7 +122,7 @@ pub(crate) struct TransferVerdictInput {
 
 /// The command rail the host drives (the desktop adapter's
 /// `transferJobs` commands; the error is the classified shape).
-pub(crate) trait TransferJobRunCenter {
+pub trait TransferJobRunCenter {
     /// `prepare_data_transfer_job`.
     fn prepare(&self, request: &TransferPrepareJobRequest)
         -> Result<TransferPrepareJobView, TransferCommandError>;
@@ -141,14 +141,14 @@ pub(crate) trait TransferJobRunCenter {
 /// The watch poll's answer: keep polling (re-arm the 1500ms timer),
 /// or stop (the run settled).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PollAnswer {
+pub enum PollAnswer {
     ReArmIn1500ms,
     Stop,
 }
 
 /// `useTransferJobRun()`'s state machine.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct UseTransferJobRunState {
+pub struct UseTransferJobRunState {
     pub phase: TransferRunPhase,
     pub prepare_view: Option<TransferPrepareJobView>,
     pub apply_view: Option<TransferApplyJobView>,
@@ -177,13 +177,13 @@ pub(crate) struct UseTransferJobRunState {
 }
 
 impl UseTransferJobRunState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// `lastFailure()` — the synchronous read (the ref's mirror; no
     /// commit gap exists in the port, so it is the failure itself).
-    pub(crate) fn last_failure(&self) -> Option<&TransferRunFailure> {
+    pub fn last_failure(&self) -> Option<&TransferRunFailure> {
         self.failure.as_ref()
     }
 
@@ -193,7 +193,7 @@ impl UseTransferJobRunState {
     /// run. The host then sends [`Self::prepare_request`]'s build
     /// through the center and answers through
     /// [`Self::note_prepare_ok`] / [`Self::note_prepare_err`].
-    pub(crate) fn prepare_begin(&mut self) {
+    pub fn prepare_begin(&mut self) {
         self.phase = TransferRunPhase::Preparing;
         self.failure = None;
         self.apply_view = None;
@@ -206,7 +206,7 @@ impl UseTransferJobRunState {
     /// endpoints must present (T424's shape) and the optional stable
     /// key ("preview again" replays the same admitted plan instead
     /// of freezing a second one).
-    pub(crate) fn prepare_request(
+    pub fn prepare_request(
         &self,
         job: &TransferJob,
         idempotency_key: Option<&str>,
@@ -220,7 +220,7 @@ impl UseTransferJobRunState {
 
     /// The prepare's answer: `canExecute` admits the plan
     /// (`prepared`); anything else is a prepare-time block.
-    pub(crate) fn note_prepare_ok(&mut self, view: TransferPrepareJobView) {
+    pub fn note_prepare_ok(&mut self, view: TransferPrepareJobView) {
         self.prepare_job_id = Some(view.job_id.clone());
         self.prepare_view = Some(view.clone());
         self.phase = if view.can_execute {
@@ -231,7 +231,7 @@ impl UseTransferJobRunState {
     }
 
     /// The prepare's refusal.
-    pub(crate) fn note_prepare_err(&mut self, error: &TransferCommandError) {
+    pub fn note_prepare_err(&mut self, error: &TransferCommandError) {
         self.prepare_job_id = None;
         self.failure = Some(classify_transfer_run_failure(error));
         self.phase = TransferRunPhase::Blocked;
@@ -245,7 +245,7 @@ impl UseTransferJobRunState {
     /// window from offering an action that cannot succeed, and keeps
     /// `planConsumed` a first-class outcome). `Err` answers the
     /// refusal — the phase and failure already landed.
-    pub(crate) fn apply_request(
+    pub fn apply_request(
         &mut self,
         input: &TransferApplyInput,
     ) -> Result<TransferApplyJobRequest, TransferRunFailure> {
@@ -296,7 +296,7 @@ impl UseTransferJobRunState {
 
     /// `apply`'s sync head (after the gate passed): arm the phase,
     /// clear the failure.
-    pub(crate) fn apply_begin(&mut self) {
+    pub fn apply_begin(&mut self) {
         self.phase = TransferRunPhase::Applying;
         self.failure = None;
     }
@@ -305,7 +305,7 @@ impl UseTransferJobRunState {
     /// else so cancellation and polling address this Job while it is
     /// still queued or running. A non-active admission answer is
     /// already terminal-but-unverified until the details read lands.
-    pub(crate) fn note_apply_ok(&mut self, view: TransferApplyJobView) {
+    pub fn note_apply_ok(&mut self, view: TransferApplyJobView) {
         self.apply_job_id = Some(view.job_id.clone());
         let active = is_active_job_state(&view.state);
         self.apply_view = Some(if active {
@@ -332,7 +332,7 @@ impl UseTransferJobRunState {
     /// idempotency key (the backend replays the original Job view
     /// and cannot create a second write). Every other refusal
     /// settles as a classified block.
-    pub(crate) fn apply_submission_ambiguous(&mut self, error: &TransferCommandError) -> bool {
+    pub fn apply_submission_ambiguous(&mut self, error: &TransferCommandError) -> bool {
         if !is_ambiguous_apply_submission_error(error) {
             self.note_apply_err(error);
             return false;
@@ -341,7 +341,7 @@ impl UseTransferJobRunState {
     }
 
     /// A refused apply (or the retry's refusal).
-    pub(crate) fn note_apply_err(&mut self, error: &TransferCommandError) {
+    pub fn note_apply_err(&mut self, error: &TransferCommandError) {
         self.failure = Some(classify_transfer_run_failure(error));
         self.phase = TransferRunPhase::Blocked;
     }
@@ -349,7 +349,7 @@ impl UseTransferJobRunState {
     // ---- the terminal-details effect -------------------------------
 
     /// The effect's arm: the durable report to fetch (once).
-    pub(crate) fn terminal_details_due(&self) -> Option<&str> {
+    pub fn terminal_details_due(&self) -> Option<&str> {
         self.terminal_details_job_id.as_deref()
     }
 
@@ -359,7 +359,7 @@ impl UseTransferJobRunState {
     /// and a still-active state hands the Job back to the watch
     /// poll. Answers whether the effect is done (the subject
     /// cleared) or the watch took over.
-    pub(crate) fn note_terminal_details(&mut self, details: &JobDetailsVm) -> bool {
+    pub fn note_terminal_details(&mut self, details: &JobDetailsVm) -> bool {
         let Some(job_id) = self.terminal_details_job_id.clone() else {
             return false;
         };
@@ -395,7 +395,7 @@ impl UseTransferJobRunState {
     /// recovery stays pending verification — a missing durable
     /// report cannot prove terminal boundaries or a recovery
     /// verdict.
-    pub(crate) fn note_terminal_details_failed(&mut self) -> bool {
+    pub fn note_terminal_details_failed(&mut self) -> bool {
         let Some(job_id) = self.terminal_details_job_id.clone() else {
             return false;
         };
@@ -418,7 +418,7 @@ impl UseTransferJobRunState {
     // ---- the watch poll effect -------------------------------------
 
     /// The effect's arm: the Job to poll.
-    pub(crate) fn watch_due(&self) -> Option<&str> {
+    pub fn watch_due(&self) -> Option<&str> {
         self.watch_job_id.as_deref()
     }
 
@@ -427,7 +427,7 @@ impl UseTransferJobRunState {
     /// (the host fetches the details and answers through
     /// [`Self::note_watch_details`] /
     /// [`Self::note_watch_details_failed`]).
-    pub(crate) fn note_watch_job(&mut self, latest: &MigrationJobViewVm) -> PollAnswer {
+    pub fn note_watch_job(&mut self, latest: &MigrationJobViewVm) -> PollAnswer {
         let Some(job_id) = self.watch_job_id.clone() else {
             return PollAnswer::Stop;
         };
@@ -455,7 +455,7 @@ impl UseTransferJobRunState {
     /// match; the merge and the cancel latch ride it. A still-active
     /// durable state keeps the poll alive (the light read raced a
     /// restart); anything else settles the run.
-    pub(crate) fn note_watch_details(&mut self, details: &JobDetailsVm) -> PollAnswer {
+    pub fn note_watch_details(&mut self, details: &JobDetailsVm) -> PollAnswer {
         let Some(job_id) = self.watch_job_id.clone() else {
             return PollAnswer::Stop;
         };
@@ -494,7 +494,7 @@ impl UseTransferJobRunState {
     /// uncertain, and the light read's terminal state still settles
     /// the run (the summary cannot prove boundaries, but it can
     /// prove the Job stopped).
-    pub(crate) fn note_watch_details_failed(&mut self) -> PollAnswer {
+    pub fn note_watch_details_failed(&mut self) -> PollAnswer {
         let Some(job_id) = self.watch_job_id.clone() else {
             return PollAnswer::Stop;
         };
@@ -517,7 +517,7 @@ impl UseTransferJobRunState {
     /// A failed poll: a temporary loss of observation, not a job
     /// failure — retry against the same id; never resubmit the apply
     /// to recover status.
-    pub(crate) fn note_watch_poll_failed(&mut self) -> PollAnswer {
+    pub fn note_watch_poll_failed(&mut self) -> PollAnswer {
         if self.watch_job_id.is_some() {
             PollAnswer::ReArmIn1500ms
         } else {
@@ -533,7 +533,7 @@ impl UseTransferJobRunState {
     /// `applying` without an id yet, where nothing can be addressed;
     /// a merely frozen plan cancels its prepare Job (a real
     /// cancellation). `None` means nothing can be addressed.
-    pub(crate) fn cancel_target(&self) -> Option<String> {
+    pub fn cancel_target(&self) -> Option<String> {
         if let Some(apply_job_id) = &self.apply_job_id {
             if self
                 .apply_view
@@ -551,27 +551,27 @@ impl UseTransferJobRunState {
     }
 
     /// `requestCancel`'s sync head: the intent latches.
-    pub(crate) fn begin_cancel(&mut self) {
+    pub fn begin_cancel(&mut self) {
         self.cancel_requested = true;
     }
 
     /// No addressable id: nothing was cancelled (never treat as
     /// one).
-    pub(crate) fn note_cancel_no_target(&mut self) {
+    pub fn note_cancel_no_target(&mut self) {
         self.cancel_acknowledged = false;
         self.cancel_unknown_job = true;
     }
 
     /// The backend's answer: `true` only when it knows the Job and
     /// recorded the intent.
-    pub(crate) fn note_cancel_answer(&mut self, acknowledged: bool) {
+    pub fn note_cancel_answer(&mut self, acknowledged: bool) {
         self.cancel_acknowledged = acknowledged;
         self.cancel_unknown_job = !acknowledged;
     }
 
     /// The cancel's own refusal: classified, and the job stays
     /// unknown.
-    pub(crate) fn note_cancel_err(&mut self, error: &TransferCommandError) {
+    pub fn note_cancel_err(&mut self, error: &TransferCommandError) {
         self.cancel_unknown_job = true;
         self.failure = Some(classify_transfer_run_failure(error));
     }
@@ -581,7 +581,7 @@ impl UseTransferJobRunState {
     /// `reset` / `reprepare` — return to `idle` for a fresh run;
     /// keeps nothing a recovery needs (a re-prepare mints a new
     /// plan, never re-applies).
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.phase = TransferRunPhase::Idle;
         self.prepare_view = None;
         self.apply_view = None;
@@ -599,7 +599,7 @@ impl UseTransferJobRunState {
 
     /// The verdict fold's input (T561's engine consumes it; `None`
     /// before an apply view exists).
-    pub(crate) fn verdict_input(&self) -> Option<TransferVerdictInput> {
+    pub fn verdict_input(&self) -> Option<TransferVerdictInput> {
         let view = self.apply_view.as_ref()?;
         let progress = &view.progress;
         Some(TransferVerdictInput {
@@ -617,7 +617,7 @@ impl UseTransferJobRunState {
 
     /// `cancelTargetJobId` — the addressable active apply Job id, or
     /// the prepare Job id before apply.
-    pub(crate) fn cancel_target_job_id(&self) -> Option<String> {
+    pub fn cancel_target_job_id(&self) -> Option<String> {
         if let Some(apply_job_id) = &self.apply_job_id {
             if self
                 .apply_view
@@ -636,7 +636,7 @@ impl UseTransferJobRunState {
 
     /// `isInFlight` — true while the apply Job is queued/running
     /// (disables "apply" but not "cancel").
-    pub(crate) fn is_in_flight(&self) -> bool {
+    pub fn is_in_flight(&self) -> bool {
         match &self.apply_view {
             Some(view) => is_migration_job_in_flight(&view.state),
             None => self.phase == TransferRunPhase::Applying,

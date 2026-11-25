@@ -28,17 +28,17 @@ use std::rc::Rc;
 
 /// One panel's runner (`QueryRunner`): hand the statement to the owning
 /// panel's execution gate.
-pub(crate) type QueryRunner<S> = Rc<dyn Fn(&mut S, &str)>;
+pub type QueryRunner<S> = Rc<dyn Fn(&mut S, &str)>;
 
 /// The registration a panel holds while it is mounted.
 #[derive(Clone, Debug)]
-pub(crate) struct QueryRunnerRegistration {
+pub struct QueryRunnerRegistration {
     panel_id: String,
 }
 
 /// The registry (`runners` + `pending`).
 #[derive(Default)]
-pub(crate) struct QueryRunRequestStore<S: 'static> {
+pub struct QueryRunRequestStore<S: 'static> {
     runners: HashMap<String, QueryRunner<S>>,
     pending: HashMap<String, Vec<String>>,
 }
@@ -46,7 +46,7 @@ pub(crate) struct QueryRunRequestStore<S: 'static> {
 impl<S: 'static> QueryRunRequestStore<S> {
     /// `registerQueryRunner`: register the active panel's runner and
     /// flush a request queued while mounting, in order.
-    pub(crate) fn register_query_runner(
+    pub fn register_query_runner(
         &mut self,
         state: &mut S,
         panel_id: &str,
@@ -70,7 +70,7 @@ impl<S: 'static> QueryRunRequestStore<S> {
     /// `requestQueryRun`: ask the panel to run `sql` — `true` when a
     /// mounted panel accepted it immediately, `false` when it was
     /// queued for the panel that is about to mount.
-    pub(crate) fn request_query_run(
+    pub fn request_query_run(
         &mut self,
         state: &mut S,
         panel_id: &str,
@@ -89,7 +89,7 @@ impl<S: 'static> QueryRunRequestStore<S> {
 
     /// The unregister closure: drop the panel's runner and its pending
     /// queue with it.
-    pub(crate) fn unregister(&mut self, registration: &QueryRunnerRegistration) {
+    pub fn unregister(&mut self, registration: &QueryRunnerRegistration) {
         self.runners.remove(&registration.panel_id);
         self.pending.remove(&registration.panel_id);
     }

@@ -25,12 +25,12 @@ use crate::ui::kit::kit;
 use crate::views::engine_label;
 
 /// React `COLLAPSED_COUNT`.
-pub(crate) const COLLAPSED_COUNT: usize = 6;
+pub const COLLAPSED_COUNT: usize = 6;
 
 /// React `ConnectionEntry['status']` subset this view reads.
 #[allow(dead_code)] // view VM; consumer: the home host (not wired).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum CardConnectionStatus {
+pub enum CardConnectionStatus {
     #[default]
     Offline,
     Connecting,
@@ -40,7 +40,7 @@ pub(crate) enum CardConnectionStatus {
 /// The `ConnectionConfig` fields the card renders.
 #[allow(dead_code)] // view VM; consumer: the home host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConnectionCardVm {
+pub struct ConnectionCardVm {
     pub id: String,
     pub name: String,
     pub engine: String,
@@ -56,7 +56,7 @@ pub(crate) struct ConnectionCardVm {
 /// React `ConnectionCardListProps` as a host-owned snapshot.
 #[allow(dead_code)] // view VM; consumer: the home host (not wired).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ConnectionCardListVm {
+pub struct ConnectionCardListVm {
     pub connections: Vec<ConnectionCardVm>,
     pub active: BTreeMap<String, CardConnectionStatus>,
     pub filter: TextEdit,
@@ -67,7 +67,7 @@ pub(crate) struct ConnectionCardListVm {
 
 /// Host requests behind the three actions and the filter/paging state.
 #[allow(dead_code)] // host port; consumer: the home host (not wired).
-pub(crate) struct ConnectionCardListHostPort<S> {
+pub struct ConnectionCardListHostPort<S> {
     pub on_connect: Option<Rc<dyn Fn(&mut S, String) + 'static>>,
     pub on_new_connection: Option<Rc<dyn Fn(&mut S) + 'static>>,
     pub on_import: Option<Rc<dyn Fn(&mut S) + 'static>>,
@@ -93,7 +93,7 @@ impl<S> Default for ConnectionCardListHostPort<S> {
 
 /// React's `sortedConnections`: pinned first, newest `lastConnectedAt`, name.
 #[allow(dead_code)] // pure rule; pinned by the card-list tests.
-pub(crate) fn sorted_connections(
+pub fn sorted_connections(
     connections: &[ConnectionCardVm],
 ) -> Vec<ConnectionCardVm> {
     let mut sorted = connections.to_vec();
@@ -114,7 +114,7 @@ pub(crate) fn sorted_connections(
 
 /// React's filter haystack: name, host, database, group and the engine label.
 #[allow(dead_code)] // pure rule; pinned by the card-list tests.
-pub(crate) fn filtered_connections(
+pub fn filtered_connections(
     connections: &[ConnectionCardVm],
     needle: &str,
 ) -> Vec<ConnectionCardVm> {
@@ -142,7 +142,7 @@ pub(crate) fn filtered_connections(
 
 /// React's `hostPort` fallback chain.
 #[allow(dead_code)] // pure rule; pinned by the card-list tests.
-pub(crate) fn host_port_label(conn: &ConnectionCardVm) -> String {
+pub fn host_port_label(conn: &ConnectionCardVm) -> String {
     match conn.host.as_deref() {
         Some(host) if !host.is_empty() => match conn.port.as_deref() {
             Some(port) if !port.is_empty() => format!("{host}:{port}"),
@@ -297,7 +297,7 @@ fn card<S: 'static>(
 /// Build the section. `loading` and empty results are honest states, never
 /// faked data or IPC calls.
 #[allow(dead_code)] // view entry point; consumer: the home host (not wired).
-pub(crate) fn connection_card_list<S: 'static>(
+pub fn connection_card_list<S: 'static>(
     vm: &ConnectionCardListVm,
     dark: bool,
     host: ConnectionCardListHostPort<S>,

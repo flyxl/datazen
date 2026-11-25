@@ -23,15 +23,15 @@ use serde::{Deserialize, Serialize};
 #[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct SqlSnippetItem {
+pub struct SqlSnippetItem {
     /// Stable identity, also used as the import/export key.
-    pub(crate) id: String,
+    pub id: String,
     /// Typed prefix that expands the template (e.g. `sel*`).
-    pub(crate) prefix: String,
+    pub prefix: String,
     /// i18n key for the human-readable description.
-    pub(crate) description_key: String,
+    pub description_key: String,
     /// CodeMirror snippet template with `${n:default}` tabstops.
-    pub(crate) template: String,
+    pub template: String,
 }
 
 #[cfg(test)]

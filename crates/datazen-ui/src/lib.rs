@@ -40,111 +40,130 @@
 //! The React guard script that bans `./src/*` deep imports is this crate's
 //! privacy surface: the deep-import ban is the module system itself.
 
-pub(crate) mod active_connection_store;
-pub(crate) mod ai_store;
+pub mod active_connection_store;
+pub mod ai_store;
 // T125: the persisted-connections store (connectionStore.ts).
-pub(crate) mod connection_store;
+pub mod connection_store;
 // T184: the dashboards store (dashboardStore.ts).
-pub(crate) mod dashboard_store;
+pub mod dashboard_store;
 // T209: the per-panel editor-selection store (editorSelectionStore.ts).
-pub(crate) mod editor_selection_store;
+pub mod editor_selection_store;
 // T253: the installed-language-pack store (languagePackStore.ts).
-pub(crate) mod language_pack_store;
+pub mod language_pack_store;
 // T254: the first-frame panel seed (stores/tableData/panelSeed.ts).
-pub(crate) mod table_data_panel_seed;
-pub(crate) mod ai_store_chat;
-pub(crate) mod ai_store_rest;
-pub(crate) mod table_data_connection_state;
-pub(crate) mod table_data_count_strategy;
+pub mod table_data_panel_seed;
+pub mod ai_store_chat;
+pub mod ai_store_rest;
+pub mod table_data_connection_state;
+pub mod table_data_count_strategy;
 // T127: the dirty-state index of one table panel (dirtyIndex.ts).
-pub(crate) mod table_data_dirty_index;
+pub mod table_data_dirty_index;
 // T275: the pending-changes helpers (stores/tableData/pendingChanges.ts).
-pub(crate) mod table_data_pending_changes;
+pub mod table_data_pending_changes;
 // T294: the staged-edit actions (stores/tableData/pendingEditActions.ts), with
 // the T328/T341/T353 placeholder cores (stageCellValue / stageEdit /
 // stagePasteWrites) the owning tasks replace.
-pub(crate) mod table_data_pending_edit_actions;
+pub mod table_data_pending_edit_actions;
 // T158: the new-row draft transitions (draftInserts.ts).
-pub(crate) mod table_data_draft_inserts;
+pub mod table_data_draft_inserts;
 // T158: the enum-candidate cache transitions (enumCandidates.ts).
-pub(crate) mod table_data_enum_candidates;
-pub(crate) mod table_data_filter_utils;
+pub mod table_data_enum_candidates;
+pub mod table_data_filter_utils;
 // T210: the grid-selection geometry and state transitions (gridSelection.ts).
-pub(crate) mod table_data_grid_selection;
+pub mod table_data_grid_selection;
 // T233: the insert-location rule (insertLocation.ts) and the keyset
 // half's state-only arm (keysetActions.ts — the cursor arms await T543).
-pub(crate) mod table_data_insert_location;
-pub(crate) mod table_data_keyset_actions;
-pub(crate) mod components;
-pub(crate) mod ai;
-pub(crate) mod hooks; // the hooks/ ports (T038: useConfirmDialog is its first)
+pub mod table_data_insert_location;
+pub mod table_data_keyset_actions;
+pub mod components;
+pub mod ai;
+pub mod hooks; // the hooks/ ports (T038: useConfirmDialog is its first)
 pub mod data_grid;
 pub mod splitter;
 pub mod sql_editor;
-pub(crate) mod support;
-pub(crate) mod session;
-pub(crate) mod platform;
-pub(crate) mod relation_metadata;
-pub(crate) mod structure_editor;
-mod constants;
-pub(crate) mod i18n;
-mod icons;
-mod types;
-mod state_def;
-mod ai_chat_state;
-mod ai_write_proposal_state;
-mod session_state;
-mod settings_state;
-mod snippets_state;
-mod connections_io_state;
+pub mod support;
+pub mod session;
+pub mod platform;
+pub mod relation_metadata;
+pub mod structure_editor;
+pub mod constants;
+pub mod i18n;
+pub mod icons;
+pub mod types;
+pub mod state_def;
+pub mod ai_chat_state;
+pub mod ai_write_proposal_state;
+pub mod session_state;
+pub mod settings_state;
+pub mod snippets_state;
+pub mod connections_io_state;
 // T293: the tab-closed notification (panelCloseNotifier.ts).
-pub(crate) mod panel_close_notifier;
+pub mod panel_close_notifier;
 // T385: the query-run request bridge (queryRunRequestStore.ts).
-pub(crate) mod query_run_request_store;
+pub mod query_run_request_store;
 // T421: the schema request tracker (schemaRequestTracker.ts).
-pub(crate) mod schema_request_tracker;
-pub(crate) mod schema_metadata_keys;
-mod search_state;
-mod schema_workflows_state;
-mod tools_state;
-mod workflow_page_state;
+pub mod schema_request_tracker;
+pub mod schema_metadata_keys;
+pub mod search_state;
+pub mod schema_workflows_state;
+pub mod tools_state;
+pub mod workflow_page_state;
 // T471: the shell layout store (uiStore.ts).
-pub(crate) mod ui_store;
+pub mod ui_store;
 // T232: the foreign-key navigation stack (fkNavigationStore.ts).
-pub(crate) mod fk_navigation_store;
+pub mod fk_navigation_store;
 // T274: the metadata-identity binder seam, the pane-focus writer, and
 // the pane key space (metadataIdentityBinding.ts / paneFocus.ts / paneKeys.ts).
-pub(crate) mod metadata_identity_binding;
-pub(crate) mod pane_focus;
-pub(crate) mod pane_keys;
+pub mod metadata_identity_binding;
+pub mod pane_focus;
+pub mod pane_keys;
 // T486: the workspace tabs store and the per-mode view-state snapshots.
-pub(crate) mod workspace_tabs_store;
-pub(crate) mod workspace_panel_state_store;
-mod workspace_state;
-mod wapps_state;
-pub(crate) mod ui;
-mod views;
-mod app;
+pub mod workspace_tabs_store;
+pub mod workspace_panel_state_store;
+pub mod workspace_state;
+pub mod wapps_state;
+pub mod ui;
+pub mod views;
+pub mod app;
 
 
 pub use constants::TABLE_PAGE_SIZE;
-pub(crate) use constants::{APP_FONTS, APP_FONT_FAMILIES, NAVIGATOR_WIDTH_DEFAULT, NAVIGATOR_WIDTH_KEY, NAVIGATOR_WIDTH_MAX, NAVIGATOR_WIDTH_MIN, RAIL_WIDTH_COLLAPSED, RAIL_WIDTH_EXPANDED, SIDEBAR_RAIL_WIDTH_KEY};
+pub use constants::{APP_FONTS, APP_FONT_FAMILIES, NAVIGATOR_WIDTH_DEFAULT, NAVIGATOR_WIDTH_KEY, NAVIGATOR_WIDTH_MAX, NAVIGATOR_WIDTH_MIN, RAIL_WIDTH_COLLAPSED, RAIL_WIDTH_EXPANDED, SIDEBAR_RAIL_WIDTH_KEY};
 pub use state_def::AppState;
-pub(crate) use types::{Section, TableView, Tool};
+pub use types::{Section, TableView, Tool};
 // T049 (`@datazen/frontend/app` barrel): the shared-app launch surface,
 // kept apart from the light port/contract surface like the React barrel.
 pub use app::{app_with_adapter, run, run_with_adapter};
 pub use bootstrap::start_shared_app_state;
-mod bootstrap;
-pub(crate) mod commands;
+pub mod bootstrap;
+pub mod commands;
 #[cfg(target_arch = "wasm32")]
 pub use app::start;
-pub(crate) use app::{app_ime, app_key, app_poll, view};
-pub(crate) use views::query_selected;
-pub(crate) use rune::tok::type_;
-pub(crate) use datazen_ui_api::Setting;
-pub(crate) use state_def::StructureState;
+pub use app::{app_ime, app_key, app_poll, view};
+pub use views::query_selected;
+pub use rune::tok::type_;
+pub use ::datazen_ui_api::Setting;
+pub use state_def::StructureState;
 
 
-#[cfg(test)]
-mod tests;
+
+#[doc(hidden)]
+pub mod test_support {
+    pub use crate::app::view;
+    pub use crate::{sql_editor, components, views, ui, session, support, icons, data_grid, splitter, relation_metadata, structure_editor, ai, i18n, constants, types, state_def};
+    pub use crate::{AppState, Section, TableView, StructureState, query_selected, type_};
+    pub use crate::constants::*;
+    pub use ::datazen_ui_api::*;
+    pub use rune::{Env, Runtime};
+    pub fn runtime() -> Runtime<AppState> {
+        let env = Env { system_dark: true, scale: 1.0 };
+        Runtime::new(AppState::default(), view, (1440.0, 900.0), env)
+    }
+    pub fn answer_save_dialog(rt: &mut Runtime<AppState>, path: Option<&str>) {
+        rt.frame(0.0);
+        let (kind, _) = rt.file_dialog().expect("the press asked for a save dialog");
+        assert_eq!(kind, rune::FileDialogKind::Save);
+        rt.resolve_file_dialog(path.map(std::path::PathBuf::from)).expect("the dialog answers");
+        rt.frame(0.0);
+    }
+}

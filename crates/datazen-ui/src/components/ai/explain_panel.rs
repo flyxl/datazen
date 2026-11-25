@@ -77,7 +77,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 /// React `analyzeExplain`'s request spread (76–79):
 /// `{ dbSessionId, explainOutput, originalSql }`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct AnalyzeExplainRequest {
+pub struct AnalyzeExplainRequest {
     pub db_session_id: String,
     pub explain_output: String,
     pub original_sql: String,
@@ -87,7 +87,7 @@ pub(crate) struct AnalyzeExplainRequest {
 /// set inside `planJson` — the column list and the row arrays, the same
 /// view as running EXPLAIN directly in the SQL editor.
 #[derive(Debug, Clone)]
-pub(crate) struct RawExplainTable {
+pub struct RawExplainTable {
     /// `{ id: name, name, type: 'string' }` per string column.
     pub columns: Vec<Column>,
     /// The row arrays, filtered to the array rows as React's
@@ -99,7 +99,7 @@ pub(crate) struct RawExplainTable {
 /// non-object plan, a missing/ non-array `columns` or `rows`, or an
 /// all-non-string column list all fall to `None` (the `<pre>` branch);
 /// an empty column list after the string filter also falls (52–70).
-pub(crate) fn raw_explain_table(plan_json: Option<&Value>) -> Option<RawExplainTable> {
+pub fn raw_explain_table(plan_json: Option<&Value>) -> Option<RawExplainTable> {
     let record = plan_json?;
     let object = record.as_object()?;
     let cols = object.get("columns")?.as_array()?;
@@ -125,7 +125,7 @@ pub(crate) fn raw_explain_table(plan_json: Option<&Value>) -> Option<RawExplainT
 /// `aiStore` reads (`explainAnalysis`, `isAnalyzingExplain`,
 /// `explainError`, `isConfigured`).
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ExplainPanelVm {
+pub struct ExplainPanelVm {
     pub db_session_id: String,
     pub sql: String,
     pub explain_output: String,
@@ -213,7 +213,7 @@ fn label_with_icon(k: &rune_kit::Kit, key: &str, icon: &'static rune::Icon, labe
 
 /// The EXPLAIN panel. Build it with the props bundle, the plan tree's
 /// expansion wiring, and the host callbacks.
-pub(crate) struct ExplainPanel<'a, S: 'static> {
+pub struct ExplainPanel<'a, S: 'static> {
     vm: &'a ExplainPanelVm,
     plan_overrides: Option<fn(&S) -> &ExpandOverrides>,
     plan_toggle: Option<fn(&mut S, String)>,
@@ -224,7 +224,7 @@ pub(crate) struct ExplainPanel<'a, S: 'static> {
 
 impl<'a, S: 'static> ExplainPanel<'a, S> {
     /// The panel for `vm` — the props plus the `aiStore` reads.
-    pub(crate) fn new(vm: &'a ExplainPanelVm) -> Self {
+    pub fn new(vm: &'a ExplainPanelVm) -> Self {
         Self {
             vm,
             plan_overrides: None,
@@ -237,7 +237,7 @@ impl<'a, S: 'static> ExplainPanel<'a, S> {
 
     /// The plan tree's expansion state: the host reads the overrides and
     /// toggles a node (the tree component's own contract).
-    pub(crate) fn plan_expansions(
+    pub fn plan_expansions(
         mut self,
         read: fn(&S) -> &ExpandOverrides,
         toggle: fn(&mut S, String),
@@ -250,7 +250,7 @@ impl<'a, S: 'static> ExplainPanel<'a, S> {
     /// React `handleAnalyze`: `analyzeExplain({ dbSessionId,
     /// explainOutput, originalSql })` — the host's async action receives
     /// this request and drives the store's analyze seams.
-    pub(crate) fn on_analyze(
+    pub fn on_analyze(
         mut self,
         f: impl Fn(&mut S, AnalyzeExplainRequest) + 'static,
     ) -> Self {
@@ -259,21 +259,21 @@ impl<'a, S: 'static> ExplainPanel<'a, S> {
     }
 
     /// React `onApplySql` — a suggestion's apply button.
-    pub(crate) fn on_apply_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_apply_sql(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_apply_sql = Some(Rc::new(f));
         self
     }
 
     /// `openSettingsWindow('ai')` — the unconfigured notice's configure
     /// button; a window open is the host's job.
-    pub(crate) fn on_open_ai_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_ai_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_ai_settings = Some(Rc::new(f));
         self
     }
 
     /// The panel: the raw output section, the plan tree section, the
     /// four analysis states, and the unconfigured notice.
-    pub(crate) fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let mut root = col()
             .key("explain-panel")

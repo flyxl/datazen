@@ -22,7 +22,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize};
 /// workflow page's confirm ask (T145, the same `useConfirmDialog` pattern)
 /// and its add-to-dashboard pending dialog. Empty mounts nothing and the
 /// window keeps its plain layout.
-pub(crate) fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
+pub fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
     let mut layer = Vec::new();
     let dialog = if state.import_dialog_open {
         Some(import_dialog(state, theme, dark))

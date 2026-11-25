@@ -5,8 +5,8 @@
 //! return. Split out of `blob_tables_exporter.rs` so neither file exceeds
 //! the 800-line recommendation — the `impl BlobTablesExporter` block lives
 //! here and reaches the exporter's injected reader / deliver sink through
-//! its `pub(crate)` accessors, and the pure helpers through
-//! [`super::blob_tables_exporter`]'s `pub(crate)` surface.
+//! its `pub` accessors, and the pure helpers through
+//! [`super::blob_tables_exporter`]'s `pub` surface.
 
 #![allow(dead_code)]
 // The emission stage is driven by tests today and by T131's port trait
@@ -50,7 +50,7 @@ impl BlobTablesExporter {
     ///   is one page. Each page call overrides the request context's
     ///   schema with the table's own. A `ddlPrefix` rides first as
     ///   `{prefix}\n\n`.
-    pub(crate) async fn emit_data_plan(
+    pub async fn emit_data_plan(
         &self,
         planned: &PlannedExport,
         plan: &ExportFilePlan,
@@ -231,7 +231,7 @@ impl BlobTablesExporter {
     /// they are all `.sql` — anything else needed a zip and was refused
     /// in [`BlobTablesExporter::plan_export`] — so the merge below is
     /// text-only by construction, and a binary plan in it is refused.
-    pub(crate) async fn emit_planned(
+    pub async fn emit_planned(
         &self,
         planned: &PlannedExport,
     ) -> Result<ExportTablesOutcome, BlobTablesExportError> {

@@ -35,7 +35,7 @@
 /// order (no views, no online ALTER, no rename guessing, cross-dialect
 /// risk, no auto backup, no MCP deploy).
 #[allow(dead_code)] // reusable port; wired by the schema-diff window's limitations dialog
-pub(crate) const SCHEMA_DIFF_LIMITATION_KEYS: [&str; 6] = [
+pub const SCHEMA_DIFF_LIMITATION_KEYS: [&str; 6] = [
     "schemaDiff.limitations.noViews",
     "schemaDiff.limitations.noOnlineAlter",
     "schemaDiff.limitations.noRenameGuess",
@@ -44,8 +44,8 @@ pub(crate) const SCHEMA_DIFF_LIMITATION_KEYS: [&str; 6] = [
     "schemaDiff.limitations.noMcpDeploy",
 ];
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[doc(hidden)]  // exposed for integration tests
+pub mod tests {
     use super::*;
 
     /// The six keys, verbatim and in the React order — the dialog maps the

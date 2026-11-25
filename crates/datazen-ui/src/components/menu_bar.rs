@@ -74,7 +74,7 @@ use crate::ui::menu::Menu;
 /// tree keeps its own full mirror; the host maps its state to this — the
 /// components layer stays free of `views::` imports).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum MenuBarTheme {
+pub enum MenuBarTheme {
     #[default]
     System,
     Light,
@@ -83,7 +83,7 @@ pub(crate) enum MenuBarTheme {
 
 impl MenuBarTheme {
     /// The wire spelling (React's `'light' | 'dark' | 'system'`).
-    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+    pub fn from_wire(value: &str) -> Option<Self> {
         match value {
             "light" => Some(Self::Light),
             "dark" => Some(Self::Dark),
@@ -94,11 +94,11 @@ impl MenuBarTheme {
 }
 
 /// React `PRODUCT_FEATURES` — the static product-level feature gates.
-pub(crate) const PRODUCT_FEATURES: &[(&str, bool)] =
+pub const PRODUCT_FEATURES: &[(&str, bool)] =
     &[("schemaDiff", true), ("dataSync", true), ("dataTransfer", true)];
 
 /// React `isProductFeatureEnabled(key)` — the static table lookup.
-pub(crate) fn product_feature_enabled(key: &str) -> bool {
+pub fn product_feature_enabled(key: &str) -> bool {
     PRODUCT_FEATURES
         .iter()
         .find(|(k, _)| *k == key)
@@ -108,14 +108,14 @@ pub(crate) fn product_feature_enabled(key: &str) -> bool {
 
 /// React `MenuItem`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct MenuBarItem {
-    pub(crate) id: String,
-    pub(crate) label: String,
-    pub(crate) shortcut: Option<String>,
+pub struct MenuBarItem {
+    pub id: String,
+    pub label: String,
+    pub shortcut: Option<String>,
     /// `None` = no check slot at all; `Some(checked)` = the radio row.
-    pub(crate) checked: Option<bool>,
-    pub(crate) separator: bool,
-    pub(crate) children: Vec<MenuBarItem>,
+    pub checked: Option<bool>,
+    pub separator: bool,
+    pub children: Vec<MenuBarItem>,
 }
 
 impl MenuBarItem {
@@ -153,16 +153,16 @@ impl MenuBarItem {
 
 /// React `Menu`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct MenuBarMenu {
-    pub(crate) id: String,
-    pub(crate) label: String,
-    pub(crate) items: Vec<MenuBarItem>,
+pub struct MenuBarMenu {
+    pub id: String,
+    pub label: String,
+    pub items: Vec<MenuBarItem>,
 }
 
 /// React `useMenus()` — the pure menu table over the theme and the
 /// product feature gates. The label strings are `t()` lookups composed
 /// exactly as React composes them.
-pub(crate) fn build_menus(theme: MenuBarTheme) -> Vec<MenuBarMenu> {
+pub fn build_menus(theme: MenuBarTheme) -> Vec<MenuBarMenu> {
     // ── the Tools items, in React's gated order ──
     let mut tools: Vec<MenuBarItem> = Vec::new();
     if product_feature_enabled("schemaDiff") {
@@ -288,7 +288,7 @@ pub(crate) fn build_menus(theme: MenuBarTheme) -> Vec<MenuBarMenu> {
 /// fullscreen toggle, `openLogDir`, `openPath`, and the default
 /// `emitMenuAction` are all host seams — none of them is state).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum MenuBarAction {
+pub enum MenuBarAction {
     /// `theme-*`: the cross-window theme change (the host emits it).
     SetTheme(MenuBarTheme),
     OpenSchemaDiff,
@@ -311,7 +311,7 @@ pub(crate) enum MenuBarAction {
 /// Route one item id to its action, exactly React's `handleMenuAction`
 /// order: the theme prefix first, then the migration openers map, then the
 /// named switch, else the default emit.
-pub(crate) fn route_menu_action(id: &str) -> MenuBarAction {
+pub fn route_menu_action(id: &str) -> MenuBarAction {
     if let Some(theme) = id.strip_prefix("theme-") {
         return match theme {
             "light" => MenuBarAction::SetTheme(MenuBarTheme::Light),
@@ -335,7 +335,7 @@ pub(crate) fn route_menu_action(id: &str) -> MenuBarAction {
 
 /// React `navigateMenu`'s wrap arithmetic: the next menu id Left/Right of
 /// `current`, wrapping around the bar.
-pub(crate) fn next_menu_id(menus: &[MenuBarMenu], current: &str, forward: bool) -> Option<String> {
+pub fn next_menu_id(menus: &[MenuBarMenu], current: &str, forward: bool) -> Option<String> {
     let index = menus.iter().position(|menu| menu.id == current)?;
     let delta = if forward { 1 } else { menus.len() as isize - 1 };
     let next = (index as isize + delta).rem_euclid(menus.len() as isize) as usize;
@@ -345,9 +345,9 @@ pub(crate) fn next_menu_id(menus: &[MenuBarMenu], current: &str, forward: bool) 
 /// The bar's open-menu state — React's `useState<string | null>` on the
 /// host's `S`.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct MenuBarState {
+pub struct MenuBarState {
     /// The open menu's id; `None` = none open.
-    pub(crate) open_menu: Option<String>,
+    pub open_menu: Option<String>,
 }
 
 type ActionFn<S> = Rc<dyn Fn(&mut S)>;
@@ -358,7 +358,7 @@ type NavigateFn<S> = Rc<dyn Fn(&mut S, &str, bool)>;
 /// The menu bar. The host owns the menus (built from the settings theme)
 /// and the open-menu id; the component renders the bar and routes the
 /// actions.
-pub(crate) struct MenuBar<'a, S: 'static> {
+pub struct MenuBar<'a, S: 'static> {
     menus: &'a [MenuBarMenu],
     open_menu: Option<&'a str>,
     on_open: Option<OpenFn<S>>,
@@ -370,7 +370,7 @@ pub(crate) struct MenuBar<'a, S: 'static> {
 
 impl<'a, S: 'static> MenuBar<'a, S> {
     /// The bar over the host's menus and open id.
-    pub(crate) fn new(menus: &'a [MenuBarMenu], open_menu: Option<&'a str>) -> Self {
+    pub fn new(menus: &'a [MenuBarMenu], open_menu: Option<&'a str>) -> Self {
         MenuBar {
             menus,
             open_menu,
@@ -384,7 +384,7 @@ impl<'a, S: 'static> MenuBar<'a, S> {
 
     /// A bar button was pressed while its menu was closed: open it (the
     /// host writes the open-menu id).
-    pub(crate) fn on_open(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_open(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_open = Some(Rc::new(f));
         self
     }
@@ -392,27 +392,27 @@ impl<'a, S: 'static> MenuBar<'a, S> {
     /// One leaf item was selected: run the host's action (React runs
     /// `handleMenuAction` then closes — the kit menu's close_on_select
     /// owns the close half).
-    pub(crate) fn on_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select = Some(Rc::new(f));
         self
     }
 
     /// The open menu closed (Escape / outside press / a selection).
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// Hover over a closed bar button while a menu is open: switch to the
     /// hovered menu (React's `onHover`).
-    pub(crate) fn on_hover(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_hover(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_hover = Some(Rc::new(f));
         self
     }
 
     /// Left/Right over the bar buttons (React's `navigateMenu`): the host
     /// writes the next id (the wrapper's focus group moves the focus).
-    pub(crate) fn on_navigate(
+    pub fn on_navigate(
         mut self,
         f: impl Fn(&mut S, &str, bool) + 'static,
     ) -> Self {
@@ -422,7 +422,7 @@ impl<'a, S: 'static> MenuBar<'a, S> {
 
     /// Builds the bar. The open menu's dropdown renders into `layer`
     /// through the T0-07 wrapper; the returned element is the bar row.
-    pub(crate) fn build(self, _s: &S, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, _s: &S, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let mut bar = row()
             .role("menubar")

@@ -61,7 +61,7 @@ use crate::icons::{ICON_CHECK, ICON_COPY};
 const COPIED_FEEDBACK_MS: u64 = 1500;
 
 /// Height of the kit's small push button, in points.
-pub(crate) const BUTTON_SM: f32 = 24.0;
+pub const BUTTON_SM: f32 = 24.0;
 
 /// A copy control with timed "copied" feedback, built on the kit small button.
 ///
@@ -73,7 +73,7 @@ pub(crate) const BUTTON_SM: f32 = 24.0;
 /// `ICON_CHECK`; otherwise the caller label (default `common.copy`) +
 /// [`ICON_COPY`].
 #[derive(Default)]
-pub(crate) struct CopyButton<'a> {
+pub struct CopyButton<'a> {
     key: String,
     text: &'a str,
     icon: Option<&'static Icon>,
@@ -85,7 +85,7 @@ pub(crate) struct CopyButton<'a> {
 }
 
 impl<'a> CopyButton<'a> {
-    pub(crate) fn new(key: impl Into<String>, text: &'a str) -> Self {
+    pub fn new(key: impl Into<String>, text: &'a str) -> Self {
         Self {
             key: key.into(),
             text,
@@ -99,38 +99,38 @@ impl<'a> CopyButton<'a> {
     }
 
     /// Glyph shown while not copied. Defaults to [`ICON_COPY`].
-    pub(crate) fn icon(mut self, icon: &'static Icon) -> Self {
+    pub fn icon(mut self, icon: &'static Icon) -> Self {
         self.icon = Some(icon);
         self
     }
 
     /// Label shown while not copied. Defaults to `common.copy`.
-    pub(crate) fn label(mut self, label: &'a str) -> Self {
+    pub fn label(mut self, label: &'a str) -> Self {
         self.label = Some(label);
         self
     }
 
     /// Button height in points. Defaults to [`BUTTON_SM`].
-    pub(crate) fn height(mut self, height: f32) -> Self {
+    pub fn height(mut self, height: f32) -> Self {
         self.height = height;
         self
     }
 
     /// Show feedback (`common.copied` + check glyph) when true.
-    pub(crate) fn copied(mut self, copied: bool) -> Self {
+    pub fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
     }
 
     /// Tooltip/description text (the React `title` prop).
-    pub(crate) fn help(mut self, help: &'a str) -> Self {
+    pub fn help(mut self, help: &'a str) -> Self {
         self.help = Some(help);
         self
     }
 
     /// Called after the text is copied and the feedback wake is scheduled (record
     /// `copied_until = tx.clock() + 1.5` in state).
-    pub(crate) fn on_copy_tx<S: 'static>(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_copy_tx<S: 'static>(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         let text = self.text.to_owned();
         self.acts.push(Box::new(move |e: El| {
             e.on_press_tx(move |s: &mut S, tx: &mut Tx| {
@@ -144,7 +144,7 @@ impl<'a> CopyButton<'a> {
 
     /// Build the copy control. Without an `on_copy_tx` handler a press still copies
     /// and schedules the feedback wake.
-    pub(crate) fn build<S: 'static>(self, dark: bool) -> El {
+    pub fn build<S: 'static>(self, dark: bool) -> El {
         let k = crate::ui::kit::kit(dark);
         let label = if self.copied {
             i18n::t("common.copied")
@@ -182,7 +182,7 @@ impl<'a> CopyButton<'a> {
 type CopyBind = Box<dyn FnOnce(El) -> El>;
 
 /// Selectable, optionally copyable error text.
-pub(crate) struct CopyableError {
+pub struct CopyableError {
     key: String,
     message: String,
     copy_button: bool,
@@ -192,7 +192,7 @@ pub(crate) struct CopyableError {
 }
 
 impl CopyableError {
-    pub(crate) fn new(key: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             message: message.into(),
@@ -204,20 +204,20 @@ impl CopyableError {
     }
 
     /// Show a copy control beside the message.
-    pub(crate) fn copy_button(mut self, on: bool) -> Self {
+    pub fn copy_button(mut self, on: bool) -> Self {
         self.copy_button = on;
         self
     }
 
     /// Render in monospace (the React `<pre>` form).
-    pub(crate) fn mono(mut self, mono: bool) -> Self {
+    pub fn mono(mut self, mono: bool) -> Self {
         self.mono = mono;
         self
     }
 
     /// Show transient "copied" feedback (`common.copied` + check icon) when true.
     /// Caller computes this from its state, e.g. `copied_until.map_or(false, |u| now < u)`.
-    pub(crate) fn copied(mut self, on: bool) -> Self {
+    pub fn copied(mut self, on: bool) -> Self {
         self.copied = on;
         self
     }
@@ -226,7 +226,7 @@ impl CopyableError {
     /// exact message to the clipboard and schedules `tx.wake_after(1500ms)` so
     /// the runtime produces a frame for feedback revert. Handler receives `&mut Tx`
     /// (e.g. to record `copied_until = Some(tx.clock() + 1.5)` in state).
-    pub(crate) fn on_copy_tx<S: 'static>(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_copy_tx<S: 'static>(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         let message = self.message.clone();
         self.on_copy = Some(Box::new(move |e: El| {
             e.on_press_tx(move |state: &mut S, tx: &mut Tx| {
@@ -242,14 +242,14 @@ impl CopyableError {
 
     /// Called when the copy control is pressed, after copying and scheduling wake.
     /// Backward-compatible variant without `Tx` access.
-    pub(crate) fn on_copy<S: 'static>(self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy<S: 'static>(self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_tx(move |state: &mut S, _tx: &mut Tx| f(state))
     }
 
     /// Builds the copyable error. `S` is the runtime state type: the copy
     /// control always needs a typed press handler so it can write to the
     /// clipboard and schedule the feedback wake.
-    pub(crate) fn build<S: 'static>(self, k: &Kit) -> El {
+    pub fn build<S: 'static>(self, k: &Kit) -> El {
         let text_key = format!("{}-text", self.key);
 
         let mut msg = text(self.message.clone())

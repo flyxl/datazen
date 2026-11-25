@@ -23,7 +23,7 @@ use rune::{
 };
 
 impl AppState {
-    pub(crate) fn host_snippets(&self) -> Vec<datazen_ui_api::Snippet> {
+    pub fn host_snippets(&self) -> Vec<datazen_ui_api::Snippet> {
         self.desktop
             .snippets()
             .unwrap_or_else(|_| self.workspace.snippets())
@@ -33,7 +33,7 @@ impl AppState {
     /// them, the memory port's while it does not. The host's read answers
     /// from its loaded files — the same memory-speed class as the settings
     /// read.
-    pub(crate) fn save_snippet_form(&mut self) {
+    pub fn save_snippet_form(&mut self) {
         let name = self.snippet_name.text.trim().to_owned();
         let sql = self.snippet_sql.text.trim().to_owned();
         // T3: the host's file store first; its fixed not-implemented error
@@ -54,7 +54,7 @@ impl AppState {
             Err(error) => self.snippet_error = Some(error),
         }
     }
-    pub(crate) fn update_snippet_form(&mut self) {
+    pub fn update_snippet_form(&mut self) {
         let name = self.snippet_name.text.trim().to_owned();
         let sql = self.snippet_sql.text.trim().to_owned();
         // T3: the host's file store first, the memory port's fallback.
@@ -74,7 +74,7 @@ impl AppState {
             Err(error) => self.snippet_error = Some(error),
         }
     }
-    pub(crate) fn delete_snippet(&mut self, name: &str) {
+    pub fn delete_snippet(&mut self, name: &str) {
         // T3: the host's file store first, the memory port's fallback.
         let deleted = match self.desktop.delete_snippet(name) {
             Ok(()) => Ok(()),
@@ -88,13 +88,13 @@ impl AppState {
 
     /// The favorites in force (T6): the host's root directory is the store;
     /// the demo process has none and the panel says so.
-    pub(crate) fn host_favorites(&self) -> Vec<datazen_ui_api::FavoriteSpec> {
+    pub fn host_favorites(&self) -> Vec<datazen_ui_api::FavoriteSpec> {
         self.desktop.favorites().unwrap_or_default()
     }
 
     /// Save the current query as a favorite (T6): the title from the form,
     /// the statement from the editor, the connection the live session holds.
-    pub(crate) fn save_favorite_form(&mut self) {
+    pub fn save_favorite_form(&mut self) {
         let title = self.favorite_title.text.trim().to_owned();
         let sql = self.sql.doc().to_owned();
         let connection = self.desktop_connection.clone().unwrap_or_default();
@@ -115,7 +115,7 @@ impl AppState {
     }
 
     /// Open a favorite into a query tab (T6).
-    pub(crate) fn open_favorite(&mut self, index: usize) {
+    pub fn open_favorite(&mut self, index: usize) {
         let Some(favorite) = self.host_favorites().get(index).cloned() else { return };
         self.active = Section::Workspace;
         if self.open_query_tab(&favorite.title).is_some() {
@@ -125,7 +125,7 @@ impl AppState {
 
     /// Rename a favorite to the form's title (T6): the title moves, the file
     /// does not — that is the host store's own semantics.
-    pub(crate) fn rename_favorite_row(&mut self, index: usize) {
+    pub fn rename_favorite_row(&mut self, index: usize) {
         let Some(favorite) = self.host_favorites().get(index).cloned() else { return };
         let title = self.favorite_title.text.trim().to_owned();
         if title.is_empty() {
@@ -146,7 +146,7 @@ impl AppState {
     }
 
     /// Delete a favorite (T6).
-    pub(crate) fn delete_favorite_row(&mut self, index: usize) {
+    pub fn delete_favorite_row(&mut self, index: usize) {
         let Some(favorite) = self.host_favorites().get(index).cloned() else { return };
         let deleted = match self.desktop.delete_favorite(&favorite.id) {
             Ok(()) => Ok(()),

@@ -20,7 +20,7 @@ use std::cell::Cell;
 /// A3: one query result tab. Multiple executions produce multiple tabs; pinned
 /// tabs stay across later runs.
 #[derive(Debug)]
-pub(crate) struct QueryResultTab {
+pub struct QueryResultTab {
     pub id: u32,
     pub label: String,
     pub generation: Option<u32>,
@@ -43,433 +43,433 @@ use rune::{
 };
 
 pub struct AppState {
-    pub(crate) active: Section,
-    pub(crate) sql: SqlEditor,
-    pub(crate) grid: DataGrid,
-    pub(crate) workspace: MemoryWorkspace,
+    pub active: Section,
+    pub sql: SqlEditor,
+    pub grid: DataGrid,
+    pub workspace: MemoryWorkspace,
     /// The desktop host's seam. H3 wired list_connections to the connection
     /// use case; the remaining methods answer the fixed error until H4/H5.
-    pub(crate) desktop: Box<dyn DesktopAdapter>,
+    pub desktop: Box<dyn DesktopAdapter>,
     /// The adapter's connection list once it answers (H3); None while the
     /// page falls back to the memory port's list — never answered, or
     /// unwired. A failed re-fetch keeps the previous list (the zustand
     /// store's `connections` survives a failed fetch).
-    pub(crate) desktop_connections: Option<Vec<ConnectionProfile>>,
+    pub desktop_connections: Option<Vec<ConnectionProfile>>,
     /// The adapter's last error, displayed on the connections page.
-    pub(crate) desktop_error: Option<String>,
+    pub desktop_error: Option<String>,
     /// T020: the connection store's list-fetch error — React
     /// `useConnectionStore`'s `error`, read by the main window's load-failure
     /// gate (`MainPage.tsx:112`). Only the list fetch (the adapter sync)
     /// writes it; the shared adapter-notice slot [`Self::desktop_error`]
     /// keeps collecting every failure the page shows as a banner, including
     /// open-job sentences, which never gate the window.
-    pub(crate) connections_load_error: Option<String>,
+    pub connections_load_error: Option<String>,
     /// The value-presentation registry (issue-32): filled by the shared
     /// bootstrap chain (`start_shared_app_state`) with the bundled
     /// contributions; the settings/snapshot layer reads it.
-    pub(crate) value_presentation_registry:
+    pub value_presentation_registry:
         crate::support::value_presentation::registry::ValuePresentationRegistry,
-    pub(crate) tabs: Tabs,
+    pub tabs: Tabs,
     /// The page the workspace last opened for the selected table tab.
-    pub(crate) table_page: u32,
+    pub table_page: u32,
     /// The sort the table page is opened with.
-    pub(crate) sort: Option<ColumnSort>,
+    pub sort: Option<ColumnSort>,
     /// The filter the table page is opened with.
-    pub(crate) filter: Option<ColumnFilter>,
+    pub filter: Option<ColumnFilter>,
     /// The column the filter bar targets, as an index into the loaded page.
-    pub(crate) filter_column: u32,
-    pub(crate) filter_editor: TextEdit,
+    pub filter_column: u32,
+    pub filter_editor: TextEdit,
     /// Navigator/object-tree filter text (A1: value search/filter).
-    pub(crate) navigator_filter: TextEdit,
+    pub navigator_filter: TextEdit,
     /// Session-only recently opened connections (most recent first). UI state
     /// for A1 tree hierarchy; not persisted and not part of any contract.
-    pub(crate) recent_connection_ids: Vec<String>,
+    pub recent_connection_ids: Vec<String>,
     /// The read-only query result grid of the selected query tab (mirrors the
     /// selected result sub-tab for compatibility with existing view/focus paths).
-    pub(crate) result_grid: Option<DataGrid>,
+    pub result_grid: Option<DataGrid>,
     /// T1: the result grid holds the keyboard after a result cell is pressed;
     /// typing, Escape or pressing the editor surface hands it back.
-    pub(crate) result_focused: bool,
+    pub result_focused: bool,
     /// A3: result sub-tabs for query executions (including pinned tabs).
-    pub(crate) query_result_tabs: Vec<QueryResultTab>,
-    pub(crate) selected_query_result: Option<u32>,
-    pub(crate) next_query_result_id: u32,
+    pub query_result_tabs: Vec<QueryResultTab>,
+    pub selected_query_result: Option<u32>,
+    pub next_query_result_id: u32,
     /// A3: favorites/history/snippets sidebar inside the query workspace.
-    pub(crate) query_sidebar_panel: QuerySidebarPanel,
+    pub query_sidebar_panel: QuerySidebarPanel,
     /// A3: last honest notice from a toolbar action without a host capability.
-    pub(crate) query_notice: Option<String>,
+    pub query_notice: Option<String>,
     /// A5: table/chart presentation of the query result workspace.
-    pub(crate) result_view: ResultView,
+    pub result_view: ResultView,
     /// A5: the result find bar's search text.
-    pub(crate) result_find: TextEdit,
+    pub result_find: TextEdit,
     /// The query generation: bumped by every run and every cancel. A result page
     /// from a generation that is not the current one is dropped.
-    pub(crate) query_generation: u32,
+    pub query_generation: u32,
     /// The table read generation (N1): bumped by every read request. A job
     /// delivery from a generation that is not the current one is dropped.
-    pub(crate) read_generation: u32,
+    pub read_generation: u32,
     /// A read job the host accepted and has not answered yet (N1). While it
     /// is in flight the grid keeps its previous page and the footer says so.
-    pub(crate) table_loading: Option<u32>,
+    pub table_loading: Option<u32>,
     /// A commit job the host accepted and has not answered yet (N1). The
     /// dirty marks stay until the delivery lands.
-    pub(crate) commit_loading: Option<u32>,
+    pub commit_loading: Option<u32>,
     /// A query job the host accepted and has not answered yet (N1).
-    pub(crate) query_loading: Option<u32>,
+    pub query_loading: Option<u32>,
     /// An open job the host accepted and has not answered yet (N3): the
     /// connections page says so until the catalog or the failure lands.
-    pub(crate) connect_loading: Option<u32>,
+    pub connect_loading: Option<u32>,
     /// The live host's catalog once its open job answered one (N3); None
     /// means the memory port's catalog is the truth (the demo path).
-    pub(crate) desktop_catalog: Option<datazen_ui_api::Catalog>,
+    pub desktop_catalog: Option<datazen_ui_api::Catalog>,
     /// The live session's connection id (N3): the refresh path re-opens it.
-    pub(crate) desktop_connection: Option<String>,
+    pub desktop_connection: Option<String>,
     /// Catalog nodes the tree keeps collapsed, by path: "db" or "db/schema".
-    pub(crate) collapsed: std::collections::BTreeSet<String>,
+    pub collapsed: std::collections::BTreeSet<String>,
     /// Which side of the selected table tab the workspace shows.
-    pub(crate) table_view: TableView,
+    pub table_view: TableView,
     /// The ER diagram's open schema, as (database, schema).
-    pub(crate) er_schema: Option<(String, String)>,
+    pub er_schema: Option<(String, String)>,
     /// ER box positions per table, canvas points. UI state only, never the port.
-    pub(crate) er_positions: std::collections::BTreeMap<String, (f32, f32)>,
+    pub er_positions: std::collections::BTreeMap<String, (f32, f32)>,
     /// The box being dragged: its table and where the gesture started.
-    pub(crate) er_drag: Option<(String, (f32, f32))>,
+    pub er_drag: Option<(String, (f32, f32))>,
     /// Column-change drafts per table, kept until applied. UI state.
-    pub(crate) column_drafts: std::collections::BTreeMap<String, Vec<ColumnDraft>>,
-    pub(crate) draft_name: TextEdit,
-    pub(crate) draft_type: TextEdit,
+    pub column_drafts: std::collections::BTreeMap<String, Vec<ColumnDraft>>,
+    pub draft_name: TextEdit,
+    pub draft_type: TextEdit,
     /// The settings page's inputs and its last rejected write.
-    pub(crate) page_size_input: TextEdit,
-    pub(crate) max_rows_input: TextEdit,
-    pub(crate) settings_error: Option<String>,
+    pub page_size_input: TextEdit,
+    pub max_rows_input: TextEdit,
+    pub settings_error: Option<String>,
     /// Selected settings section (A6): grouped navigation + deep-link within
     /// the settings page. Addressable by key so a specific section can be opened.
-    pub(crate) settings_section: String,
+    pub settings_section: String,
     /// A1: the connections home's filter input (name/engine/id search).
-    pub(crate) connection_search: TextEdit,
+    pub connection_search: TextEdit,
     /// A1: the connections card list's expanded state (show all / show less).
-    pub(crate) connections_show_all: bool,
+    pub connections_show_all: bool,
     /// T144: which home row owns the copy marker, and its real runtime deadline
     /// (seconds). Cleared by `home_copy_tick` in the app poll; not a boolean.
-    pub(crate) home_copied_id: Option<String>,
-    pub(crate) home_copied_until: Option<f64>,
+    pub home_copied_id: Option<String>,
+    pub home_copied_until: Option<f64>,
     /// T144: a driver-contributed connection home (React `KvConnectionHomeBinding`).
     /// The host sets it only for a live session; removal stage: real driver slot.
-    pub(crate) home_slot: Option<ConnectionHomeSlotVm>,
+    pub home_slot: Option<ConnectionHomeSlotVm>,
     /// The connection form dialog is open over the home.
-    pub(crate) connection_dialog_open: bool,
+    pub connection_dialog_open: bool,
     /// The generation of a connection dialog open (`Dialog::open_epoch`):
     /// bumped by `open_connection_dialog`, so a reopened dialog's body starts
     /// at the top instead of at the offset it had before it closed.
-    pub(crate) connection_dialog_epoch: u64,
+    pub connection_dialog_epoch: u64,
     /// The import dialog (the React share dialog's import mode) is open.
-    pub(crate) import_dialog_open: bool,
+    pub import_dialog_open: bool,
     /// The generation of an import dialog open; see
     /// [`Self::connection_dialog_epoch`].
-    pub(crate) import_dialog_epoch: u64,
+    pub import_dialog_epoch: u64,
     /// The export file the import dialog picked (None until chosen).
-    pub(crate) import_file: Option<String>,
+    pub import_file: Option<String>,
     /// T022: the install-wapp dialog (React `InstallWappDialog.tsx`) is open
     /// over the window; the root modal layer (`views/modals.rs`) mounts it.
-    pub(crate) install_wapp_open: bool,
+    pub install_wapp_open: bool,
     /// The generation of an install-wapp dialog open (`Dialog::open_epoch`);
     /// see [`Self::connection_dialog_epoch`].
-    pub(crate) install_wapp_epoch: u64,
+    pub install_wapp_epoch: u64,
     /// T022: the dialog's step (React's `InstallStep`): the pick step, then
     /// the review of the inspected package. The host inspect seam that
     /// advances it is the wapps management page wiring (T072).
-    pub(crate) install_wapp_step: InstallWappStep,
+    pub install_wapp_step: InstallWappStep,
     /// T022: the picked package's preview — the pick token, the package label
     /// and the inspected manifest (React's three `useState`s, set and cleared
     /// together). The inspect use case is a host seam (T072).
-    pub(crate) install_wapp_preview: Option<WappPackagePreview>,
+    pub install_wapp_preview: Option<WappPackagePreview>,
     /// T022: the pick→inspect pass is in flight (React's `inspecting`).
-    pub(crate) install_wapp_inspecting: bool,
+    pub install_wapp_inspecting: bool,
     /// T022: the confirm→install pass is in flight (React's `installing`).
-    pub(crate) install_wapp_installing: bool,
+    pub install_wapp_installing: bool,
     /// T022: the install flow's last error (the dialog's error branch).
-    pub(crate) install_wapp_error: Option<String>,
+    pub install_wapp_error: Option<String>,
     /// T072: the wapp store's installed list (React `wappStore.wapps`),
     /// filled by the `wapps_loaded` seam transition (`wapps_state.rs`); the
     /// fetch's own failure branch is the honest answer until the adapter
     /// carries the wapp list use case.
-    pub(crate) wapps: Vec<WappSummaryVm>,
+    pub wapps: Vec<WappSummaryVm>,
     /// T072: the store's `loaded` flag — the page's mount-time fetch gate
     /// (React: `if (!loaded) void fetch()`).
-    pub(crate) wapps_loaded: bool,
+    pub wapps_loaded: bool,
     /// T072: the store's `error` slot (a failed fetch, or the store-side
     /// error of a failed toggle/uninstall command — React's store writes
     /// only the error on failure and keeps the list).
-    pub(crate) wapps_error: Option<String>,
+    pub wapps_error: Option<String>,
     /// T072: the page's search box (React's `search`, restored from the
     /// workspace panel snapshot on mount — the state simply persists, so
     /// the snapshot round-trip is a no-op of the same observable behaviour).
-    pub(crate) wapp_search: TextEdit,
+    pub wapp_search: TextEdit,
     /// T072: the page's filter chip (React's `filter`, defaulting to
     /// Workspace the way the snapshot fallback does).
-    pub(crate) wapp_filter: WappFilter,
+    pub wapp_filter: WappFilter,
     /// T072: the page's action error (React's `actionError` — a failed
     /// toggle or uninstall the page caught).
-    pub(crate) wapp_action_error: Option<String>,
+    pub wapp_action_error: Option<String>,
     /// T072: the uninstall confirmation's pending ask (React's
     /// `useConfirmDialog` `{options, resolve}` state; the root modal layer
     /// mounts the dialog while one is pending).
-    pub(crate) wapp_remove_request: Option<WappRemoveRequest>,
+    pub wapp_remove_request: Option<WappRemoveRequest>,
     /// T072: the generation of a remove-confirm open (`Dialog::open_epoch`);
     /// see [`Self::connection_dialog_epoch`].
-    pub(crate) wapp_remove_epoch: u64,
-    pub(crate) connection_name: TextEdit,
-    pub(crate) connection_engine: TextEdit,
-    pub(crate) connection_address: TextEdit,
+    pub wapp_remove_epoch: u64,
+    pub connection_name: TextEdit,
+    pub connection_engine: TextEdit,
+    pub connection_address: TextEdit,
     /// E5: the remote fields the live host maps onto its config; the
     /// memory port ignores them.
-    pub(crate) connection_username: TextEdit,
-    pub(crate) connection_password: TextEdit,
-    pub(crate) connection_database: TextEdit,
-    pub(crate) connection_error: Option<String>,
+    pub connection_username: TextEdit,
+    pub connection_password: TextEdit,
+    pub connection_database: TextEdit,
+    pub connection_error: Option<String>,
     /// UI-only SSH tunnel fields for A2 dialog alignment (not persisted; save uses draft only).
-    pub(crate) connection_ssh_enabled: bool,
-    pub(crate) connection_ssh_host: TextEdit,
-    pub(crate) connection_ssh_port: TextEdit,
-    pub(crate) connection_ssh_username: TextEdit,
+    pub connection_ssh_enabled: bool,
+    pub connection_ssh_host: TextEdit,
+    pub connection_ssh_port: TextEdit,
+    pub connection_ssh_username: TextEdit,
     /// The snippet form's fields and its last rejected write.
-    pub(crate) snippet_name: TextEdit,
-    pub(crate) snippet_sql: TextEdit,
-    pub(crate) snippet_error: Option<String>,
+    pub snippet_name: TextEdit,
+    pub snippet_sql: TextEdit,
+    pub snippet_error: Option<String>,
     /// T6: the favorites form's title input and its last rejected write. The
     /// statement comes from the current query editor — "save current SQL".
-    pub(crate) favorite_title: TextEdit,
-    pub(crate) favorite_error: Option<String>,
+    pub favorite_title: TextEdit,
+    pub favorite_error: Option<String>,
     /// T7: the parsed connection import waiting on its confirm, and the
     /// import path's outcome notice. The password serves the encrypted
     /// export formats; the plain ones ignore it.
-    pub(crate) import_password: TextEdit,
-    pub(crate) import_preview: Option<datazen_ui_api::ImportPreview>,
-    pub(crate) import_notice: Option<String>,
+    pub import_password: TextEdit,
+    pub import_preview: Option<datazen_ui_api::ImportPreview>,
+    pub import_notice: Option<String>,
     /// T4: the value search's form and state. The value and its mode ride
     /// the job; the hits list is the scan's answer.
-    pub(crate) value_search_value: TextEdit,
-    pub(crate) value_search_mode: u32,
-    pub(crate) value_search_generation: u32,
-    pub(crate) value_search_loading: Option<u32>,
-    pub(crate) value_search_error: Option<String>,
-    pub(crate) value_search_hits: Vec<datazen_ui_api::ValueSearchHit>,
+    pub value_search_value: TextEdit,
+    pub value_search_mode: u32,
+    pub value_search_generation: u32,
+    pub value_search_loading: Option<u32>,
+    pub value_search_error: Option<String>,
+    pub value_search_hits: Vec<datazen_ui_api::ValueSearchHit>,
     /// The value the loaded hits answered, so a locate filters by what was
     /// searched, not by whatever the input holds since.
-    pub(crate) value_search_query: String,
+    pub value_search_query: String,
     /// T5: the loaded table's inbound references (None until asked for).
-    pub(crate) inbound_refs: Option<Vec<datazen_ui_api::InboundRef>>,
-    pub(crate) fk_error: Option<String>,
+    pub inbound_refs: Option<Vec<datazen_ui_api::InboundRef>>,
+    pub fk_error: Option<String>,
     /// A4: FK navigation breadcrumb trail (followed foreign-key jumps).
-    pub(crate) fk_breadcrumbs: Vec<FkBreadcrumb>,
+    pub fk_breadcrumbs: Vec<FkBreadcrumb>,
     /// E3: the inbound generation — bumped by every ask. A delivery from a
     /// scan the state has moved past is dropped.
-    pub(crate) inbound_generation: u32,
+    pub inbound_generation: u32,
     /// E3: an inbound job the host accepted and has not answered yet.
-    pub(crate) inbound_loading: Option<u32>,
+    pub inbound_loading: Option<u32>,
     /// E1: the structure generation — bumped by every structure request (a
     /// table open, a view switch, an ER open). A structure delivery from a
     /// generation the table's entry has moved past is dropped.
-    pub(crate) structure_generation: u32,
+    pub structure_generation: u32,
     /// E1: the loaded structures, per table — the four-part answer the
     /// structure views and the outbound FK navigation read. Render
     /// functions read this map only, never the adapter.
-    pub(crate) structures: std::collections::BTreeMap<String, StructureState>,
+    pub structures: std::collections::BTreeMap<String, StructureState>,
     /// E2: the widget-bars generation — bumped by every bars request (a
     /// dashboards open, a widget save, a manual refresh).
-    pub(crate) widget_bars_generation: u32,
+    pub widget_bars_generation: u32,
     /// E2: the loaded bars, per widget id — the bar chart's only read.
     /// Render never queries the widget's data live.
-    pub(crate) widget_bars: std::collections::BTreeMap<u64, WidgetBarsState>,
+    pub widget_bars: std::collections::BTreeMap<u64, WidgetBarsState>,
     /// The export dialog's format, range and its job.
-    pub(crate) export_format_index: u32,
-    pub(crate) export_range: TextEdit,
-    pub(crate) export_job: Option<u64>,
-    pub(crate) export_error: Option<String>,
+    pub export_format_index: u32,
+    pub export_range: TextEdit,
+    pub export_job: Option<u64>,
+    pub export_error: Option<String>,
     /// The export job's last snapshot. Refreshed only on demand.
-    pub(crate) export_snapshot: Option<ProgressSnapshot>,
+    pub export_snapshot: Option<ProgressSnapshot>,
     /// The import wizard: 0 source step, 1 target step, 2 ready.
-    pub(crate) import_step: u32,
-    pub(crate) import_source: TextEdit,
-    pub(crate) import_target: TextEdit,
-    pub(crate) import_error: Option<String>,
+    pub import_step: u32,
+    pub import_source: TextEdit,
+    pub import_target: TextEdit,
+    pub import_error: Option<String>,
     /// The backup job and its last snapshot.
-    pub(crate) backup_job: Option<u64>,
-    pub(crate) backup_snapshot: Option<ProgressSnapshot>,
-    pub(crate) backup_error: Option<String>,
+    pub backup_job: Option<u64>,
+    pub backup_snapshot: Option<ProgressSnapshot>,
+    pub backup_error: Option<String>,
     /// The tools page's active tool.
-    pub(crate) tool: Tool,
+    pub tool: Tool,
     /// The sync wizard: endpoints, tables, options, preview, run.
-    pub(crate) sync_step: u32,
-    pub(crate) sync_source: String,
-    pub(crate) sync_target: String,
-    pub(crate) sync_tables: std::collections::BTreeSet<String>,
-    pub(crate) sync_options: [bool; 3],
-    pub(crate) sync_error: Option<String>,
+    pub sync_step: u32,
+    pub sync_source: String,
+    pub sync_target: String,
+    pub sync_tables: std::collections::BTreeSet<String>,
+    pub sync_options: [bool; 3],
+    pub sync_error: Option<String>,
     /// The sync preview grid (read-only, the B8 sheet).
-    pub(crate) sync_preview_grid: Option<DataGrid>,
+    pub sync_preview_grid: Option<DataGrid>,
     /// The sync run job and its last snapshot.
-    pub(crate) sync_job: Option<u64>,
-    pub(crate) sync_snapshot: Option<ProgressSnapshot>,
+    pub sync_job: Option<u64>,
+    pub sync_snapshot: Option<ProgressSnapshot>,
     /// The compare tool's endpoints.
-    pub(crate) compare_source: String,
-    pub(crate) compare_target: String,
+    pub compare_source: String,
+    pub compare_target: String,
     /// The compare plan's apply job and its last snapshot.
-    pub(crate) compare_job: Option<u64>,
-    pub(crate) compare_snapshot: Option<ProgressSnapshot>,
-    pub(crate) compare_error: Option<String>,
+    pub compare_job: Option<u64>,
+    pub compare_snapshot: Option<ProgressSnapshot>,
+    pub compare_error: Option<String>,
     /// The transfer tool's tables, pairing chips and the pairs themselves.
-    pub(crate) transfer_left: String,
-    pub(crate) transfer_right: String,
-    pub(crate) transfer_pair_left: String,
-    pub(crate) transfer_pair_right: String,
-    pub(crate) transfer_pairs: Vec<(String, String)>,
-    pub(crate) transfer_error: Option<String>,
+    pub transfer_left: String,
+    pub transfer_right: String,
+    pub transfer_pair_left: String,
+    pub transfer_pair_right: String,
+    pub transfer_pairs: Vec<(String, String)>,
+    pub transfer_error: Option<String>,
     /// The transfer's confirmation step and its job.
-    pub(crate) transfer_confirming: bool,
-    pub(crate) transfer_job: Option<u64>,
-    pub(crate) transfer_snapshot: Option<ProgressSnapshot>,
+    pub transfer_confirming: bool,
+    pub transfer_job: Option<u64>,
+    pub transfer_snapshot: Option<ProgressSnapshot>,
     /// The widget form's fields and its last rejected save.
-    pub(crate) widget_title: TextEdit,
-    pub(crate) widget_query: TextEdit,
-    pub(crate) widget_error: Option<String>,
+    pub widget_title: TextEdit,
+    pub widget_query: TextEdit,
+    pub widget_error: Option<String>,
     /// The workflow page's YAML document, edited through the SQL editor's
     /// document model (T145: the edit panel's yaml mode and the lite editor
     /// before it — the surface the workspace-tabs tests pin).
-    pub(crate) workflow_yaml: SqlEditor,
+    pub workflow_yaml: SqlEditor,
     /// The last workflow run's results.
-    pub(crate) workflow_results: Vec<WorkflowStepResult>,
+    pub workflow_results: Vec<WorkflowStepResult>,
     /// T019: the same run as the ported execution-result panel's view model
     /// (the honest projection of `workflow_results`; see
     /// `WorkflowExecutionResult::from_step_results`).
-    pub(crate) workflow_execution: Option<WorkflowExecutionResult>,
+    pub workflow_execution: Option<WorkflowExecutionResult>,
     /// T019: the panel's per-step interaction state — step ids whose rows are
     /// expanded, and step ids currently showing the chart view.
-    pub(crate) workflow_step_expanded: std::collections::BTreeSet<String>,
-    pub(crate) workflow_step_chart: std::collections::BTreeSet<String>,
+    pub workflow_step_expanded: std::collections::BTreeSet<String>,
+    pub workflow_step_chart: std::collections::BTreeSet<String>,
     /// T8: the workflow run's generation and its in-flight marker. The host's
     /// engine runs as a job; a delivery from a generation the state has moved
     /// past is dropped.
-    pub(crate) workflow_generation: u32,
-    pub(crate) workflow_loading: Option<u32>,
+    pub workflow_generation: u32,
+    pub workflow_loading: Option<u32>,
     /// T070: the visual workflow form's draft (React `WorkflowForm`'s
     /// `draft` prop), driven by the page mount's edit pane (T145) and the
     /// form's tests through `workflow_form_slots()`.
-    pub(crate) workflow_draft: WorkflowDraft,
+    pub workflow_draft: WorkflowDraft,
     /// T070: the form's open listbox (React's `ui/Select` keeps its own open
     /// state internally; immediate mode puts the one open select in `S`).
-    pub(crate) workflow_form_open: Option<WorkflowFormSelect>,
+    pub workflow_form_open: Option<WorkflowFormSelect>,
     /// T070: the command-input text areas' editing state (React's
     /// `CommandInputEditor` locals), keyed `step<i>.<field>` / `step<i>.raw`.
-    pub(crate) workflow_form_input_edits: std::collections::BTreeMap<String, TextEdit>,
+    pub workflow_form_input_edits: std::collections::BTreeMap<String, TextEdit>,
     /// T070: the connections the form offers (React's `connections` prop —
     /// the page's `savedConnections`), filled by the page's
     /// `reload_workflow_connections` (T145) and the form's probes.
-    pub(crate) workflow_form_connections: Vec<WorkflowConnectionOption>,
+    pub workflow_form_connections: Vec<WorkflowConnectionOption>,
     /// T070: the loaded command definitions per connection (React's
     /// `commandsByConnection` — the loader itself is a host-side seam).
-    pub(crate) workflow_form_commands:
+    pub workflow_form_commands:
         std::collections::BTreeMap<String, Vec<WorkflowCommandDefinition>>,
     /// T070: the connections whose command list is in flight (React's
     /// `loadingCommands`).
-    pub(crate) workflow_form_commands_loading: std::collections::BTreeSet<String>,
+    pub workflow_form_commands_loading: std::collections::BTreeSet<String>,
     /// T070: the loaded database lists per multi-db connection (React's
     /// `databasesByConn`; the `listDatabasesDedicated` loader is T467's).
-    pub(crate) workflow_form_databases: std::collections::BTreeMap<String, Vec<String>>,
+    pub workflow_form_databases: std::collections::BTreeMap<String, Vec<String>>,
     /// T070: the connections whose database list is in flight (React's
     /// `loadingDatabases`).
-    pub(crate) workflow_form_databases_loading: std::collections::BTreeSet<String>,
+    pub workflow_form_databases_loading: std::collections::BTreeSet<String>,
     /// T145: the page's workflow list (React `aiStore.workflows`) — the host
     /// registry's lite projection, refilled by `fetch_workflow_list`
     /// (`workflow_page_state.rs`).
-    pub(crate) workflow_list: Vec<WorkflowListItem>,
+    pub workflow_list: Vec<WorkflowListItem>,
     /// T145: the list's loading flag (React `workflowsLoading`).
-    pub(crate) workflow_list_loading: bool,
+    pub workflow_list_loading: bool,
     /// T145: the store's error slot (React `workflowError`) — the pane branch
     /// the page renders while it is `Some`.
-    pub(crate) workflow_store_error: Option<String>,
+    pub workflow_store_error: Option<String>,
     /// T145: the open panels (React `panels`) — run, edit, history and
     /// ai-create, in open order.
-    pub(crate) workflow_panels: Vec<WorkflowPanel>,
+    pub workflow_panels: Vec<WorkflowPanel>,
     /// T145: the active panel id (React `activePanelId`).
-    pub(crate) workflow_active_panel: Option<String>,
+    pub workflow_active_panel: Option<String>,
     /// T145: the active step index (React `activeStepIndex`) — the step the
     /// detail view shows within the active panel's result.
-    pub(crate) workflow_active_step: Option<usize>,
+    pub workflow_active_step: Option<usize>,
     /// T145: the page's operation error (React `operationError`) — the strip
     /// banner the sidebar renders.
-    pub(crate) workflow_operation_error: Option<String>,
+    pub workflow_operation_error: Option<String>,
     /// T145: the page's feedback line (React `feedback`).
-    pub(crate) workflow_feedback: String,
+    pub workflow_feedback: String,
     /// T145: the sidebar's side tab (React `sideTab`).
-    pub(crate) workflow_side_tab: WorkflowSideTab,
+    pub workflow_side_tab: WorkflowSideTab,
     /// T145: the history items (React `historyItems`) — the list use case's
     /// seam keeps them empty; the wiring's transition
     /// (`workflow_history_loaded`) fills them.
-    pub(crate) workflow_history_items: Vec<HistoryListItem>,
+    pub workflow_history_items: Vec<HistoryListItem>,
     /// T145: the run's variable inputs (React `variables`) — the field values
     /// the run panel's inputs edit.
-    pub(crate) workflow_variables: std::collections::BTreeMap<String, TextEdit>,
+    pub workflow_variables: std::collections::BTreeMap<String, TextEdit>,
     /// T145: the connection variable's select — the open dropdown's
     /// variable name (the workflow form's select slots pattern).
-    pub(crate) workflow_variable_select: Option<String>,
+    pub workflow_variable_select: Option<String>,
     /// T145: the workflows dir (React `workflowsDir`) — the get-dir command
     /// seam keeps it `None`, so React's own conditional hides the open-dir
     /// button.
-    pub(crate) workflow_dir: Option<String>,
+    pub workflow_dir: Option<String>,
     /// T145: the edit panel's editor mode (React `editorMode`).
-    pub(crate) workflow_editor_mode: WorkflowEditorMode,
+    pub workflow_editor_mode: WorkflowEditorMode,
     /// T145: the step-result order (React
     /// `appSettings.workflowStepResultOrder ?? 'desc'`; the settings store's
     /// persistence is the seam).
-    pub(crate) workflow_step_order: WorkflowStepOrder,
+    pub workflow_step_order: WorkflowStepOrder,
     /// T145: the confirm dialog's pending ask (React `useConfirmDialog`'s
     /// `{options, resolve}`; the root modal layer mounts the dialog while
     /// one is pending).
-    pub(crate) workflow_confirm_request: Option<WorkflowConfirmRequest>,
+    pub workflow_confirm_request: Option<WorkflowConfirmRequest>,
     /// T145: the generation of a confirm-dialog open (`Dialog::open_epoch`).
-    pub(crate) workflow_confirm_epoch: u64,
+    pub workflow_confirm_epoch: u64,
     /// T145: the add-to-dashboard dialog is open — the pending mount the
     /// modal layer shows (T018's dialog port swaps it).
-    pub(crate) workflow_add_dashboard_open: bool,
+    pub workflow_add_dashboard_open: bool,
     /// T145: the list row's secondary press — the context-menu seam's trigger
     /// (the workflow id and the window point; the entries builder and the
     /// native host are T646's).
-    pub(crate) workflow_context_menu: Option<WorkflowContextMenuRequest>,
+    pub workflow_context_menu: Option<WorkflowContextMenuRequest>,
     /// T145: the page's chart config slot per step id (ChartView's
     /// `savedConfig`).
-    pub(crate) workflow_chart_configs:
+    pub workflow_chart_configs:
         std::collections::BTreeMap<String, crate::components::chart::chart_canvas::ChartConfig>,
     /// T145: the page's per-step chart flags — the expanded overlay, the split
     /// view and the export dropdown (ChartView's own state, S-owned).
-    pub(crate) workflow_chart_expanded: std::collections::BTreeSet<String>,
-    pub(crate) workflow_chart_split: std::collections::BTreeSet<String>,
-    pub(crate) workflow_chart_export_open: std::collections::BTreeSet<String>,
+    pub workflow_chart_expanded: std::collections::BTreeSet<String>,
+    pub workflow_chart_split: std::collections::BTreeSet<String>,
+    pub workflow_chart_export_open: std::collections::BTreeSet<String>,
     /// T145: the panel id counter (React's module-scope `panelCounter`).
-    pub(crate) workflow_panel_counter: u32,
+    pub workflow_panel_counter: u32,
     /// Live size for the splitter being dragged (L2): (region key, points).
     /// While `Some`, `splitter_size` returns this instead of the persisted
     /// value; a cancelled or finished drag clears it.
-    pub(crate) splitter_preview: Option<(String, u32)>,
+    pub splitter_preview: Option<(String, u32)>,
     /// T071 (segment-2's T070): the running-execution close host's pending
     /// ask — React `useConfirmDialog`'s single pending request, installed by
     /// `RunningExecutionCloseHost` (the prompt behind "close a tab whose
     /// query is still running"). `Some` while the confirm dialog is on
     /// screen; `ask_running_execution_close` opens it.
-    pub(crate) running_close_request: Option<RunningExecutionCloseRequest>,
+    pub running_close_request: Option<RunningExecutionCloseRequest>,
     /// T071: the prompt's open generation; each ask bumps it so a reopened
     /// dialog starts at the top (`Dialog::open_epoch`).
-    pub(crate) running_close_epoch: u64,
+    pub running_close_epoch: u64,
     /// T071: the last settled ask — `(request, allowed)`. The host's answer
     /// routing (React `handleClose(result)` + the promise's resolve);
     /// written by `answer_running_execution_close`, read by the close guard
     /// when it ports (T396's `stores/runningExecutionClose.ts`), so no
     /// production reader yet.
     #[allow(dead_code)]
-    pub(crate) running_close_outcome: Option<(RunningExecutionCloseRequest, bool)>,
+    pub running_close_outcome: Option<(RunningExecutionCloseRequest, bool)>,
     /// T071: whether the prompt's copy control has copied the SQL (the
     /// dialog's copied mark; the next ask resets it).
-    pub(crate) running_close_sql_copied: bool,
+    pub running_close_sql_copied: bool,
     /// T009-S7: the AI assistant aside's open state. React's
     /// `ContentView` holds `aiChatOpen` in `useState(false)`; the Rune
     /// copy lives here so the toggle, the mount and the host sync all
@@ -478,14 +478,14 @@ pub struct AppState {
     /// — the panel re-mounts when the workspace returns, and the
     /// unmount cancel still fires on the transition (see
     /// `ai_chat_mounted`).
-    pub(crate) ai_chat_open: bool,
+    pub ai_chat_open: bool,
     /// T009-S7: the assistant panel's owned state (S6's
     /// `AiChatPanelState`). Constructed with an empty db session id:
     /// the session key falls back to `'default'` exactly as React's
     /// `computeSessionKey` does when `connectionId` and `dbSessionId`
     /// are both empty, and the live connection id re-keys it through
     /// `ensure_session` once a connection opens.
-    pub(crate) ai_chat_panel: AiChatPanelState,
+    pub ai_chat_panel: AiChatPanelState,
     /// T009-S7: the host-owned stand-in for
     /// `settingsConfig.memory.enabled` (React `lib/aiMemorySettings.ts`:
     /// memory is opt-in, `defaultAiMemorySettings.enabled: false`, so an
@@ -494,14 +494,14 @@ pub struct AppState {
     /// default, which would read `'auto'` with no settings behind it
     /// (tester S6 non-blocking #3). T088 replaces this field with the
     /// real settings config.
-    pub(crate) ai_memory_enabled: bool,
+    pub ai_memory_enabled: bool,
     /// T009-S7: the pending AI draft request the host holds (React
     /// `ContentView`'s `pendingDraftRequest`); cleared when the panel's
     /// consumed-draft outbox acks it.
-    pub(crate) ai_pending_draft: Option<AiPendingDraft>,
+    pub ai_pending_draft: Option<AiPendingDraft>,
     /// T009-S7: how many consumed-draft acks the host has applied, so
     /// the outbox (which only grows) is read incrementally.
-    pub(crate) ai_draft_acks_applied: usize,
+    pub ai_draft_acks_applied: usize,
     /// T009-S7: the last draft the host issued to the panel, as
     /// (request id, input-was-empty, was-configured). The host
     /// re-issues `handle_draft_request` when the id changes, when the
@@ -510,12 +510,12 @@ pub struct AppState {
     /// `[draftRequest, isConfigured, isStreaming, input]` (streaming is
     /// excluded: a re-issue after a stream ends is a no-op in the VM —
     /// the processed mark blocks it — exactly as React's does).
-    pub(crate) ai_draft_last_issue: Option<(String, bool, bool)>,
+    pub ai_draft_last_issue: Option<(String, bool, bool)>,
     /// T009-S7: whether the panel was mounted on the last poll, so the
     /// unmount cancel (`cancel_in_flight`, React's unmount effect)
     /// fires once on the mounted → unmounted transition instead of on
     /// every poll while the panel stays hidden.
-    pub(crate) ai_chat_mounted: bool,
+    pub ai_chat_mounted: bool,
     /// T012: the write-proposal host's owned state (React
     /// `AiWriteProposalHost`'s `queue` / `remainingMs` / `responding` /
     /// `error` / `receipt` / `auditError`, mounted at the app root in
@@ -523,10 +523,10 @@ pub struct AppState {
     /// and the `ai_apply_write` / `ai_deny_write` drain have no Rune
     /// source yet — see the component module's docs — so this state only
     /// moves through its own methods and the poll tick below.
-    pub(crate) ai_write_proposal: AiWriteProposalHostState,
+    pub ai_write_proposal: AiWriteProposalHostState,
     /// The system appearance preference, updated by the root view so helpers
     /// like `dark_theme()` can fall back consistently when no theme is saved.
-    pub(crate) system_dark: Cell<bool>,
+    pub system_dark: Cell<bool>,
 }
 
 impl Default for AppState {
@@ -738,28 +738,28 @@ impl Default for AppState {
 /// on, its loading and error marks, and the four-part answer once it
 /// lands. Render functions read the data; the honest states say
 /// themselves instead of drawing a phantom empty table.
-pub(crate) struct StructureState {
-    pub(crate) generation: u32,
-    pub(crate) loading: bool,
-    pub(crate) error: Option<String>,
-    pub(crate) data: Option<datazen_ui_api::TableStructure>,
+pub struct StructureState {
+    pub generation: u32,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub data: Option<datazen_ui_api::TableStructure>,
 }
 
 /// One widget's bars read state (E2): the generation the entry waits on,
 /// its loading and error marks, and the chart's answer once it lands.
-pub(crate) struct WidgetBarsState {
-    pub(crate) generation: u32,
-    pub(crate) loading: bool,
-    pub(crate) error: Option<String>,
-    pub(crate) bars: Option<Vec<(String, u32)>>,
+pub struct WidgetBarsState {
+    pub generation: u32,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub bars: Option<Vec<(String, u32)>>,
 }
 
 /// A4: one step in the FK navigation breadcrumb trail.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FkBreadcrumb {
-    pub(crate) label: String,
-    pub(crate) table: String,
-    pub(crate) page: u32,
-    pub(crate) sort: Option<datazen_ui_api::ColumnSort>,
-    pub(crate) filter: Option<datazen_ui_api::ColumnFilter>,
+pub struct FkBreadcrumb {
+    pub label: String,
+    pub table: String,
+    pub page: u32,
+    pub sort: Option<datazen_ui_api::ColumnSort>,
+    pub filter: Option<datazen_ui_api::ColumnFilter>,
 }

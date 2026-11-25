@@ -40,7 +40,7 @@ const MAX_RESULTS: usize = 100;
 /// React `ObjectSearchObjectType`.
 #[allow(dead_code)] // VM mirror; consumed by the search, view and tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectType {
+pub enum ObjectType {
     Table,
     View,
     Column,
@@ -53,7 +53,7 @@ pub(crate) enum ObjectType {
 }
 
 impl ObjectType {
-    pub(crate) fn key(self) -> &'static str {
+    pub fn key(self) -> &'static str {
         match self {
             Self::Table => "objectSearch.type.table",
             Self::View => "objectSearch.type.view",
@@ -103,7 +103,7 @@ impl ObjectType {
 /// React `TableSqlActionKind` (the five table/view actions).
 #[allow(dead_code)] // VM mirror; consumed by the result rows and the tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TableActionKind {
+pub enum TableActionKind {
     OpenData,
     Select,
     Insert,
@@ -112,9 +112,9 @@ pub(crate) enum TableActionKind {
 }
 
 impl TableActionKind {
-    pub(crate) const ALL: [Self; 5] = [Self::OpenData, Self::Select, Self::Insert, Self::Update, Self::Ddl];
+    pub const ALL: [Self; 5] = [Self::OpenData, Self::Select, Self::Insert, Self::Update, Self::Ddl];
 
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::OpenData => "openData",
             Self::Select => "select",
@@ -124,7 +124,7 @@ impl TableActionKind {
         }
     }
 
-    pub(crate) fn key(self) -> &'static str {
+    pub fn key(self) -> &'static str {
         match self {
             Self::OpenData => "objectSearch.openData",
             Self::Select => "objectSearch.select",
@@ -135,7 +135,7 @@ impl TableActionKind {
     }
 
     /// React `ACTION_COPY[kind].description` — a literal tooltip, not a locale key.
-    pub(crate) fn description(self) -> &'static str {
+    pub fn description(self) -> &'static str {
         match self {
             Self::OpenData => "Open the existing Table Panel data view.",
             Self::Select => "Open a read-only SELECT draft for the table.",
@@ -148,54 +148,54 @@ impl TableActionKind {
 
 #[allow(dead_code)] // index mirror; supplied by the host schema cache.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RelationInfo {
-    pub(crate) name: String,
-    pub(crate) schema: Option<String>,
-    pub(crate) table_type: String,
+pub struct RelationInfo {
+    pub name: String,
+    pub schema: Option<String>,
+    pub table_type: String,
 }
 
 #[allow(dead_code)] // index mirror; supplied by the host schema cache.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ObjectInfo {
-    pub(crate) name: String,
-    pub(crate) schema: Option<String>,
-    pub(crate) kind: String,
+pub struct ObjectInfo {
+    pub name: String,
+    pub schema: Option<String>,
+    pub kind: String,
 }
 
 /// One loaded `SchemaObjectIndexEntry` slice. `columns` is the schemaStore
 /// table-name → column-names map (React accepts `columns` / `columnMap`).
 #[allow(dead_code)] // index mirror; supplied by the host schema cache.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SchemaIndexEntry {
-    pub(crate) connection_id: String,
-    pub(crate) db_session_id: String,
-    pub(crate) database_type: String,
-    pub(crate) connection_name: Option<String>,
-    pub(crate) host: Option<String>,
-    pub(crate) database: Option<String>,
-    pub(crate) schema: Option<String>,
-    pub(crate) relations: Vec<RelationInfo>,
-    pub(crate) objects: Vec<ObjectInfo>,
-    pub(crate) columns: Vec<(String, Vec<String>)>,
+pub struct SchemaIndexEntry {
+    pub connection_id: String,
+    pub db_session_id: String,
+    pub database_type: String,
+    pub connection_name: Option<String>,
+    pub host: Option<String>,
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub relations: Vec<RelationInfo>,
+    pub objects: Vec<ObjectInfo>,
+    pub columns: Vec<(String, Vec<String>)>,
 }
 
 /// React `ObjectSearchResult` (without the SQL payload — the host builds it).
 #[allow(dead_code)] // VM mirror; consumed by result rows, actions and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ObjectSearchResult {
-    pub(crate) id: String,
-    pub(crate) connection_id: String,
-    pub(crate) db_session_id: String,
-    pub(crate) database_type: String,
-    pub(crate) connection_name: Option<String>,
-    pub(crate) host: Option<String>,
-    pub(crate) database: Option<String>,
-    pub(crate) schema: Option<String>,
-    pub(crate) object_type: ObjectType,
-    pub(crate) name: String,
-    pub(crate) table_name: Option<String>,
-    pub(crate) match_reason: Option<String>,
-    pub(crate) actions: Vec<TableActionKind>,
+pub struct ObjectSearchResult {
+    pub id: String,
+    pub connection_id: String,
+    pub db_session_id: String,
+    pub database_type: String,
+    pub connection_name: Option<String>,
+    pub host: Option<String>,
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub object_type: ObjectType,
+    pub name: String,
+    pub table_name: Option<String>,
+    pub match_reason: Option<String>,
+    pub actions: Vec<TableActionKind>,
 }
 
 fn normalized(value: Option<&str>) -> Option<String> {
@@ -270,7 +270,7 @@ fn compare_results(a: &ObjectSearchResult, b: &ObjectSearchResult) -> std::cmp::
 /// React `searchSchemaObjects`: relations, their columns and standalone
 /// objects from loaded slices only. No command, credential or SQL execution.
 #[allow(dead_code)] // pure helper; consumed by the view and the tests.
-pub(crate) fn search_schema_objects(
+pub fn search_schema_objects(
     index: &[SchemaIndexEntry],
     query: &str,
 ) -> Vec<ObjectSearchResult> {
@@ -396,16 +396,16 @@ pub(crate) fn search_schema_objects(
 /// Host-owned projection of the dialog props.
 #[allow(dead_code)] // VM surface; owned by the navigator host.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct GlobalObjectSearchVm {
-    pub(crate) open: bool,
-    pub(crate) query: TextEdit,
-    pub(crate) index: Vec<SchemaIndexEntry>,
+pub struct GlobalObjectSearchVm {
+    pub open: bool,
+    pub query: TextEdit,
+    pub index: Vec<SchemaIndexEntry>,
 }
 
 impl GlobalObjectSearchVm {
     /// React `searchSchemaObjects(index, query)` memo.
     #[allow(dead_code)] // pure projection; consumed by the view and tests.
-    pub(crate) fn results(&self) -> Vec<ObjectSearchResult> {
+    pub fn results(&self) -> Vec<ObjectSearchResult> {
         search_schema_objects(&self.index, self.query.text.trim())
     }
 }
@@ -413,7 +413,7 @@ impl GlobalObjectSearchVm {
 /// The two intents the view asks the host to perform.
 #[allow(dead_code)] // host port; remove when the navigator host lands.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectSearchAction {
+pub enum ObjectSearchAction {
     Close,
     ClearQuery,
     OpenResult(ObjectSearchResult),
@@ -434,7 +434,7 @@ fn emit<S: 'static>(on_action: &Option<ActionFn<S>>, action: ObjectSearchAction)
 
 /// Render the dialog into `layer`. A closed React `Dialog` mounts nothing.
 #[allow(dead_code)] // consumer: the connection navigator host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &GlobalObjectSearchVm,
     query_edit: Option<EditFn<S>>,
     on_action: Option<ActionFn<S>>,

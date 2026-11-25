@@ -95,21 +95,21 @@ use serde_json::{json, Value};
 
 // 校验镜像的实现在同目录的 `column_presentation_validation.rs`；这里
 // 重导出，S2 与测试只从本模块一个入口导入。
-pub(crate) use super::column_presentation_validation::{
+pub use super::column_presentation_validation::{
     problem, validate_column_presentation_override, validate_timestamp_options, ValidationProblem,
 };
 
 /// `datazen.timestamp`（`lib/valuePresentation/timestampContribution.ts`）。
-pub(crate) const TIMESTAMP_CONTRIBUTION_ID: &str = "datazen.timestamp";
+pub const TIMESTAMP_CONTRIBUTION_ID: &str = "datazen.timestamp";
 
 /// 草稿里 IANA 名缺省时的占位（React 硬编码 `'Asia/Shanghai'` 四处，
 //  这里只写一次；它是输入框的初始值，不是校验通过的保证）。
-pub(crate) const DEFAULT_DISPLAY_IANA_NAME: &str = "Asia/Shanghai";
+pub const DEFAULT_DISPLAY_IANA_NAME: &str = "Asia/Shanghai";
 
 /// 面板模式：跟随规则 / 原始值 / 时间（custom）。
 #[allow(dead_code)] // S1 只读 mode；S2（对话框）构造各模式的草稿。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PresentationMode {
+pub enum PresentationMode {
     Inherit,
     Raw,
     Custom,
@@ -117,7 +117,7 @@ pub(crate) enum PresentationMode {
 
 /// 时间来源选择：原生 / Unix 秒 / Unix 毫秒 / 文本。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InterpretationChoice {
+pub enum InterpretationChoice {
     Native,
     UnixSeconds,
     UnixMilliseconds,
@@ -127,7 +127,7 @@ pub(crate) enum InterpretationChoice {
 impl InterpretationChoice {
     /// 字符串 → 选择；非法值返回 `None`（S2 的 Select `onChange` 先用
     /// [`is_interpretation_choice`] 守卫，合法时再用本函数取值）。
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "native" => Some(Self::Native),
             "unix-seconds" => Some(Self::UnixSeconds),
@@ -140,14 +140,14 @@ impl InterpretationChoice {
 
 /// 展示时区种：本地 / UTC / IANA 名。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TimeZoneKindChoice {
+pub enum TimeZoneKindChoice {
     Local,
     Utc,
     Iana,
 }
 
 impl TimeZoneKindChoice {
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "local" => Some(Self::Local),
             "utc" => Some(Self::Utc),
@@ -159,7 +159,7 @@ impl TimeZoneKindChoice {
 
 /// 源时区种：无 / 本地 / UTC / IANA 名。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SourceTimeZoneChoice {
+pub enum SourceTimeZoneChoice {
     None,
     Local,
     Utc,
@@ -167,7 +167,7 @@ pub(crate) enum SourceTimeZoneChoice {
 }
 
 impl SourceTimeZoneChoice {
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "none" => Some(Self::None),
             "local" => Some(Self::Local),
@@ -180,14 +180,14 @@ impl SourceTimeZoneChoice {
 
 /// 时间输出格式：UTC ISO / 带时区 ISO / 本地格式。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TimestampOutputFormat {
+pub enum TimestampOutputFormat {
     Iso,
     IsoTz,
     Locale,
 }
 
 impl TimestampOutputFormat {
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "iso" => Some(Self::Iso),
             "iso-tz" => Some(Self::IsoTz),
@@ -207,14 +207,14 @@ impl TimestampOutputFormat {
 
 /// Unix 单位：秒 / 毫秒（显式值，面板不以位数自动决定）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum UnixUnit {
+pub enum UnixUnit {
     Seconds,
     Milliseconds,
 }
 
 /// `TimestampOptions.interpretation`（`timestampConfig.ts`）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TimestampInterpretation {
+pub enum TimestampInterpretation {
     Native,
     Unix(UnixUnit),
     Text,
@@ -222,7 +222,7 @@ pub(crate) enum TimestampInterpretation {
 
 /// 时区规约（`timestampFormat.ts` 的 `TimeZoneSpec`）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TimeZoneSpec {
+pub enum TimeZoneSpec {
     Utc,
     Local,
     Iana { name: String },
@@ -241,19 +241,19 @@ impl TimeZoneSpec {
 
 /// 时间展示器配置（`timestampConfig.ts` 的 `TimestampOptions`）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TimestampOptions {
-    pub(crate) interpretation: TimestampInterpretation,
-    pub(crate) format: TimestampOutputFormat,
-    pub(crate) display_time_zone: TimeZoneSpec,
+pub struct TimestampOptions {
+    pub interpretation: TimestampInterpretation,
+    pub format: TimestampOutputFormat,
+    pub display_time_zone: TimeZoneSpec,
     /// 只出现一处：无时区文本与原生 local-datetime 的源时区；
     /// `unix` 解释绝不带它（`None` 时序列化不出现该键）。
-    pub(crate) source_time_zone: Option<TimeZoneSpec>,
+    pub source_time_zone: Option<TimeZoneSpec>,
 }
 
 impl TimestampOptions {
     /// 规范 JSON（仅含已识别字段；`sourceTimeZone` 缺省时不出现该键，
     /// 与 TS `validateTimestampOptions` 成功返回的深冻结对象同形）。
-    pub(crate) fn to_json(&self) -> Value {
+    pub fn to_json(&self) -> Value {
         let mut object = serde_json::Map::new();
         object.insert(
             "interpretation".to_owned(),
@@ -286,21 +286,21 @@ impl TimestampOptions {
 
 /// 面板草稿：模式 + 时间选项的表单状态（IANA 名为原始输入，保存时 trim）。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ColumnPresentationDraft {
-    pub(crate) mode: PresentationMode,
-    pub(crate) interpretation: InterpretationChoice,
-    pub(crate) format: TimestampOutputFormat,
-    pub(crate) display_time_zone_kind: TimeZoneKindChoice,
-    pub(crate) display_iana_name: String,
-    pub(crate) source_time_zone_kind: SourceTimeZoneChoice,
-    pub(crate) source_iana_name: String,
+pub struct ColumnPresentationDraft {
+    pub mode: PresentationMode,
+    pub interpretation: InterpretationChoice,
+    pub format: TimestampOutputFormat,
+    pub display_time_zone_kind: TimeZoneKindChoice,
+    pub display_iana_name: String,
+    pub source_time_zone_kind: SourceTimeZoneChoice,
+    pub source_iana_name: String,
 }
 
 /// 表列覆盖（`@datazen/extension-points` 的 `ColumnPresentationOverride`）。
 /// `custom` 的 `options` 保持原始 JSON（TS 的 `unknown`）：宿主在边界
 /// 用 [`validate_timestamp_options`] 校验，不由本类型背书合法性。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ColumnPresentationOverride {
+pub enum ColumnPresentationOverride {
     Inherit,
     Raw,
     Custom { renderer_id: String, options: Value },
@@ -309,7 +309,7 @@ pub(crate) enum ColumnPresentationOverride {
 impl ColumnPresentationOverride {
     /// 规范 JSON（仅含已识别字段），供
     /// [`validate_column_presentation_override`] 做往返校验。
-    pub(crate) fn to_json(&self) -> Value {
+    pub fn to_json(&self) -> Value {
         match self {
             Self::Inherit => json!({ "mode": "inherit" }),
             Self::Raw => json!({ "mode": "raw" }),
@@ -330,7 +330,7 @@ impl ColumnPresentationOverride {
 /// 是 S2 调用处的活，本片不做。
 #[allow(dead_code)] // S2 传入推导好的种；S1 只匹配 `number` 与其余。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PresentationSemanticKind {
+pub enum PresentationSemanticKind {
     Instant,
     LocalDatetime,
     Date,
@@ -345,9 +345,9 @@ pub(crate) enum PresentationSemanticKind {
 /// 目标贡献的 `validateConfig` 验证。
 #[allow(dead_code)] // S2 / 宿主构建快照；S1 只读 `configs`。
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct VersionedPresentationConfig {
-    pub(crate) config_version: u64,
-    pub(crate) config: Value,
+pub struct VersionedPresentationConfig {
+    pub config_version: u64,
+    pub config: Value,
 }
 
 /// 展示快照的 S1 最小镜像：只有 [`global_timestamp_options_from_snapshot`]
@@ -360,13 +360,13 @@ pub(crate) struct VersionedPresentationConfig {
 /// （计划层），本模块只存字段，不解释它们。
 #[allow(dead_code)] // S2 / 宿主构建快照；S1 只读 `configs`。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ValuePresentationSnapshot {
-    pub(crate) revision: u64,
-    pub(crate) environment: super::column_presentation_plan::PresentationEnvironment,
-    pub(crate) configs: HashMap<String, VersionedPresentationConfig>,
-    pub(crate) enabled_renderer_ids: Vec<String>,
-    pub(crate) overrides: HashMap<String, ColumnPresentationOverride>,
-    pub(crate) rules: Vec<super::column_presentation_rules::ValuePresentationRule>,
+pub struct ValuePresentationSnapshot {
+    pub revision: u64,
+    pub environment: super::column_presentation_plan::PresentationEnvironment,
+    pub configs: HashMap<String, VersionedPresentationConfig>,
+    pub enabled_renderer_ids: Vec<String>,
+    pub overrides: HashMap<String, ColumnPresentationOverride>,
+    pub rules: Vec<super::column_presentation_rules::ValuePresentationRule>,
 }
 
 // ---------------------------------------------------------------------------
@@ -377,25 +377,25 @@ pub(crate) struct ValuePresentationSnapshot {
 
 /// `value` 是合法的 [`InterpretationChoice`] 字符串吗？
 #[allow(dead_code)] // 消费者：S2 的 interpretation Select `onChange`。
-pub(crate) fn is_interpretation_choice(value: &str) -> bool {
+pub fn is_interpretation_choice(value: &str) -> bool {
     InterpretationChoice::from_str(value).is_some()
 }
 
 /// `value` 是合法的 [`TimestampOutputFormat`] 字符串吗？
 #[allow(dead_code)] // 消费者：S2 的 format Select `onChange`。
-pub(crate) fn is_output_format(value: &str) -> bool {
+pub fn is_output_format(value: &str) -> bool {
     TimestampOutputFormat::from_str(value).is_some()
 }
 
 /// `value` 是合法的 [`TimeZoneKindChoice`] 字符串吗？
 #[allow(dead_code)] // 消费者：S2 的 display-timezone Select `onChange`。
-pub(crate) fn is_time_zone_kind_choice(value: &str) -> bool {
+pub fn is_time_zone_kind_choice(value: &str) -> bool {
     TimeZoneKindChoice::from_str(value).is_some()
 }
 
 /// `value` 是合法的 [`SourceTimeZoneChoice`] 字符串吗？
 #[allow(dead_code)] // 消费者：S2 的 source-timezone Select `onChange`。
-pub(crate) fn is_source_time_zone_choice(value: &str) -> bool {
+pub fn is_source_time_zone_choice(value: &str) -> bool {
     SourceTimeZoneChoice::from_str(value).is_some()
 }
 
@@ -406,7 +406,7 @@ pub(crate) fn is_source_time_zone_choice(value: &str) -> bool {
 
 /// IANA 时区名的格式校验（只看格式，不查已知性——已知性由
 /// [`validate_column_presentation_draft`] 的调用方谓词判断）。
-pub(crate) fn is_valid_iana_time_zone_name(name: &str) -> bool {
+pub fn is_valid_iana_time_zone_name(name: &str) -> bool {
     if name.is_empty() || name.len() > 100 {
         return false;
     }
@@ -459,7 +459,7 @@ fn source_time_zone_choice(spec: Option<&TimeZoneSpec>) -> SourceTimeZoneChoice 
 /// 草稿 → `TimestampOptions`（custom 模式用）。IANA 名只做 trim，
 /// 不在这里判格式 / 已知性 —— 校验由
 /// [`validate_column_presentation_draft`] 统一做，预览与保存共用同一结果。
-pub(crate) fn draft_to_timestamp_options(draft: &ColumnPresentationDraft) -> TimestampOptions {
+pub fn draft_to_timestamp_options(draft: &ColumnPresentationDraft) -> TimestampOptions {
     let interpretation = match draft.interpretation {
         InterpretationChoice::UnixSeconds => TimestampInterpretation::Unix(UnixUnit::Seconds),
         InterpretationChoice::UnixMilliseconds => {
@@ -483,7 +483,7 @@ pub(crate) fn draft_to_timestamp_options(draft: &ColumnPresentationDraft) -> Tim
 }
 
 /// 草稿 → 列覆盖（非 custom 模式不带 options）。
-pub(crate) fn draft_to_column_override(
+pub fn draft_to_column_override(
     draft: &ColumnPresentationDraft,
 ) -> ColumnPresentationOverride {
     match draft.mode {
@@ -509,7 +509,7 @@ pub(crate) fn draft_to_column_override(
 /// `is_known_time_zone` 是已知性检查的接线口（TS 用 Intl；本 crate
 /// 无时区数据库，调用方传入平台检查；见模块头「依赖盘点」）。
 #[allow(dead_code)] // 消费者：S2 的保存与预览（共用同一结果）。
-pub(crate) fn validate_column_presentation_draft(
+pub fn validate_column_presentation_draft(
     draft: &ColumnPresentationDraft,
     is_known_time_zone: &dyn Fn(&str) -> bool,
 ) -> Vec<ValidationProblem> {
@@ -568,7 +568,7 @@ pub(crate) fn validate_column_presentation_draft(
 ///   `Asia/Shanghai`；源时区默认无；
 /// - `custom` 模式下非法 options 时回落到 base + `custom`。
 #[allow(dead_code)] // 消费者：S2 打开 / 换列时重建草稿。
-pub(crate) fn draft_from_column_override(
+pub fn draft_from_column_override(
     current: &ColumnPresentationOverride,
     global_options: Option<&TimestampOptions>,
     semantic_kind: PresentationSemanticKind,
@@ -639,7 +639,7 @@ pub(crate) fn draft_from_column_override(
 /// 全局默认时间选项（快照 `configs` 里 `datazen.timestamp` 一项，
 /// 非法时缺省）。
 #[allow(dead_code)] // 消费者：S2 读全局默认（`useMemo` 的对应位置）。
-pub(crate) fn global_timestamp_options_from_snapshot(
+pub fn global_timestamp_options_from_snapshot(
     snapshot: &ValuePresentationSnapshot,
 ) -> Option<TimestampOptions> {
     let config = snapshot.configs.get(TIMESTAMP_CONTRIBUTION_ID)?;

@@ -38,7 +38,7 @@ fn schema_fingerprint(databases: &[String], epoch: u64) -> String {
 /// One pass of the watch. The previous fingerprints live in the state
 /// machine (the `prevFpRef`); the first pass records them and does nothing —
 /// a mount is not a change.
-pub(crate) fn cache_refresh_pass(
+pub fn cache_refresh_pass(
     state: &mut NavigatorDbState,
     inputs: &DbStateInputs<'_>,
 ) -> Vec<DbEffect> {

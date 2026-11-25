@@ -57,7 +57,7 @@ use crate::table_data_pending_changes::{
 /// write — the 0-based row index (render-only), the column NAME (not
 /// index), and the value (`null` = SQL `NULL`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct CellPasteWrite {
+pub struct CellPasteWrite {
     pub row_index: usize,
     pub column_name: String,
     /// The value to write; `Value::Null` means SQL `NULL`.
@@ -67,7 +67,7 @@ pub(crate) struct CellPasteWrite {
 /// React `PasteCellProblem` (`stagePasteWrites.ts:29-34`): one skipped
 /// cell and its reason.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PasteCellProblem {
+pub struct PasteCellProblem {
     pub row_index: usize,
     pub column_name: String,
     /// The grid error code (`GridErrorCode`, a closed string set —
@@ -79,7 +79,7 @@ pub(crate) struct PasteCellProblem {
 /// React `StagePasteWritesOutcome` (`stagePasteWrites.ts:36-44`): the
 /// proposal the store applies in one `set()`.
 #[derive(Clone, Debug)]
-pub(crate) struct StagePasteWritesOutcome {
+pub struct StagePasteWritesOutcome {
     pub rows: Vec<HashMap<String, Value>>,
     pub pending_changes: HashMap<String, PendingRowChange>,
     pub row_identity_anchors: HashMap<usize, String>,
@@ -93,7 +93,7 @@ pub(crate) struct StagePasteWritesOutcome {
 /// in one pass — same checks, same order, same branches as one
 /// `stageCellValue` call, repeated over the block; a cell whose row
 /// identity is ambiguous is skipped **and the rest still lands**.
-pub(crate) fn stage_paste_writes_into(
+pub fn stage_paste_writes_into(
     ts: &TableState,
     writes: &[CellPasteWrite],
     primary_key_columns: &[ColumnSchema],
@@ -317,7 +317,7 @@ pub(crate) fn stage_paste_writes_into(
 
 /// React `StageEditInput` (`stageEdit.ts:16-29`).
 #[derive(Clone, Debug)]
-pub(crate) struct StageEditInput {
+pub struct StageEditInput {
     pub existing: Option<PendingRowChange>,
     pub column: String,
     /// The value before the edit; `Value::Null` = React's `null`.
@@ -331,7 +331,7 @@ pub(crate) struct StageEditInput {
 /// React `StageEditResult` (`stageEdit.ts:31-40`): the next version of
 /// the change, or `None` when the row has nothing staged left.
 #[derive(Clone, Debug)]
-pub(crate) struct StageEditResult {
+pub struct StageEditResult {
     pub change: Option<PendingRowChange>,
     pub changed_columns: Vec<String>,
 }
@@ -343,7 +343,7 @@ pub(crate) struct StageEditResult {
 /// column and the row is not marked for deletion, the row's key leaves
 /// `pendingChanges` entirely), and a row marked for deletion keeps its
 /// entry even when every column was reverted.
-pub(crate) fn compute_stage_result(input: StageEditInput) -> StageEditResult {
+pub fn compute_stage_result(input: StageEditInput) -> StageEditResult {
     let mut original_values = input
         .existing
         .as_ref()
@@ -399,7 +399,7 @@ pub(crate) fn compute_stage_result(input: StageEditInput) -> StageEditResult {
 /// version after the delete mark was undone — a row that was only
 /// marked has nothing left staged (its key leaves the map); a row that
 /// also had column changes keeps them and only loses the mark.
-pub(crate) fn compute_unstage_delete_result(change: &PendingRowChange) -> Option<PendingRowChange> {
+pub fn compute_unstage_delete_result(change: &PendingRowChange) -> Option<PendingRowChange> {
     if change.changed_columns.is_empty() {
         return None;
     }
@@ -417,7 +417,7 @@ pub(crate) fn compute_unstage_delete_result(change: &PendingRowChange) -> Option
 /// intent: `Some(value)` = write it (`Value::Null` = SQL `NULL`),
 /// `None` = do not write this column (the revert).
 #[derive(Clone, Debug)]
-pub(crate) struct StageCellValueInput {
+pub struct StageCellValueInput {
     pub existing: Option<PendingRowChange>,
     pub column: String,
     pub value: Option<Value>,
@@ -428,7 +428,7 @@ pub(crate) struct StageCellValueInput {
 
 /// React `StageExpressionValueInput` (`stageCellValue.ts:42-53`).
 #[derive(Clone, Debug)]
-pub(crate) struct StageExpressionValueInput {
+pub struct StageExpressionValueInput {
     pub existing: Option<PendingRowChange>,
     pub column: String,
     pub original_value: Value,
@@ -438,7 +438,7 @@ pub(crate) struct StageExpressionValueInput {
 
 /// React `StageCellValueResult` (`stageCellValue.ts:99-108`).
 #[derive(Clone, Debug)]
-pub(crate) struct StageCellValueResult {
+pub struct StageCellValueResult {
     pub change: Option<PendingRowChange>,
     pub changed_columns: Vec<String>,
 }
@@ -449,7 +449,7 @@ pub(crate) struct StageCellValueResult {
 /// the original as the channel's placeholder; a literal staged on the
 /// same column afterwards replaces the expression, and the revert
 /// clears both.
-pub(crate) fn compute_stage_expression_value_result(
+pub fn compute_stage_expression_value_result(
     input: StageExpressionValueInput,
 ) -> StageCellValueResult {
     let existing = input.existing.clone();
@@ -517,7 +517,7 @@ pub(crate) fn compute_stage_expression_value_result(
 /// stage-edit rule, including "reverting the only changed column
 /// unstages the row"), `null` is a value like any other, and `None`
 /// (do not write) is the revert.
-pub(crate) fn compute_stage_cell_value_result(
+pub fn compute_stage_cell_value_result(
     input: StageCellValueInput,
 ) -> StageCellValueResult {
     if let Some(value) = input.value.clone() {
@@ -605,7 +605,7 @@ pub(crate) fn compute_stage_cell_value_result(
 /// `restoredCellValue` (`stageCellValue.ts:176-184`): the value a cell
 /// goes back to when its change is undone — `Value::Null` when the
 /// column was never staged (the cell keeps whatever it holds).
-pub(crate) fn restored_cell_value(
+pub fn restored_cell_value(
     existing: Option<&PendingRowChange>,
     column: &str,
 ) -> Value {
@@ -630,7 +630,7 @@ pub(crate) fn restored_cell_value(
 /// fields the actions write; `None` leaves the panel's field
 /// untouched (the partial's own semantics).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct PendingEditPatch {
+pub struct PendingEditPatch {
     pub rows: Option<Vec<HashMap<String, Value>>>,
     pub pending_changes: Option<HashMap<String, PendingRowChange>>,
     pub row_identity_anchors: Option<HashMap<usize, String>>,
@@ -646,7 +646,7 @@ pub(crate) struct PendingEditPatch {
 /// What one action call produced: the patch the host applies — plus
 /// the rollback's reload flag.
 #[derive(Clone, Debug)]
-pub(crate) struct PendingEditOutcome {
+pub struct PendingEditOutcome {
     pub patch: PendingEditPatch,
     /// `rollbackPendingChanges`'s `reload(panelId)` — the host re-reads
     /// the page after applying the patch.
@@ -665,7 +665,7 @@ impl PendingEditOutcome {
 /// React `StagePasteWritesResult` (`pendingEditActions.ts:41-47`): what
 /// one paste did, for the caller's summary line.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct StagePasteWritesResult {
+pub struct StagePasteWritesResult {
     /// Cells that really entered `pendingChanges`.
     pub staged: usize,
     /// Cells that were skipped (the reason is in `problems`).
@@ -677,7 +677,7 @@ pub(crate) struct StagePasteWritesResult {
 /// bodies are the React source's, same order, same reads, same writes,
 /// same error branches; each action reads the panel's whole state and
 /// returns the patch (or `None` for the early outs).
-pub(crate) struct PendingEditActions;
+pub struct PendingEditActions;
 
 impl PendingEditActions {
     /// The shared patch of a landed staging (React 141-149 &c): the
@@ -773,7 +773,7 @@ impl PendingEditActions {
     /// `stageCellExpression` (React 152-206): stage one cell as a typed
     /// write expression (DBR-05) — the cell keeps displaying its
     /// current value; the dirty mark and its tooltip tell the story.
-    pub(crate) fn stage_cell_expression(
+    pub fn stage_cell_expression(
         ts: &TableState,
         row: usize,
         col: &str,
@@ -838,7 +838,7 @@ impl PendingEditActions {
     /// explicit write intent (DB-05) — `None` = do not write this
     /// column, `Some(Value::Null)` = write SQL `NULL`, anything else =
     /// write that value.
-    pub(crate) fn stage_cell_value(
+    pub fn stage_cell_value(
         ts: &TableState,
         row: usize,
         col: &str,
@@ -944,7 +944,7 @@ impl PendingEditActions {
     /// `stageCellChange` (React 304-308): the old entry point keeps its
     /// behaviour byte for byte — an absent value was a `NULL`, and it
     /// still is.
-    pub(crate) fn stage_cell_change(
+    pub fn stage_cell_change(
         ts: &TableState,
         row: usize,
         col: &str,
@@ -954,7 +954,7 @@ impl PendingEditActions {
     }
 
     /// `stageRowDelete` (React 310-365): mark rows for deletion.
-    pub(crate) fn stage_row_delete(
+    pub fn stage_row_delete(
         ts: &TableState,
         row_indices: &[usize],
     ) -> Option<PendingEditOutcome> {
@@ -1038,7 +1038,7 @@ impl PendingEditActions {
     /// `stagePasteWrites` (React 372-396): stage many cells in ONE state
     /// write (DB-03); returns what happened instead of writing
     /// `ts.error`.
-    pub(crate) fn stage_paste_writes(
+    pub fn stage_paste_writes(
         ts: &TableState,
         writes: &[CellPasteWrite],
     ) -> (Option<PendingEditOutcome>, StagePasteWritesResult) {
@@ -1085,7 +1085,7 @@ impl PendingEditActions {
     /// `applyColumnToRows` (React 398-400): stage the same value in one
     /// column of many rows (one call per cell — the loop the host runs,
     /// each iteration reading the previous write's state).
-    pub(crate) fn apply_column_to_rows(
+    pub fn apply_column_to_rows(
         ts: &TableState,
         col: &str,
         value: Option<Value>,
@@ -1104,7 +1104,7 @@ impl PendingEditActions {
 
     /// `unstageRowDelete` (React 404-431): undo the delete mark of one
     /// row.
-    pub(crate) fn unstage_row_delete(
+    pub fn unstage_row_delete(
         ts: &TableState,
         row_index: usize,
     ) -> Option<PendingEditOutcome> {
@@ -1144,7 +1144,7 @@ impl PendingEditActions {
 
     /// `deleteRows` (React 433-444): delete rows — the selection
     /// semantics first (the unique filter), then the delete mark.
-    pub(crate) fn delete_rows(
+    pub fn delete_rows(
         ts: &TableState,
         row_indices: &[usize],
     ) -> Option<PendingEditOutcome> {
@@ -1164,7 +1164,7 @@ impl PendingEditActions {
 
     /// `rollbackPendingChanges` (React 446-460): drop every staged
     /// change and re-read the page.
-    pub(crate) fn rollback_pending_changes(ts: &TableState) -> Option<PendingEditOutcome> {
+    pub fn rollback_pending_changes(ts: &TableState) -> Option<PendingEditOutcome> {
         let mut patch = Self::landed_patch();
         patch.pending_changes = Some(HashMap::new());
         patch.draft_inserts = Some(HashMap::new());
@@ -1180,7 +1180,7 @@ impl PendingEditActions {
 /// The host's patch application — the `applyColumnToRows` loop's own
 /// working-state mirror (React's `read` re-reads the panel fresh on
 /// every call, so the loop sees the previous write).
-pub(crate) fn apply_patch(ts: &mut TableState, patch: &PendingEditPatch) {
+pub fn apply_patch(ts: &mut TableState, patch: &PendingEditPatch) {
     if let Some(rows) = &patch.rows {
         ts.rows = rows.clone();
     }

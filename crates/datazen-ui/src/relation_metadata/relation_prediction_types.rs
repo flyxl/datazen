@@ -11,7 +11,7 @@
 /// One column of a table under consideration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T081 forthcoming consumer: the SQL-editor prediction layer (not landed yet).
-pub(crate) struct PredictionColumn {
+pub struct PredictionColumn {
     pub name: String,
     /// Driver-reported type string, e.g. `integer`, `varchar`.
     pub data_type: String,
@@ -23,7 +23,7 @@ pub(crate) struct PredictionColumn {
 /// A declared foreign key, so prediction never restates ground truth.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T081 forthcoming consumer: the SQL-editor prediction layer (not landed yet).
-pub(crate) struct DeclaredForeignKey {
+pub struct DeclaredForeignKey {
     pub columns: Vec<String>,
     pub referenced_table: String,
     pub referenced_columns: Vec<String>,
@@ -32,7 +32,7 @@ pub(crate) struct DeclaredForeignKey {
 /// A table to consider as a source and/or target of a relationship.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // T081 forthcoming consumer: the SQL-editor prediction layer (not landed yet).
-pub(crate) struct PredictionTable {
+pub struct PredictionTable {
     /// Stable identity used in evidence and output.
     pub id: String,
     /// Bare table name, used for name matching.

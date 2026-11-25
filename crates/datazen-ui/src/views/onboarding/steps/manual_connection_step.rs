@@ -169,7 +169,7 @@ type QueryEditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static
 /// React `testResult: 'ok' | 'fail' | null` — the footer result line's
 /// three states (`None` is React's `null`: no line text, muted ink).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TestOutcome {
+pub enum TestOutcome {
     /// `'ok'` — `✓` + the success pack entry, green ink.
     Ok,
     /// `'fail'` — `✕` + the failure pack entry, red ink.
@@ -181,19 +181,19 @@ pub(crate) enum TestOutcome {
 /// the test footer's three flags. The host keeps this in its `S` and
 /// clones it per frame, exactly the T103 `FormBodyVm` discipline.
 #[derive(Clone, Debug)]
-pub(crate) struct ManualStepVm {
+pub struct ManualStepVm {
     /// `driverQuery` — the sidebar search box's edit buffer.
-    pub(crate) driver_query: TextEdit,
+    pub driver_query: TextEdit,
     /// `availableDrivers` — `null` while pending AND on load failure
     /// (React's `.catch(() => setAvailableDrivers(null))`); the unfiltered
     /// list shows in all those states.
-    pub(crate) available_drivers: Option<Vec<String>>,
+    pub available_drivers: Option<Vec<String>>,
     /// `tested` — the Save gate (`disabled={!tested}`).
-    pub(crate) tested: bool,
+    pub tested: bool,
     /// `testing` — the Test button's busy flag (`disabled={testing}`).
-    pub(crate) testing: bool,
+    pub testing: bool,
     /// `testResult` — the footer result line.
-    pub(crate) test_result: Option<TestOutcome>,
+    pub test_result: Option<TestOutcome>,
 }
 
 impl Default for ManualStepVm {
@@ -214,14 +214,14 @@ impl ManualStepVm {
     /// React `handleTest`'s opening two lines: `setTesting(true);
     /// setTestResult(null)` — a new test always clears the result line
     /// before it resolves.
-    pub(crate) fn begin_test(&mut self) {
+    pub fn begin_test(&mut self) {
         self.testing = true;
         self.test_result = None;
     }
 
     /// The success arm plus `finally`: `setTested(true);
     /// setTestResult('ok')` … `setTesting(false)`.
-    pub(crate) fn test_succeeded(&mut self) {
+    pub fn test_succeeded(&mut self) {
         self.tested = true;
         self.test_result = Some(TestOutcome::Ok);
         self.testing = false;
@@ -230,7 +230,7 @@ impl ManualStepVm {
     /// The catch arm plus `finally`: `setTested(false);
     /// setTestResult('fail')` … `setTesting(false)` — a failed test
     /// re-locks the Save button.
-    pub(crate) fn test_failed(&mut self) {
+    pub fn test_failed(&mut self) {
         self.tested = false;
         self.test_result = Some(TestOutcome::Fail);
         self.testing = false;
@@ -239,7 +239,7 @@ impl ManualStepVm {
     /// React's `dbTypes` memo: `!availableDrivers ? ALL_DB_TYPES :
     /// ALL_DB_TYPES.filter((db) => availableDrivers.includes(db.value))`,
     /// then `filterDbTypesByQuery(available, driverQuery)`.
-    pub(crate) fn db_types(&self) -> Vec<(&'static str, &'static str)> {
+    pub fn db_types(&self) -> Vec<(&'static str, &'static str)> {
         let available: Vec<(&'static str, &'static str)> = match &self.available_drivers {
             None => all_db_types().to_vec(),
             Some(drivers) => all_db_types()
@@ -255,7 +255,7 @@ impl ManualStepVm {
 /// React `DB_TYPE_POPULARITY_ORDER` (`lib/databaseTypes.ts:31`): the
 /// new-connection sidebar order — most commonly used types first, not
 /// wire-protocol family. Types absent from this list sort after, by id.
-pub(crate) const DB_TYPE_POPULARITY_ORDER: [&str; 26] = [
+pub const DB_TYPE_POPULARITY_ORDER: [&str; 26] = [
     "mysql",
     "postgresql",
     "mariadb",
@@ -297,7 +297,7 @@ fn db_type_popularity_rank(id: &str) -> usize {
 /// ties broken by id (`localeCompare` — byte order here; the ids are
 /// ASCII). A stable-equivalent total order, so the input order cannot leak
 /// through.
-pub(crate) fn sort_db_types_by_popularity(
+pub fn sort_db_types_by_popularity(
     mut items: Vec<(&'static str, &'static str)>,
 ) -> Vec<(&'static str, &'static str)> {
     items.sort_by(|a, b| {
@@ -311,7 +311,7 @@ pub(crate) fn sort_db_types_by_popularity(
 /// React `filterDbTypesByQuery` (`lib/filterDbTypes.ts:1`): the trimmed,
 /// lower-cased query matches the label OR the value (both lower-cased); an
 /// empty query keeps everything.
-pub(crate) fn filter_db_types_by_query<'a>(
+pub fn filter_db_types_by_query<'a>(
     items: &[(&'a str, &'a str)],
     query: &str,
 ) -> Vec<(&'a str, &'a str)> {
@@ -361,7 +361,7 @@ const DB_REGISTRY_STANDIN: [(&str, &str); 22] = [
 /// React's module-scope `ALL_DB_TYPES`: the registry's `(value, label)`
 /// pairs, popularity-sorted once at module load. Computed once here (the
 /// sort is the React module's own init work, not per-render).
-pub(crate) fn all_db_types() -> &'static [(&'static str, &'static str)] {
+pub fn all_db_types() -> &'static [(&'static str, &'static str)] {
     static SORTED: OnceLock<Vec<(&'static str, &'static str)>> = OnceLock::new();
     SORTED.get_or_init(|| {
         sort_db_types_by_popularity(DB_REGISTRY_STANDIN.iter().copied().collect())
@@ -389,7 +389,7 @@ fn split_b_tags(raw: &str) -> (String, Option<std::ops::Range<usize>>) {
 /// [`ManualStepVm`] and the form machine's [`FormBodyVm`] (T103) — with
 /// the action slots the host wires to its loads, dispatches and save/test
 /// flows.
-pub(crate) struct ManualConnectionStep<S: 'static> {
+pub struct ManualConnectionStep<S: 'static> {
     /// The step-local half of React's state (this file's own `useState`s).
     step: ManualStepVm,
     /// The form machine's snapshot (the `useConnectionForm` return value,
@@ -412,7 +412,7 @@ pub(crate) struct ManualConnectionStep<S: 'static> {
 impl<S: 'static> ManualConnectionStep<S> {
     /// React's mount on S1-manual: both VMs at their initial state, no
     /// seams wired until the host hands them over.
-    pub(crate) fn new(step: ManualStepVm, form: FormBodyVm) -> Self {
+    pub fn new(step: ManualStepVm, form: FormBodyVm) -> Self {
         ManualConnectionStep {
             step,
             form,
@@ -425,7 +425,7 @@ impl<S: 'static> ManualConnectionStep<S> {
     }
 
     /// The step-local VM accessor (`driverQuery`'s edits land in `S`).
-    pub(crate) fn on_step(
+    pub fn on_step(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut ManualStepVm + 'static,
     ) -> Self {
@@ -434,7 +434,7 @@ impl<S: 'static> ManualConnectionStep<S> {
     }
 
     /// The form machine's VM accessor — the T103 `on_vm` seam, forwarded.
-    pub(crate) fn on_form_vm(
+    pub fn on_form_vm(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut FormBodyVm + 'static,
     ) -> Self {
@@ -444,7 +444,7 @@ impl<S: 'static> ManualConnectionStep<S> {
 
     /// The form machine's action port — the T103 `on_action` seam,
     /// forwarded (and shared with the driver sidebar's buttons).
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, FormAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, FormAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
@@ -452,7 +452,7 @@ impl<S: 'static> ManualConnectionStep<S> {
     /// The footer's Test button → React `handleTest` (the host wraps the
     /// form's `onTest`; the outcome reports back through the VM's
     /// `test_succeeded` / `test_failed`).
-    pub(crate) fn on_test(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_test(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_test = Some(Rc::new(f));
         self
     }
@@ -460,14 +460,14 @@ impl<S: 'static> ManualConnectionStep<S> {
     /// The footer's Save button → `form.onSave()` (whose completion runs
     /// the host's `onAfterSave` → the wizard's `onSaved` dispatch, with
     /// the saved name from the form machine — React's `nameRef.current`).
-    pub(crate) fn on_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save = Some(Rc::new(f));
         self
     }
 
     /// Paint the step. `dark` drives the kit tokens; `layer` receives the
     /// open listboxes of the composed form body (the T103 convention).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let ManualConnectionStep {
             step,

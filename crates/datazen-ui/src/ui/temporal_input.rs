@@ -52,7 +52,7 @@ use crate::i18n::t;
 
 /// Which temporal value the field edits.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum TemporalKind {
+pub enum TemporalKind {
     /// `YYYY-MM-DD`.
     #[default]
     Date,
@@ -85,7 +85,7 @@ impl TemporalKind {
 type FieldBind<'a> = Box<dyn FnOnce(TextField<'a>) -> TextField<'a> + 'a>;
 
 /// A temporal cell editor: text field, inline validation and commit keys.
-pub(crate) struct TemporalValueInput<'a> {
+pub struct TemporalValueInput<'a> {
     key: String,
     edit: &'a TextEdit,
     kind: TemporalKind,
@@ -101,7 +101,7 @@ pub(crate) struct TemporalValueInput<'a> {
 impl<'a> TemporalValueInput<'a> {
     /// A field over `edit`, editing a value of `kind`, 28 points tall,
     /// nullable, filling the parent's width.
-    pub(crate) fn new(key: impl Into<String>, edit: &'a TextEdit, kind: TemporalKind) -> Self {
+    pub fn new(key: impl Into<String>, edit: &'a TextEdit, kind: TemporalKind) -> Self {
         Self {
             key: key.into(),
             edit,
@@ -117,31 +117,31 @@ impl<'a> TemporalValueInput<'a> {
     }
 
     /// Placeholder text shown while the field is empty.
-    pub(crate) fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.placeholder = Some(placeholder.into());
         self
     }
 
     /// Replace the format hint under the field; `None` hides it.
-    pub(crate) fn hint(mut self, hint: Option<String>) -> Self {
+    pub fn hint(mut self, hint: Option<String>) -> Self {
         self.hint = hint;
         self
     }
 
     /// Whether empty input means SQL `NULL` (default) or is invalid.
-    pub(crate) fn nullable(mut self, nullable: bool) -> Self {
+    pub fn nullable(mut self, nullable: bool) -> Self {
         self.nullable = nullable;
         self
     }
 
     /// The box's height in points (default 28).
-    pub(crate) fn height(mut self, height: f32) -> Self {
+    pub fn height(mut self, height: f32) -> Self {
         self.height = height;
         self
     }
 
     /// A fixed width in points; without it the field fills its parent.
-    pub(crate) fn width(mut self, width: f32) -> Self {
+    pub fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
         self
     }
@@ -149,7 +149,7 @@ impl<'a> TemporalValueInput<'a> {
     /// Where `Tab` sends focus after a successful commit. Without a target the
     /// field commits and blurs. The target is shared with the key handler, so
     /// this call may come before or after [`Self::on_actions`].
-    pub(crate) fn tab_to(self, key: impl Into<String>) -> Self {
+    pub fn tab_to(self, key: impl Into<String>) -> Self {
         *self.tab_target.borrow_mut() = Some(key.into());
         self
     }
@@ -161,7 +161,7 @@ impl<'a> TemporalValueInput<'a> {
     ///
     /// `Enter` commits, `Tab` commits and moves focus, `Escape` cancels. The
     /// edit accessor is also bound to the field so it can take focus.
-    pub(crate) fn on_actions<S: 'static>(
+    pub fn on_actions<S: 'static>(
         mut self,
         edit: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
         commit: impl Fn(&mut S, &str) + Clone + 'static,
@@ -213,7 +213,7 @@ impl<'a> TemporalValueInput<'a> {
     }
 
     /// Build the field and its validation line.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let key = self.key.clone();
         let message = validation_error(self.kind, &self.edit.text, self.nullable);

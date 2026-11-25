@@ -30,31 +30,31 @@ use crate::i18n::t;
 use crate::icons::ICON_REFRESH;
 use crate::ui::toolbar::{ToolbarButton, ToolbarButtonVariant};
 
-pub(crate) const BUTTON_KEY: &str = "editor-refresh-completion-button";
+pub const BUTTON_KEY: &str = "editor-refresh-completion-button";
 
 /// React `RefreshCompletionButtonProps` plus `busy` and `error` from `useState`.
 #[allow(dead_code)] // VM mirror; remove when the toolbar host lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RefreshCompletionVm {
-    pub(crate) db_session_id: String,
-    pub(crate) database: Option<String>,
-    pub(crate) icon_only: bool,
-    pub(crate) disabled: bool,
-    pub(crate) busy: bool,
-    pub(crate) error: String,
+pub struct RefreshCompletionVm {
+    pub db_session_id: String,
+    pub database: Option<String>,
+    pub icon_only: bool,
+    pub disabled: bool,
+    pub busy: bool,
+    pub error: String,
     /// Set on success: the text React passes to `onRefreshed`.
-    pub(crate) done_message: Option<String>,
+    pub done_message: Option<String>,
 }
 
 #[allow(dead_code)] // VM helpers; remove with the host.
 impl RefreshCompletionVm {
     /// React `disabled={disabled || busy || !dbSessionId}`.
-    pub(crate) fn effective_disabled(&self) -> bool {
+    pub fn effective_disabled(&self) -> bool {
         self.disabled || self.busy || self.db_session_id.trim().is_empty()
     }
 
     /// React `title={error ?? t('query.refreshCompletionTitle')}`.
-    pub(crate) fn title(&self) -> String {
+    pub fn title(&self) -> String {
         if self.error.is_empty() {
             t("query.refreshCompletionTitle").to_owned()
         } else {
@@ -63,12 +63,12 @@ impl RefreshCompletionVm {
     }
 
     /// React's accessible name: `label={t('query.refreshCompletion')}`.
-    pub(crate) fn label(&self) -> String {
+    pub fn label(&self) -> String {
         t("query.refreshCompletion").to_owned()
     }
 
     /// React `handleRefresh` prologue; false means the click was ignored.
-    pub(crate) fn begin_refresh(&mut self) -> bool {
+    pub fn begin_refresh(&mut self) -> bool {
         if self.db_session_id.trim().is_empty() || self.busy {
             return false;
         }
@@ -80,7 +80,7 @@ impl RefreshCompletionVm {
 
     /// React's `finally` plus the success/error branches. A failed refresh
     /// keeps the error in the tooltip and never reports success.
-    pub(crate) fn apply_refresh(&mut self, result: Result<(), String>) {
+    pub fn apply_refresh(&mut self, result: Result<(), String>) {
         self.busy = false;
         match result {
             Ok(()) => {
@@ -98,18 +98,18 @@ impl RefreshCompletionVm {
 /// The single host request behind the button.
 #[allow(dead_code)] // host port; remove when the toolbar host wires the button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RefreshCompletionAction {
+pub enum RefreshCompletionAction {
     Refresh,
 }
 
 #[allow(dead_code)] // host port; remove when the toolbar host wires the button.
-pub(crate) type RefreshCompletionActionFn<S> =
+pub type RefreshCompletionActionFn<S> =
     Rc<dyn Fn(&mut S, RefreshCompletionAction) + 'static>;
 
 /// Build the button. A disabled button has no press handler, matching React's
 /// guarded `onClick` (Rune's a11y `disabled` alone does not block handlers).
 #[allow(dead_code)] // view entry; remove when the toolbar host wires it.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &RefreshCompletionVm,
     on_action: Option<RefreshCompletionActionFn<S>>,
     dark: bool,

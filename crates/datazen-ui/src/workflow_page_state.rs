@@ -34,7 +34,7 @@ impl AppState {
     /// the loading flag's window is this call (React's `await` has no async
     /// boundary to cross here) — the store's error slot clears with the
     /// answer, the wapps fetch's shape.
-    pub(crate) fn fetch_workflow_list(&mut self) {
+    pub fn fetch_workflow_list(&mut self) {
         self.workflow_list_loading = true;
         let flows = self.host_workflows();
         self.workflow_list = flows
@@ -50,7 +50,7 @@ impl AppState {
     /// profile carries no database, so the multi-db rule reads it as absent —
     /// the projection the keys table documents). The unwired adapter's fixed
     /// error keeps the previous list (React's unhandled rejection).
-    pub(crate) fn reload_workflow_connections(&mut self) {
+    pub fn reload_workflow_connections(&mut self) {
         let profiles = self
             .desktop
             .list_connections()
@@ -70,7 +70,7 @@ impl AppState {
     /// rescan command — no adapter method, the seam) then `loadWorkflows()`.
     /// This port runs the refetch half it owns; the rescan command lands with
     /// the workflow host wiring.
-    pub(crate) fn reload_workflows(&mut self) {
+    pub fn reload_workflows(&mut self) {
         self.fetch_workflow_list();
     }
 
@@ -84,13 +84,13 @@ impl AppState {
 
     /// The active panel (React's `activePanel` — the find by id, `None` when
     /// the active id names no open panel).
-    pub(crate) fn active_workflow_panel(&self) -> Option<&WorkflowPanel> {
+    pub fn active_workflow_panel(&self) -> Option<&WorkflowPanel> {
         let id = self.workflow_active_panel.as_deref()?;
         self.workflow_panels.iter().find(|panel| panel.id() == id)
     }
 
     /// The active run panel (React's `isWorkflowRunPanel(activePanel)` read).
-    pub(crate) fn active_workflow_run_panel(&self) -> Option<&WorkflowRunPanel> {
+    pub fn active_workflow_run_panel(&self) -> Option<&WorkflowRunPanel> {
         match self.active_workflow_panel() {
             Some(WorkflowPanel::Run(run)) => Some(run),
             _ => None,
@@ -129,7 +129,7 @@ impl AppState {
     /// React's `handleSelectWorkflow` — the run panel, then the variable
     /// defaults for the workflow's declared variables (the lite projection
     /// carries none, so the map is exactly React's empty-variables case).
-    pub(crate) fn select_workflow_list_item(&mut self, workflow: &WorkflowListItem) {
+    pub fn select_workflow_list_item(&mut self, workflow: &WorkflowListItem) {
         self.open_workflow_run_panel(workflow);
         self.workflow_variables.clear();
         for variable in &workflow.variables {
@@ -146,7 +146,7 @@ impl AppState {
 
     /// React's `handleAiCreate` — the ai-create panel opens once; a second
     /// press reactivates the open one.
-    pub(crate) fn open_workflow_ai_create_panel(&mut self) {
+    pub fn open_workflow_ai_create_panel(&mut self) {
         if let Some(existing) = self
             .workflow_panels
             .iter()
@@ -163,7 +163,7 @@ impl AppState {
     /// React's `handleEdit` press — the registry lookup (`workflowGet`) then
     /// `openEditPanel(editingId, workflowDefinitionToDraft(workflow))`. The
     /// lookup's miss is React's catch branch (the feedback line).
-    pub(crate) fn edit_workflow_from_list(&mut self, workflow_id: &str) {
+    pub fn edit_workflow_from_list(&mut self, workflow_id: &str) {
         let Some(flow) = self
             .host_workflows()
             .into_iter()
@@ -177,7 +177,7 @@ impl AppState {
     }
 
     /// React's `handleCreate` press — the create flow over `emptyDraft()`.
-    pub(crate) fn open_workflow_edit_panel(&mut self, editing_id: Option<&str>) {
+    pub fn open_workflow_edit_panel(&mut self, editing_id: Option<&str>) {
         let draft = crate::views::workflow_form::WorkflowDraft::empty();
         self.open_workflow_edit_panel_with(editing_id, draft);
     }
@@ -232,7 +232,7 @@ impl AppState {
     /// entry `workflowHistoryGet` would answer. The lean list item is the
     /// entry this build holds (the success flag and the total time — no step
     /// detail; the full entry is the history use case's seam).
-    pub(crate) fn open_workflow_history_detail(&mut self, history_id: &str, name: &str) {
+    pub fn open_workflow_history_detail(&mut self, history_id: &str, name: &str) {
         if let Some(existing) = self
             .workflow_panels
             .iter()
@@ -283,7 +283,7 @@ impl AppState {
     /// the S-owned interaction slots reset with it (React's per-mount row
     /// state); closing an edit panel resets the form's interaction state
     /// either way (the form unmounts inside it).
-    pub(crate) fn close_workflow_panel(&mut self, panel_id: &str) {
+    pub fn close_workflow_panel(&mut self, panel_id: &str) {
         let Some(index) = self
             .workflow_panels
             .iter()
@@ -319,7 +319,7 @@ impl AppState {
 
     /// React's panel-tab click — the panel becomes the active one and the
     /// step view re-seeds at the result's first shown step.
-    pub(crate) fn select_workflow_panel(&mut self, panel_id: &str) {
+    pub fn select_workflow_panel(&mut self, panel_id: &str) {
         self.workflow_active_panel = Some(panel_id.to_owned());
         self.workflow_active_step = self
             .workflow_panels
@@ -337,7 +337,7 @@ impl AppState {
     /// below it). The variables' engine binding is the host's seam — the lite
     /// runner takes only the workflow name, so the input values are real
     /// state the wiring will bind.
-    pub(crate) fn execute_active_workflow(&mut self) {
+    pub fn execute_active_workflow(&mut self) {
         let Some(run) = self.active_workflow_run_panel() else {
             return;
         };
@@ -385,7 +385,7 @@ impl AppState {
 
     /// One variable input's commit (React's `setVariables({...variables,
     /// [v.name]: val})`, or the Select's choose).
-    pub(crate) fn set_workflow_variable(&mut self, name: &str, value: String) {
+    pub fn set_workflow_variable(&mut self, name: &str, value: String) {
         self.workflow_variables
             .insert(name.to_owned(), TextEdit::new(value));
     }
@@ -399,7 +399,7 @@ impl AppState {
     /// exactly the writer's shape). A document the lean parse refuses is
     /// React's parse-error branch: the mode stays, the operation error names
     /// it.
-    pub(crate) fn set_workflow_editor_mode(&mut self, mode: WorkflowEditorMode) {
+    pub fn set_workflow_editor_mode(&mut self, mode: WorkflowEditorMode) {
         if self.workflow_editor_mode == mode {
             // React: `if (p.editorMode === editorMode) return p;`.
             return;
@@ -438,7 +438,7 @@ impl AppState {
     /// (`app_key`/`app_ime`'s routing condition — the lite editor's
     /// `workflow_editing` gate this replaces): the section is showing, the
     /// active panel is the edit pane and the mode is yaml.
-    pub(crate) fn workflow_yaml_focused(&self) -> bool {
+    pub fn workflow_yaml_focused(&self) -> bool {
         self.active == crate::types::Section::Workflows
             && matches!(
                 self.active_workflow_panel(),
@@ -454,7 +454,7 @@ impl AppState {
     /// the save rides the registry surface both halves share). A successful
     /// save closes the panel, writes the feedback line and reloads the list;
     /// a failure writes the feedback line (React's catch).
-    pub(crate) fn save_workflow_edit_panel(&mut self) {
+    pub fn save_workflow_edit_panel(&mut self) {
         let (name, steps) = if self.workflow_editor_mode == WorkflowEditorMode::Visual {
             (
                 self.workflow_draft.name.text.trim().to_owned(),
@@ -489,7 +489,7 @@ impl AppState {
     }
 
     /// React's shared action bar's Cancel (`onCancel` → `closePanel`).
-    pub(crate) fn close_edit_panel(&mut self) {
+    pub fn close_edit_panel(&mut self) {
         let Some(id) = self.workflow_active_panel.clone() else {
             return;
         };
@@ -501,7 +501,7 @@ impl AppState {
     /// React's `handleDelete` ask — the `useConfirmDialog` gate holds the
     /// pending request (the wapps remove pattern; a new ask is a fresh
     /// dialog mount through the epoch).
-    pub(crate) fn ask_workflow_delete(&mut self, workflow_id: &str) {
+    pub fn ask_workflow_delete(&mut self, workflow_id: &str) {
         self.workflow_confirm_request = Some(WorkflowConfirmRequest {
             kind: WorkflowConfirmKind::DeleteWorkflow(workflow_id.to_owned()),
             title: t("workflows.delete").to_owned(),
@@ -511,7 +511,7 @@ impl AppState {
     }
 
     /// React's `handleClearHistory` ask — the same gate, the history kind.
-    pub(crate) fn ask_workflow_history_clear(&mut self) {
+    pub fn ask_workflow_history_clear(&mut self) {
         self.workflow_confirm_request = Some(WorkflowConfirmRequest {
             kind: WorkflowConfirmKind::ClearHistory,
             title: t("workflows.history.clear").to_owned(),
@@ -523,7 +523,7 @@ impl AppState {
     /// The confirm dialog's answer (React's `confirmWf(...)` promise
     /// resolving): cancel only clears the ask; confirm runs the ask's
     /// command through its own branch.
-    pub(crate) fn answer_workflow_confirm(&mut self, ok: bool) {
+    pub fn answer_workflow_confirm(&mut self, ok: bool) {
         let Some(request) = self.workflow_confirm_request.take() else {
             return;
         };
@@ -549,7 +549,7 @@ impl AppState {
     /// React's `aiCommands.workflowDelete` — the delete use case has no
     /// adapter method, so the flow is the honest failure branch (the catch
     /// the answer routing reads).
-    pub(crate) fn delete_workflow(&mut self, _workflow_id: &str) -> Result<(), String> {
+    pub fn delete_workflow(&mut self, _workflow_id: &str) -> Result<(), String> {
         let error = "workflow delete needs the live host; the workflow delete use case is not \
                      wired into this Rune build yet"
             .to_owned();
@@ -561,7 +561,7 @@ impl AppState {
     /// `prev.filter`), the list reloads. No production caller exists yet;
     /// tests pin the transition.
     #[allow(dead_code)] // the workflow host wiring is the production caller
-    pub(crate) fn workflow_deleted(&mut self, workflow_id: &str) {
+    pub fn workflow_deleted(&mut self, workflow_id: &str) {
         let active_id = self.workflow_active_panel.clone();
         self.workflow_panels.retain(|panel| {
             !matches!(panel, WorkflowPanel::Run(run) if run.workflow_id == workflow_id)
@@ -579,7 +579,7 @@ impl AppState {
     /// no adapter method. React's flow carries no catch, so the honest branch
     /// keeps the list and records the seam in the operation error slot (the
     /// module docs' ruling); the success transition below is the wiring's.
-    pub(crate) fn clear_workflow_history(&mut self) {
+    pub fn clear_workflow_history(&mut self) {
         self.workflow_operation_error = Some(
             "workflow history clear needs the live host; the history use case is not wired into \
              this Rune build yet"
@@ -591,13 +591,13 @@ impl AppState {
     /// and React's flow has no catch (an unhandled rejection keeps the items
     /// as they were), so the seam leaves the list untouched. The transition
     /// the wiring will call lands below.
-    pub(crate) fn load_workflow_history(&mut self) {}
+    pub fn load_workflow_history(&mut self) {}
 
     /// The history list's success transition — the wiring's call once the
     /// adapter answers the list. No production caller exists yet; tests pin
     /// the transition.
     #[allow(dead_code)] // the workflow host wiring is the production caller
-    pub(crate) fn workflow_history_loaded(&mut self, items: Vec<HistoryListItem>) {
+    pub fn workflow_history_loaded(&mut self, items: Vec<HistoryListItem>) {
         self.workflow_history_items = items;
     }
 
@@ -605,7 +605,7 @@ impl AppState {
     /// `setHistoryItems([])`). No production caller exists yet; tests pin the
     /// transition.
     #[allow(dead_code)] // the workflow host wiring is the production caller
-    pub(crate) fn workflow_history_cleared(&mut self) {
+    pub fn workflow_history_cleared(&mut self) {
         self.workflow_history_items.clear();
     }
 
@@ -613,7 +613,7 @@ impl AppState {
 
     /// React's side-tab click; entering the history tab runs the load
     /// (`useEffect`'s `sideTab === 'history'` arm — the seam's no-op).
-    pub(crate) fn set_workflow_side_tab(&mut self, tab: WorkflowSideTab) {
+    pub fn set_workflow_side_tab(&mut self, tab: WorkflowSideTab) {
         self.workflow_side_tab = tab;
         if tab == WorkflowSideTab::History {
             self.load_workflow_history();
@@ -622,7 +622,7 @@ impl AppState {
 
     /// React's `toggleStepOrder` — the order flips; the settingsStore write
     /// (`updateSettings`) is the settings track's seam.
-    pub(crate) fn toggle_workflow_step_order(&mut self) {
+    pub fn toggle_workflow_step_order(&mut self) {
         self.workflow_step_order = match self.workflow_step_order {
             WorkflowStepOrder::Desc => WorkflowStepOrder::Asc,
             WorkflowStepOrder::Asc => WorkflowStepOrder::Desc,
@@ -630,23 +630,23 @@ impl AppState {
     }
 
     /// React's step-tab click (`setActiveStepIndex(i)`).
-    pub(crate) fn set_workflow_active_step(&mut self, index: usize) {
+    pub fn set_workflow_active_step(&mut self, index: usize) {
         self.workflow_active_step = Some(index);
     }
 
     /// React's operation-error dismiss.
-    pub(crate) fn dismiss_workflow_operation_error(&mut self) {
+    pub fn dismiss_workflow_operation_error(&mut self) {
         self.workflow_operation_error = None;
     }
 
     /// React's add-to-dashboard press — the dialog flag the modal layer's
     /// pending mount reads (T018's dialog port swaps it).
-    pub(crate) fn open_add_to_dashboard(&mut self) {
+    pub fn open_add_to_dashboard(&mut self) {
         self.workflow_add_dashboard_open = true;
     }
 
     /// The pending dialog's close (React's `onClose`) — the flag goes.
-    pub(crate) fn close_add_to_dashboard(&mut self) {
+    pub fn close_add_to_dashboard(&mut self) {
         self.workflow_add_dashboard_open = false;
     }
 
@@ -654,7 +654,7 @@ impl AppState {
     /// browser-mode catch is silent; here the seam says itself). Unreachable
     /// while the dir seam keeps the button hidden — the wired press for the
     /// day the get-dir command lands.
-    pub(crate) fn open_workflow_dir(&mut self) {
+    pub fn open_workflow_dir(&mut self) {
         self.workflow_feedback =
             "opening the workflows directory needs the desktop host; the open-dir use case is \
              not wired into this Rune build yet"
@@ -664,7 +664,7 @@ impl AppState {
     /// React's docs button — `openDocsWindow('workflows')` needs the window
     /// manager; the Rune app is single-window, so the press says so (the
     /// feedback line is the seam the module docs name).
-    pub(crate) fn open_workflow_docs(&mut self) {
+    pub fn open_workflow_docs(&mut self) {
         self.workflow_feedback =
             "the workflows docs window needs the window manager; no second window exists in \
              this Rune build yet"
@@ -674,7 +674,7 @@ impl AppState {
     /// The list row's secondary press — the native context-menu seam's
     /// trigger record (the workflow id and the window point; the entries
     /// builder and the native host are T646's).
-    pub(crate) fn open_workflow_context_menu(&mut self, workflow_id: &str, point: PointerPress) {
+    pub fn open_workflow_context_menu(&mut self, workflow_id: &str, point: PointerPress) {
         self.workflow_context_menu = Some(WorkflowContextMenuRequest {
             workflow_id: workflow_id.to_owned(),
             point: (point.x, point.y),

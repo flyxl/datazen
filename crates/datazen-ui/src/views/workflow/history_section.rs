@@ -91,27 +91,27 @@ use crate::ui::kit::kit;
 /// shape — the same stance the run-result VMs in `step_result_utils` took
 /// (the API crate carries only the lite run report today).
 #[derive(Clone, Debug)]
-pub(crate) struct HistoryListItem {
-    pub(crate) id: String,
+pub struct HistoryListItem {
+    pub id: String,
     /// The run's workflow id is part of the contract's shape, but no render
     /// in this section reads it (React hands `onView` the *name*; the row
     /// key needs only the run id) — kept for the shape's parity until the
     /// consumers that will read it (T147/T334) land.
     #[allow(dead_code)]
-    pub(crate) workflow_id: String,
-    pub(crate) workflow_name: String,
-    pub(crate) success: bool,
-    pub(crate) total_time_ms: u64,
+    pub workflow_id: String,
+    pub workflow_name: String,
+    pub success: bool,
+    pub total_time_ms: u64,
     /// Zoned ISO text (the desktop host writes `to_rfc3339()`); the rows
     /// render it through [`locale_string`].
-    pub(crate) created_at: String,
+    pub created_at: String,
 }
 
 /// React's `new Date(item.createdAt).toLocaleString()`: the local-zone
 /// `YYYY-MM-DD HH:MM:SS` the connections list already renders (see the
 /// module docs for the stance). Zone-less or unparseable text renders
 /// verbatim.
-pub(crate) fn locale_string(created_at: &str) -> String {
+pub fn locale_string(created_at: &str) -> String {
     match parse_zoned_instant(created_at) {
         Some(millis) => match chrono::DateTime::from_timestamp_millis(millis) {
             Some(instant) => instant
@@ -127,7 +127,7 @@ pub(crate) fn locale_string(created_at: &str) -> String {
 /// The offset-pinned core of [`locale_string`] (`offset_seconds` is east of
 /// UTC, `+08:00` is `28_800`) — the same seam `format_last_connected` tests
 /// through, so the clock math pins without a TZ-pinned process.
-pub(crate) fn locale_string_with_offset(created_at: &str, offset_seconds: i32) -> String {
+pub fn locale_string_with_offset(created_at: &str, offset_seconds: i32) -> String {
     match (
         parse_zoned_instant(created_at).and_then(chrono::DateTime::from_timestamp_millis),
         chrono::FixedOffset::east_opt(offset_seconds),
@@ -146,42 +146,42 @@ pub(crate) fn locale_string_with_offset(created_at: &str, offset_seconds: i32) -
 /// Where the sidebar list's interactions live in the host's `S`. Function
 /// pointers, so the host keeps the state and the list stays stateless —
 /// React's `onView`/`onClear` props with the press wiring the page owns.
-pub(crate) struct HistoryListSlots<S: 'static> {
+pub struct HistoryListSlots<S: 'static> {
     /// React's `onView(id, workflowName)`: open the run's detail elsewhere
     /// (the page's separate panel).
-    pub(crate) view: fn(&mut S, String, String),
+    pub view: fn(&mut S, String, String),
     /// React's `onClear`: clear the recorded runs.
-    pub(crate) clear: fn(&mut S),
+    pub clear: fn(&mut S),
 }
 
 /// Where the inline tab's interactions live in the host's `S`, plus the
 /// embedded result panel's per-step state.
-pub(crate) struct HistoryTabSlots<S: 'static> {
+pub struct HistoryTabSlots<S: 'static> {
     /// React's `onView(id)`: fetch the run and set the detail.
-    pub(crate) view: fn(&mut S, String),
+    pub view: fn(&mut S, String),
     /// React's `onClear`.
-    pub(crate) clear: fn(&mut S),
+    pub clear: fn(&mut S),
     /// React's `onCloseDetail`: drop the detail and show the list again.
-    pub(crate) close_detail: fn(&mut S),
+    pub close_detail: fn(&mut S),
     /// The detail branch embeds `WorkflowExecutionResultPanel`; its per-step
     /// expansion/chart state rides along ([`StepUiSlots`]).
-    pub(crate) panel: StepUiSlots<S>,
+    pub panel: StepUiSlots<S>,
 }
 
 /// The sidebar history list (React `WorkflowHistoryList`). `items` are the
 /// recorded runs; `slots` locate the interactions in the app's `S`.
-pub(crate) struct WorkflowHistoryList<'a, S: 'static> {
+pub struct WorkflowHistoryList<'a, S: 'static> {
     items: &'a [HistoryListItem],
     slots: HistoryListSlots<S>,
 }
 
 impl<'a, S: 'static> WorkflowHistoryList<'a, S> {
-    pub(crate) fn new(items: &'a [HistoryListItem], slots: HistoryListSlots<S>) -> Self {
+    pub fn new(items: &'a [HistoryListItem], slots: HistoryListSlots<S>) -> Self {
         Self { items, slots }
     }
 
     /// Builds the list for one appearance (React's whole component body).
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let ctx = RenderCtx::new(kit(dark));
         // React's `p-1.5` root.
         let mut list = col()
@@ -206,14 +206,14 @@ impl<'a, S: 'static> WorkflowHistoryList<'a, S> {
 /// recorded runs; `detail` is the run result the tab shows instead of the
 /// list; `slots` locate the interactions (and the embedded panel's per-step
 /// state) in the app's `S`.
-pub(crate) struct WorkflowHistoryTab<'a, S: 'static> {
+pub struct WorkflowHistoryTab<'a, S: 'static> {
     items: &'a [HistoryListItem],
     detail: Option<&'a WorkflowExecutionResult>,
     slots: HistoryTabSlots<S>,
 }
 
 impl<'a, S: 'static> WorkflowHistoryTab<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         items: &'a [HistoryListItem],
         detail: Option<&'a WorkflowExecutionResult>,
         slots: HistoryTabSlots<S>,
@@ -227,7 +227,7 @@ impl<'a, S: 'static> WorkflowHistoryTab<'a, S> {
 
     /// Builds the tab for one appearance: the detail branch (back link over
     /// the result panel) or the list branch (clear link, rows / empty).
-    pub(crate) fn build(self, s: &S, dark: bool) -> El {
+    pub fn build(self, s: &S, dark: bool) -> El {
         let ctx = RenderCtx::new(kit(dark));
         if let Some(detail) = self.detail {
             return col()

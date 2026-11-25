@@ -46,7 +46,7 @@ use crate::support::value_presentation::timestamp_format::{
 /// (React `TimestampInterpretation`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub(crate) enum TimestampInterpretation {
+pub enum TimestampInterpretation {
     Native,
     Unix {
         unit: UnixUnitSerde,
@@ -58,7 +58,7 @@ pub(crate) enum TimestampInterpretation {
 /// (`"seconds"` / `"milliseconds"`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum UnixUnitSerde {
+pub enum UnixUnitSerde {
     Seconds,
     Milliseconds,
 }
@@ -77,17 +77,17 @@ impl From<UnixUnitSerde> for UnixUnit {
 /// contract.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TimestampOptions {
-    pub(crate) interpretation: TimestampInterpretation,
-    pub(crate) format: FormatSerde,
-    pub(crate) display_time_zone: TimeZoneSpec,
+pub struct TimestampOptions {
+    pub interpretation: TimestampInterpretation,
+    pub format: FormatSerde,
+    pub display_time_zone: TimeZoneSpec,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) source_time_zone: Option<TimeZoneSpec>,
+    pub source_time_zone: Option<TimeZoneSpec>,
 }
 
 /// `TimestampOutputFormat` with React's persisted spellings (`iso-tz`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum FormatSerde {
+pub enum FormatSerde {
     #[serde(rename = "iso")]
     Iso,
     #[serde(rename = "iso-tz")]
@@ -109,9 +109,9 @@ impl From<FormatSerde> for TimestampOutputFormat {
 /// A pathed validation problem: `path` points into the JSON input ('' is
 /// the root), `message` says why.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TimestampOptionsProblem {
-    pub(crate) path: String,
-    pub(crate) message: String,
+pub struct TimestampOptionsProblem {
+    pub path: String,
+    pub message: String,
 }
 
 impl TimestampOptionsProblem {
@@ -122,7 +122,7 @@ impl TimestampOptionsProblem {
 
 /// The validation result: every problem at once, or the canonical options.
 #[derive(Debug, PartialEq)]
-pub(crate) enum TimestampOptionsValidation {
+pub enum TimestampOptionsValidation {
     Ok(TimestampOptions),
     Err(Vec<TimestampOptionsProblem>),
 }
@@ -268,7 +268,7 @@ fn read_interpretation(
 /// Complete structural validation of unknown JSON input. Success returns
 /// the rebuilt canonical options (recognized fields only); failure returns
 /// every pathed problem.
-pub(crate) fn validate_timestamp_options(
+pub fn validate_timestamp_options(
     input: &serde_json::Value,
 ) -> TimestampOptionsValidation {
     let Some(object) = input.as_object() else {

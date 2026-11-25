@@ -19,16 +19,16 @@ use crate::ui::toggle::{Checkbox, RadioGroup, RadioItem};
 
 /// The table-selection block: label + select-all/clear-all + scrolling checkbox
 /// list (React's first `<div>` in the form).
-pub(crate) struct TableSelection<'a, S: 'static> {
-    pub(crate) key: &'a str,
-    pub(crate) vm: &'a BatchExportVm,
-    pub(crate) toggle_table: Option<TableFn<S>>,
-    pub(crate) select_all: Option<CloseFn<S>>,
-    pub(crate) clear_all: Option<CloseFn<S>>,
+pub struct TableSelection<'a, S: 'static> {
+    pub key: &'a str,
+    pub vm: &'a BatchExportVm,
+    pub toggle_table: Option<TableFn<S>>,
+    pub select_all: Option<CloseFn<S>>,
+    pub clear_all: Option<CloseFn<S>>,
 }
 
 impl<S: 'static> TableSelection<'_, S> {
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let key = self.key;
         let vm = self.vm;
 
@@ -121,14 +121,14 @@ impl<S: 'static> TableSelection<'_, S> {
 }
 
 /// The mode radio fieldset (React's `<fieldset>` with three radios).
-pub(crate) struct ModeOptions<'a, S: 'static> {
-    pub(crate) key: &'a str,
-    pub(crate) vm: &'a BatchExportVm,
-    pub(crate) mode: Option<ModeFn<S>>,
+pub struct ModeOptions<'a, S: 'static> {
+    pub key: &'a str,
+    pub vm: &'a BatchExportVm,
+    pub mode: Option<ModeFn<S>>,
 }
 
 impl<S: 'static> ModeOptions<'_, S> {
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let key = self.key;
         let modes = [
             BatchExportMode::StructureOnly,
@@ -148,16 +148,16 @@ impl<S: 'static> ModeOptions<'_, S> {
 }
 
 /// The data-format block: label + kit `Select` (React's `DATA_FORMAT_OPTIONS`).
-pub(crate) struct FormatSelector<'a, S: 'static> {
-    pub(crate) key: &'a str,
-    pub(crate) vm: &'a BatchExportVm,
-    pub(crate) format: Option<FormatFn<S>>,
-    pub(crate) format_open: Option<CloseFn<S>>,
-    pub(crate) format_close: Option<CloseFn<S>>,
+pub struct FormatSelector<'a, S: 'static> {
+    pub key: &'a str,
+    pub vm: &'a BatchExportVm,
+    pub format: Option<FormatFn<S>>,
+    pub format_open: Option<CloseFn<S>>,
+    pub format_close: Option<CloseFn<S>>,
 }
 
 impl<S: 'static> FormatSelector<'_, S> {
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let key = self.key;
         let vm = self.vm;
 
@@ -219,14 +219,14 @@ impl<S: 'static> FormatSelector<'_, S> {
 }
 
 /// The output radio fieldset (React's `<fieldset>` with single/zip radios).
-pub(crate) struct OutputOptions<'a, S: 'static> {
-    pub(crate) key: &'a str,
-    pub(crate) vm: &'a BatchExportVm,
-    pub(crate) output: Option<OutputFn<S>>,
+pub struct OutputOptions<'a, S: 'static> {
+    pub key: &'a str,
+    pub vm: &'a BatchExportVm,
+    pub output: Option<OutputFn<S>>,
 }
 
 impl<S: 'static> OutputOptions<'_, S> {
-    pub(crate) fn build(self, k: &Kit) -> El {
+    pub fn build(self, k: &Kit) -> El {
         let key = self.key;
         let mut single =
             RadioItem::new(t("batchExport.outputSingle"), self.vm.output_mode == OutputMode::Single);

@@ -46,32 +46,32 @@ const ADMISSION_BOUND_MS: i64 = 10_000;
 /// in the Rust port does not carry these fields yet).
 #[allow(dead_code)] // local VM; remove with the shared profile DTO.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TargetConnectionProfile {
-    pub(crate) connection_id: String,
-    pub(crate) enabled: bool,
-    pub(crate) config_revision: String,
+pub struct TargetConnectionProfile {
+    pub connection_id: String,
+    pub enabled: bool,
+    pub config_revision: String,
 }
 
 /// One entry of React's active-connection store, by dbSessionId.
 #[allow(dead_code)] // local VM; remove with the identity binding port.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ActiveConnectionEntry {
-    pub(crate) db_session_id: String,
-    pub(crate) connection_id: String,
-    pub(crate) current_database: Option<String>,
+pub struct ActiveConnectionEntry {
+    pub db_session_id: String,
+    pub connection_id: String,
+    pub current_database: Option<String>,
 }
 
 /// Typed stand-in for JS `ApiError`.
 #[allow(dead_code)] // stand-in; remove with a shared error DTO.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TargetApiError {
-    pub(crate) code: String,
-    pub(crate) message: String,
+pub struct TargetApiError {
+    pub code: String,
+    pub message: String,
 }
 
 #[allow(dead_code)] // constructors; remove with the stand-in.
 impl TargetApiError {
-    pub(crate) fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
@@ -82,15 +82,15 @@ impl TargetApiError {
 /// React's `getPlatformIdentity()` fields used by `metadataScopeKey`.
 #[allow(dead_code)] // local VM; remove when the DTO gains these fields.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct MetadataIdentity {
-    pub(crate) organization_id: String,
-    pub(crate) principal_id: String,
+pub struct MetadataIdentity {
+    pub organization_id: String,
+    pub principal_id: String,
 }
 
 /// The failure messages React throws verbatim.
 #[allow(dead_code)] // error mirror; remove with the target-command view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TargetCommandError {
+pub enum TargetCommandError {
     ProfileUnavailable,
     ProfileUnavailableForScope,
     MetadataOwnerUnavailable,
@@ -103,7 +103,7 @@ pub(crate) enum TargetCommandError {
 
 #[allow(dead_code)] // error mirror; remove with the target-command view.
 impl TargetCommandError {
-    pub(crate) fn message(&self) -> &str {
+    pub fn message(&self) -> &str {
         match self {
             Self::ProfileUnavailable => "Connection profile unavailable",
             Self::ProfileUnavailableForScope => "Metadata profile unavailable",
@@ -119,7 +119,7 @@ impl TargetCommandError {
 /// How the successful terminal view is turned into a return value.
 #[allow(dead_code)] // arg mirror; remove with the target-command view.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ResponseKind {
+pub enum ResponseKind {
     CommandResult,
     Rows,
     Completion,
@@ -128,7 +128,7 @@ pub(crate) enum ResponseKind {
 /// React `metadataTarget`: find the owner from an explicit connection id or
 /// the active-connection store, then normalize the namespace/object.
 #[allow(dead_code)] // helper; remove with the target-command view.
-pub(crate) fn metadata_target(
+pub fn metadata_target(
     db_session_id: &str,
     database: Option<&str>,
     schema: Option<&str>,
@@ -168,7 +168,7 @@ pub(crate) fn metadata_target(
 
 /// React `databaseDiscoveryTarget`: metadata target with a null namespace.
 #[allow(dead_code)] // helper; remove with the target-command view.
-pub(crate) fn database_discovery_target(
+pub fn database_discovery_target(
     db_session_id: &str,
     connection_id: Option<&str>,
     active: &[ActiveConnectionEntry],
@@ -180,7 +180,7 @@ pub(crate) fn database_discovery_target(
 
 /// The `get_table_schema` envelope used by `readTargetSchema`.
 #[allow(dead_code)] // helper; remove with the target-command view.
-pub(crate) fn schema_call(table: &str, database: &str, schema: Option<&str>) -> CommandCall {
+pub fn schema_call(table: &str, database: &str, schema: Option<&str>) -> CommandCall {
     CommandCall {
         command: "get_table_schema".to_owned(),
         input: serde_json::json!({
@@ -194,7 +194,7 @@ pub(crate) fn schema_call(table: &str, database: &str, schema: Option<&str>) -> 
 
 /// React `readTargetSchema`'s only validation of the returned payload.
 #[allow(dead_code)] // helper; remove with the target-command view.
-pub(crate) fn schema_from_result(data: Option<&Value>) -> Result<Value, TargetCommandError> {
+pub fn schema_from_result(data: Option<&Value>) -> Result<Value, TargetCommandError> {
     let value = data
         .and_then(|value| value.get("schema"))
         .filter(|schema| schema.get("columns").is_some_and(Value::is_array));
@@ -203,7 +203,7 @@ pub(crate) fn schema_from_result(data: Option<&Value>) -> Result<Value, TargetCo
 
 /// React `metadataScopeKey`: a stable JSON array of identity + profile facts.
 #[allow(dead_code)] // helper; remove with the target-command view.
-pub(crate) fn metadata_scope_key(
+pub fn metadata_scope_key(
     backend_id: &str,
     identity: &MetadataIdentity,
     profile: &TargetConnectionProfile,
@@ -224,17 +224,17 @@ pub(crate) fn metadata_scope_key(
 /// The admission request, built from the profile and submission token.
 #[allow(dead_code)] // request mirror; remove with the target-command view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TargetExecutionRequest {
-    pub(crate) target: ExecutionTarget,
-    pub(crate) expected_config_revision: String,
-    pub(crate) call: CommandCall,
-    pub(crate) idempotency_key: String,
+pub struct TargetExecutionRequest {
+    pub target: ExecutionTarget,
+    pub expected_config_revision: String,
+    pub call: CommandCall,
+    pub idempotency_key: String,
 }
 
 /// Work the host performs to drive a target command.
 #[allow(dead_code)] // emitted work; remove with the target-command view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum TargetCommandEffect {
+pub enum TargetCommandEffect {
     ListConnections,
     IssueToken,
     ExecuteAtTarget { request: TargetExecutionRequest },
@@ -245,7 +245,7 @@ pub(crate) enum TargetCommandEffect {
 /// Host answers fed back into [`TargetRun::step`].
 #[allow(dead_code)] // result feed; remove with the target-command view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum TargetCommandInput {
+pub enum TargetCommandInput {
     Profiles(Vec<TargetConnectionProfile>),
     Token(SubmissionToken),
     /// `now_ms` is the host clock, used only for the 10s admission bound.
@@ -262,7 +262,7 @@ pub(crate) enum TargetCommandInput {
 
 #[allow(dead_code)] // result mirror; remove with the target-command view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum TargetCommandOutcome {
+pub enum TargetCommandOutcome {
     Value(Value),
     Completed,
     Failed(TargetCommandError),
@@ -270,10 +270,10 @@ pub(crate) enum TargetCommandOutcome {
 
 #[allow(dead_code)] // step result; remove with the target-command view.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TargetCommandStep {
-    pub(crate) effects: Vec<TargetCommandEffect>,
-    pub(crate) phases: Vec<&'static str>,
-    pub(crate) outcome: Option<TargetCommandOutcome>,
+pub struct TargetCommandStep {
+    pub effects: Vec<TargetCommandEffect>,
+    pub phases: Vec<&'static str>,
+    pub outcome: Option<TargetCommandOutcome>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -287,7 +287,7 @@ enum RunPhase {
 
 /// The target-command flow as an explicit machine.
 #[allow(dead_code)] // consumer: the target-command view; remove when it lands.
-pub(crate) struct TargetRun {
+pub struct TargetRun {
     target: ExecutionTarget,
     call: CommandCall,
     response_kind: ResponseKind,
@@ -299,7 +299,7 @@ pub(crate) struct TargetRun {
 
 #[allow(dead_code)] // consumer: the target-command view; remove when it lands.
 impl TargetRun {
-    pub(crate) fn new(
+    pub fn new(
         target: ExecutionTarget,
         call: CommandCall,
         response_kind: ResponseKind,
@@ -324,7 +324,7 @@ impl TargetRun {
         (run, step)
     }
 
-    pub(crate) fn phase(&self) -> &'static str {
+    pub fn phase(&self) -> &'static str {
         match self.phase {
             RunPhase::Profiles => "profiles",
             RunPhase::Token => "submission-token",
@@ -334,7 +334,7 @@ impl TargetRun {
         }
     }
 
-    pub(crate) fn step(&mut self, input: TargetCommandInput) -> TargetCommandStep {
+    pub fn step(&mut self, input: TargetCommandInput) -> TargetCommandStep {
         match (self.phase, input) {
             (RunPhase::Profiles, TargetCommandInput::Profiles(profiles)) => {
                 let Some(profile) = profiles

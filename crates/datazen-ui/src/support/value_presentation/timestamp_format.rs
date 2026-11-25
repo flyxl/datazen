@@ -58,7 +58,7 @@ use crate::support::value_presentation::temporal_math::{
 
 /// The three output formats (React `TimestampOutputFormat`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TimestampOutputFormat {
+pub enum TimestampOutputFormat {
     Iso,
     IsoTz,
     Locale,
@@ -68,7 +68,7 @@ pub(crate) enum TimestampOutputFormat {
 /// React's persisted one (`{"kind":"iana","name":"Asia/Shanghai"}`).
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub(crate) enum TimeZoneSpec {
+pub enum TimeZoneSpec {
     Utc,
     Local,
     Iana { name: String },
@@ -76,13 +76,13 @@ pub(crate) enum TimeZoneSpec {
 
 /// `formatTimestampOutput` options (React `TimestampFormatOptions`).
 #[derive(Clone, Debug)]
-pub(crate) struct TimestampFormatOptions<'a> {
-    pub(crate) format: TimestampOutputFormat,
-    pub(crate) display_time_zone: &'a TimeZoneSpec,
-    pub(crate) locale: &'a str,
+pub struct TimestampFormatOptions<'a> {
+    pub format: TimestampOutputFormat,
+    pub display_time_zone: &'a TimeZoneSpec,
+    pub locale: &'a str,
 }
 
-pub(crate) type TimestampFormatResult = Result<String, TemporalFormatError>;
+pub type TimestampFormatResult = Result<String, TemporalFormatError>;
 
 // ---------------------------------------------------------------------------
 // Zone-name validation and resolution
@@ -92,7 +92,7 @@ pub(crate) type TimestampFormatResult = Result<String, TemporalFormatError>;
 /// charset, length cap). Full validity (does the zone exist) is delegated
 /// to the Intl-side check ([`is_valid_time_zone_name`]) at format time —
 /// lowercase passes here, exactly like React.
-pub(crate) fn is_valid_iana_time_zone_name(name: &str) -> bool {
+pub fn is_valid_iana_time_zone_name(name: &str) -> bool {
     if name.is_empty() || name.len() > 100 {
         return false;
     }
@@ -114,7 +114,7 @@ fn local_time_zone_name() -> String {
 /// TimeZoneSpec → a zone name usable by the conversion layer. `iana` only
 /// passes the format check here (React's contract: full validation happens
 /// at format time).
-pub(crate) fn resolve_time_zone_name(spec: &TimeZoneSpec) -> Result<String, TemporalFormatError> {
+pub fn resolve_time_zone_name(spec: &TimeZoneSpec) -> Result<String, TemporalFormatError> {
     match spec {
         TimeZoneSpec::Utc => Ok("UTC".to_string()),
         TimeZoneSpec::Local => Ok(local_time_zone_name()),
@@ -395,7 +395,7 @@ fn format_locale(
 /// Format an instant per the configuration. DST day-crossings, negative
 /// offsets and non-whole-minute offsets all come out of
 /// [`instant_to_wall_parts`]'s actual-offset calculation.
-pub(crate) fn format_timestamp_output(
+pub fn format_timestamp_output(
     instant: &InstantParts,
     opts: &TimestampFormatOptions<'_>,
 ) -> TimestampFormatResult {

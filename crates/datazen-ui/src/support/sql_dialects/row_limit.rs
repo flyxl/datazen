@@ -11,7 +11,7 @@
 use super::strategy::{RowLimitPlacement, SqlDialectStrategy};
 
 /// The standard cap: `LIMIT n` at the end of the statement.
-pub(crate) const LIMIT_ROW_LIMIT: super::strategy::RowLimitShape =
+pub const LIMIT_ROW_LIMIT: super::strategy::RowLimitShape =
     super::strategy::RowLimitShape {
         placement: RowLimitPlacement::Trailing,
         clause: limit_clause,
@@ -23,7 +23,7 @@ fn limit_clause(limit: usize) -> String {
 }
 
 /// The parts of a statement the row cap is woven into.
-pub(crate) struct RowLimitedSelectParts<'a> {
+pub struct RowLimitedSelectParts<'a> {
     /// Whether the statement selects distinct values.
     pub distinct: bool,
     /// The already-quoted column list.
@@ -39,7 +39,7 @@ pub(crate) struct RowLimitedSelectParts<'a> {
 /// "no dialect known", which falls back to the standard `LIMIT n` —
 /// the shape every dialect that has not declared a cap of its own
 /// accepts.
-pub(crate) fn build_row_limited_select(
+pub fn build_row_limited_select(
     strategy: Option<&SqlDialectStrategy>,
     parts: &RowLimitedSelectParts<'_>,
 ) -> String {

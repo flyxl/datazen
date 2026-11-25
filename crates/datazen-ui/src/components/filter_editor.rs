@@ -93,7 +93,7 @@ use crate::ui::kit::kit;
 /// A column the filter editor can filter on (`components/filter/types.ts`):
 /// the name plus the driver's type string, which decides the operators.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FilterColumn {
+pub struct FilterColumn {
     pub name: String,
     /// The driver's type string; unknown types fall back to the text
     /// operators.
@@ -103,7 +103,7 @@ pub(crate) struct FilterColumn {
 /// The pane the panel shows (`FilterPanelMode`): the structured editor,
 /// Any Column, or Raw SQL.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FilterPanelMode {
+pub enum FilterPanelMode {
     Structured,
     AnyColumn,
     RawSql,
@@ -111,7 +111,7 @@ pub(crate) enum FilterPanelMode {
 
 impl FilterPanelMode {
     /// The tab's key id (`filter-mode-{value}`).
-    pub(crate) fn id(self) -> &'static str {
+    pub fn id(self) -> &'static str {
         match self {
             FilterPanelMode::Structured => "structured",
             FilterPanelMode::AnyColumn => "anyColumn",
@@ -123,7 +123,7 @@ impl FilterPanelMode {
 /// `SHARED_FILTER_OPERATORS` (`types/filters.ts:38`): the operators the
 /// host renders itself — the existing ten plus the nine shared
 /// extensions. The default whitelist of a driver.
-pub(crate) const SHARED_FILTER_OPERATORS: &[&str] = &[
+pub const SHARED_FILTER_OPERATORS: &[&str] = &[
     "eq",
     "ne",
     "gt",
@@ -166,7 +166,7 @@ fn operators_by_cell_type(cell_type: CellType) -> &'static [&'static str] {
 /// `defaultOperatorForColumn` (`lib/filterOperators.ts:343`): the
 /// operator a new condition on the column starts with — `eq` when the
 /// column can take it, the first operator otherwise.
-pub(crate) fn default_operator_for_column(
+pub fn default_operator_for_column(
     data_type: Option<&str>,
     hints: Option<&CellTypeHints>,
 ) -> &'static str {
@@ -194,7 +194,7 @@ fn filter_editor_empty_state() -> &'static FilterEditorState {
 /// Incomplete rows would expand through T056; the record is what its
 /// swap reads.
 #[derive(Debug, Default)]
-pub(crate) struct FilterEditorState {
+pub struct FilterEditorState {
     /// React's `editingIndex`: the condition shown as full inputs (the
     /// chip's edit action sets it; Apply clears it).
     pub editing_index: Option<usize>,
@@ -207,7 +207,7 @@ pub(crate) struct FilterEditorState {
 /// The filter editor. Build it with the props, the host state (for the
 /// editing row), and the callbacks; `build` returns `None` for React's
 /// null return.
-pub(crate) struct FilterEditor<'a, S: 'static> {
+pub struct FilterEditor<'a, S: 'static> {
     columns: &'a [FilterColumn],
     supported_operators: Option<&'a [&'static str]>,
     cell_type_hints: Option<&'a CellTypeHints>,
@@ -245,7 +245,7 @@ pub(crate) struct FilterEditor<'a, S: 'static> {
 impl<'a, S: 'static> FilterEditor<'a, S> {
     /// The editor over the caller's props: the columns, the applied and
     /// draft lists, the open flag, and the DBR-04 inputs.
-    pub(crate) fn new(
+    pub fn new(
         columns: &'a [FilterColumn],
         applied_filters: &'a [FilterCondition],
         applied_logic: FilterConnector,
@@ -305,13 +305,13 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
     }
 
     /// The host state carrying the expanded row and the draft fields.
-    pub(crate) fn host_state(mut self, state: &'a FilterEditorState) -> Self {
+    pub fn host_state(mut self, state: &'a FilterEditorState) -> Self {
         self.state = Some(state);
         self
     }
 
     /// The state accessor, so the chip's edit action records the row.
-    pub(crate) fn host_mut(
+    pub fn host_mut(
         mut self,
         f: impl Fn(&mut S) -> &mut FilterEditorState + 'static,
     ) -> Self {
@@ -319,17 +319,17 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
         self
     }
 
-    pub(crate) fn loading(mut self, loading: bool) -> Self {
+    pub fn loading(mut self, loading: bool) -> Self {
         self.loading = loading;
         self
     }
 
-    pub(crate) fn apply_error(mut self, error: Option<&'a str>) -> Self {
+    pub fn apply_error(mut self, error: Option<&'a str>) -> Self {
         self.apply_error = error;
         self
     }
 
-    pub(crate) fn mode(mut self, mode: FilterPanelMode) -> Self {
+    pub fn mode(mut self, mode: FilterPanelMode) -> Self {
         self.mode = mode;
         self
     }
@@ -338,36 +338,36 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
     /// `None` keeps the shared set. The grid shell (T163) threads the
     /// driver's declaration through, exactly as React's `filterOperators`
     /// prop does.
-    pub(crate) fn supported_operators(mut self, operators: &'a [&'static str]) -> Self {
+    pub fn supported_operators(mut self, operators: &'a [&'static str]) -> Self {
         self.supported_operators = Some(operators);
         self
     }
 
-    pub(crate) fn raw_where_supported(mut self, supported: bool) -> Self {
+    pub fn raw_where_supported(mut self, supported: bool) -> Self {
         self.raw_where_supported = supported;
         self
     }
 
     /// The Any Column scope counts (the draft itself lives in
     /// [`FilterEditorState::any_column_edit`]).
-    pub(crate) fn any_column(mut self, searchable: usize, skipped: usize) -> Self {
+    pub fn any_column(mut self, searchable: usize, skipped: usize) -> Self {
         self.any_column_searchable_count = searchable;
         self.any_column_skipped_count = skipped;
         self
     }
 
-    pub(crate) fn raw_where(mut self, applied: Option<&'a str>, context: Option<&'a str>) -> Self {
+    pub fn raw_where(mut self, applied: Option<&'a str>, context: Option<&'a str>) -> Self {
         self.applied_raw_where = applied;
         self.raw_where_context = context;
         self
     }
 
-    pub(crate) fn cell_type_hints(mut self, hints: Option<&'a CellTypeHints>) -> Self {
+    pub fn cell_type_hints(mut self, hints: Option<&'a CellTypeHints>) -> Self {
         self.cell_type_hints = hints;
         self
     }
 
-    pub(crate) fn on_open_change(
+    pub fn on_open_change(
         mut self,
         f: impl Fn(&mut S, bool) + 'static,
     ) -> Self {
@@ -375,7 +375,7 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
         self
     }
 
-    pub(crate) fn on_logic_change(
+    pub fn on_logic_change(
         mut self,
         f: impl Fn(&mut S, FilterConnector) + 'static,
     ) -> Self {
@@ -384,7 +384,7 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
     }
 
     /// React's `onChange(index, next)`.
-    pub(crate) fn on_change(
+    pub fn on_change(
         mut self,
         f: impl Fn(&mut S, usize, FilterCondition) + 'static,
     ) -> Self {
@@ -392,27 +392,27 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
         self
     }
 
-    pub(crate) fn on_add(mut self, f: impl Fn(&mut S, FilterCondition) + 'static) -> Self {
+    pub fn on_add(mut self, f: impl Fn(&mut S, FilterCondition) + 'static) -> Self {
         self.on_add = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_remove(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_remove(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_remove = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_apply(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_apply(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_apply = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_mode_change(
+    pub fn on_mode_change(
         mut self,
         f: impl Fn(&mut S, FilterPanelMode) + 'static,
     ) -> Self {
@@ -420,7 +420,7 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
         self
     }
 
-    pub(crate) fn on_any_column_value_change(
+    pub fn on_any_column_value_change(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -428,7 +428,7 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
         self
     }
 
-    pub(crate) fn on_apply_any_column(
+    pub fn on_apply_any_column(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -436,7 +436,7 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
         self
     }
 
-    pub(crate) fn on_raw_where_value_change(
+    pub fn on_raw_where_value_change(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -444,7 +444,7 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
         self
     }
 
-    pub(crate) fn on_apply_raw_where(
+    pub fn on_apply_raw_where(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -452,12 +452,12 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
         self
     }
 
-    pub(crate) fn on_preview_sql(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_preview_sql(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_preview_sql = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_export_filtered(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_export_filtered(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_export_filtered = Some(Rc::new(f));
         self
     }
@@ -492,7 +492,7 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
 
     /// The first condition that cannot be sent to the database — it is
     /// marked in the list and it blocks Apply.
-    pub(crate) fn incomplete(&self) -> Option<&FilterCondition> {
+    pub fn incomplete(&self) -> Option<&FilterCondition> {
         self.draft_filters.iter().find(|f| !is_complete_filter(f))
     }
 
@@ -508,7 +508,7 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
     /// The collapsed summary: the raw predicate summary, the no-active
     /// placeholder, or the conditions joined with the connector actually
     /// in effect for each.
-    pub(crate) fn summary_text(&self) -> String {
+    pub fn summary_text(&self) -> String {
         let applied_count = self.applied_filters.len();
         if self.raw_applied() && applied_count == 0 {
             return t("filter.rawAppliedSummary")
@@ -559,7 +559,7 @@ impl<'a, S: 'static> FilterEditor<'a, S> {
 
     /// The editor, or `None` when closed with nothing applied, drafted,
     /// or raw-applied (React's null return).
-    pub(crate) fn build(self, dark: bool) -> Option<El> {
+    pub fn build(self, dark: bool) -> Option<El> {
         if !self.open
             && self.applied_filters.is_empty()
             && self.draft_filters.is_empty()

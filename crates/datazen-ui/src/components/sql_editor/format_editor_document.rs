@@ -39,7 +39,7 @@
 /// React `SqlFormatOptions` (the four configurable knobs;
 /// `SettingsSqlFormatOptions` on the wire).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SqlFormatOptionsVm {
+pub struct SqlFormatOptionsVm {
     /// `'upper' | 'lower' | 'preserve'`.
     pub keyword_case: KeywordCase,
     /// `'2spaces' | '4spaces' | 'tab'`.
@@ -50,7 +50,7 @@ pub(crate) struct SqlFormatOptionsVm {
 
 /// `keywordCase`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum KeywordCase {
+pub enum KeywordCase {
     Upper,
     Lower,
     Preserve,
@@ -58,14 +58,14 @@ pub(crate) enum KeywordCase {
 
 /// `indentStyle`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum IndentStyle {
+pub enum IndentStyle {
     TwoSpaces,
     FourSpaces,
     Tab,
 }
 
 /// React `DEFAULT_SQL_FORMAT_OPTIONS` (`Object.freeze`).
-pub(crate) const DEFAULT_SQL_FORMAT_OPTIONS: SqlFormatOptionsVm = SqlFormatOptionsVm {
+pub const DEFAULT_SQL_FORMAT_OPTIONS: SqlFormatOptionsVm = SqlFormatOptionsVm {
     keyword_case: KeywordCase::Upper,
     indent_style: IndentStyle::TwoSpaces,
     break_before_boolean_operators: true,
@@ -75,7 +75,7 @@ pub(crate) const DEFAULT_SQL_FORMAT_OPTIONS: SqlFormatOptionsVm = SqlFormatOptio
 /// The `options?` partial overlay (React `{...defaults, ...options}`;
 /// `None` keeps the default).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PartialSqlFormatOptions {
+pub struct PartialSqlFormatOptions {
     pub keyword_case: Option<KeywordCase>,
     pub indent_style: Option<IndentStyle>,
     pub break_before_boolean_operators: Option<bool>,
@@ -84,7 +84,7 @@ pub(crate) struct PartialSqlFormatOptions {
 
 impl SqlFormatOptionsVm {
     /// The defaults overlaid with the caller's partial.
-    pub(crate) fn resolve(partial: PartialSqlFormatOptions) -> Self {
+    pub fn resolve(partial: PartialSqlFormatOptions) -> Self {
         Self {
             keyword_case: partial.keyword_case.unwrap_or(DEFAULT_SQL_FORMAT_OPTIONS.keyword_case),
             indent_style: partial.indent_style.unwrap_or(DEFAULT_SQL_FORMAT_OPTIONS.indent_style),
@@ -100,16 +100,16 @@ impl SqlFormatOptionsVm {
 
 /// The injected formatter seam (T615's `formatSql`): reject the input
 /// and the buffer stays untouched.
-pub(crate) type FormatSql<'a> =
+pub type FormatSql<'a> =
     &'a dyn Fn(&str, Option<&str>, &SqlFormatOptionsVm) -> Result<String, FormatRejection>;
 
 /// sql-formatter's throw, as a value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct FormatRejection;
+pub struct FormatRejection;
 
 /// The one `view.dispatch` the command decided on.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FormatEdit {
+pub struct FormatEdit {
     /// The replaced range.
     pub from: usize,
     pub to: usize,
@@ -124,7 +124,7 @@ pub(crate) struct FormatEdit {
 /// `formatEditorDocument`: format the selection when one exists,
 /// otherwise the whole document. `None` when there is nothing to format
 /// or the formatter rejects or changes nothing.
-pub(crate) fn format_editor_document(
+pub fn format_editor_document(
     doc: &str,
     sel_from: usize,
     sel_to: usize,

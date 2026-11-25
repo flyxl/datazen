@@ -47,20 +47,20 @@ use crate::table_data_grid_selection::{
 
 /// `DATA_TABLE_ROW_HEIGHT` from `rowHeight.ts` (T414 owns the module; the
 /// shell keeps the same number so the two agree until it lands).
-pub(crate) const DATA_TABLE_ROW_HEIGHT: f32 = 28.0;
+pub const DATA_TABLE_ROW_HEIGHT: f32 = 28.0;
 
 /// React's `exportInitialScope`: the scope the export dialog opens with
 /// (DB-15). `None` is React's `undefined` — the dialog's own default (the
 /// page scope).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExportInitialScope {
+pub enum ExportInitialScope {
     CurrentPage,
     FilteredTable,
 }
 
 impl ExportInitialScope {
     /// The dialog VM's scope value for this initial scope.
-    pub(crate) fn to_export_scope(self) -> ExportScope {
+    pub fn to_export_scope(self) -> ExportScope {
         match self {
             ExportInitialScope::CurrentPage => ExportScope::CurrentPage,
             ExportInitialScope::FilteredTable => ExportScope::FilteredTable,
@@ -71,30 +71,30 @@ impl ExportInitialScope {
 /// The shell's local state — React's three `useState` and the signal
 /// counter, all host-owned so callbacks in `S` can write them.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct DataTableVm {
+pub struct DataTableVm {
     /// React `exportOpen`.
-    pub(crate) export_open: bool,
+    pub export_open: bool,
     /// React `exportInitialScope` (`undefined` ⇒ `None`).
-    pub(crate) export_initial_scope: Option<ExportInitialScope>,
+    pub export_initial_scope: Option<ExportInitialScope>,
     /// React `signalSeenRef.current`: the last `exportOpenSignal` value the
     /// shell already opened on. A replayed old value never re-opens.
-    pub(crate) signal_seen: u32,
+    pub signal_seen: u32,
     /// React `presentationColumn` — the column whose presentation dialog is
     /// up (`null` ⇒ none).
-    pub(crate) presentation_column: Option<String>,
+    pub presentation_column: Option<String>,
 }
 
 impl DataTableVm {
     /// React's `handleExport` / the toolbar export button: open the dialog
     /// the way it always opened (no filtered preselect).
-    pub(crate) fn open_export_plain(&mut self) {
+    pub fn open_export_plain(&mut self) {
         self.export_initial_scope = None;
         self.export_open = true;
     }
 
     /// The filter panel's "Export…" exit (DB-15): open with "current filter
     /// results" preselected.
-    pub(crate) fn open_export_filtered(&mut self) {
+    pub fn open_export_filtered(&mut self) {
         self.export_initial_scope = Some(ExportInitialScope::FilteredTable);
         self.export_open = true;
     }
@@ -106,24 +106,24 @@ impl DataTableVm {
 /// struct wherever they like and hand the view an accessor closure; the
 /// shell never opens or closes one half without the other.
 #[derive(Debug, Default)]
-pub(crate) struct DataTableShellState {
+pub struct DataTableShellState {
     /// React's `exportOpen` / `exportInitialScope` / `presentationColumn`.
-    pub(crate) vm: DataTableVm,
+    pub vm: DataTableVm,
     /// The export dialog's own host VM (`DataExportVm`), owned here so the
     /// `open` / `open_epoch` / `initial_scope` triplet moves with the flags.
-    pub(crate) export: DataExportVm,
+    pub export: DataExportVm,
 }
 
 impl DataTableShellState {
     /// React's initial state: no dialog, no signal seen.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 }
 
 /// Open the export dialog coherently: the shell's flags and the host's
 /// dialog VM move together (see the module doc's contract).
-pub(crate) fn open_export_dialog(
+pub fn open_export_dialog(
     vm: &mut DataTableVm,
     export_vm: Option<&mut DataExportVm>,
     scope: Option<ExportInitialScope>,
@@ -138,7 +138,7 @@ pub(crate) fn open_export_dialog(
 }
 
 /// Close it (the dialog's `onClose` / the scrim's press) — both halves again.
-pub(crate) fn close_export_dialog(vm: &mut DataTableVm, export_vm: Option<&mut DataExportVm>) {
+pub fn close_export_dialog(vm: &mut DataTableVm, export_vm: Option<&mut DataExportVm>) {
     vm.export_open = false;
     if let Some(dialog) = export_vm {
         dialog.open = false;
@@ -152,7 +152,7 @@ pub(crate) fn close_export_dialog(vm: &mut DataTableVm, export_vm: Option<&mut D
 ///
 /// Returns whether this call opened the dialog, so the state machine can be
 /// pinned without reading the flags back.
-pub(crate) fn apply_export_signal(
+pub fn apply_export_signal(
     vm: &mut DataTableVm,
     signal: Option<u32>,
     has_filtered_builder: bool,
@@ -173,7 +173,7 @@ pub(crate) fn apply_export_signal(
 
 /// React `exportEnabled`: a table name, at least one loaded row, and a
 /// capability that is not `none`.
-pub(crate) fn export_enabled(
+pub fn export_enabled(
     table_name: Option<&str>,
     rows_len: usize,
     capability: DataExportCapability,
@@ -182,7 +182,7 @@ pub(crate) fn export_enabled(
 }
 
 /// React `hasPagination` — the four inputs the pager needs, all present.
-pub(crate) fn has_pagination(
+pub fn has_pagination(
     page: Option<usize>,
     page_size: Option<usize>,
     total_rows: Option<u64>,
@@ -194,12 +194,12 @@ pub(crate) fn has_pagination(
 
 /// React `hasFilters` — the read-only bar: applied filters plus both
 /// callbacks.
-pub(crate) fn has_filter_bar(filters_len: usize, on_remove: bool, on_clear: bool) -> bool {
+pub fn has_filter_bar(filters_len: usize, on_remove: bool, on_clear: bool) -> bool {
     filters_len > 0 && on_remove && on_clear
 }
 
 /// React `hasFilterEditor` — the full editor: the six callbacks.
-pub(crate) fn has_filter_editor(
+pub fn has_filter_editor(
     on_add: bool,
     on_update: bool,
     on_remove: bool,
@@ -221,7 +221,7 @@ pub(crate) fn has_filter_editor(
 /// `None` when the cell-selection contract is off or the mode is not
 /// `cell` — React's `null`, which makes the delete path fall back to the
 /// row set.
-pub(crate) fn covered_rows(
+pub fn covered_rows(
     has_cell_selection: bool,
     selection: &GridSelection,
     selected_rows: &std::collections::HashSet<usize>,
@@ -240,7 +240,7 @@ pub(crate) fn covered_rows(
 
 /// React `coveredColumns`: how many columns the selection touches (0 when
 /// the contract is off — React's ternary).
-pub(crate) fn covered_columns(
+pub fn covered_columns(
     has_cell_selection: bool,
     selection: &GridSelection,
     column_order: &[&str],
@@ -252,7 +252,7 @@ pub(crate) fn covered_columns(
 }
 
 /// React `coveredCells`: how many cells the selection covers.
-pub(crate) fn covered_cells(
+pub fn covered_cells(
     has_cell_selection: bool,
     selection: &GridSelection,
     column_order: &[&str],
@@ -265,7 +265,7 @@ pub(crate) fn covered_cells(
 
 /// React `deleteRowIndices`: the covered rows in cell mode, else the row
 /// set — always sorted, because the back end deletes deterministically.
-pub(crate) fn delete_row_indices(
+pub fn delete_row_indices(
     covered: Option<&Vec<usize>>,
     selected_rows: &std::collections::HashSet<usize>,
 ) -> Vec<usize> {
@@ -280,7 +280,7 @@ pub(crate) fn delete_row_indices(
 }
 
 /// React `deleteRowCount` — the count the toolbar's confirmation shows.
-pub(crate) fn delete_row_count(
+pub fn delete_row_count(
     covered: Option<&Vec<usize>>,
     selected_rows_len: usize,
 ) -> usize {
@@ -294,7 +294,7 @@ pub(crate) fn delete_row_count(
 /// rows plus the header row plus the status row the overlays mount (when
 /// there is one), or exactly 1 when a caller-provided empty placeholder
 /// replaces the whole body.
-pub(crate) fn grid_row_count(has_placeholder: bool, rows_len: usize, loading: bool) -> usize {
+pub fn grid_row_count(has_placeholder: bool, rows_len: usize, loading: bool) -> usize {
     if has_placeholder {
         return 1;
     }
@@ -305,7 +305,7 @@ pub(crate) fn grid_row_count(has_placeholder: bool, rows_len: usize, loading: bo
 /// the sample the presentation dialog previews (`undefined` when the column
 /// is unknown or holds only nulls; the dialog falls back to its own anchor
 /// sample, exactly as React's does).
-pub(crate) fn presentation_sample<'a>(
+pub fn presentation_sample<'a>(
     rows: &'a [Vec<Value>],
     columns: &[Column],
     presentation_column: Option<&str>,
@@ -323,7 +323,7 @@ pub(crate) fn presentation_sample<'a>(
 /// measures the scroll element; the Rune runtime hands the surface its
 /// height, so the math (never the measuring) is what this keeps: a missing
 /// viewport is one row, a partial row is `max(1, floor)`.
-pub(crate) fn viewport_row_count(viewport_height: Option<f32>, row_height: f32) -> usize {
+pub fn viewport_row_count(viewport_height: Option<f32>, row_height: f32) -> usize {
     match viewport_height {
         Some(height) if row_height > 0.0 => {
             let rows = (height / row_height).floor() as usize;
@@ -335,7 +335,7 @@ pub(crate) fn viewport_row_count(viewport_height: Option<f32>, row_height: f32) 
 
 /// React `activeCell`: the keyboard cursor, falling back to the focused
 /// cell of a cell-mode selection when no cursor has moved yet.
-pub(crate) fn active_cell(
+pub fn active_cell(
     cursor: Option<&CellCoord>,
     selection: &GridSelection,
 ) -> Option<CellCoord> {
@@ -348,7 +348,7 @@ pub(crate) fn active_cell(
 
 /// The scroll surface's `aria-label` key: the grid role's label when the
 /// cell-selection contract is on, the plain table label otherwise.
-pub(crate) fn aria_grid_label_key(has_cell_selection: bool) -> &'static str {
+pub fn aria_grid_label_key(has_cell_selection: bool) -> &'static str {
     if has_cell_selection {
         "tableView.a11y.gridLabel"
     } else {

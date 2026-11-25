@@ -14,7 +14,7 @@ use crate::support::data_type_colors::DataTypeFamily;
 
 /// The normalised cell type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CellType {
+pub enum CellType {
     Text,
     Number,
     Bool,
@@ -30,7 +30,7 @@ pub(crate) enum CellType {
 
 /// How a rule pattern is compared with a type name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CellTypeMatch {
+pub enum CellTypeMatch {
     Exact,
     Prefix,
     Suffix,
@@ -41,7 +41,7 @@ pub(crate) enum CellTypeMatch {
 
 /// One rule in the ordered type table.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CellTypeRule {
+pub struct CellTypeRule {
     pub match_kind: CellTypeMatch,
     pub pattern: &'static str,
     pub cell_type: CellType,
@@ -50,7 +50,7 @@ pub(crate) struct CellTypeRule {
 /// Driver-supplied hints. Every field is optional in the React version; here
 /// an empty vector means "not declared".
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct CellTypeHints {
+pub struct CellTypeHints {
     pub overrides: Vec<CellTypeRule>,
     pub enum_types: Vec<String>,
     pub zoned_types: Vec<String>,
@@ -61,7 +61,7 @@ use CellType::{Bool, Bytes, Date, DateTime, Enum, Json, Number, Text, Time, Unkn
 use CellTypeMatch::{Exact, Prefix, Substring, Suffix, Token, TokenPrefix};
 
 /// The shared default table, in evaluation order.
-pub(crate) const DEFAULT_CELL_TYPE_RULES: &[CellTypeRule] = &[
+pub const DEFAULT_CELL_TYPE_RULES: &[CellTypeRule] = &[
     // Low-cardinality enumerations.
     CellTypeRule {
         match_kind: TokenPrefix,
@@ -445,13 +445,13 @@ const INTEGER_TYPE_TOKENS: &[&str] = &[
 ];
 
 /// Lower-case, trimmed type name.
-pub(crate) fn normalize_type_name(data_type: Option<&str>) -> String {
+pub fn normalize_type_name(data_type: Option<&str>) -> String {
     data_type.unwrap_or("").trim().to_lowercase()
 }
 
 /// A token is a run of letters, digits and underscores; everything else is a
 /// separator. `int(11) unsigned` → `["int", "11", "unsigned"]`.
-pub(crate) fn tokenize_type_name(type_name: &str) -> Vec<String> {
+pub fn tokenize_type_name(type_name: &str) -> Vec<String> {
     normalize_type_name(Some(type_name))
         .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
         .filter(|token| !token.is_empty())
@@ -460,7 +460,7 @@ pub(crate) fn tokenize_type_name(type_name: &str) -> Vec<String> {
 }
 
 /// Whether one rule matches a type name.
-pub(crate) fn match_cell_type_rule(type_name: &str, rule: &CellTypeRule) -> bool {
+pub fn match_cell_type_rule(type_name: &str, rule: &CellTypeRule) -> bool {
     let normalized = normalize_type_name(Some(type_name));
     let pattern = rule.pattern.to_ascii_lowercase();
     match rule.match_kind {
@@ -497,7 +497,7 @@ fn matches_hint_name(type_name: &str, name: &str) -> bool {
 ///
 /// Evaluation order: driver `overrides`, driver `enum_types`, the shared
 /// table, then `unknown`.
-pub(crate) fn resolve_cell_type(
+pub fn resolve_cell_type(
     data_type: Option<&str>,
     hints: Option<&CellTypeHints>,
 ) -> CellType {
@@ -527,7 +527,7 @@ pub(crate) fn resolve_cell_type(
 
 /// The render family of a cell type. `null` is a property of the value, not
 /// of the type, so it is unreachable here.
-pub(crate) fn cell_type_to_data_type_family(cell_type: CellType) -> DataTypeFamily {
+pub fn cell_type_to_data_type_family(cell_type: CellType) -> DataTypeFamily {
     match cell_type {
         Text => DataTypeFamily::Text,
         Number => DataTypeFamily::Number,
@@ -547,7 +547,7 @@ pub(crate) fn cell_type_to_data_type_family(cell_type: CellType) -> DataTypeFami
 /// [`is_zoned_cell_type_with_hints`]: this entry point cannot see
 /// `hints.zoned_types`. It remains for the audit's name-only checks and for
 /// sites that genuinely have no hints.
-pub(crate) fn is_zoned_cell_type(data_type: &str) -> bool {
+pub fn is_zoned_cell_type(data_type: &str) -> bool {
     let type_name = normalize_type_name(Some(data_type));
     if type_name.is_empty() {
         return false;
@@ -559,7 +559,7 @@ pub(crate) fn is_zoned_cell_type(data_type: &str) -> bool {
 
 /// Canonical zoned check: built-in names plus the driver's `zoned_types`.
 /// Prefer this over [`is_zoned_cell_type`] whenever hints are available.
-pub(crate) fn is_zoned_cell_type_with_hints(
+pub fn is_zoned_cell_type_with_hints(
     data_type: &str,
     hints: Option<&CellTypeHints>,
 ) -> bool {
@@ -579,7 +579,7 @@ pub(crate) fn is_zoned_cell_type_with_hints(
 
 /// Whether the driver declared this column type as not writable in place.
 /// Only the driver can answer this, so there is no shared default.
-pub(crate) fn is_read_only_cell_type(
+pub fn is_read_only_cell_type(
     data_type: Option<&str>,
     hints: Option<&CellTypeHints>,
 ) -> bool {
@@ -599,7 +599,7 @@ pub(crate) fn is_read_only_cell_type(
 
 /// Whether the column holds whole numbers. The answer comes from the type
 /// name because `CellType` folds integers and decimals into one `Number`.
-pub(crate) fn is_integer_cell_type(data_type: Option<&str>, hints: Option<&CellTypeHints>) -> bool {
+pub fn is_integer_cell_type(data_type: Option<&str>, hints: Option<&CellTypeHints>) -> bool {
     let type_name = normalize_type_name(data_type);
     if type_name.is_empty() {
         return false;

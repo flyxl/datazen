@@ -15,7 +15,7 @@ include!(concat!(env!("OUT_DIR"), "/i18n_zh.rs"));
 ///
 /// A few React packs intentionally map a key to the empty string (a status line
 /// with nothing to say yet); those come back empty, matching `t()` there.
-pub(crate) fn t(key: &str) -> &str {
+pub fn t(key: &str) -> &str {
     match lookup(key) {
         Some(text) => text,
         None => key,
@@ -23,12 +23,12 @@ pub(crate) fn t(key: &str) -> &str {
 }
 
 /// Whether `key` has a translation; useful for a parity test over used keys.
-pub(crate) fn has(key: &str) -> bool {
+pub fn has(key: &str) -> bool {
     lookup(key).is_some()
 }
 
 /// How many entries the generated table holds.
-pub(crate) fn len() -> usize {
+pub fn len() -> usize {
     ZH_CN.len()
 }
 

@@ -27,46 +27,46 @@ const MAX_PASTE_CELLS: &str = "100000";
 /// React `PasteSummary` (the fields this line reads).
 #[allow(dead_code)] // VM mirror; supplied by the clipboard host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PasteSummary {
-    pub(crate) cells: usize,
-    pub(crate) staged: usize,
-    pub(crate) skipped: usize,
-    pub(crate) overwritten_pending: usize,
-    pub(crate) rows: usize,
-    pub(crate) columns: usize,
-    pub(crate) cancelled: bool,
+pub struct PasteSummary {
+    pub cells: usize,
+    pub staged: usize,
+    pub skipped: usize,
+    pub overwritten_pending: usize,
+    pub rows: usize,
+    pub columns: usize,
+    pub cancelled: bool,
 }
 
 /// React `PasteProblem`.
 #[allow(dead_code)] // VM mirror; supplied by the clipboard host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct PasteProblem {
-    pub(crate) code: String,
-    pub(crate) row: Option<usize>,
-    pub(crate) column: Option<String>,
-    pub(crate) detail: Option<String>,
+pub struct PasteProblem {
+    pub code: String,
+    pub row: Option<usize>,
+    pub column: Option<String>,
+    pub detail: Option<String>,
 }
 
 /// Host-owned projection of `TableClipboardBridge` plus the feedback deadline.
 #[allow(dead_code)] // VM surface; owned by the table host.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TableClipboardStatusVm {
-    pub(crate) last_paste: Option<PasteSummary>,
-    pub(crate) problems: Vec<PasteProblem>,
+pub struct TableClipboardStatusVm {
+    pub last_paste: Option<PasteSummary>,
+    pub problems: Vec<PasteProblem>,
     /// Wall-clock deadline in seconds; `tick` clears the snapshot at expiry.
-    pub(crate) visible_until: Option<f64>,
-    pub(crate) now: f64,
+    pub visible_until: Option<f64>,
+    pub now: f64,
 }
 
 /// React `hasResult`: staged or skipped cells actually moved.
 #[allow(dead_code)] // pure helper; consumed by visibility and tests.
-pub(crate) fn has_result(vm: &TableClipboardStatusVm) -> bool {
+pub fn has_result(vm: &TableClipboardStatusVm) -> bool {
     vm.last_paste.as_ref().is_some_and(|paste| paste.staged > 0 || paste.skipped > 0)
 }
 
 /// React `visible`: a result, an overwritten-pending revert, or a problem.
 #[allow(dead_code)] // pure helper; consumed by the view and tests.
-pub(crate) fn visible(vm: &TableClipboardStatusVm) -> bool {
+pub fn visible(vm: &TableClipboardStatusVm) -> bool {
     let expired = vm.visible_until.is_some_and(|until| vm.now >= until);
     if expired {
         return false;
@@ -79,7 +79,7 @@ pub(crate) fn visible(vm: &TableClipboardStatusVm) -> bool {
 /// Host poll hook for the recorded deadline (React's host clears the bridge).
 /// Returns true when visible state changed.
 #[allow(dead_code)] // host hook; removed with the table wiring.
-pub(crate) fn tick(vm: &mut TableClipboardStatusVm, now: f64) -> bool {
+pub fn tick(vm: &mut TableClipboardStatusVm, now: f64) -> bool {
     vm.now = now;
     if vm.visible_until.is_some_and(|until| now >= until) {
         vm.visible_until = None;
@@ -92,7 +92,7 @@ pub(crate) fn tick(vm: &mut TableClipboardStatusVm, now: f64) -> bool {
 
 /// React `describePasteProblem`: exact locale keys, never pasted cell values.
 #[allow(dead_code)] // pure helper; consumed by the status line and tests.
-pub(crate) fn describe_problem(problem: &PasteProblem) -> String {
+pub fn describe_problem(problem: &PasteProblem) -> String {
     let detail = problem.detail.as_deref().unwrap_or("");
     match problem.code.as_str() {
         "grid.paste.empty" => t("dataTable.pasteEmpty").to_owned(),
@@ -142,7 +142,7 @@ pub(crate) fn describe_problem(problem: &PasteProblem) -> String {
 
 /// The message segments React renders, in order (no cell values repeated).
 #[allow(dead_code)] // pure helper; consumed by the line and tests.
-pub(crate) fn message_segments(vm: &TableClipboardStatusVm) -> Vec<String> {
+pub fn message_segments(vm: &TableClipboardStatusVm) -> Vec<String> {
     let mut segments = Vec::new();
     if let Some(paste) = vm.last_paste.as_ref() {
         if paste.staged > 0 || paste.skipped > 0 {
@@ -174,7 +174,7 @@ pub(crate) fn message_segments(vm: &TableClipboardStatusVm) -> Vec<String> {
 /// The host intents this line emits.
 #[allow(dead_code)] // host port; removed with the table wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum TableClipboardAction {
+pub enum TableClipboardAction {
     Dismiss,
 }
 
@@ -194,7 +194,7 @@ fn emit<S: 'static>(
 
 /// Build the one-line status plus the host-supplied confirm element.
 #[allow(dead_code)] // consumer: the table host (not landed).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &TableClipboardStatusVm,
     confirm_element: Option<El>,
     on_action: Option<ActionFn<S>>,

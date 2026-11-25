@@ -56,23 +56,23 @@
 //! Known deltas: none behavioural — every command name, payload key and
 //! normalization is the React file's verbatim.
 
-pub(crate) mod mcp;
-pub(crate) mod wire;
-pub(crate) mod workflow;
+pub mod mcp;
+pub mod wire;
+pub mod workflow;
 
-pub(crate) use mcp::*;
-pub(crate) use wire::{
+pub use mcp::*;
+pub use wire::{
     AiRequest, CHAT_COMMAND, GENERATE_SQL_COMMAND, PromptInfo, PromptOverrideEntry,
     PromptScenario, PromptSource, StreamChunkPayload, StreamErrorPayload, StreamUsage,
 };
-pub(crate) use workflow::{
+pub use workflow::{
     WorkflowMethod, save_workflow_yaml_request, with_submission_token, workflow_get_dir_request,
 };
 
 /// `onAiStreamChunk`'s channel (`requirePlatform().events.listenCrossWindow`).
-pub(crate) const AI_STREAM_CHUNK_CHANNEL: &str = "ai:stream-chunk";
+pub const AI_STREAM_CHUNK_CHANNEL: &str = "ai:stream-chunk";
 /// `onAiStreamError`'s channel.
-pub(crate) const AI_STREAM_ERROR_CHANNEL: &str = "ai:stream-error";
+pub const AI_STREAM_ERROR_CHANNEL: &str = "ai:stream-error";
 /// `onAiConfigChanged`'s channel (the payload is the bare `isConfigured`
 /// boolean).
-pub(crate) const AI_CONFIG_CHANGED_CHANNEL: &str = "ai:config-changed";
+pub const AI_CONFIG_CHANGED_CHANNEL: &str = "ai:config-changed";

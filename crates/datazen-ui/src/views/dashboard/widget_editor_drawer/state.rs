@@ -25,7 +25,7 @@ use super::refresh::{
 /// React `AlertOperator` (`'>' | '>=' | '<' | '<=' | '==' | '!=').
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum AlertOperatorVm {
+pub enum AlertOperatorVm {
     Gt,
     Gte,
     Lt,
@@ -37,7 +37,7 @@ pub(crate) enum AlertOperatorVm {
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl AlertOperatorVm {
     /// The wire spelling (also the select's label, React's `ALERT_OPS`).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Gt => ">",
             Self::Gte => ">=",
@@ -50,7 +50,7 @@ impl AlertOperatorVm {
 
     /// Parse the wire spelling; unknown values fall back to React's default
     /// (`>`).
-    pub(crate) fn from_str(value: &str) -> Self {
+    pub fn from_str(value: &str) -> Self {
         match value {
             ">=" => Self::Gte,
             "<" => Self::Lt,
@@ -66,28 +66,28 @@ impl AlertOperatorVm {
 /// writes `column`).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AlertMetricVm {
+pub struct AlertMetricVm {
     /// `'column' | 'aggregation'` (the wire spelling).
-    pub(crate) kind: String,
-    pub(crate) column: String,
+    pub kind: String,
+    pub column: String,
     /// `'last' | 'max' | 'min' | 'avg' | 'sum'` (`None` is React's `undefined`).
-    pub(crate) agg: Option<String>,
+    pub agg: Option<String>,
 }
 
 /// React `AlertRule`; `cooldownSec` / `channels` ride along unedited.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct AlertRuleVm {
-    pub(crate) metric: AlertMetricVm,
-    pub(crate) op: AlertOperatorVm,
-    pub(crate) threshold: f64,
-    pub(crate) cooldown_sec: u32,
-    pub(crate) channels: Vec<String>,
+pub struct AlertRuleVm {
+    pub metric: AlertMetricVm,
+    pub op: AlertOperatorVm,
+    pub threshold: f64,
+    pub cooldown_sec: u32,
+    pub channels: Vec<String>,
 }
 
 /// React's `DEFAULT_ALERT`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn default_alert() -> AlertRuleVm {
+pub fn default_alert() -> AlertRuleVm {
     AlertRuleVm {
         metric: AlertMetricVm {
             kind: "column".to_owned(),
@@ -107,23 +107,23 @@ pub(crate) fn default_alert() -> AlertRuleVm {
 /// converts) and the draft's.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WidgetDraftVm {
-    pub(crate) id: String,
-    pub(crate) title: String,
-    pub(crate) workflow_id: String,
-    pub(crate) view_mode: TileViewMode,
-    pub(crate) chart_config: Option<ChartConfig>,
-    pub(crate) layout: WidgetLayoutVm,
-    pub(crate) refresh: RefreshPolicyVm,
-    pub(crate) enabled: bool,
-    pub(crate) alert: Option<AlertRuleVm>,
+pub struct WidgetDraftVm {
+    pub id: String,
+    pub title: String,
+    pub workflow_id: String,
+    pub view_mode: TileViewMode,
+    pub chart_config: Option<ChartConfig>,
+    pub layout: WidgetLayoutVm,
+    pub refresh: RefreshPolicyVm,
+    pub enabled: bool,
+    pub alert: Option<AlertRuleVm>,
 }
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl WidgetDraftVm {
     /// From the panel's widget flavour (the host supplies the alert the
     /// panel does not carry).
-    pub(crate) fn from_panel(widget: &PanelWidgetVm, alert: Option<AlertRuleVm>) -> Self {
+    pub fn from_panel(widget: &PanelWidgetVm, alert: Option<AlertRuleVm>) -> Self {
         Self {
             id: widget.id.clone(),
             title: widget.title.clone(),
@@ -138,7 +138,7 @@ impl WidgetDraftVm {
     }
 
     /// Back to the panel's widget flavour (the alert travels beside it).
-    pub(crate) fn to_panel(&self) -> PanelWidgetVm {
+    pub fn to_panel(&self) -> PanelWidgetVm {
         PanelWidgetVm {
             id: self.id.clone(),
             title: self.title.clone(),
@@ -156,7 +156,7 @@ impl WidgetDraftVm {
 /// always passes its own draft, whose layout `nextWidgetLayout` placed).
 /// The `crypto.randomUUID()` id is the host's (`new_widget_id`).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn empty_draft(new_widget_id: &str) -> WidgetDraftVm {
+pub fn empty_draft(new_widget_id: &str) -> WidgetDraftVm {
     WidgetDraftVm {
         id: new_widget_id.to_owned(),
         title: String::new(),
@@ -177,7 +177,7 @@ pub(crate) fn empty_draft(new_widget_id: &str) -> WidgetDraftVm {
 /// The hidden-SQL drawer's seed when the prop is absent (React's inline
 /// default).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn default_hidden_sql() -> HiddenSqlVm {
+pub fn default_hidden_sql() -> HiddenSqlVm {
     HiddenSqlVm { connection_id: String::new(), sql: "SELECT 1 AS v".to_owned() }
 }
 
@@ -185,9 +185,9 @@ pub(crate) fn default_hidden_sql() -> HiddenSqlVm {
 /// SQL editor's `databaseType` is the host's seam-side lookup).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ConnectionOptionVm {
-    pub(crate) id: String,
-    pub(crate) name: String,
+pub struct ConnectionOptionVm {
+    pub id: String,
+    pub name: String,
 }
 
 /// `handleSave`'s payload: the normalized widget (trimmed title, clamped
@@ -195,10 +195,10 @@ pub(crate) struct ConnectionOptionVm {
 /// edits a hidden SQL widget.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct WidgetSaveVm {
-    pub(crate) widget: PanelWidgetVm,
-    pub(crate) alert: Option<AlertRuleVm>,
-    pub(crate) hidden_sql: Option<HiddenSqlVm>,
+pub struct WidgetSaveVm {
+    pub widget: PanelWidgetVm,
+    pub alert: Option<AlertRuleVm>,
+    pub hidden_sql: Option<HiddenSqlVm>,
 }
 
 /// Which of the drawer's listboxes is open (one at a time — React's
@@ -206,7 +206,7 @@ pub(crate) struct WidgetSaveVm {
 /// handler's job, reproduced by every `set_*` method below).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WidgetEditorSelect {
+pub enum WidgetEditorSelect {
     Connection,
     Workflow,
     RefreshPreset,
@@ -223,41 +223,41 @@ pub(crate) enum WidgetEditorSelect {
 /// the nested T146 card state — kept in the owning state `S`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug)]
-pub(crate) struct WidgetEditorDrawerState {
+pub struct WidgetEditorDrawerState {
     /// React's `open` prop; `false` builds nothing at all.
-    pub(crate) open: bool,
+    pub open: bool,
     /// React's `widget` prop at open — the effect's seed, the dirty guard's
     /// reference and the monitor card's id pair. `None` is React's `null`.
-    pub(crate) original: Option<WidgetDraftVm>,
+    pub original: Option<WidgetDraftVm>,
     /// React's `hiddenSql` prop at open; `None` when the drawer edits a
     /// workflow-bound widget ([`Self::hidden_mode`]).
-    pub(crate) original_hidden_sql: Option<HiddenSqlVm>,
+    pub original_hidden_sql: Option<HiddenSqlVm>,
     /// React's `isNew` prop.
-    pub(crate) is_new: bool,
+    pub is_new: bool,
     /// React's `dashboardId` prop, landed at open (the panel never switches
     /// boards under an open editor).
-    pub(crate) dashboard_id: Option<String>,
+    pub dashboard_id: Option<String>,
     /// React's `draft`.
-    pub(crate) draft: WidgetDraftVm,
+    pub draft: WidgetDraftVm,
     /// React's `hiddenSql`.
-    pub(crate) hidden_sql: HiddenSqlVm,
+    pub hidden_sql: HiddenSqlVm,
     /// React's `forceCustomRefresh`.
-    pub(crate) force_custom_refresh: bool,
+    pub force_custom_refresh: bool,
     // ---- the controlled inputs' TextEdits ----
-    pub(crate) title_edit: TextEdit,
+    pub title_edit: TextEdit,
     /// The read-only workflow field's display (seeded at open; the branch
     /// with no workflows cannot change the id).
-    pub(crate) workflow_readonly_edit: TextEdit,
-    pub(crate) interval_edit: TextEdit,
-    pub(crate) y_axes_edit: TextEdit,
-    pub(crate) alert_column_edit: TextEdit,
-    pub(crate) threshold_edit: TextEdit,
+    pub workflow_readonly_edit: TextEdit,
+    pub interval_edit: TextEdit,
+    pub y_axes_edit: TextEdit,
+    pub alert_column_edit: TextEdit,
+    pub threshold_edit: TextEdit,
     /// The one open listbox.
-    pub(crate) open_select: Option<WidgetEditorSelect>,
+    pub open_select: Option<WidgetEditorSelect>,
     /// The connection store's `connections` entry.
-    pub(crate) connections: Vec<ConnectionOptionVm>,
+    pub connections: Vec<ConnectionOptionVm>,
     /// The nested T146 card state.
-    pub(crate) monitor: MonitorScheduleAuthorizationState,
+    pub monitor: MonitorScheduleAuthorizationState,
 }
 
 impl Default for WidgetEditorDrawerState {
@@ -288,7 +288,7 @@ impl Default for WidgetEditorDrawerState {
 impl WidgetEditorDrawerState {
     /// Whether the drawer edits a hidden SQL widget (React's
     /// `hiddenSqlProp != null`).
-    pub(crate) fn hidden_mode(&self) -> bool {
+    pub fn hidden_mode(&self) -> bool {
         self.original_hidden_sql.is_some()
     }
 
@@ -297,7 +297,7 @@ impl WidgetEditorDrawerState {
     /// state's seed differs — a closed state, or a different widget /
     /// hidden-SQL pair (object identity in React; value equality here, the
     /// T146/T175 stance).
-    pub(crate) fn needs_resync(
+    pub fn needs_resync(
         &self,
         open: bool,
         widget: Option<&WidgetDraftVm>,
@@ -313,7 +313,7 @@ impl WidgetEditorDrawerState {
     /// connections and delivers them). `new_widget_id` is the
     /// `crypto.randomUUID()` of React's `emptyDraft()`, used only when
     /// `widget` is `None`.
-    pub(crate) fn begin_open(
+    pub fn begin_open(
         &mut self,
         widget: Option<&WidgetDraftVm>,
         hidden_sql: Option<&HiddenSqlVm>,
@@ -340,14 +340,14 @@ impl WidgetEditorDrawerState {
     /// The `open` prop turning false (header close, footer cancel — React's
     /// scrim has no handler). The drafts survive exactly as React's do; the
     /// next open's effect re-seeds them.
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.open = false;
         self.open_select = None;
     }
 
     /// The `fetchConnections` answer (the store's `connections` entry —
     /// token-free, like the subscription React reads).
-    pub(crate) fn deliver_connections(&mut self, connections: Vec<ConnectionOptionVm>) {
+    pub fn deliver_connections(&mut self, connections: Vec<ConnectionOptionVm>) {
         self.connections = connections;
     }
 
@@ -355,30 +355,30 @@ impl WidgetEditorDrawerState {
 
     /// The title input's `onChange` (run from the field's `on_change`, after
     /// the kit lands the text).
-    pub(crate) fn apply_title_text(&mut self) {
+    pub fn apply_title_text(&mut self) {
         self.draft.title = self.title_edit.text.clone();
     }
 
     /// The connection select's `onChange` (hidden-SQL mode).
-    pub(crate) fn set_hidden_connection(&mut self, id: &str) {
+    pub fn set_hidden_connection(&mut self, id: &str) {
         self.hidden_sql.connection_id = id.to_owned();
         self.open_select = None;
     }
 
     /// The SQL editor seam's text delivery (React's `SqlEditor onChange`).
-    pub(crate) fn set_hidden_sql(&mut self, sql: &str) {
+    pub fn set_hidden_sql(&mut self, sql: &str) {
         self.hidden_sql.sql = sql.to_owned();
     }
 
     /// The workflow select's `onChange`.
-    pub(crate) fn set_workflow(&mut self, id: &str) {
+    pub fn set_workflow(&mut self, id: &str) {
         self.draft.workflow_id = id.to_owned();
         self.open_select = None;
     }
 
     /// The refresh preset select's `onChange` — React's four literals plus
     /// the custom arm's clamp of the standing seconds.
-    pub(crate) fn set_refresh_preset(&mut self, preset: RefreshPreset) {
+    pub fn set_refresh_preset(&mut self, preset: RefreshPreset) {
         self.force_custom_refresh = preset == RefreshPreset::Custom;
         self.draft.refresh = match preset {
             RefreshPreset::Manual => {
@@ -409,7 +409,7 @@ impl WidgetEditorDrawerState {
     /// `refreshSec = clampRefreshSec(val * multiplier)`. The fractional
     /// tail a React number input can deliver truncates to the whole second
     /// (`RefreshPolicyVm`'s `u32`, T112's stance).
-    pub(crate) fn apply_interval_text(&mut self) {
+    pub fn apply_interval_text(&mut self) {
         let val = js_number_or_one(&self.interval_edit.text);
         let (unit, _) = self.derived_interval();
         let total = (val * unit.multiplier() as f64).max(MIN_REFRESH_SEC as f64) as u32;
@@ -422,7 +422,7 @@ impl WidgetEditorDrawerState {
     /// The unit select's `onChange`: the derived value re-based onto the
     /// new unit, clamped (45 seconds chosen as minutes clamps to 30, and
     /// both the field and the select re-derive — React's do too).
-    pub(crate) fn set_interval_unit(&mut self, unit: IntervalUnit) {
+    pub fn set_interval_unit(&mut self, unit: IntervalUnit) {
         let (_, value) = self.derived_interval();
         let total = clamp_refresh_sec(value.saturating_mul(unit.multiplier()));
         self.draft.refresh.refresh_sec = Some(total);
@@ -431,12 +431,12 @@ impl WidgetEditorDrawerState {
     }
 
     /// The enabled checkbox's `onChange`.
-    pub(crate) fn set_enabled(&mut self, enabled: bool) {
+    pub fn set_enabled(&mut self, enabled: bool) {
         self.draft.enabled = enabled;
     }
 
     /// The view-mode select's `onChange`.
-    pub(crate) fn set_view_mode(&mut self, mode: TileViewMode) {
+    pub fn set_view_mode(&mut self, mode: TileViewMode) {
         self.draft.view_mode = mode;
         self.open_select = None;
     }
@@ -444,7 +444,7 @@ impl WidgetEditorDrawerState {
     /// The chart-type select's `onChange` — over the standing config, or
     /// the default when the draft carries none (React's
     /// `d.chartConfig ?? DEFAULT_CHART_CONFIG`).
-    pub(crate) fn set_chart_type(&mut self, chart_type: ChartType) {
+    pub fn set_chart_type(&mut self, chart_type: ChartType) {
         let config = self.draft.chart_config.clone().unwrap_or_default();
         self.draft.chart_config = Some(ChartConfig { chart_type, ..config });
         self.open_select = None;
@@ -453,7 +453,7 @@ impl WidgetEditorDrawerState {
     /// The y-axes input's `onChange`: split on commas, trim, drop blanks —
     /// then the controlled value re-derives (`yAxes.join(', ')`), so a
     /// trailing comma vanishes as it is typed (React's does too).
-    pub(crate) fn apply_y_axes_text(&mut self) {
+    pub fn apply_y_axes_text(&mut self) {
         let axes: Vec<String> = self
             .y_axes_edit
             .text
@@ -470,7 +470,7 @@ impl WidgetEditorDrawerState {
 
     /// The alert checkbox's `onChange`: on keeps a standing rule or seeds
     /// `DEFAULT_ALERT`; off clears it.
-    pub(crate) fn set_alert_enabled(&mut self, enabled: bool) {
+    pub fn set_alert_enabled(&mut self, enabled: bool) {
         self.draft.alert = if enabled {
             Some(self.draft.alert.clone().unwrap_or_else(default_alert))
         } else {
@@ -481,14 +481,14 @@ impl WidgetEditorDrawerState {
 
     /// The alert column input's `onChange` (the metric's `kind` / `agg`
     /// ride along, as React's spread keeps them).
-    pub(crate) fn apply_alert_column_text(&mut self) {
+    pub fn apply_alert_column_text(&mut self) {
         if let Some(alert) = self.draft.alert.as_mut() {
             alert.metric.column = self.alert_column_edit.text.clone();
         }
     }
 
     /// The operator select's `onChange`.
-    pub(crate) fn set_alert_operator(&mut self, op: AlertOperatorVm) {
+    pub fn set_alert_operator(&mut self, op: AlertOperatorVm) {
         if let Some(alert) = self.draft.alert.as_mut() {
             alert.op = op;
         }
@@ -498,7 +498,7 @@ impl WidgetEditorDrawerState {
     /// The threshold input's `onChange`: JS `Number(text)` — blank text is
     /// 0, and the controlled value re-renders `String(threshold)` (a typed
     /// `3.` normalizes to `3`, React's does too).
-    pub(crate) fn apply_threshold_text(&mut self) {
+    pub fn apply_threshold_text(&mut self) {
         if let Some(alert) = self.draft.alert.as_mut() {
             let n = js_number(&self.threshold_edit.text).unwrap_or(0.0);
             alert.threshold = n;
@@ -512,25 +512,25 @@ impl WidgetEditorDrawerState {
     // ---- listbox plumbing ----
 
     /// A select trigger's press: flip the one open listbox.
-    pub(crate) fn toggle_select(&mut self, which: WidgetEditorSelect) {
+    pub fn toggle_select(&mut self, which: WidgetEditorSelect) {
         self.open_select = if self.open_select == Some(which) { None } else { Some(which) };
     }
 
     /// Outside press / Escape while a listbox is open.
-    pub(crate) fn close_select(&mut self) {
+    pub fn close_select(&mut self) {
         self.open_select = None;
     }
 
     // ---- derivations ----
 
     /// The interval pair the value field and the unit select display.
-    pub(crate) fn derived_interval(&self) -> (IntervalUnit, u32) {
+    pub fn derived_interval(&self) -> (IntervalUnit, u32) {
         sec_to_unit_and_value(self.draft.refresh.refresh_sec.unwrap_or(MIN_REFRESH_SEC))
     }
 
     /// Whether the interval row is mounted: interval mode and (the custom
     /// flag or a non-preset seconds value) — React's gate verbatim.
-    pub(crate) fn interval_row_visible(&self) -> bool {
+    pub fn interval_row_visible(&self) -> bool {
         matches!(self.draft.refresh.mode, RefreshModeVm::Interval)
             && (self.force_custom_refresh
                 || refresh_policy_to_preset(
@@ -542,7 +542,7 @@ impl WidgetEditorDrawerState {
     /// The monitor card's mount gate: `dashboardId && widget && !isNew &&
     /// widget.refresh.mode === 'interval'` — the **saved** widget's mode,
     /// not the draft's (React reads the `widget` prop).
-    pub(crate) fn monitor_card_pair(&self) -> Option<(&str, &str)> {
+    pub fn monitor_card_pair(&self) -> Option<(&str, &str)> {
         if self.is_new {
             return None;
         }
@@ -558,7 +558,7 @@ impl WidgetEditorDrawerState {
     /// widget, or the hidden-SQL pair against its original-or-default (a
     /// widget-less drawer is always dirty — React's `JSON.stringify(draft)
     /// !== JSON.stringify(null)`).
-    pub(crate) fn is_dirty(&self) -> bool {
+    pub fn is_dirty(&self) -> bool {
         let widget_dirty = match &self.original {
             Some(original) => &self.draft != original,
             None => true,
@@ -573,7 +573,7 @@ impl WidgetEditorDrawerState {
     /// SQL — React's early `return`), else the normalized widget (trimmed
     /// title, clamped refresh) with the alert rule and, in hidden-SQL
     /// mode, the pair.
-    pub(crate) fn save_payload(&self) -> Option<WidgetSaveVm> {
+    pub fn save_payload(&self) -> Option<WidgetSaveVm> {
         if self.draft.title.trim().is_empty() {
             return None;
         }

@@ -43,7 +43,7 @@
 /// non-null dialog id; the slot itself is `Option<DialogId>`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the new-connection dialog track (not landed yet)
-pub(crate) enum DialogId {
+pub enum DialogId {
     /// The "new connection" modal (`'new-connection'`).
     NewConnection,
 }
@@ -51,7 +51,7 @@ pub(crate) enum DialogId {
 /// `ConnectionsViewMode`: how the connections home lists its entries.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the connections home track (not landed yet)
-pub(crate) enum ConnectionsViewMode {
+pub enum ConnectionsViewMode {
     #[default]
     Grid,
     List,
@@ -60,7 +60,7 @@ pub(crate) enum ConnectionsViewMode {
 /// `WorkspaceSidebarMode`: the workspace sidebar's two shapes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) enum WorkspaceSidebarMode {
+pub enum WorkspaceSidebarMode {
     /// Icon-only rail (the default; also the degraded/preference-less mode).
     #[default]
     Icons,
@@ -69,7 +69,7 @@ pub(crate) enum WorkspaceSidebarMode {
 }
 
 /// `datazen:workspace-sidebar-mode`.
-pub(crate) const WORKSPACE_SIDEBAR_MODE_KEY: &str = "datazen:workspace-sidebar-mode";
+pub const WORKSPACE_SIDEBAR_MODE_KEY: &str = "datazen:workspace-sidebar-mode";
 
 /// The `window.localStorage` port the sidebar mode persists through.
 ///
@@ -78,7 +78,7 @@ pub(crate) const WORKSPACE_SIDEBAR_MODE_KEY: &str = "datazen:workspace-sidebar-m
 /// `try { localStorage.setItem(...) } catch {}` — so a failing write is the
 /// port's internal affair and never fails the caller.
 #[allow(dead_code)] // consumers: the workspace shell track (not landed yet)
-pub(crate) trait SidebarModeStorage {
+pub trait SidebarModeStorage {
     /// `localStorage.getItem(key)`.
     fn get(&self, key: &str) -> Option<String>;
     /// `localStorage.setItem(key, value)` (best-effort).
@@ -87,7 +87,7 @@ pub(crate) trait SidebarModeStorage {
 
 /// `loadWorkspaceSidebarMode`: exactly `'expanded'` counts; an absent,
 /// unavailable, or differently-spelled stored value falls back to `'icons'`.
-pub(crate) fn load_workspace_sidebar_mode(stored: Option<&str>) -> WorkspaceSidebarMode {
+pub fn load_workspace_sidebar_mode(stored: Option<&str>) -> WorkspaceSidebarMode {
     if stored == Some("expanded") {
         WorkspaceSidebarMode::Expanded
     } else {
@@ -98,30 +98,30 @@ pub(crate) fn load_workspace_sidebar_mode(stored: Option<&str>) -> WorkspaceSide
 /// The store (`useUiStore`'s state): the shell's layout state.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // consumers: the shell/window tracks (not landed yet)
-pub(crate) struct UiStore {
+pub struct UiStore {
     /// `mainSidebarWidth` seed: 220.
-    pub(crate) main_sidebar_width: u32,
+    pub main_sidebar_width: u32,
     /// `connectionSidebarWidth` seed: 280.
-    pub(crate) connection_sidebar_width: u32,
+    pub connection_sidebar_width: u32,
     /// `editorHeight` seed: 320.
-    pub(crate) editor_height: u32,
+    pub editor_height: u32,
     /// `resultHeight` seed: 360.
-    pub(crate) result_height: u32,
+    pub result_height: u32,
     /// `connectionsViewMode` seed: `'grid'`.
-    pub(crate) connections_view_mode: ConnectionsViewMode,
+    pub connections_view_mode: ConnectionsViewMode,
     /// `activeDialog` seed: `null`.
-    pub(crate) active_dialog: Option<DialogId>,
+    pub active_dialog: Option<DialogId>,
     /// `isFullscreen` seed: `false`.
-    pub(crate) is_fullscreen: bool,
+    pub is_fullscreen: bool,
     /// `workspaceSidebarMode` seed: `loadWorkspaceSidebarMode()`.
-    pub(crate) workspace_sidebar_mode: WorkspaceSidebarMode,
+    pub workspace_sidebar_mode: WorkspaceSidebarMode,
 }
 
 #[allow(dead_code)] // consumers: the shell/window tracks (not landed yet)
 impl UiStore {
     /// The module init: the four seeds plus the persisted sidebar mode
     /// read once from storage.
-    pub(crate) fn new(storage: &dyn SidebarModeStorage) -> Self {
+    pub fn new(storage: &dyn SidebarModeStorage) -> Self {
         Self {
             main_sidebar_width: 220,
             connection_sidebar_width: 280,
@@ -137,42 +137,42 @@ impl UiStore {
     }
 
     /// `setMainSidebarWidth(w)`.
-    pub(crate) fn set_main_sidebar_width(&mut self, w: u32) {
+    pub fn set_main_sidebar_width(&mut self, w: u32) {
         self.main_sidebar_width = w;
     }
 
     /// `setConnectionSidebarWidth(w)`.
-    pub(crate) fn set_connection_sidebar_width(&mut self, w: u32) {
+    pub fn set_connection_sidebar_width(&mut self, w: u32) {
         self.connection_sidebar_width = w;
     }
 
     /// `setEditorHeight(h)`.
-    pub(crate) fn set_editor_height(&mut self, h: u32) {
+    pub fn set_editor_height(&mut self, h: u32) {
         self.editor_height = h;
     }
 
     /// `setResultHeight(h)`.
-    pub(crate) fn set_result_height(&mut self, h: u32) {
+    pub fn set_result_height(&mut self, h: u32) {
         self.result_height = h;
     }
 
     /// `openDialog(id)`.
-    pub(crate) fn open_dialog(&mut self, id: DialogId) {
+    pub fn open_dialog(&mut self, id: DialogId) {
         self.active_dialog = Some(id);
     }
 
     /// `closeDialog()`.
-    pub(crate) fn close_dialog(&mut self) {
+    pub fn close_dialog(&mut self) {
         self.active_dialog = None;
     }
 
     /// `setConnectionsViewMode(mode)`.
-    pub(crate) fn set_connections_view_mode(&mut self, mode: ConnectionsViewMode) {
+    pub fn set_connections_view_mode(&mut self, mode: ConnectionsViewMode) {
         self.connections_view_mode = mode;
     }
 
     /// `setFullscreen(value)`.
-    pub(crate) fn set_fullscreen(&mut self, value: bool) {
+    pub fn set_fullscreen(&mut self, value: bool) {
         self.is_fullscreen = value;
     }
 
@@ -180,7 +180,7 @@ impl UiStore {
     /// platform answer — the flag is set and the value returned. `None`
     /// is "no platform / the call threw" — `false` is returned and the
     /// stored flag is left untouched.
-    pub(crate) fn sync_fullscreen(&mut self, probe: impl FnOnce() -> Option<bool>) -> bool {
+    pub fn sync_fullscreen(&mut self, probe: impl FnOnce() -> Option<bool>) -> bool {
         match probe() {
             Some(value) => {
                 self.is_fullscreen = value;
@@ -191,7 +191,7 @@ impl UiStore {
     }
 
     /// `toggleWorkspaceSidebarMode()`: flip, persist the new mode, apply it.
-    pub(crate) fn toggle_workspace_sidebar_mode(&mut self, storage: &mut dyn SidebarModeStorage) {
+    pub fn toggle_workspace_sidebar_mode(&mut self, storage: &mut dyn SidebarModeStorage) {
         let next = match self.workspace_sidebar_mode {
             WorkspaceSidebarMode::Icons => WorkspaceSidebarMode::Expanded,
             WorkspaceSidebarMode::Expanded => WorkspaceSidebarMode::Icons,
@@ -207,7 +207,7 @@ impl UiStore {
     }
 
     /// `setWorkspaceSidebarMode(mode)`: persist, then apply.
-    pub(crate) fn set_workspace_sidebar_mode(
+    pub fn set_workspace_sidebar_mode(
         &mut self,
         mode: WorkspaceSidebarMode,
         storage: &mut dyn SidebarModeStorage,

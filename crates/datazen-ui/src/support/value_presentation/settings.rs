@@ -76,20 +76,20 @@ use crate::support::value_presentation::value_presentation_rules::validate_value
 /// the T02 TimestampOptions JSON shape (kept opaque here; deep validation
 /// happens at snapshot-build time per contribution).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct StoredRendererSettings {
-    pub(crate) enabled: bool,
-    pub(crate) options: serde_json::Value,
+pub struct StoredRendererSettings {
+    pub enabled: bool,
+    pub options: serde_json::Value,
 }
 
 /// The versioned valuePresentation storage shape (T06 v1 + T08 rules +
 /// T10 columnOverrides, all optional additions — no version bump).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct StoredValuePresentationSettings {
-    pub(crate) version: u64,
-    pub(crate) renderers: BTreeMap<String, StoredRendererSettings>,
+pub struct StoredValuePresentationSettings {
+    pub version: u64,
+    pub renderers: BTreeMap<String, StoredRendererSettings>,
     /// Optional; absent in old payloads (consumers treat it as empty).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) rules: Option<Vec<ValuePresentationRule>>,
+    pub rules: Option<Vec<ValuePresentationRule>>,
     /// Optional; keys are [`crate::support::value_presentation::presentation_plan::column_override_key`]
     /// strings, values store raw/custom only (inherit means no entry).
     #[serde(
@@ -97,18 +97,18 @@ pub(crate) struct StoredValuePresentationSettings {
         default,
         skip_serializing_if = "Option::is_none"
     )]
-    pub(crate) column_overrides: Option<BTreeMap<String, ColumnPresentationOverride>>,
+    pub column_overrides: Option<BTreeMap<String, ColumnPresentationOverride>>,
     /// Unknown fields ride along verbatim (React's `{...fresh}` spread):
     /// an unknown top-level version's future fields must survive path
     /// updates instead of being written back away.
     #[serde(flatten)]
-    pub(crate) extra: serde_json::Map<String, serde_json::Value>,
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// The v1 default stored value: everything off (a missing fields default
 /// to off, design §6). A fresh value every call — no shared default to
 /// accidentally mutate.
-pub(crate) fn default_value_presentation_settings() -> StoredValuePresentationSettings {
+pub fn default_value_presentation_settings() -> StoredValuePresentationSettings {
     StoredValuePresentationSettings {
         version: 1,
         renderers: BTreeMap::new(),
@@ -124,7 +124,7 @@ pub(crate) fn default_value_presentation_settings() -> StoredValuePresentationSe
 
 /// Leniently parse unknown input into the stored shape (never panics):
 /// see the module header's parse-layer rules.
-pub(crate) fn parse_stored_value_presentation_settings(
+pub fn parse_stored_value_presentation_settings(
     input: &serde_json::Value,
 ) -> StoredValuePresentationSettings {
     let Some(object) = input.as_object() else {
@@ -187,7 +187,7 @@ pub(crate) fn parse_stored_value_presentation_settings(
 
 /// Build the in-memory presentation snapshot from a stored value:
 /// see the module header's builder rules.
-pub(crate) fn build_value_presentation_snapshot(
+pub fn build_value_presentation_snapshot(
     stored: &StoredValuePresentationSettings,
     environment: &PresentationEnvironmentSnapshot,
     registry: &ValuePresentationRegistry,

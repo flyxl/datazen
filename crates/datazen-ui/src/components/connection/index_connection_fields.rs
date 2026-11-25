@@ -33,7 +33,7 @@ const ROOT: &str = "new-conn-database-index";
 /// Mirror of `ConnectionFormState.database` for this field group.
 #[allow(dead_code)] // contract mirror; remove when the form state port lands.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct IndexValue {
+pub struct IndexValue {
     pub database: TextEdit,
 }
 
@@ -59,7 +59,7 @@ fn js_parse_int(raw: &str) -> i64 {
 /// React's onChange: `""` stays empty (so the user can clear the field), all
 /// other input is clamped into `0..=15`.
 #[allow(dead_code)] // commit helper; consumed by the field and the tests.
-pub(crate) fn clamp_index(raw: &str) -> String {
+pub fn clamp_index(raw: &str) -> String {
     if raw.is_empty() {
         return String::new();
     }
@@ -68,7 +68,7 @@ pub(crate) fn clamp_index(raw: &str) -> String {
 
 /// React's onBlur: an empty (or whitespace-only) value becomes `"0"`.
 #[allow(dead_code)] // commit helper; consumed by the field and the tests.
-pub(crate) fn default_index(raw: &str) -> String {
+pub fn default_index(raw: &str) -> String {
     if raw.trim().is_empty() {
         "0".to_owned()
     } else {
@@ -80,21 +80,21 @@ type EditFn<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 
 /// Builder for the single field. `S` owns the edited `TextEdit`.
 #[allow(dead_code)] // consumer: the connection form (not wired); remove when wired.
-pub(crate) struct IndexConnectionFields<'a, S: 'static> {
+pub struct IndexConnectionFields<'a, S: 'static> {
     value: &'a IndexValue,
     edit: EditFn<S>,
 }
 
 #[allow(dead_code)] // consumer: the connection form (not wired); remove when wired.
 impl<'a, S: 'static> IndexConnectionFields<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         value: &'a IndexValue,
         edit: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
         Self { value, edit: Rc::new(edit) }
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let mut field = TextField::new(ROOT, &self.value.database)
             .height(32.0)

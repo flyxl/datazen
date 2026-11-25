@@ -70,19 +70,19 @@ const DIFF_MAX_HEIGHT: f32 = 160.0;
 const META_LABEL_WIDTH: f32 = 76.0;
 /// The footer's height (a 28pt button inside React's `py-3`).
 const FOOTER_HEIGHT: f32 = 56.0;
-pub(crate) struct AiWriteProposalHost<'a, S: 'static> {
+pub struct AiWriteProposalHost<'a, S: 'static> {
     state: &'a AiWriteProposalHostState,
     host: Option<Rc<dyn Fn(&mut S) -> &mut AiWriteProposalHostState>>,
 }
 
 impl<'a, S: 'static> AiWriteProposalHost<'a, S> {
-    pub(crate) fn new(state: &'a AiWriteProposalHostState) -> Self {
+    pub fn new(state: &'a AiWriteProposalHostState) -> Self {
         Self { state, host: None }
     }
 
     /// The state accessor every button drives, e.g.
     /// `|state| &mut state.ai_write_proposal`.
-    pub(crate) fn host_mut(
+    pub fn host_mut(
         mut self,
         f: impl Fn(&mut S) -> &mut AiWriteProposalHostState + 'static,
     ) -> Self {
@@ -93,7 +93,7 @@ impl<'a, S: 'static> AiWriteProposalHost<'a, S> {
     /// Renders the dialog, the receipt toast and the audit-error toast into
     /// `layer` (the app's overlay layer, as `modal_layer` does for dialogs).
     /// Nothing is pushed when the host is invisible — React returns `null`.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         if !self.state.is_visible() {
             return;
         }

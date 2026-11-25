@@ -11,14 +11,14 @@ use super::{
     emit, footer_button, QueryTransactionHostPort, QueryTransactionModalAction as Action,
 };
 
-pub(crate) const UNCLOSED_KEY: &str = "query-tx-unclosed-modal";
-pub(crate) const BODY_KEY: &str = "query-tx-unclosed-body";
-pub(crate) const CANCEL_KEY: &str = "query-tx-unclosed-cancel";
-pub(crate) const CONFIRM_KEY: &str = "query-tx-unclosed-confirm";
+pub const UNCLOSED_KEY: &str = "query-tx-unclosed-modal";
+pub const BODY_KEY: &str = "query-tx-unclosed-body";
+pub const CANCEL_KEY: &str = "query-tx-unclosed-cancel";
+pub const CONFIRM_KEY: &str = "query-tx-unclosed-confirm";
 
 /// React: `Dialog` with `query.inTransaction` in the body, a ghost cancel and a
 /// primary confirm. "Cancel" is also the close/Escape action.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     host: &QueryTransactionHostPort<S>,
     dark: bool,
     layer: &mut Vec<El>,

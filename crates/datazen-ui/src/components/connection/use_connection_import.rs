@@ -30,18 +30,18 @@ use super::connection_share_dialog::{
 /// Translated strings the hook uses (React calls `t()` directly).
 #[allow(dead_code)] // stand-in; remove when the view resolves these with t().
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ImportStrings {
-    pub(crate) path_required: String,
-    pub(crate) password_required: String,
-    pub(crate) import_failed: String,
-    pub(crate) choose_file: String,
-    pub(crate) import_action: String,
+pub struct ImportStrings {
+    pub path_required: String,
+    pub password_required: String,
+    pub import_failed: String,
+    pub choose_file: String,
+    pub import_action: String,
 }
 
 /// The eight React state variables plus a detection generation.
 #[allow(dead_code)] // slice; remove with the import view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ImportState {
+pub struct ImportState {
     source: ImportSource,
     enabled: bool,
     password: String,
@@ -56,7 +56,7 @@ pub(crate) struct ImportState {
 
 #[allow(dead_code)] // slice; remove with the import view.
 impl ImportState {
-    pub(crate) fn new(source: ImportSource, enabled: bool) -> Self {
+    pub fn new(source: ImportSource, enabled: bool) -> Self {
         Self {
             source,
             enabled,
@@ -73,48 +73,48 @@ impl ImportState {
 
     // --- derived values -----------------------------------------------------
 
-    pub(crate) fn source(&self) -> ImportSource {
+    pub fn source(&self) -> ImportSource {
         self.source
     }
 
-    pub(crate) fn app_import(&self) -> bool {
+    pub fn app_import(&self) -> bool {
         self.source.is_app()
     }
 
-    pub(crate) fn password(&self) -> &str {
+    pub fn password(&self) -> &str {
         &self.password
     }
 
-    pub(crate) fn data_path(&self) -> &str {
+    pub fn data_path(&self) -> &str {
         &self.data_path
     }
 
-    pub(crate) fn path_found(&self) -> bool {
+    pub fn path_found(&self) -> bool {
         self.path_found
     }
 
-    pub(crate) fn detecting(&self) -> bool {
+    pub fn detecting(&self) -> bool {
         self.detecting
     }
 
-    pub(crate) fn submitting(&self) -> bool {
+    pub fn submitting(&self) -> bool {
         self.submitting
     }
 
-    pub(crate) fn busy(&self) -> bool {
+    pub fn busy(&self) -> bool {
         self.submitting || self.detecting
     }
 
-    pub(crate) fn local_error(&self) -> &str {
+    pub fn local_error(&self) -> &str {
         &self.local_error
     }
 
-    pub(crate) fn selected_file(&self) -> Option<&str> {
+    pub fn selected_file(&self) -> Option<&str> {
         self.selected_file.as_deref()
     }
 
     /// React `selectedFile ? importFilePasswordPolicy(selectedFile) : null`.
-    pub(crate) fn import_password_policy(&self) -> Option<PasswordPolicy> {
+    pub fn import_password_policy(&self) -> Option<PasswordPolicy> {
         self.selected_file
             .as_deref()
             .map(PasswordPolicy::from_path)
@@ -122,7 +122,7 @@ impl ImportState {
 
     /// React `primaryActionLabel`: choose a file until one is selected in the
     /// file flow, then the import action.
-    pub(crate) fn primary_action_label<'a>(&self, strings: &'a ImportStrings) -> &'a str {
+    pub fn primary_action_label<'a>(&self, strings: &'a ImportStrings) -> &'a str {
         if !self.app_import() && self.selected_file.is_none() {
             &strings.choose_file
         } else {
@@ -131,7 +131,7 @@ impl ImportState {
     }
 
     /// Project into the existing widget VM (no duplicate view model).
-    pub(crate) fn to_vm(&self, inline: bool) -> ImportVm {
+    pub fn to_vm(&self, inline: bool) -> ImportVm {
         ImportVm {
             password: rune::TextEdit::new(self.password.clone()),
             data_path: rune::TextEdit::new(self.data_path.clone()),
@@ -148,19 +148,19 @@ impl ImportState {
 
     // --- user edits ---------------------------------------------------------
 
-    pub(crate) fn set_password(&mut self, password: impl Into<String>) {
+    pub fn set_password(&mut self, password: impl Into<String>) {
         self.password = password.into();
     }
 
-    pub(crate) fn set_data_path(&mut self, path: impl Into<String>) {
+    pub fn set_data_path(&mut self, path: impl Into<String>) {
         self.data_path = path.into();
     }
 
-    pub(crate) fn set_path_found(&mut self, found: bool) {
+    pub fn set_path_found(&mut self, found: bool) {
         self.path_found = found;
     }
 
-    pub(crate) fn set_local_error(&mut self, message: impl Into<String>) {
+    pub fn set_local_error(&mut self, message: impl Into<String>) {
         self.local_error = message.into();
     }
 
@@ -177,7 +177,7 @@ impl ImportState {
     // --- transitions --------------------------------------------------------
 
     /// Drive the machine with one host answer or user intent.
-    pub(crate) fn step(
+    pub fn step(
         &mut self,
         input: ImportInput,
         strings: &ImportStrings,
@@ -326,7 +326,7 @@ impl ImportState {
 /// Work the host performs (the injected `connectionCommands` calls).
 #[allow(dead_code)] // emitted work; remove with the import view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ImportEffect {
+pub enum ImportEffect {
     DetectPath {
         source: ImportSource,
         generation: u64,
@@ -351,17 +351,17 @@ pub(crate) enum ImportEffect {
 /// Callbacks React wires via `onImportSuccess` / `onError`.
 #[allow(dead_code)] // events; remove with the import view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ImportEvent {
+pub enum ImportEvent {
     Success(ImportResult),
     Error(String),
 }
 
 #[allow(dead_code)] // step result; remove with the import view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ImportStep {
-    pub(crate) effects: Vec<ImportEffect>,
-    pub(crate) events: Vec<ImportEvent>,
-    pub(crate) outcome: Option<()>,
+pub struct ImportStep {
+    pub effects: Vec<ImportEffect>,
+    pub events: Vec<ImportEvent>,
+    pub outcome: Option<()>,
 }
 
 impl ImportStep {
@@ -376,7 +376,7 @@ impl ImportStep {
 
 #[allow(dead_code)] // input; remove with the import view.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ImportInput {
+pub enum ImportInput {
     Enabled(bool),
     Detected {
         path: String,

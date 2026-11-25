@@ -61,7 +61,7 @@ const TITLEBAR_HEIGHT: f32 = 40.0;
 
 /// The connection page: Rune's root view. See the module docs for the compose
 /// map and the honest host-contract adaptations.
-pub(crate) fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
+pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
     let system_dark = cx.system_dark();
     state.system_dark.set(system_dark);
     let dark = match state.desktop.read_ui_settings() {
@@ -150,7 +150,7 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool, layer: &m
 /// The same content column with an explicit view model, so a host that owns an
 /// object selection can compose the real `DatabaseObjectView` into the slot.
 #[allow(dead_code)] // composition entry point; remove when the host owns object selection.
-pub(crate) fn connection_content_with_vm(
+pub fn connection_content_with_vm(
     state: &AppState,
     theme: tok::Theme,
     dark: bool,

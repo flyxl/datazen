@@ -43,10 +43,10 @@ use crate::views::schema_diff::schema_diff_object_identity::{
 };
 use crate::views::schema_diff::schema_diff_unified_objects_picker::ObjectLoadErrors;
 
-pub(crate) use datazen_driver_api::DatabaseObject;
+pub use datazen_driver_api::DatabaseObject;
 
 /// The kind walk order (`OBJECT_KINDS`).
-pub(crate) const OBJECT_KINDS: [SchemaDiffObjectKindVm; 6] = [
+pub const OBJECT_KINDS: [SchemaDiffObjectKindVm; 6] = [
     SchemaDiffObjectKindVm::View,
     SchemaDiffObjectKindVm::Type,
     SchemaDiffObjectKindVm::Sequence,
@@ -58,7 +58,7 @@ pub(crate) const OBJECT_KINDS: [SchemaDiffObjectKindVm; 6] = [
 /// `normalizeObject`: the row becomes an identity under the walk's
 /// kind; the driver's optional trigger/routine fields survive, the
 /// rest is `?? null`.
-pub(crate) fn normalize_object(
+pub fn normalize_object(
     object: &DatabaseObject,
     kind: SchemaDiffObjectKindVm,
 ) -> SchemaDiffObjectIdentityVm {
@@ -75,7 +75,7 @@ pub(crate) fn normalize_object(
 /// One endpoint's `listObjects` fold: the per-kind answers (in walk
 /// order) become the identity list plus the per-kind error pairs —
 /// a failed kind's rows are simply not reported.
-pub(crate) fn list_objects_fold(
+pub fn list_objects_fold(
     answers: &[(SchemaDiffObjectKindVm, Result<Vec<DatabaseObject>, String>)],
 ) -> (Vec<SchemaDiffObjectIdentityVm>, ObjectLoadErrors) {
     let mut objects = Vec::new();
@@ -91,7 +91,7 @@ pub(crate) fn list_objects_fold(
 
 /// The lifecycle evidence (`catalogLoadState`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum CatalogLoadState {
+pub enum CatalogLoadState {
     #[default]
     NeverStarted,
     Loading,
@@ -101,34 +101,34 @@ pub(crate) enum CatalogLoadState {
 
 /// The side a selection belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ObjectSide {
+pub enum ObjectSide {
     Source,
     Target,
 }
 
 /// `SchemaDiffObjectCatalog`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct SchemaDiffObjectCatalog {
-    pub(crate) source_objects: Vec<SchemaDiffObjectIdentityVm>,
-    pub(crate) target_objects: Vec<SchemaDiffObjectIdentityVm>,
+pub struct SchemaDiffObjectCatalog {
+    pub source_objects: Vec<SchemaDiffObjectIdentityVm>,
+    pub target_objects: Vec<SchemaDiffObjectIdentityVm>,
 }
 
 /// `SchemaDiffObjectSelectionRestore`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SchemaDiffObjectSelectionRestore {
-    pub(crate) missing_source: usize,
-    pub(crate) missing_target: usize,
+pub struct SchemaDiffObjectSelectionRestore {
+    pub missing_source: usize,
+    pub missing_target: usize,
 }
 
 /// The two endpoints' load errors (`SchemaDiffObjectLoadErrors`).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct SchemaDiffObjectLoadErrors {
-    pub(crate) source: ObjectLoadErrors,
-    pub(crate) target: ObjectLoadErrors,
+pub struct SchemaDiffObjectLoadErrors {
+    pub source: ObjectLoadErrors,
+    pub target: ObjectLoadErrors,
 }
 
 /// `useSchemaDiffUnifiedObjects()`'s state machine.
-pub(crate) struct UseSchemaDiffUnifiedObjects {
+pub struct UseSchemaDiffUnifiedObjects {
     source_objects: Vec<SchemaDiffObjectIdentityVm>,
     target_objects: Vec<SchemaDiffObjectIdentityVm>,
     selected_source_keys: Vec<String>,
@@ -145,7 +145,7 @@ impl Default for UseSchemaDiffUnifiedObjects {
 }
 
 impl UseSchemaDiffUnifiedObjects {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             source_objects: Vec::new(),
             target_objects: Vec::new(),
@@ -158,31 +158,31 @@ impl UseSchemaDiffUnifiedObjects {
     }
 
     /// `catalogLoadState`.
-    pub(crate) fn catalog_load_state(&self) -> CatalogLoadState {
+    pub fn catalog_load_state(&self) -> CatalogLoadState {
         self.catalog_load_state
     }
 
     /// `sourceObjects` / `targetObjects`.
-    pub(crate) fn source_objects(&self) -> &[SchemaDiffObjectIdentityVm] {
+    pub fn source_objects(&self) -> &[SchemaDiffObjectIdentityVm] {
         &self.source_objects
     }
 
-    pub(crate) fn target_objects(&self) -> &[SchemaDiffObjectIdentityVm] {
+    pub fn target_objects(&self) -> &[SchemaDiffObjectIdentityVm] {
         &self.target_objects
     }
 
     /// `selectedSourceKeys` / `selectedTargetKeys` (insertion order).
-    pub(crate) fn selected_source_keys(&self) -> &[String] {
+    pub fn selected_source_keys(&self) -> &[String] {
         &self.selected_source_keys
     }
 
-    pub(crate) fn selected_target_keys(&self) -> &[String] {
+    pub fn selected_target_keys(&self) -> &[String] {
         &self.selected_target_keys
     }
 
     /// `selectedSourceObjects` / `selectedTargetObjects`: the selected
     /// objects, in catalog order.
-    pub(crate) fn selected_source_objects(&self) -> Vec<SchemaDiffObjectIdentityVm> {
+    pub fn selected_source_objects(&self) -> Vec<SchemaDiffObjectIdentityVm> {
         self.source_objects
             .iter()
             .filter(|object| self.selected_source_keys.contains(&schema_diff_object_identity_key(object)))
@@ -190,7 +190,7 @@ impl UseSchemaDiffUnifiedObjects {
             .collect()
     }
 
-    pub(crate) fn selected_target_objects(&self) -> Vec<SchemaDiffObjectIdentityVm> {
+    pub fn selected_target_objects(&self) -> Vec<SchemaDiffObjectIdentityVm> {
         self.target_objects
             .iter()
             .filter(|object| self.selected_target_keys.contains(&schema_diff_object_identity_key(object)))
@@ -199,14 +199,14 @@ impl UseSchemaDiffUnifiedObjects {
     }
 
     /// `errors`.
-    pub(crate) fn errors(&self) -> &SchemaDiffObjectLoadErrors {
+    pub fn errors(&self) -> &SchemaDiffObjectLoadErrors {
         &self.errors
     }
 
     /// `load`'s entry: mint the request id and mark the lifecycle
     /// loading. The host walks the kinds per endpoint and calls
     /// [`on_load_answer`] with this id.
-    pub(crate) fn begin_load(&mut self) -> u64 {
+    pub fn begin_load(&mut self) -> u64 {
         self.request_id += 1;
         self.catalog_load_state = CatalogLoadState::Loading;
         self.request_id
@@ -217,7 +217,7 @@ impl UseSchemaDiffUnifiedObjects {
     /// state changes nothing. Newly discovered schema objects are
     /// opt-in: the selections reset (this preserves the existing
     /// table-only migration scope and prevents surprise DDL).
-    pub(crate) fn on_load_answer(
+    pub fn on_load_answer(
         &mut self,
         request_id: u64,
         source: (Vec<SchemaDiffObjectIdentityVm>, ObjectLoadErrors),
@@ -241,7 +241,7 @@ impl UseSchemaDiffUnifiedObjects {
     /// `clear`: bump the request id (an in-flight load can no longer
     /// publish), flip a started lifecycle to `invalidated`, empty
     /// everything. A never-started lifecycle stays `never-started`.
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.request_id += 1;
         self.catalog_load_state = match self.catalog_load_state {
             CatalogLoadState::NeverStarted => CatalogLoadState::NeverStarted,
@@ -257,7 +257,7 @@ impl UseSchemaDiffUnifiedObjects {
     /// `restoreSelection`: intersect the desired objects with the
     /// catalog by identity key (deduped, desired order) and report
     /// how many were missing per side.
-    pub(crate) fn restore_selection(
+    pub fn restore_selection(
         &mut self,
         catalog: &SchemaDiffObjectCatalog,
         desired_source: &[SchemaDiffObjectIdentityVm],
@@ -285,7 +285,7 @@ impl UseSchemaDiffUnifiedObjects {
 
     /// `toggle(side, object)`: insert or remove the identity key,
     /// keeping insertion order.
-    pub(crate) fn toggle(&mut self, side: ObjectSide, object: &SchemaDiffObjectIdentityVm) {
+    pub fn toggle(&mut self, side: ObjectSide, object: &SchemaDiffObjectIdentityVm) {
         let keys = match side {
             ObjectSide::Source => &mut self.selected_source_keys,
             ObjectSide::Target => &mut self.selected_target_keys,
@@ -300,7 +300,7 @@ impl UseSchemaDiffUnifiedObjects {
     }
 
     /// `selectAll(side, selected)`: every catalog key, or none.
-    pub(crate) fn select_all(&mut self, side: ObjectSide, selected: bool) {
+    pub fn select_all(&mut self, side: ObjectSide, selected: bool) {
         let (objects, keys) = match side {
             ObjectSide::Source => (&self.source_objects, &mut self.selected_source_keys),
             ObjectSide::Target => (&self.target_objects, &mut self.selected_target_keys),

@@ -182,7 +182,7 @@ use super::progress_log::ProgressLog;
 /// (see the module docs: the builder overlays the edits onto its
 /// render-time Vm clone, the host syncs before reading).
 #[derive(Clone, Debug, Default)]
-pub(crate) struct BackupWindowEdits {
+pub struct BackupWindowEdits {
     pub file_name: TextEdit,
     pub search_conn: TextEdit,
     pub search_db: TextEdit,
@@ -191,7 +191,7 @@ pub(crate) struct BackupWindowEdits {
 impl BackupWindowEdits {
     /// Fresh edits from the Vm's current text (`"untitled"` and two
     /// empty searches on a fresh Vm).
-    pub(crate) fn new(vm: &BackupWindowVm) -> Self {
+    pub fn new(vm: &BackupWindowVm) -> Self {
         Self {
             file_name: TextEdit::new(vm.file_name.clone()),
             search_conn: TextEdit::new(vm.search_conn.clone()),
@@ -200,23 +200,23 @@ impl BackupWindowEdits {
     }
 
     /// The file-name field's edit binding.
-    pub(crate) fn file_name_edit(&mut self) -> &mut TextEdit {
+    pub fn file_name_edit(&mut self) -> &mut TextEdit {
         &mut self.file_name
     }
 
     /// The connection-search field's edit binding.
-    pub(crate) fn search_conn_edit(&mut self) -> &mut TextEdit {
+    pub fn search_conn_edit(&mut self) -> &mut TextEdit {
         &mut self.search_conn
     }
 
     /// The database-search field's edit binding.
-    pub(crate) fn search_db_edit(&mut self) -> &mut TextEdit {
+    pub fn search_db_edit(&mut self) -> &mut TextEdit {
         &mut self.search_db
     }
 
     /// Copy the edits' current text into the Vm. The host calls this
     /// before reading a Vm text field (see the module docs).
-    pub(crate) fn sync_into_vm(&self, vm: &mut BackupWindowVm) {
+    pub fn sync_into_vm(&self, vm: &mut BackupWindowVm) {
         vm.file_name = self.file_name.text.clone();
         vm.search_conn = self.search_conn.text.clone();
         vm.search_db = self.search_db.text.clone();
@@ -225,7 +225,7 @@ impl BackupWindowEdits {
     /// Copy the Vm's current text into the edits. The host calls
     /// this after a host-driven reset of a Vm text field, so the
     /// field shows the new value instead of the last typed one.
-    pub(crate) fn reset_from_vm(&mut self, vm: &BackupWindowVm) {
+    pub fn reset_from_vm(&mut self, vm: &BackupWindowVm) {
         self.file_name.replace_text(vm.file_name.clone());
         self.search_conn.replace_text(vm.search_conn.clone());
         self.search_db.replace_text(vm.search_db.clone());
@@ -238,7 +238,7 @@ impl BackupWindowEdits {
 /// it every time the dialog opens, so a reopened dialog starts at
 /// the top.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RestoreConfirm {
+pub struct RestoreConfirm {
     pub title: String,
     pub message: String,
     pub epoch: u64,
@@ -248,13 +248,13 @@ pub(crate) struct RestoreConfirm {
 // their canonical home, `components::db_type_badge`; re-exported here
 // so the Backup window's existing `views::backup::db_badge_meta` path
 // keeps working.
-pub(crate) use crate::components::db_type_badge::{badge_tone_fill, db_badge_meta};
+pub use crate::components::db_type_badge::{badge_tone_fill, db_badge_meta};
 
 /// React `DbTypeBadge`'s letter-tile fallback (`components/
 /// DbTypeBadge.tsx`): a `size` square, `rounded-lg`, the short label
 /// in bold white on the tone fill. The font is 9pt at size 20
 /// (`badgeFontSize`), matching the window's `size={20}` use.
-pub(crate) fn db_type_badge(key: impl Into<String>, db_type: &str, size: f32, dark: bool) -> El {
+pub fn db_type_badge(key: impl Into<String>, db_type: &str, size: f32, dark: bool) -> El {
     let (label, tone) = db_badge_meta(db_type);
     row()
         .key(key.into())
@@ -272,7 +272,7 @@ pub(crate) fn db_type_badge(key: impl Into<String>, db_type: &str, size: f32, da
 
 /// The Backup window. `S` is the host state that owns the Vm, the
 /// edits, and the async middle; every press calls back into it.
-pub(crate) struct BackupWindow<'a, S: 'static> {
+pub struct BackupWindow<'a, S: 'static> {
     vm: BackupWindowVm,
     edits: &'a BackupWindowEdits,
     dark: bool,
@@ -312,7 +312,7 @@ fn no_op_connection<S: 'static>() -> Rc<dyn Fn(&mut S, BackupConnection)> {
 }
 
 impl<'a, S: 'static> BackupWindow<'a, S> {
-    pub(crate) fn new(vm: BackupWindowVm, edits: &'a BackupWindowEdits) -> Self {
+    pub fn new(vm: BackupWindowVm, edits: &'a BackupWindowEdits) -> Self {
         Self {
             vm,
             edits,
@@ -340,7 +340,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
 
     /// The restore confirm dialog to render in the layer, if the
     /// host's restore flow is waiting on it.
-    pub(crate) fn restore_confirm(mut self, confirm: RestoreConfirm) -> Self {
+    pub fn restore_confirm(mut self, confirm: RestoreConfirm) -> Self {
         self.restore_confirm = Some(confirm);
         self
     }
@@ -348,7 +348,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     /// React `handleSelectConnection`: the host runs
     /// `begin_select_connection`, connects, and feeds the session
     /// back (see the module docs for the `default_database` rule).
-    pub(crate) fn on_select_connection(
+    pub fn on_select_connection(
         mut self,
         f: impl Fn(&mut S, BackupConnection) + 'static,
     ) -> Self {
@@ -357,86 +357,86 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     }
 
     /// React `setSelectedDb`: the database row's press.
-    pub(crate) fn on_select_database(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_select_database(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_select_database = Some(Rc::new(f));
         self
     }
 
     /// React `toggleGroup`: the group header's press.
-    pub(crate) fn on_toggle_group(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_group(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_group = Some(Rc::new(f));
         self
     }
 
     /// React `toggleOption`: an option checkbox's or chip's press.
-    pub(crate) fn on_toggle_option(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_option(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_option = Some(Rc::new(f));
         self
     }
 
     /// React `setOptionDropdownOpen(!open)`: the dropdown trigger's
     /// press.
-    pub(crate) fn on_toggle_dropdown(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_dropdown(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_dropdown = Some(Rc::new(f));
         self
     }
 
     /// The dropdown's dismissal (scrim / Escape): closes it.
-    pub(crate) fn on_close_dropdown(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_dropdown(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_dropdown = Some(Rc::new(f));
         self
     }
 
     /// React `setCompressGzip`: the gzip checkbox's press.
-    pub(crate) fn on_toggle_compress(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_compress(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_compress = Some(Rc::new(f));
         self
     }
 
     /// React `handleBackup`: the start button's press in backup
     /// mode (see [`super::backup_run`]).
-    pub(crate) fn on_start_backup(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_start_backup(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_start_backup = Some(Rc::new(f));
         self
     }
 
     /// React `handleRestore`: the start button's press in restore
     /// mode (see [`super::backup_run`]).
-    pub(crate) fn on_start_restore(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_start_restore(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_start_restore = Some(Rc::new(f));
         self
     }
 
     /// The log copy button's press: the host copies the joined log.
-    pub(crate) fn on_copy_log(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy_log(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy_log = Some(Rc::new(f));
         self
     }
 
     /// Whether the log copy button shows `backup.logCopied`. The host
     /// sets this from [`super::progress_log_state::ProgressLogState::copied`].
-    pub(crate) fn log_copied(mut self, copied: bool) -> Self {
+    pub fn log_copied(mut self, copied: bool) -> Self {
         self.log_copied = copied;
         self
     }
 
     /// Whether the log stays pinned to the bottom. The host sets this
     /// from [`super::progress_log_state::ProgressLogState::auto_scroll`].
-    pub(crate) fn log_auto_scroll(mut self, auto_scroll: bool) -> Self {
+    pub fn log_auto_scroll(mut self, auto_scroll: bool) -> Self {
         self.log_auto_scroll = auto_scroll;
         self
     }
 
     /// The restore confirm dialog's confirm button: the host
     /// resumes the restore with the `overwrite` option.
-    pub(crate) fn on_confirm_restore(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_restore(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_restore = Some(Rc::new(f));
         self
     }
 
     /// The restore confirm dialog's cancel / close / Escape: the
     /// host aborts the restore before executing.
-    pub(crate) fn on_cancel_restore(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_restore(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel_restore = Some(Rc::new(f));
         self
     }
@@ -445,7 +445,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     /// callbacks (which default to no-ops), this one must be wired:
     /// a `TextField` without `on_edit` has no edit binding, so it
     /// cannot take focus (the kit debug-asserts in `build`).
-    pub(crate) fn on_file_name_edit(
+    pub fn on_file_name_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -456,7 +456,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     /// The connection-search field's edit binding. Must be wired,
     /// like [`Self::on_file_name_edit`]: an unwired field cannot
     /// take focus.
-    pub(crate) fn on_search_conn_edit(
+    pub fn on_search_conn_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -467,7 +467,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     /// The database-search field's edit binding. Must be wired,
     /// like [`Self::on_file_name_edit`]: an unwired field cannot
     /// take focus.
-    pub(crate) fn on_search_db_edit(
+    pub fn on_search_db_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -476,7 +476,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     }
 
     /// The window on its own, exactly as the probes mount it.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let (root, layer) = self.build_inner(dark);
         rune_kit::root(root, layer)
     }
@@ -485,7 +485,7 @@ impl<'a, S: 'static> BackupWindow<'a, S> {
     /// the overlay layer (option dropdown, restore confirm dialog).
     /// The Backup window host calls this once and roots the whole
     /// window once.
-    pub(crate) fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
+    pub fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
         self.dark = dark;
         let k = kit(dark);
         let vm = self.view_vm();

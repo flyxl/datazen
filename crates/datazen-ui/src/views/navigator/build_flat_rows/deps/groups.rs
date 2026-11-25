@@ -14,7 +14,7 @@ const PRESET_GROUP_KEYS: [(&str, &str); 3] = [
 /// React `formatGroupLabel` — a preset key gets its localized label; a custom
 /// key is returned as-is. `t` falls back to the key itself, exactly as the
 /// React test double does.
-pub(crate) fn format_group_label(key: &str) -> String {
+pub fn format_group_label(key: &str) -> String {
     for (preset, i18n_key) in PRESET_GROUP_KEYS {
         if key == preset {
             return t(i18n_key).to_owned();

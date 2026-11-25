@@ -56,7 +56,7 @@ use crate::ui::kit::kit;
 /// (`crates/drivers/*/ui/icons/`), so the composite only fires in a
 /// reduced-driver build; in Rune it never fires (see the module docs).
 #[allow(dead_code)] // decision-tree record; revived if SVG loading lands
-pub(crate) fn db_icon_parent(db_type: &str) -> Option<&'static str> {
+pub fn db_icon_parent(db_type: &str) -> Option<&'static str> {
     match db_type {
         "questdb" => Some("postgresql"),
         "cloudberry" => Some("postgresql"),
@@ -73,7 +73,7 @@ pub(crate) fn db_icon_parent(db_type: &str) -> Option<&'static str> {
 /// (`crates/drivers/*/ui/meta.ts`); an unknown type falls back to `DB`
 /// on the neutral tone. Canonical home of the table the Backup window
 /// used to keep inline.
-pub(crate) fn db_badge_meta(db_type: &str) -> (&'static str, BadgeTone) {
+pub fn db_badge_meta(db_type: &str) -> (&'static str, BadgeTone) {
     match db_type {
         "mysql" => ("My", BadgeTone::Warning),
         "mariadb" => ("Ma", BadgeTone::Warning),
@@ -105,7 +105,7 @@ pub(crate) fn db_badge_meta(db_type: &str) -> (&'static str, BadgeTone) {
 /// tokens — warning / accent / success / danger paint with their
 /// foreground token, neutral with faint text (the same projection the
 /// Backup window's inline badge used).
-pub(crate) fn badge_tone_fill(tone: BadgeTone, dark: bool) -> Color {
+pub fn badge_tone_fill(tone: BadgeTone, dark: bool) -> Color {
     let k = kit(dark);
     match tone {
         BadgeTone::Neutral => k.c.text_faint,
@@ -118,7 +118,7 @@ pub(crate) fn badge_tone_fill(tone: BadgeTone, dark: bool) -> Color {
 
 /// React `badgeFontSize`: 9pt at size 20 or below, 10pt at the default
 /// 24, 11pt above that.
-pub(crate) fn badge_font_size(size: f32) -> f32 {
+pub fn badge_font_size(size: f32) -> f32 {
     if size <= 20.0 {
         9.0
     } else if size <= 24.0 {
@@ -131,7 +131,7 @@ pub(crate) fn badge_font_size(size: f32) -> f32 {
 /// React `cornerFontSize`: `size * 0.38`, rounded, clamped to 8–11pt.
 /// Only the composite branch uses it (see the module docs).
 #[allow(dead_code)] // composite branch only; exercised by tests
-pub(crate) fn corner_font_size(size: f32) -> f32 {
+pub fn corner_font_size(size: f32) -> f32 {
     (size * 0.38).round().clamp(8.0, 11.0)
 }
 
@@ -139,7 +139,7 @@ pub(crate) fn corner_font_size(size: f32) -> f32 {
 /// in bold white on the tone fill, `aria-hidden` like React's span.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // reusable component; wired by the connection views
-pub(crate) struct DbTypeBadge {
+pub struct DbTypeBadge {
     key: String,
     database_type: String,
     size: f32,
@@ -149,7 +149,7 @@ pub(crate) struct DbTypeBadge {
 impl DbTypeBadge {
     /// React `<DbTypeBadge databaseType={…} />`; `size` defaults to 24,
     /// the compact badge React uses everywhere.
-    pub(crate) fn new(database_type: impl Into<String>) -> Self {
+    pub fn new(database_type: impl Into<String>) -> Self {
         Self {
             key: "db-type-badge".to_string(),
             database_type: database_type.into(),
@@ -159,20 +159,20 @@ impl DbTypeBadge {
 
     /// Override the key prefix (two badges under one parent need
     /// distinct keys; the default is one fixed string).
-    pub(crate) fn key(mut self, key: impl Into<String>) -> Self {
+    pub fn key(mut self, key: impl Into<String>) -> Self {
         self.key = key.into();
         self
     }
 
     /// React's `size` prop: pixel width/height of the square.
-    pub(crate) fn size(mut self, size: f32) -> Self {
+    pub fn size(mut self, size: f32) -> Self {
         self.size = size;
         self
     }
 
     /// Builds the tile. The font follows [`badge_font_size`]; the label
     /// and tone follow [`db_badge_meta`].
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let (label, tone) = db_badge_meta(&self.database_type);
         let font = badge_font_size(self.size);
         row()

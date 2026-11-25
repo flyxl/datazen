@@ -86,7 +86,7 @@ use crate::ui::toggle::Checkbox;
 /// mapping row is created without one — `normalizeColumnMappings` sets an
 /// explicit `skip: true` only for rows it synthesises, see T307).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TransferColumnMapping {
+pub struct TransferColumnMapping {
     pub source_column: String,
     pub target_column: String,
     pub skip: bool,
@@ -100,7 +100,7 @@ pub(crate) struct TransferColumnMapping {
 /// distinguishes "leave it" (`None`) from "clear it" (`Some(None)`, an
 /// all-whitespace edit).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ColumnMappingPatch {
+pub struct ColumnMappingPatch {
     pub target_column: Option<String>,
     pub skip: Option<bool>,
     pub target_native_type: Option<Option<String>>,
@@ -109,7 +109,7 @@ pub(crate) struct ColumnMappingPatch {
 impl ColumnMappingPatch {
     /// Apply the patch to a row, exactly as the editor's `updateMappings`
     /// spreads `{ ...m, ...patch }` over the matching row.
-    pub(crate) fn apply_to(&self, row: &mut TransferColumnMapping) {
+    pub fn apply_to(&self, row: &mut TransferColumnMapping) {
         if let Some(target_column) = &self.target_column {
             row.target_column = target_column.clone();
         }
@@ -124,13 +124,13 @@ impl ColumnMappingPatch {
 
 /// One `{ value, label }` React select option.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TargetOption {
+pub struct TargetOption {
     pub value: String,
     pub label: String,
 }
 
 impl TargetOption {
-    pub(crate) fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
+    pub fn new(value: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
             value: value.into(),
             label: label.into(),
@@ -144,7 +144,7 @@ impl TargetOption {
 ///
 /// `pick_label` is the resolved `transfer.mapping.pickTargetColumn` text; the
 /// caller owns the key, as in `ExportSuccessPanel`.
-pub(crate) fn target_options(
+pub fn target_options(
     target_columns: &[String],
     current: &str,
     pick_label: &str,
@@ -164,7 +164,7 @@ pub(crate) fn target_options(
 
 /// React `ColumnMappingRow`'s `unmapped`: a live row with no target column.
 /// A skipped row is not unmapped — it is deliberately excluded.
-pub(crate) fn is_unmapped(row: &TransferColumnMapping) -> bool {
+pub fn is_unmapped(row: &TransferColumnMapping) -> bool {
     !row.skip && row.target_column.trim().is_empty()
 }
 
@@ -172,7 +172,7 @@ pub(crate) fn is_unmapped(row: &TransferColumnMapping) -> bool {
 /// `target_select_open` is the kit-`Select` open flag the host owns, as in
 /// `MigrationEndpointsBar`.
 #[derive(Clone, Debug)]
-pub(crate) struct ColumnMappingRowVm {
+pub struct ColumnMappingRowVm {
     pub row: TransferColumnMapping,
     pub create_new: bool,
     pub show_target_type: bool,
@@ -202,7 +202,7 @@ type Action<S> = Rc<dyn Fn(&mut S)>;
 
 /// Builder for one mapping row. `S` is the host state that owns the row's
 /// `TextEdit` buffers and the select's open flag.
-pub(crate) struct ColumnMappingRow<'a, S: 'static> {
+pub struct ColumnMappingRow<'a, S: 'static> {
     key: String,
     vm: ColumnMappingRowVm,
     dark: bool,
@@ -216,7 +216,7 @@ pub(crate) struct ColumnMappingRow<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> ColumnMappingRow<'a, S> {
-    pub(crate) fn new(key: impl Into<String>, vm: ColumnMappingRowVm) -> Self {
+    pub fn new(key: impl Into<String>, vm: ColumnMappingRowVm) -> Self {
         Self {
             key: key.into(),
             vm,
@@ -232,27 +232,27 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
     }
 
     /// React `onChange`: receives the patch for this row.
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, ColumnMappingPatch) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, ColumnMappingPatch) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
     /// The `TextEdit` the create-new target-column input displays. The
     /// editor shell (T023-S2) seeds it from `row.target_column`.
-    pub(crate) fn target_column_edit(mut self, edit: &'a TextEdit) -> Self {
+    pub fn target_column_edit(mut self, edit: &'a TextEdit) -> Self {
         self.target_column_edit = Some(edit);
         self
     }
 
     /// The `TextEdit` the target-native-type input displays, seeded from
     /// `row.target_native_type`.
-    pub(crate) fn target_native_type_edit(mut self, edit: &'a TextEdit) -> Self {
+    pub fn target_native_type_edit(mut self, edit: &'a TextEdit) -> Self {
         self.target_native_type_edit = Some(edit);
         self
     }
 
     /// Where the create-new target-column input writes its keystrokes.
-    pub(crate) fn on_target_column_edit(
+    pub fn on_target_column_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -262,7 +262,7 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
     }
 
     /// Where the target-native-type input writes its keystrokes.
-    pub(crate) fn on_target_native_type_edit(
+    pub fn on_target_native_type_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -273,12 +273,12 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
 
     /// Route the target select's open/close to host state. Without it the
     /// select builds but never opens (see `ui/select.rs`).
-    pub(crate) fn on_toggle_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_select = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_close_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close_select = Some(Rc::new(f));
         self
     }
@@ -287,7 +287,7 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
     /// text-sm`, with the amber wash while the row is unmapped.
     ///
     /// A single row on its own, exactly as the S1 probes mount it.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let (root, layer) = self.build_inner(dark);
         rune_kit::root(root, layer)
     }
@@ -297,7 +297,7 @@ impl<'a, S: 'static> ColumnMappingRow<'a, S> {
     /// it. The editor shell (T023-S2) calls this once per row and roots the
     /// whole editor once — stacking `build` outputs would nest N full-window
     /// `kit-root`s, each forcing its row to window size.
-    pub(crate) fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
+    pub fn build_inner(mut self, dark: bool) -> (El, Vec<El>) {
         self.dark = dark;
         let k = kit(dark);
         let vm = &self.vm;

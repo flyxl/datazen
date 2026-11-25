@@ -60,7 +60,7 @@ const SIDEBAR_WIDTH: f32 = 220.0;
 /// popularity as React's `sortDbTypesByPopularity` does. Removal stage: when a
 /// Rust `DB_REGISTRY` port lands, build these from it and delete the constant.
 #[allow(dead_code)] // option data; delete when the registry port lands.
-pub(crate) const DEFAULT_DB_TYPES: [(&str, &str); 8] = [
+pub const DEFAULT_DB_TYPES: [(&str, &str); 8] = [
     ("postgresql", "PostgreSQL"),
     ("mysql", "MySQL"),
     ("sqlite", "SQLite"),
@@ -85,7 +85,7 @@ fn format_group_label(key: &str) -> String {
 /// The dialog's observable state, owned by the host.
 #[allow(dead_code)] // VM surface; consumer: the connections page (not landed).
 #[derive(Clone, Debug)]
-pub(crate) struct NewConnectionDialogVm {
+pub struct NewConnectionDialogVm {
     pub open: bool,
     pub edit_id: Option<String>,
     pub default_group: Option<String>,
@@ -129,7 +129,7 @@ impl Default for NewConnectionDialogVm {
 #[allow(dead_code)] // open/reset contract; wired by the host view.
 impl NewConnectionDialogVm {
     /// React's fresh remount per open: clear the form and picker, bump the epoch.
-    pub(crate) fn open(&mut self, edit_id: Option<String>, default_group: Option<String>) {
+    pub fn open(&mut self, edit_id: Option<String>, default_group: Option<String>) {
         self.open = true;
         self.edit_id = edit_id.clone();
         self.default_group = default_group;
@@ -144,14 +144,14 @@ impl NewConnectionDialogVm {
         self.ai_notes = AiNotesState::new(edit_id.clone().unwrap_or_default());
     }
 
-    pub(crate) fn close(&mut self) {
+    pub fn close(&mut self) {
         self.open = false;
         self.testing = false;
         self.saving = false;
     }
 
     /// The option list after React's availability filter and query filter.
-    pub(crate) fn db_types(&self) -> Vec<(String, String)> {
+    pub fn db_types(&self) -> Vec<(String, String)> {
         let query = self.driver_query.text.trim().to_lowercase();
         DEFAULT_DB_TYPES
             .iter()
@@ -166,7 +166,7 @@ impl NewConnectionDialogVm {
     }
 
     /// The group options React builds from `t('newConn.noGroup')` + store groups.
-    pub(crate) fn group_options(&self) -> Vec<(String, String)> {
+    pub fn group_options(&self) -> Vec<(String, String)> {
         let mut options = vec![(String::new(), t("newConn.noGroup").to_owned())];
         for group in &self.groups {
             options.push((group.clone(), format_group_label(group)));
@@ -179,7 +179,7 @@ impl NewConnectionDialogVm {
 /// the close/reset semantics; this module never stages an IPC itself.
 #[allow(dead_code)] // VM surface; consumer: the connections page (not landed).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum NewConnectionAction {
+pub enum NewConnectionAction {
     /// Header X, Cancel or Escape. The backdrop has no handler (React parity).
     Close,
     /// A driver row was pressed.
@@ -231,7 +231,7 @@ fn footer_button<S: 'static>(
 
 /// Builder for the ported dialog.
 #[allow(dead_code)] // consumer: the connections page (not landed).
-pub(crate) struct NewConnectionDialog<'a, S: 'static> {
+pub struct NewConnectionDialog<'a, S: 'static> {
     vm: &'a NewConnectionDialogVm,
     on_vm: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut NewConnectionDialogVm>>,
     on_action: Option<ActionFn<S>>,
@@ -239,7 +239,7 @@ pub(crate) struct NewConnectionDialog<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: the connections page (not landed).
 impl<'a, S: 'static> NewConnectionDialog<'a, S> {
-    pub(crate) fn new(vm: &'a NewConnectionDialogVm) -> Self {
+    pub fn new(vm: &'a NewConnectionDialogVm) -> Self {
         Self {
             vm,
             on_vm: None,
@@ -248,7 +248,7 @@ impl<'a, S: 'static> NewConnectionDialog<'a, S> {
     }
 
     /// Accessor for the host-owned VM; without it the form fields are inert.
-    pub(crate) fn on_vm(
+    pub fn on_vm(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut NewConnectionDialogVm + 'static,
     ) -> Self {
@@ -256,12 +256,12 @@ impl<'a, S: 'static> NewConnectionDialog<'a, S> {
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, NewConnectionAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, NewConnectionAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let vm = self.vm;
         let k = kit(dark);
         let title = if vm.edit_id.is_some() {

@@ -21,11 +21,11 @@
 //! React file has no other caller than the yaml editor's extension list.
 
 /// The `source` leg of every diagnostic this pass emits (React's literal).
-pub(crate) const LINT_SOURCE: &str = "workflow-yaml";
+pub const LINT_SOURCE: &str = "workflow-yaml";
 
 /// The one message this pass reports (React's literal): an opener that never
 /// met its closer.
-pub(crate) const UNCLOSED_PARAM_MESSAGE: &str =
+pub const UNCLOSED_PARAM_MESSAGE: &str =
     "Unclosed parameter reference — missing \"}\"";
 
 /// One lint diagnostic: a byte range in the document plus the message leg.
@@ -34,9 +34,9 @@ pub(crate) const UNCLOSED_PARAM_MESSAGE: &str =
 /// ride as constants and the struct stays the observable pair (the range
 /// plus what it says).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct YamlLintDiagnostic {
-    pub(crate) from: usize,
-    pub(crate) to: usize,
+pub struct YamlLintDiagnostic {
+    pub from: usize,
+    pub to: usize,
 }
 
 /// The parameter-reference pairing pass — React's `paramRefDiagnostics`,
@@ -49,7 +49,7 @@ pub(crate) struct YamlLintDiagnostic {
 /// surviving opener becomes an error diagnostic whose range is React's
 /// `from = min(open, len)`, `to = max(from + 1, min(open + 2, len))` — the
 /// `${` pair clamped to the document, or a single byte at the tail.
-pub(crate) fn param_ref_diagnostics(doc: &str) -> Vec<YamlLintDiagnostic> {
+pub fn param_ref_diagnostics(doc: &str) -> Vec<YamlLintDiagnostic> {
     let bytes = doc.as_bytes();
     let len = bytes.len();
     let mut openers: Vec<usize> = Vec::new();

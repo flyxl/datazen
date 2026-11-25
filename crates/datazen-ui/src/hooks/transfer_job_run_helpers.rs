@@ -34,7 +34,7 @@ use crate::hooks::migration_job_hydration_helpers::{EffectOutcome, MigrationJobV
 /// pipeline-budget are *refusals*, not warnings, and degrading them
 /// into a soft failure would hide a rule the backend enforced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TransferRunFailureKind {
+pub enum TransferRunFailureKind {
     /// Backend scope: endpoints could not prove they are the local
     /// desktop backend.
     BackendScope,
@@ -50,7 +50,7 @@ pub(crate) enum TransferRunFailureKind {
 
 /// `TransferRunFailure`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TransferRunFailure {
+pub struct TransferRunFailure {
     pub kind: TransferRunFailureKind,
     pub message: String,
 }
@@ -58,18 +58,18 @@ pub(crate) struct TransferRunFailure {
 /// The command error the classifier reads: the backend's own `code`
 /// when it sent one (the `ApiError` shape) and its message.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct TransferCommandError {
+pub struct TransferCommandError {
     pub code: Option<String>,
     pub message: String,
 }
 
 /// `STALE_PLAN_ERROR_CODES` (`lib/migrationJobHydration.ts`).
-pub(crate) const STALE_PLAN_ERROR_CODES: [&str; 3] =
+pub const STALE_PLAN_ERROR_CODES: [&str; 3] =
     ["PlanStale", "SourceChanged", "PermissionDenied"];
 
 /// `isStalePlanError`: the code membership (an `ApiError`'s code, an
 /// `Error`'s `.code`, or the message's own spelling of one).
-pub(crate) fn is_stale_plan_error(error: &TransferCommandError) -> bool {
+pub fn is_stale_plan_error(error: &TransferCommandError) -> bool {
     if let Some(code) = &error.code {
         if STALE_PLAN_ERROR_CODES.contains(&code.as_str()) {
             return true;
@@ -79,40 +79,40 @@ pub(crate) fn is_stale_plan_error(error: &TransferCommandError) -> bool {
 }
 
 /// `isPipelineBudgetInterception`.
-pub(crate) fn is_pipeline_budget_interception(message: &str) -> bool {
+pub fn is_pipeline_budget_interception(message: &str) -> bool {
     regex::Regex::new(r"(?i)pipeline\s*budget|pipelinebudget|budget\s*exceed|8\s*MiB|8388608")
         .expect("the budget pattern compiles")
         .is_match(message)
 }
 
 /// `isPlanConsumedRejection`: planId single-consumption.
-pub(crate) fn is_plan_consumed_rejection(message: &str) -> bool {
+pub fn is_plan_consumed_rejection(message: &str) -> bool {
     regex::Regex::new(r"(?i)already\s*consumed|PlanAlreadyConsumed|re-review the migration to mint a new plan")
         .expect("the consumed pattern compiles")
         .is_match(message)
 }
 
 /// `isBackendScopeRejection`.
-pub(crate) fn is_backend_scope_rejection(message: &str) -> bool {
+pub fn is_backend_scope_rejection(message: &str) -> bool {
     regex::Regex::new(r"(?i)backend\s*scope|local-desktop-backend|scope")
         .expect("the scope pattern compiles")
         .is_match(message)
 }
 
 /// `isMigrationJobInFlight`.
-pub(crate) fn is_migration_job_in_flight(state: &str) -> bool {
+pub fn is_migration_job_in_flight(state: &str) -> bool {
     state == "queued" || state == "running"
 }
 
 /// `isActiveJobState` (the hook file's own).
-pub(crate) fn is_active_job_state(state: &str) -> bool {
+pub fn is_active_job_state(state: &str) -> bool {
     is_migration_job_in_flight(state)
 }
 
 /// `readJobCounter`, over the JSON forms the wire can carry
 /// (`number | string | null | undefined`): a finite `>= 0` number
 /// truncates; a digits-only string parses; anything else is `None`.
-pub(crate) fn read_job_counter(value: &Value) -> Option<u64> {
+pub fn read_job_counter(value: &Value) -> Option<u64> {
     if let Some(number) = value.as_f64() {
         return if number.is_finite() && number >= 0.0 {
             Some(number.trunc() as u64)
@@ -132,7 +132,7 @@ pub(crate) fn read_job_counter(value: &Value) -> Option<u64> {
 
 /// `classifyTransferRunFailure` — the hook file's own export: the
 /// four specific refusals in their order, then `other`.
-pub(crate) fn classify_transfer_run_failure(
+pub fn classify_transfer_run_failure(
     error: &TransferCommandError,
 ) -> TransferRunFailure {
     let message = error.message.clone();
@@ -154,7 +154,7 @@ pub(crate) fn classify_transfer_run_failure(
 /// `isAmbiguousApplySubmissionError`: the apply may have been
 /// accepted even though its receipt was lost (the code triple or the
 /// transport phrasing).
-pub(crate) fn is_ambiguous_apply_submission_error(error: &TransferCommandError) -> bool {
+pub fn is_ambiguous_apply_submission_error(error: &TransferCommandError) -> bool {
     if let Some(code) = &error.code {
         if matches!(code.as_str(), "OutcomeUnknown" | "ServiceUnavailable" | "Timeout") {
             return true;
@@ -169,7 +169,7 @@ pub(crate) fn is_ambiguous_apply_submission_error(error: &TransferCommandError) 
 
 /// The `EffectOutcome` wire spelling (`notStarted` / `completed` /
 /// `rolledBack` / `partiallyApplied` / `unknown`).
-pub(crate) fn effect_outcome_as_str(outcome: Option<EffectOutcome>) -> Option<&'static str> {
+pub fn effect_outcome_as_str(outcome: Option<EffectOutcome>) -> Option<&'static str> {
     match outcome {
         Some(EffectOutcome::NotStarted) => Some("notStarted"),
         Some(EffectOutcome::Completed) => Some("completed"),
@@ -181,7 +181,7 @@ pub(crate) fn effect_outcome_as_str(outcome: Option<EffectOutcome>) -> Option<&'
 }
 
 /// The `JobState` wire spelling.
-pub(crate) fn job_state_as_str(state: &crate::hooks::migration_job_hydration_helpers::JobState) -> &'static str {
+pub fn job_state_as_str(state: &crate::hooks::migration_job_hydration_helpers::JobState) -> &'static str {
     use crate::hooks::migration_job_hydration_helpers::JobState;
     match state {
         JobState::Queued => "queued",
@@ -196,7 +196,7 @@ pub(crate) fn job_state_as_str(state: &crate::hooks::migration_job_hydration_hel
 /// the terminal details read projects.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct JobRecoveryResultVm {
+pub struct JobRecoveryResultVm {
     pub verdict: Option<String>,
     pub resume_through: Option<u64>,
     pub reason_code: Option<String>,
@@ -206,7 +206,7 @@ pub(crate) struct JobRecoveryResultVm {
 /// terminal report `get_transfer_job_details` answers.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct JobDetailsVm {
+pub struct JobDetailsVm {
     pub job: MigrationJobViewVm,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_id: Option<String>,
@@ -224,7 +224,7 @@ pub(crate) struct JobDetailsVm {
 /// transfer admission receipt. A terminal summary is not the durable
 /// report: the effect outcome stays unknown until the details query
 /// returns boundaries and the exact recovery disposition.
-pub(crate) fn project_apply_job_view(
+pub fn project_apply_job_view(
     current: &TransferApplyJobView,
     latest: &MigrationJobViewVm,
 ) -> TransferApplyJobView {
@@ -251,7 +251,7 @@ pub(crate) fn project_apply_job_view(
 
 /// `projectApplyJobDetails` — merge the durable terminal read model
 /// into the live apply receipt.
-pub(crate) fn project_apply_job_details(
+pub fn project_apply_job_details(
     current: &TransferApplyJobView,
     details: &JobDetailsVm,
 ) -> TransferApplyJobView {

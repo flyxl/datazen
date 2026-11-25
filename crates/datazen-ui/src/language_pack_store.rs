@@ -51,14 +51,14 @@ use serde::Deserialize;
 
 /// React `LANGUAGE_PACKS_CHANGED_EVENT`
 /// (`commands/languagePacks.ts:4`): the cross-window refresh event.
-pub(crate) const LANGUAGE_PACKS_CHANGED_EVENT: &str = "language-packs:changed";
+pub const LANGUAGE_PACKS_CHANGED_EVENT: &str = "language-packs:changed";
 
 /// React `LanguagePackSummary` (`commands/languagePacks.ts:19-27`): one
 /// installed pack as listed by `list_language_packs`. Carried here
 /// until T331 (its owning commands task) lands — see the module docs.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LanguagePackSummary {
+pub struct LanguagePackSummary {
     pub code: String,
     pub label: String,
     pub version: String,
@@ -73,7 +73,7 @@ pub(crate) struct LanguagePackSummary {
 /// What the host must do next — the two IPC calls the zustand actions
 /// make, as request payloads (the `AiStore`'s `AiConfigEffect` shape).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum LanguagePackEffect {
+pub enum LanguagePackEffect {
     /// `languagePackCommands.listLanguagePacks()`.
     ListPacks,
     /// `languagePackCommands.removeLanguagePack(code)`.
@@ -83,31 +83,31 @@ pub(crate) enum LanguagePackEffect {
 /// The store's slice: the packs, the loaded flag and the error text
 /// (React's zustand state minus the two actions).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct LanguagePackStore {
+pub struct LanguagePackStore {
     pub packs: Vec<LanguagePackSummary>,
     pub loaded: bool,
     pub error: Option<String>,
 }
 
 impl LanguagePackStore {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// React `byCode`: the pack with the code, or none.
-    pub(crate) fn by_code(&self, code: &str) -> Option<&LanguagePackSummary> {
+    pub fn by_code(&self, code: &str) -> Option<&LanguagePackSummary> {
         self.packs.iter().find(|pack| pack.code == code)
     }
 
     /// `fetch`'s opening: the request the host executes. The state
     /// holds everything until the answer lands (React sets nothing
     /// before the `await`).
-    pub(crate) fn begin_fetch(&mut self) -> LanguagePackEffect {
+    pub fn begin_fetch(&mut self) -> LanguagePackEffect {
         LanguagePackEffect::ListPacks
     }
 
     /// `fetch`'s success: `set({ packs, loaded: true, error: null })`.
-    pub(crate) fn complete_fetch(&mut self, packs: Vec<LanguagePackSummary>) {
+    pub fn complete_fetch(&mut self, packs: Vec<LanguagePackSummary>) {
         self.packs = packs;
         self.loaded = true;
         self.error = None;
@@ -116,7 +116,7 @@ impl LanguagePackStore {
     /// `fetch`'s catch: `set({ loaded: true, error })` — a failed load
     /// still counts as loaded (the card shows the error, never a
     /// spinner again).
-    pub(crate) fn fail_fetch(&mut self, message: &str) {
+    pub fn fail_fetch(&mut self, message: &str) {
         self.loaded = true;
         self.error = Some(message.to_owned());
     }
@@ -124,14 +124,14 @@ impl LanguagePackStore {
     /// `remove`'s opening: the removal request. Nothing in the state
     /// moves yet (React sets nothing on the success path either — the
     /// refetch that follows writes it).
-    pub(crate) fn begin_remove(&mut self, code: &str) -> LanguagePackEffect {
+    pub fn begin_remove(&mut self, code: &str) -> LanguagePackEffect {
         LanguagePackEffect::RemovePack { code: code.to_owned() }
     }
 
     /// `remove`'s catch: `set({ error })` — only the error; `loaded`
     /// keeps whatever the last fetch left. The rethrow is the host's
     /// business (the `Err` it already holds).
-    pub(crate) fn fail_remove(&mut self, message: &str) {
+    pub fn fail_remove(&mut self, message: &str) {
         self.error = Some(message.to_owned());
     }
 }
@@ -139,14 +139,14 @@ impl LanguagePackStore {
 /// The `ensureLanguagePacksChangedListener` once-latch: the module-level
 /// `subscriptionStarted` flag and its three retry paths.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct LanguagePacksChangedListener {
+pub struct LanguagePacksChangedListener {
     started: bool,
 }
 
 /// What [`LanguagePacksChangedListener::ensure`] found — each outcome
 /// maps one React arm of the try/catch (53–74).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ListenerOutcome {
+pub enum ListenerOutcome {
     /// `getPlatformOrNull()` returned null: not assembled yet (unit
     /// tests / pre-bootstrap). The flag was reset — a later call
     /// retries.
@@ -163,7 +163,7 @@ pub(crate) enum ListenerOutcome {
 }
 
 impl LanguagePacksChangedListener {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { started: false }
     }
 
@@ -178,7 +178,7 @@ impl LanguagePacksChangedListener {
     /// * The three retry paths (React 59–61, 67–69, 71–73) all reset
     ///   the latch, so the next `ensure` tries again exactly as the
     ///   module flag would.
-    pub(crate) fn ensure(
+    pub fn ensure(
         &mut self,
         platform_assembled: bool,
         subscribe_rejected: bool,
@@ -210,7 +210,7 @@ impl LanguagePacksChangedListener {
 
     /// Whether the latch holds a live subscription (the module's
     /// `subscriptionStarted` read).
-    pub(crate) fn is_started(&self) -> bool {
+    pub fn is_started(&self) -> bool {
         self.started
     }
 }

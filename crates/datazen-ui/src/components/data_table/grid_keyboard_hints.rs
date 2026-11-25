@@ -48,19 +48,19 @@ const HINT_KEYS: [&str; 7] = [
 
 /// The grid's keyboard hints, labelled with the id the grid owns.
 #[allow(dead_code)] // ported base; remove when the data grid call site lands
-pub(crate) struct GridKeyboardHints {
+pub struct GridKeyboardHints {
     id: String,
 }
 
 #[allow(dead_code)] // ported base; remove when the data grid call site lands
 impl GridKeyboardHints {
-    pub(crate) fn new(id: impl Into<String>) -> GridKeyboardHints {
+    pub fn new(id: impl Into<String>) -> GridKeyboardHints {
         GridKeyboardHints { id: id.into() }
     }
 
     /// Builds the one-point `sr-only` box: `list`/`listitem` for a reader, no
     /// paint, no focus. Nothing here is focusable.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let id = self.id;
         let mut list = col().key(format!("{id}-list")).role("list").w_full();

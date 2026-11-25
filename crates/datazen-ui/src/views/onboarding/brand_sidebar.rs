@@ -74,24 +74,24 @@ use super::onboarding_layout::chrome_text;
 // The shared chrome metrics now live in `onboarding_layout` (the T287
 // port of `onboardingLayout.ts`); the aliases keep the T021 audit's
 // import path (`brand_sidebar::{ASIDE_PAD_X, FOOTER_HEIGHT}`) untouched.
-pub(crate) use super::onboarding_layout::{
+pub use super::onboarding_layout::{
     WIZARD_ASIDE_PX as ASIDE_PAD_X, WIZARD_FOOTER_HEIGHT as FOOTER_HEIGHT,
 };
 
 /// The sidebar's fixed width (`w-[352px]`, 352px → 264pt).
 #[allow(dead_code)] // reusable port; wired by the onboarding wizard track
-pub(crate) const ASIDE_WIDTH: f32 = 264.0;
+pub const ASIDE_WIDTH: f32 = 264.0;
 
 /// React `v{version}` — the version footer's label text, this file's only
 /// logic (the `useState('…')` default is the caller's).
 #[allow(dead_code)] // reusable port; wired by the onboarding wizard track
-pub(crate) fn version_label(version: &str) -> String {
+pub fn version_label(version: &str) -> String {
     format!("v{version}")
 }
 
 /// The brand sidebar. Purely presentational; the version is host-delivered.
 #[allow(dead_code)] // reusable port; wired by the onboarding wizard track
-pub(crate) struct BrandSidebar {
+pub struct BrandSidebar {
     version: String,
 }
 
@@ -104,13 +104,13 @@ impl Default for BrandSidebar {
 impl BrandSidebar {
     /// React's `useState('…')` start.
     #[allow(dead_code)] // reusable port; wired by the onboarding wizard track
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { version: "…".to_owned() }
     }
 
     /// The host-delivered app version (`hostSettings.getAppVersion()`).
     #[allow(dead_code)] // reusable port; wired by the onboarding wizard track
-    pub(crate) fn version(mut self, version: impl Into<String>) -> Self {
+    pub fn version(mut self, version: impl Into<String>) -> Self {
         self.version = version.into();
         self
     }
@@ -118,7 +118,7 @@ impl BrandSidebar {
     /// Paint the sidebar; `dark` drives the text tokens only — the
     /// gradient anchor stays fixed-dark, as in React.
     #[allow(dead_code)] // reusable port; wired by the onboarding wizard track
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let (top, bottom) = palette::brand_sidebar_gradient();
 

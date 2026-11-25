@@ -98,7 +98,7 @@ use crate::views::{JobCounter, JobProgress, JobState};
 /// React `JobRecoveryVerdict` (`backend-client/types/jobs.ts:135-140`):
 /// the five stable verdicts a recovery receipt can carry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum JobRecoveryVerdict {
+pub enum JobRecoveryVerdict {
     NotExecuted,
     PendingVerification,
     ResumeAfterVerify,
@@ -108,7 +108,7 @@ pub(crate) enum JobRecoveryVerdict {
 
 impl JobRecoveryVerdict {
     /// The wire spelling, for the host that decodes the recovery receipt.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::NotExecuted => "notExecuted",
             Self::PendingVerification => "pendingVerification",
@@ -122,7 +122,7 @@ impl JobRecoveryVerdict {
     /// branches treat every non-`notExecuted` / non-`pendingVerification`
     /// verdict (known or not) exactly like React's chained `===` does —
     /// it falls through to the raw job state.
-    pub(crate) fn from_str(value: &str) -> Option<Self> {
+    pub fn from_str(value: &str) -> Option<Self> {
         match value {
             "notExecuted" => Some(Self::NotExecuted),
             "pendingVerification" => Some(Self::PendingVerification),
@@ -138,7 +138,7 @@ impl JobRecoveryVerdict {
 /// the `(code, value)` pairs this panel flattens the domain results into.
 /// The other fields of `JobDomainResult` never reach this strip.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DomainCounter {
+pub struct DomainCounter {
     pub code: String,
     pub value: JobCounter,
 }
@@ -151,7 +151,7 @@ pub(crate) struct DomainCounter {
 /// whole details object and the window re-queries by itself), so it is not
 /// modelled here.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DataSyncJobDetailsVm {
+pub struct DataSyncJobDetailsVm {
     pub job: DurableJobView,
     /// `recovery?.verdict`, `None` when there is no receipt or the verdict
     /// does not parse.
@@ -162,7 +162,7 @@ pub(crate) struct DataSyncJobDetailsVm {
 
 /// The `JobView` fields the strip renders.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DurableJobView {
+pub struct DurableJobView {
     pub job_id: String,
     pub kind: String,
     pub state: JobState,
@@ -175,7 +175,7 @@ pub(crate) struct DurableJobView {
 /// to 0, accepts hexadecimal and `Infinity` spellings, and is `NaN` for
 /// anything else. This is the loose inline conversion of the React source,
 /// **not** the strict `readJobCounter` gate of `lib/migrationJobVerdict.ts`.
-pub(crate) fn js_number(value: &JobCounter) -> f64 {
+pub fn js_number(value: &JobCounter) -> f64 {
     match value {
         JobCounter::Number(value) => *value,
         JobCounter::Text(text) => js_number_of_text(text),
@@ -212,7 +212,7 @@ fn js_number_of_text(s: &str) -> f64 {
 /// JS `String(number)`: `NaN` / `Infinity` / `-Infinity` print their JS
 /// spellings (Rust's `Display` for `f64` would print `NaN` / `inf` / `-inf`),
 /// everything else prints the same compact decimal.
-pub(crate) fn js_number_to_string(value: f64) -> String {
+pub fn js_number_to_string(value: f64) -> String {
     if value.is_nan() {
         "NaN".to_owned()
     } else if value == f64::INFINITY {
@@ -227,7 +227,7 @@ pub(crate) fn js_number_to_string(value: f64) -> String {
 /// The per-row state label: the recovery verdict wins over the raw job
 /// state for the two verdicts React names, everything else (including no
 /// receipt) falls through to the wire state spelling.
-pub(crate) fn durable_job_state_label(details: &DataSyncJobDetailsVm) -> String {
+pub fn durable_job_state_label(details: &DataSyncJobDetailsVm) -> String {
     match details.recovery_verdict {
         Some(JobRecoveryVerdict::NotExecuted) => t("migrationJob.notExecutedJob").to_owned(),
         Some(JobRecoveryVerdict::PendingVerification) => {
@@ -243,7 +243,7 @@ pub(crate) fn durable_job_state_label(details: &DataSyncJobDetailsVm) -> String 
 /// (no counter found) only, never to rescue a `NaN` the counter itself
 /// produced. A missing progress bucket is `Number(undefined)` = `NaN`,
 /// mirroring the Option this model carries.
-pub(crate) fn committed_result(details: &DataSyncJobDetailsVm) -> f64 {
+pub fn committed_result(details: &DataSyncJobDetailsVm) -> f64 {
     let fallback = details
         .job
         .progress
@@ -263,7 +263,7 @@ pub(crate) fn committed_result(details: &DataSyncJobDetailsVm) -> f64 {
 /// one; the two in-flight ids are props (controlled by the window), not
 /// local state, exactly as React receives them.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DataSyncJobStatusPanelVm {
+pub struct DataSyncJobStatusPanelVm {
     pub pending_verification_count: usize,
     pub hydration_error: Option<String>,
     pub not_executed_count: usize,
@@ -274,14 +274,14 @@ pub(crate) struct DataSyncJobStatusPanelVm {
 
 /// The status strip builder. `S` is the host state that owns the
 /// verify-recovery and cancel actions.
-pub(crate) struct DataSyncJobStatusPanel<S: 'static> {
+pub struct DataSyncJobStatusPanel<S: 'static> {
     vm: DataSyncJobStatusPanelVm,
     on_verify_recovery: Option<Rc<dyn Fn(&mut S, DataSyncJobDetailsVm)>>,
     on_cancel_job: Option<Rc<dyn Fn(&mut S, String)>>,
 }
 
 impl<S: 'static> DataSyncJobStatusPanel<S> {
-    pub(crate) fn new(vm: DataSyncJobStatusPanelVm) -> Self {
+    pub fn new(vm: DataSyncJobStatusPanelVm) -> Self {
         Self {
             vm,
             on_verify_recovery: None,
@@ -292,7 +292,7 @@ impl<S: 'static> DataSyncJobStatusPanel<S> {
     /// React `onVerifyRecovery(details)`: the whole details projection
     /// travels back to the host (the window re-queries the durable job by
     /// itself).
-    pub(crate) fn on_verify_recovery(
+    pub fn on_verify_recovery(
         mut self,
         f: impl Fn(&mut S, DataSyncJobDetailsVm) + 'static,
     ) -> Self {
@@ -301,7 +301,7 @@ impl<S: 'static> DataSyncJobStatusPanel<S> {
     }
 
     /// React `onCancelJob(jobId)`.
-    pub(crate) fn on_cancel_job(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_cancel_job(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_cancel_job = Some(Rc::new(f));
         self
     }
@@ -309,7 +309,7 @@ impl<S: 'static> DataSyncJobStatusPanel<S> {
     /// The strip: a column root (React returns a fragment; the column
     /// mounts nothing visible itself) with the three banners and the
     /// history list as children.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let vm = &self.vm;
         let mut root = col().key("data-sync-job-status-panel");

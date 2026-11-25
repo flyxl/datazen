@@ -118,15 +118,15 @@ use super::step_tag::step_tag;
 
 /// React `SAMPLE_CONNECTION_NAME`: the fixed identity of the seeded
 /// playground connection.
-pub(crate) const SAMPLE_CONNECTION_NAME: &str = "Sample Playground";
+pub const SAMPLE_CONNECTION_NAME: &str = "Sample Playground";
 
 /// React `SAMPLE_CONNECTION_GROUP`: the group the seeded playground
 /// connection is filed under.
-pub(crate) const SAMPLE_CONNECTION_GROUP: &str = "Sample";
+pub const SAMPLE_CONNECTION_GROUP: &str = "Sample";
 
 /// React `max-w-[640px]` (640px → 480pt): the step column's cap (the
 /// welcome step's own cap — both S1 panels are 640px columns).
-pub(crate) const STEP_MAX_W: f32 = 480.0;
+pub const STEP_MAX_W: f32 = 480.0;
 
 /// React `max-w-[56ch]` on the subtitle: 56 × the "0" advance (≈ 0.5em at
 /// 13.5px → 6.75px) ≈ 378px → 283.5pt. Approximate by construction — the
@@ -135,7 +135,7 @@ const SUBTITLE_MAX_W: f32 = 283.5;
 
 /// React `SampleStatus`: the seeding journey's three states.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum SampleStatus {
+pub enum SampleStatus {
     /// `'preparing'` — the seeding task is in flight (the initial state).
     #[default]
     Preparing,
@@ -150,15 +150,15 @@ pub(crate) enum SampleStatus {
 /// its `S` and clones it per frame, exactly the T103 `FormBodyVm`
 /// discipline.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct SampleStepVm {
+pub struct SampleStepVm {
     /// `status` — the seeding journey's state (React's `'preparing'`
     /// initial value is the default).
-    pub(crate) status: SampleStatus,
+    pub status: SampleStatus,
     /// `samplePath` — the seeded database's path (`''` until the journey
     /// succeeds; the path line renders only when non-empty).
-    pub(crate) sample_path: String,
+    pub sample_path: String,
     /// `error` — the failure message (`null` until the journey fails).
-    pub(crate) error: Option<String>,
+    pub error: Option<String>,
     /// The `seedingRef` guard: whether the seeding task has been started
     /// for this entry into the step. Never read by the tree — it is the
     /// host's run-once rule (see [`Self::begin_seeding`]).
@@ -171,7 +171,7 @@ impl SampleStepVm {
     /// task exactly once per entry into the sample step — a re-built step
     /// (React's StrictMode remount, or any re-render) re-observes the one
     /// run instead of re-running it.
-    pub(crate) fn begin_seeding(&mut self) -> bool {
+    pub fn begin_seeding(&mut self) -> bool {
         if self.seeding_started {
             return false;
         }
@@ -183,7 +183,7 @@ impl SampleStepVm {
     /// setStatus('ready')`. The host runs this when its seeding task
     /// resolves, then dispatches `SAMPLE_READY { path, connectionName:
     /// SAMPLE_CONNECTION_NAME }` (the `onReady` prop's half).
-    pub(crate) fn seed_succeeded(&mut self, path: impl Into<String>) {
+    pub fn seed_succeeded(&mut self, path: impl Into<String>) {
         self.sample_path = path.into();
         self.status = SampleStatus::Ready;
     }
@@ -192,7 +192,7 @@ impl SampleStepVm {
     /// setError(message)`. The host runs this when its seeding task
     /// rejects (with the already-normalized message string), then
     /// dispatches `SAMPLE_FAILED` (the `onFailed` prop's half).
-    pub(crate) fn seed_failed(&mut self, message: impl Into<String>) {
+    pub fn seed_failed(&mut self, message: impl Into<String>) {
         self.status = SampleStatus::Failed;
         self.error = Some(message.into());
     }
@@ -202,7 +202,7 @@ impl SampleStepVm {
 /// the one status card tracking the seeding journey. Built per frame over
 /// the host's [`SampleStepVm`] — there is nothing to click (the wizard
 /// footer's Continue is the way forward), so no action slots exist.
-pub(crate) struct SampleStep {
+pub struct SampleStep {
     /// The step-local state (this file's own `useState`s plus the guard).
     vm: SampleStepVm,
     /// `readyConnectionName` — the existing connection name when step 1
@@ -214,7 +214,7 @@ pub(crate) struct SampleStep {
 impl SampleStep {
     /// React's mount on S1-sample: the fresh journey's `preparing` state,
     /// no `readyConnectionName` prop.
-    pub(crate) fn new(vm: SampleStepVm) -> Self {
+    pub fn new(vm: SampleStepVm) -> Self {
         SampleStep {
             vm,
             ready_connection_name: None,
@@ -223,13 +223,13 @@ impl SampleStep {
 
     /// `readyConnectionName` — `None` is React's undefined (the prop is
     /// absent until the wizard has a seeded path to hand over).
-    pub(crate) fn ready_connection_name(mut self, name: Option<String>) -> Self {
+    pub fn ready_connection_name(mut self, name: Option<String>) -> Self {
         self.ready_connection_name = name;
         self
     }
 
     /// Paint the step. `dark` drives the kit tokens.
-    pub(crate) fn build(&self, dark: bool) -> El {
+    pub fn build(&self, dark: bool) -> El {
         let k = kit(dark);
 
         // React's `ready`: the local status, OR the already-completed-once

@@ -16,27 +16,27 @@
 //! `WelcomeStep` (T247) landed — the `onboarding_layout` absorb pattern.
 //! T247 reuses [`step_tag`] instead of re-defining it.
 
-pub(crate) mod ai_provider_step;
-pub(crate) mod done_step;
-pub(crate) mod import_step;
-pub(crate) mod manual_connection_step;
-pub(crate) mod sample_step;
-pub(crate) mod step_tag;
-pub(crate) mod welcome_step;
+pub mod ai_provider_step;
+pub mod done_step;
+pub mod import_step;
+pub mod manual_connection_step;
+pub mod sample_step;
+pub mod step_tag;
+pub mod welcome_step;
 
 // The wizard host wiring (the remaining step tasks T177–T247) is the
 // production consumer.
 #[allow(unused_imports)] // the onboarding wizard host (T114's ai seat) is the production consumer
-pub(crate) use ai_provider_step::AiProviderStep;
+pub use ai_provider_step::AiProviderStep;
 #[allow(unused_imports)] // the WelcomeStep port (T247) is the production consumer
-pub(crate) use step_tag::step_tag;
+pub use step_tag::step_tag;
 #[allow(unused_imports)] // the onboarding wizard host (T114's welcome seat) is the production consumer
-pub(crate) use welcome_step::WelcomeStep;
+pub use welcome_step::WelcomeStep;
 #[allow(unused_imports)] // the onboarding wizard host (T114's `-step-s1-manual` seat) is the production consumer
-pub(crate) use manual_connection_step::ManualConnectionStep;
+pub use manual_connection_step::ManualConnectionStep;
 #[allow(unused_imports)] // the onboarding wizard host (T114's `-step-s1-sample` seat) is the production consumer
-pub(crate) use sample_step::SampleStep;
+pub use sample_step::SampleStep;
 #[allow(unused_imports)] // the onboarding wizard host (T114's `-step-s1-import` seat) is the production consumer
-pub(crate) use import_step::ImportStep;
+pub use import_step::ImportStep;
 #[allow(unused_imports)] // the onboarding wizard host (T114's `-step-s3` seat) is the production consumer
-pub(crate) use done_step::DoneStep;
+pub use done_step::DoneStep;

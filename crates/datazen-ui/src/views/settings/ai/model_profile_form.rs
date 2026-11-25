@@ -138,7 +138,7 @@ pub(super) const MONO_XS: TextStyle = TextStyle::new(12.0, 400.0);
 /// keeps its own open state; closing on a choice is every handler's job,
 /// reproduced by each `on_choose` here).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ModelFormSelect {
+pub enum ModelFormSelect {
     Provider,
     Protocol,
     Model,
@@ -151,7 +151,7 @@ pub(crate) enum ModelFormSelect {
 /// (settings dialog); `inline` leaves the primary action to the host
 /// (first-run journey footer).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum FormVariant {
+pub enum FormVariant {
     Dialog,
     Inline,
 }
@@ -159,64 +159,64 @@ pub(crate) enum FormVariant {
 /// Where the form's state lives in the host's `S` (function pointers, the
 /// `workflow_form.rs` slot pattern — every field is a `fn` pointer, so the
 /// struct is `Copy`).
-pub(crate) struct ModelProfileFormSlots<S: 'static> {
+pub struct ModelProfileFormSlots<S: 'static> {
     /// The controlled draft (React's `draft` prop).
-    pub(crate) draft: fn(&S) -> &ModelProfileDraft,
-    pub(crate) draft_mut: fn(&mut S) -> &mut ModelProfileDraft,
+    pub draft: fn(&S) -> &ModelProfileDraft,
+    pub draft_mut: fn(&mut S) -> &mut ModelProfileDraft,
     /// The one open listbox.
-    pub(crate) open: fn(&S) -> Option<ModelFormSelect>,
-    pub(crate) set_open: fn(&mut S, Option<ModelFormSelect>),
+    pub open: fn(&S) -> Option<ModelFormSelect>,
+    pub set_open: fn(&mut S, Option<ModelFormSelect>),
     // ---- the useAiStore halves the hook reads ----
-    pub(crate) validating: fn(&S) -> bool,
-    pub(crate) config_error: fn(&S) -> Option<String>,
-    pub(crate) fetching_remote_models: fn(&S) -> bool,
-    pub(crate) remote_models: fn(&S) -> &[ModelInfo],
+    pub validating: fn(&S) -> bool,
+    pub config_error: fn(&S) -> Option<String>,
+    pub fetching_remote_models: fn(&S) -> bool,
+    pub remote_models: fn(&S) -> &[ModelInfo],
     /// The store's raw provider list (normalized per frame, like the hook's
     /// `providerDefaults` memo).
-    pub(crate) providers: fn(&S) -> &[ProviderListItem],
+    pub providers: fn(&S) -> &[ProviderListItem],
     /// The validate badge, caller-computed from the draft's 3s deadline.
-    pub(crate) validate_ok: fn(&S) -> bool,
+    pub validate_ok: fn(&S) -> bool,
     // ---- actions (the hook's callbacks) ----
-    pub(crate) on_set_tab: fn(&mut S, DraftTab),
+    pub on_set_tab: fn(&mut S, DraftTab),
     /// `handleProviderChange` (the literal converts at the select edge).
-    pub(crate) on_provider_change: fn(&mut S, AiProviderType),
-    pub(crate) on_protocol_change: fn(&mut S, String),
-    pub(crate) on_fetch_models: fn(&mut S),
+    pub on_provider_change: fn(&mut S, AiProviderType),
+    pub on_protocol_change: fn(&mut S, String),
+    pub on_fetch_models: fn(&mut S),
     /// The manual-model checkbox (`setManualModelInput(!checked)`).
-    pub(crate) on_toggle_manual_model: fn(&mut S),
-    pub(crate) on_model_change: fn(&mut S, String),
-    pub(crate) on_validate: fn(&mut S),
-    pub(crate) on_apply_preset: fn(&mut S, SafetyPresetKey),
-    pub(crate) on_egress_change: fn(&mut S, AiDataEgressLevel),
-    pub(crate) on_gate_max_sample_rows: fn(&mut S, u32),
-    pub(crate) on_gate_max_tool_rounds: fn(&mut S, usize),
-    pub(crate) on_gate_api_retries: fn(&mut S, u32),
-    pub(crate) on_gate_max_tool_tokens: fn(&mut S, usize),
-    pub(crate) on_gate_max_tool_result_bytes: fn(&mut S, usize),
-    pub(crate) on_gate_max_tool_duration_secs: fn(&mut S, u64),
-    pub(crate) on_db_policy_change: fn(&mut S, AiToolPermissionPolicy),
-    pub(crate) on_mcp_policy_change: fn(&mut S, AiToolPermissionPolicy),
+    pub on_toggle_manual_model: fn(&mut S),
+    pub on_model_change: fn(&mut S, String),
+    pub on_validate: fn(&mut S),
+    pub on_apply_preset: fn(&mut S, SafetyPresetKey),
+    pub on_egress_change: fn(&mut S, AiDataEgressLevel),
+    pub on_gate_max_sample_rows: fn(&mut S, u32),
+    pub on_gate_max_tool_rounds: fn(&mut S, usize),
+    pub on_gate_api_retries: fn(&mut S, u32),
+    pub on_gate_max_tool_tokens: fn(&mut S, usize),
+    pub on_gate_max_tool_result_bytes: fn(&mut S, usize),
+    pub on_gate_max_tool_duration_secs: fn(&mut S, u64),
+    pub on_db_policy_change: fn(&mut S, AiToolPermissionPolicy),
+    pub on_mcp_policy_change: fn(&mut S, AiToolPermissionPolicy),
     /// The default switch (`updateDraft({ isDefault: !checked })`).
-    pub(crate) on_toggle_default: fn(&mut S),
+    pub on_toggle_default: fn(&mut S),
     /// The SQL-confirm switch (`updateGate('requireSqlConfirm', !checked)`).
-    pub(crate) on_toggle_sql_confirm: fn(&mut S),
+    pub on_toggle_sql_confirm: fn(&mut S),
     /// React's `onCancel` prop (the dialog variant's cancel button).
-    pub(crate) on_cancel: fn(&mut S),
+    pub on_cancel: fn(&mut S),
     /// The save press: the host runs `request_save` (and on the confirmation
     /// `confirm_high_risk`) against the draft.
-    pub(crate) on_save: fn(&mut S),
+    pub on_save: fn(&mut S),
     /// The high-risk dialog's dismissal (`setShowHighRiskModal(false)`).
-    pub(crate) on_cancel_high_risk: fn(&mut S),
+    pub on_cancel_high_risk: fn(&mut S),
     /// The high-risk dialog's confirm (`confirmHighRisk`).
-    pub(crate) on_confirm_high_risk: fn(&mut S),
+    pub on_confirm_high_risk: fn(&mut S),
     // ---- the controlled inputs' TextEdits ----
-    pub(crate) name_edit: fn(&mut S) -> &mut TextEdit,
-    pub(crate) api_key_edit: fn(&mut S) -> &mut TextEdit,
-    pub(crate) endpoint_edit: fn(&mut S) -> &mut TextEdit,
-    pub(crate) model_edit: fn(&mut S) -> &mut TextEdit,
-    pub(crate) max_tokens_edit: fn(&mut S) -> &mut TextEdit,
-    pub(crate) cli_path_edit: fn(&mut S) -> &mut TextEdit,
-    pub(crate) cli_workspace_edit: fn(&mut S) -> &mut TextEdit,
+    pub name_edit: fn(&mut S) -> &mut TextEdit,
+    pub api_key_edit: fn(&mut S) -> &mut TextEdit,
+    pub endpoint_edit: fn(&mut S) -> &mut TextEdit,
+    pub model_edit: fn(&mut S) -> &mut TextEdit,
+    pub max_tokens_edit: fn(&mut S) -> &mut TextEdit,
+    pub cli_path_edit: fn(&mut S) -> &mut TextEdit,
+    pub cli_workspace_edit: fn(&mut S) -> &mut TextEdit,
 }
 
 impl<S: 'static> Clone for ModelProfileFormSlots<S> {
@@ -227,7 +227,7 @@ impl<S: 'static> Clone for ModelProfileFormSlots<S> {
 impl<S: 'static> Copy for ModelProfileFormSlots<S> {}
 
 /// The model profile form, built per frame over the host's `S`.
-pub(crate) struct ModelProfileForm<'a, S: 'static> {
+pub struct ModelProfileForm<'a, S: 'static> {
     pub(super) key: &'a str,
     pub(super) variant: FormVariant,
     pub(super) slots: ModelProfileFormSlots<S>,
@@ -235,7 +235,7 @@ pub(crate) struct ModelProfileForm<'a, S: 'static> {
 
 impl<'a, S: 'static> ModelProfileForm<'a, S> {
     /// The form over the slots (React's default `variant: 'dialog'`).
-    pub(crate) fn new(slots: ModelProfileFormSlots<S>) -> Self {
+    pub fn new(slots: ModelProfileFormSlots<S>) -> Self {
         Self {
             key: "ai-profile-form",
             variant: FormVariant::Dialog,
@@ -245,7 +245,7 @@ impl<'a, S: 'static> ModelProfileForm<'a, S> {
 
     /// React's `variant` prop (also switches the root testid to
     /// `onboarding-ai-form`).
-    pub(crate) fn variant(mut self, variant: FormVariant) -> Self {
+    pub fn variant(mut self, variant: FormVariant) -> Self {
         self.key = match variant {
             FormVariant::Dialog => "ai-profile-form",
             FormVariant::Inline => "onboarding-ai-form",
@@ -256,7 +256,7 @@ impl<'a, S: 'static> ModelProfileForm<'a, S> {
 
     /// One appearance of the form. The high-risk confirmation (while the
     /// draft's `show_high_risk_modal` is set) pushes into `layer`.
-    pub(crate) fn build(&self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(&self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let draft = (self.slots.draft)(s);
         let tabs = self.tab_strip(s, &k);

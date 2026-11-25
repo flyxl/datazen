@@ -89,34 +89,34 @@ const TEXT_11_MONO: TextStyle = TextStyle::new(11.0, 500.0);
 
 /// The section's state.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct TunnelSettingsSectionState {
+pub struct TunnelSettingsSectionState {
     /// The store's secret-free summaries.
-    pub(crate) summaries: Vec<SavedTunnelSummary>,
+    pub summaries: Vec<SavedTunnelSummary>,
     /// The store's loaded face (a finished load, successful or not).
-    pub(crate) loaded: bool,
+    pub loaded: bool,
     /// The store's loading face.
-    pub(crate) loading: bool,
+    pub loading: bool,
     /// The store's error sentence.
-    pub(crate) store_error: Option<String>,
+    pub store_error: Option<String>,
     /// The usage batch's answers, by tunnel id.
-    pub(crate) usage_by_id: HashMap<String, TunnelUsage>,
+    pub usage_by_id: HashMap<String, TunnelUsage>,
     /// The usage batch in flight.
-    pub(crate) usage_pending: bool,
+    pub usage_pending: bool,
     /// The action error sentence (the copy's own).
-    pub(crate) action_error: Option<String>,
+    pub action_error: Option<String>,
     /// The busy row (the copy in flight; `None` = idle).
-    pub(crate) busy_id: Option<String>,
+    pub busy_id: Option<String>,
     /// The edit dialog's target (`None` = closed).
-    pub(crate) edit_target: Option<Option<String>>,
+    pub edit_target: Option<Option<String>>,
     /// The delete dialog's target.
-    pub(crate) delete_target: Option<SavedTunnelSummary>,
+    pub delete_target: Option<SavedTunnelSummary>,
     /// The test dialog's target (T459's slot).
-    pub(crate) test_target: Option<SavedTunnelSummary>,
+    pub test_target: Option<SavedTunnelSummary>,
 }
 
 impl TunnelSettingsSectionState {
     /// The store's faces (the mount's `load()` reports through it).
-    pub(crate) fn note_store(
+    pub fn note_store(
         &mut self,
         summaries: Vec<SavedTunnelSummary>,
         loaded: bool,
@@ -132,7 +132,7 @@ impl TunnelSettingsSectionState {
     /// The usage batch's arm: an empty summary list clears the map
     /// and the pending face without a read; otherwise the batch
     /// arms. Answers the ids to fetch.
-    pub(crate) fn usage_batch_due(&mut self) -> Option<Vec<String>> {
+    pub fn usage_batch_due(&mut self) -> Option<Vec<String>> {
         if self.summaries.is_empty() {
             self.usage_by_id.clear();
             self.usage_pending = false;
@@ -145,30 +145,30 @@ impl TunnelSettingsSectionState {
     /// The batch's answer (the fulfilled map; a rejected probe is
     /// simply absent — `allSettled` keeps one failure from hiding
     /// the others).
-    pub(crate) fn note_usage_batch(&mut self, usage_by_id: HashMap<String, TunnelUsage>) {
+    pub fn note_usage_batch(&mut self, usage_by_id: HashMap<String, TunnelUsage>) {
         self.usage_by_id = usage_by_id;
         self.usage_pending = false;
     }
 
     /// `handleCopy`'s head: busy arms, the action error clears.
-    pub(crate) fn begin_copy(&mut self, id: &str) {
+    pub fn begin_copy(&mut self, id: &str) {
         self.busy_id = Some(id.to_owned());
         self.action_error = None;
     }
 
     /// The copy's missing entity: the copyFailed error + the reload.
-    pub(crate) fn note_copy_missing(&mut self) {
+    pub fn note_copy_missing(&mut self) {
         self.action_error = Some(t("settings.tunnels.copyFailed").to_owned());
         self.busy_id = None;
     }
 
     /// The copy's success (the reload lands through `note_store`).
-    pub(crate) fn note_copy_ok(&mut self) {
+    pub fn note_copy_ok(&mut self) {
         self.busy_id = None;
     }
 
     /// The copy's failure.
-    pub(crate) fn note_copy_error(&mut self, message: &str) {
+    pub fn note_copy_error(&mut self, message: &str) {
         self.action_error = Some(if message.is_empty() {
             t("settings.tunnels.copyFailed").to_owned()
         } else {
@@ -179,12 +179,12 @@ impl TunnelSettingsSectionState {
 
     /// The copy's build: `copyTunnelName(entity.name, t(copySuffix))`
     /// + the minted id.
-    pub(crate) fn copy_name(name: &str) -> String {
+    pub fn copy_name(name: &str) -> String {
         copy_tunnel_name(name, t("settings.tunnels.copySuffix"))
     }
 
     /// `usageText` — the row's usage sentence.
-    pub(crate) fn usage_text(&self, id: &str) -> String {
+    pub fn usage_text(&self, id: &str) -> String {
         match self.usage_by_id.get(id) {
             None => t(if self.usage_pending {
                 "settings.tunnels.usagePending"
@@ -201,7 +201,7 @@ impl TunnelSettingsSectionState {
     }
 
     /// `usageTitle` — the joined names (`None` when there are none).
-    pub(crate) fn usage_title(&self, id: &str) -> Option<String> {
+    pub fn usage_title(&self, id: &str) -> Option<String> {
         let names = self.usage_by_id.get(id)?.connection_names.as_slice();
         if names.is_empty() {
             None
@@ -211,14 +211,14 @@ impl TunnelSettingsSectionState {
     }
 
     /// `showEmpty` — a finished load with no tunnels.
-    pub(crate) fn show_empty(&self) -> bool {
+    pub fn show_empty(&self) -> bool {
         self.loaded && self.summaries.is_empty()
     }
 }
 
 /// `TunnelSettingsSection()`: the section over the state, the
 /// dialog states' lenses and the host's action slots.
-pub(crate) struct TunnelSettingsSection<'a, S: 'static> {
+pub struct TunnelSettingsSection<'a, S: 'static> {
     state: &'a TunnelSettingsSectionState,
     edit_state: &'a TunnelEditDialogState,
     delete_state: &'a TunnelDeleteDialogState,
@@ -240,7 +240,7 @@ pub(crate) struct TunnelSettingsSection<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> TunnelSettingsSection<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         state: &'a TunnelSettingsSectionState,
         edit_state: &'a TunnelEditDialogState,
         delete_state: &'a TunnelDeleteDialogState,
@@ -266,31 +266,31 @@ impl<'a, S: 'static> TunnelSettingsSection<'a, S> {
     }
 
     /// `load(true)` — the reload slot.
-    pub(crate) fn on_reload(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_reload(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_reload = Some(Rc::new(f));
         self
     }
 
     /// `handleCopy`'s host half.
-    pub(crate) fn on_copy(mut self, f: impl Fn(&mut S, &SavedTunnelSummary) + 'static) -> Self {
+    pub fn on_copy(mut self, f: impl Fn(&mut S, &SavedTunnelSummary) + 'static) -> Self {
         self.on_copy = Some(Rc::new(f));
         self
     }
 
     /// `performDelete` — the delete dialog's confirm slot.
-    pub(crate) fn on_delete(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_delete(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_delete = Some(Rc::new(f));
         self
     }
 
     /// The delegated TunnelTestDialog (T459's slot).
-    pub(crate) fn test_dialog(mut self, dialog: Option<El>) -> Self {
+    pub fn test_dialog(mut self, dialog: Option<El>) -> Self {
         self.test_dialog = dialog;
         self
     }
 
     /// The section.
-    pub(crate) fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
+    pub fn build(self, k: &Kit, layer: &mut Vec<El>) -> El {
         let state = self.state;
         let mut section = col()
             .key("settings-tunnels-section")

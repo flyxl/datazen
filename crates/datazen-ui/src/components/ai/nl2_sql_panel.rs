@@ -78,13 +78,13 @@ use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 
 /// How long the copy button keeps its check icon before reverting
 /// (React 28).
-pub(crate) const COPIED_FEEDBACK_MS: u64 = 2000;
+pub const COPIED_FEEDBACK_MS: u64 = 2000;
 
 /// The panel's data: the store slice (the host copies it), the
 /// configured flag, the copy feedback, and the memory list's open and
 /// focused cells.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Nl2SqlPanelVm {
+pub struct Nl2SqlPanelVm {
     /// `nl2sql.input`.
     pub input: String,
     /// `nl2sql.isGenerating`.
@@ -111,7 +111,7 @@ pub(crate) struct Nl2SqlPanelVm {
 
 /// React 79's guard: `!nl2sql.input.trim() || nl2sql.isGenerating ||
 /// !database` refuses the generate.
-pub(crate) fn can_generate(input: &str, is_generating: bool, database: &str) -> bool {
+pub fn can_generate(input: &str, is_generating: bool, database: &str) -> bool {
     !input.trim().is_empty() && !is_generating && !database.is_empty()
 }
 
@@ -120,7 +120,7 @@ pub(crate) fn can_generate(input: &str, is_generating: bool, database: &str) -> 
 /// generated SQL that differs from the last written one, `None`
 /// otherwise (still generating, no SQL yet, or already written).
 /// The host updates its `last_written` cell when it performs the write.
-pub(crate) fn sql_write_action(
+pub fn sql_write_action(
     is_generating: bool,
     generated_sql: &str,
     last_written: &str,
@@ -136,7 +136,7 @@ pub(crate) fn sql_write_action(
 /// (falling back to the id). The chat panel's host keeps its own
 /// request construction; this port of the panel owns the named helper
 /// the React source shares.
-pub(crate) fn split_context_items(items: &[ContextItem]) -> (Vec<String>, Vec<String>) {
+pub fn split_context_items(items: &[ContextItem]) -> (Vec<String>, Vec<String>) {
     let mut context_files: Vec<String> = Vec::new();
     let mut context_tables: Vec<String> = Vec::new();
     for item in items {
@@ -161,7 +161,7 @@ pub(crate) fn split_context_items(items: &[ContextItem]) -> (Vec<String>, Vec<St
 /// while generating, the generated SQL otherwise; `None` when there
 /// is nothing to show (`showPreview`'s own two disjuncts folded in:
 /// generating OR a generated SQL).
-pub(crate) fn preview_sql(vm: &Nl2SqlPanelVm) -> Option<String> {
+pub fn preview_sql(vm: &Nl2SqlPanelVm) -> Option<String> {
     if vm.is_generating {
         if vm.streaming_preview.is_empty() {
             return None;
@@ -176,7 +176,7 @@ pub(crate) fn preview_sql(vm: &Nl2SqlPanelVm) -> Option<String> {
 
 /// The NL2SQL panel. `S` is the host state that owns the input state,
 /// the SQL code block's state, and every action.
-pub(crate) struct Nl2SqlPanel<'a, S: 'static> {
+pub struct Nl2SqlPanel<'a, S: 'static> {
     vm: &'a Nl2SqlPanelVm,
     input: &'a AiInputState,
     /// The host's database prop (the empty string is the
@@ -195,7 +195,7 @@ pub(crate) struct Nl2SqlPanel<'a, S: 'static> {
 impl<'a, S: 'static> Nl2SqlPanel<'a, S> {
     /// The panel over its VM, the shared input state, and the database
     /// prop.
-    pub(crate) fn new(vm: &'a Nl2SqlPanelVm, input: &'a AiInputState, database: &str) -> Self {
+    pub fn new(vm: &'a Nl2SqlPanelVm, input: &'a AiInputState, database: &str) -> Self {
         Self {
             vm,
             input,
@@ -212,52 +212,52 @@ impl<'a, S: 'static> Nl2SqlPanel<'a, S> {
     }
 
     /// The panel's theme.
-    pub(crate) fn dark(mut self, dark: bool) -> Self {
+    pub fn dark(mut self, dark: bool) -> Self {
         self.dark = dark;
         self
     }
 
     /// `handleGenerate`: the generate press (the host builds the
     /// request through `split_context_items` and drives the store).
-    pub(crate) fn on_generate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_generate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_generate = Some(Rc::new(f));
         self
     }
 
     /// `handleStop`: the stop press (the host cancels the request id).
-    pub(crate) fn on_stop(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_stop(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_stop = Some(Rc::new(f));
         self
     }
 
     /// `handleCopySql`: the copy press (the host owns the copied cell
     /// and the clipboard).
-    pub(crate) fn on_copy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_copy(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_copy = Some(Rc::new(f));
         self
     }
 
     /// `clearNl2Sql`.
-    pub(crate) fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear = Some(Rc::new(f));
         self
     }
 
     /// `openSettingsWindow('ai')` — the unconfigured bar's button.
-    pub(crate) fn on_open_ai_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_open_ai_settings(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_open_ai_settings = Some(Rc::new(f));
         self
     }
 
     /// The memory chip's press (`setMemoryOpen((open) => !open)`).
-    pub(crate) fn on_toggle_memory(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_memory(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_toggle_memory = Some(Rc::new(f));
         self
     }
 
     /// A citation's press (`focusMemory(reference)` — the host's
     /// focus cell).
-    pub(crate) fn on_focus_memory(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_focus_memory(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_focus_memory = Some(Rc::new(f));
         self
     }
@@ -266,7 +266,7 @@ impl<'a, S: 'static> Nl2SqlPanel<'a, S> {
     /// dialect — React's `<SqlCodeBlock code={previewSql} />` creates
     /// its block from the code each render; the port seeds one state
     /// per frame from the preview SQL). The caller roots it once.
-    pub(crate) fn build(self, k: &Kit, dialect: &str) -> El {
+    pub fn build(self, k: &Kit, dialect: &str) -> El {
         // React 133-148: the unconfigured bar — the notice and the
         // settings button, nothing else.
         if !self.vm.is_configured {

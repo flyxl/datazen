@@ -20,7 +20,7 @@ use super::{
 /// React `SetValueActionId`.
 #[allow(dead_code)] // VM mirror; drop with the Set Value menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SetValueActionId {
+pub enum SetValueActionId {
     SetNull,
     SetEmpty,
     SetDefault,
@@ -33,7 +33,7 @@ pub(crate) enum SetValueActionId {
 impl SetValueActionId {
     /// The exact wire id from `lib/setValueActions.ts`.
     #[allow(dead_code)] // pure helper; drop with the menu.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::SetNull => "setNull",
             Self::SetEmpty => "setEmpty",
@@ -47,7 +47,7 @@ impl SetValueActionId {
 
     /// `ACTION_LABEL_KEYS` — exact, no invented keys.
     #[allow(dead_code)] // pure helper; drop with the menu.
-    pub(crate) fn label_key(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
             Self::SetNull => "dataTable.setNull",
             Self::SetEmpty => "cellEditor.setEmpty",
@@ -63,30 +63,30 @@ impl SetValueActionId {
 /// The row facts the store contributes to `resolveSetValueState`.
 #[allow(dead_code)] // VM mirror; drop when the host owns pending changes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SetValueRowFactsVm {
+pub struct SetValueRowFactsVm {
     /// `pendingChanges.get(anchor)?.changedColumns.includes(column)`
-    pub(crate) has_pending: bool,
+    pub has_pending: bool,
     /// `enumCandidates.get(column)` — a loaded list hides the load entry.
-    pub(crate) candidates_loaded: bool,
+    pub candidates_loaded: bool,
 }
 
 /// React `SetValueState` (the panel hook always reports `rowKind: 'update'`).
 #[allow(dead_code)] // VM mirror; drop with the Set Value menu.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SetValueStateVm {
-    pub(crate) can_null: bool,
-    pub(crate) can_empty: bool,
-    pub(crate) row_is_insert: bool,
-    pub(crate) has_pending: bool,
-    pub(crate) can_load_candidates: bool,
-    pub(crate) can_set_current_datetime: bool,
-    pub(crate) can_pick_date: bool,
-    pub(crate) can_load_binary: bool,
+pub struct SetValueStateVm {
+    pub can_null: bool,
+    pub can_empty: bool,
+    pub row_is_insert: bool,
+    pub has_pending: bool,
+    pub can_load_candidates: bool,
+    pub can_set_current_datetime: bool,
+    pub can_pick_date: bool,
+    pub can_load_binary: bool,
 }
 
 /// React `resolveSetValueState`: `None` when the panel or column is unknown.
 #[allow(dead_code)] // pure decision; drop when the host owns the menu.
-pub(crate) fn resolve_set_value_state(
+pub fn resolve_set_value_state(
     context: &EditingContextVm,
     column_name: &str,
     facts: &SetValueRowFactsVm,
@@ -126,7 +126,7 @@ pub(crate) fn resolve_set_value_state(
 /// The hook's `setValueState`: a panel without a dialog host must not offer
 /// entries nobody can finish.
 #[allow(dead_code)] // pure gate; drop when the host owns the menu.
-pub(crate) fn with_dialog_host_gate(
+pub fn with_dialog_host_gate(
     state: SetValueStateVm,
     has_dialog_host: bool,
 ) -> SetValueStateVm {
@@ -146,7 +146,7 @@ pub(crate) fn with_dialog_host_gate(
 /// `setDefault` and `revertCell`.
 #[allow(dead_code)] // host intent; drop when the host owns staging.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum StagedIntentVm {
+pub enum StagedIntentVm {
     Null,
     Empty,
     Absent,
@@ -156,14 +156,14 @@ pub(crate) enum StagedIntentVm {
 /// The two entries that open a dialog instead of staging a value.
 #[allow(dead_code)] // host intent; drop with the dialog host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SetValueDialogVm {
+pub enum SetValueDialogVm {
     PickDate,
     LoadBinaryFromFile,
 }
 
 impl SetValueDialogVm {
     #[allow(dead_code)] // exact React action id; drop with the dialog host.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::PickDate => "pickDate",
             Self::LoadBinaryFromFile => "loadBinaryFromFile",
@@ -174,7 +174,7 @@ impl SetValueDialogVm {
 /// The hook's `onSetValue` routing, reduced to a pure plan.
 #[allow(dead_code)] // decision; drop when the host owns the menu.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SetValueRouteVm {
+pub enum SetValueRouteVm {
     OpenDialog(SetValueDialogVm),
     Stage(StagedIntentVm),
     /// A dialog entry with no host falls through to `applySetValueAction`,
@@ -184,7 +184,7 @@ pub(crate) enum SetValueRouteVm {
 
 /// React `onSetValue` + `applySetValueAction` in one decision.
 #[allow(dead_code)] // pure decision; drop when the host owns staging.
-pub(crate) fn route_set_value(action: SetValueActionId, has_dialog_host: bool) -> SetValueRouteVm {
+pub fn route_set_value(action: SetValueActionId, has_dialog_host: bool) -> SetValueRouteVm {
     if has_dialog_host {
         match action {
             SetValueActionId::PickDate => {
@@ -212,16 +212,16 @@ pub(crate) fn route_set_value(action: SetValueActionId, has_dialog_host: bool) -
 /// React `SetValueAction` (id + the menu's label key).
 #[allow(dead_code)] // VM mirror; drop with the menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SetValueActionVm {
-    pub(crate) id: SetValueActionId,
-    pub(crate) label_key: &'static str,
+pub struct SetValueActionVm {
+    pub id: SetValueActionId,
+    pub label_key: &'static str,
 }
 
 /// React `resolveSetValueActions`: display order is part of the contract.
 /// The dialog entries come after the value intents, and the typed expression
 /// reads as an answer rather than a tool.
 #[allow(dead_code)] // pure derivation; drop with the menu.
-pub(crate) fn resolve_set_value_actions(state: &SetValueStateVm) -> Vec<SetValueActionVm> {
+pub fn resolve_set_value_actions(state: &SetValueStateVm) -> Vec<SetValueActionVm> {
     let mut actions = Vec::new();
     let mut push = |id: SetValueActionId| actions.push(SetValueActionVm {
         id,

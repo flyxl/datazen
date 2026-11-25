@@ -32,7 +32,7 @@ use crate::ui::kit::kit;
 /// React `FILTER_VALUE_DEBOUNCE_MS`. The Rune port reads the live draft, so no
 /// timer is armed; the constant documents the source contract.
 #[allow(dead_code)] // source parity; delete with the debounce if it is ever wired.
-pub(crate) const FILTER_VALUE_DEBOUNCE_MS: u64 = 350;
+pub const FILTER_VALUE_DEBOUNCE_MS: u64 = 350;
 
 type CommitFn<S> = Rc<dyn Fn(&mut S, String)>;
 type CompleteFn<S> = Rc<dyn Fn(&mut S)>;
@@ -50,7 +50,7 @@ thread_local! {
 
 /// Builder for the ported single-value input.
 #[allow(dead_code)] // consumer: FilterConditionEditor (this wave).
-pub(crate) struct FilterValueInput<'a, S: 'static> {
+pub struct FilterValueInput<'a, S: 'static> {
     key: String,
     value: &'a TextEdit,
     bind: fn(&mut S) -> &mut TextEdit,
@@ -66,7 +66,7 @@ pub(crate) struct FilterValueInput<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: FilterConditionEditor (this wave).
 impl<'a, S: 'static> FilterValueInput<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         key: impl Into<String>,
         value: &'a TextEdit,
         bind: fn(&mut S) -> &mut TextEdit,
@@ -84,36 +84,36 @@ impl<'a, S: 'static> FilterValueInput<'a, S> {
     }
 
     /// React `placeholder` (the caller passes `t("filter.value")`).
-    pub(crate) fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, placeholder: impl Into<String>) -> Self {
         self.placeholder = placeholder.into();
         self
     }
 
     /// React `disabled`: a disabled field keeps its value but takes no caret.
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// Preserve the T056 editor's "commit on every Enter" contract.
-    pub(crate) fn commit_unchanged(mut self, on: bool) -> Self {
+    pub fn commit_unchanged(mut self, on: bool) -> Self {
         self.commit_unchanged = on;
         self
     }
 
     /// React `onCommit(value)`: called with the current draft on Enter.
-    pub(crate) fn on_commit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_commit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_commit = Some(Rc::new(f));
         self
     }
 
     /// React `onEnterComplete`: called only after a non-empty Enter commit.
-    pub(crate) fn on_enter_complete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_enter_complete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_enter_complete = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let bind = self.bind;
         let commit = self.on_commit.clone();

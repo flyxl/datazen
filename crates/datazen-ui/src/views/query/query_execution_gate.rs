@@ -33,7 +33,7 @@ const PRODUCTION_GROUP: &str = "preset:production";
 /// React `ExecuteKind`.
 #[allow(dead_code)] // VM mirror; consumed by decisions and tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExecuteKind {
+pub enum ExecuteKind {
     Full,
     Selection,
 }
@@ -42,7 +42,7 @@ pub(crate) enum ExecuteKind {
 /// `storeExecuteQuery` vs `storeExecuteSelection` branch in `runExecute`).
 #[allow(dead_code)] // host-facing decision; consumed by the reducer and tests.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum ExecutionMode {
+pub enum ExecutionMode {
     Query,
     Selection,
 }
@@ -50,51 +50,51 @@ pub(crate) enum ExecutionMode {
 /// React `ExecutionSnapshot`, frozen before any async step.
 #[allow(dead_code)] // VM surface; supplied by the host and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ExecutionSnapshot {
-    pub(crate) panel_id: String,
-    pub(crate) db_session_id: String,
-    pub(crate) sql: String,
-    pub(crate) read_only: bool,
-    pub(crate) safe_mode: bool,
-    pub(crate) is_production: bool,
-    pub(crate) confirm_dangerous: bool,
+pub struct ExecutionSnapshot {
+    pub panel_id: String,
+    pub db_session_id: String,
+    pub sql: String,
+    pub read_only: bool,
+    pub safe_mode: bool,
+    pub is_production: bool,
+    pub confirm_dangerous: bool,
 }
 
 /// React `PendingExecute` for the unclosed-transaction dialog.
 #[allow(dead_code)] // VM surface; consumed by the reducer and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PendingExecute {
-    pub(crate) kind: ExecuteKind,
-    pub(crate) sql: Option<String>,
+pub struct PendingExecute {
+    pub kind: ExecuteKind,
+    pub sql: Option<String>,
 }
 
 /// React `ResolveExecutionTargetResult` fields the gate consumes.
 #[allow(dead_code)] // VM surface; consumed by the reducer and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AskTarget {
-    pub(crate) current_statement: Option<String>,
-    pub(crate) statement_count: usize,
-    pub(crate) entire_script: String,
+pub struct AskTarget {
+    pub current_statement: Option<String>,
+    pub statement_count: usize,
+    pub entire_script: String,
 }
 
 /// Inputs to one `requestExecute` call, all host-owned.
 #[allow(dead_code)] // VM surface; supplied by the host and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct GateInput {
-    pub(crate) kind: ExecuteKind,
-    pub(crate) selection_sql: Option<String>,
-    pub(crate) cursor_offset: Option<usize>,
-    pub(crate) strategy: ExecutionStrategy,
-    pub(crate) values: BTreeMap<String, String>,
-    pub(crate) confirm_writes: bool,
-    pub(crate) database_type: String,
-    pub(crate) snapshot: ExecutionSnapshot,
+pub struct GateInput {
+    pub kind: ExecuteKind,
+    pub selection_sql: Option<String>,
+    pub cursor_offset: Option<usize>,
+    pub strategy: ExecutionStrategy,
+    pub values: BTreeMap<String, String>,
+    pub confirm_writes: bool,
+    pub database_type: String,
+    pub snapshot: ExecutionSnapshot,
 }
 
 impl GateInput {
     /// A full execution of `SELECT 1` with the test fixture's defaults.
     #[allow(dead_code)] // fixture helper; consumed by the tests.
-    pub(crate) fn full(sql: &str) -> Self {
+    pub fn full(sql: &str) -> Self {
         Self {
             kind: ExecuteKind::Full,
             selection_sql: None,
@@ -119,17 +119,17 @@ impl GateInput {
 /// Live context used by React's `isSnapshotStale` after a confirm returns.
 #[allow(dead_code)] // VM surface; supplied by the host and tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct LiveContext {
-    pub(crate) sql: String,
-    pub(crate) read_only: bool,
-    pub(crate) safe_mode: bool,
-    pub(crate) confirm_dangerous: bool,
+pub struct LiveContext {
+    pub sql: String,
+    pub read_only: bool,
+    pub safe_mode: bool,
+    pub confirm_dangerous: bool,
 }
 
 /// The decisions the host executes. No decision performs an action itself.
 #[allow(dead_code)] // host port; removed with the query-panel wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum GateAction {
+pub enum GateAction {
     Execute {
         mode: ExecutionMode,
         sql: String,
@@ -155,43 +155,43 @@ pub(crate) enum GateAction {
 
 /// React `connConfig?.group === PRESET_GROUPS.production`.
 #[allow(dead_code)] // pure helper; consumed by snapshot builders and tests.
-pub(crate) fn is_production_group(group: Option<&str>) -> bool {
+pub fn is_production_group(group: Option<&str>) -> bool {
     group == Some(PRODUCTION_GROUP)
 }
 
 /// The gate's observable state (mirrors the hook's refs/flags).
 #[allow(dead_code)] // VM surface; owned by the host.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct QueryExecutionGateState {
-    pub(crate) pending_execute: Option<PendingExecute>,
-    pub(crate) tx_unclosed_open: bool,
-    pub(crate) ask_modal: Option<AskTarget>,
+pub struct QueryExecutionGateState {
+    pub pending_execute: Option<PendingExecute>,
+    pub tx_unclosed_open: bool,
+    pub ask_modal: Option<AskTarget>,
     /// React's 50ms `paramFocusTimerRef` deadline, on the host clock.
-    pub(crate) param_focus_deadline: Option<f64>,
+    pub param_focus_deadline: Option<f64>,
     /// The decision awaiting the host's confirm result.
-    pub(crate) confirm_pending: Option<PendingConfirm>,
+    pub confirm_pending: Option<PendingConfirm>,
     /// The input behind an open ask modal, so its choices can re-enter the gate.
-    pub(crate) ask_context: Option<GateInput>,
+    pub ask_context: Option<GateInput>,
 }
 
 #[allow(dead_code)] // VM surface; removed with the query-panel wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PendingConfirm {
-    pub(crate) target: ResolvedTarget,
-    pub(crate) input: GateInput,
+pub struct PendingConfirm {
+    pub target: ResolvedTarget,
+    pub input: GateInput,
 }
 
 #[allow(dead_code)] // VM surface; removed with the query-panel wiring.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ResolvedTarget {
-    pub(crate) kind: ExecuteKind,
-    pub(crate) sql: String,
+pub struct ResolvedTarget {
+    pub kind: ExecuteKind,
+    pub sql: String,
 }
 
 /// Host events fed back into the reducer.
 #[allow(dead_code)] // host port; removed with the query-panel wiring.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum GateEvent {
+pub enum GateEvent {
     RequestExecute { input: GateInput, now: f64 },
     ConfirmUnclosed { input: GateInput },
     CancelUnclosed,
@@ -203,7 +203,7 @@ pub(crate) enum GateEvent {
 
 /// React `isSnapshotStale`.
 #[allow(dead_code)] // pure helper; consumed by confirm handling and tests.
-pub(crate) fn is_stale(snapshot: &ExecutionSnapshot, live: &LiveContext) -> bool {
+pub fn is_stale(snapshot: &ExecutionSnapshot, live: &LiveContext) -> bool {
     snapshot.sql != live.sql
         || snapshot.read_only != live.read_only
         || snapshot.safe_mode != live.safe_mode
@@ -213,7 +213,7 @@ pub(crate) fn is_stale(snapshot: &ExecutionSnapshot, live: &LiveContext) -> bool
 /// React's statement resolution for the three strategies the gate handles
 /// without an editor selection. Selection always wins.
 #[allow(dead_code)] // pure helper; consumed by the pipeline and tests.
-pub(crate) fn resolve_target(input: &GateInput) -> Result<ResolvedTarget, AskTarget> {
+pub fn resolve_target(input: &GateInput) -> Result<ResolvedTarget, AskTarget> {
     let doc = input.snapshot.sql.as_str();
     if let Some(selection) = input.selection_sql.as_deref() {
         return Ok(ResolvedTarget {
@@ -316,7 +316,7 @@ fn decide_target(target: &ResolvedTarget, input: &GateInput) -> (Vec<GateAction>
 
 /// `requestExecute` end to end, before any host confirm result.
 #[allow(dead_code)] // pure gate; consumed by the reducer and tests.
-pub(crate) fn decide(input: &GateInput, now: f64) -> (Vec<GateAction>, Option<PendingConfirm>) {
+pub fn decide(input: &GateInput, now: f64) -> (Vec<GateAction>, Option<PendingConfirm>) {
     let target = match resolve_target(input) {
         Ok(target) => target,
         Err(ask) => return (vec![GateAction::OpenStrategyAsk { target: ask }], None),
@@ -364,7 +364,7 @@ pub(crate) fn decide(input: &GateInput, now: f64) -> (Vec<GateAction>, Option<Pe
 
 /// State transition for one host event.
 #[allow(dead_code)] // reducer; removed with the query-panel wiring.
-pub(crate) fn reduce(state: &mut QueryExecutionGateState, event: GateEvent) -> Vec<GateAction> {
+pub fn reduce(state: &mut QueryExecutionGateState, event: GateEvent) -> Vec<GateAction> {
     match event {
         GateEvent::RequestExecute { input, now } => {
             state.ask_context = Some(input.clone());
@@ -471,7 +471,7 @@ pub(crate) fn reduce(state: &mut QueryExecutionGateState, event: GateEvent) -> V
 /// React's post-submit branch: an execution error opens the aborted-transaction
 /// dialog, otherwise the transaction status is refreshed and completion fires.
 #[allow(dead_code)] // pure helper; consumed by the host and tests.
-pub(crate) fn post_execution(error: Option<&str>) -> GateAction {
+pub fn post_execution(error: Option<&str>) -> GateAction {
     GateAction::PostExecution {
         had_error: error.is_some_and(|message| !message.is_empty()),
     }

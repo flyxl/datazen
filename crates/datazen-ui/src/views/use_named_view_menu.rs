@@ -28,22 +28,22 @@ use crate::components::filter::{
 /// A filter condition as the panel owns it (a view's filter carries a value).
 #[allow(dead_code)] // VM mirror; remove when the host owns filter state.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct NamedViewFilterVm {
-    pub(crate) column: String,
-    pub(crate) operator: String,
-    pub(crate) value: Option<Value>,
+pub struct NamedViewFilterVm {
+    pub column: String,
+    pub operator: String,
+    pub value: Option<Value>,
 }
 
 /// A saved view as the apply path reads it (DBR-04 adds the raw predicate).
 #[allow(dead_code)] // VM mirror; remove when the host owns saved views.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct SavedViewVm {
-    pub(crate) filters: Vec<NamedViewFilterVm>,
-    pub(crate) filter_logic: FilterLogic,
+pub struct SavedViewVm {
+    pub filters: Vec<NamedViewFilterVm>,
+    pub filter_logic: FilterLogic,
     /// A saved raw WHERE predicate replays through the raw channel.
-    pub(crate) raw_where: Option<String>,
-    pub(crate) sorts: Vec<ViewSort>,
-    pub(crate) visible_columns: Option<Vec<String>>,
+    pub raw_where: Option<String>,
+    pub sorts: Vec<ViewSort>,
+    pub visible_columns: Option<Vec<String>>,
 }
 
 #[allow(dead_code)] // VM mirror; remove when the host owns saved views.
@@ -62,7 +62,7 @@ impl Default for SavedViewVm {
 /// The one action that applies a saved view's filters.
 #[allow(dead_code)] // decision; remove when the host wires the menu.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ApplyAction {
+pub enum ApplyAction {
     /// A saved raw predicate (DBR-04) replays through the raw channel.
     ApplyRawWhere(String),
     SetFilters(Vec<NamedViewFilterVm>, FilterLogic),
@@ -73,15 +73,15 @@ pub(crate) enum ApplyAction {
 /// How a saved view reaches the table, in action order.
 #[allow(dead_code)] // decision; remove when the host wires the menu.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ApplyPlan {
+pub struct ApplyPlan {
     /// A view naming an unknown operator is refused: nothing is applied.
-    pub(crate) refused: bool,
-    pub(crate) actions: Vec<ApplyAction>,
+    pub refused: bool,
+    pub actions: Vec<ApplyAction>,
 }
 
 /// The hook's `scope`: `null` when there is no persistent connection id.
 #[allow(dead_code)] // pure helper; remove when the host owns the scope.
-pub(crate) fn derive_scope(
+pub fn derive_scope(
     connection_id: Option<&str>,
     database: &str,
     schema: Option<&str>,
@@ -105,7 +105,7 @@ pub(crate) fn derive_scope(
 
 /// React's two menu guards: no scope, or a backend that cannot serve views.
 #[allow(dead_code)] // pure helper; remove when the host wires the menu.
-pub(crate) fn menu_present(scope: Option<&NamedViewScope>, backend_available: bool) -> bool {
+pub fn menu_present(scope: Option<&NamedViewScope>, backend_available: bool) -> bool {
     scope.is_some() && backend_available
 }
 
@@ -120,7 +120,7 @@ fn as_view_filter(filter: &NamedViewFilterVm) -> ViewFilter {
 /// React `onApply`: raw predicate first, then filters, first sort and column
 /// layout. An unknown operator refuses the whole view.
 #[allow(dead_code)] // pure helper; remove when the host wires the menu.
-pub(crate) fn apply_plan(view: &SavedViewVm) -> ApplyPlan {
+pub fn apply_plan(view: &SavedViewVm) -> ApplyPlan {
     let mut plan = ApplyPlan::default();
     let raw = view.raw_where.as_deref().unwrap_or("");
     if !raw.is_empty() {
@@ -147,7 +147,7 @@ pub(crate) fn apply_plan(view: &SavedViewVm) -> ApplyPlan {
 
 /// React `filterDraftEqualsApplied`: same logic and the same JSON of filters.
 #[allow(dead_code)] // pure helper; remove when the host owns the filter panel.
-pub(crate) fn filter_draft_equals_applied(
+pub fn filter_draft_equals_applied(
     draft: &[NamedViewFilterVm],
     draft_logic: FilterLogic,
     applied: &[NamedViewFilterVm],
@@ -164,7 +164,7 @@ pub(crate) fn filter_draft_equals_applied(
 
 /// React's `dirty` flag: a diverging draft warns but does not block a save.
 #[allow(dead_code)] // pure helper; remove when the host wires the menu.
-pub(crate) fn draft_is_dirty(
+pub fn draft_is_dirty(
     draft: &[NamedViewFilterVm],
     draft_logic: FilterLogic,
     applied: &[NamedViewFilterVm],

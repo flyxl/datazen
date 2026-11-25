@@ -7,19 +7,19 @@
 //! T004/T015/T009) can consume them without pulling in a view.
 #![allow(dead_code)] // consumers: T004 CellRenderer, T015 GridCell, T009 DetailPanel
 
-pub(crate) mod cell_editor_kind;
-pub(crate) mod sql_dialects; // lib/sqlDialects/ (T035: dialectProfile + extra)
-pub(crate) mod cell_types;
-pub(crate) mod chart_export;
-pub(crate) mod chart_field_inference;
-pub(crate) mod chart_format;
+pub mod cell_editor_kind;
+pub mod sql_dialects; // lib/sqlDialects/ (T035: dialectProfile + extra)
+pub mod cell_types;
+pub mod chart_export;
+pub mod chart_field_inference;
+pub mod chart_format;
 // T117: the post-query table-vs-chart decision (lib/chart/postQueryView.ts).
-pub(crate) mod chart_post_query_view;
+pub mod chart_post_query_view;
 // T151: chart type recommendation (lib/chart/recommend.ts).
-pub(crate) mod chart_recommend;
+pub mod chart_recommend;
 // T151: series overlap dashes (lib/chart/seriesOverlap.ts).
-pub(crate) mod chart_series_overlap;
-pub(crate) mod data_type_colors;
-pub(crate) mod formatters;
-pub(crate) mod to_edit_string;
-pub(crate) mod value_presentation; // lib/valuePresentation/ (T207: temporalMath first)
+pub mod chart_series_overlap;
+pub mod data_type_colors;
+pub mod formatters;
+pub mod to_edit_string;
+pub mod value_presentation; // lib/valuePresentation/ (T207: temporalMath first)

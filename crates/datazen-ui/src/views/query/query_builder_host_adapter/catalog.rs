@@ -15,7 +15,7 @@ use super::model::{
 /// Minimal JSON string escaping, matching `JSON.stringify` for the identifier
 /// strings (table/schema names) used in the catalog and context keys.
 #[allow(dead_code)] // pure helper; pinned by the adapter tests.
-pub(crate) fn json_quote(value: &str) -> String {
+pub fn json_quote(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 2);
     out.push('"');
     for ch in value.chars() {
@@ -35,14 +35,14 @@ pub(crate) fn json_quote(value: &str) -> String {
 
 /// `JSON.stringify([a, b, c, d])` with already-stringified inputs.
 #[allow(dead_code)] // pure helper; pinned by the adapter tests.
-pub(crate) fn json_stringify_array(items: &[&str]) -> String {
+pub fn json_stringify_array(items: &[&str]) -> String {
     let body = items.iter().map(|item| json_quote(item)).collect::<Vec<_>>().join(",");
     format!("[{body}]")
 }
 
 /// `JSON.stringify([relation.schema ?? null, relation.name])`.
 #[allow(dead_code)] // pure helper; pinned by the adapter tests.
-pub(crate) fn relation_identity(schema: Option<&str>, name: &str) -> String {
+pub fn relation_identity(schema: Option<&str>, name: &str) -> String {
     let schema_part = match schema {
         Some(value) => json_quote(value),
         None => "null".to_owned(),
@@ -52,7 +52,7 @@ pub(crate) fn relation_identity(schema: Option<&str>, name: &str) -> String {
 
 /// The context key React passes to `openFor(panelId, contextKey)`.
 #[allow(dead_code)] // pure helper; pinned by the adapter tests.
-pub(crate) fn qb_context_key(
+pub fn qb_context_key(
     connection_id: &str,
     db_session_id: &str,
     database: &str,
@@ -64,13 +64,13 @@ pub(crate) fn qb_context_key(
 /// `DB_REGISTRY[type]?.sqlDialect ?? type`: the host resolves the registry
 /// dialect and passes it in; `None` falls back to the raw database type.
 #[allow(dead_code)] // pure helper; pinned by the adapter tests.
-pub(crate) fn dialect_family(database_type: &str, dialect_override: Option<&str>) -> String {
+pub fn dialect_family(database_type: &str, dialect_override: Option<&str>) -> String {
     dialect_override.unwrap_or(database_type).to_owned()
 }
 
 /// React's `catalog` `useMemo`, folded into a pure builder.
 #[allow(dead_code)] // pure rule; pinned by the adapter tests.
-pub(crate) fn build_catalog(
+pub fn build_catalog(
     session: Option<&SessionSchemaVm>,
     database: &str,
     schema: Option<&str>,

@@ -146,7 +146,7 @@ const OVERLAY_HEADER_PY: f32 = 8.0;
 
 /// The tile root: React's `data-testid="dashboard-tile"` merged with its
 /// `data-widget-id`.
-pub(crate) fn tile_root_key(id: &str) -> String {
+pub fn tile_root_key(id: &str) -> String {
     format!("dashboard-tile-{id}")
 }
 
@@ -180,14 +180,14 @@ const OVERLAY_KEY: &str = "dashboard-tile-overlay";
 /// React `ViewMode` (`'chart' | 'table'`).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TileViewMode {
+pub enum TileViewMode {
     Chart,
     Table,
 }
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl TileViewMode {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Chart => "chart",
             Self::Table => "table",
@@ -195,7 +195,7 @@ impl TileViewMode {
     }
 
     /// Parse a wire `ViewMode`; unknown values fall back to React's default.
-    pub(crate) fn from_str(value: &str) -> Self {
+    pub fn from_str(value: &str) -> Self {
         match value {
             "table" => Self::Table,
             _ => Self::Chart,
@@ -207,18 +207,18 @@ impl TileViewMode {
 /// the wire type; `layout` / `refresh` / `alert` are the panel's business).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug)]
-pub(crate) struct ChartWidgetVm {
-    pub(crate) id: String,
-    pub(crate) title: String,
-    pub(crate) view_mode: TileViewMode,
-    pub(crate) chart_config: Option<ChartConfig>,
-    pub(crate) enabled: bool,
+pub struct ChartWidgetVm {
+    pub id: String,
+    pub title: String,
+    pub view_mode: TileViewMode,
+    pub chart_config: Option<ChartConfig>,
+    pub enabled: bool,
 }
 
 /// React `WidgetRunStatus`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum WidgetRunStatus {
+pub enum WidgetRunStatus {
     Ok,
     Error,
     Timeout,
@@ -228,7 +228,7 @@ impl WidgetRunStatus {
     /// Parse a wire status; unknown values fall back to `error` so a malformed
     /// payload cannot paint a success state. (Also the run-history drawer's
     /// index-entry parser, T175.)
-    pub(crate) fn from_str(value: &str) -> Self {
+    pub fn from_str(value: &str) -> Self {
         match value {
             "ok" => Self::Ok,
             "timeout" => Self::Timeout,
@@ -242,19 +242,19 @@ impl WidgetRunStatus {
 /// is the run's own count (it can exceed `rows.len()` when truncated).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug)]
-pub(crate) struct WidgetRunVm {
-    pub(crate) status: WidgetRunStatus,
-    pub(crate) error: Option<String>,
-    pub(crate) row_count: u64,
-    pub(crate) columns: Vec<String>,
-    pub(crate) rows: Vec<Vec<ChartValue>>,
-    pub(crate) alert_fired: bool,
+pub struct WidgetRunVm {
+    pub status: WidgetRunStatus,
+    pub error: Option<String>,
+    pub row_count: u64,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<ChartValue>>,
+    pub alert_fired: bool,
 }
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl WidgetRunVm {
     /// Build from the wire fields (`status` is the wire string).
-    pub(crate) fn from_wire(
+    pub fn from_wire(
         status: &str,
         error: Option<String>,
         row_count: u64,
@@ -278,33 +278,33 @@ impl WidgetRunVm {
 /// The tile's two `useState` values, kept in the owning state `S`.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ChartWidgetTileState {
+pub struct ChartWidgetTileState {
     /// React's `expanded` (the overlay mounts only while this and an ok run
     /// hold).
-    pub(crate) expanded: bool,
+    pub expanded: bool,
     /// The overlay's `localConfig`, re-seeded on every expand exactly as
     /// React's `useState` initialiser re-runs per mount.
-    pub(crate) local_config: ChartConfig,
+    pub local_config: ChartConfig,
 }
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl ChartWidgetTileState {
     /// The expand button: `setExpanded(true)` plus the overlay state's mount
     /// initialiser (`widget.chartConfig ?? DEFAULT_CHART_CONFIG`).
-    pub(crate) fn begin_expand(&mut self, widget: &ChartWidgetVm) {
+    pub fn begin_expand(&mut self, widget: &ChartWidgetVm) {
         self.expanded = true;
         self.local_config = widget.chart_config.clone().unwrap_or_default();
     }
 
     /// The overlay's collapse button: `setExpanded(false)`. The local config
     /// survives (the next expand re-seeds it, as React's fresh mount does).
-    pub(crate) fn collapse(&mut self) {
+    pub fn collapse(&mut self) {
         self.expanded = false;
     }
 
     /// The overlay's `setLocalConfig` half of `handleConfigChange` (the
     /// `onChartConfigChange` half is the host's callback, as in React).
-    pub(crate) fn set_overlay_config(&mut self, config: ChartConfig) {
+    pub fn set_overlay_config(&mut self, config: ChartConfig) {
         self.local_config = config;
     }
 }
@@ -315,7 +315,7 @@ impl ChartWidgetTileState {
 /// `!!(chartData && chartData.data.length > 0 && chartConfig.yAxes.length > 0)`.
 /// The seam hands over the points slice, so `chartData.data` is the slice.
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) fn has_renderable_chart(data: Option<&[ChartDataPoint]>, config: &ChartConfig) -> bool {
+pub fn has_renderable_chart(data: Option<&[ChartDataPoint]>, config: &ChartConfig) -> bool {
     data.is_some_and(|points| !points.is_empty()) && !config.y_axes.is_empty()
 }
 
@@ -324,7 +324,7 @@ pub(crate) fn has_renderable_chart(data: Option<&[ChartDataPoint]>, config: &Cha
 /// (`nullable`, which inference never reads), rows passed through. T030 will
 /// promote this to the shared support module; until then the tile owns its
 /// copy.
-pub(crate) fn widget_run_to_chart_result(run: &WidgetRunVm) -> ChartResult {
+pub fn widget_run_to_chart_result(run: &WidgetRunVm) -> ChartResult {
     ChartResult {
         columns: run
             .columns
@@ -341,7 +341,7 @@ pub(crate) fn widget_run_to_chart_result(run: &WidgetRunVm) -> ChartResult {
 /// The overlay's `fields` memo: `inferAllFields(widgetRunToStatementResult(run))`.
 /// React wraps it in `try { … } catch { [] }`; the port cannot throw, so the
 /// catch arm is unreachable (and documented).
-pub(crate) fn run_fields(run: &WidgetRunVm) -> Vec<inference::ChartField> {
+pub fn run_fields(run: &WidgetRunVm) -> Vec<inference::ChartField> {
     inference::infer_all_fields(&widget_run_to_chart_result(run))
 }
 
@@ -361,7 +361,7 @@ type ChartConfigFn<S> = Rc<dyn Fn(&mut S, ChartConfig) + 'static>;
 /// Builder for the tile, generic over the app state `S` that owns the tile
 /// state slice (the ported-dialog pattern).
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
-pub(crate) struct ChartWidgetTile<'a, S: 'static> {
+pub struct ChartWidgetTile<'a, S: 'static> {
     widget: &'a ChartWidgetVm,
     state: &'a ChartWidgetTileState,
     run: Option<&'a WidgetRunVm>,
@@ -393,7 +393,7 @@ pub(crate) struct ChartWidgetTile<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable port; wired by the dashboard host track
 impl<'a, S: 'static> ChartWidgetTile<'a, S> {
-    pub(crate) fn new(widget: &'a ChartWidgetVm, state: &'a ChartWidgetTileState) -> Self {
+    pub fn new(widget: &'a ChartWidgetVm, state: &'a ChartWidgetTileState) -> Self {
         Self {
             widget,
             state,
@@ -415,74 +415,74 @@ impl<'a, S: 'static> ChartWidgetTile<'a, S> {
     }
 
     /// React's `run` prop (`null` = never run).
-    pub(crate) fn run(mut self, run: Option<&'a WidgetRunVm>) -> Self {
+    pub fn run(mut self, run: Option<&'a WidgetRunVm>) -> Self {
         self.run = run;
         self
     }
 
     /// React's `busy` prop.
-    pub(crate) fn busy(mut self, busy: bool) -> Self {
+    pub fn busy(mut self, busy: bool) -> Self {
         self.busy = busy;
         self
     }
 
     /// The `chartData` memo for `widget.chartConfig` (the transform seam).
-    pub(crate) fn chart_data(mut self, data: Option<&'a [ChartDataPoint]>) -> Self {
+    pub fn chart_data(mut self, data: Option<&'a [ChartDataPoint]>) -> Self {
         self.chart_data = data;
         self
     }
 
     /// The overlay's `chartData` memo for the local config (the same seam).
-    pub(crate) fn overlay_chart_data(mut self, data: Option<&'a [ChartDataPoint]>) -> Self {
+    pub fn overlay_chart_data(mut self, data: Option<&'a [ChartDataPoint]>) -> Self {
         self.overlay_chart_data = data;
         self
     }
 
     /// The `AxisConfigurator` slot: a host-built element standing in for the
     /// T319 component.
-    pub(crate) fn axis_configurator(mut self, slot: El) -> Self {
+    pub fn axis_configurator(mut self, slot: El) -> Self {
         self.axis_configurator = Some(slot);
         self
     }
 
     /// React `onEdit`.
-    pub(crate) fn on_edit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_edit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_edit = Some(Rc::new(f));
         self
     }
 
     /// React `onDelete` (the delete button only exists when wired).
-    pub(crate) fn on_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_delete = Some(Rc::new(f));
         self
     }
 
     /// React `onHistory`.
-    pub(crate) fn on_history(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_history(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_history = Some(Rc::new(f));
         self
     }
 
     /// React `onRefresh`.
-    pub(crate) fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_refresh(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_refresh = Some(Rc::new(f));
         self
     }
 
     /// The expand button's `setExpanded(true)` (host-applied).
-    pub(crate) fn on_expand(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_expand(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_expand = Some(Rc::new(f));
         self
     }
 
     /// The overlay collapse button's `setExpanded(false)` (host-applied).
-    pub(crate) fn on_collapse(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_collapse(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_collapse = Some(Rc::new(f));
         self
     }
 
     /// React `onViewModeChange` (the switch only exists when wired).
-    pub(crate) fn on_view_mode_change(
+    pub fn on_view_mode_change(
         mut self,
         f: impl Fn(&mut S, TileViewMode) + 'static,
     ) -> Self {
@@ -491,13 +491,13 @@ impl<'a, S: 'static> ChartWidgetTile<'a, S> {
     }
 
     /// React `onChartTypeChange` (the switch only exists when wired).
-    pub(crate) fn on_chart_type_change(mut self, f: impl Fn(&mut S, ChartType) + 'static) -> Self {
+    pub fn on_chart_type_change(mut self, f: impl Fn(&mut S, ChartType) + 'static) -> Self {
         self.on_chart_type_change = Some(Rc::new(f));
         self
     }
 
     /// React `onChartConfigChange`.
-    pub(crate) fn on_chart_config_change(
+    pub fn on_chart_config_change(
         mut self,
         f: impl Fn(&mut S, ChartConfig) + 'static,
     ) -> Self {
@@ -507,7 +507,7 @@ impl<'a, S: 'static> ChartWidgetTile<'a, S> {
 
     /// Builds the tile element; the expand overlay (when due) rides `layer`,
     /// the `createPortal` convention.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let mut tile = col()
             .key(tile_root_key(&self.widget.id))
@@ -730,7 +730,7 @@ fn centered_note(key: &str, k: &Kit, message: &str, color: Color) -> El {
 /// The table mode: the shared keyed grid over the run's columns and rows.
 /// `prefix` keys the grid (`{prefix}-grid`) so the tile, the overlay and the
 /// run-history drawer keep distinct subtrees.
-pub(crate) fn table_grid(run: &WidgetRunVm, prefix: &str, dark: bool) -> El {
+pub fn table_grid(run: &WidgetRunVm, prefix: &str, dark: bool) -> El {
     let columns = table_columns(run);
     let rows: Vec<Vec<String>> = run
         .rows

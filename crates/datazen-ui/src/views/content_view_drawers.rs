@@ -36,9 +36,9 @@ use rune::{col, row, text, El};
 
 use crate::i18n::t;
 #[path = "content_view_drawers_logic.rs"]
-pub(crate) mod logic;
+pub mod logic;
 
-pub(crate) use logic::*;
+pub use logic::*;
 
 const ROOT: &str = "content-view-drawers";
 const DETAIL: &str = "content-view-detail";
@@ -49,7 +49,7 @@ const AI_CLOSE: &str = "content-view-ai-close";
 /// Host calls a press asks for. No IPC happens in this module.
 #[allow(dead_code)] // host port surface; remove when the panel-store view track wires it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum DrawerAction {
+pub enum DrawerAction {
     CloseDetail,
     CloseAi,
     /// React `updateQuerySql(activePanel.id, sql)` from `onInsertSql`.
@@ -64,7 +64,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S, DrawerAction) + 'static>;
 /// The snapshot the host fills for one frame.
 #[allow(dead_code)] // VM surface; consumed by build and the tests.
 #[derive(Clone, Debug)]
-pub(crate) struct DrawerState {
+pub struct DrawerState {
     pub detail_open: bool,
     pub ai_chat_open: bool,
     pub detail_panel_applicable: bool,
@@ -120,7 +120,7 @@ impl Default for DrawerState {
 /// The answers a render derived, observable for tests and the host.
 #[allow(dead_code)] // VM surface; consumed by the tests.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct DrawerFacts {
+pub struct DrawerFacts {
     pub auto_context: Option<AutoContext>,
     pub read_only_reason: Option<ReadOnlyReason>,
     pub editable: bool,
@@ -130,18 +130,18 @@ pub(crate) struct DrawerFacts {
 impl DrawerState {
     /// React `detailPanelApplicable && detailOpen`.
     #[allow(dead_code)] // VM surface; consumed by build and the tests.
-    pub(crate) fn show_detail(&self) -> bool {
+    pub fn show_detail(&self) -> bool {
         self.detail_open && self.detail_panel_applicable
     }
 
     /// React `aiChatOpen && dbSessionId`.
     #[allow(dead_code)] // VM surface; consumed by build and the tests.
-    pub(crate) fn show_ai(&self) -> bool {
+    pub fn show_ai(&self) -> bool {
         self.ai_chat_open && self.has_db_session
     }
 
     /// The exec of the focused pane (split-pane source rule).
-    pub(crate) fn active_exec(&self) -> Option<&QueryExec> {
+    pub fn active_exec(&self) -> Option<&QueryExec> {
         if self.panel_kind != PanelKind::Query {
             return None;
         }
@@ -149,7 +149,7 @@ impl DrawerState {
     }
 
     /// Every derived value for this frame, in one place.
-    pub(crate) fn facts(&self) -> DrawerFacts {
+    pub fn facts(&self) -> DrawerFacts {
         let exec = self.active_exec();
         let verdict = self.verdict.clone().unwrap_or_else(unjudged);
         let auto_context = build_auto_context(self.panel_kind, exec, &self.editor_selection);
@@ -205,7 +205,7 @@ impl DrawerState {
 
 /// Render the drawers into `layer`, or mount nothing when both are closed.
 #[allow(dead_code)] // consumer: content_view composition (wired by T245).
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     state: &DrawerState,
     on_action: Option<ActionFn<S>>,
     dark: bool,
@@ -395,6 +395,6 @@ fn render_auto_context(context: &AutoContext) -> El {
 
 /// The split helper the composition layer calls: the drawer's two gates.
 #[allow(dead_code)] // composition helper; remove when the panel-store view lands.
-pub(crate) fn any_open(state: &DrawerState) -> bool {
+pub fn any_open(state: &DrawerState) -> bool {
     state.show_detail() || state.show_ai()
 }

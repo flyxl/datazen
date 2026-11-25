@@ -46,7 +46,7 @@ use serde_json::{Value, json};
 /// seam).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct DatabaseTarget {
+pub struct DatabaseTarget {
     pub connection_id: String,
     pub namespace: DatabaseNamespace,
     /// The object a table-scoped read targets (None for catalog reads).
@@ -57,7 +57,7 @@ pub(crate) struct DatabaseTarget {
 /// The namespace half (`database`/`schema`/`catalog`/`path`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct DatabaseNamespace {
+pub struct DatabaseNamespace {
     pub database: Option<String>,
     pub schema: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -69,7 +69,7 @@ pub(crate) struct DatabaseNamespace {
 /// The object half (`{ kind, name, signature }`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct DatabaseObjectRef {
+pub struct DatabaseObjectRef {
     pub kind: String,
     pub name: String,
     pub signature: Option<String>,
@@ -78,7 +78,7 @@ pub(crate) struct DatabaseObjectRef {
 /// One shaped target command (the `executeTargetCommand(target, { command,
 /// input })` call, before execution).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TargetCommandRequest {
+pub struct TargetCommandRequest {
     pub target: DatabaseTarget,
     pub command: &'static str,
     pub input: Value,
@@ -87,7 +87,7 @@ pub(crate) struct TargetCommandRequest {
 /// `metadataTarget(dbSessionId, database, schema, table?, connectionId?)`'s
 /// engine half: the host supplies the resolved owner (the store lookup
 /// stays the host's seam); the namespace carries the explicit halves.
-pub(crate) fn metadata_target(
+pub fn metadata_target(
     connection_id: &str,
     database: Option<&str>,
     schema: Option<&str>,
@@ -111,7 +111,7 @@ pub(crate) fn metadata_target(
 
 /// `databaseDiscoveryTarget`: discovery belongs to the connection, before
 /// any database is selected — the namespace is cleared whole.
-pub(crate) fn database_discovery_target(connection_id: &str) -> DatabaseTarget {
+pub fn database_discovery_target(connection_id: &str) -> DatabaseTarget {
     DatabaseTarget {
         connection_id: connection_id.to_owned(),
         namespace: DatabaseNamespace {
@@ -129,7 +129,7 @@ pub(crate) fn database_discovery_target(connection_id: &str) -> DatabaseTarget {
 // ---------------------------------------------------------------------------
 
 /// `getDatabases`' wire half (the join decision is [`DiscoveryJoiner`]).
-pub(crate) fn get_databases_request(target: &DatabaseTarget) -> TargetCommandRequest {
+pub fn get_databases_request(target: &DatabaseTarget) -> TargetCommandRequest {
     TargetCommandRequest {
         target: target.clone(),
         command: "list_databases",
@@ -139,7 +139,7 @@ pub(crate) fn get_databases_request(target: &DatabaseTarget) -> TargetCommandReq
 
 /// `listCatalog`'s wire half; the catalog validation is
 /// [`validate_catalog`].
-pub(crate) fn list_catalog_request(
+pub fn list_catalog_request(
     target: &DatabaseTarget,
     database: &str,
     schema: Option<&str>,
@@ -153,7 +153,7 @@ pub(crate) fn list_catalog_request(
 
 /// `listTables`: the catalog's relations projected to the table-info
 /// rows (`{ name, schema, tableType, rowCount }`), pure.
-pub(crate) fn table_infos_from_catalog(catalog: &Value) -> Result<Vec<Value>, String> {
+pub fn table_infos_from_catalog(catalog: &Value) -> Result<Vec<Value>, String> {
     let relations = catalog
         .get("relations")
         .and_then(Value::as_array)
@@ -173,7 +173,7 @@ pub(crate) fn table_infos_from_catalog(catalog: &Value) -> Result<Vec<Value>, St
 
 /// `listCatalog`'s `Array.isArray` guards: relations AND schemas must be
 /// arrays, else `Invalid catalog result`.
-pub(crate) fn validate_catalog(answer: &Value) -> Result<(), String> {
+pub fn validate_catalog(answer: &Value) -> Result<(), String> {
     let relations_ok = answer.get("relations").is_some_and(Value::is_array);
     let schemas_ok = answer.get("schemas").is_some_and(Value::is_array);
     if relations_ok && schemas_ok {
@@ -185,7 +185,7 @@ pub(crate) fn validate_catalog(answer: &Value) -> Result<(), String> {
 
 /// `getErData`'s per-relation schema request (the ER loop's body: the
 /// target re-anchored to the relation, the exact identity carried).
-pub(crate) fn er_table_schema_request(
+pub fn er_table_schema_request(
     base: &DatabaseTarget,
     relation: &Value,
 ) -> Option<TargetCommandRequest> {
@@ -213,7 +213,7 @@ pub(crate) fn er_table_schema_request(
 
 /// `getErData`'s per-relation validation: a schema with a columns array,
 /// else `Invalid schema result`.
-pub(crate) fn validate_table_schema(answer: &Value) -> Result<(), String> {
+pub fn validate_table_schema(answer: &Value) -> Result<(), String> {
     let schema = answer.get("schema").ok_or_else(|| "Invalid schema result".to_owned())?;
     if schema.get("columns").is_some_and(Value::is_array) {
         Ok(())
@@ -223,7 +223,7 @@ pub(crate) fn validate_table_schema(answer: &Value) -> Result<(), String> {
 }
 
 /// `getDatabaseObjects`' wire half; validation is [`validate_objects`].
-pub(crate) fn list_objects_request(
+pub fn list_objects_request(
     target: &DatabaseTarget,
     kind: &str,
     database: Option<&str>,
@@ -237,7 +237,7 @@ pub(crate) fn list_objects_request(
 }
 
 /// `getDatabaseObjects`' guard: `objects` must be an array.
-pub(crate) fn validate_objects(answer: &Value) -> Result<(), String> {
+pub fn validate_objects(answer: &Value) -> Result<(), String> {
     if answer.get("objects").is_some_and(Value::is_array) {
         Ok(())
     } else {
@@ -247,7 +247,7 @@ pub(crate) fn validate_objects(answer: &Value) -> Result<(), String> {
 
 /// `getObjectDdl`'s wire half; validation is [`validate_ddl`].
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn get_object_ddl_request(
+pub fn get_object_ddl_request(
     target: &DatabaseTarget,
     kind: &str,
     name: &str,
@@ -273,7 +273,7 @@ pub(crate) fn get_object_ddl_request(
 }
 
 /// `getObjectDdl`'s guard: `ddl` must be a string.
-pub(crate) fn validate_ddl(answer: &Value) -> Result<(), String> {
+pub fn validate_ddl(answer: &Value) -> Result<(), String> {
     if answer.get("ddl").is_some_and(Value::is_string) {
         Ok(())
     } else {
@@ -288,7 +288,7 @@ pub(crate) fn validate_ddl(answer: &Value) -> Result<(), String> {
 /// The Database domain-client slice — one variant per `useBackendClient()`
 /// pass-through; `wire_name` is the transport call name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum DatabaseMethod {
+pub enum DatabaseMethod {
     GetTableData,
     PreviewTableReadSql,
     PreviewPendingChanges,
@@ -304,7 +304,7 @@ pub(crate) enum DatabaseMethod {
 
 impl DatabaseMethod {
     /// The domain client's method name.
-    pub(crate) fn wire_name(self) -> &'static str {
+    pub fn wire_name(self) -> &'static str {
         match self {
             Self::GetTableData => "getTableData",
             Self::PreviewTableReadSql => "previewTableReadSql",
@@ -323,7 +323,7 @@ impl DatabaseMethod {
 
 /// The table-read request's normalizations (`?? null` and the omitted
 /// keys), applied to the caller's params bag.
-pub(crate) fn normalize_table_read(params: &Value) -> Value {
+pub fn normalize_table_read(params: &Value) -> Value {
     let mut out = json!({});
     if let Some(map) = params.as_object() {
         for (key, value) in map {
@@ -356,7 +356,7 @@ impl IntoOrNull for Value {
 
 /// What [`DiscoveryJoiner::begin`] decided.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum DiscoveryDecision {
+pub enum DiscoveryDecision {
     /// The first caller for this key issues the request.
     Issue(TargetCommandRequest),
     /// An in-flight discovery already covers this key: join it.
@@ -368,18 +368,18 @@ pub(crate) enum DiscoveryDecision {
 /// for session-scoped discovery (no explicit owner), `['connection',
 /// id]` for dedicated endpoints' connection-scoped discovery.
 #[derive(Default)]
-pub(crate) struct DiscoveryJoiner {
+pub struct DiscoveryJoiner {
     in_flight: BTreeSet<String>,
 }
 
 impl DiscoveryJoiner {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The join key (`JSON.stringify(['session', id])` /
     /// `['connection', id]`).
-    pub(crate) fn key(db_session_id: Option<&str>, connection_id: Option<&str>) -> String {
+    pub fn key(db_session_id: Option<&str>, connection_id: Option<&str>) -> String {
         match (db_session_id, connection_id) {
             (_, Some(connection)) => format!("[\"connection\",\"{connection}\"]"),
             (Some(session), None) => format!("[\"session\",\"{session}\"]"),
@@ -389,7 +389,7 @@ impl DiscoveryJoiner {
 
     /// `getDatabases`' decision half: the first caller issues, concurrent
     /// callers join.
-    pub(crate) fn begin(
+    pub fn begin(
         &mut self,
         db_session_id: Option<&str>,
         connection_id: Option<&str>,
@@ -413,12 +413,12 @@ impl DiscoveryJoiner {
     }
 
     /// The settled promise frees its slot (`.finally`'s delete).
-    pub(crate) fn finish(&mut self, db_session_id: Option<&str>, connection_id: Option<&str>) {
+    pub fn finish(&mut self, db_session_id: Option<&str>, connection_id: Option<&str>) {
         self.in_flight.remove(&Self::key(db_session_id, connection_id));
     }
 
     /// Whether a discovery for this key is in flight.
-    pub(crate) fn is_in_flight(&self, db_session_id: Option<&str>, connection_id: Option<&str>) -> bool {
+    pub fn is_in_flight(&self, db_session_id: Option<&str>, connection_id: Option<&str>) -> bool {
         self.in_flight.contains(&Self::key(db_session_id, connection_id))
     }
 }
@@ -429,13 +429,13 @@ impl DiscoveryJoiner {
 
 /// One shaped legacy command.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct DatabaseLegacyRequest {
-    pub(crate) command: &'static str,
-    pub(crate) value: Value,
+pub struct DatabaseLegacyRequest {
+    pub command: &'static str,
+    pub value: Value,
 }
 
 /// `getPrivileges(dbSessionId)` — the family's one legacy face.
-pub(crate) fn get_privileges_request(db_session_id: &str) -> DatabaseLegacyRequest {
+pub fn get_privileges_request(db_session_id: &str) -> DatabaseLegacyRequest {
     DatabaseLegacyRequest {
         command: "get_privileges",
         value: json!({ "dbSessionId": db_session_id }),

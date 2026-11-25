@@ -52,7 +52,7 @@ use crate::views::schema_diff::schema_diff_table_names::SchemaDiffTablePickVm;
 
 /// The wizard step (`'endpoints' | 'objects'`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SelectionStep {
+pub enum SelectionStep {
     Endpoints,
     Objects,
 }
@@ -60,7 +60,7 @@ pub(crate) enum SelectionStep {
 /// One connection option the endpoints step lists (the bar's currency:
 /// value + label + an optional disabled flag).
 #[derive(Clone)]
-pub(crate) struct SelectionConnectionOption {
+pub struct SelectionConnectionOption {
     pub value: String,
     pub label: String,
     pub disabled: bool,
@@ -77,7 +77,7 @@ use crate::components::migration::migration_endpoints_bar::EndpointOption;
 /// The `endpoints` prop: `useSchemaDiffEndpoints`'s return (T384's
 /// hook), projected for the bar.
 #[derive(Clone)]
-pub(crate) struct SchemaDiffEndpointsVm {
+pub struct SchemaDiffEndpointsVm {
     pub source_id: String,
     pub target_id: String,
     /// The source's chosen database / schema (None = the placeholder).
@@ -115,7 +115,7 @@ impl SchemaDiffEndpointsVm {
 
 /// The `unifiedObjects` prop: `useSchemaDiffUnifiedObjects`'s return
 /// (T420's hook), projected for the picker (T290's component).
-pub(crate) struct UnifiedObjectsVm<'a> {
+pub struct UnifiedObjectsVm<'a> {
     pub loading: bool,
     pub source_objects: &'a [String],
     pub target_objects: &'a [String],
@@ -129,7 +129,7 @@ pub(crate) struct UnifiedObjectsVm<'a> {
 
 /// `useSchemaDiffUnifiedObjects`'s catalog load state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CatalogLoadState {
+pub enum CatalogLoadState {
     NeverStarted,
     Loading,
     Completed,
@@ -150,7 +150,7 @@ impl CatalogLoadState {
 }
 
 /// The two selection steps (React `SchemaDiffSelectionSteps`).
-pub(crate) struct SchemaDiffSelectionSteps<'a, S: 'static> {
+pub struct SchemaDiffSelectionSteps<'a, S: 'static> {
     step: SelectionStep,
     endpoints: &'a SchemaDiffEndpointsVm,
     /// The cross-dialect note (the endpoints step's footer).
@@ -180,7 +180,7 @@ pub(crate) struct SchemaDiffSelectionSteps<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> SchemaDiffSelectionSteps<'a, S> {
-    pub(crate) fn new(
+    pub fn new(
         step: SelectionStep,
         endpoints: &'a SchemaDiffEndpointsVm,
         loading: bool,
@@ -213,7 +213,7 @@ impl<'a, S: 'static> SchemaDiffSelectionSteps<'a, S> {
     }
 
     /// The endpoints step's footer note (`endpointsCrossDialectNote`).
-    pub(crate) fn endpoints_cross_dialect_note(
+    pub fn endpoints_cross_dialect_note(
         mut self,
         note: Option<String>,
     ) -> Self {
@@ -223,25 +223,25 @@ impl<'a, S: 'static> SchemaDiffSelectionSteps<'a, S> {
 
     /// The unified picker (T290's seam): the prebuilt element the
     /// objects step mounts below the table list.
-    pub(crate) fn unified_picker(mut self, picker: Option<El>) -> Self {
+    pub fn unified_picker(mut self, picker: Option<El>) -> Self {
         self.unified_picker = picker;
         self
     }
 
     /// `endpoints.setSourceId`.
-    pub(crate) fn on_source_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_source_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_source_change = Some(Rc::new(f));
         self
     }
 
     /// `endpoints.setTargetId`.
-    pub(crate) fn on_target_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_target_change(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_target_change = Some(Rc::new(f));
         self
     }
 
     /// `endpoints.setSourceDatabase`.
-    pub(crate) fn on_source_database_change(
+    pub fn on_source_database_change(
         mut self,
         f: impl Fn(&mut S, Option<String>) + 'static,
     ) -> Self {
@@ -250,7 +250,7 @@ impl<'a, S: 'static> SchemaDiffSelectionSteps<'a, S> {
     }
 
     /// `endpoints.setTargetDatabase`.
-    pub(crate) fn on_target_database_change(
+    pub fn on_target_database_change(
         mut self,
         f: impl Fn(&mut S, Option<String>) + 'static,
     ) -> Self {
@@ -259,7 +259,7 @@ impl<'a, S: 'static> SchemaDiffSelectionSteps<'a, S> {
     }
 
     /// `endpoints.setSourceSchema`.
-    pub(crate) fn on_source_schema_change(
+    pub fn on_source_schema_change(
         mut self,
         f: impl Fn(&mut S, Option<String>) + 'static,
     ) -> Self {
@@ -268,7 +268,7 @@ impl<'a, S: 'static> SchemaDiffSelectionSteps<'a, S> {
     }
 
     /// `endpoints.setTargetSchema`.
-    pub(crate) fn on_target_schema_change(
+    pub fn on_target_schema_change(
         mut self,
         f: impl Fn(&mut S, Option<String>) + 'static,
     ) -> Self {
@@ -277,26 +277,26 @@ impl<'a, S: 'static> SchemaDiffSelectionSteps<'a, S> {
     }
 
     /// `onToggleTable(name)`.
-    pub(crate) fn on_toggle_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_toggle_table(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.on_toggle_table = Some(Rc::new(f));
         self
     }
 
     /// `onSelectAll`: every pick's `enabled` flips true (the host maps
     /// its own list; the callback is the decision).
-    pub(crate) fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_all(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_all = Some(Rc::new(f));
         self
     }
 
     /// `onSelectNone`: every pick's `enabled` flips false.
-    pub(crate) fn on_select_none(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_none(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_none = Some(Rc::new(f));
         self
     }
 
     /// `onToggleUnifiedObject('source')(object)`.
-    pub(crate) fn on_toggle_unified_source(
+    pub fn on_toggle_unified_source(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -305,7 +305,7 @@ impl<'a, S: 'static> SchemaDiffSelectionSteps<'a, S> {
     }
 
     /// `onToggleUnifiedObject('target')(object)`.
-    pub(crate) fn on_toggle_unified_target(
+    pub fn on_toggle_unified_target(
         mut self,
         f: impl Fn(&mut S, String) + 'static,
     ) -> Self {
@@ -314,25 +314,25 @@ impl<'a, S: 'static> SchemaDiffSelectionSteps<'a, S> {
     }
 
     /// `unifiedObjects.selectAll`.
-    pub(crate) fn on_select_all_unified(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_all_unified(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_all_unified = Some(Rc::new(f));
         self
     }
 
     /// `onClearObjectSelections`.
-    pub(crate) fn on_clear_object_selections(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_clear_object_selections(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_clear_object_selections = Some(Rc::new(f));
         self
     }
 
     /// `onRetryObjects`.
-    pub(crate) fn on_retry_objects(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_retry_objects(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_retry_objects = Some(Rc::new(f));
         self
     }
 
     /// Build the active step.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         match self.step {
             SelectionStep::Endpoints => self.build_endpoints_step(dark),
             SelectionStep::Objects => self.build_objects_step(dark),

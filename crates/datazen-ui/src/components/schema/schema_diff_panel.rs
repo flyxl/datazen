@@ -34,7 +34,7 @@ use crate::ui::kit::kit;
 /// `ColumnDiffEntry` from `packages/frontend/src/types/index.ts`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
-pub(crate) struct ColumnDiffVm {
+pub struct ColumnDiffVm {
     pub name: String,
     pub data_type: String,
     pub nullable: bool,
@@ -43,7 +43,7 @@ pub(crate) struct ColumnDiffVm {
 
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
 impl ColumnDiffVm {
-    pub(crate) fn new(
+    pub fn new(
         name: impl Into<String>,
         data_type: impl Into<String>,
         nullable: bool,
@@ -61,7 +61,7 @@ impl ColumnDiffVm {
 /// `ChangedColumnDiff` — one changed-column card.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
-pub(crate) struct ChangedColumnDiffVm {
+pub struct ChangedColumnDiffVm {
     pub name: String,
     pub source: ColumnDiffVm,
     pub target: ColumnDiffVm,
@@ -71,7 +71,7 @@ pub(crate) struct ChangedColumnDiffVm {
 /// `CheckConstraintDiffEntry`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
-pub(crate) struct CheckConstraintDiffVm {
+pub struct CheckConstraintDiffVm {
     pub name: String,
     pub expression: String,
 }
@@ -80,7 +80,7 @@ pub(crate) struct CheckConstraintDiffVm {
 /// `tableOptions.source[change]` / `tableOptions.target[change]`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
-pub(crate) struct TableOptionsSnapshotVm {
+pub struct TableOptionsSnapshotVm {
     pub comment: Option<String>,
     pub engine: Option<String>,
     pub charset: Option<String>,
@@ -103,7 +103,7 @@ impl TableOptionsSnapshotVm {
 /// `TableOptionsDiff`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
-pub(crate) struct TableOptionsDiffVm {
+pub struct TableOptionsDiffVm {
     pub source: TableOptionsSnapshotVm,
     pub target: TableOptionsSnapshotVm,
     pub changes: Vec<String>,
@@ -113,7 +113,7 @@ pub(crate) struct TableOptionsDiffVm {
 /// `missingOnTarget ?? added` and `extraOnTarget ?? removed`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
-pub(crate) struct TableSchemaDiffVm {
+pub struct TableSchemaDiffVm {
     pub table: String,
     /// React `targetOnly`: the table exists only on the target.
     pub target_only: bool,
@@ -134,28 +134,28 @@ pub(crate) struct TableSchemaDiffVm {
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
 impl TableSchemaDiffVm {
     /// `diff.missingOnTarget ?? diff.added`.
-    pub(crate) fn missing(&self) -> &[ColumnDiffVm] {
+    pub fn missing(&self) -> &[ColumnDiffVm] {
         self.missing_on_target.as_deref().unwrap_or(&self.added)
     }
 
     /// `diff.extraOnTarget ?? diff.removed`.
-    pub(crate) fn extra(&self) -> &[ColumnDiffVm] {
+    pub fn extra(&self) -> &[ColumnDiffVm] {
         self.extra_on_target.as_deref().unwrap_or(&self.removed)
     }
 
     /// `diff.missingCheckConstraints ?? []`.
-    pub(crate) fn missing_checks(&self) -> &[CheckConstraintDiffVm] {
+    pub fn missing_checks(&self) -> &[CheckConstraintDiffVm] {
         self.missing_check_constraints.as_deref().unwrap_or_default()
     }
 
     /// `diff.extraCheckConstraints ?? []`.
-    pub(crate) fn extra_checks(&self) -> &[CheckConstraintDiffVm] {
+    pub fn extra_checks(&self) -> &[CheckConstraintDiffVm] {
         self.extra_check_constraints.as_deref().unwrap_or_default()
     }
 
     /// The React `identical` expression: no target-only flag, all arrays empty
     /// and no table-options object at all (`!tableOptions`, not "empty changes").
-    pub(crate) fn is_identical(&self) -> bool {
+    pub fn is_identical(&self) -> bool {
         !self.target_only
             && self.missing().is_empty()
             && self.extra().is_empty()
@@ -224,7 +224,7 @@ fn section(key: &str, head: El, rows: Vec<El>) -> El {
 
 /// Plain-text summary for clipboard / ALTER hints.
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
-pub(crate) fn format_schema_diff_text(diff: &TableSchemaDiffVm) -> String {
+pub fn format_schema_diff_text(diff: &TableSchemaDiffVm) -> String {
     let mut lines: Vec<String> = vec![format!("-- Schema diff: {}", diff.table)];
 
     for col in diff.missing() {
@@ -274,7 +274,7 @@ pub(crate) fn format_schema_diff_text(diff: &TableSchemaDiffVm) -> String {
 /// CamelCase alias kept for parity with the React export's name. The Rust
 /// entry point is [`format_schema_diff_text`].
 #[allow(non_snake_case, dead_code)] // React export name; wired by the view track
-pub(crate) fn formatSchemaDiffText(diff: &TableSchemaDiffVm) -> String {
+pub fn formatSchemaDiffText(diff: &TableSchemaDiffVm) -> String {
     format_schema_diff_text(diff)
 }
 
@@ -285,17 +285,17 @@ pub(crate) fn formatSchemaDiffText(diff: &TableSchemaDiffVm) -> String {
 /// `SchemaDiffPanel({ diff })` — a stateless builder; `build(dark)` returns the
 /// root element. `space-y-4` (16pt) separates sections.
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
-pub(crate) struct SchemaDiffPanel {
+pub struct SchemaDiffPanel {
     diff: TableSchemaDiffVm,
 }
 
 #[allow(dead_code)] // reusable port; wired by the schema-diff view track
 impl SchemaDiffPanel {
-    pub(crate) fn new(diff: TableSchemaDiffVm) -> Self {
+    pub fn new(diff: TableSchemaDiffVm) -> Self {
         Self { diff }
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let diff = self.diff;
         let mut root = col()

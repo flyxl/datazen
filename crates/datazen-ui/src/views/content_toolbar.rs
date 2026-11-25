@@ -31,16 +31,16 @@ use crate::icons::{
 };
 
 /// React `ToolbarShell` band height (`h-12 min-h-[48px]`).
-pub(crate) const TOOLBAR_HEIGHT: f32 = 48.0;
+pub const TOOLBAR_HEIGHT: f32 = 48.0;
 
 /// React `useCompactToolbar` constants.
-pub(crate) const TOOLBAR_EXPANDED_BUTTON_WIDTH: f32 = 96.0;
-pub(crate) const TOOLBAR_GAP: f32 = 8.0;
-pub(crate) const TOOLBAR_HORIZONTAL_PADDING: f32 = 32.0;
+pub const TOOLBAR_EXPANDED_BUTTON_WIDTH: f32 = 96.0;
+pub const TOOLBAR_GAP: f32 = 8.0;
+pub const TOOLBAR_HORIZONTAL_PADDING: f32 = 32.0;
 
 /// React `estimateExpandedToolbarWidth`.
 #[allow(dead_code)] // contract helper; consumed by the audit tests and the host view
-pub(crate) fn estimate_expanded_toolbar_width(
+pub fn estimate_expanded_toolbar_width(
     expanded_button_count: usize,
     fixed_extra_width: f32,
 ) -> f32 {
@@ -53,7 +53,7 @@ pub(crate) fn estimate_expanded_toolbar_width(
 
 /// React `contentToolbarExpandedMinWidth` — the exact left-button arithmetic.
 #[allow(dead_code)] // contract helper; consumed by the audit tests and the host view
-pub(crate) fn content_toolbar_expanded_min_width(vm: &ContentToolbarVm) -> f32 {
+pub fn content_toolbar_expanded_min_width(vm: &ContentToolbarVm) -> f32 {
     let mut left_buttons = 0usize;
     if vm.show_new_query {
         left_buttons += 1;
@@ -82,14 +82,14 @@ pub(crate) fn content_toolbar_expanded_min_width(vm: &ContentToolbarVm) -> f32 {
 /// absent or blank key means the AI button must not be offered.
 #[allow(dead_code)] // VM surface; wired by the KV view track
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct KvPanelState {
-    pub(crate) selected_key: Option<String>,
+pub struct KvPanelState {
+    pub selected_key: Option<String>,
 }
 
 impl KvPanelState {
     /// React `hasKvAiFacts({ selectedKey })` — a blank key is no fact.
     #[allow(dead_code)] // VM surface; consumed by show_ai_chat and the tests
-    pub(crate) fn has_ai_facts(&self) -> bool {
+    pub fn has_ai_facts(&self) -> bool {
         self.selected_key
             .as_deref()
             .is_some_and(|key| !key.trim().is_empty())
@@ -99,40 +99,40 @@ impl KvPanelState {
 /// React `ContentToolbarProps` as a cloneable value.
 #[allow(dead_code)] // VM surface; built by chrome::content_toolbar and the tests
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ContentToolbarVm {
-    pub(crate) show_new_query: bool,
-    pub(crate) show_new_table: bool,
-    pub(crate) show_er_diagram: bool,
-    pub(crate) show_objects: bool,
-    pub(crate) show_batch_export: bool,
-    pub(crate) ai_chat_open: bool,
-    pub(crate) detail_panel_applicable: bool,
-    pub(crate) detail_open: bool,
+pub struct ContentToolbarVm {
+    pub show_new_query: bool,
+    pub show_new_table: bool,
+    pub show_er_diagram: bool,
+    pub show_objects: bool,
+    pub show_batch_export: bool,
+    pub ai_chat_open: bool,
+    pub detail_panel_applicable: bool,
+    pub detail_open: bool,
     /// A driver contributed a context bar (`contextBarSlot` present).
-    pub(crate) has_context_bar: bool,
+    pub has_context_bar: bool,
     /// `undefined` on a relational panel; present on a KV panel.
-    pub(crate) kv_panel: Option<KvPanelState>,
+    pub kv_panel: Option<KvPanelState>,
     /// `useCompactToolbar` hides labels in narrow bands.
-    pub(crate) compact: bool,
+    pub compact: bool,
     /// Resolved `t("common.newQuery")` strings. The T0-03 sweep pins two calls
     /// to that key in `views/chrome.rs`, so the host supplies both the visible
     /// label and the accessible label instead of the builder calling `t`.
-    pub(crate) new_query_label: String,
-    pub(crate) new_query_aria: String,
+    pub new_query_label: String,
+    pub new_query_aria: String,
     /// Section title shown at the left edge (existing `content-toolbar-title`).
-    pub(crate) title: String,
+    pub title: String,
     /// The docs and AI buttons are React's always-on right cluster. The Rune
     /// host has no docs-window / AI-chat adapter yet, so it leaves these false
     /// to keep the existing focus order; the controlled component still
     /// renders them for a view that wires the actions.
-    pub(crate) show_docs: bool,
-    pub(crate) show_ai: bool,
+    pub show_docs: bool,
+    pub show_ai: bool,
 }
 
 impl ContentToolbarVm {
     /// React `showAiChat`: no relay (relational) or a KV panel with a key.
     #[allow(dead_code)] // VM surface; consumed by build and the tests
-    pub(crate) fn show_ai_chat(&self) -> bool {
+    pub fn show_ai_chat(&self) -> bool {
         self.kv_panel
             .as_ref()
             .map_or(true, KvPanelState::has_ai_facts)
@@ -172,58 +172,58 @@ impl<S> Default for Actions<S> {
 
 /// Builder for the ported toolbar.
 #[allow(dead_code)] // reusable component; mounted by chrome::content_toolbar
-pub(crate) struct ContentToolbar<'a, S: 'static> {
+pub struct ContentToolbar<'a, S: 'static> {
     vm: &'a ContentToolbarVm,
     actions: Actions<S>,
 }
 
 #[allow(dead_code)] // reusable component; mounted by chrome::content_toolbar
 impl<'a, S: 'static> ContentToolbar<'a, S> {
-    pub(crate) fn new(vm: &'a ContentToolbarVm) -> Self {
+    pub fn new(vm: &'a ContentToolbarVm) -> Self {
         Self {
             vm,
             actions: Actions::default(),
         }
     }
 
-    pub(crate) fn on_new_query(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_new_query(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.actions.new_query = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_create_table(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_create_table(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.actions.create_table = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_er_diagram(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_er_diagram(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.actions.er_diagram = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_objects(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_objects(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.actions.objects = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_privileges(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_privileges(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.actions.privileges = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_batch_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_batch_export(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.actions.batch_export = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_docs(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_docs(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.actions.docs = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_ai_chat(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_ai_chat(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.actions.ai_chat = Some(Rc::new(f));
         self
     }
-    pub(crate) fn on_detail(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_detail(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.actions.detail = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, theme: tok::Theme) -> El {
+    pub fn build(self, theme: tok::Theme) -> El {
         let vm = self.vm;
         let mut bar = row()
             .key("content-toolbar")

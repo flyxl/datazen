@@ -38,11 +38,11 @@ use crate::ui::kit::kit;
 mod catalog;
 mod model;
 
-pub(crate) use catalog::{
+pub use catalog::{
     build_catalog, dialect_family, json_quote, json_stringify_array, qb_context_key,
     relation_identity,
 };
-pub(crate) use model::{
+pub use model::{
     ColumnVm, CommitMode, QueryBuilderAction, QueryBuilderCatalogVm, QueryBuilderHostPort,
     QueryBuilderVm, RelationColumnsVm, RelationVm, SessionSchemaVm,
 };
@@ -84,7 +84,7 @@ fn service_button<S: 'static, F: Fn(&mut S) -> Option<QueryBuilderAction> + 'sta
 /// Build the adapter slot. `None` means React's "no contribution / closed" —
 /// nothing is mounted.
 #[allow(dead_code)] // view entry point; consumer: the query-editor host (not wired).
-pub(crate) fn query_builder_host_adapter<S: 'static>(
+pub fn query_builder_host_adapter<S: 'static>(
     vm: &QueryBuilderVm,
     dark: bool,
     host: &QueryBuilderHostPort<S>,

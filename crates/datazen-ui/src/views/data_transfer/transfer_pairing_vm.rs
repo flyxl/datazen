@@ -30,7 +30,7 @@
 /// React `normalizeDriverId` (`lib/syncTaxonomy.ts:5-18`): driver id aliases
 /// for sync/transfer taxonomy lookup (mirrors driver-api
 /// `normalize_driver_id`).
-pub(crate) fn normalize_driver_id(raw: &str) -> String {
+pub fn normalize_driver_id(raw: &str) -> String {
     match raw.to_ascii_lowercase().as_str() {
         "postgres" => "postgresql".to_owned(),
         "mssql" => "sqlserver".to_owned(),
@@ -63,7 +63,7 @@ struct DbSyncMeta {
 
 /// React `SyncCategory` (`lib/syncPairing.ts:29`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SyncCategory {
+pub enum SyncCategory {
     Sql,
     Document,
     Kv,
@@ -336,7 +336,7 @@ fn category_from_meta(meta: Option<&DbSyncMeta>, db_type: &str) -> SyncCategory 
 
 /// React `syncCategory` (`lib/syncPairing.ts:36-39`): the category lookup
 /// with the alias fallback.
-pub(crate) fn sync_category(db_type: &str) -> SyncCategory {
+pub fn sync_category(db_type: &str) -> SyncCategory {
     let meta = registry_meta(db_type).or_else(|| {
         let normalized = normalize_driver_id(db_type);
         DB_SYNC_META
@@ -349,7 +349,7 @@ pub(crate) fn sync_category(db_type: &str) -> SyncCategory {
 
 /// React `normalizeSyncFamily` (`lib/syncPairing.ts:42-47`): the sync
 /// dialect family for Transfer pairing.
-pub(crate) fn normalize_sync_family(db_type: &str) -> String {
+pub fn normalize_sync_family(db_type: &str) -> String {
     let meta = registry_meta(db_type).or_else(|| {
         let normalized = normalize_driver_id(db_type);
         DB_SYNC_META
@@ -374,7 +374,7 @@ pub(crate) fn normalize_sync_family(db_type: &str) -> String {
 
 /// React `TransferPath` (`lib/transferPairing.ts:7`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TransferPath {
+pub enum TransferPath {
     Direct,
     Ir,
     Unsupported,
@@ -382,7 +382,7 @@ pub(crate) enum TransferPath {
 
 /// React `TransferPairingResult` (`lib/transferPairing.ts:9-14`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct TransferPairingResult {
+pub struct TransferPairingResult {
     pub path: TransferPath,
     pub supported: bool,
     pub family: Option<String>,
@@ -392,7 +392,7 @@ pub(crate) struct TransferPairingResult {
 /// React `resolveTransferPairing` (`lib/transferPairing.ts:19-64`), line for
 /// line. Allows SQL Direct + IR; rejects cross-category pairs
 /// (SQL↔Redis etc.).
-pub(crate) fn resolve_transfer_pairing(source_type: &str, target_type: &str) -> TransferPairingResult {
+pub fn resolve_transfer_pairing(source_type: &str, target_type: &str) -> TransferPairingResult {
     // Optional drivers may be absent from generated UI metadata in a basic
     // build. Keep their known taxonomy stable in that case.
     let transfer_category = |database_type: &str| {
@@ -479,7 +479,7 @@ pub(crate) fn resolve_transfer_pairing(source_type: &str, target_type: &str) -> 
 }
 
 /// React `isTransferTargetSupported` (`lib/transferPairing.ts:66-68`).
-pub(crate) fn is_transfer_target_supported(source_type: &str, target_type: &str) -> bool {
+pub fn is_transfer_target_supported(source_type: &str, target_type: &str) -> bool {
     resolve_transfer_pairing(source_type, target_type).supported
 }
 
@@ -489,7 +489,7 @@ pub(crate) fn is_transfer_target_supported(source_type: &str, target_type: &str)
 
 /// React `isVerifiedMigrationPair` (`lib/migrationVerification.ts:3-6`):
 /// pairings covered by live end-to-end migration runs for this release.
-pub(crate) fn is_verified_migration_pair(source_type: &str, target_type: &str) -> bool {
+pub fn is_verified_migration_pair(source_type: &str, target_type: &str) -> bool {
     let verified = ["postgresql", "mysql"];
     let source_ok = verified.contains(&source_type.to_ascii_lowercase().as_str());
     let target_ok = verified.contains(&target_type.to_ascii_lowercase().as_str());
@@ -505,7 +505,7 @@ pub(crate) fn is_verified_migration_pair(source_type: &str, target_type: &str) -
 /// sub-windows. The host reads them (the WebView URL itself is T644's
 /// seam) and hands the struct to the window.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct MigrationWindowPrefill {
+pub struct MigrationWindowPrefill {
     pub source_id: Option<String>,
     pub target_id: Option<String>,
     pub source_database: Option<String>,
@@ -517,14 +517,14 @@ pub(crate) struct MigrationWindowPrefill {
 impl MigrationWindowPrefill {
     /// Whether any endpoint id is prefilled — the guard React's
     /// `useMigrationEndpointPrefill` effect checks before applying.
-    pub(crate) fn has_endpoint_ids(&self) -> bool {
+    pub fn has_endpoint_ids(&self) -> bool {
         self.source_id.is_some() || self.target_id.is_some()
     }
 }
 
 /// React `resolveDefaultDatabase`
 /// (`lib/migrationWindowPrefill.ts:47-54`), line for line.
-pub(crate) fn resolve_default_database(
+pub fn resolve_default_database(
     databases: Option<&[String]>,
     preferred: &str,
     prev: &str,
@@ -542,7 +542,7 @@ pub(crate) fn resolve_default_database(
 /// React `pickPrefillDatabase` (`lib/migrationWindowPrefill.ts:56-69`),
 /// line for line, including the consume-on-use: a prefill that fires is
 /// cleared from the ref, so it can never fire twice.
-pub(crate) fn pick_prefill_database(
+pub fn pick_prefill_database(
     prefill: &mut MigrationWindowPrefill,
     source_side: bool,
     databases: &[String],

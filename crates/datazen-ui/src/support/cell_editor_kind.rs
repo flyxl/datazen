@@ -15,7 +15,7 @@ use crate::support::cell_types::CellType;
 
 /// The editor control a cell needs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CellEditorKind {
+pub enum CellEditorKind {
     Text,
     Number,
     Boolean,
@@ -28,7 +28,7 @@ pub(crate) enum CellEditorKind {
 
 impl CellEditorKind {
     /// Stable identifier, handy for assertions and diagnostics.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Text => "text",
             Self::Number => "number",
@@ -43,14 +43,14 @@ impl CellEditorKind {
 }
 
 /// A value longer than this is edited as a long text, not inline.
-pub(crate) const INLINE_TEXT_MAX_CODE_POINTS: usize = 200;
+pub const INLINE_TEXT_MAX_CODE_POINTS: usize = 200;
 
 /// The inline editor never holds more than 64 KiB.
-pub(crate) const CELL_EDIT_MAX_BYTES: usize = 64 * 1024;
+pub const CELL_EDIT_MAX_BYTES: usize = 64 * 1024;
 
 /// Everything the kind resolution needs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct CellEditorKindInput {
+pub struct CellEditorKindInput {
     pub cell_type: CellType,
     /// The value carries a time zone (a picker cannot hold an offset).
     pub zoned: bool,
@@ -66,7 +66,7 @@ pub(crate) struct CellEditorKindInput {
 /// Zoned time and datetime cells fall back to text on purpose: silently
 /// dropping the offset would move the instant. `uuid` is always text because
 /// there is no dedicated editor.
-pub(crate) fn resolve_cell_editor_kind(input: CellEditorKindInput) -> CellEditorKind {
+pub fn resolve_cell_editor_kind(input: CellEditorKindInput) -> CellEditorKind {
     match input.cell_type {
         CellType::Bool => CellEditorKind::Boolean,
         CellType::Enum => CellEditorKind::Enum,
@@ -207,7 +207,7 @@ mod tests {
 /// matches the React union member-for-member, so a wire or test that
 /// prints it can compare against the same strings.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CellValueErrorReason {
+pub enum CellValueErrorReason {
     EmptyNotNull,
     InvalidNumber,
     InvalidInteger,
@@ -223,7 +223,7 @@ pub(crate) enum CellValueErrorReason {
 
 impl CellValueErrorReason {
     /// The React union's string member (`'emptyNotNull'`, …).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::EmptyNotNull => "emptyNotNull",
             Self::InvalidNumber => "invalidNumber",
@@ -242,7 +242,7 @@ impl CellValueErrorReason {
     /// `cellValueErrorMessageKey` (`cellEditorKind.ts:589-613`): the
     /// **only** mapping from a reason to a key — every caller reads it
     /// from here, so a reason can never end up without an explanation.
-    pub(crate) fn message_key(self) -> &'static str {
+    pub fn message_key(self) -> &'static str {
         match self {
             Self::EmptyNotNull => "cellEditor.notNull",
             Self::InvalidNumber => "cellEditor.invalidNumber",
@@ -267,7 +267,7 @@ impl CellValueErrorReason {
 
 /// React `CoerceInput` (`cellEditorKind.ts:97-110`).
 #[derive(Clone, Debug)]
-pub(crate) struct CoerceInput<'a> {
+pub struct CoerceInput<'a> {
     pub kind: CellEditorKind,
     pub cell_type: CellType,
     pub text: &'a str,
@@ -283,7 +283,7 @@ pub(crate) struct CoerceInput<'a> {
 
 /// React `CoerceResult`: the written value, or the refusal's reason.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum CoerceResult {
+pub enum CoerceResult {
     Ok(serde_json::Value),
     Refused(CellValueErrorReason),
 }
@@ -295,7 +295,7 @@ pub(crate) enum CoerceResult {
 /// by a regular expression first and only then converted, `NaN` and
 /// `Infinity` are refused, a date without a zone is a wall clock
 /// passed through verbatim, and invalid JSON is refused.
-pub(crate) fn coerce_value(input: &CoerceInput) -> CoerceResult {
+pub fn coerce_value(input: &CoerceInput) -> CoerceResult {
     let text = input.text;
     if text.is_empty() {
         if !input.nullable {

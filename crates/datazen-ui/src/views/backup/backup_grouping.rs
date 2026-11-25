@@ -21,7 +21,7 @@ use super::backup_window_state::BackupConnection;
 
 /// One `groupConnections` result row: a group key and its connections.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ConnectionGroup {
+pub struct ConnectionGroup {
     pub group: String,
     pub connections: Vec<BackupConnection>,
 }
@@ -30,7 +30,7 @@ pub(crate) struct ConnectionGroup {
 /// restricted to the reasons that occur with empty usage state (see
 /// the module docs).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MatchReason {
+pub enum MatchReason {
     Name,
     Host,
     Database,
@@ -51,7 +51,7 @@ impl MatchReason {
 
 /// One `rankConnections` match (`ConnectionMatch`, `connectionLocator.ts`).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ConnectionMatch {
+pub struct ConnectionMatch {
     pub rank: u32,
     pub reason: MatchReason,
     pub context: String,
@@ -59,7 +59,7 @@ pub(crate) struct ConnectionMatch {
 
 /// React `formatGroupLabel` (`lib/connectionGroups.ts`): the three
 /// preset keys localize, any other key is returned as-is.
-pub(crate) fn format_group_label(key: &str) -> String {
+pub fn format_group_label(key: &str) -> String {
     match key {
         "preset:production" => t("newConn.groupProd").to_owned(),
         "preset:development" => t("newConn.groupDev").to_owned(),
@@ -70,7 +70,7 @@ pub(crate) fn format_group_label(key: &str) -> String {
 
 /// React's group-header label: `''` is `t('main.ungrouped')`, anything
 /// else goes through [`format_group_label`].
-pub(crate) fn group_display_label(group: &str) -> String {
+pub fn group_display_label(group: &str) -> String {
     if group.is_empty() {
         t("main.ungrouped").to_owned()
     } else {
@@ -80,7 +80,7 @@ pub(crate) fn group_display_label(group: &str) -> String {
 
 /// React's initial `expandedGroups`: every declared group, the
 /// ungrouped key, and every connection's group — everything expanded.
-pub(crate) fn initial_expanded_groups(
+pub fn initial_expanded_groups(
     groups: &[String],
     connections: &[BackupConnection],
 ) -> BTreeSet<String> {
@@ -158,7 +158,7 @@ fn connection_candidates(conn: &BackupConnection, query: &str) -> Vec<Connection
 /// wins; ties break on reason, then on context (both compared
 /// case-insensitively, mirroring `localeCompare` with base
 /// sensitivity — see the module docs).
-pub(crate) fn connection_match(conn: &BackupConnection, query: &str) -> Option<ConnectionMatch> {
+pub fn connection_match(conn: &BackupConnection, query: &str) -> Option<ConnectionMatch> {
     let normalized = normalize(query);
     if normalized.is_empty() {
         return None;
@@ -327,7 +327,7 @@ fn compare_ranked(
 /// (first wins), keep only matches for a non-empty query, and sort by
 /// [`compare_ranked`]. An empty query returns every connection with a
 /// null match, still sorted.
-pub(crate) fn rank_connections(
+pub fn rank_connections(
     connections: &[BackupConnection],
     query: &str,
 ) -> Vec<BackupConnection> {
@@ -365,7 +365,7 @@ fn sort_connections_in_group(connections: &mut [BackupConnection]) {
 /// when empty), then extra non-empty groups in encounter order, and
 /// the ungrouped (`''`) group last when non-empty. While searching,
 /// the ranked order is kept; otherwise each group is pinned-first.
-pub(crate) fn group_connections(
+pub fn group_connections(
     connections: &[BackupConnection],
     groups: &[String],
     search_query: &str,

@@ -10,13 +10,13 @@ use crate::ui::kit::kit;
 use super::model::{KvSlotAtom, KvViewProps, PanelVm};
 
 #[allow(dead_code)] // host contract; consumer: the KV workbench host (not wired).
-pub(crate) struct KvViewHostPort<S> {
+pub struct KvViewHostPort<S> {
     pub on_view: Option<Rc<dyn Fn(&mut S, KvViewProps, Option<KvSlotAtom>) + 'static>>,
 }
 
 /// Build the KV view marker and hand the host the props + the very same atom.
 #[allow(dead_code)] // view entry point; consumer: the panel host (not wired).
-pub(crate) fn kv_view<S: 'static>(
+pub fn kv_view<S: 'static>(
     panel: &PanelVm,
     dark: bool,
     slot_state: Option<KvSlotAtom>,

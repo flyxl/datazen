@@ -29,16 +29,16 @@ use crate::i18n::t;
 use crate::ui::kit::kit;
 
 /// The note builder: the reason when present, the generic word otherwise.
-pub(crate) struct TransferPairingNote {
+pub struct TransferPairingNote {
     reason: Option<String>,
 }
 
 impl TransferPairingNote {
-    pub(crate) fn new(reason: Option<String>) -> Self {
+    pub fn new(reason: Option<String>) -> Self {
         Self { reason }
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         let body = match self.reason.as_deref() {
             // A present-but-empty reason reads as absent, like React's

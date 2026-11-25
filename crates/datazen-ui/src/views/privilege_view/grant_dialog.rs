@@ -18,7 +18,7 @@ use super::model::{PrivilegeAction, PrivilegeHostPort};
 /// React `GrantDialog`'s local state.
 #[allow(dead_code)] // view VM; consumer: the privilege host (not wired).
 #[derive(Clone, Debug)]
-pub(crate) struct GrantDialogVm {
+pub struct GrantDialogVm {
     pub username: TextEdit,
     pub database: TextEdit,
     pub selected: BTreeSet<String>,
@@ -39,7 +39,7 @@ impl Default for GrantDialogVm {
 }
 
 #[allow(dead_code)] // view entry point; consumer: the privilege view (not wired).
-pub(crate) fn grant_dialog<S: 'static>(
+pub fn grant_dialog<S: 'static>(
     vm: &GrantDialogVm,
     options: &[String],
     users: &[String],

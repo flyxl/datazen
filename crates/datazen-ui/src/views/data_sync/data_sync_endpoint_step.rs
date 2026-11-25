@@ -79,7 +79,7 @@ use crate::ui::select::Select;
 /// it is not modelled here.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable component; wired by the Data Sync window track
-pub(crate) struct SyncProfile {
+pub struct SyncProfile {
     pub id: String,
     pub name: String,
 }
@@ -90,7 +90,7 @@ pub(crate) struct SyncProfile {
 /// here.
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // reusable component; wired by the Data Sync window track
-pub(crate) struct DataSyncEndpointStepVm {
+pub struct DataSyncEndpointStepVm {
     /// An unknown history run could not restore its endpoint scope: the
     /// reconfirmation notice mounts and the compare is blocked until the
     /// user confirms.
@@ -105,7 +105,7 @@ pub(crate) struct DataSyncEndpointStepVm {
 /// The first step of the Data Sync wizard. `S` is the host state that owns
 /// the profile-name `TextEdit`, the select's open flag, and every action.
 #[allow(dead_code)] // reusable component; wired by the Data Sync window track
-pub(crate) struct DataSyncEndpointStep<'a, S: 'static> {
+pub struct DataSyncEndpointStep<'a, S: 'static> {
     vm: DataSyncEndpointStepVm,
     profile_name_edit: Option<&'a TextEdit>,
     select_open: bool,
@@ -122,7 +122,7 @@ pub(crate) struct DataSyncEndpointStep<'a, S: 'static> {
 
 impl<'a, S: 'static> DataSyncEndpointStep<'a, S> {
     /// The step over its props.
-    pub(crate) fn new(vm: DataSyncEndpointStepVm) -> Self {
+    pub fn new(vm: DataSyncEndpointStepVm) -> Self {
         Self {
             vm,
             profile_name_edit: None,
@@ -143,26 +143,26 @@ impl<'a, S: 'static> DataSyncEndpointStep<'a, S> {
     /// controlled `value`). Without it the field renders the placeholder
     /// over an empty edit, like a React step whose host never supplied a
     /// name.
-    pub(crate) fn profile_name_edit(mut self, edit: &'a TextEdit) -> Self {
+    pub fn profile_name_edit(mut self, edit: &'a TextEdit) -> Self {
         self.profile_name_edit = Some(edit);
         self
     }
 
     /// Whether the host state holds the profile select's listbox open.
-    pub(crate) fn select_open(mut self, open: bool) -> Self {
+    pub fn select_open(mut self, open: bool) -> Self {
         self.select_open = open;
         self
     }
 
     /// React `onConfirmScope`: the scope-review notice's button.
-    pub(crate) fn on_confirm_scope(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_confirm_scope(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_confirm_scope = Some(Rc::new(f));
         self
     }
 
     /// The binding that writes the profile-name edits into the host's
     /// `TextEdit` (the `TextField::on_edit` accessor).
-    pub(crate) fn on_profile_name_edit(
+    pub fn on_profile_name_edit(
         mut self,
         f: impl Fn(&mut S) -> &mut TextEdit + 'static,
     ) -> Self {
@@ -172,7 +172,7 @@ impl<'a, S: 'static> DataSyncEndpointStep<'a, S> {
 
     /// React `onProfileNameChange(name)`: fired per change, with the host
     /// reading the same `TextEdit` the edit just wrote.
-    pub(crate) fn on_profile_name_change(
+    pub fn on_profile_name_change(
         mut self,
         f: impl Fn(&mut S, &mut Tx) + 'static,
     ) -> Self {
@@ -181,43 +181,43 @@ impl<'a, S: 'static> DataSyncEndpointStep<'a, S> {
     }
 
     /// React `onSelectProfile(id)`: a choice from the select.
-    pub(crate) fn on_select_profile(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_select_profile(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_select_profile = Some(Rc::new(f));
         self
     }
 
     /// React `onSaveProfile`.
-    pub(crate) fn on_save_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_save_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_save_profile = Some(Rc::new(f));
         self
     }
 
     /// React `onLoadProfile` (gated on a selected id).
-    pub(crate) fn on_load_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_load_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_load_profile = Some(Rc::new(f));
         self
     }
 
     /// React `onDeleteProfile` (gated on a selected id).
-    pub(crate) fn on_delete_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_delete_profile(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_delete_profile = Some(Rc::new(f));
         self
     }
 
     /// The select trigger's press: open or close the listbox.
-    pub(crate) fn on_select_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_toggle(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_toggle = Some(Rc::new(f));
         self
     }
 
     /// Presses outside and Escape close the select's listbox.
-    pub(crate) fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_select_close = Some(Rc::new(f));
         self
     }
 
     /// The step on its own, exactly as the probes mount it.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let (root, layer) = self.build_inner(dark);
         rune_kit::root(root, layer)
     }
@@ -225,7 +225,7 @@ impl<'a, S: 'static> DataSyncEndpointStep<'a, S> {
     /// The step element plus the overlay layer (the profile select's
     /// listbox while it is open). The Data Sync window calls this once and
     /// roots the whole wizard once.
-    pub(crate) fn build_inner(self, dark: bool) -> (El, Vec<El>) {
+    pub fn build_inner(self, dark: bool) -> (El, Vec<El>) {
         let k = kit(dark);
         let mut layer = Vec::new();
         // React root: `div.space-y-4`.

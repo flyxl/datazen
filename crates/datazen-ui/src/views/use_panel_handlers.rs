@@ -25,16 +25,16 @@ mod model;
 mod open;
 mod tabs;
 
-pub(crate) use model::{
+pub use model::{
     ConnectionContextVm, OpenTargetVm, PanelEffect, PanelKind, PanelPatch, PanelVm, SubTab,
     TabMenuItem,
 };
-pub(crate) use open::{
+pub use open::{
     edit_table_structure, new_query, open_by_kind, open_connection_panel, open_db_object,
     open_er_diagram, open_structure, pending_matches, resolve_open_target, select_table,
     table_action_route, NamespaceEnsure, PathPin, TableActionRoute,
 };
-pub(crate) use tabs::{
+pub use tabs::{
     close_all_panels, close_other_panels, close_panel, close_panels_side, refresh, set_sub_tab,
     tab_context_menu_items,
 };

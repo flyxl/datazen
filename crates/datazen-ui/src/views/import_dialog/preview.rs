@@ -14,7 +14,7 @@ use crate::ui::kit::kit;
 /// React `parsed.rows.length > 0` preview section. NULL cells are italic and
 /// muted; object/array cells keep React's `JSON.stringify` text (the host
 /// stores it as [`super::CellValue::Json`]).
-pub(crate) fn build_preview(vm: &ImportDialogVm, dark: bool) -> El {
+pub fn build_preview(vm: &ImportDialogVm, dark: bool) -> El {
     let Some(parsed) = vm.parsed.as_ref() else {
         return row().key(format!("{ROOT}-no-preview"));
     };
@@ -78,7 +78,7 @@ pub(crate) fn build_preview(vm: &ImportDialogVm, dark: bool) -> El {
 }
 
 /// React `busy && progress` — shown only while running.
-pub(crate) fn build_progress(vm: &ImportDialogVm, dark: bool) -> Option<El> {
+pub fn build_progress(vm: &ImportDialogVm, dark: bool) -> Option<El> {
     if vm.phase != super::WizardPhase::Running {
         return None;
     }
@@ -100,7 +100,7 @@ pub(crate) fn build_progress(vm: &ImportDialogVm, dark: bool) -> Option<El> {
 }
 
 /// React `phase === 'done' && result` — the honest run report.
-pub(crate) fn build_result<S: 'static>(vm: &ImportDialogVm, dark: bool) -> Option<El> {
+pub fn build_result<S: 'static>(vm: &ImportDialogVm, dark: bool) -> Option<El> {
     if vm.phase != super::WizardPhase::Done {
         return None;
     }

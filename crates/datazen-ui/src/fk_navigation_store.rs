@@ -49,62 +49,62 @@ use std::collections::{HashMap, HashSet};
 /// React `FK_NAV_MAX_DEPTH` (`lib/fkNavigation.ts:22`): the stack's
 /// depth cap; the oldest entry is dropped beyond it. Carried here until
 /// the lib's own task absorbs it.
-pub(crate) const FK_NAV_MAX_DEPTH: usize = 32;
+pub const FK_NAV_MAX_DEPTH: usize = 32;
 
 /// React `GridViewport` (`lib/fkNavigation.ts:25`): the snapshot taken
 /// when the grid is left. Carried here until the lib's own task absorbs
 /// it.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct GridViewport {
-    pub(crate) scroll_top: f64,
+pub struct GridViewport {
+    pub scroll_top: f64,
     /// Anchor row inside the page; `None` means there is no anchor
     /// (React's `anchorRow: number | null`).
-    pub(crate) anchor_row: Option<usize>,
+    pub anchor_row: Option<usize>,
     /// Anchor column name; `None` means there is no anchor.
-    pub(crate) anchor_column: Option<String>,
+    pub anchor_column: Option<String>,
 }
 
 /// React `FkNavEntry['origin']`: the minimum the breadcrumb and the
 /// restore need.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FkNavOrigin {
+pub struct FkNavOrigin {
     /// The tab the jump started from (the "back" target).
-    pub(crate) source_panel_id: String,
+    pub source_panel_id: String,
     /// The table the jump started from.
-    pub(crate) source_table: String,
+    pub source_table: String,
     /// The local columns of the foreign key, in pairing order.
-    pub(crate) local_columns: Vec<String>,
+    pub local_columns: Vec<String>,
     /// The table the jump landed on.
-    pub(crate) target_table: String,
+    pub target_table: String,
     /// The referenced columns, in pairing order.
-    pub(crate) target_columns: Vec<String>,
+    pub target_columns: Vec<String>,
 }
 
 /// One recorded jump: the tab it opened and where it came from
 /// (React `FkNavEntry`).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct FkNavEntry {
+pub struct FkNavEntry {
     /// Entry id; unique per session, never persisted (`fk-nav-{n}`).
-    pub(crate) id: String,
+    pub id: String,
     /// The tab this jump opened.
-    pub(crate) panel_id: String,
+    pub panel_id: String,
     /// `fkNavKey(target, values)` — the cycle key and the de-duplication
     /// key.
-    pub(crate) nav_key: String,
+    pub nav_key: String,
     /// Where the jump came from.
-    pub(crate) origin: FkNavOrigin,
+    pub origin: FkNavOrigin,
 }
 
 /// The input of [`FkNavigationStore::push`]: React's
 /// `Omit<FkNavEntry, 'id'>` — the jump without its id (the store mints
 /// it).
-pub(crate) struct FkNavJump {
+pub struct FkNavJump {
     /// The tab this jump opened.
-    pub(crate) panel_id: String,
+    pub panel_id: String,
     /// `fkNavKey(target, values)`.
-    pub(crate) nav_key: String,
+    pub nav_key: String,
     /// Where the jump came from.
-    pub(crate) origin: FkNavOrigin,
+    pub origin: FkNavOrigin,
 }
 
 /// The store (`useFkNavigationState`'s state + actions): the back
@@ -112,7 +112,7 @@ pub(crate) struct FkNavJump {
 /// snapshots keyed by tab id. The top of the back stack is its last
 /// element, and the top of the forward stack is the same.
 #[derive(Debug, Default)]
-pub(crate) struct FkNavigationStore {
+pub struct FkNavigationStore {
     back: Vec<FkNavEntry>,
     forward: Vec<FkNavEntry>,
     truncated: bool,
@@ -123,31 +123,31 @@ pub(crate) struct FkNavigationStore {
 impl FkNavigationStore {
     /// The empty store (React's initial state; the counter still starts
     /// at zero, so the first push mints `fk-nav-1`).
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// The back stack; the top is the last element.
-    pub(crate) fn back(&self) -> &[FkNavEntry] {
+    pub fn back(&self) -> &[FkNavEntry] {
         &self.back
     }
 
     /// The forward stack; produced by `go_back`, consumed by
     /// `go_forward`.
-    pub(crate) fn forward(&self) -> &[FkNavEntry] {
+    pub fn forward(&self) -> &[FkNavEntry] {
         &self.forward
     }
 
     /// True when entries were dropped because the stack exceeded its
     /// depth.
-    pub(crate) fn truncated(&self) -> bool {
+    pub fn truncated(&self) -> bool {
         self.truncated
     }
 
     /// Record a new jump; clears the forward stack. The depth limit
     /// drops the **oldest** entry and sets `truncated` — the breadcrumb
     /// says so instead of pretending the history is complete.
-    pub(crate) fn push(&mut self, jump: FkNavJump) -> FkNavEntry {
+    pub fn push(&mut self, jump: FkNavJump) -> FkNavEntry {
         self.entry_counter += 1;
         let created = FkNavEntry {
             id: format!("fk-nav-{}", self.entry_counter),
@@ -171,7 +171,7 @@ impl FkNavigationStore {
     /// **The tab to activate is `entry.origin.source_panel_id`** — the
     /// tab the jump started from. (`entry.panel_id` is the tab the jump
     /// *opened*, which is what `go_forward` activates.)
-    pub(crate) fn go_back(&mut self, existing_panel_ids: &HashSet<String>) -> Option<FkNavEntry> {
+    pub fn go_back(&mut self, existing_panel_ids: &HashSet<String>) -> Option<FkNavEntry> {
         let mut index = self.back.len();
         while index > 0 && !existing_panel_ids.contains(&self.back[index - 1].panel_id) {
             index -= 1;
@@ -198,7 +198,7 @@ impl FkNavigationStore {
     /// tab to activate is `entry.panel_id`** — the tab the jump opened.
     /// The back stack is capped from the front (the oldest drop) without
     /// the truncation flag — React's own `goForward` arm.
-    pub(crate) fn go_forward(&mut self, existing_panel_ids: &HashSet<String>) -> Option<FkNavEntry> {
+    pub fn go_forward(&mut self, existing_panel_ids: &HashSet<String>) -> Option<FkNavEntry> {
         let mut index = self.forward.len();
         while index > 0 && !existing_panel_ids.contains(&self.forward[index - 1].panel_id) {
             index -= 1;
@@ -222,7 +222,7 @@ impl FkNavigationStore {
     /// Cut the back stack down to the entry (inclusive) — the cycle
     /// rule: A → B → A keeps the tab of A open but forgets the detour
     /// through B; clears `forward`.
-    pub(crate) fn rewind_to(&mut self, entry_id: &str) {
+    pub fn rewind_to(&mut self, entry_id: &str) {
         let Some(index) = self.back.iter().position(|entry| entry.id == entry_id) else {
             return;
         };
@@ -233,26 +233,26 @@ impl FkNavigationStore {
     /// Record the viewport a tab left behind; only the latest one is
     /// kept (two jumps out of the same tab must not restore two
     /// different scroll positions).
-    pub(crate) fn record_viewport(&mut self, panel_id: impl Into<String>, viewport: GridViewport) {
+    pub fn record_viewport(&mut self, panel_id: impl Into<String>, viewport: GridViewport) {
         self.viewports.insert(panel_id.into(), viewport);
     }
 
     /// The viewport snapshot of a tab, if one was recorded; reading it
     /// keeps it.
-    pub(crate) fn peek_viewport(&self, panel_id: &str) -> Option<&GridViewport> {
+    pub fn peek_viewport(&self, panel_id: &str) -> Option<&GridViewport> {
         self.viewports.get(panel_id)
     }
 
     /// Take the viewport snapshot of a tab; taking it consumes it — a
     /// tab that is entered twice does not restore the same scroll
     /// position twice.
-    pub(crate) fn take_viewport(&mut self, panel_id: &str) -> Option<GridViewport> {
+    pub fn take_viewport(&mut self, panel_id: &str) -> Option<GridViewport> {
         self.viewports.remove(panel_id)
     }
 
     /// The entry id of a jump with this key (the newest first), or
     /// `None`.
-    pub(crate) fn find_entry_id_by_nav_key(&self, nav_key: &str) -> Option<&str> {
+    pub fn find_entry_id_by_nav_key(&self, nav_key: &str) -> Option<&str> {
         self.back
             .iter()
             .rev()
@@ -262,7 +262,7 @@ impl FkNavigationStore {
 
     /// Drop every entry whose tab is gone — both stacks and the
     /// viewport snapshots.
-    pub(crate) fn prune(&mut self, existing_panel_ids: &HashSet<String>) {
+    pub fn prune(&mut self, existing_panel_ids: &HashSet<String>) {
         self.back.retain(|entry| existing_panel_ids.contains(&entry.panel_id));
         self.forward.retain(|entry| existing_panel_ids.contains(&entry.panel_id));
         self.viewports.retain(|panel_id, _| existing_panel_ids.contains(panel_id));
@@ -271,7 +271,7 @@ impl FkNavigationStore {
     /// Forget everything (the session ends): both stacks, the flag, the
     /// snapshots. The entry counter survives — React's module-global
     /// counter does too (`resetFkNavigationEntryIds` is test-only).
-    pub(crate) fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.back.clear();
         self.forward.clear();
         self.truncated = false;

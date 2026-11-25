@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 /// surface (backend-client's vocabulary, camelCase wire).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct DriverCommandDefinition {
+pub struct DriverCommandDefinition {
     pub id: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -47,7 +47,7 @@ pub(crate) struct DriverCommandDefinition {
 /// shows up).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct DriverCommandMetadata {
+pub struct DriverCommandMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -59,7 +59,7 @@ pub(crate) struct DriverCommandMetadata {
 /// The lookup's state (both hooks' shared shape; the single hook's
 /// `definition` is the list filtered to one id).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ConnectionCommandLookup {
+pub struct ConnectionCommandLookup {
     /// The definitions the last settled answer delivered (empty on
     /// failure, no-session or nothing-found).
     pub definitions: Vec<DriverCommandDefinition>,
@@ -71,13 +71,13 @@ pub(crate) struct ConnectionCommandLookup {
 }
 
 impl ConnectionCommandLookup {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// Whether `epoch` is still the newest request (the `!cancelled`
     /// check every answer performs).
-    pub(crate) fn is_current(&self, epoch: u64) -> bool {
+    pub fn is_current(&self, epoch: u64) -> bool {
         epoch == self.epoch
     }
 
@@ -85,7 +85,7 @@ impl ConnectionCommandLookup {
     /// then loading with a fresh epoch. The `command_id` guard is the
     /// single hook's (pass the id; `None` is the list hook, which loads
     /// without one).
-    pub(crate) fn begin(
+    pub fn begin(
         &mut self,
         db_session_id: Option<&str>,
         command_id: Option<&str>,
@@ -106,7 +106,7 @@ impl ConnectionCommandLookup {
     /// The `.then` arm: the resolved list lands (the single hook's
     /// `found` filter applied by the caller or here — the single hook
     /// finds by id, the list takes everything).
-    pub(crate) fn note_definitions(
+    pub fn note_definitions(
         &mut self,
         epoch: u64,
         definitions: Vec<DriverCommandDefinition>,
@@ -119,7 +119,7 @@ impl ConnectionCommandLookup {
     }
 
     /// The `.catch` + `.finally` arms on failure: empty, loading off.
-    pub(crate) fn note_failure(&mut self, epoch: u64) {
+    pub fn note_failure(&mut self, epoch: u64) {
         if !self.is_current(epoch) {
             return;
         }
@@ -128,7 +128,7 @@ impl ConnectionCommandLookup {
     }
 
     /// The single hook's projection: `definitions.find(id)`.
-    pub(crate) fn definition(&self, command_id: &str) -> Option<&DriverCommandDefinition> {
+    pub fn definition(&self, command_id: &str) -> Option<&DriverCommandDefinition> {
         self.definitions.iter().find(|definition| definition.id == command_id)
     }
 }

@@ -83,17 +83,17 @@ use crate::ui::tooltip::Tooltip;
 
 /// React `MAX_GLOBAL_BYTES`: 4 * 1024.
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
-pub(crate) const MAX_GLOBAL_BYTES: usize = 4 * 1024;
+pub const MAX_GLOBAL_BYTES: usize = 4 * 1024;
 /// React `MAX_TEMPLATE_BYTES`: 8 * 1024.
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
-pub(crate) const MAX_TEMPLATE_BYTES: usize = 8 * 1024;
+pub const MAX_TEMPLATE_BYTES: usize = 8 * 1024;
 /// React `MAX_TOTAL_TEMPLATE_BYTES`: 16 * 1024.
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
-pub(crate) const MAX_TOTAL_TEMPLATE_BYTES: usize = 16 * 1024;
+pub const MAX_TOTAL_TEMPLATE_BYTES: usize = 16 * 1024;
 /// React's saved-feedback timeout (`setTimeout(..., 2000)`), for the host's
 /// `tx.wake_after` and `saved_until` deadline.
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
-pub(crate) const SAVED_FEEDBACK: Duration = Duration::from_millis(2000);
+pub const SAVED_FEEDBACK: Duration = Duration::from_millis(2000);
 
 /// React `text-[9px]` (the default badge).
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
@@ -111,13 +111,13 @@ const TEXT_12: TextStyle = TextStyle::new(12.0, 400.0);
 /// React `byteLength`: `new TextEncoder().encode(value).length`. A Rust
 /// `str` is UTF-8, so its byte length is that count.
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
-pub(crate) fn byte_len(value: &str) -> usize {
+pub fn byte_len(value: &str) -> usize {
     value.len()
 }
 
 /// React `parseTypes`: comma-separated input → trimmed, non-empty segments.
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
-pub(crate) fn parse_types(value: &str) -> Vec<String> {
+pub fn parse_types(value: &str) -> Vec<String> {
     value
         .split(',')
         .map(str::trim)
@@ -132,20 +132,20 @@ pub(crate) fn parse_types(value: &str) -> Vec<String> {
 /// its seam (the field names and serde casing line up one to one).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // reusable port; wired by the settings AI section track
-pub(crate) struct PromptTemplateVm {
-    pub(crate) id: String,
-    pub(crate) name: String,
-    pub(crate) content: String,
+pub struct PromptTemplateVm {
+    pub id: String,
+    pub name: String,
+    pub content: String,
     /// Empty means the template is eligible for every database type.
-    pub(crate) database_types: Vec<String>,
-    pub(crate) is_default: bool,
+    pub database_types: Vec<String>,
+    pub is_default: bool,
 }
 
 /// The editor's three rejections, translated at render exactly where React
 /// calls `setEditorError(t(...))`.
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EditorError {
+pub enum EditorError {
     /// `templateNameRequired`
     NameRequired,
     /// `templateContentRequired`
@@ -156,7 +156,7 @@ pub(crate) enum EditorError {
 
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
 impl EditorError {
-    pub(crate) fn message(&self) -> String {
+    pub fn message(&self) -> String {
         match self {
             EditorError::NameRequired => t("settings.ai.templateNameRequired").to_owned(),
             EditorError::ContentRequired => t("settings.ai.templateContentRequired").to_owned(),
@@ -170,11 +170,11 @@ impl EditorError {
 /// plus its three fields as `TextEdit`s the shell can focus.
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
 #[derive(Clone, Debug)]
-pub(crate) struct TemplateEditor {
-    pub(crate) template: PromptTemplateVm,
-    pub(crate) name: TextEdit,
-    pub(crate) types: TextEdit,
-    pub(crate) content: TextEdit,
+pub struct TemplateEditor {
+    pub template: PromptTemplateVm,
+    pub name: TextEdit,
+    pub types: TextEdit,
+    pub content: TextEdit,
 }
 
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
@@ -212,15 +212,15 @@ impl TemplateEditor {
 /// Every `useState` of the React component, kept in the owning state `S`.
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
 #[derive(Clone, Debug)]
-pub(crate) struct AiContextState {
-    pub(crate) instructions: TextEdit,
-    pub(crate) templates: Vec<PromptTemplateVm>,
-    pub(crate) editing: Option<TemplateEditor>,
-    pub(crate) editing_is_new: bool,
-    pub(crate) editor_error: Option<EditorError>,
+pub struct AiContextState {
+    pub instructions: TextEdit,
+    pub templates: Vec<PromptTemplateVm>,
+    pub editing: Option<TemplateEditor>,
+    pub editing_is_new: bool,
+    pub editor_error: Option<EditorError>,
     /// When the "saved" label expires (`tx.clock() + 2.0`); `None` means no
     /// save has landed. Read via [`Self::saved`].
-    pub(crate) saved_until: Option<f64>,
+    pub saved_until: Option<f64>,
 }
 
 impl Default for AiContextState {
@@ -239,7 +239,7 @@ impl Default for AiContextState {
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
 impl AiContextState {
     /// Mount: the drafts start from the config prop's two fields.
-    pub(crate) fn from_config(instructions: &str, templates: &[PromptTemplateVm]) -> Self {
+    pub fn from_config(instructions: &str, templates: &[PromptTemplateVm]) -> Self {
         Self {
             instructions: TextEdit::new(instructions.to_owned()),
             templates: templates.to_vec(),
@@ -249,37 +249,37 @@ impl AiContextState {
 
     /// The `useEffect` on `[config.globalInstructions, config.promptTemplates]`:
     /// reset the two drafts. An open editor stays open, as in React.
-    pub(crate) fn resync_from_config(&mut self, instructions: &str, templates: &[PromptTemplateVm]) {
+    pub fn resync_from_config(&mut self, instructions: &str, templates: &[PromptTemplateVm]) {
         self.instructions = TextEdit::new(instructions.to_owned());
         self.templates = templates.to_vec();
     }
 
-    pub(crate) fn instruction_bytes(&self) -> usize {
+    pub fn instruction_bytes(&self) -> usize {
         byte_len(&self.instructions.text)
     }
 
-    pub(crate) fn template_bytes(template: &PromptTemplateVm) -> usize {
+    pub fn template_bytes(template: &PromptTemplateVm) -> usize {
         byte_len(&template.content)
     }
 
-    pub(crate) fn total_template_bytes(&self) -> usize {
+    pub fn total_template_bytes(&self) -> usize {
         self.templates.iter().map(|t| byte_len(&t.content)).sum()
     }
 
     /// React `overLimit`: any of the three byte budgets exceeded.
-    pub(crate) fn over_limit(&self) -> bool {
+    pub fn over_limit(&self) -> bool {
         self.instruction_bytes() > MAX_GLOBAL_BYTES
             || self.total_template_bytes() > MAX_TOTAL_TEMPLATE_BYTES
             || self.templates.iter().any(|t| byte_len(&t.content) > MAX_TEMPLATE_BYTES)
     }
 
     /// The saved label shows while the deadline has not passed.
-    pub(crate) fn saved(&self, now: f64) -> bool {
+    pub fn saved(&self, now: f64) -> bool {
         self.saved_until.is_some_and(|until| until > now)
     }
 
     /// React `beginCreate`: a blank template under the given id, fresh editor.
-    pub(crate) fn begin_create(&mut self, id: impl Into<String>) {
+    pub fn begin_create(&mut self, id: impl Into<String>) {
         self.editing = Some(TemplateEditor::blank(id));
         self.editing_is_new = true;
         self.editor_error = None;
@@ -287,7 +287,7 @@ impl AiContextState {
 
     /// React `beginEdit`: clone the row's template into the editor. An
     /// unknown id is a no-op (React cannot click a row that is not there).
-    pub(crate) fn begin_edit(&mut self, id: &str) {
+    pub fn begin_edit(&mut self, id: &str) {
         if let Some(template) = self.templates.iter().find(|t| t.id == id).cloned() {
             self.editing = Some(TemplateEditor::from_template(template));
             self.editing_is_new = false;
@@ -298,7 +298,7 @@ impl AiContextState {
     /// The cancel press: `setEditing(null)` — React leaves a stale
     /// `editorError` in state (invisible with the editor closed; the next
     /// `begin_*` clears it), and so does this.
-    pub(crate) fn cancel_editor(&mut self) {
+    pub fn cancel_editor(&mut self) {
         self.editing = None;
     }
 
@@ -306,7 +306,7 @@ impl AiContextState {
     /// (or replace the row with the same id) and close. `false` keeps the
     /// editor open with `editor_error` naming the rejection. A closed editor
     /// (React's `if (!editing) return`) is also `false`, changing nothing.
-    pub(crate) fn apply_editor(&mut self) -> bool {
+    pub fn apply_editor(&mut self) -> bool {
         let Some(editor) = self.editing.as_ref() else {
             return false;
         };
@@ -338,12 +338,12 @@ impl AiContextState {
     }
 
     /// React `removeTemplate`: drop the row with the id.
-    pub(crate) fn remove_template(&mut self, id: &str) {
+    pub fn remove_template(&mut self, id: &str) {
         self.templates.retain(|t| t.id != id);
     }
 
     /// The default-checkbox press: flip the draft's `isDefault`.
-    pub(crate) fn toggle_default(&mut self) {
+    pub fn toggle_default(&mut self) {
         if let Some(editor) = self.editing.as_mut() {
             editor.template.is_default = !editor.template.is_default;
         }
@@ -352,7 +352,7 @@ impl AiContextState {
     /// React `handleSave`'s guard: the press is a no-op while `overLimit`.
     /// The payload is what `saveSettingsConfig` receives for this
     /// component's slice of the config (the spread keeps the rest).
-    pub(crate) fn save_payload(&self) -> Option<(&str, &[PromptTemplateVm])> {
+    pub fn save_payload(&self) -> Option<(&str, &[PromptTemplateVm])> {
         if self.over_limit() {
             return None;
         }
@@ -369,7 +369,7 @@ type Field<S> = Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static>;
 /// state `S` so every callback writes the state that holds the
 /// [`AiContextState`].
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
-pub(crate) struct AiContextSettings<'a, S: 'static> {
+pub struct AiContextSettings<'a, S: 'static> {
     key: &'a str,
     state: &'a AiContextState,
     saving: bool,
@@ -390,7 +390,7 @@ pub(crate) struct AiContextSettings<'a, S: 'static> {
 
 #[allow(dead_code)] // reusable port; wired by the settings AI section track (T170)
 impl<'a, S: 'static> AiContextSettings<'a, S> {
-    pub(crate) fn new(key: &'a str, state: &'a AiContextState) -> Self {
+    pub fn new(key: &'a str, state: &'a AiContextState) -> Self {
         Self {
             key,
             state,
@@ -411,58 +411,58 @@ impl<'a, S: 'static> AiContextSettings<'a, S> {
     }
 
     /// The store's `saving` flag (disables the save button).
-    pub(crate) fn saving(mut self, saving: bool) -> Self {
+    pub fn saving(mut self, saving: bool) -> Self {
         self.saving = saving;
         self
     }
 
     /// Whether the 2s saved deadline is still ahead (the save button's label).
-    pub(crate) fn saved(mut self, saved: bool) -> Self {
+    pub fn saved(mut self, saved: bool) -> Self {
         self.saved = saved;
         self
     }
 
     /// "Add template": the host generates the new id (`crypto.randomUUID()`)
     /// and applies `begin_create(id)`.
-    pub(crate) fn on_begin_create(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_begin_create(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.begin_create = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_begin_edit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_begin_edit(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.begin_edit = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_remove_template(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
+    pub fn on_remove_template(mut self, f: impl Fn(&mut S, String) + 'static) -> Self {
         self.remove_template = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_apply_editor(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_apply_editor(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.apply_editor = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_cancel_editor(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_cancel_editor(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.cancel_editor = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_toggle_default(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_toggle_default(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.toggle_default = Some(Rc::new(f));
         self
     }
 
     /// The save press: check `save_payload`, persist, then record
     /// `saved_until = tx.clock() + 2.0` and `tx.wake_after(SAVED_FEEDBACK)`.
-    pub(crate) fn on_save(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_save(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.save = Some(Rc::new(f));
         self
     }
 
     /// The instructions textarea's `TextEdit` in `S`.
-    pub(crate) fn instructions_edit(
+    pub fn instructions_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -471,7 +471,7 @@ impl<'a, S: 'static> AiContextSettings<'a, S> {
     }
 
     /// The editor's name field in `S`.
-    pub(crate) fn editor_name(
+    pub fn editor_name(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -480,7 +480,7 @@ impl<'a, S: 'static> AiContextSettings<'a, S> {
     }
 
     /// The editor's database-types field in `S`.
-    pub(crate) fn editor_types(
+    pub fn editor_types(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -489,7 +489,7 @@ impl<'a, S: 'static> AiContextSettings<'a, S> {
     }
 
     /// The editor's content field in `S`.
-    pub(crate) fn editor_content(
+    pub fn editor_content(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + Clone + 'static,
     ) -> Self {
@@ -500,7 +500,7 @@ impl<'a, S: 'static> AiContextSettings<'a, S> {
     /// Build the section. The two section hints are tooltips, which live in
     /// the floating `layer` the caller composes into its overlay (the modal
     /// layer pattern).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = crate::ui::kit::kit(dark);
         let state = self.state;
         let over_limit = state.over_limit();

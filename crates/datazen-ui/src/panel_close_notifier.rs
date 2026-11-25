@@ -49,26 +49,26 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::rc::Rc;
 
 /// One close handler (`PanelCloseHandler`).
-pub(crate) type PanelCloseHandler = Rc<dyn Fn()>;
+pub type PanelCloseHandler = Rc<dyn Fn()>;
 
 /// The unsubscribe a registration returns: hand it back to
 /// [`PanelCloseNotifier::unsubscribe`].
 #[derive(Clone)]
-pub(crate) struct PanelCloseSubscription {
+pub struct PanelCloseSubscription {
     panel_id: String,
     handler: PanelCloseHandler,
 }
 
 /// The notifier (`createPanelCloseNotifier`'s return).
 #[derive(Default)]
-pub(crate) struct PanelCloseNotifier {
+pub struct PanelCloseNotifier {
     handlers: HashMap<String, Vec<PanelCloseHandler>>,
 }
 
 impl PanelCloseNotifier {
     /// `createPanelCloseNotifier` — in Rust the store seam is the
     /// caller's `panels_changed` call, so the constructor is plain.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -76,7 +76,7 @@ impl PanelCloseNotifier {
     /// returned [`PanelCloseSubscription`] to unsubscribe. Registering
     /// the same handler again for the same panel is a no-op (React's
     /// `Set.add`), and a different handler is kept alongside.
-    pub(crate) fn on_panel_closed(
+    pub fn on_panel_closed(
         &mut self,
         panel_id: &str,
         handler: PanelCloseHandler,
@@ -95,7 +95,7 @@ impl PanelCloseNotifier {
 
     /// The unsubscribe closure: drop the handler; an empty entry goes
     /// with it.
-    pub(crate) fn unsubscribe(&mut self, subscription: &PanelCloseSubscription) {
+    pub fn unsubscribe(&mut self, subscription: &PanelCloseSubscription) {
         if let Some(set) = self.handlers.get_mut(&subscription.panel_id) {
             set.retain(|existing| !Rc::ptr_eq(existing, &subscription.handler));
             if set.is_empty() {
@@ -108,7 +108,7 @@ impl PanelCloseNotifier {
     /// mutation: a panel present before and absent after was closed, and
     /// its handlers fire. Returns the panel ids that fired (for tests
     /// and logging).
-    pub(crate) fn panels_changed(&mut self, prev_ids: &[&str], next_ids: &[&str]) -> Vec<String> {
+    pub fn panels_changed(&mut self, prev_ids: &[&str], next_ids: &[&str]) -> Vec<String> {
         let after: std::collections::HashSet<&str> = next_ids.iter().copied().collect();
         let mut fired = Vec::new();
         for panel_id in prev_ids {

@@ -47,31 +47,31 @@ use crate::ui::confirm_dialog::{ConfirmDialog, ConfirmKind};
 /// React `ConfirmOptions`, the fields the dialog renders.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[allow(dead_code)] // reusable port; wired by the host track that owns confirmations
-pub(crate) struct ConfirmOptionsVm {
-    pub(crate) title: String,
-    pub(crate) message: String,
-    pub(crate) confirm_label: Option<String>,
-    pub(crate) cancel_label: Option<String>,
-    pub(crate) kind: ConfirmKind,
+pub struct ConfirmOptionsVm {
+    pub title: String,
+    pub message: String,
+    pub confirm_label: Option<String>,
+    pub cancel_label: Option<String>,
+    pub kind: ConfirmKind,
     /// Optional badge/tag displayed next to the title.
-    pub(crate) badge: Option<String>,
+    pub badge: Option<String>,
     /// Optional SQL code preview section.
-    pub(crate) code_preview: Option<String>,
+    pub code_preview: Option<String>,
     /// Optional longer description displayed below the message.
-    pub(crate) description: Option<String>,
+    pub description: Option<String>,
 }
 
 /// React's `useState<{options, resolve} | null>`: the pending request. The
 /// resolve closure's identity is the `id`; nothing else resolves it.
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // reusable port; wired by the host track that owns confirmations
-pub(crate) struct ConfirmDialogState {
+pub struct ConfirmDialogState {
     /// The request id `open` handed out last; 0 = none pending.
-    pub(crate) pending_id: u64,
-    pub(crate) pending: Option<ConfirmOptionsVm>,
+    pub pending_id: u64,
+    pub pending: Option<ConfirmOptionsVm>,
     /// The copied-flag projection for the preview's copy button (the host
     /// records it after `CopyButton` copies; React's `useCopyFeedback`).
-    pub(crate) copied: bool,
+    pub copied: bool,
 }
 
 #[allow(dead_code)] // reusable port; wired by the host track that owns confirmations
@@ -80,7 +80,7 @@ impl ConfirmDialogState {
     /// host's resolver key. A second call while one is open replaces the
     /// request (React's `setState` does the same — the superseded promise
     /// never resolves).
-    pub(crate) fn open(&mut self, options: ConfirmOptionsVm) -> u64 {
+    pub fn open(&mut self, options: ConfirmOptionsVm) -> u64 {
         self.pending_id = self.pending_id.saturating_add(1).max(1);
         self.pending = Some(options);
         self.copied = false;
@@ -92,7 +92,7 @@ impl ConfirmDialogState {
     /// resolves its promise with it); `None` leaves everything untouched —
     /// a stale answer from a superseded request, exactly as React's
     /// replaced resolver can never fire.
-    pub(crate) fn answer(&mut self, id: u64, result: bool) -> Option<bool> {
+    pub fn answer(&mut self, id: u64, result: bool) -> Option<bool> {
         if self.pending.is_none() || id != self.pending_id {
             return None;
         }
@@ -101,13 +101,13 @@ impl ConfirmDialogState {
     }
 
     /// Whether the dialog paints (`state ? <ConfirmDialog …/> : null`).
-    pub(crate) fn is_open(&self) -> bool {
+    pub fn is_open(&self) -> bool {
         self.pending.is_some()
     }
 
     /// Convenience: answer the pending request whatever its id (the
     /// dialog's own buttons know they answer the live request).
-    pub(crate) fn answer_pending(&mut self, result: bool) -> Option<bool> {
+    pub fn answer_pending(&mut self, result: bool) -> Option<bool> {
         self.answer(self.pending_id, result)
     }
 }
@@ -118,7 +118,7 @@ type ResolvedFn<S> = Rc<dyn Fn(&mut S, bool) + 'static>;
 /// The host-side half of the hook: paints the pending request through the
 /// `ui/confirm_dialog.rs` base and forwards the two answers.
 #[allow(dead_code)] // reusable port; wired by the host track that owns confirmations
-pub(crate) struct ConfirmDialogHost<'a, S: 'static> {
+pub struct ConfirmDialogHost<'a, S: 'static> {
     state: &'a ConfirmDialogState,
     on_resolved: Option<ResolvedFn<S>>,
 }
@@ -126,19 +126,19 @@ pub(crate) struct ConfirmDialogHost<'a, S: 'static> {
 #[allow(dead_code)] // reusable port; wired by the host track that owns confirmations
 impl<'a, S: 'static> ConfirmDialogHost<'a, S> {
     /// Paint the pending request (nothing while none is pending).
-    pub(crate) fn new(state: &'a ConfirmDialogState) -> Self {
+    pub fn new(state: &'a ConfirmDialogState) -> Self {
         Self { state, on_resolved: None }
     }
 
     /// The host's resolution hook: called with the request's result once
     /// the pending request is answered (the promise continuation).
-    pub(crate) fn on_resolved(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
+    pub fn on_resolved(mut self, f: impl Fn(&mut S, bool) + 'static) -> Self {
         self.on_resolved = Some(Rc::new(f));
         self
     }
 
     /// Paint the dialog into `layer` while a request is pending.
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         let Some(options) = &self.state.pending else { return };
 
         let on_resolved = self.on_resolved.clone();

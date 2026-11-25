@@ -8,7 +8,7 @@
 
 /// The read set `buildConnectionUrl` has off a connection config.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ConnectionUrlConfig<'a> {
+pub struct ConnectionUrlConfig<'a> {
     pub database_type: &'a str,
     pub host: Option<&'a str>,
     pub port: Option<u16>,
@@ -20,7 +20,7 @@ pub(crate) struct ConnectionUrlConfig<'a> {
 
 /// The read set off `DB_REGISTRY[type]`.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct ConnectionUrlMeta {
+pub struct ConnectionUrlMeta {
     /// `clipboardSchemes?.[0]` — empty means "no URL to copy".
     pub scheme: String,
     /// `'file'` drivers URL-ify as `scheme://path`.
@@ -47,7 +47,7 @@ fn encode_uri_component(value: &str) -> String {
 
 /// React `buildConnectionUrl(config)` — `None` is React's `null`: no
 /// registry entry, no clipboard scheme, or a file driver with no path.
-pub(crate) fn build_connection_url(
+pub fn build_connection_url(
     config: &ConnectionUrlConfig<'_>,
     meta: Option<&ConnectionUrlMeta>,
 ) -> Option<String> {

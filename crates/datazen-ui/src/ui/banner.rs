@@ -49,7 +49,7 @@ use rune_kit::Kit;
 
 /// How much chrome the banner carries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum BannerVariant {
+pub enum BannerVariant {
     /// Inline danger text next to the thing that failed.
     Plain,
     /// A self-contained tinted card.
@@ -60,7 +60,7 @@ pub(crate) enum BannerVariant {
 
 /// Host element hint, carried for parity with the React API.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum BannerElement {
+pub enum BannerElement {
     Div,
     P,
     Span,
@@ -69,7 +69,7 @@ pub(crate) enum BannerElement {
 type Dismiss = Box<dyn FnOnce(El) -> El>;
 
 /// An announced error message.
-pub(crate) struct Banner {
+pub struct Banner {
     key: String,
     message: String,
     variant: BannerVariant,
@@ -79,7 +79,7 @@ pub(crate) struct Banner {
 }
 
 impl Banner {
-    pub(crate) fn new(key: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             key: key.into(),
             message: message.into(),
@@ -90,25 +90,25 @@ impl Banner {
         }
     }
 
-    pub(crate) fn variant(mut self, variant: BannerVariant) -> Self {
+    pub fn variant(mut self, variant: BannerVariant) -> Self {
         self.variant = variant;
         self
     }
 
     /// Carried for parity; does not materially change layout.
-    pub(crate) fn as_element(mut self, as_: BannerElement) -> Self {
+    pub fn as_element(mut self, as_: BannerElement) -> Self {
         self.as_ = as_;
         self
     }
 
     /// Leading content placed before the message.
-    pub(crate) fn icon(mut self, icon: El) -> Self {
+    pub fn icon(mut self, icon: El) -> Self {
         self.icon = Some(icon);
         self
     }
 
     /// A dismiss control. The label is required for accessibility.
-    pub(crate) fn on_dismiss<S: 'static>(
+    pub fn on_dismiss<S: 'static>(
         mut self,
         label: &'static str,
         f: impl Fn(&mut S) + 'static,
@@ -121,7 +121,7 @@ impl Banner {
     }
 
     /// Builds the banner, or returns `None` when the message is empty.
-    pub(crate) fn build(self, k: &Kit) -> Option<El> {
+    pub fn build(self, k: &Kit) -> Option<El> {
         if self.message.is_empty() {
             return None;
         }

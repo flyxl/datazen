@@ -124,7 +124,7 @@ const SEP_GAP: f32 = 8.0; // React `gap-2` on both rows.
 
 /// One model-profile row, generic over the owning state `S` the callbacks
 /// write (React's `ModelProfileListItemProps`).
-pub(crate) struct ModelProfileListItem<'a, S: 'static> {
+pub struct ModelProfileListItem<'a, S: 'static> {
     profile: &'a AiModelProfile,
     is_default: bool,
     is_active: bool,
@@ -135,7 +135,7 @@ pub(crate) struct ModelProfileListItem<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> ModelProfileListItem<'a, S> {
-    pub(crate) fn new(profile: &'a AiModelProfile) -> Self {
+    pub fn new(profile: &'a AiModelProfile) -> Self {
         Self {
             profile,
             is_default: false,
@@ -149,40 +149,40 @@ impl<'a, S: 'static> ModelProfileListItem<'a, S> {
 
     /// React's `isDefault` prop (the amber star badge; hides the set-default
     /// action).
-    pub(crate) fn is_default(mut self, is_default: bool) -> Self {
+    pub fn is_default(mut self, is_default: bool) -> Self {
         self.is_default = is_default;
         self
     }
 
     /// React's `isActive` prop (the accent badge, only when not default).
-    pub(crate) fn is_active(mut self, is_active: bool) -> Self {
+    pub fn is_active(mut self, is_active: bool) -> Self {
         self.is_active = is_active;
         self
     }
 
-    pub(crate) fn on_set_default(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_set_default(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_set_default = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_edit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_edit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_edit = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_duplicate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_duplicate(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_duplicate = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn on_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_delete(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_delete = Some(Rc::new(f));
         self
     }
 
     /// The row: `group flex sm:flex-row sm:items-center justify-between
     /// gap-3 p-3.5 hover:bg-surface-raised` with the active tint.
-    pub(crate) fn build(&self, dark: bool) -> El {
+    pub fn build(&self, dark: bool) -> El {
         let k = kit(dark);
         row()
             .key(format!("model-profile-item-{}", self.profile.id))

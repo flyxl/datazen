@@ -27,7 +27,7 @@ fn strings(values: &[&str]) -> Vec<String> {
 
 /// File row + the format-specific option row. Only one format cluster mounts,
 /// exactly as React's `file && format === '…'` guards do.
-pub(crate) fn build_file_and_format<S: 'static>(
+pub fn build_file_and_format<S: 'static>(
     vm: &ImportDialogVm,
     on_action: &Option<ImportActionFn<S>>,
     dark: bool,
@@ -294,7 +294,7 @@ fn labelled(label: &str, control: El) -> El {
 
 /// Target table + match mode, target-column diagnostics, the mapping table
 /// and all four informational/warning lines.
-pub(crate) fn build_target_and_mapping<S: 'static>(
+pub fn build_target_and_mapping<S: 'static>(
     vm: &ImportDialogVm,
     on_action: &Option<ImportActionFn<S>>,
     vm_edit: &Option<ImportVmFn<S>>,
@@ -589,7 +589,7 @@ fn warning(key: &str, message: String, dark: bool) -> El {
 
 /// The two radio groups from React's execution-settings section. Only shown
 /// while a parse with rows exists and target columns are loaded (config phase).
-pub(crate) fn build_execution<S: 'static>(
+pub fn build_execution<S: 'static>(
     vm: &ImportDialogVm,
     on_action: &Option<ImportActionFn<S>>,
     dark: bool,

@@ -74,14 +74,14 @@ use crate::views::workspace_navigator::{OpenExtensionsSlot, WorkspacePageEntry};
 /// React's card-grid floor: `repeat(auto-fill,minmax(240px,1fr))` — the
 /// wrapped row lays the cards out at the same 240pt basis (the `wapp_card`
 /// precedent for the 260pt grid).
-pub(crate) const CARD_MIN_PT: f32 = 240.0;
+pub const CARD_MIN_PT: f32 = 240.0;
 
 /// The per-card open slot — React's `onOpen(page)` prop, entry and all.
-pub(crate) type OpenPageSlot<S> = Rc<dyn Fn(&mut S, &WorkspacePageEntry)>;
+pub type OpenPageSlot<S> = Rc<dyn Fn(&mut S, &WorkspacePageEntry)>;
 
 /// The `WorkspaceDefaultCards` React props plus the Rune seams: the derived
 /// page list, the two host press slots and the T017 picture wire.
-pub(crate) struct WorkspaceDefaultCards<'a, S: 'static> {
+pub struct WorkspaceDefaultCards<'a, S: 'static> {
     pages: &'a [WorkspacePageEntry],
     on_open: Option<OpenPageSlot<S>>,
     on_open_extensions: Option<OpenExtensionsSlot<S>>,
@@ -91,7 +91,7 @@ pub(crate) struct WorkspaceDefaultCards<'a, S: 'static> {
 impl<'a, S: 'static> WorkspaceDefaultCards<'a, S> {
     /// React `WorkspaceDefaultCardsProps` (`pages`, `onOpen`,
     /// `onOpenExtensions?`).
-    pub(crate) fn new(pages: &'a [WorkspacePageEntry]) -> Self {
+    pub fn new(pages: &'a [WorkspacePageEntry]) -> Self {
         Self {
             pages,
             on_open: None,
@@ -103,26 +103,26 @@ impl<'a, S: 'static> WorkspaceDefaultCards<'a, S> {
     /// The `onOpen` prop — the per-card host slot (the entry React hands
     /// the caller); without it the cards render but their presses no-op —
     /// the not-yet-wired host's case.
-    pub(crate) fn on_open(mut self, slot: OpenPageSlot<S>) -> Self {
+    pub fn on_open(mut self, slot: OpenPageSlot<S>) -> Self {
         self.on_open = Some(slot);
         self
     }
 
     /// The `onOpenExtensions` prop — the empty-state button's host slot.
-    pub(crate) fn on_open_extensions(mut self, slot: OpenExtensionsSlot<S>) -> Self {
+    pub fn on_open_extensions(mut self, slot: OpenExtensionsSlot<S>) -> Self {
         self.on_open_extensions = Some(slot);
         self
     }
 
     /// The cards' icon picture wire (the T017 port's `WappIconImages`).
-    pub(crate) fn images(mut self, images: WappIconImages) -> Self {
+    pub fn images(mut self, images: WappIconImages) -> Self {
         self.images = Some(images);
         self
     }
 
     /// Build the view at the given theme. React's two branches: the empty
     /// state when no page contributes, the scrolling card grid otherwise.
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
         if self.pages.is_empty() {
             self.empty_state(&k)

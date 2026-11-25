@@ -14,7 +14,7 @@ use super::{MappingConflict, MappingEntry, MappingMode, MappingPlan};
 
 /// React `planImportMapping`. Overrides win over every automatic rule; the
 /// three modes (auto / name / position) run in the same order as the source.
-pub(crate) fn plan_import_mapping(
+pub fn plan_import_mapping(
     source_columns: &[String],
     target_columns: &[String],
     mode: MappingMode,
@@ -146,6 +146,6 @@ pub(crate) fn plan_import_mapping(
 }
 
 /// React `mappingIsExecutable`: no conflicts and at least one mapped column.
-pub(crate) fn mapping_is_executable(plan: &MappingPlan) -> bool {
+pub fn mapping_is_executable(plan: &MappingPlan) -> bool {
     plan.conflicts.is_empty() && plan.entries.iter().any(|entry| entry.target.is_some())
 }

@@ -25,7 +25,7 @@ use crate::commands::ai::mcp::{mcp_list_audit_log_request, mcp_list_all_tools_re
 
 /// `McpPermissionMode` (`SettingsMcpPermissionMode`, backend-client).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum McpPermissionMode {
+pub enum McpPermissionMode {
     ReadOnly,
     #[default]
     SafeWrite,
@@ -34,7 +34,7 @@ pub(crate) enum McpPermissionMode {
 
 impl McpPermissionMode {
     /// The React literal (`'read_only' | 'safe_write' | 'high_risk_write'`).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             McpPermissionMode::ReadOnly => "read_only",
             McpPermissionMode::SafeWrite => "safe_write",
@@ -43,7 +43,7 @@ impl McpPermissionMode {
     }
 
     /// `MCP_PERMISSION_MODES`'s table order.
-    pub(crate) const ALL: [McpPermissionMode; 3] = [
+    pub const ALL: [McpPermissionMode; 3] = [
         McpPermissionMode::ReadOnly,
         McpPermissionMode::SafeWrite,
         McpPermissionMode::HighRiskWrite,
@@ -55,7 +55,7 @@ impl McpPermissionMode {
 /// carry the same shape plus the once-only `token`, which lives in the
 /// section's [`McpSettingsSectionState::http_token`] instead).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct McpHttpStatusVm {
+pub struct McpHttpStatusVm {
     pub running: bool,
     pub enabled: bool,
     pub url: Option<String>,
@@ -68,7 +68,7 @@ pub(crate) struct McpHttpStatusVm {
 
 /// `McpAuditRecord['decision']`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum McpAuditDecision {
+pub enum McpAuditDecision {
     Allow,
     Deny,
     Timeout,
@@ -79,7 +79,7 @@ pub(crate) enum McpAuditDecision {
 impl McpAuditDecision {
     /// The persisted literal, rendered verbatim (React prints the raw
     /// string).
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             McpAuditDecision::Allow => "allow",
             McpAuditDecision::Deny => "deny",
@@ -92,7 +92,7 @@ impl McpAuditDecision {
 
 /// `McpAuditRecord` — one audit-log row.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct McpAuditRecordVm {
+pub struct McpAuditRecordVm {
     pub id: String,
     pub principal_id: String,
     pub connection_id: Option<String>,
@@ -108,7 +108,7 @@ pub(crate) struct McpAuditRecordVm {
 /// One connection of the allowlist (the connectionStore projection —
 /// the section reads `id` and `name` only).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct McpConnectionVm {
+pub struct McpConnectionVm {
     pub id: String,
     pub name: String,
 }
@@ -117,7 +117,7 @@ pub(crate) struct McpConnectionVm {
 /// host-delivered and kept current; the draft-override mode replaces
 /// the store, not the shape).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct McpSettingsProjection {
+pub struct McpSettingsProjection {
     pub mcp_server_enabled: Option<bool>,
     pub mcp_disabled_tools: Option<Vec<String>>,
     pub mcp_allowed_connection_ids: Option<Vec<String>>,
@@ -134,7 +134,7 @@ pub(crate) struct McpSettingsProjection {
 
 /// `McpAgentTarget`: `'cursor' | 'claude'`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum McpAgentTarget {
+pub enum McpAgentTarget {
     #[default]
     Cursor,
     Claude,
@@ -143,7 +143,7 @@ pub(crate) enum McpAgentTarget {
 /// `McpAgentSnippet` — the built snippet (target, where it goes, the
 /// pretty JSON).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct McpAgentSnippet {
+pub struct McpAgentSnippet {
     pub target: McpAgentTarget,
     /// Where users typically place this JSON fragment.
     pub config_path_hint: &'static str,
@@ -154,7 +154,7 @@ pub(crate) struct McpAgentSnippet {
 /// `buildMcpAgentSnippet(target, command)`: the `mcpServers` wrapper
 /// pretty-printed with 2-space indent (`JSON.stringify(…, null, 2)`),
 /// and the per-target path hint.
-pub(crate) fn build_mcp_agent_snippet(
+pub fn build_mcp_agent_snippet(
     target: McpAgentTarget,
     command: &str,
 ) -> McpAgentSnippet {
@@ -179,7 +179,7 @@ pub(crate) fn build_mcp_agent_snippet(
 /// `formatMcpCliCommand`: the CLI launch command, quoted when the
 /// executable path contains spaces and not already quoted, `--mcp`
 /// appended; an empty/whitespace command falls back to `datazen`.
-pub(crate) fn format_mcp_cli_command(command: &str) -> String {
+pub fn format_mcp_cli_command(command: &str) -> String {
     let trimmed = command.trim();
     let trimmed = if trimmed.is_empty() { "datazen" } else { trimmed };
     let has_quotes = (trimmed.starts_with('"') && trimmed.ends_with('"'))
@@ -198,19 +198,19 @@ pub(crate) fn format_mcp_cli_command(command: &str) -> String {
 
 /// `COPIED_FEEDBACK_MS` (2000) — both copy buttons' revert window, in
 /// seconds.
-pub(crate) const MCP_COPIED_WINDOW: f64 = 2.0;
+pub const MCP_COPIED_WINDOW: f64 = 2.0;
 /// The `setTimeout(() => setSaved(false), 2000)` windows.
-pub(crate) const MCP_SAVED_WINDOW: f64 = 2.0;
+pub const MCP_SAVED_WINDOW: f64 = 2.0;
 /// The status poll's `setInterval` (3000ms), in seconds.
-pub(crate) const MCP_POLL_INTERVAL: f64 = 3.0;
+pub const MCP_POLL_INTERVAL: f64 = 3.0;
 /// The audit log's fixed page (`mcpListAuditLog(50)`).
-pub(crate) const MCP_AUDIT_LIMIT: i64 = 50;
+pub const MCP_AUDIT_LIMIT: i64 = 50;
 
 /// What a flow that changed a live server does next —
 /// `reloadMcpIfRunning`: reload both statuses only when something is
 /// running, else nothing (the pending edits ride the next start).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ReloadIfRunning {
+pub enum ReloadIfRunning {
     /// `!running && !httpStatus?.running` — skip.
     Skip,
     /// `mcpReload()` then refresh both statuses.
@@ -220,7 +220,7 @@ pub(crate) enum ReloadIfRunning {
 /// `handleToggleEnabled`'s walk: the settings write, the start/stop
 /// request, the follow-up refresh — or the early refusal.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum StdioTogglePlan {
+pub enum StdioTogglePlan {
     /// The row's guard: a toggle already in flight (`if (!toggling)`).
     Refused,
     /// Persist `mcpServerEnabled`, run the request, then refresh.
@@ -232,7 +232,7 @@ pub(crate) enum StdioTogglePlan {
 
 /// `handleToggleHttp`'s walk.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum HttpTogglePlan {
+pub enum HttpTogglePlan {
     /// The row's guard (`httpToggling`).
     Refused,
     /// Enabling with an invalid port: the portInvalid error, no request.
@@ -245,7 +245,7 @@ pub(crate) enum HttpTogglePlan {
 
 /// `handleApplyHttpPort`'s walk.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) enum ApplyPortPlan {
+pub enum ApplyPortPlan {
     /// Invalid port: the error, no write.
     InvalidPort,
     /// Persist the port; enable the listener when it (or the setting)
@@ -256,7 +256,7 @@ pub(crate) enum ApplyPortPlan {
 /// The section's state: the settings projection (host-delivered) plus
 /// React's `useState` fields.
 #[derive(Clone, Default, PartialEq)]
-pub(crate) struct McpSettingsSectionState {
+pub struct McpSettingsSectionState {
     /// The settings the section edits (the store's, or the host's
     /// draft when [`Self::draft_override`] is on).
     pub settings: McpSettingsProjection,
@@ -311,7 +311,7 @@ pub(crate) struct McpSettingsSectionState {
 }
 
 impl McpSettingsSectionState {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
@@ -320,7 +320,7 @@ impl McpSettingsSectionState {
     /// The mount effect's request pair (tools + audit; the connection
     /// fetch and the status polls are host actions — the host also
     /// re-polls every [`MCP_POLL_INTERVAL`]).
-    pub(crate) fn on_mount(&self) -> [AiRequest; 4] {
+    pub fn on_mount(&self) -> [AiRequest; 4] {
         [
             mcp_list_all_tools_request(),
             mcp_list_audit_log_request(Some(MCP_AUDIT_LIMIT)),
@@ -332,7 +332,7 @@ impl McpSettingsSectionState {
     /// The five resync effects (the `[settings.<key>]` deps): the
     /// settings' values replace the local drafts — a typing user keeps
     /// their draft until the HOST delivers a changed projection.
-    pub(crate) fn resync_from_settings(&mut self) {
+    pub fn resync_from_settings(&mut self) {
         self.disabled_tools = self.settings.mcp_disabled_tools.clone().unwrap_or_default();
         self.allowed_ids = self.settings.mcp_allowed_connection_ids.clone().unwrap_or_default();
         self.database_scope =
@@ -345,41 +345,41 @@ impl McpSettingsSectionState {
     }
 
     /// `mcpListAllTools`' answer.
-    pub(crate) fn deliver_tools(&mut self, tools: Vec<String>) {
+    pub fn deliver_tools(&mut self, tools: Vec<String>) {
         self.all_tools = tools;
     }
 
     /// `loadAudit`'s begin (loading armed, error cleared).
-    pub(crate) fn begin_load_audit(&mut self) {
+    pub fn begin_load_audit(&mut self) {
         self.audit_loading = true;
         self.audit_error = None;
     }
 
     /// `loadAudit`'s answers.
-    pub(crate) fn deliver_audit(&mut self, rows: Vec<McpAuditRecordVm>) {
+    pub fn deliver_audit(&mut self, rows: Vec<McpAuditRecordVm>) {
         self.audit_rows = rows;
         self.audit_loading = false;
     }
 
-    pub(crate) fn deliver_audit_error(&mut self, message: String) {
+    pub fn deliver_audit_error(&mut self, message: String) {
         self.audit_error = Some(message);
         self.audit_loading = false;
     }
 
     /// `refreshStatus`' answer (a failed poll answers `false`).
-    pub(crate) fn deliver_status(&mut self, running: bool) {
+    pub fn deliver_status(&mut self, running: bool) {
         self.running = running;
     }
 
     /// `refreshHttpStatus`' answer (a failed poll answers `None`).
-    pub(crate) fn deliver_http_status(&mut self, status: Option<McpHttpStatusVm>) {
+    pub fn deliver_http_status(&mut self, status: Option<McpHttpStatusVm>) {
         self.http_status = status;
     }
 
     // ---- the stdio toggle ----
 
     /// `reloadMcpIfRunning`'s predicate.
-    pub(crate) fn reload_if_running(&self) -> ReloadIfRunning {
+    pub fn reload_if_running(&self) -> ReloadIfRunning {
         if !self.running && !self.http_status.as_ref().is_some_and(|s| s.running) {
             ReloadIfRunning::Skip
         } else {
@@ -391,7 +391,7 @@ impl McpSettingsSectionState {
     /// (the host persists `mcpServerEnabled`, runs the request, then
     /// `mcpGetStatus`; the answers land through `deliver_status` /
     /// `note_toggle_error`).
-    pub(crate) fn begin_toggle_enabled(&mut self, enabled: bool) -> StdioTogglePlan {
+    pub fn begin_toggle_enabled(&mut self, enabled: bool) -> StdioTogglePlan {
         if self.toggling {
             return StdioTogglePlan::Refused;
         }
@@ -406,14 +406,14 @@ impl McpSettingsSectionState {
     }
 
     /// The toggle landed (the `finally`).
-    pub(crate) fn note_toggle_done(&mut self) {
+    pub fn note_toggle_done(&mut self) {
         self.toggling = false;
     }
 
     /// The toggle threw: the message surfaces, and a FAILED ENABLE
     /// reverts `mcpServerEnabled` to false (the host persists the
     /// revert — the React catch's second write).
-    pub(crate) fn note_toggle_error(&mut self, enabled: bool, message: String) {
+    pub fn note_toggle_error(&mut self, enabled: bool, message: String) {
         self.toggle_error = Some(message);
         self.toggling = false;
         if enabled {
@@ -428,7 +428,7 @@ impl McpSettingsSectionState {
     /// whitespace trims; a non-decimal parse (hex, floats) is `-1`
     /// here where JS's coercion could read `0x10` as 16 — pathological
     /// input, decimal-only (documented delta).
-    pub(crate) fn parse_http_port(&self) -> i64 {
+    pub fn parse_http_port(&self) -> i64 {
         let text = self.http_port.text.trim();
         if text.is_empty() {
             return 0;
@@ -442,7 +442,7 @@ impl McpSettingsSectionState {
     /// `handleToggleHttp`: the guard, the port rule, the plan (the
     /// host runs the request and answers with the next status through
     /// `note_http_answer` / `note_http_error`).
-    pub(crate) fn begin_toggle_http(&mut self, enabled: bool) -> HttpTogglePlan {
+    pub fn begin_toggle_http(&mut self, enabled: bool) -> HttpTogglePlan {
         if self.http_toggling {
             return HttpTogglePlan::Refused;
         }
@@ -462,7 +462,7 @@ impl McpSettingsSectionState {
     }
 
     /// `handleApplyHttpPort`.
-    pub(crate) fn begin_apply_http_port(&mut self) -> ApplyPortPlan {
+    pub fn begin_apply_http_port(&mut self) -> ApplyPortPlan {
         let port = self.parse_http_port();
         if port < 0 {
             self.http_error = Some("mcp.http.portInvalid".to_owned());
@@ -484,7 +484,7 @@ impl McpSettingsSectionState {
 
     /// `handleRegenerateHttpToken`: the plan (the host runs the
     /// request; the answer's `token` becomes the once-only display).
-    pub(crate) fn begin_regenerate_token(&mut self) {
+    pub fn begin_regenerate_token(&mut self) {
         self.http_toggling = true;
         self.http_error = None;
         self.http_token = None;
@@ -493,7 +493,7 @@ impl McpSettingsSectionState {
     /// The ENABLE answer landed: persist `mcpHttpEnabled: true` +
     /// `mcpHttpPort: configuredPort`, show the once-only token when
     /// the answer carried one, replace the status.
-    pub(crate) fn note_http_enabled(&mut self, status: McpHttpStatusVm, token: Option<String>) {
+    pub fn note_http_enabled(&mut self, status: McpHttpStatusVm, token: Option<String>) {
         self.settings.mcp_http_enabled = Some(true);
         self.settings.mcp_http_port = Some(status.configured_port);
         if let Some(token) = token {
@@ -507,7 +507,7 @@ impl McpSettingsSectionState {
     /// React write is `{ mcpHttpPort: port }`, not the answer's), and
     /// the status/token land only when the re-enable ran (the
     /// refresh-only path answers through `deliver_http_status`).
-    pub(crate) fn note_http_port_applied(
+    pub fn note_http_port_applied(
         &mut self,
         requested_port: i64,
         status: Option<McpHttpStatusVm>,
@@ -526,7 +526,7 @@ impl McpSettingsSectionState {
     /// The REGENERATE answer landed: no settings write — the status
     /// replaces and the once-only token shows when the answer carried
     /// one (`next.token ?? null`).
-    pub(crate) fn note_http_regenerated(&mut self, status: McpHttpStatusVm, token: Option<String>) {
+    pub fn note_http_regenerated(&mut self, status: McpHttpStatusVm, token: Option<String>) {
         if let Some(token) = token {
             self.http_token = Some(token);
         }
@@ -536,7 +536,7 @@ impl McpSettingsSectionState {
 
     /// The disable answer landed: the token clears and the setting
     /// turns off.
-    pub(crate) fn note_http_disabled(&mut self, status: McpHttpStatusVm) {
+    pub fn note_http_disabled(&mut self, status: McpHttpStatusVm) {
         self.http_token = None;
         self.settings.mcp_http_enabled = Some(false);
         self.http_status = Some(status);
@@ -545,7 +545,7 @@ impl McpSettingsSectionState {
 
     /// A failed apply/regenerate/toggle (the message surfaces; the
     /// `finally` disarms).
-    pub(crate) fn note_http_error(&mut self, message: String) {
+    pub fn note_http_error(&mut self, message: String) {
         self.http_error = Some(message);
         self.http_toggling = false;
     }
@@ -554,14 +554,14 @@ impl McpSettingsSectionState {
 
     /// `handlePermissionChange`: persist the mode, then reload if
     /// something runs.
-    pub(crate) fn begin_permission_change(&mut self, mode: McpPermissionMode) -> ReloadIfRunning {
+    pub fn begin_permission_change(&mut self, mode: McpPermissionMode) -> ReloadIfRunning {
         self.settings.mcp_permission_mode = Some(mode);
         self.reload_if_running()
     }
 
     /// `toggleTool`: membership flip + the immediate
     /// `mcpDisabledTools` write.
-    pub(crate) fn toggle_tool(&mut self, tool: &str) -> Vec<String> {
+    pub fn toggle_tool(&mut self, tool: &str) -> Vec<String> {
         if self.disabled_tools.iter().any(|n| n == tool) {
             self.disabled_tools.retain(|n| n != tool);
         } else {
@@ -571,7 +571,7 @@ impl McpSettingsSectionState {
     }
 
     /// `toggleAllowed`.
-    pub(crate) fn toggle_allowed(&mut self, id: &str) -> Vec<String> {
+    pub fn toggle_allowed(&mut self, id: &str) -> Vec<String> {
         if self.allowed_ids.iter().any(|x| x == id) {
             self.allowed_ids.retain(|x| x != id);
         } else {
@@ -581,21 +581,21 @@ impl McpSettingsSectionState {
     }
 
     /// `handleEnableAll` / `handleDisableAll`.
-    pub(crate) fn set_all_tools_enabled(&mut self, enabled: bool) -> Vec<String> {
+    pub fn set_all_tools_enabled(&mut self, enabled: bool) -> Vec<String> {
         self.disabled_tools = if enabled { Vec::new() } else { self.all_tools.clone() };
         self.disabled_tools.clone()
     }
 
     /// `handleSaveTools`: both writes + the reload + the 2s saved
     /// window.
-    pub(crate) fn begin_save_tools(&mut self, now: f64) -> ReloadIfRunning {
+    pub fn begin_save_tools(&mut self, now: f64) -> ReloadIfRunning {
         self.saved_until = Some(now + MCP_SAVED_WINDOW);
         self.reload_if_running()
     }
 
     /// `parseScope`: split on newlines/commas, trim, drop empties,
     /// dedup keeping FIRST-SEEN order (`Array.from(new Set(...))`).
-    pub(crate) fn parse_scope(text: &str) -> Vec<String> {
+    pub fn parse_scope(text: &str) -> Vec<String> {
         let mut seen: Vec<String> = Vec::new();
         for entry in text.split([',', '\n']) {
             let entry = entry.trim();
@@ -609,7 +609,7 @@ impl McpSettingsSectionState {
     /// `scopeDirty`: the parsed scopes vs the settings' lists,
     /// ORDER-INSENSITIVE (both sides sorted — the React
     /// `JSON.stringify(...sort())` comparison).
-    pub(crate) fn scope_dirty(&self) -> bool {
+    pub fn scope_dirty(&self) -> bool {
         let sorted_eq = |a: &[String], b: &[String]| {
             let mut a = a.to_vec();
             let mut b = b.to_vec();
@@ -628,7 +628,7 @@ impl McpSettingsSectionState {
 
     /// `handleSaveScope`'s writes (the parsed scopes) — the host
     /// persists, reloads per the plan, and the saved window arms.
-    pub(crate) fn begin_save_scope(&mut self, now: f64) -> (Vec<String>, Vec<String>, ReloadIfRunning) {
+    pub fn begin_save_scope(&mut self, now: f64) -> (Vec<String>, Vec<String>, ReloadIfRunning) {
         self.scope_saved_until = Some(now + MCP_SAVED_WINDOW);
         (
             Self::parse_scope(&self.database_scope.text),
@@ -638,7 +638,7 @@ impl McpSettingsSectionState {
     }
 
     /// `toolsDirty`: the local lists vs the settings', sorted.
-    pub(crate) fn tools_dirty(&self) -> bool {
+    pub fn tools_dirty(&self) -> bool {
         let sorted_eq = |a: &[String], b: &[String]| {
             let mut a = a.to_vec();
             let mut b = b.to_vec();
@@ -657,44 +657,44 @@ impl McpSettingsSectionState {
 
     /// `useCopyFeedback`'s `copy()`: the clipboard write is the host's
     /// (`tx.copy`); the window arms for [`MCP_COPIED_WINDOW`].
-    pub(crate) fn note_copied(&mut self, now: f64) {
+    pub fn note_copied(&mut self, now: f64) {
         self.copied_until = Some(now + MCP_COPIED_WINDOW);
     }
 
     /// `copied` — either copy button's label flips while `now` is
     /// behind the deadline.
-    pub(crate) fn copied(&self, now: f64) -> bool {
+    pub fn copied(&self, now: f64) -> bool {
         self.copied_until.is_some_and(|until| now < until)
     }
 
     /// The scope block's saved line.
-    pub(crate) fn scope_saved(&self, now: f64) -> bool {
+    pub fn scope_saved(&self, now: f64) -> bool {
         self.scope_saved_until.is_some_and(|until| now < until)
     }
 
     /// The tools block's saved line.
-    pub(crate) fn tools_saved(&self, now: f64) -> bool {
+    pub fn tools_saved(&self, now: f64) -> bool {
         self.saved_until.is_some_and(|until| now < until)
     }
 }
 
 /// The pure reload request for a `Reload` plan (the host runs it, then
 /// re-polls both statuses).
-pub(crate) fn mcp_reload_request_for_plan() -> AiRequest {
+pub fn mcp_reload_request_for_plan() -> AiRequest {
     mcp_reload_request()
 }
 
 /// The enable request a plan carries.
-pub(crate) fn mcp_http_enable_request_for(port: i64) -> AiRequest {
+pub fn mcp_http_enable_request_for(port: i64) -> AiRequest {
     mcp_http_enable_request(Some(port))
 }
 
 /// The disable request a plan carries.
-pub(crate) fn mcp_http_disable_request_for() -> AiRequest {
+pub fn mcp_http_disable_request_for() -> AiRequest {
     mcp_http_disable_request()
 }
 
 /// The regenerate request.
-pub(crate) fn mcp_http_regenerate_token_request_for() -> AiRequest {
+pub fn mcp_http_regenerate_token_request_for() -> AiRequest {
     mcp_http_regenerate_token_request()
 }

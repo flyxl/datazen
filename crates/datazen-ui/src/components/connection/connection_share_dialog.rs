@@ -38,15 +38,15 @@ use crate::ui::kit::kit;
 const ROOT_KEY: &str = "connection-share-dialog";
 /// React `max-w-sm` / `max-w-md` / `max-w-lg` in points (1rem = 16pt).
 #[allow(dead_code)] // layout token; consumed by build and the geometry tests
-pub(crate) const WIDTH_EXPORT: f32 = 384.0;
+pub const WIDTH_EXPORT: f32 = 384.0;
 #[allow(dead_code)] // layout token; consumed by build and the geometry tests
-pub(crate) const WIDTH_IMPORT_FILE: f32 = 448.0;
+pub const WIDTH_IMPORT_FILE: f32 = 448.0;
 #[allow(dead_code)] // layout token; consumed by build and the geometry tests
-pub(crate) const WIDTH_IMPORT_APP: f32 = 512.0;
+pub const WIDTH_IMPORT_APP: f32 = 512.0;
 /// React `ConnectionShareMode`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[allow(dead_code)] // VM surface; wired by the view/outstanding host track
-pub(crate) enum ShareMode {
+pub enum ShareMode {
     #[default]
     Export,
     Import,
@@ -54,7 +54,7 @@ pub(crate) enum ShareMode {
 /// React `ConnectionImportSource = 'file' | ConnectionImportApp`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[allow(dead_code)] // VM surface; wired by the view/outstanding host track
-pub(crate) enum ImportSource {
+pub enum ImportSource {
     #[default]
     File,
     Dbx,
@@ -67,12 +67,12 @@ pub(crate) enum ImportSource {
 #[allow(dead_code)] // VM surface; consumed by title/label resolution and tests
 impl ImportSource {
     /// React `isImportApp`: every source except `'file'`.
-    pub(crate) fn is_app(self) -> bool {
+    pub fn is_app(self) -> bool {
         !matches!(self, Self::File)
     }
 
     /// React `CONNECTION_IMPORT_APP_LABEL` — brand names, not i18n keys.
-    pub(crate) fn app_label(self) -> Option<&'static str> {
+    pub fn app_label(self) -> Option<&'static str> {
         match self {
             Self::Dbx => Some("DBX"),
             Self::Navicat => Some("Navicat"),
@@ -87,7 +87,7 @@ impl ImportSource {
 /// Which React `browsePath('folder' | 'file')` button was pressed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // VM surface; delivered from the import-fields stand-in
-pub(crate) enum BrowseKind {
+pub enum BrowseKind {
     Folder,
     File,
 }
@@ -95,7 +95,7 @@ pub(crate) enum BrowseKind {
 /// React `ConnectionImportResult` (the fields the dialog forwards).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)] // VM surface; delivered by ShareEvent::Imported
-pub(crate) struct ImportResult {
+pub struct ImportResult {
     pub imported: u64,
     pub overwritten: u64,
     pub groups_added: u64,
@@ -105,14 +105,14 @@ pub(crate) struct ImportResult {
 
 /// React `new Date().toISOString().slice(0, 10).replace(/-/g, '')`.
 #[allow(dead_code)] // pure helper; consumed by begin_export and the tests
-pub(crate) fn utc_date_ymd() -> String {
+pub fn utc_date_ymd() -> String {
     let now = Utc::now();
     format!("{:04}{:02}{:02}", now.year(), now.month(), now.day())
 }
 
 /// React `datazen-connections-${date}.datazenconnection`.
 #[allow(dead_code)] // pure helper; consumed by begin_export and the tests
-pub(crate) fn export_filename(date_ymd: &str) -> String {
+pub fn export_filename(date_ymd: &str) -> String {
     format!("datazen-connections-{date_ymd}.datazenconnection")
 }
 
@@ -133,7 +133,7 @@ fn extract_format_label(message: &str) -> Option<&'static str> { FORMAT_LABELS.i
 /// exact table first, then the format-parameterised patterns, then the two
 /// prefixes, then the trimmed raw string.
 #[allow(dead_code)] // local stand-in; removed when lib/connectionShareError.ts lands
-pub(crate) fn translate_connection_share_error(message: &str, fallback: &str) -> String {
+pub fn translate_connection_share_error(message: &str, fallback: &str) -> String {
     let trimmed = message.trim();
     if trimmed.is_empty() {
         return fallback.to_owned();
@@ -201,7 +201,7 @@ pub(crate) fn translate_connection_share_error(message: &str, fallback: &str) ->
 /// Mirror of React `ipcConnectionShareError`: the host hands over the raw IPC
 /// message (already unwrapped from a string or an `Error`); blank → fallback.
 #[allow(dead_code)] // local stand-in; removed when lib/connectionShareError.ts lands
-pub(crate) fn ipc_connection_share_error(raw: &str, fallback: &str) -> String {
+pub fn ipc_connection_share_error(raw: &str, fallback: &str) -> String {
     let raw = raw.trim();
     if raw.is_empty() {
         return fallback.to_owned();
@@ -217,7 +217,7 @@ fn push_error(slot: &mut String, raw: &str, fallback: &str, out: &mut Vec<ShareO
 
 /// Local stand-in for `importFilePasswordPolicy` (T103's companion `lib` task).
 #[allow(dead_code)] // local stand-in; removed when lib/importConnectionFile.ts lands
-pub(crate) fn import_password_required(path: &str) -> bool {
+pub fn import_password_required(path: &str) -> bool {
     let base = path.rsplit(['/', '\\']).next().unwrap_or(path);
     let Some((_, ext)) = base.rsplit_once('.') else {
         return false;
@@ -233,7 +233,7 @@ pub(crate) fn import_password_required(path: &str) -> bool {
 /// React `useConnectionImport`'s values (T346 stand-in, removal stage above).
 #[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // VM surface; owned by the host until T346 lands
-pub(crate) struct ImportFlowState {
+pub struct ImportFlowState {
     pub password: TextEdit,
     pub data_path: TextEdit,
     pub path_found: bool,
@@ -245,14 +245,14 @@ pub(crate) struct ImportFlowState {
 
 impl ImportFlowState {
     /// React `busy = submitting || detecting`.
-    pub(crate) fn busy(&self) -> bool { self.submitting || self.detecting }
+    pub fn busy(&self) -> bool { self.submitting || self.detecting }
 }
 
 /// A validated export request handed to the host. `epoch` ties the late answer
 /// to this submission.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // VM surface; wired by the host/outstanding view track
-pub(crate) struct ExportRequest {
+pub struct ExportRequest {
     pub password: String,
     pub filename: String,
     pub epoch: u64,
@@ -261,7 +261,7 @@ pub(crate) struct ExportRequest {
 /// All React `useState` values of the dialog plus import state and epoch.
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // VM surface; owned by the host until the view track wires it
-pub(crate) struct ShareState {
+pub struct ShareState {
     pub open: bool,
     pub mode: ShareMode,
     pub source: ImportSource,
@@ -275,7 +275,7 @@ pub(crate) struct ShareState {
 
 #[allow(dead_code)] // initial-state convenience; wired by the host/view track
 impl ShareState {
-    pub(crate) fn new(mode: ShareMode, source: ImportSource) -> Self {
+    pub fn new(mode: ShareMode, source: ImportSource) -> Self {
         Self {
             open: false,
             mode,
@@ -291,7 +291,7 @@ impl ShareState {
 
     /// React `handleExportSubmit` prologue + validation. On a guard failure the
     /// exact localised key text is stored and `None` returned (no IPC staged).
-    pub(crate) fn begin_export(&mut self, date_ymd: &str) -> Option<ExportRequest> {
+    pub fn begin_export(&mut self, date_ymd: &str) -> Option<ExportRequest> {
         self.local_error.clear();
         let password = self.password.text.clone();
         if password.trim().is_empty() {
@@ -312,7 +312,7 @@ impl ShareState {
     }
 
     /// The first press of the file flow only picks a file; the second imports.
-    pub(crate) fn begin_import(&mut self) -> Option<ShareAction> {
+    pub fn begin_import(&mut self) -> Option<ShareAction> {
         self.import.local_error.clear();
         if self.source.is_app() {
             if self.import.data_path.text.trim().is_empty() && !self.import.path_found {
@@ -349,7 +349,7 @@ impl ShareState {
     }
 
     /// Apply a host answer (stale epochs ignored); returns the callback outputs.
-    pub(crate) fn apply(&mut self, event: ShareEvent, fallback: &str) -> Vec<ShareOutput> {
+    pub fn apply(&mut self, event: ShareEvent, fallback: &str) -> Vec<ShareOutput> {
         if event.epoch() != self.epoch {
             return Vec::new();
         }
@@ -395,7 +395,7 @@ impl ShareState {
     }
 
     /// React `primaryActionLabel`.
-    pub(crate) fn primary_label(&self) -> String {
+    pub fn primary_label(&self) -> String {
         if self.mode == ShareMode::Export {
             return t("connShare.exportAction").to_owned();
         }
@@ -407,7 +407,7 @@ impl ShareState {
     }
 
     /// React `title`, including the `{app}` substitution for app imports.
-    pub(crate) fn title(&self) -> String {
+    pub fn title(&self) -> String {
         if self.mode == ShareMode::Export {
             return t("common.exportConnections").to_owned();
         }
@@ -418,7 +418,7 @@ impl ShareState {
     }
 
     /// React `dialogWidthClass` mapped to points.
-    pub(crate) fn width(&self) -> f32 {
+    pub fn width(&self) -> f32 {
         if self.mode == ShareMode::Export {
             WIDTH_EXPORT
         } else if self.source.is_app() {
@@ -429,7 +429,7 @@ impl ShareState {
     }
 
     /// React's cancel / primary `disabled` expressions.
-    pub(crate) fn footer_disabled(&self) -> (bool, bool) {
+    pub fn footer_disabled(&self) -> (bool, bool) {
         if self.mode == ShareMode::Export {
             (self.submitting, self.submitting)
         } else {
@@ -441,7 +441,7 @@ impl ShareState {
 /// Presses the component asks its owner to perform. No IPC is executed here.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // VM surface; handled by the host/outstanding view track
-pub(crate) enum ShareAction {
+pub enum ShareAction {
     Close,
     /// Host calls `ShareState::begin_export(&date)` and stages the request.
     ExportSubmit { date: String },
@@ -455,7 +455,7 @@ pub(crate) enum ShareAction {
 /// Host answers delivered back to [`ShareState::apply`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // VM surface; delivered by the host/outstanding view track
-pub(crate) enum ShareEvent {
+pub enum ShareEvent {
     Exported { epoch: u64, result: Result<u64, String> },
     FilePicked { epoch: u64, result: Result<Option<String>, String> },
     PathDetected { epoch: u64, path: String, found: bool },
@@ -465,7 +465,7 @@ pub(crate) enum ShareEvent {
 
 #[allow(dead_code)] // VM surface; consumed by apply's epoch guard
 impl ShareEvent {
-    pub(crate) fn epoch(&self) -> u64 {
+    pub fn epoch(&self) -> u64 {
         match self {
             Self::Exported { epoch, .. } | Self::FilePicked { epoch, .. }
             | Self::PathDetected { epoch, .. } | Self::PathPicked { epoch, .. }
@@ -477,7 +477,7 @@ impl ShareEvent {
 /// Side effects the host forwards to the component's callbacks.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // VM surface; handled by the host/outstanding view track
-pub(crate) enum ShareOutput {
+pub enum ShareOutput {
     Close,
     ExportSuccess(u64),
     ImportSuccess(ImportResult),
@@ -490,7 +490,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S, ShareAction) + 'static>;
 /// Builder for the ported dialog. `S` owns the [`ShareState`] and the text edits
 /// the fields bind to; the widget never owns a file or an IPC call.
 #[allow(dead_code)] // reusable component; mounted by the outstanding view track
-pub(crate) struct ConnectionShareDialog<'a, S: 'static> {
+pub struct ConnectionShareDialog<'a, S: 'static> {
     state: &'a ShareState,
     date: Option<String>,
     password_edit: EditFn<S>,
@@ -505,7 +505,7 @@ impl<'a, S: 'static> ConnectionShareDialog<'a, S> {
     /// The four text edits are required: a rune text field only takes focus
     /// when it can reach the `TextEdit` it edits, so a missing accessor would
     /// make the field a dead control.
-    pub(crate) fn new(
+    pub fn new(
         state: &'a ShareState,
         password_edit: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
         confirm_edit: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
@@ -524,17 +524,17 @@ impl<'a, S: 'static> ConnectionShareDialog<'a, S> {
     }
 
     /// Override the UTC date used in the export filename (tests pin this).
-    pub(crate) fn date(mut self, date: impl Into<String>) -> Self {
+    pub fn date(mut self, date: impl Into<String>) -> Self {
         self.date = Some(date.into());
         self
     }
 
-    pub(crate) fn on_action(mut self, f: impl Fn(&mut S, ShareAction) + 'static) -> Self {
+    pub fn on_action(mut self, f: impl Fn(&mut S, ShareAction) + 'static) -> Self {
         self.on_action = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         let k: &'static Kit = kit(dark);
         let state = self.state;
         let date = self

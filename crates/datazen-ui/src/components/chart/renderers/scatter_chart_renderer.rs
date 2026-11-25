@@ -102,42 +102,42 @@ use super::super::chart_canvas::{
 use super::area_chart_renderer::{js_string, lean_y_domain, series_palette, to_number};
 /// The family's `lib/chart/format.ts` seam struct (T079) — the area engine's,
 /// re-exported so the scatter engine's callers wire it through this module.
-pub(crate) use super::area_chart_renderer::FormatSeams;
+pub use super::area_chart_renderer::FormatSeams;
 use crate::ui::kit::kit;
 use rune_kit::Kit;
 
 // ---- Keys -------------------------------------------------------------------
 
 /// Root, recharts' `<ScatterChart>` frame.
-pub(crate) const ROOT_KEY: &str = "scatter-chart";
+pub const ROOT_KEY: &str = "scatter-chart";
 /// The Y-axis + plot stack row.
-pub(crate) const PLOT_ROW_KEY: &str = "scatter-chart-plot-row";
+pub const PLOT_ROW_KEY: &str = "scatter-chart-plot-row";
 /// The plot — every canvas and the hit raster share its rect.
-pub(crate) const PLOT_KEY: &str = "scatter-chart-plot";
+pub const PLOT_KEY: &str = "scatter-chart-plot";
 /// The `CartesianGrid` canvas.
-pub(crate) const GRID_KEY: &str = "scatter-chart-grid";
+pub const GRID_KEY: &str = "scatter-chart-grid";
 /// The axis frame canvas.
-pub(crate) const AXES_KEY: &str = "scatter-chart-axes";
+pub const AXES_KEY: &str = "scatter-chart-axes";
 /// The dots canvas — every point paints in it.
-pub(crate) const DOTS_KEY: &str = "scatter-chart-dots";
+pub const DOTS_KEY: &str = "scatter-chart-dots";
 /// The hovered point's cursor crosshair canvas.
-pub(crate) const CURSOR_KEY: &str = "scatter-chart-cursor";
+pub const CURSOR_KEY: &str = "scatter-chart-cursor";
 /// The pointer/press raster over the plot.
-pub(crate) const HIT_ZONE_KEY: &str = "scatter-chart-hit-zone";
+pub const HIT_ZONE_KEY: &str = "scatter-chart-hit-zone";
 /// One raster cell: `scatter-chart-hit-{r}-{c}`.
-pub(crate) const HIT_CELL_PREFIX: &str = "scatter-chart-hit-";
+pub const HIT_CELL_PREFIX: &str = "scatter-chart-hit-";
 /// The Y-axis label column.
-pub(crate) const Y_AXIS_KEY: &str = "scatter-chart-yaxis";
+pub const Y_AXIS_KEY: &str = "scatter-chart-yaxis";
 /// The X-axis label row.
-pub(crate) const X_AXIS_KEY: &str = "scatter-chart-xaxis";
+pub const X_AXIS_KEY: &str = "scatter-chart-xaxis";
 /// The legend row (`config.showLegend` gate).
-pub(crate) const LEGEND_KEY: &str = "scatter-chart-legend";
+pub const LEGEND_KEY: &str = "scatter-chart-legend";
 /// The legend's single swatch.
-pub(crate) const LEGEND_SWATCH_KEY: &str = "scatter-chart-legend-swatch";
+pub const LEGEND_SWATCH_KEY: &str = "scatter-chart-legend-swatch";
 /// The legend's single name.
-pub(crate) const LEGEND_NAME_KEY: &str = "scatter-chart-legend-name";
+pub const LEGEND_NAME_KEY: &str = "scatter-chart-legend-name";
 /// The plain `<Tooltip>` content box.
-pub(crate) const TOOLTIP_KEY: &str = "scatter-chart-tooltip";
+pub const TOOLTIP_KEY: &str = "scatter-chart-tooltip";
 
 // recharts defaults / React literals, verbatim.
 /// recharts' default `YAxis width`.
@@ -159,63 +159,63 @@ const TOOLTIP_DX: f32 = 2.0;
 /// The tooltip's anchor below the cell's top.
 const TOOLTIP_DY: f32 = 8.0;
 /// recharts' default numeric-axis `tickCount`.
-pub(crate) const NUM_TICKS: usize = 5;
+pub const NUM_TICKS: usize = 5;
 /// The dot's radius in view-box fractions (≈20px on a 1000px plot, the
 /// `ZAxis range={[40, 40]}` diameter). See the module docs' outline trade.
-pub(crate) const DOT_RADIUS: f32 = 0.02;
+pub const DOT_RADIUS: f32 = 0.02;
 /// The dot disc's polygon resolution (Rune has no circle primitive).
-pub(crate) const DOT_GON_SIDES: usize = 16;
+pub const DOT_GON_SIDES: usize = 16;
 /// The hit raster's side count.
-pub(crate) const HIT_GRID: usize = 16;
+pub const HIT_GRID: usize = 16;
 /// The pick radius in view-box fractions: how close a cell centre must be to
 /// a dot for the press/hover to route to it (a little over twice the dot's
 /// radius — a forgiving hit, like recharts' marker padding).
-pub(crate) const HIT_RADIUS: f32 = 0.05;
+pub const HIT_RADIUS: f32 = 0.05;
 
 // ---- The geometry plan ---------------------------------------------------------
 
 /// One numeric-axis tick: the domain value, its `formatCompact` label and its
 /// view-box fraction (0 at the left for X, 0 at the top for Y).
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct NumericTick {
-    pub(crate) value: f64,
-    pub(crate) label: String,
-    pub(crate) frac: f32,
+pub struct NumericTick {
+    pub value: f64,
+    pub label: String,
+    pub frac: f32,
 }
 
 /// Everything one frame paints, computed before any element: the React
 /// component's reads (palette, keys, both numeric domains, the dot mapping and
 /// the tick ladders) as pure data.
 #[derive(Clone, Debug)]
-pub(crate) struct ScatterChartPlan {
+pub struct ScatterChartPlan {
     /// The input rows (the plain tooltip reads their raw slots).
-    pub(crate) data: Vec<ChartDataPoint>,
+    pub data: Vec<ChartDataPoint>,
     /// `config.xAxis ?? '__index'` — the numeric X column.
-    pub(crate) x_key: String,
+    pub x_key: String,
     /// `config.yAxes[0]` — the numeric Y column (absent = no drawable rows).
-    pub(crate) y_key: Option<String>,
-    pub(crate) x_domain: [f64; 2],
-    pub(crate) y_domain: [f64; 2],
+    pub y_key: Option<String>,
+    pub x_domain: [f64; 2],
+    pub y_domain: [f64; 2],
     /// One per data row; `None` = null/NaN/absent x or y (recharts' gap).
-    pub(crate) points: Vec<Option<[f32; 2]>>,
+    pub points: Vec<Option<[f32; 2]>>,
     /// Left to right, five ticks across the X domain.
-    pub(crate) x_ticks: Vec<NumericTick>,
+    pub x_ticks: Vec<NumericTick>,
     /// Top first, five ticks across the Y domain.
-    pub(crate) y_ticks: Vec<NumericTick>,
+    pub y_ticks: Vec<NumericTick>,
     /// Vertical grid fractions (the X tick positions).
-    pub(crate) grid_xs: Vec<f32>,
+    pub grid_xs: Vec<f32>,
     /// Horizontal grid fractions (the Y tick positions).
-    pub(crate) grid_ys: Vec<f32>,
-    pub(crate) row_count: usize,
+    pub grid_ys: Vec<f32>,
+    pub row_count: usize,
     /// `colors[0]` — the one palette slot every dot shares.
-    pub(crate) color: rune::Color,
+    pub color: rune::Color,
     /// The legend's single entry name (`yAxes[0]` or empty).
-    pub(crate) legend_name: String,
+    pub legend_name: String,
 }
 
 /// The engine's whole plan for one frame, over the area engine's shared lean
 /// slices — see the seams table in the module docs.
-pub(crate) fn scatter_chart_plan(
+pub fn scatter_chart_plan(
     data: &[ChartDataPoint],
     config: &ChartConfig,
     dark: bool,
@@ -315,7 +315,7 @@ pub(crate) fn scatter_chart_plan(
 // ---- The shapes ---------------------------------------------------------------
 
 /// A regular n-gon (the dot disc — Rune has no circle primitive).
-pub(crate) fn gon(center: [f32; 2], radius: f32, n: usize) -> Vec<[f32; 2]> {
+pub fn gon(center: [f32; 2], radius: f32, n: usize) -> Vec<[f32; 2]> {
     (0..n)
         .map(|i| {
             let a = i as f32 / n as f32 * std::f32::consts::TAU;
@@ -423,7 +423,7 @@ fn plain_tooltip_box(lines: &[String], k: &Kit) -> El {
 
 /// The row of the nearest dot within [`HIT_RADIUS`] of a plot point, or `None`
 /// between dots (recharts hit only the marker itself). Ties take the lower row.
-pub(crate) fn dot_at(plan: &ScatterChartPlan, x: f32, y: f32) -> Option<usize> {
+pub fn dot_at(plan: &ScatterChartPlan, x: f32, y: f32) -> Option<usize> {
     let r2 = HIT_RADIUS * HIT_RADIUS;
     let mut best: Option<(usize, f64)> = None;
     for (row, point) in plan.points.iter().enumerate() {
@@ -492,13 +492,13 @@ struct EngineState {
 /// clones one engine per build keeps the hover across frames — the retained
 /// state React kept.
 #[derive(Clone)]
-pub(crate) struct ScatterChartRenderer {
+pub struct ScatterChartRenderer {
     state: Rc<RefCell<EngineState>>,
     seams: FormatSeams,
 }
 
 impl ScatterChartRenderer {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             state: Rc::new(RefCell::new(EngineState::default())),
             seams: FormatSeams::default(),
@@ -507,13 +507,13 @@ impl ScatterChartRenderer {
 
     /// Wire the T079 `formatCompact` port (or a test probe) — both axes'
     /// `tickFormatter`.
-    pub(crate) fn format_compact(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
+    pub fn format_compact(mut self, f: Rc<dyn Fn(f64) -> String>) -> Self {
         self.seams.format_compact = f;
         self
     }
 
     /// recharts' active point index, as the engine keeps it.
-    pub(crate) fn hovered_point(&self) -> Option<usize> {
+    pub fn hovered_point(&self) -> Option<usize> {
         self.state.borrow().hovered
     }
 }
@@ -526,7 +526,7 @@ impl Default for ScatterChartRenderer {
 
 /// The canvas's renderer-factory injection point: `ChartType::Scatter` gets
 /// this engine, every other type keeps the honest placeholder.
-pub(crate) fn renderer_factory<S: 'static>(
+pub fn renderer_factory<S: 'static>(
     engine: ScatterChartRenderer,
 ) -> impl Fn(ChartType) -> Box<dyn ChartRenderer<S> + 'static> {
     move |chart_type| match chart_type {

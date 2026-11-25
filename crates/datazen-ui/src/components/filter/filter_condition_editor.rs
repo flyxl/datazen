@@ -93,7 +93,7 @@ use super::filter_values::{to_pair, to_tokens};
 /// it internally. The parent owns it, one slot per editor row.
 #[allow(dead_code)] // the filter panel (T024) will own the open-listbox state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EditorSelect {
+pub enum EditorSelect {
     Column,
     Operator,
 }
@@ -106,7 +106,7 @@ pub(crate) enum EditorSelect {
 /// operators that carry no value are complete on their own, the set operators
 /// need at least one value, and the range operators need exactly two bounds.
 #[allow(dead_code)] // the table-data store port owns this predicate; delete when it lands.
-pub(crate) fn is_complete_filter(filter: &FilterCondition) -> bool {
+pub fn is_complete_filter(filter: &FilterCondition) -> bool {
     if filter.column.is_empty() {
         return false;
     }
@@ -275,7 +275,7 @@ struct BetweenDrafts<'a, S: 'static> {
 /// Builder for one expanded condition. `S` is the host state that owns the
 /// draft and the text the value controls edit.
 #[allow(dead_code)] // the filter panel view (T024) is the production consumer.
-pub(crate) struct FilterConditionEditor<'a, S: 'static> {
+pub struct FilterConditionEditor<'a, S: 'static> {
     key: String,
     index: usize,
     filter: &'a FilterCondition,
@@ -300,7 +300,7 @@ pub(crate) struct FilterConditionEditor<'a, S: 'static> {
 impl<'a, S: 'static> FilterConditionEditor<'a, S> {
     /// The row's key, its index in the draft, the draft it edits and the
     /// columns it may switch to.
-    pub(crate) fn new(
+    pub fn new(
         key: impl Into<String>,
         index: usize,
         filter: &'a FilterCondition,
@@ -329,36 +329,36 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
     }
 
     /// The driver's operator whitelist (React `supportedOperators`).
-    pub(crate) fn supported_operators(mut self, supported: &'a [&'static str]) -> Self {
+    pub fn supported_operators(mut self, supported: &'a [&'static str]) -> Self {
         self.supported = supported;
         self
     }
 
     /// The driver's own column-type rules (React `cellTypeHints`).
-    pub(crate) fn cell_type_hints(mut self, hints: Option<&'a CellTypeHints>) -> Self {
+    pub fn cell_type_hints(mut self, hints: Option<&'a CellTypeHints>) -> Self {
         self.hints = hints;
         self
     }
 
     /// Whether this database ignores case in `LIKE` (React `likeCaseInsensitive`).
-    pub(crate) fn like_case_insensitive(mut self, on: bool) -> Self {
+    pub fn like_case_insensitive(mut self, on: bool) -> Self {
         self.like_case_insensitive = on;
         self
     }
 
-    pub(crate) fn disabled(mut self, disabled: bool) -> Self {
+    pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self
     }
 
     /// The open listbox, owned by the parent (React keeps it in `Select`).
-    pub(crate) fn open(mut self, open: Option<EditorSelect>) -> Self {
+    pub fn open(mut self, open: Option<EditorSelect>) -> Self {
         self.open = open;
         self
     }
 
     /// The single-value draft (React `FilterValueInput`, owned by T166).
-    pub(crate) fn single_draft(
+    pub fn single_draft(
         mut self,
         edit: &'a TextEdit,
         bind: fn(&mut S) -> &mut TextEdit,
@@ -368,7 +368,7 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
     }
 
     /// The pending-token draft (React `FilterTokenInput`, owned by T166).
-    pub(crate) fn token_draft(
+    pub fn token_draft(
         mut self,
         edit: &'a TextEdit,
         bind: fn(&mut S) -> &mut TextEdit,
@@ -378,7 +378,7 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
     }
 
     /// The two range drafts (the ported `FilterBetweenInput`).
-    pub(crate) fn between_drafts(
+    pub fn between_drafts(
         mut self,
         lower: &'a TextEdit,
         upper: &'a TextEdit,
@@ -398,37 +398,37 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
     ///
     /// Every handler runs after the parent has re-rendered at least once, so a
     /// snapshot could be a frame stale; the accessor cannot.
-    pub(crate) fn current(mut self, f: fn(&S) -> &FilterCondition) -> Self {
+    pub fn current(mut self, f: fn(&S) -> &FilterCondition) -> Self {
         self.current = Some(f);
         self
     }
 
     /// React `onChange(index, next)`: the parent owns the draft.
-    pub(crate) fn on_change(mut self, f: impl Fn(&mut S, usize, FilterCondition) + 'static) -> Self {
+    pub fn on_change(mut self, f: impl Fn(&mut S, usize, FilterCondition) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
     }
 
     /// React `onRemove(index)`.
-    pub(crate) fn on_remove(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
+    pub fn on_remove(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_remove = Some(Rc::new(f));
         self
     }
 
     /// React `onCollapse()`: the row became a chip.
-    pub(crate) fn on_collapse(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_collapse(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_collapse = Some(Rc::new(f));
         self
     }
 
     /// Route a select's open/close to host state.
-    pub(crate) fn on_toggle(mut self, f: impl Fn(&mut S, EditorSelect) + 'static) -> Self {
+    pub fn on_toggle(mut self, f: impl Fn(&mut S, EditorSelect) + 'static) -> Self {
         self.on_toggle = Some(Rc::new(f));
         self
     }
 
     /// Presses outside and Escape close the listbox.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
@@ -441,7 +441,7 @@ impl<'a, S: 'static> FilterConditionEditor<'a, S> {
             .and_then(|column| column.data_type.as_deref())
     }
 
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let filter = self.filter;
         let rules = Rc::new(Rules {

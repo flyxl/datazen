@@ -9,7 +9,7 @@
 
 /// `useVirtualTable`'s default `overscan` (rows rendered beyond each
 /// edge of the viewport) — the React signature's `overscan = 10`.
-pub(crate) const OVERSCAN_DEFAULT: usize = 10;
+pub const OVERSCAN_DEFAULT: usize = 10;
 
 /// One of the virtualizer's `getVirtualItems()` entries — the row the
 /// renderer absolutely positions inside the total-height spacer.
@@ -19,18 +19,18 @@ pub(crate) const OVERSCAN_DEFAULT: usize = 10;
 /// that positions a row: which row, where it starts (px from the
 /// spacer's top), and how tall it is.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct VirtualRow {
+pub struct VirtualRow {
     /// The row's index into `rows`.
-    pub(crate) index: usize,
+    pub index: usize,
     /// The row's top edge, `index * rowHeight` (px).
-    pub(crate) start: f32,
+    pub start: f32,
     /// The uniform `rowHeight` (px).
-    pub(crate) size: f32,
+    pub size: f32,
 }
 
 /// The furthest a scroll offset may go: everything past the last row
 /// minus the viewport, floored at zero. A content that fits never
 /// scrolls (`max <= 0.0` is the hook's no-scroll verdict).
-pub(crate) fn max_scroll_offset(total_height: f32, viewport: f32) -> f32 {
+pub fn max_scroll_offset(total_height: f32, viewport: f32) -> f32 {
     (total_height - viewport).max(0.0)
 }

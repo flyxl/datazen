@@ -26,40 +26,40 @@ use crate::icons::{ICON_CHECK, ICON_CLOCK, ICON_COPY, ICON_TABLE};
 use crate::ui::kit::kit;
 
 const ROOT_KEY: &str = "execution-summary-card";
-pub(crate) const TITLE_KEY: &str = "execution-summary-title";
-pub(crate) const ROWS_KEY: &str = "execution-summary-rows";
-pub(crate) const ELAPSED_KEY: &str = "execution-summary-elapsed";
-pub(crate) const SQL_KEY: &str = "execution-summary-sql";
-pub(crate) const COPY_KEY: &str = "execution-summary-copy";
-pub(crate) const STATUS_KEY: &str = "execution-summary-status";
+pub const TITLE_KEY: &str = "execution-summary-title";
+pub const ROWS_KEY: &str = "execution-summary-rows";
+pub const ELAPSED_KEY: &str = "execution-summary-elapsed";
+pub const SQL_KEY: &str = "execution-summary-sql";
+pub const COPY_KEY: &str = "execution-summary-copy";
+pub const STATUS_KEY: &str = "execution-summary-status";
 
 /// How long React keeps the `已复制` feedback before reverting to `复制`.
 #[allow(dead_code)] // contract mirror; consumed by the host's feedback timer.
-pub(crate) const COPIED_FEEDBACK_MS: u64 = 2000;
+pub const COPIED_FEEDBACK_MS: u64 = 2000;
 
 /// React `StatementResult`, reduced to the four fields the card reads.
 #[allow(dead_code)] // VM mirror; owned by the result-workspace host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SummaryResultVm {
-    pub(crate) sql: String,
-    pub(crate) rows_affected: Option<i64>,
-    pub(crate) execution_time_ms: i64,
+pub struct SummaryResultVm {
+    pub sql: String,
+    pub rows_affected: Option<i64>,
+    pub execution_time_ms: i64,
 }
 
 /// Host-owned copy feedback state.
 #[allow(dead_code)] // VM mirror; owned by the result-workspace host.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ExecutionSummaryCardVm {
-    pub(crate) result: SummaryResultVm,
+pub struct ExecutionSummaryCardVm {
+    pub result: SummaryResultVm,
     /// React `useCopyFeedback`'s `copied` flag (host clears after 2s).
-    pub(crate) copied: bool,
+    pub copied: bool,
 }
 
 impl ExecutionSummaryCardVm {
     /// React's `rowsAffectedText`: null when the count is absent, else
     /// `t('query.rowsAffectedCount', { count })`.
     #[allow(dead_code)] // pure helper; pinned by the card tests.
-    pub(crate) fn rows_affected_text(&self) -> Option<String> {
+    pub fn rows_affected_text(&self) -> Option<String> {
         self.result.rows_affected.map(|count| {
             t("query.rowsAffectedCount").replace("{count}", &count.to_string())
         })
@@ -69,7 +69,7 @@ impl ExecutionSummaryCardVm {
 /// The single host intent the card emits.
 #[allow(dead_code)] // host port; remove when the result host wires the card.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SummaryAction {
+pub enum SummaryAction {
     CopySql { sql: String },
 }
 
@@ -77,7 +77,7 @@ type ActionFn<S> = Rc<dyn Fn(&mut S, SummaryAction) + 'static>;
 
 /// Build the card. `status_bar` is React's optional `statusBar` node slot.
 #[allow(dead_code)] // view entry; remove when the result host wires the card.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &ExecutionSummaryCardVm,
     status_bar: Option<El>,
     on_action: Option<ActionFn<S>>,

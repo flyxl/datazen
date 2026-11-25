@@ -70,7 +70,7 @@
 /// Absorbed from `onboarding_wizard.rs` (T114's seam), which re-exports it
 /// under its old path; variant docs carry over verbatim.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Step {
+pub enum Step {
     /// S0 — the welcome / entry choice.
     S0,
     /// S1 — step 1 of 2, entry-specific.
@@ -85,7 +85,7 @@ pub(crate) enum Step {
 /// the entry picked in S0. Kept under the T114 seam name `Entry` (the
 /// shell's established name — the absorb re-export preserves it).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Entry {
+pub enum Entry {
     /// The connection form (its own Save is the way forward).
     Manual,
     /// The inline import form.
@@ -99,43 +99,43 @@ pub(crate) enum Entry {
 /// done screen's connection row. Absorbed from `import_step.rs` (the
 /// producer's side of the seam), which re-exports it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ImportSummary {
+pub struct ImportSummary {
     /// Brand-new connections the import created.
-    pub(crate) imported: u32,
+    pub imported: u32,
     /// Existing connections it replaced (same id).
-    pub(crate) overwritten: u32,
+    pub overwritten: u32,
     /// The human-readable source (the backend's format name, or the
     /// picker's label).
-    pub(crate) source: String,
+    pub source: String,
 }
 
 /// React `WizardState` (`wizardState.ts:28`): the reducer's state — the
 /// whole journey in one value.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct WizardState {
+pub struct WizardState {
     /// `step` — the current screen.
-    pub(crate) step: Step,
+    pub step: Step,
     /// `entry` — which screen step 1 renders for the picked entry.
-    pub(crate) entry: Entry,
+    pub entry: Entry,
     /// `importResult` — the inline import's result (import entry only).
-    pub(crate) import_result: Option<ImportSummary>,
+    pub import_result: Option<ImportSummary>,
     /// `samplePath` — the seeded sample database path (sample entry only).
-    pub(crate) sample_path: Option<String>,
+    pub sample_path: Option<String>,
     /// `connectionName` — the connection created in step 1 (manual /
     /// sample entries).
-    pub(crate) connection_name: Option<String>,
+    pub connection_name: Option<String>,
     /// `aiLabel` — the provider label configured in step 2, `None` when
     /// AI was skipped.
-    pub(crate) ai_label: Option<String>,
+    pub ai_label: Option<String>,
     /// `aiConfigured` — step 2 happened (the done summary's gate).
-    pub(crate) ai_configured: bool,
+    pub ai_configured: bool,
 }
 
 impl WizardState {
     /// React `INITIAL_STATE` (`wizardState.ts:56`): the journey starts on
     /// the welcome screen with the manual entry preselected (so
     /// `canContinueFromStepOne` is false) and AI unconfigured.
-    pub(crate) fn initial() -> Self {
+    pub fn initial() -> Self {
         Self {
             step: Step::S0,
             entry: Entry::Manual,
@@ -151,7 +151,7 @@ impl WizardState {
     /// connections the import actually wrote — brand-new ones plus existing
     /// ones it replaced. Re-importing an export of the same machine only
     /// overwrites, and that still counts as a completed step 1.
-    pub(crate) fn imported_count(&self) -> u32 {
+    pub fn imported_count(&self) -> u32 {
         imported_count(self.import_result.as_ref())
     }
 
@@ -159,7 +159,7 @@ impl WizardState {
     /// complete — the manual form saved (always, the form's own Save is
     /// the gate), the import succeeded (`imported + overwritten > 0`) or
     /// the sample is seeded (`Boolean(samplePath)`).
-    pub(crate) fn can_leave_step_one(&self) -> bool {
+    pub fn can_leave_step_one(&self) -> bool {
         match self.entry {
             Entry::Import => self.imported_count() > 0,
             Entry::Sample => self.sample_path.as_deref().map_or(false, |p| !p.is_empty()),
@@ -171,13 +171,13 @@ impl WizardState {
     /// whether the footer's Continue button advances out of step 1. The
     /// manual entry has no Continue: its own Save button is the single way
     /// forward (the connection must be persisted before the AI step).
-    pub(crate) fn can_continue_from_step_one(&self) -> bool {
+    pub fn can_continue_from_step_one(&self) -> bool {
         self.entry != Entry::Manual && self.can_leave_step_one()
     }
 
     /// React `connectionSummary(state)` (`wizardState.ts:186`): how the
     /// done screen's connection row is filled in.
-    pub(crate) fn connection_summary(&self) -> ConnectionSummary {
+    pub fn connection_summary(&self) -> ConnectionSummary {
         connection_summary(self.entry, self.import_result.as_ref(), self.connection_name.as_deref())
     }
 }
@@ -191,7 +191,7 @@ impl Default for WizardState {
 /// React `WizardAction` (`wizardState.ts:43`): the eleven dispatches the
 /// shell, the step components and the footer fire at the machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum WizardAction {
+pub enum WizardAction {
     /// `ENTER_MANUAL` — S0's manual card.
     EnterManual,
     /// `ENTER_IMPORT` — S0's import card.
@@ -252,7 +252,7 @@ pub(crate) enum WizardAction {
 /// | S1 + `BACK` | S0 |
 /// | S2 + `BACK` | S1 |
 /// | everything else | unchanged |
-pub(crate) fn wizard_reducer(state: &WizardState, action: &WizardAction) -> WizardState {
+pub fn wizard_reducer(state: &WizardState, action: &WizardAction) -> WizardState {
     let mut next = state.clone();
     match action {
         WizardAction::EnterManual => {
@@ -333,7 +333,7 @@ pub(crate) fn wizard_reducer(state: &WizardState, action: &WizardAction) -> Wiza
 /// for step 1 and step 2 — the indicator is hidden (0) on the entry screen
 /// (S0) and the done screen (S3). Absorbed from the T114 shell (its
 /// `visible_step_number` helper reduces on this).
-pub(crate) fn step_index_for(step: Step) -> u8 {
+pub fn step_index_for(step: Step) -> u8 {
     match step {
         Step::S1 => 1,
         Step::S2 => 2,
@@ -345,7 +345,7 @@ pub(crate) fn step_index_for(step: Step) -> u8 {
 /// i18n key — S2 reads its own label, every other step step 1's (the label
 /// only renders while the indicator is visible, i.e. on S1/S2). Absorbed
 /// from the footer's private copy (T247).
-pub(crate) fn step_label_key(step: Step) -> &'static str {
+pub fn step_label_key(step: Step) -> &'static str {
     if step == Step::S2 {
         "onboarding.s2.stepLabel"
     } else {
@@ -361,7 +361,7 @@ pub(crate) fn step_label_key(step: Step) -> &'static str {
 /// connection row is filled in. Absorbed from `done_step.rs` (T177's
 /// seam), which re-exports it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum ConnectionSummary {
+pub enum ConnectionSummary {
     /// The import entry wrote connections: the counts and the source.
     Imported {
         /// `imported` — brand-new connections.
@@ -383,7 +383,7 @@ pub(crate) enum ConnectionSummary {
 /// React `importedCount` (`wizardState.ts:149`), the part-taking half the
 /// done screen's port established: brand-new plus replaced connections.
 /// (`overwritten ?? 0` is a no-op — the ported field is non-optional.)
-pub(crate) fn imported_count(import_result: Option<&ImportSummary>) -> u32 {
+pub fn imported_count(import_result: Option<&ImportSummary>) -> u32 {
     import_result.map_or(0, |r| r.imported + r.overwritten)
 }
 
@@ -391,7 +391,7 @@ pub(crate) fn imported_count(import_result: Option<&ImportSummary>) -> u32 {
 /// the done screen's port established: the import entry with a non-zero
 /// written count reports its counts and source; else a created connection
 /// reports its name; else nothing was configured.
-pub(crate) fn connection_summary(
+pub fn connection_summary(
     entry: Entry,
     import_result: Option<&ImportSummary>,
     connection_name: Option<&str>,
@@ -411,8 +411,8 @@ pub(crate) fn connection_summary(
     ConnectionSummary::None
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[doc(hidden)]  // exposed for integration tests
+pub mod tests {
     use super::*;
 
     /// React's `atStepOne` helper (`__tests__/wizardState.test.ts:13`):

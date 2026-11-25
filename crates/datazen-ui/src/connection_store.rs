@@ -104,21 +104,21 @@ use crate::i18n::t;
 use crate::views::db_label;
 
 /// React `EVENT_CONNECTIONS_CHANGED` (`stores/connectionStore.ts:10`).
-pub(crate) const EVENT_CONNECTIONS_CHANGED: &str = "datazen:connections-changed";
+pub const EVENT_CONNECTIONS_CHANGED: &str = "datazen:connections-changed";
 
 /// React `RECENT_GROUP_KEY` (`lib/connectionLocator.ts:44`): the synthetic
 /// recent section key (not persisted).
 #[allow(dead_code)] // T403 replaces this placeholder; the navigator consumes it
-pub(crate) const RECENT_GROUP_KEY: &str = "__recent__";
+pub const RECENT_GROUP_KEY: &str = "__recent__";
 
 /// React `PINNED_GROUP_KEY` (`lib/connectionLocator.ts:45`): the synthetic
 /// pinned section key (not persisted).
 #[allow(dead_code)] // T403 replaces this placeholder; the navigator consumes it
-pub(crate) const PINNED_GROUP_KEY: &str = "__pinned__";
+pub const PINNED_GROUP_KEY: &str = "__pinned__";
 
 /// React `RECENT_CONNECTION_LIMIT` (`lib/connectionLocator.ts:43`): how
 /// many recent connections the promoted section holds.
-pub(crate) const RECENT_CONNECTION_LIMIT: usize = 5;
+pub const RECENT_CONNECTION_LIMIT: usize = 5;
 
 // ---------------------------------------------------------------------------
 // T403 placeholder: the `lib/connectionLocator.ts` subset the store uses.
@@ -427,7 +427,7 @@ fn order_connections_for_display(connections: &[ConnectionConfig]) -> Vec<Connec
 /// One `groupConnections` / `groupConnectionsWithRecentSections` result
 /// row: a group key and its connections.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ConnectionGroupSection {
+pub struct ConnectionGroupSection {
     pub group: String,
     pub connections: Vec<ConnectionConfig>,
 }
@@ -537,7 +537,7 @@ fn group_connections_with_recent_sections(
 /// selected group's connections (all when no group is selected), ranked
 /// by the search query.
 #[allow(dead_code)] // reusable store; wired by the connection navigator views
-pub(crate) fn filter_connections(
+pub fn filter_connections(
     connections: &[ConnectionConfig],
     selected_group: Option<&str>,
     search_query: &str,
@@ -556,7 +556,7 @@ pub(crate) fn filter_connections(
 /// React `sortConnectionsInGroup` (`stores/connectionStore.ts:30-33`):
 /// pinned first, then the persisted order.
 #[allow(dead_code)] // reusable store; wired by the connection navigator views
-pub(crate) fn sort_connections_in_group(connections: &[ConnectionConfig]) -> Vec<ConnectionConfig> {
+pub fn sort_connections_in_group(connections: &[ConnectionConfig]) -> Vec<ConnectionConfig> {
     order_connections_for_display(connections)
 }
 
@@ -564,7 +564,7 @@ pub(crate) fn sort_connections_in_group(connections: &[ConnectionConfig]) -> Vec
 /// (`stores/connectionStore.ts:35-40`): while searching, the plain
 /// grouping; otherwise the grouping with pinned and recent sections.
 #[allow(dead_code)] // reusable store; wired by the connection navigator views
-pub(crate) fn group_connections_with_pinned_section(
+pub fn group_connections_with_pinned_section(
     connections: &[ConnectionConfig],
     groups: &[String],
     search_query: &str,
@@ -581,7 +581,7 @@ pub(crate) fn group_connections_with_pinned_section(
 /// ungrouped (`''`) group last when non-empty. While searching, the ranked
 /// order is kept; otherwise each group is pinned-first.
 #[allow(dead_code)] // reusable store; wired by the connection navigator views
-pub(crate) fn group_connections(
+pub fn group_connections(
     connections: &[ConnectionConfig],
     groups: &[String],
     search_query: &str,
@@ -653,7 +653,7 @@ pub(crate) fn group_connections(
 /// returned continuation is empty.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)] // reusable store; wired by the connection navigator views
-pub(crate) enum ConnectionStoreEffect {
+pub enum ConnectionStoreEffect {
     /// `connectionCommands.getConnections()` — feed the list (or the error
     /// message) back through `finish_fetch_connections`.
     GetConnections,
@@ -688,7 +688,7 @@ pub(crate) enum ConnectionStoreEffect {
 /// actions are the transitions below).
 #[derive(Clone, Debug, Default, PartialEq)]
 #[allow(dead_code)] // reusable store; wired by the connection navigator views
-pub(crate) struct ConnectionStore {
+pub struct ConnectionStore {
     pub connections: Vec<ConnectionConfig>,
     pub groups: Vec<String>,
     pub selected_group: Option<String>,
@@ -704,7 +704,7 @@ pub(crate) struct ConnectionStore {
 impl ConnectionStore {
     /// React's `fetchConnections` preamble: `set({ loading: true, error:
     /// null })`, then the `getConnections` IPC.
-    pub(crate) fn begin_fetch_connections(&mut self) -> Vec<ConnectionStoreEffect> {
+    pub fn begin_fetch_connections(&mut self) -> Vec<ConnectionStoreEffect> {
         self.loading = true;
         self.error = None;
         vec![ConnectionStoreEffect::GetConnections]
@@ -714,7 +714,7 @@ impl ConnectionStore {
     /// `loading: false` and `connectionsLoaded: true`; an error keeps the
     /// old list, marks the attempt, and records the message — the host's
     /// message when there is one, else `t('connStore.loadFailed')`.
-    pub(crate) fn finish_fetch_connections(
+    pub fn finish_fetch_connections(
         &mut self,
         result: Result<Vec<ConnectionConfig>, Option<String>>,
     ) -> Vec<ConnectionStoreEffect> {
@@ -736,13 +736,13 @@ impl ConnectionStore {
     /// React's `fetchGroups`: no state moves first, just the `getGroups`
     /// IPC. A failure is React's `console.error` — no state change at
     /// all (see Deliberate differences).
-    pub(crate) fn begin_fetch_groups(&mut self) -> Vec<ConnectionStoreEffect> {
+    pub fn begin_fetch_groups(&mut self) -> Vec<ConnectionStoreEffect> {
         vec![ConnectionStoreEffect::GetGroups]
     }
 
     /// React's `fetchGroups` settlement: the groups land, or nothing
     /// moves on failure.
-    pub(crate) fn finish_fetch_groups(
+    pub fn finish_fetch_groups(
         &mut self,
         result: Result<Vec<String>, Option<String>>,
     ) -> Vec<ConnectionStoreEffect> {
@@ -754,7 +754,7 @@ impl ConnectionStore {
 
     /// React's `saveConnection(config, clearMissingCredentials)`
     /// preamble: `set({ loading: true, error: null })`, then the save IPC.
-    pub(crate) fn begin_save_connection(
+    pub fn begin_save_connection(
         &mut self,
         config: &ConnectionConfig,
         clear_missing_credentials: bool,
@@ -773,7 +773,7 @@ impl ConnectionStore {
     /// the `void emitCrossWindow` fired after both awaits resolve. A
     /// failure sets `loading: false` and the error (the host's message
     /// or `t('connStore.saveFailed')`).
-    pub(crate) fn finish_save_connection(
+    pub fn finish_save_connection(
         &mut self,
         result: Result<(), Option<String>>,
     ) -> Vec<ConnectionStoreEffect> {
@@ -796,7 +796,7 @@ impl ConnectionStore {
     /// derived here — `{source.name} ({t('conn.copyName')})` — and its id
     /// is the host's (React mints a random one; see Deliberate
     /// differences).
-    pub(crate) fn begin_duplicate_connection(
+    pub fn begin_duplicate_connection(
         &mut self,
         id: &str,
         new_id: &str,
@@ -817,7 +817,7 @@ impl ConnectionStore {
     /// React's `duplicateConnection` settlement: the save-shaped
     /// continuation and failure arms (`t('connStore.saveFailed')` is
     /// React's key here too).
-    pub(crate) fn finish_duplicate_connection(
+    pub fn finish_duplicate_connection(
         &mut self,
         result: Result<(), Option<String>>,
     ) -> Vec<ConnectionStoreEffect> {
@@ -825,7 +825,7 @@ impl ConnectionStore {
     }
 
     /// React's `deleteConnection(id)` preamble.
-    pub(crate) fn begin_delete_connection(&mut self, id: &str) -> Vec<ConnectionStoreEffect> {
+    pub fn begin_delete_connection(&mut self, id: &str) -> Vec<ConnectionStoreEffect> {
         self.loading = true;
         self.error = None;
         vec![ConnectionStoreEffect::DeleteConnection {
@@ -835,7 +835,7 @@ impl ConnectionStore {
 
     /// React's `deleteConnection` settlement: the save-shaped
     /// continuation; `t('connStore.deleteFailed')` on failure.
-    pub(crate) fn finish_delete_connection(
+    pub fn finish_delete_connection(
         &mut self,
         result: Result<(), Option<String>>,
     ) -> Vec<ConnectionStoreEffect> {
@@ -856,7 +856,7 @@ impl ConnectionStore {
     /// React's `testConnection(config)`: a pure pass-through — no state
     /// changes, just the effect the host awaits for the caller. The
     /// `ServerInfo` answer belongs to the caller, not this store.
-    pub(crate) fn test_connection(&mut self, config: &ConnectionConfig) -> Vec<ConnectionStoreEffect> {
+    pub fn test_connection(&mut self, config: &ConnectionConfig) -> Vec<ConnectionStoreEffect> {
         vec![ConnectionStoreEffect::TestConnection {
             config: config.clone(),
         }]
@@ -865,7 +865,7 @@ impl ConnectionStore {
     /// React's `addGroup(name)`: a blank or already-declared name is a
     /// silent no-op; otherwise the `saveGroups` IPC with the appended
     /// list. The `groups` field lands with the IPC's success.
-    pub(crate) fn begin_add_group(&mut self, name: &str) -> Vec<ConnectionStoreEffect> {
+    pub fn begin_add_group(&mut self, name: &str) -> Vec<ConnectionStoreEffect> {
         let trimmed = name.trim();
         if trimmed.is_empty() || self.groups.iter().any(|g| g == trimmed) {
             return Vec::new();
@@ -878,7 +878,7 @@ impl ConnectionStore {
     /// React's `addGroup` settlement: the appended list lands after the
     /// IPC (`set({ groups: updated })` follows the await). A failure is
     /// React's unhandled rejection — nothing moves here.
-    pub(crate) fn finish_add_group(
+    pub fn finish_add_group(
         &mut self,
         result: Result<Vec<String>, Option<String>>,
     ) -> Vec<ConnectionStoreEffect> {
@@ -892,7 +892,7 @@ impl ConnectionStore {
     /// to the old name is a silent no-op; otherwise the `saveGroups` IPC
     /// with the renamed list. The name stays available for the
     /// settlement through `finish_rename_group`.
-    pub(crate) fn begin_rename_group(
+    pub fn begin_rename_group(
         &mut self,
         old_name: &str,
         new_name: &str,
@@ -923,7 +923,7 @@ impl ConnectionStore {
     /// React awaits each in turn, failures unhandled), then the
     /// connections refetch, and the renamed group list lands. A failed
     /// `saveGroups` is React's unhandled rejection: nothing moves.
-    pub(crate) fn finish_rename_group(
+    pub fn finish_rename_group(
         &mut self,
         result: Result<Vec<String>, Option<String>>,
         old_name: &str,
@@ -951,7 +951,7 @@ impl ConnectionStore {
     /// React's `deleteGroup(name)`: the `saveGroups` IPC with the name
     /// removed (the name is kept for the settlement, which needs it for
     /// the member re-saves).
-    pub(crate) fn begin_delete_group(&mut self, name: &str) -> Vec<ConnectionStoreEffect> {
+    pub fn begin_delete_group(&mut self, name: &str) -> Vec<ConnectionStoreEffect> {
         let updated: Vec<String> = self
             .groups
             .iter()
@@ -967,7 +967,7 @@ impl ConnectionStore {
     /// to null (React's `set({ groups: updated, selectedGroup: null })`
     /// after the chain). A failed `saveGroups` leaves everything
     /// untouched.
-    pub(crate) fn finish_delete_group(
+    pub fn finish_delete_group(
         &mut self,
         result: Result<Vec<String>, Option<String>>,
         deleted_name: &str,
@@ -996,7 +996,7 @@ impl ConnectionStore {
     /// connection is a silent no-op; otherwise one save with the new
     /// group (`None` for React's `undefined`), then the refetch and the
     /// broadcast.
-    pub(crate) fn begin_move_connection_to_group(
+    pub fn begin_move_connection_to_group(
         &mut self,
         connection_id: &str,
         group: Option<&str>,
@@ -1017,7 +1017,7 @@ impl ConnectionStore {
     /// React's `moveConnectionToGroup` settlement: the refetch and the
     /// broadcast (no groups refetch — React's chain skips it);
     /// `t('connStore.saveFailed')` on failure.
-    pub(crate) fn finish_move_connection_to_group(
+    pub fn finish_move_connection_to_group(
         &mut self,
         result: Result<(), Option<String>>,
     ) -> Vec<ConnectionStoreEffect> {
@@ -1037,7 +1037,7 @@ impl ConnectionStore {
     /// React's `toggleConnectionPinned(connectionId)`: a missing
     /// connection is a silent no-op; otherwise one save with the pin
     /// flipped, then the refetch and the broadcast.
-    pub(crate) fn begin_toggle_connection_pinned(
+    pub fn begin_toggle_connection_pinned(
         &mut self,
         connection_id: &str,
     ) -> Vec<ConnectionStoreEffect> {
@@ -1056,7 +1056,7 @@ impl ConnectionStore {
 
     /// React's `toggleConnectionPinned` settlement: the move/toggle
     /// continuation (refetch + broadcast, no groups refetch).
-    pub(crate) fn finish_toggle_connection_pinned(
+    pub fn finish_toggle_connection_pinned(
         &mut self,
         result: Result<(), Option<String>>,
     ) -> Vec<ConnectionStoreEffect> {
@@ -1064,12 +1064,12 @@ impl ConnectionStore {
     }
 
     /// React's `setSelectedGroup`.
-    pub(crate) fn set_selected_group(&mut self, group: Option<&str>) {
+    pub fn set_selected_group(&mut self, group: Option<&str>) {
         self.selected_group = group.map(str::to_owned);
     }
 
     /// React's `setSearchQuery`.
-    pub(crate) fn set_search_query(&mut self, query: &str) {
+    pub fn set_search_query(&mut self, query: &str) {
         self.search_query = query.to_owned();
     }
 }

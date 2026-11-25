@@ -132,7 +132,7 @@ use crate::ui::palette::{ai_amber_border, ai_amber_fill, ai_amber_text};
 /// `AiChatPanel`'s input area (`AiChatPanel.tsx:777–949`). The caller owns
 /// the [`AiChatInputAreaState`] and wires the callbacks; the area itself
 /// keeps no state.
-pub(crate) struct AiChatInputArea<'a, S: 'static> {
+pub struct AiChatInputArea<'a, S: 'static> {
     state: &'a AiChatInputAreaState,
     on_input_edit: Option<Rc<dyn for<'b> Fn(&'b mut S) -> &'b mut TextEdit>>,
     on_submit: Option<Rc<dyn Fn(&mut S)>>,
@@ -143,7 +143,7 @@ pub(crate) struct AiChatInputArea<'a, S: 'static> {
 }
 
 impl<'a, S: 'static> AiChatInputArea<'a, S> {
-    pub(crate) fn new(state: &'a AiChatInputAreaState) -> Self {
+    pub fn new(state: &'a AiChatInputAreaState) -> Self {
         Self {
             state,
             on_input_edit: None,
@@ -156,7 +156,7 @@ impl<'a, S: 'static> AiChatInputArea<'a, S> {
     }
 
     /// The draft field's edit accessor, e.g. `|state| state.area.input_edit()`.
-    pub(crate) fn on_input_edit(
+    pub fn on_input_edit(
         mut self,
         f: impl for<'b> Fn(&'b mut S) -> &'b mut TextEdit + 'static,
     ) -> Self {
@@ -169,14 +169,14 @@ impl<'a, S: 'static> AiChatInputArea<'a, S> {
     /// [`AiChatInputAreaState::submit`] and forwards the returned text to
     /// `sendMessage`. `submit()` returns `None` for a blank draft or
     /// while streaming, so the caller need not re-check the gate.
-    pub(crate) fn on_submit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_submit(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_submit = Some(Rc::new(f));
         self
     }
 
     /// Called when the stop button is pressed; the caller owns
     /// `handleStop` (`cancelChat`). Only rendered while streaming.
-    pub(crate) fn on_stop(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_stop(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_stop = Some(Rc::new(f));
         self
     }
@@ -185,7 +185,7 @@ impl<'a, S: 'static> AiChatInputArea<'a, S> {
     /// `lastError`, `resultPreview`) when an auto-context chip's remove
     /// button is pressed; the caller drives
     /// [`AiChatInputAreaState::remove_snapshot_field`].
-    pub(crate) fn on_remove_snapshot_field(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
+    pub fn on_remove_snapshot_field(mut self, f: impl Fn(&mut S, &str) + 'static) -> Self {
         self.on_remove_snapshot_field = Some(Rc::new(f));
         self
     }
@@ -194,7 +194,7 @@ impl<'a, S: 'static> AiChatInputArea<'a, S> {
     /// the caller drives
     /// [`AiChatInputAreaState::resolve_conflict`] and acks the returned
     /// request id via `onDraftConsumed`.
-    pub(crate) fn on_resolve_conflict(
+    pub fn on_resolve_conflict(
         mut self,
         f: impl Fn(&mut S, ConflictResolution) + 'static,
     ) -> Self {
@@ -204,12 +204,12 @@ impl<'a, S: 'static> AiChatInputArea<'a, S> {
 
     /// Called when the conflict bar's cancel button is pressed; the
     /// caller drives [`AiChatInputAreaState::dismiss_conflict`].
-    pub(crate) fn on_dismiss_conflict(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_dismiss_conflict(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_dismiss_conflict = Some(Rc::new(f));
         self
     }
 
-    pub(crate) fn build(self, dark: bool) -> El {
+    pub fn build(self, dark: bool) -> El {
         let state = self.state;
         let k = kit(dark);
         let mut root = col()

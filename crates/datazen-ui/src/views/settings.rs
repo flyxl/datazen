@@ -21,24 +21,24 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 
 // The windows/settings/ai subtree port (T015: AiContextSettings). One mod
 // line per ported React file; the ai/ directory mirrors the React layout.
-pub(crate) mod ai;
+pub mod ai;
 // T172: the AI settings section shell (context dir, models block,
 // strict-egress safeguard).
-pub(crate) mod ai_settings_section;
+pub mod ai_settings_section;
 // T198: the AI tool bridge switches (plugins + workflows).
-pub(crate) mod ai_tool_bridge_section;
+pub mod ai_tool_bridge_section;
 // T222: the appearance section (color scheme, theme packs).
-pub(crate) mod appearance_section;
+pub mod appearance_section;
 // T244: the history-data cleanup section.
-pub(crate) mod data_cleanup_section;
+pub mod data_cleanup_section;
 // T265: the driver settings section (per-driver blocks over the
 // generated entries seam).
-pub(crate) mod driver_settings_section;
+pub mod driver_settings_section;
 // T304: the generic JSON-schema settings form (the driver section's
 // schema seam: every boolean property one toggle row).
-pub(crate) mod json_schema_settings_form;
+pub mod json_schema_settings_form;
 // T285: the install-language-pack dialog (pick → review → install).
-pub(crate) mod install_language_pack_dialog;
+pub mod install_language_pack_dialog;
 // T321: the language-packs card (the installed list, install/remove,
 // the active pack's English-fallback-first removal).
 /// `windows/settings/McpClientSection.tsx` (T336, split): the MCP
@@ -46,101 +46,101 @@ pub(crate) mod install_language_pack_dialog;
 /// (add/edit/delete/enable), the per-server connect/reconnect actions
 /// with their error strips, and the runtime connected list with its
 /// expandable tool inventories.
-pub(crate) mod mcp_client_section;
+pub mod mcp_client_section;
 /// `windows/settings/MemorySection.tsx` (T360, split): the AI memory
 /// administration surface — the settings card (the first-use privacy
 /// gate, auto-learn, the cloud policy), the read-only org list and
 /// the entries list (filters, candidates bar, merge, export).
-pub(crate) mod memory_section;
+pub mod memory_section;
 /// T360's state half: the load walk, the deleted-ids tombstones, the
 /// merge plan and the settings-draft rules (split for the file-size
 /// rule).
-pub(crate) mod memory_section_state;
+pub mod memory_section_state;
 
 /// `windows/settings/McpSettingsSection.tsx` (T348, split): the MCP
 /// host service's administration surface — the stdio toggle, the HTTP
 /// listener block, the permission modes, the connection allowlist, the
 /// scope textareas, the agent snippet card, the exposed tools and the
 /// audit log.
-pub(crate) mod mcp_settings_section;
+pub mod mcp_settings_section;
 /// T348's state half: the view-models, the flow plans, the scope and
 /// tools rules and the carried mcpAgentConfig pure functions (split
 /// for the file-size rule; T557 absorbs the carry).
-pub(crate) mod mcp_settings_section_state;
+pub mod mcp_settings_section_state;
 
 /// T336's state half: the view-models, the env converters, the form
 /// draft and the section state machine (split for the file-size rule).
-pub(crate) mod mcp_client_section_state;
+pub mod mcp_client_section_state;
 /// `windows/settings/PromptSettingsSection.tsx` (T369): the AI prompt
 /// template editor (the driver filter, the scenario cards with their
 /// variables hints and source badges, the override save, the reset
 /// confirm).
-pub(crate) mod prompt_settings_section;
-pub(crate) mod language_packs_card;
+pub mod prompt_settings_section;
+pub mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
-pub(crate) mod setting_hint;
+pub mod setting_hint;
 // T417: the SQL snippet add/edit/duplicate dialog.
-pub(crate) mod snippet_edit_dialog;
+pub mod snippet_edit_dialog;
 // T426: the SQL snippets card (the custom list, the builtin list,
 // the export/import row) over the T417 dialog + the confirm hook.
-pub(crate) mod sql_snippets_card;
+pub mod sql_snippets_card;
 // T434: the table-data settings section (the row count mode + the
 // auto-only threshold, the default sort, the grid density + toggles)
 // with T474's delegated slot.
-pub(crate) mod table_data_settings_section;
+pub mod table_data_settings_section;
 // T441's absorbed lib: the reference-integrity cleanup for
 // delete_tunnel (the unbind-then-delete ordering + the rollback).
-pub(crate) mod tunnel_deletion;
+pub mod tunnel_deletion;
 // T441: the tunnel delete confirmation (the usage read, the
 // affected list, the unbind-then-delete outcome reporting).
-pub(crate) mod tunnel_delete_dialog;
+pub mod tunnel_delete_dialog;
 // T447's carried lib: the string-field tunnel draft model (T637's
 // until it lands) — the validation order + the save conversions.
-pub(crate) mod tunnel_draft;
+pub mod tunnel_draft;
 // T447: the tunnel create/edit dialog (the open-reset fetch, the
 // draft patches, the problem-gated save).
-pub(crate) mod tunnel_edit_dialog;
+pub mod tunnel_edit_dialog;
 // T459: the tunnel live-probe dialog (the target inputs, the
 // kind-scoped honesty note, the elapsed/error answers).
-pub(crate) mod tunnel_test_dialog;
+pub mod tunnel_test_dialog;
 // T638's carried lib (segment 2 — until it lands): the updater's
 // pure core (channel/variant reasoning, the manifest defence, the
 // progress/result contracts).
-pub(crate) mod updater;
+pub mod updater;
 // T464: the update card (the three channel faces, the check /
 // download / restart flows, the restart confirm).
-pub(crate) mod update_section;
+pub mod update_section;
 // T469: the global value-presentation rule's edit form (the
 // validated save, the same-road sample preview).
-pub(crate) mod value_presentation_rule_editor;
+pub mod value_presentation_rule_editor;
 // T474's split half: the draft / preview pure family (the stored
 // read, the PRD §4 anchors, the same-road preview).
-pub(crate) mod value_presentation_section_helpers;
+pub mod value_presentation_section_helpers;
 // T474: the time-display settings section (the draft + explicit
 // save, the T11 per-path sync, the editable rule list over T469's
 // editor).
-pub(crate) mod value_presentation_settings_section;
+pub mod value_presentation_settings_section;
 // T453: the tunnel settings section (the secret-free list, the
 // usage batch, the copy action, the three dialog mounts).
-pub(crate) mod tunnel_settings_section;
+pub mod tunnel_settings_section;
 // T408: the AI skills settings panel (the opt-in switches, the
 // custom directory, the discovered listing).
-pub(crate) mod skills_section;
+pub mod skills_section;
 // T390: the settings content shell (the nav rail + the six own
 // sections + the delegated section slots), split with its state.
-pub(crate) mod settings_content;
+pub mod settings_content;
 // T390: the shell's state (the section selection, the local settings
 // mirror, the host reads, the keymap seam).
-pub(crate) mod settings_content_state;
+pub mod settings_content_state;
 // T399: the settings subtree's shared primitives (SectionTitle,
 // SettingRow, ToggleRow).
-pub(crate) mod settings_ui;
+pub mod settings_ui;
 
 /// A6: grouped settings navigation (2 groups, 12 sections) with deep-link
 /// selection by section key. Only the active section's content renders so
 /// navigation switching is observable and addressable.
-pub(crate) fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let active = state.settings_section();
     // The page is one row of the page column, which also holds the content
     // toolbar, the tab strip and the status bar: `h_full` measured the whole
@@ -563,7 +563,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
 /// The favorites section (T6): save the current query, list the host's
 /// favorites, open one into a query tab, rename one (the file stays), delete
 /// one (the bytes move to the store's trash).
-pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn favorites_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col()
         .key("settings-favorites")
         .w_full()
@@ -701,7 +701,7 @@ pub(crate) fn favorites_section(state: &AppState, theme: tok::Theme, dark: bool)
 }
 
 /// The backup page: start, stop, and the same progress panel as exports.
-pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
+pub fn backup_section(state: &AppState, theme: tok::Theme) -> El {
     let mut section = col()
         .key("backup-section")
         .w_full()
@@ -779,7 +779,7 @@ pub(crate) fn backup_section(state: &AppState, theme: tok::Theme) -> El {
 
 /// The import wizard's first two steps: source, then target table. No target,
 /// no next step.
-pub(crate) fn import_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn import_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col().key("import-section").w_full().gap(6.0).child(
         text(t("import.import").to_owned())
             .font(type_::TITLE)
@@ -930,7 +930,7 @@ pub(crate) fn import_section(state: &AppState, theme: tok::Theme, dark: bool) ->
     }
     section
 }
-pub(crate) fn export_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn export_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut section = col()
         .key("export-section")
         .w_full()
@@ -1037,7 +1037,7 @@ pub(crate) fn export_section(state: &AppState, theme: tok::Theme, dark: bool) ->
 
 /// One job's progress drawn from a single snapshot: status, percent, the log.
 /// Export and backup share this component.
-pub(crate) fn progress_panel(snapshot: &ProgressSnapshot, prefix: &str, theme: tok::Theme) -> El {
+pub fn progress_panel(snapshot: &ProgressSnapshot, prefix: &str, theme: tok::Theme) -> El {
     let mut panel = col()
         .key(format!("{prefix}-progress"))
         .w_full()

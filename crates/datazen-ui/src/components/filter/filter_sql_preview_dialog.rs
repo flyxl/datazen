@@ -62,7 +62,7 @@ const BODY_MAX_HEIGHT: f32 = 360.0;
 /// Rust kernel form, which `datazen-ui` does not depend on).
 #[allow(dead_code)] // mirror; consumer: the filter panel dialog. Delete when it wires the preview and imports the DTO from datazen-ui-api.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CountStrategy {
+pub enum CountStrategy {
     Exact,
     Estimated,
     Unsupported,
@@ -70,7 +70,7 @@ pub(crate) enum CountStrategy {
 
 impl CountStrategy {
     /// The wire value (`#[serde(rename_all = "camelCase")]`) and the i18n suffix.
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Exact => "exact",
             Self::Estimated => "estimated",
@@ -82,7 +82,7 @@ impl CountStrategy {
 /// `TableReadPreviewSql` from `packages/backend-client`, mirrored minimally.
 #[allow(dead_code)] // mirror; consumer: the filter panel dialog. Delete when it wires the preview and imports the DTO from datazen-ui-api.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct TableReadPreviewSql {
+pub struct TableReadPreviewSql {
     pub data_sql: String,
     pub count_sql: Option<String>,
     pub exact_count_sql: String,
@@ -101,7 +101,7 @@ struct Statement {
 
 /// Builder for the dialog. `S` is the host state that owns the copied deadline.
 #[allow(dead_code)] // consumer: the filter panel dialog (not wired). Remove when that view composes this port.
-pub(crate) struct FilterSqlPreviewDialog<'a, S: 'static> {
+pub struct FilterSqlPreviewDialog<'a, S: 'static> {
     open: bool,
     open_epoch: u64,
     preview: Option<&'a TableReadPreviewSql>,
@@ -113,7 +113,7 @@ pub(crate) struct FilterSqlPreviewDialog<'a, S: 'static> {
 
 #[allow(dead_code)] // consumer: the filter panel dialog (not wired). Remove with the builder.
 impl<'a, S: 'static> FilterSqlPreviewDialog<'a, S> {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             open: false,
             open_epoch: 0,
@@ -125,43 +125,43 @@ impl<'a, S: 'static> FilterSqlPreviewDialog<'a, S> {
         }
     }
 
-    pub(crate) fn open(mut self, open: bool) -> Self {
+    pub fn open(mut self, open: bool) -> Self {
         self.open = open;
         self
     }
 
-    pub(crate) fn open_epoch(mut self, epoch: u64) -> Self {
+    pub fn open_epoch(mut self, epoch: u64) -> Self {
         self.open_epoch = epoch;
         self
     }
 
     /// The preview answer; `None` while the round trip is in flight.
-    pub(crate) fn preview(mut self, preview: Option<&'a TableReadPreviewSql>) -> Self {
+    pub fn preview(mut self, preview: Option<&'a TableReadPreviewSql>) -> Self {
         self.preview = preview;
         self
     }
 
     /// Why the preview failed, when it did — the statements stay hidden.
-    pub(crate) fn error(mut self, error: Option<&'a str>) -> Self {
+    pub fn error(mut self, error: Option<&'a str>) -> Self {
         self.error = error;
         self
     }
 
     /// Caller computes `now < copied_until` from the deadline its hook records.
-    pub(crate) fn copied(mut self, copied: bool) -> Self {
+    pub fn copied(mut self, copied: bool) -> Self {
         self.copied = copied;
         self
     }
 
     /// The dialog's Escape / header-close / footer-Close handler.
-    pub(crate) fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_close(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_close = Some(Rc::new(f));
         self
     }
 
     /// Called after the copy text is written and the 1500ms wake is scheduled;
     /// record `copied_until = tx.clock() + 1.5` here (re-timing on each press).
-    pub(crate) fn on_copy_tx(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
+    pub fn on_copy_tx(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_copy = Some(Rc::new(f));
         self
     }
@@ -207,7 +207,7 @@ impl<'a, S: 'static> FilterSqlPreviewDialog<'a, S> {
 
     /// Build into the app's layer. A closed dialog mounts nothing (the base's
     /// rule, matching `rune_kit::Dialog`).
-    pub(crate) fn build(self, dark: bool, layer: &mut Vec<El>) {
+    pub fn build(self, dark: bool, layer: &mut Vec<El>) {
         let k = kit(dark);
         let statements = self.statements();
         let has_error = self.error.is_some_and(|message| !message.is_empty());

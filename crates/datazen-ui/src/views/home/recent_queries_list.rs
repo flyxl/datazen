@@ -39,14 +39,14 @@ use crate::icons::{
 };
 use crate::ui::kit::kit;
 
-pub(crate) const MAX_VISIBLE: usize = 5;
-pub(crate) const COPIED_FEEDBACK_MS: u64 = 2000;
+pub const MAX_VISIBLE: usize = 5;
+pub const COPIED_FEEDBACK_MS: u64 = 2000;
 
-pub(crate) const ROOT_KEY: &str = "connections-recent-queries";
-pub(crate) const TITLE_KEY: &str = "connections-recent-title";
-pub(crate) const VIEW_ALL_KEY: &str = "connections-recent-view-all";
-pub(crate) const CARD_KEY: &str = "connections-recent-card";
-pub(crate) const EMPTY_KEY: &str = "connections-recent-empty";
+pub const ROOT_KEY: &str = "connections-recent-queries";
+pub const TITLE_KEY: &str = "connections-recent-title";
+pub const VIEW_ALL_KEY: &str = "connections-recent-view-all";
+pub const CARD_KEY: &str = "connections-recent-card";
+pub const EMPTY_KEY: &str = "connections-recent-empty";
 
 const MINUTE_MS: i64 = 60_000;
 const HOUR_MS: i64 = 3_600_000;
@@ -56,43 +56,43 @@ const RELATIVE_WINDOW_MS: i64 = 7 * DAY_MS;
 /// React `QueryHistoryEntry` fields this section reads.
 #[allow(dead_code)] // view VM; consumer: the landing host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct QueryHistoryVm {
-    pub(crate) id: String,
-    pub(crate) connection_id: String,
-    pub(crate) database: String,
-    pub(crate) sql: String,
+pub struct QueryHistoryVm {
+    pub id: String,
+    pub connection_id: String,
+    pub database: String,
+    pub sql: String,
     /// Epoch milliseconds, as `new Date(executedAt).getTime()` would yield.
-    pub(crate) executed_at_ms: i64,
-    pub(crate) execution_time_ms: i64,
-    pub(crate) success: bool,
+    pub executed_at_ms: i64,
+    pub execution_time_ms: i64,
+    pub success: bool,
 }
 
 /// React `ConnectionConfig` fields this section reads.
 #[allow(dead_code)] // view VM; consumer: the landing host (not wired).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SavedConnectionVm {
-    pub(crate) id: String,
-    pub(crate) name: String,
+pub struct SavedConnectionVm {
+    pub id: String,
+    pub name: String,
 }
 
 /// React's `copiedSqlId` + `useCopyFeedback` flag and the loading state.
 #[allow(dead_code)] // VM; consumer: the landing host (not wired).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct RecentQueriesVm {
-    pub(crate) entries: Vec<QueryHistoryVm>,
-    pub(crate) saved_connections: Vec<SavedConnectionVm>,
-    pub(crate) loading: bool,
-    pub(crate) copied_sql_id: Option<String>,
-    pub(crate) copied: bool,
+pub struct RecentQueriesVm {
+    pub entries: Vec<QueryHistoryVm>,
+    pub saved_connections: Vec<SavedConnectionVm>,
+    pub loading: bool,
+    pub copied_sql_id: Option<String>,
+    pub copied: bool,
     /// Host clock in milliseconds; used by the relative-time helper only.
-    pub(crate) now_ms: i64,
+    pub now_ms: i64,
 }
 
 #[allow(dead_code)] // state helper; remove with the host.
 impl RecentQueriesVm {
     /// React gates the per-row marker on both flags. A rolled-back copy must
     /// not leave a stale "copied" marker on the last attempted row.
-    pub(crate) fn copied_row_id(&self) -> Option<&str> {
+    pub fn copied_row_id(&self) -> Option<&str> {
         if self.copied {
             self.copied_sql_id.as_deref()
         } else {
@@ -101,7 +101,7 @@ impl RecentQueriesVm {
     }
 
     /// `connectionNameById.get(id) || database || 'default'`.
-    pub(crate) fn source_name(&self, entry: &QueryHistoryVm) -> String {
+    pub fn source_name(&self, entry: &QueryHistoryVm) -> String {
         self.saved_connections
             .iter()
             .find(|connection| connection.id == entry.connection_id)
@@ -117,7 +117,7 @@ impl RecentQueriesVm {
     }
 
     /// React `entries.slice(0, MAX_VISIBLE)`.
-    pub(crate) fn visible_entries(&self) -> &[QueryHistoryVm] {
+    pub fn visible_entries(&self) -> &[QueryHistoryVm] {
         let end = MAX_VISIBLE.min(self.entries.len());
         &self.entries[..end]
     }
@@ -126,7 +126,7 @@ impl RecentQueriesVm {
 /// React `getRelativeTimeParts` + the hook's locale composition. `None` means
 /// the segment is omitted entirely (invalid timestamp or failed parts).
 #[allow(dead_code)] // pure helper; remove when the lib port lands.
-pub(crate) fn relative_label(timestamp_ms: i64, now_ms: i64) -> Option<String> {
+pub fn relative_label(timestamp_ms: i64, now_ms: i64) -> Option<String> {
     if timestamp_ms <= 0 {
         return None;
     }
@@ -165,7 +165,7 @@ fn chrono_date(timestamp_ms: i64) -> String {
 
 /// Host requests behind the three actions.
 #[allow(dead_code)] // host port; consumer: the landing host (not wired).
-pub(crate) struct RecentQueriesHostPort<S> {
+pub struct RecentQueriesHostPort<S> {
     pub on_select: Option<Rc<dyn Fn(&mut S, &str) + 'static>>,
     pub on_open_history: Option<Rc<dyn Fn(&mut S) + 'static>>,
     pub on_copy: Option<Rc<dyn Fn(&mut S, &str, &str) + 'static>>,
@@ -185,7 +185,7 @@ impl<S> Default for RecentQueriesHostPort<S> {
 
 /// Build the section into `layer`.
 #[allow(dead_code)] // view entry; remove when the landing host mounts it.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     vm: &RecentQueriesVm,
     dark: bool,
     host: RecentQueriesHostPort<S>,
@@ -414,13 +414,13 @@ fn recent_row<S: 'static>(
 }
 
 /// React's keyboard activation for a history row (Enter or Space only).
-pub(crate) fn row_activates(key: &KeyEvent) -> bool {
+pub fn row_activates(key: &KeyEvent) -> bool {
     // Rune delivers Space as `Text(" ")`, matching the runtime's key mapping.
     matches!(key.key, Key::Enter) || matches!(&key.key, Key::Text(text) if text == " ")
 }
 
 /// Host-side copy feedback deadline helper (`tx.wake_after`).
 #[allow(dead_code)] // helper; remove when the host wires copy.
-pub(crate) fn schedule_copied_reset(tx: &mut Tx) {
+pub fn schedule_copied_reset(tx: &mut Tx) {
     tx.wake_after(std::time::Duration::from_millis(COPIED_FEEDBACK_MS));
 }

@@ -13,16 +13,16 @@ use super::{
     QueryTransactionModalAction as Action,
 };
 
-pub(crate) const FAVORITE_KEY: &str = "query-favorite-dialog";
-pub(crate) const TITLE_INPUT_KEY: &str = "query-favorite-title-input";
-pub(crate) const SQL_KEY: &str = "query-favorite-sql";
-pub(crate) const CANCEL_KEY: &str = "query-favorite-cancel";
-pub(crate) const SAVE_KEY: &str = "query-favorite-save";
+pub const FAVORITE_KEY: &str = "query-favorite-dialog";
+pub const TITLE_INPUT_KEY: &str = "query-favorite-title-input";
+pub const SQL_KEY: &str = "query-favorite-sql";
+pub const CANCEL_KEY: &str = "query-favorite-cancel";
+pub const SAVE_KEY: &str = "query-favorite-save";
 
 /// React: title input (`data-testid="query-favorite-title-input"`) with
 /// Enter-to-save, a read-only SQL block, ghost cancel and a Save button that is
 /// disabled while the title is blank.
-pub(crate) fn build<S: 'static>(
+pub fn build<S: 'static>(
     favorite: &FavoriteNameDialogVm,
     host: &QueryTransactionHostPort<S>,
     dark: bool,

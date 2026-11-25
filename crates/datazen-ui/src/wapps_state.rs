@@ -14,7 +14,7 @@ impl AppState {
     /// management page's install button (`views/wapps/
     /// wapp_management_page.rs`); the root modal layer (`views/modals.rs`)
     /// mounts the dialog once this runs, exactly as React's portal does.
-    pub(crate) fn open_install_wapp_dialog(&mut self) {
+    pub fn open_install_wapp_dialog(&mut self) {
         self.install_wapp_open = true;
         // A new open is a new body for the dialog base, so its scroll
         // viewport starts at the top (`Dialog::open_epoch`).
@@ -25,14 +25,14 @@ impl AppState {
     /// T022: close the dialog. React unmounts the component on close, so
     /// its local state resets with it; the same reset keeps a reopen at the
     /// select step with no stale pick data or error.
-    pub(crate) fn close_install_wapp_dialog(&mut self) {
+    pub fn close_install_wapp_dialog(&mut self) {
         self.install_wapp_open = false;
         self.reset_install_wapp_flow();
     }
 
     /// React's `backToSelect`: one step back, the pick data and the error
     /// gone (`InstallWappDialog.tsx:38-44`).
-    pub(crate) fn back_to_install_wapp_select(&mut self) {
+    pub fn back_to_install_wapp_select(&mut self) {
         self.install_wapp_step = InstallWappStep::Select;
         self.install_wapp_preview = None;
         self.install_wapp_error = None;
@@ -45,7 +45,7 @@ impl AppState {
     /// host's own zip filter (`commands/wapps/mod.rs`:
     /// `("Wapp package", ["zip"])`), `tx.open_folder` for the directory
     /// pick, whose filters do not apply.
-    pub(crate) fn begin_install_wapp_pick(&mut self, kind: WappPackageKind, tx: &mut Tx) {
+    pub fn begin_install_wapp_pick(&mut self, kind: WappPackageKind, tx: &mut Tx) {
         if self.install_wapp_inspecting || self.install_wapp_installing {
             // React: `if (inspecting || installing) return;`
             return;
@@ -76,7 +76,7 @@ impl AppState {
     /// whatever came back): a cancelled pick stays on the select step with
     /// no error (React: `if (!preview) return`), while a picked path and an
     /// unavailable picker both run the inspect seam below.
-    pub(crate) fn answer_install_wapp_pick(&mut self, result: FileDialogResult) {
+    pub fn answer_install_wapp_pick(&mut self, result: FileDialogResult) {
         self.install_wapp_inspecting = false;
         match result {
             Ok(None) => {}
@@ -104,7 +104,7 @@ impl AppState {
     /// `handlePick`'s catch: the pick data gone, the error showing
     /// (`setPickToken(null); setPackageLabel(''); setManifest(null);
     /// setError(...)`).
-    pub(crate) fn install_wapp_inspect_failed(&mut self, error: String) {
+    pub fn install_wapp_inspect_failed(&mut self, error: String) {
         self.install_wapp_preview = None;
         self.install_wapp_error = Some(error);
     }
@@ -115,7 +115,7 @@ impl AppState {
     /// caller exists until the wapps host wiring lands; tests pin
     /// the transition the wiring will call.
     #[allow(dead_code)] // the wapps host wiring is the production caller
-    pub(crate) fn install_wapp_inspected(&mut self, preview: WappPackagePreview) {
+    pub fn install_wapp_inspected(&mut self, preview: WappPackagePreview) {
         self.install_wapp_preview = Some(preview);
         self.install_wapp_step = InstallWappStep::Review;
     }
@@ -127,7 +127,7 @@ impl AppState {
     /// install and runs React's failure branch honestly: back to the
     /// select step with the error showing there (`backToSelect()` then
     /// `setError(...)` in the catch).
-    pub(crate) fn confirm_install_wapp(&mut self) {
+    pub fn confirm_install_wapp(&mut self) {
         if self.install_wapp_preview.is_none() || self.install_wapp_installing {
             // React: `if (!pickToken || !manifest || installing) return;`
             return;
@@ -153,7 +153,7 @@ impl AppState {
     /// production caller reaches this transition until the host wiring
     /// lands — tests pin it.
     #[allow(dead_code)] // the wapps host wiring is the production caller
-    pub(crate) fn install_wapp_succeeded(&mut self) {
+    pub fn install_wapp_succeeded(&mut self) {
         self.install_wapp_installing = false;
         self.close_install_wapp_dialog();
         self.fetch_wapps();
@@ -169,7 +169,7 @@ impl AppState {
     /// case yet, so the answer is the honest failure branch React renders —
     /// `loaded` turns true and the error slot carries the seam sentence; the
     /// previous list survives (React's failed fetch writes only the error).
-    pub(crate) fn fetch_wapps(&mut self) {
+    pub fn fetch_wapps(&mut self) {
         self.wapps_loaded = true;
         self.wapps_error = Some(
             "wapp list needs the live host; the wapps list use case is not wired into this Rune build yet"
@@ -181,7 +181,7 @@ impl AppState {
     /// adapter answers the list (`wapps`, `loaded`, `error: null`). No
     /// production caller exists yet; tests pin the transition.
     #[allow(dead_code)] // the wapps host wiring is the production caller
-    pub(crate) fn wapps_loaded(&mut self, wapps: Vec<WappSummaryVm>) {
+    pub fn wapps_loaded(&mut self, wapps: Vec<WappSummaryVm>) {
         self.wapps = wapps;
         self.wapps_loaded = true;
         self.wapps_error = None;
@@ -193,7 +193,7 @@ impl AppState {
     /// slot. The success branch's `closeByWapp` (disabling removes the
     /// wapp's workspace tabs) is the workspace-tabs seam: this build's
     /// workspace carries table/query tabs only, so no tab exists to close.
-    pub(crate) fn toggle_wapp(&mut self, wapp_id: &str) {
+    pub fn toggle_wapp(&mut self, wapp_id: &str) {
         self.wapp_action_error = None;
         let was_enabled = self
             .wapps
@@ -212,7 +212,7 @@ impl AppState {
     /// then the `throw` the caller reads as its action error. The optimistic
     /// flip survives the failed refetch, as React's does (a failed fetch
     /// writes only the error).
-    pub(crate) fn set_wapp_enabled(&mut self, wapp_id: &str, enabled: bool) -> Result<(), String> {
+    pub fn set_wapp_enabled(&mut self, wapp_id: &str, enabled: bool) -> Result<(), String> {
         for wapp in &mut self.wapps {
             if wapp.id == wapp_id {
                 wapp.enabled = enabled;
@@ -232,7 +232,7 @@ impl AppState {
     /// title and the message with the wapp's name resolved at ask time (the
     /// options object the promise carries). A new ask is a fresh mount
     /// (`wapp_remove_epoch`), so the dialog's body starts at the top.
-    pub(crate) fn ask_remove_wapp(&mut self, wapp_id: &str) {
+    pub fn ask_remove_wapp(&mut self, wapp_id: &str) {
         let Some(wapp) = self.wapps.iter().find(|wapp| wapp.id == wapp_id) else {
             // The card only renders wapps the list carries; a vanished row
             // leaves nothing to ask about.
@@ -250,7 +250,7 @@ impl AppState {
     /// ask): cancel only clears the ask; confirm clears the page's action
     /// error and runs the store's `remove` (whose seam error lands in the
     /// action slot through the same catch). The dialog unmounts either way.
-    pub(crate) fn answer_remove_wapp(&mut self, ok: bool) {
+    pub fn answer_remove_wapp(&mut self, ok: bool) {
         let Some(request) = self.wapp_remove_request.take() else {
             return;
         };
@@ -270,7 +270,7 @@ impl AppState {
     /// the page's catch turns into its action error. React's success path
     /// (`closeByWapp` after the remove) is the same workspace-tabs seam
     /// `toggle_wapp` documents.
-    pub(crate) fn remove_wapp(&mut self, _wapp_id: &str) -> Result<(), String> {
+    pub fn remove_wapp(&mut self, _wapp_id: &str) -> Result<(), String> {
         let error =
             "wapp uninstall needs the live host; the wapps uninstall use case is not wired into this Rune build yet"
                 .to_owned();
@@ -283,7 +283,7 @@ impl AppState {
     /// and the same refresh React's success path runs (`await get().fetch()`).
     /// No production caller exists yet; tests pin the transition.
     #[allow(dead_code)] // the wapps host wiring is the production caller
-    pub(crate) fn wapp_removed(&mut self, wapp_id: &str) {
+    pub fn wapp_removed(&mut self, wapp_id: &str) {
         self.wapps.retain(|wapp| wapp.id != wapp_id);
         self.wapps_error = None;
         self.fetch_wapps();
@@ -298,7 +298,7 @@ impl AppState {
     /// page's title/icon/version) is the workspace-tabs seam — this build's
     /// workspace carries table/query tabs only, so the switch lands without
     /// it and the resolve's gate still refuses a disabled or page-less wapp.
-    pub(crate) fn open_wapp_page(&mut self, wapp_id: &str) -> bool {
+    pub fn open_wapp_page(&mut self, wapp_id: &str) -> bool {
         let Some(wapp) = self.wapps.iter().find(|wapp| wapp.id == wapp_id) else {
             return false;
         };

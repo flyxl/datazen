@@ -75,7 +75,7 @@ fn create_index_sql(opts: &CreateIndexOptions<'_>) -> String {
 }
 
 /// `mysqlDialect` — backtick table SQL.
-pub(crate) static MYSQL_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
+pub static MYSQL_DIALECT: SqlDialectStrategy = SqlDialectStrategy {
     family: "mysql",
     ddl: DialectDdl {
         table_ddl: table_ddl_query,
