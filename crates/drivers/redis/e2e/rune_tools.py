@@ -613,6 +613,26 @@ def tls(lab):
     assert not any(n.get("key") == "native-kv-key-0" for n in without_identity["elements"])
     print("PASS: native mutual TLS with a client certificate; connections without a certificate are rejected")
 
+    cluster = lab.port(cluster=True)
+    lab.start(cluster, ["--port", "0", "--tls-port", str(cluster),
+                        "--tls-auth-clients", "no", "--tls-cluster", "yes",
+                        "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf",
+                        "--cluster-port", str(cluster + 10000),
+                        "--cluster-announce-ip", "127.0.0.1",
+                        "--tls-cert-file", str(cert), "--tls-key-file", str(key),
+                        "--tls-ca-cert-file", str(ca)], ca=ca)
+    assert lab.cli(cluster, "CLUSTER", "ADDSLOTSRANGE", "0", "16383", ca=ca) == "OK"
+    deadline = time.monotonic() + 10
+    while "cluster_state:ok" not in lab.cli(cluster, "CLUSTER", "INFO", ca=ca):
+        assert time.monotonic() < deadline, "TLS cluster fixture did not converge"
+        time.sleep(.15)
+    assert lab.cli(cluster, "SET", "tls-cluster-key", "verified-cluster-tls", ca=ca) == "OK"
+    lab.store(cluster, options={"topology": "cluster", "tls": {"enabled": True, "caPath": str(ca)}})
+    tree = lab.replay("tls-cluster-native", [*OPEN, tap(4.5, "native-kv-key-0")], 6.5)
+    assert element(tree, "native-kv-value")["text"] == "verified-cluster-tls"
+    print("PASS: native Redis Cluster TLS uses the configured CA")
+
+
 
 
 def redis_json(lab):
