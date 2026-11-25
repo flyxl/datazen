@@ -45,9 +45,7 @@ macro_rules! with_live_op_topo {
         let mut conns = $self.connections.write().await;
         let rc = RedisDriver::get_conn(&mut conns, &handle)?;
         let $topo = rc.live.topology();
-        RedisDriver::select_db(&mut rc.live, $db_index)
-            .await
-            .map_err(DriverError::QueryFailed)?;
+        RedisDriver::select_db_with_reconnect(&mut rc.live, $db_index).await?;
         let mut result = with_redis_conn!(&mut rc.live, |$conn| $body);
         if result.is_err()
             && rc.live.is_sentinel()
@@ -141,6 +139,21 @@ impl RedisDriver {
 
     pub(crate) async fn select_db(live: &mut RedisLiveConn, db_index: u32) -> Result<(), String> {
         with_redis_conn!(live, |conn| select_db_on(conn, db_index).await)
+    }
+
+    /// A lost Sentinel socket can fail at SELECT before the operation itself
+    /// runs. Re-resolve the master and retry that SELECT once.
+    async fn select_db_with_reconnect(
+        live: &mut RedisLiveConn,
+        db_index: u32,
+    ) -> Result<(), DriverError> {
+        match Self::select_db(live, db_index).await {
+            Err(error) if live.is_sentinel() && looks_like_connection_loss(&error) => {
+                live.rediscover_sentinel_master().await?;
+                Self::select_db(live, db_index).await.map_err(DriverError::QueryFailed)
+            }
+            result => result.map_err(DriverError::QueryFailed),
+        }
     }
 
     /// Open a dedicated connection already `SELECT`ed onto `db_index`.
@@ -245,9 +258,7 @@ impl RedisDriver {
             "redis get_key_detail: lock acquired"
         );
         let rc = Self::get_conn(&mut conns, handle)?;
-        Self::select_db(&mut rc.live, db_index)
-            .await
-            .map_err(DriverError::QueryFailed)?;
+        Self::select_db_with_reconnect(&mut rc.live, db_index).await?;
         let key = key.to_string();
         with_redis_conn!(&mut rc.live, |conn| get_key_detail_on(conn, &key).await)
     }
@@ -267,9 +278,7 @@ impl RedisDriver {
             "redis get_key_raw: lock acquired"
         );
         let rc = Self::get_conn(&mut conns, handle)?;
-        Self::select_db(&mut rc.live, db_index)
-            .await
-            .map_err(DriverError::QueryFailed)?;
+        Self::select_db_with_reconnect(&mut rc.live, db_index).await?;
         let key = key.to_string();
         with_redis_conn!(&mut rc.live, |conn| get_key_raw_on(conn, &key, with_memory)
             .await)

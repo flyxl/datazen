@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+use datazen_driver_api::{ConnectionConfig, DatabaseDriver, Value};
 use serde_json::json;
 
 use super::Journey;
@@ -133,6 +133,38 @@ async fn inspect(
         .execute_command(&handle, "monitor_get_buffer", json!({"monitorId":id}))
         .await
         .is_err());
+    if topology == "sentinel" {
+        let mut previous = None;
+        for operation in ["info", "get_key", "get_key_raw", "key_probe"] {
+            let id = driver.query(&handle, "CLIENT ID").await.unwrap();
+            let Some(Value::Integer(id)) = id.rows[0][0] else {
+                panic!("Redis did not return a connection ID: {id:?}");
+            };
+            assert_ne!(previous, Some(id));
+            previous = Some(id);
+            // Close only this disposable driver's socket; leave the other test
+            // fixtures and the independent oracle connected.
+            assert_eq!(
+                journey
+                    .read::<u64>("CLIENT", &["KILL", "ID", &id.to_string()])
+                    .await,
+                1,
+            );
+            let result = journey
+                .command(
+                    operation,
+                    json!({"section":"server","key":"contract:topology"}),
+                )
+                .await;
+            match operation {
+                "info" => assert!(result.as_str().unwrap().contains("redis_version:")),
+                "get_key" => assert_eq!(result["value"]["value"], "sentinel"),
+                "get_key_raw" => assert_eq!(result["rawB64"], "c2VudGluZWw="),
+                "key_probe" => assert_eq!(result["exists"], true),
+                _ => unreachable!(),
+            }
+        }
+    }
     driver.disconnect(handle).await.unwrap();
 }
 
