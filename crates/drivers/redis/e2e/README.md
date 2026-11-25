@@ -65,3 +65,20 @@ Optional real-service fixtures:
 These journeys require Redis and are intentionally separate from the service-free
 Rune E2E suite. Their passing results do not imply a whole-repository coverage
 percentage.
+
+## Redis crate E2E line coverage
+
+```bash
+rustup component add llvm-tools-preview
+python3 crates/drivers/redis/e2e/coverage.py --output target/redis-e2e-report --jobs 3
+```
+
+This gate instruments the native application and the public driver-boundary
+example. Each journey uses its own disposable Redis instance. It merges
+only their execution profiles, counts production lines in
+`crates/drivers/redis/src`, and exits nonzero unless all journeys pass and
+line coverage is strictly greater than 90%. It writes per-journey logs,
+render trees where applicable, and a machine-readable `summary.json`.
+The suite requires TLS and JSON support. Use `--server`, `--cli`,
+`--json-server`, and `--redis-json-module` to select suitable binaries
+and matching modules when the installed Redis build does not include JSON.
