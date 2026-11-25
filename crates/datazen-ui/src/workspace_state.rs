@@ -475,6 +475,13 @@ impl AppState {
     /// when the delivery's generation is still the current one.
     pub fn deliver_host_job(&mut self, delivery: AdapterDelivery) {
         match delivery {
+            AdapterDelivery::RedisProbed { epoch, result } => {
+                if self.connection_dialog_open && epoch == self.connection_dialog_epoch {
+                    self.redis_probe_pending = false;
+                    self.redis_probe_result = Some(result);
+                }
+            }
+            AdapterDelivery::KvRead { request, result } => self.receive_kv(request, result),
             AdapterDelivery::ConnectionOpened { generation, id, catalog } => {
                 if self.connect_loading == Some(generation) {
                     self.connect_loading = None;
@@ -504,9 +511,21 @@ impl AppState {
                         self.filter = None;
                         self.filter_column = 0;
                         self.filter_editor = TextEdit::new(String::new());
+                        let kv = self.visible_connections().into_iter()
+                            .find(|profile| profile.id == id)
+                            .and_then(|profile| datazen_ui_api::native_kv::native_kv_driver(&profile.engine));
+                        self.native_kv = kv.map(|kind| crate::views::native_kv::KvWorkbench::new(
+                            kind, id.clone(), generation,
+                        ));
                         self.desktop_catalog = Some(catalog.clone());
                         self.desktop_connection = Some(id);
                         self.active = Section::Workspace;
+                        if self.native_kv.is_some() {
+                            self.tabs = Default::default();
+                            self.desktop_error = None;
+                            self.kv_next_page();
+                            return;
+                        }
                         let first = catalog
                             .databases
                             .first()

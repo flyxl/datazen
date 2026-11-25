@@ -269,9 +269,7 @@ fn connection_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog 
             Button::new(t("newConn.testConnection"))
                 .variant(ButtonVariant::Neutral)
                 .control_size(ControlSize::ExtraLarge)
-                // The connection probe lands with the A2 form port; until then the
-                // action keeps its place and its button role, exactly as before.
-                .on_press(|_state: &mut AppState| {})
+                .on_press(AppState::test_redis_connection_form)
                 .build(kit(dark))
                 .key("connection-test"),
         )

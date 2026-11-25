@@ -28,6 +28,14 @@ impl AppState {
 
     pub fn open_connection_dialog(&mut self) {
         self.connection_dialog_open = true;
+        self.redis_probe_pending = false;
+        self.redis_probe_result = None;
+        self.redis_form_options = Default::default();
+        self.redis_form_master = TextEdit::new("");
+        self.redis_form_nodes = TextEdit::new("");
+        self.redis_form_ca = TextEdit::new("");
+        self.redis_form_cert = TextEdit::new("");
+        self.redis_form_key = TextEdit::new("");
         // A new open is a new body for the dialog base, so its scroll viewport
         // starts at the top (`Dialog::open_epoch`).
         self.connection_dialog_epoch = self.connection_dialog_epoch.wrapping_add(1);
@@ -47,6 +55,40 @@ impl AppState {
     pub fn close_connection_dialog(&mut self) {
         self.connection_dialog_open = false;
         self.connection_error = None;
+    }
+
+    fn connection_form_draft(&self, engine: String) -> datazen_ui_api::ConnectionDraft {
+        datazen_ui_api::ConnectionDraft {
+            name: self.connection_name.text.clone(),
+            engine,
+            address: self.connection_address.text.clone(),
+            username: self.connection_username.text.trim().to_owned(),
+            password: self.connection_password.text.clone(),
+            database: self.connection_database.text.trim().to_owned(),
+        }
+    }
+
+    fn redis_connection_form_options(&self) -> datazen_ui_api::native_kv::RedisConnectionOptions {
+        let mut options = self.redis_form_options.clone();
+        options.sentinel_master = self.redis_form_master.text.clone();
+        options.nodes = self.redis_form_nodes.text.clone();
+        options.tls_ca = self.redis_form_ca.text.clone();
+        options.tls_cert = self.redis_form_cert.text.clone();
+        options.tls_key = self.redis_form_key.text.clone();
+        options
+    }
+
+    pub(crate) fn test_redis_connection_form(&mut self) {
+        if !self.connection_dialog_open || self.redis_probe_pending || self.connection_engine.text.trim() != "redis" {
+            return;
+        }
+        let draft = self.connection_form_draft("redis".into());
+        let options = self.redis_connection_form_options();
+        self.redis_probe_result = None;
+        match self.desktop.begin_redis_probe(self.connection_dialog_epoch, &draft, &options) {
+            Ok(()) => self.redis_probe_pending = true,
+            Err(_) => self.redis_probe_result = Some(Err("Unable to test Redis. Check the address, topology and TLS fields.".into())),
+        }
     }
 
     pub fn save_connection_form(&mut self) {
@@ -76,15 +118,14 @@ impl AppState {
             ));
             return;
         }
-        let draft = datazen_ui_api::ConnectionDraft {
-            name: self.connection_name.text.clone(),
-            engine,
-            address: self.connection_address.text.clone(),
-            username: self.connection_username.text.trim().to_owned(),
-            password: self.connection_password.text.clone(),
-            database: self.connection_database.text.trim().to_owned(),
+        let draft = self.connection_form_draft(engine);
+        let result = if draft.engine == "redis" && engines.iter().any(|e| e == "redis") {
+            let options = self.redis_connection_form_options();
+            self.desktop.save_redis_connection(&draft, &options)
+        } else {
+            self.desktop.save_connection(&draft)
         };
-        let saved = match self.desktop.save_connection(&draft) {
+        let saved = match result {
             Ok(()) => Ok(()),
             Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
                 self.workspace.save_connection(&draft)

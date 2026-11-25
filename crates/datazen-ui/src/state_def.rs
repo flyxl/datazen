@@ -122,6 +122,8 @@ pub struct AppState {
     /// The live host's catalog once its open job answered one (N3); None
     /// means the memory port's catalog is the truth (the demo path).
     pub desktop_catalog: Option<datazen_ui_api::Catalog>,
+    pub(crate) native_kv: Option<crate::views::native_kv::KvWorkbench>,
+    pub(crate) native_kv_unused_input: rune::TextEdit,
     /// The live session's connection id (N3): the refresh path re-opens it.
     pub desktop_connection: Option<String>,
     /// Catalog nodes the tree keeps collapsed, by path: "db" or "db/schema".
@@ -220,6 +222,12 @@ pub struct AppState {
     pub wapp_remove_epoch: u64,
     pub connection_name: TextEdit,
     pub connection_engine: TextEdit,
+    pub(crate) redis_form_options: datazen_ui_api::native_kv::RedisConnectionOptions,
+    pub(crate) redis_form_master: TextEdit,
+    pub(crate) redis_form_nodes: TextEdit,
+    pub(crate) redis_form_ca: TextEdit,
+    pub(crate) redis_form_cert: TextEdit,
+    pub(crate) redis_form_key: TextEdit,
     pub connection_address: TextEdit,
     /// E5: the remote fields the live host maps onto its config; the
     /// memory port ignores them.
@@ -227,6 +235,8 @@ pub struct AppState {
     pub connection_password: TextEdit,
     pub connection_database: TextEdit,
     pub connection_error: Option<String>,
+    pub(crate) redis_probe_pending: bool,
+    pub(crate) redis_probe_result: Option<Result<(), String>>,
     /// UI-only SSH tunnel fields for A2 dialog alignment (not persisted; save uses draft only).
     pub connection_ssh_enabled: bool,
     pub connection_ssh_host: TextEdit,
@@ -565,6 +575,8 @@ impl Default for AppState {
             query_loading: None,
             connect_loading: None,
             desktop_catalog: None,
+            native_kv: None,
+            native_kv_unused_input: rune::TextEdit::new(String::new()),
             desktop_connection: None,
             collapsed: std::collections::BTreeSet::new(),
             table_view: TableView::Data,
@@ -605,11 +617,19 @@ impl Default for AppState {
             wapp_remove_epoch: 0,
             connection_name: TextEdit::new(String::new()),
             connection_engine: TextEdit::new(String::new()),
+            redis_form_options: Default::default(),
+            redis_form_master: TextEdit::new(""),
+            redis_form_nodes: TextEdit::new(""),
+            redis_form_ca: TextEdit::new(""),
+            redis_form_cert: TextEdit::new(""),
+            redis_form_key: TextEdit::new(""),
             connection_address: TextEdit::new(String::new()),
             connection_username: TextEdit::new(String::new()),
             connection_password: TextEdit::new(String::new()),
             connection_database: TextEdit::new(String::new()),
             connection_error: None,
+            redis_probe_pending: false,
+            redis_probe_result: None,
             connection_ssh_enabled: false,
             connection_ssh_host: TextEdit::new(String::new()),
             connection_ssh_port: TextEdit::new(String::from("22")),

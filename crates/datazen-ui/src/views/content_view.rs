@@ -122,7 +122,9 @@ pub fn build(
         .min_h(0.0);
 
     // 48pt toolbar: React omits it entirely on a KV panel.
-    if vm.react_toolbar_gate && vm.show_toolbar() {
+    if state.native_kv.is_some() && state.active == crate::types::Section::Workspace {
+        root = root.child(row().key("content-toolbar-absent").h(0.0));
+    } else if vm.react_toolbar_gate && vm.show_toolbar() {
         root = root.child(super::content_toolbar(state, theme));
     } else if vm.react_toolbar_gate {
         root = root.child(row().key("content-toolbar-absent").h(0.0));
@@ -130,7 +132,7 @@ pub fn build(
         root = root.child(super::content_toolbar(state, theme));
     }
 
-    root = root.child(if state.active == crate::types::Section::Workspace {
+    root = root.child(if state.active == crate::types::Section::Workspace && state.native_kv.is_none() {
         super::tab_strip(state, theme)
     } else {
         row().key("tab-strip-absent").h(0.0)

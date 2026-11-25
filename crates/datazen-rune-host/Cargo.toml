@@ -30,6 +30,7 @@ keyring = { version = "4", features = ["v1"] }
 # The master key's generation and base64 form.
 rand = "0.8"
 base64 = "0.22"
+zip = { workspace = true }
 # The basic SKU's driver set (E4), linked so the host's registry assembles
 # them statically (`DriverRegistry::with_factories` over each crate's
 # `factories()`): sqlite, the postgres and mysql protocol families, and
@@ -46,7 +47,7 @@ serde_json = { workspace = true }
 # `touch_last_connected_at` writes an RFC 3339 timestamp; the job worker owns
 # a current-thread tokio runtime for the drivers' async use cases.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["rt", "sync"] }
 # Session and resource ids the runtime's backend mints.
 uuid = { workspace = true }
 # The list use case is async; the adapter's poll over the loaded file store

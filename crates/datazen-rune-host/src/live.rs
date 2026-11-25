@@ -8,6 +8,7 @@
 //! catalog contract — and the connection list still answers through the
 //! file store's use case, whose futures are always ready.
 
+use datazen_ui_api::native_kv::{native_kv_driver, KvRead, KvReply, NativeKvDriver};
 use datazen::connection::application::ConnectionService;
 use datazen::connection::domain::{ConnectionRepository, ConnectionScope};
 use datazen::dashboard::application::create::create_widget_from_sql;
@@ -66,8 +67,14 @@ pub(crate) fn host_registry() -> DriverRegistry {
     .expect("the basic driver factories admit at construction")
 }
 
+#[path = "native_kv.rs"]
+mod native_kv;
+
 /// A job on the worker's channel, with the generation the UI expects back.
 enum HostJob {
+    ProbeRedis { epoch: u64, config: datazen_driver_api::ConnectionConfig },
+    ReadKv(KvRead),
+    CloseKv { connection_id: String, session_generation: u32 },
     OpenConnection { generation: u32, id: String },
     ValueSearch { generation: u32, value: String, mode: String },
     RunWorkflow { generation: u32, name: String },
@@ -110,6 +117,8 @@ enum HostJob {
 
 /// A finished job on the answer channel.
 enum HostAnswer {
+    RedisProbed { epoch: u64, result: Result<(), String> },
+    KvRead { request: KvRead, result: Result<KvReply, String> },
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
     ValueSearched { generation: u32, hits: Result<Vec<ValueSearchHit>, String> },
     WorkflowRun {
@@ -131,6 +140,8 @@ enum HostAnswer {
 /// reads and N6's commits run over the same session.
 #[derive(Default)]
 struct LiveSession {
+    kv: Option<(NativeKvDriver, u32)>,
+    kv_state: native_kv::KvSessionState,
     driver: Option<Arc<dyn DatabaseDriver>>,
     handle: Option<ConnectionHandle>,
     database: Option<String>,
@@ -148,7 +159,7 @@ impl LiveSession {
 
 pub struct LiveAdapter {
     /// Jobs to the worker.
-    jobs: Mutex<std::sync::mpsc::Sender<HostJob>>,
+    jobs: Mutex<tokio::sync::mpsc::UnboundedSender<HostJob>>,
     /// Answers from the worker, drained on the poll path.
     answers: Mutex<std::sync::mpsc::Receiver<HostAnswer>>,
     /// The connection use case over the host's file store. `list` touches
@@ -234,7 +245,7 @@ impl LiveAdapter {
         repository: Arc<dyn ConnectionRepository>,
         data_dir: &Path,
     ) -> Self {
-        let (job_tx, job_rx) = std::sync::mpsc::channel::<HostJob>();
+        let (job_tx, mut job_rx) = tokio::sync::mpsc::unbounded_channel::<HostJob>();
         let (answer_tx, answer_rx) = std::sync::mpsc::channel::<HostAnswer>();
         let registry = Arc::new(host_registry());
         // N5: the execution runtime over the three host parts, sharing the
@@ -323,8 +334,16 @@ impl LiveAdapter {
                     Err(error) => {
                         // Without a runtime no job can run; say so per job
                         // instead of dying silently.
-                        while let Ok(job) = job_rx.recv() {
+                        while let Some(job) = job_rx.blocking_recv() {
                             let answer = match job {
+                                HostJob::CloseKv { .. } => continue,
+                                HostJob::ProbeRedis { epoch, .. } => HostAnswer::RedisProbed {
+                                    epoch, result: Err("The Redis connection test is unavailable.".into()),
+                                },
+                                HostJob::ReadKv(request) => HostAnswer::KvRead {
+                                    request,
+                                    result: Err("the job runtime did not start".into()),
+                                },
                                 HostJob::OpenConnection { generation, id } => HostAnswer::Connection {
                                     generation,
                                     id,
@@ -383,8 +402,29 @@ impl LiveAdapter {
                         return;
                     }
                 };
-                while let Ok(job) = job_rx.recv() {
+                while let Some(job) = runtime.block_on(job_rx.recv()) {
                     let answer = match job {
+                        HostJob::CloseKv { connection_id, session_generation } => {
+                            runtime.block_on(native_kv::close(
+                                &worker_session, &connection_id, session_generation,
+                            ));
+                            continue;
+                        }
+                        HostJob::ProbeRedis { epoch, config } => {
+                            let result = runtime.block_on(async {
+                                let driver = registry.get(&config.database_type).await.ok_or("Redis is not linked.")?;
+                                let pending = driver.test_connection(&config);
+                                tokio::time::timeout(std::time::Duration::from_secs(6), pending)
+                                    .await.map_err(|_| "Redis connection test timed out.")?
+                                    .map(|_| ())
+                                    .map_err(|_| "Redis connection failed. Check the address, credentials and TLS settings.")
+                            }).map_err(str::to_owned);
+                            HostAnswer::RedisProbed { epoch, result }
+                        }
+                        HostJob::ReadKv(request) => {
+                            let result = runtime.block_on(native_kv::read(&worker_session, &request));
+                            HostAnswer::KvRead { request, result }
+                        }
                         HostJob::OpenConnection { generation, id } => {
                             let id_for_answer = id.clone();
                             let catalog = runtime.block_on(open_connection(
@@ -393,6 +433,7 @@ impl LiveAdapter {
                                 &worker_session,
                                 &worker_schemas,
                                 &id,
+                                generation,
                             ));
                             HostAnswer::Connection { generation, id: id_for_answer, catalog }
                         }
@@ -561,6 +602,8 @@ impl LiveAdapter {
 
         // The source read: one session, the read use case over it.
         let source_session = Arc::new(Mutex::new(LiveSession {
+            kv: None,
+            kv_state: Default::default(),
             driver: Some(Arc::clone(&source_driver)),
             handle: Some(
                 source_driver
@@ -799,6 +842,7 @@ async fn open_connection(
     session: &Arc<Mutex<LiveSession>>,
     schemas: &Arc<Mutex<std::collections::HashMap<String, datazen_driver_api::TableSchema>>>,
     id: &str,
+    generation: u32,
 ) -> Result<Catalog, String> {
     let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
     let config = service
@@ -810,7 +854,33 @@ async fn open_connection(
         .get(&config.database_type)
         .await
         .ok_or_else(|| format!("no driver for '{}'", config.database_type))?;
+    let kv = native_kv_driver(&config.database_type);
+    let kv_route = kv.map(|_| native_kv::configured_route(&config)).transpose()?;
     let handle = driver.connect(&config).await.map_err(|error| error.to_string())?;
+    if let Some((kind, (cluster, db))) = kv.zip(kv_route) {
+        let databases = if cluster {
+            vec![0]
+        } else {
+            let mut indexes: Vec<u32> = driver.get_databases(&handle).await.unwrap_or_default()
+                .iter().filter_map(|s| s.strip_prefix("db")?.parse().ok()).take(256).collect();
+            indexes.push(db);
+            indexes.sort_unstable();
+            indexes.dedup();
+            indexes
+        };
+        replace_live_session(session, LiveSession {
+            kv: Some((kind, generation)),
+            kv_state: native_kv::KvSessionState::new(db, databases, cluster),
+            driver: Some(driver),
+            handle: Some(handle),
+            database: Some(format!("db{db}")),
+            connection: Some(id.to_owned()),
+            read_only: config.read_only,
+        }).await?;
+        schemas.lock().map_err(|_| "the schema cache is unavailable")?.clear();
+        // Redis keys are discovered lazily, never through the SQL catalog.
+        return Ok(Catalog { databases: Vec::new() });
+    }
     let databases = driver.get_databases(&handle).await.map_err(|error| error.to_string())?;
 
     let mut nodes = Vec::new();
@@ -858,14 +928,28 @@ async fn open_connection(
     schemas.lock().expect("the schema lock").clear();
     // The session is the adapter's for the reads and commits that follow:
     // swap it in whole, replacing any earlier one.
-    *session.lock().expect("the live session lock") = LiveSession {
+    replace_live_session(session, LiveSession {
+        kv: None,
+        kv_state: Default::default(),
         driver: Some(driver),
         handle: Some(handle),
         database: databases.first().cloned(),
         connection: Some(id.to_owned()),
         read_only: config.read_only,
-    };
+    }).await?;
     Ok(Catalog { databases: nodes })
+}
+
+async fn replace_live_session(
+    session: &Arc<Mutex<LiveSession>>,
+    replacement: LiveSession,
+) -> Result<(), String> {
+    let previous = {
+        let mut live = session.lock().map_err(|_| "the live session is unavailable")?;
+        std::mem::replace(&mut *live, replacement)
+    };
+    native_kv::release(previous).await;
+    Ok(())
 }
 
 /// The schema-diff adapter host in its raw form (N12): no cross-dialect
@@ -1810,6 +1894,9 @@ async fn run_query(
         if !session.is_open() {
             return Err("the live session is not open".into());
         }
+        if session.kv.is_some() {
+            return Err("SQL queries are not available in the KV workbench.".into());
+        }
         (
             session.connection.clone().unwrap_or_default(),
             session.database.clone(),
@@ -1947,6 +2034,110 @@ fn ui_write(setting: &datazen_ui_api::Setting) -> UiWrite {
     }
 }
 
+fn connection_draft_record(
+    draft: &ConnectionDraft,
+    id: String,
+    timeout: u32,
+) -> Result<datazen_driver_api::ConnectionConfig, String> {
+    let name = draft.name.trim();
+    let name = if name.is_empty() { "Untitled" } else { name };
+    let engine = draft.engine.trim();
+    let address = draft.address.trim();
+    if address.is_empty() {
+        return Err("address is required".into());
+    }
+    let (host, port) = match address.rsplit_once(':') {
+        Some((host, port)) => (
+            host.to_owned(),
+            Some(port.parse::<u16>().map_err(|_| {
+                String::from("the address must be host or host:port with a numeric port")
+            })?),
+        ),
+        None => (address.to_owned(), None),
+    };
+    Ok(datazen_driver_api::ConnectionConfig {
+        id,
+        name: name.to_owned(),
+        database_type: engine.to_owned(),
+        host: Some(host),
+        port,
+        database: (!draft.database.is_empty()).then(|| draft.database.clone()),
+        schema: None,
+        username: (!draft.username.is_empty()).then(|| draft.username.clone()),
+        password: (!draft.password.is_empty()).then(|| draft.password.clone()),
+        ssl_mode: datazen_driver_api::SslMode::default(),
+        connection_timeout: timeout,
+        max_pool_size: 10,
+        ssh_tunnel: None,
+        tunnel_kind: None,
+        tunnel_id: None,
+        http_proxy_tunnel: None,
+        websocket_tunnel: None,
+        color_tag: None,
+        group: None,
+        last_connected_at: None,
+        server_version: None,
+        options: None,
+        read_only: false,
+        pinned: false,
+    })
+}
+
+impl LiveAdapter {
+    fn save_connection_with_options(&mut self, draft: &ConnectionDraft, redis: Option<&datazen_ui_api::native_kv::RedisConnectionOptions>) -> Result<(), String> {
+        // E5: the form's six fields land as one config through the
+        // connection use case. The store's save seals the password (T10)
+        // before the file ever sees it; the engine must be one the host's
+        // registry admitted — linked means offered, anything else is a
+        // hard error by construction and gets its sentence here too.
+        let name = draft.name.trim();
+        let name = if name.is_empty() { "Untitled" } else { name };
+        let engine = draft.engine.trim();
+        let engines = self.registry.available_types();
+        if !engines.iter().any(|linked| linked == engine) {
+            return Err(format!(
+                "the host links {} — '{engine}' is not among them",
+                engines.join(", ")
+            ));
+        }
+        // The id: the memory port's slug of the name, deduplicated against
+        // the store — the same shape both worlds speak.
+        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let existing: Vec<String> =
+            futures_executor::block_on(self.service.list_plain(&scope))
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|config| config.id)
+                .collect();
+        let slug = |name: &str| {
+            let mut id: String = name
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+                .collect();
+            while id.contains("--") {
+                id = id.replace("--", "-");
+            }
+            id.trim_matches('-').to_owned()
+        };
+        let mut base = slug(name);
+        if base.is_empty() {
+            base = "connection".into();
+        }
+        let mut id = base.clone();
+        let mut counter = 2;
+        while existing.contains(&id) {
+            id = format!("{base}-{counter}");
+            counter += 1;
+        }
+        let mut config = connection_draft_record(draft, id, 30)?;
+        if let Some(redis) = redis {
+            native_kv::apply_connection_options(&mut config, redis)?;
+        }
+        futures_executor::block_on(self.service.save(&scope, config)).map_err(|error| error.to_string())
+    }
+
+}
+
 impl DesktopAdapter for LiveAdapter {
     fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
         // The file store's list path touches only the loaded store; its
@@ -1985,90 +2176,27 @@ impl DesktopAdapter for LiveAdapter {
     }
 
     fn save_connection(&mut self, draft: &ConnectionDraft) -> Result<(), String> {
-        // E5: the form's six fields land as one config through the
-        // connection use case. The store's save seals the password (T10)
-        // before the file ever sees it; the engine must be one the host's
-        // registry admitted — linked means offered, anything else is a
-        // hard error by construction and gets its sentence here too.
-        let name = draft.name.trim();
-        let name = if name.is_empty() { "Untitled" } else { name };
-        let engine = draft.engine.trim();
-        let engines = self.registry.available_types();
-        if !engines.iter().any(|linked| linked == engine) {
-            return Err(format!(
-                "the host links {} — '{engine}' is not among them",
-                engines.join(", ")
-            ));
+        self.save_connection_with_options(draft, None)
+    }
+
+    fn begin_redis_probe(
+        &mut self,
+        epoch: u64,
+        draft: &ConnectionDraft,
+        options: &datazen_ui_api::native_kv::RedisConnectionOptions,
+    ) -> Result<(), String> {
+        if draft.engine.trim() != "redis" || !self.registry.available_types().iter().any(|e| e == "redis") {
+            return Err("Redis is not available in this host.".into());
         }
-        let address = draft.address.trim();
-        if address.is_empty() {
-            return Err("address is required".into());
-        }
-        let (host, port) = match address.rsplit_once(':') {
-            Some((host, port)) => (
-                host.to_owned(),
-                Some(port.parse::<u16>().map_err(|_| {
-                    format!("the address is 'host[:port]' — '{port}' is not a port")
-                })?),
-            ),
-            None => (address.to_owned(), None),
-        };
-        // The id: the memory port's slug of the name, deduplicated against
-        // the store — the same shape both worlds speak.
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
-        let existing: Vec<String> =
-            futures_executor::block_on(self.service.list_plain(&scope))
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .map(|config| config.id)
-                .collect();
-        let slug = |name: &str| {
-            let mut id: String = name
-                .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
-                .collect();
-            while id.contains("--") {
-                id = id.replace("--", "-");
-            }
-            id.trim_matches('-').to_owned()
-        };
-        let mut base = slug(name);
-        if base.is_empty() {
-            base = "connection".into();
-        }
-        let mut id = base.clone();
-        let mut counter = 2;
-        while existing.contains(&id) {
-            id = format!("{base}-{counter}");
-            counter += 1;
-        }
-        let config = datazen_driver_api::ConnectionConfig {
-            id,
-            name: name.to_owned(),
-            database_type: engine.to_owned(),
-            host: Some(host),
-            port,
-            database: (!draft.database.is_empty()).then(|| draft.database.clone()),
-            schema: None,
-            username: (!draft.username.is_empty()).then(|| draft.username.clone()),
-            password: (!draft.password.is_empty()).then(|| draft.password.clone()),
-            ssl_mode: datazen_driver_api::SslMode::default(),
-            connection_timeout: 30,
-            max_pool_size: 10,
-            ssh_tunnel: None,
-            tunnel_kind: None,
-            tunnel_id: None,
-            http_proxy_tunnel: None,
-            websocket_tunnel: None,
-            color_tag: None,
-            group: None,
-            last_connected_at: None,
-            server_version: None,
-            options: None,
-            read_only: false,
-            pinned: false,
-        };
-        futures_executor::block_on(self.service.save(&scope, config)).map_err(|error| error.to_string())
+        let mut config = connection_draft_record(draft, String::from("native-redis-probe"), 4)?;
+        native_kv::apply_connection_options(&mut config, options)?;
+        self.jobs.lock().map_err(|_| "The Redis connection test is unavailable.")?
+            .send(HostJob::ProbeRedis { epoch, config })
+            .map_err(|_| "The Redis connection test is unavailable.".into())
+    }
+
+    fn save_redis_connection(&mut self, draft: &ConnectionDraft, options: &datazen_ui_api::native_kv::RedisConnectionOptions) -> Result<(), String> {
+        self.save_connection_with_options(draft, Some(options))
     }
 
     fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
@@ -2077,6 +2205,9 @@ impl DesktopAdapter for LiveAdapter {
 
     fn begin_job(&mut self, job: AdapterJob) -> bool {
         let job = match job {
+            AdapterJob::ReadKv(request) => HostJob::ReadKv(request),
+            AdapterJob::CloseKv { connection_id, session_generation } =>
+                HostJob::CloseKv { connection_id, session_generation },
             AdapterJob::OpenConnection { generation, id } => HostJob::OpenConnection { generation, id },
             AdapterJob::ReadTable { generation, table, page, page_size, sort, filter } => {
                 HostJob::ReadTable { generation, table, page, page_size, sort, filter }
@@ -2107,6 +2238,12 @@ impl DesktopAdapter for LiveAdapter {
         let mut deliveries = Vec::new();
         while let Ok(answer) = answers.try_recv() {
             match answer {
+                HostAnswer::RedisProbed { epoch, result } => {
+                    deliveries.push(AdapterDelivery::RedisProbed { epoch, result });
+                }
+                HostAnswer::KvRead { request, result } => {
+                    deliveries.push(AdapterDelivery::KvRead { request, result });
+                }
                 HostAnswer::Connection { generation, id, catalog } => {
                     deliveries.push(AdapterDelivery::ConnectionOpened { generation, id, catalog });
                 }

@@ -9,6 +9,7 @@ pub mod cluster;
 pub mod exec;
 pub mod flush;
 pub mod hash;
+pub mod guarded_edit;
 pub mod io;
 pub mod json;
 pub mod key_probe;

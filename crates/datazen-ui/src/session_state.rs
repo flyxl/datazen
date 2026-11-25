@@ -24,6 +24,7 @@ use rune::{
 
 impl AppState {
     pub fn select(&mut self, section: Section) {
+        if self.active != section && !self.kv_can_leave() { return; }
         self.active = section;
         if section == Section::Connections {
             self.sync_desktop_connections();
@@ -151,6 +152,7 @@ impl AppState {
     /// memory port's while it does not. The adapter's read is memory-speed —
     /// the host caches its document.
     pub fn open_connection(&mut self, id: &str) {
+        if !self.kv_can_leave() { return; }
         // N3: a live host opens the connection as a job — real driver IO off
         // the frame loop. Until the catalog (or the failure sentence) lands
         // the page stays put and says the connect is in flight; the memory
@@ -197,6 +199,8 @@ impl AppState {
             .unwrap_or_else(|| self.workspace.connections().to_vec())
     }
     pub fn disconnect(&mut self) {
+        if !self.kv_can_leave() { return; }
+        self.close_kv_workbench();
         self.workspace.disconnect();
         self.tabs = Tabs::new();
         self.grid.set_editable(false);

@@ -3,6 +3,7 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, OnceLock};
 
+use futures_util::StreamExt;
 use serde::Serialize;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -73,19 +74,16 @@ pub async fn start_monitor(
     plan: &ConnectionPlan,
     max_buffer_size: Option<usize>,
 ) -> Result<String, String> {
-    let buf_size = max_buffer_size.unwrap_or(1000).max(10);
+    let buf_size = max_buffer_size.unwrap_or(1000).clamp(10, 10_000);
 
-    // Open a dedicated async connection for MONITOR.
-    let mut conn = open_monitor_connection(plan)
+    let mut monitor = crate::connect::live::open_monitor_connection(plan)
         .await
-        .map_err(|e| format!("failed to open MONITOR connection: {e}"))?;
-
-    // Send the MONITOR command.
-    let ok: String = redis::cmd("MONITOR")
-        .query_async(&mut conn)
+        .map_err(|error| format!("failed to open MONITOR connection: {error}"))?;
+    monitor
+        .monitor()
         .await
-        .map_err(|e| format!("MONITOR command failed: {e}"))?;
-    tracing::debug!("MONITOR response: {ok}");
+        .map_err(|error| format!("MONITOR command failed: {error}"))?;
+    let events = monitor.into_on_message::<String>();
 
     let buffer = Arc::new(Mutex::new(VecDeque::with_capacity(buf_size)));
     let buffer_clone = buffer.clone();
@@ -93,23 +91,23 @@ pub async fn start_monitor(
 
     // Spawn the reader task that reads MONITOR streaming responses.
     let handle = tokio::spawn(async move {
+        tokio::pin!(events);
         loop {
             tokio::select! {
                 _ = &mut stop_rx => break,
-                result = read_monitor_response(&mut conn) => {
-                    match result {
-                        Ok(Some(event)) => {
-                            let mut guard = buffer_clone.lock().await;
-                            if guard.len() >= guard.capacity() {
-                                guard.pop_front();
+                line = events.next() => {
+                    let Some(line) = line else { break; };
+                    if let Some(mut event) = parse_monitor_line(&line) {
+                        event.args.truncate(16);
+                        for argument in &mut event.args {
+                            if let Some((end, _)) = argument.char_indices().nth(1024) {
+                                argument.truncate(end);
+                                argument.push('…');
                             }
-                            guard.push_back(event);
                         }
-                        Ok(None) => break, // connection closed
-                        Err(e) => {
-                            tracing::warn!("MONITOR read error: {e}");
-                            break;
-                        }
+                        let mut guard = buffer_clone.lock().await;
+                        if guard.len() >= buf_size { guard.pop_front(); }
+                        guard.push_back(event);
                     }
                 }
             }
@@ -158,70 +156,6 @@ pub async fn get_monitor_buffer(monitor_id: &str) -> Result<Vec<MonitorEvent>, S
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-/// Open a dedicated async connection for MONITOR.
-///
-/// MONITOR is only supported on standalone/sentinel-master connections.
-async fn open_monitor_connection(
-    plan: &ConnectionPlan,
-) -> Result<redis::aio::MultiplexedConnection, String> {
-    match plan {
-        ConnectionPlan::Standalone(p) => {
-            let client = redis::Client::open(p.url.as_str())
-                .map_err(|e| format!("MONITOR client open: {e}"))?;
-            client
-                .get_multiplexed_async_connection()
-                .await
-                .map_err(|e| format!("MONITOR connect: {e}"))
-        }
-        ConnectionPlan::Cluster(p) => {
-            // MONITOR is not supported in cluster mode — connect to first node.
-            let url = p.node_urls.first().ok_or("no cluster node URLs")?;
-            let client = redis::Client::open(url.as_str())
-                .map_err(|e| format!("MONITOR client open: {e}"))?;
-            client
-                .get_multiplexed_async_connection()
-                .await
-                .map_err(|e| format!("MONITOR connect: {e}"))
-        }
-        ConnectionPlan::Sentinel(p) => {
-            // For Sentinel, connect to the master directly via the first sentinel URL.
-            // MONITOR will run on whatever node this connects to.
-            let url = p.sentinel_urls.first().ok_or("no sentinel URLs")?;
-            let client = redis::Client::open(url.as_str())
-                .map_err(|e| format!("MONITOR sentinel client: {e}"))?;
-            client
-                .get_multiplexed_async_connection()
-                .await
-                .map_err(|e| format!("MONITOR sentinel connect: {e}"))
-        }
-    }
-}
-
-/// Read the next MONITOR response from the connection and parse it into an event.
-///
-/// MONITOR returns inline strings like:
-/// `1234567890.123 [0 127.0.0.1:12345] "GET" "foo"`
-async fn read_monitor_response(
-    conn: &mut redis::aio::MultiplexedConnection,
-) -> Result<Option<MonitorEvent>, String> {
-    let val: redis::Value = conn
-        .send_packed_command(&redis::cmd("PING"))
-        .await
-        .map_err(|e| format!("MONITOR read: {e}"))?;
-
-    match &val {
-        redis::Value::Nil => Ok(None),
-        redis::Value::SimpleString(s) => Ok(parse_monitor_line(s)),
-        redis::Value::BulkString(bytes) => {
-            let s = String::from_utf8_lossy(bytes).to_string();
-            Ok(parse_monitor_line(&s))
-        }
-        redis::Value::VerbatimString { text, .. } => Ok(parse_monitor_line(text)),
-        redis::Value::Okay => Ok(None),
-        _ => Ok(None),
-    }
-}
 
 /// Parse a MONITOR output line into a MonitorEvent.
 ///

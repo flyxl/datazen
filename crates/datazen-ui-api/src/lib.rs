@@ -150,6 +150,7 @@ mod kv_ai_context;
 mod locale_sync;
 mod kv_slot_state;
 mod kv_workspace;
+pub mod native_kv;
 mod load_batch_export_table;
 mod main_window_context_menu;
 mod metadata;
@@ -1791,6 +1792,20 @@ pub trait DesktopAdapter {
     /// its `ConnectionConfig` and persists it through the connection use
     /// case — the password lands sealed (T10). The default answers the
     /// fixed error; the UI falls back to the memory port.
+    /// Probe a Redis draft without persisting it or changing the live connection.
+    fn begin_redis_probe(
+        &mut self,
+        _epoch: u64,
+        _draft: &ConnectionDraft,
+        _options: &native_kv::RedisConnectionOptions,
+    ) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn save_redis_connection(&mut self, _draft: &ConnectionDraft, _options: &native_kv::RedisConnectionOptions) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     fn save_connection(&mut self, _draft: &ConnectionDraft) -> Result<(), String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
@@ -1955,6 +1970,8 @@ pub trait DesktopAdapter {
 /// deliveries whose generation the state has moved past (plan invariant 3).
 #[derive(Clone, Debug, PartialEq)]
 pub enum AdapterJob {
+    ReadKv(native_kv::KvRead),
+    CloseKv { connection_id: String, session_generation: u32 },
     /// Open a connection in the host and read its catalog (N3): the live
     /// driver's databases, schemas and tables. The memory port's instant
     /// connect stays the declined path.
@@ -2022,6 +2039,8 @@ pub enum AdapterJob {
 /// matches it against the live one before writing any state.
 #[derive(Clone, Debug, PartialEq)]
 pub enum AdapterDelivery {
+    RedisProbed { epoch: u64, result: Result<(), String> },
+    KvRead { request: native_kv::KvRead, result: Result<native_kv::KvReply, String> },
     /// An open job's catalog (or its failure sentence). The connection id
     /// rides along so the UI can name the live session — the refresh path
     /// re-opens it.

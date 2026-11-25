@@ -412,6 +412,7 @@ impl RedisDriver {
         Ok(crate::ops::value_search::abort_task(&session, requested).await)
     }
 
+    plugin_on_db!(plugin_guarded_edit, (key: &str, edit: crate::ops::guarded_edit::Edit<'_>) -> bool, |conn| crate::ops::guarded_edit::edit(conn, key, edit));
     plugin_on_db!(plugin_set_string, (key: &str, value: &str, keep_ttl: Option<bool>) -> crate::ops::write::SetStringOutcome, |conn| crate::ops::write::set_string_with_ttl_policy(conn, key, value.as_bytes(), keep_ttl));
     plugin_on_db!(plugin_set_string_bytes, (key: &str, bytes: &[u8], keep_ttl: Option<bool>) -> crate::ops::write::SetStringOutcome, |conn| crate::ops::write::set_string_with_ttl_policy(conn, key, bytes, keep_ttl));
     plugin_on_db!(plugin_set_expire_at, (key: &str, expire_at: i64) -> (), |conn| crate::ops::set_expire_at(conn, key, expire_at));

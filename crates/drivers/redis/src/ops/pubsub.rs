@@ -245,56 +245,43 @@ pub async fn start_subscription(
         return Err("at least one channel or pattern is required".into());
     }
 
+    // A successful reply means Redis has acknowledged all subscriptions.
+    let pubsub = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        open_subscriptions(&plan, &channels, &patterns),
+    )
+    .await
+    .map_err(|_| "Redis subscription timed out".to_string())??;
     let subscription_id = uuid::Uuid::new_v4().to_string();
     let sub_id_for_task = subscription_id.clone();
     let conn_id_for_task = connection_id.clone();
     let sub_id_log = sub_id_for_task.clone();
 
-    let channels_for_loop = channels.clone();
-    let patterns_for_loop = patterns.clone();
     let pool_id_for_stats = pool_id.clone();
+    // Lock before spawning so an immediate stream disconnect cannot remove an
+    // entry before it has been registered.
+    let mut reg = registry().lock().await;
     let handle = tokio::spawn(async move {
-        let result = run_subscribe_loop(
-            &plan,
-            &channels_for_loop,
-            &patterns_for_loop,
-            move |channel, payload| {
-                // Increment per-session stats
-                {
-                    // Stats are updated synchronously via blocking task
-                    let channel_clone = channel.clone();
-                    let pool_clone = pool_id_for_stats.clone();
-                    tokio::spawn(async move {
-                        let mut reg = registry().lock().await;
-                        let entry = reg
-                            .stats
-                            .entry(pool_clone)
-                            .or_insert_with(|| (0, HashMap::new()));
-                        entry.0 += 1;
-                        *entry.1.entry(channel_clone).or_insert(0) += 1;
-                    });
-                }
-                emit_pubsub_message(RedisPubSubMessageEvent {
-                    connection_id: conn_id_for_task.clone(),
-                    subscription_id: sub_id_for_task.clone(),
-                    channel,
-                    payload,
-                    ts: now_millis(),
-                });
-            },
-        )
-        .await;
-        if let Err(e) = result {
-            tracing::warn!(
-                subscription_id = %sub_id_log,
-                error = %e,
-                "redis pubsub subscription ended with error"
-            );
+        let mut stream = pubsub.into_on_message();
+        while let Some(msg) = stream.next().await {
+            let channel = msg.get_channel_name().to_string();
+            {
+                let mut reg = registry().lock().await;
+                let entry = reg.stats.entry(pool_id_for_stats.clone()).or_default();
+                entry.0 += 1;
+                *entry.1.entry(channel.clone()).or_insert(0) += 1;
+            }
+            emit_pubsub_message(RedisPubSubMessageEvent {
+                connection_id: conn_id_for_task.clone(),
+                subscription_id: sub_id_for_task.clone(),
+                channel,
+                payload: message_payload(&msg),
+                ts: now_millis(),
+            });
         }
         remove_subscription(&sub_id_log).await;
     });
 
-    let mut reg = registry().lock().await;
     reg.subs.insert(
         subscription_id.clone(),
         SubscriptionEntry {
@@ -342,15 +329,11 @@ pub async fn pubsub_stats(pool_id: &str) -> PubSubStats {
     }
 }
 
-async fn run_subscribe_loop<F>(
+async fn open_subscriptions(
     plan: &ConnectionPlan,
     channels: &[String],
     patterns: &[String],
-    mut on_message: F,
-) -> Result<(), String>
-where
-    F: FnMut(String, String) + Send,
-{
+) -> Result<redis::aio::PubSub, String> {
     let mut pubsub = open_pubsub_connection(plan)
         .await
         .map_err(|e| e.to_string())?;
@@ -368,14 +351,7 @@ where
             .map_err(|e| format!("PSUBSCRIBE {pat}: {e}"))?;
     }
 
-    let mut stream = pubsub.on_message();
-    while let Some(msg) = stream.next().await {
-        let channel = msg.get_channel_name().to_string();
-        let payload = message_payload(&msg);
-        on_message(channel, payload);
-    }
-
-    Ok(())
+    Ok(pubsub)
 }
 
 #[cfg(test)]
