@@ -90,6 +90,17 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     (output / "summary.json").unlink(missing_ok=True)
+    # Long runs must keep using the fixtures that accompanied the executable,
+    # even when a developer edits the working tree during earlier journeys.
+    scripts = output / "replay-scripts"
+    scripts.mkdir(exist_ok=True)
+    fingerprints = {}
+    for source in sorted(HERE.glob("rune_*.py")):
+        fixture = source.read_bytes()
+        (scripts / source.name).write_bytes(fixture)
+        fingerprints[source.name] = hashlib.sha256(fixture).hexdigest()
+    (output / "fixtures.sha256.json").write_text(
+        json.dumps(fingerprints, indent=2) + "\n", encoding="utf-8")
     target = args.target_dir.resolve()
     binary = target / "debug" / ("datazen-native.exe" if os.name == "nt" else "datazen-native")
     profdata, cov = llvm_tools()
@@ -129,16 +140,16 @@ def main():
             suite_profiles.mkdir(parents=True)
             suite_env = {**env, "LLVM_PROFILE_FILE": str(suite_profiles / "%p-%m.profraw")}
             if suite == "driver-contract":
-                argv = [sys.executable, str(HERE / "rune_driver_check.py"), str(binary), "--native-harness",
+                argv = [sys.executable, str(scripts / "rune_driver_check.py"), str(binary), "--native-harness",
                         "--server", args.json_server or args.server, "--cli", args.cli, "--test-json", "--test-topology"]
                 if args.redis_json_module:
                     argv.extend(["--redis-json-module", str(args.redis_json_module.resolve())])
             elif suite == "standalone":
-                argv = [sys.executable, str(HERE / "rune_standalone.py"), str(binary),
+                argv = [sys.executable, str(scripts / "rune_standalone.py"), str(binary),
                         "--redis-server", args.server, "--redis-cli", args.cli]
             else:
                 server = args.json_server if suite == "redis-json" and args.json_server else args.server
-                argv = [sys.executable, str(HERE / "rune_tools.py"), str(binary), "--only", suite,
+                argv = [sys.executable, str(scripts / "rune_tools.py"), str(binary), "--only", suite,
                         "--server", server, "--cli", args.cli]
                 if suite == "redis-json" and args.redis_json_module:
                     argv.extend(["--redis-json-module", str(args.redis_json_module.resolve())])
