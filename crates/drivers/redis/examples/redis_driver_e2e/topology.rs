@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver, Value};
+use datazen_driver_api::{ConnectionConfig, DatabaseDriver, SslMode, Value};
 use serde_json::json;
 
 use super::Journey;
@@ -182,6 +182,7 @@ pub async fn run(
     .as_object()
     .cloned();
     inspect(driver, &routed, master_port, "sentinel", proof).await;
+    plaintext_negotiation(driver, &routed, master_port, "sentinel").await;
 
     let mut routed = base.clone();
     routed.port = Some(cluster);
@@ -189,4 +190,150 @@ pub async fn run(
         .as_object()
         .cloned();
     inspect(driver, &routed, cluster, "cluster", proof).await;
+    plaintext_negotiation(driver, &routed, cluster, "cluster").await;
+    metadata_acl(driver, &routed, cluster, proof).await;
+}
+
+async fn plaintext_negotiation(
+    driver: &dyn DatabaseDriver,
+    config: &ConnectionConfig,
+    port: u16,
+    topology: &str,
+) {
+    let mut config = config.clone();
+    config.connection_timeout = 2;
+    config.ssl_mode = SslMode::Require;
+    assert!(
+        driver.test_connection(&config).await.is_err(),
+        "{topology}: TLS Require reached a plaintext fixture"
+    );
+    config.ssl_mode = SslMode::Prefer;
+    let handle = driver
+        .connect(&config)
+        .await
+        .unwrap_or_else(|error| panic!("{topology} TLS preference fallback: {error}"));
+    let client = redis::Client::open(format!("redis://127.0.0.1:{port}/0")).unwrap();
+    let mut j = Journey {
+        driver,
+        handle: &handle,
+        oracle: client.get_multiplexed_async_connection().await.unwrap(),
+    };
+    assert!(j
+        .command("info", json!({"section":"server"}))
+        .await
+        .is_string());
+    let channel = format!("contract:prefer:{topology}");
+    let sub = j
+        .command("pubsub_subscribe", json!({"channels":[channel]}))
+        .await;
+    assert_eq!(j.read::<u64>("PUBLISH", &[&channel, "negotiated"]).await, 1);
+    tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            let stats = j.command("pubsub_stats", json!({})).await;
+            if stats["byChannel"][&channel] == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("{topology}: subscriber did not receive the real event"));
+    j.command("pubsub_unsubscribe", json!({"subscriptionId":sub}))
+        .await;
+    driver.disconnect(handle).await.unwrap();
+}
+
+async fn metadata_acl(
+    driver: &dyn DatabaseDriver,
+    config: &ConnectionConfig,
+    port: u16,
+    proof: &str,
+) {
+    let client = redis::Client::open(format!("redis://127.0.0.1:{port}/0")).unwrap();
+    let mut oracle = client.get_multiplexed_async_connection().await.unwrap();
+    let witness: String = redis::cmd("GET")
+        .arg("contract:fixture")
+        .query_async(&mut oracle)
+        .await
+        .unwrap();
+    assert_eq!(witness, proof);
+    let user = "native-metadata";
+    let password = format!(">{proof}");
+    let created: String = redis::cmd("ACL")
+        .arg(&[
+            "SETUSER",
+            user,
+            "on",
+            &password,
+            "~contract:*",
+            "+@all",
+            "-memory",
+            "-pttl",
+            "-object",
+            "-exists",
+        ])
+        .query_async(&mut oracle)
+        .await
+        .unwrap();
+    assert_eq!(created, "OK");
+    let mut config = config.clone();
+    config.username = Some(user.into());
+    config.password = Some(proof.into());
+    let handle = driver.connect(&config).await.unwrap();
+    let mut j = Journey {
+        driver,
+        handle: &handle,
+        oracle,
+    };
+
+    let key = "contract:topology";
+    let probe = j.command("key_probe", json!({"key":key})).await;
+    assert_eq!(
+        probe,
+        json!({"exists":true,"type":"string","ttlMs":-1,"memoryBytes":null})
+    );
+    let missing = j
+        .command("key_probe", json!({"key":"contract:metadata-absent"}))
+        .await;
+    assert_eq!(
+        missing,
+        json!({"exists":false,"type":null,"ttlMs":-2,"memoryBytes":null})
+    );
+    let children = j
+        .command(
+            "list_children",
+            json!({"prefix":"contract:topology","withMemory":true}),
+        )
+        .await;
+    assert_eq!(children["children"][0]["key"], key);
+    assert_eq!(children["children"][0]["logicalLen"], "cluster".len());
+    assert!(children["children"][0]["memBytes"].is_null());
+    let sample = j.command("memory_sample", json!({"limit":1})).await;
+    assert_eq!(sample["samples"].as_array().unwrap().len(), 1);
+    assert_eq!(sample["samples"][0]["bytes"], 0);
+    assert!(sample["samples"][0]["ttlMs"].is_null());
+    assert_eq!(sample["truncated"], true);
+
+    assert_eq!(
+        j.read::<String>("ACL", &["SETUSER", user, "+exists", "-type"])
+            .await,
+        "OK"
+    );
+    let probe = j.command("key_probe", json!({"key":key})).await;
+    assert_eq!(probe["exists"], true);
+    assert!(probe["type"].is_null());
+    assert_eq!(
+        j.read::<String>("ACL", &["SETUSER", user, "-exists"]).await,
+        "OK"
+    );
+    let error = driver
+        .execute_command(&handle, "key_probe", json!({"key":key}))
+        .await
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("redis_key_probe_unreadable"),
+        "{error}"
+    );
+    assert_eq!(j.read::<u64>("ACL", &["DELUSER", user]).await, 1);
+    driver.disconnect(handle).await.unwrap();
 }
