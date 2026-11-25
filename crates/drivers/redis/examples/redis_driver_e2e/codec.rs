@@ -96,6 +96,17 @@ pub async fn run(journey: &mut Journey<'_>) {
         let parsed: Value = serde_json::from_str(result["json"].as_str().unwrap()).unwrap();
         assert_eq!(parsed, expected, "{codec}");
     }
+    let fixtures: Vec<Value> =
+        serde_json::from_slice(&std::fs::read("pickle-fixtures.json").unwrap()).unwrap();
+    assert!(!fixtures.is_empty());
+    for (i, case) in fixtures.into_iter().enumerate() {
+        let bytes = STANDARD.decode(case["data"].as_str().unwrap()).unwrap();
+        let decoded = round_trip(journey, "pickle", &bytes).await;
+        assert_eq!(decoded["ok"], true, "pickle fixture {i}: {decoded}");
+        let value: Value = serde_json::from_str(decoded["json"].as_str().unwrap()).unwrap();
+        assert_eq!(value, case["expected"], "pickle fixture {i}");
+    }
+
     for (codec, stored) in [
         ("gzip", b"plain text".as_slice()),
         ("msgpack", b"not MessagePack".as_slice()),

@@ -23,6 +23,8 @@ const OP_POP_MARK: u8 = b'1';
 const OP_DUP: u8 = b'2';
 // Memo (read/write, harmless for data)
 const OP_GET: u8 = b'g';
+const OP_BINGET: u8 = b'h';
+const OP_MEMOIZE: u8 = 0x94;
 const OP_BINPUT: u8 = b'q';
 const OP_LONG_BINPUT: u8 = b'r';
 const OP_LONG_BGET: u8 = b'j';
@@ -62,9 +64,9 @@ const OP_GLOBAL: u8 = b'c';
 const OP_STACK_GLOBAL: u8 = 0x93;
 const OP_REDUCE: u8 = b'R';
 const OP_INST: u8 = b'i';
-const OP_OBJ: u8 = 0xef;
+const OP_OBJ: u8 = b'o';
 const OP_NEWOBJ: u8 = 0x81;
-const OP_NEWOBJ_EX: u8 = 0xc2;
+const OP_NEWOBJ_EX: u8 = 0x92;
 const OP_BUILD: u8 = b'b';
 const OP_PERSID: u8 = b'P';
 const OP_BINPERSID: u8 = b'Q';
@@ -209,18 +211,26 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
             OP_BINPUT => {
                 let id = r.byte()? as usize;
                 let v = top_value_ref(&stack)?;
-                memo_set(&mut memo, id, v);
+                memo_set(&mut memo, id, v)?;
             }
             OP_LONG_BINPUT => {
                 let id = r.le_u32()? as usize;
                 let v = top_value_ref(&stack)?;
-                memo_set(&mut memo, id, v);
+                memo_set(&mut memo, id, v)?;
             }
-            OP_GET | OP_LONG_BGET => {
-                let id = if op == OP_GET {
-                    r.byte()? as usize
-                } else {
-                    r.le_u32()? as usize
+            OP_MEMOIZE => {
+                let id = memo.len();
+                let value = top_value_ref(&stack)?;
+                memo_set(&mut memo, id, value)?;
+            }
+            OP_GET | OP_BINGET | OP_LONG_BGET => {
+                let id = match op {
+                    OP_GET => std::str::from_utf8(r.until_newline()?)
+                        .map_err(|_| "invalid pickle memo index")?
+                        .parse::<usize>()
+                        .map_err(|_| "invalid pickle memo index")?,
+                    OP_BINGET => r.byte()? as usize,
+                    _ => r.le_u32()? as usize,
                 };
                 let v = memo
                     .get(id)
@@ -324,11 +334,15 @@ fn pop_to_mark(stack: &mut Vec<StackItem>) -> Result<Vec<JsonValue>, String> {
     }
 }
 
-fn memo_set(memo: &mut Vec<Option<JsonValue>>, id: usize, value: JsonValue) {
+fn memo_set(memo: &mut Vec<Option<JsonValue>>, id: usize, value: JsonValue) -> Result<(), String> {
+    if id >= MAX_MEMBERS {
+        return Err("pickle memo index exceeds limit".into());
+    }
     if id >= memo.len() {
         memo.resize(id + 1, None);
     }
     memo[id] = Some(value);
+    Ok(())
 }
 
 fn append_to_list(stack: &mut Vec<StackItem>, items: Vec<JsonValue>) -> Result<(), String> {
