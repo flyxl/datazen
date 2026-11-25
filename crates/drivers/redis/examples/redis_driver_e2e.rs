@@ -2,6 +2,8 @@
 
 #[path = "redis_driver_e2e/codec.rs"]
 mod codec;
+#[path = "redis_driver_e2e/extra.rs"]
+mod extra;
 #[path = "redis_driver_e2e/resource.rs"]
 mod resource;
 
@@ -293,7 +295,9 @@ async fn main() {
         .parse()
         .expect("integer port");
     let proof = args.next().expect("disposable fixture nonce");
+    let json = args.next();
     assert!(args.next().is_none() && !proof.is_empty());
+    assert!(json.as_deref().is_none_or(|arg| arg == "json"));
     let redis = redis::Client::open(format!("redis://127.0.0.1:{port}/0")).unwrap();
     let mut oracle = redis.get_multiplexed_async_connection().await.unwrap();
     let observed: Option<String> = redis::cmd("GET")
@@ -330,6 +334,10 @@ async fn main() {
     suite.aggregates().await;
     suite.observe().await;
     suite.stream().await;
+    extra::archive_and_metadata(&mut suite).await;
+    if json.is_some() {
+        extra::json_document(&mut suite).await;
+    }
     codec::run(&mut suite).await;
     driver.disconnect(handle).await.unwrap();
     resource::run(provider.as_ref(), &cfg, port).await;

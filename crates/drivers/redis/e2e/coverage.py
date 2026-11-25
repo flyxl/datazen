@@ -115,7 +115,9 @@ def main():
             snapshots = output / "trees" / suite
             if suite == "driver-contract":
                 argv = [sys.executable, str(HERE / "rune_driver_check.py"), str(driver_binary),
-                        "--server", args.server, "--cli", args.cli]
+                        "--server", args.json_server or args.server, "--cli", args.cli, "--test-json"]
+                if args.redis_json_module:
+                    argv.extend(["--redis-json-module", str(args.redis_json_module.resolve())])
             elif suite == "standalone":
                 argv = [sys.executable, str(HERE / "rune_standalone.py"), str(binary),
                         "--redis-server", args.server, "--redis-cli", args.cli]
