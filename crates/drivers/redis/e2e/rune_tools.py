@@ -630,7 +630,13 @@ def tls(lab):
     lab.store(cluster, options={"topology": "cluster", "tls": {"enabled": True, "caPath": str(ca)}})
     tree = lab.replay("tls-cluster-native", [*OPEN, tap(4.5, "native-kv-key-0")], 6.5)
     assert element(tree, "native-kv-value")["text"] == "verified-cluster-tls"
-    print("PASS: native Redis Cluster TLS uses the configured CA")
+    monitored = lab.replay("tls-cluster-monitor", [
+        *TOOLS, tap(4.2, "native-kv-monitor-start"),
+        *enter(6, "native-kv-console-input", "GET tls-cluster-key"),
+        tap(7.5, "native-kv-console-run"), tap(9.5, "native-kv-monitor-read"),
+    ], 11)
+    assert "tls-cluster-key" in output(monitored), output(monitored)
+    print("PASS: native Redis Cluster TLS uses the configured CA for reads and MONITOR")
 
 
 

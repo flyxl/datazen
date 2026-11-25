@@ -266,6 +266,29 @@ async fn plaintext_negotiation(
     .unwrap_or_else(|_| panic!("{topology}: subscriber did not receive the real event"));
     j.command("pubsub_unsubscribe", json!({"subscriptionId":sub}))
         .await;
+    let monitor = j.command("monitor_start", json!({})).await;
+    let id = monitor["monitorId"].as_str().unwrap();
+    let marker = format!("contract:monitor:prefer:{topology}");
+    let _: Option<String> = j.read("GET", &[&marker]).await;
+    tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            let events = j
+                .command("monitor_get_buffer", json!({"monitorId":id}))
+                .await;
+            if events["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|event| event["args"][0] == marker)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("MONITOR must reconnect using the same negotiated transport");
+    j.command("monitor_stop", json!({"monitorId":id})).await;
     driver.disconnect(handle).await.unwrap();
 }
 
@@ -369,6 +392,15 @@ async fn metadata_acl(
     let probe = j.command("key_probe", json!({"key":key})).await;
     assert_eq!(probe["exists"], true);
     assert!(probe["type"].is_null());
+    let details = j.command("key_object_info", json!({"key":key})).await;
+    assert_eq!(details["missing"], false);
+    assert_eq!(details["ttlMs"], -1);
+    assert!(details["type"].is_null());
+    let distribution = j
+        .command("type_distribution", json!({"sampleLimit":1}))
+        .await;
+    assert_eq!(distribution["sampled"], 0);
+    assert_eq!(distribution["truncated"], true);
     assert_eq!(
         j.read::<String>("ACL", &["SETUSER", user, "-exists"]).await,
         "OK"

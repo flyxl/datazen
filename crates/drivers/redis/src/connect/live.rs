@@ -273,32 +273,84 @@ mod tests {
     }
 }
 
-
-/// A dedicated streaming connection; use the topology's authenticated target
-/// and never issue commands on this connection once MONITOR starts.
+/// Open a dedicated MONITOR stream through the same credentials, certificate
+/// material and TLS preference policy as ordinary Redis traffic.
 #[allow(deprecated)]
-pub(crate) async fn open_monitor_connection(plan: &ConnectionPlan) -> Result<redis::aio::Monitor, DriverError> {
-    use redis::IntoConnectionInfo;
+pub(crate) async fn open_monitor_connection(
+    plan: &ConnectionPlan,
+) -> Result<redis::aio::Monitor, DriverError> {
+    use super::client::{open_standalone_client, sentinel_node_info};
     use super::parse::connect_with_timeout;
-    let (client, timeout) = match plan {
-        ConnectionPlan::Standalone(plan) => {
-            let mut info = plan.url.as_str().into_connection_info().map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-            info.redis.username = plan.username.clone();
-            info.redis.password = plan.password.clone();
-            (redis::Client::open(info).map_err(|e| DriverError::ConnectionFailed(e.to_string()))?, plan.connect_timeout)
+
+    async fn direct(
+        url: &str,
+        tls: &TlsPlan,
+        user: Option<&str>,
+        password: Option<&str>,
+        timeout: Duration,
+    ) -> Result<redis::aio::Monitor, DriverError> {
+        let tls_timeout = if tls.prefer_fallback {
+            timeout.min(PREFER_TLS_PROBE)
+        } else {
+            timeout
+        };
+        let client = open_standalone_client(url, tls, user, password)?;
+        match connect_with_timeout(tls_timeout, client.get_async_monitor()).await {
+            Err(DriverError::ConnectionFailed(_)) if tls.prefer_fallback => {
+                let plain = open_standalone_client(
+                    &plaintext_url(url),
+                    &TlsPlan::plaintext(),
+                    user,
+                    password,
+                )?;
+                connect_with_timeout(timeout, plain.get_async_monitor()).await
+            }
+            result => result,
         }
-        ConnectionPlan::Cluster(plan) => {
-            let node = plan.node_urls.first().ok_or_else(|| DriverError::InvalidConfig("no Redis cluster seed".into()))?;
-            (redis::Client::open(node.as_str()).map_err(|e| DriverError::ConnectionFailed(e.to_string()))?, plan.connect_timeout)
+    }
+
+    async fn sentinel(plan: &SentinelPlan) -> Result<redis::aio::Monitor, DriverError> {
+        let mut sentinel = redis::sentinel::Sentinel::build(plan.sentinel_urls.clone())
+            .map_err(|error| DriverError::ConnectionFailed(error.to_string()))?;
+        let node = sentinel_node_info(plan);
+        let client = connect_with_timeout(
+            plan.connect_timeout,
+            sentinel.async_master_for(&plan.master_name, Some(&node)),
+        )
+        .await?;
+        connect_with_timeout(plan.connect_timeout, client.get_async_monitor()).await
+    }
+
+    match plan {
+        ConnectionPlan::Standalone(p) => {
+            direct(
+                &p.url,
+                &p.tls,
+                p.username.as_deref(),
+                p.password.as_deref(),
+                p.connect_timeout,
+            )
+            .await
         }
-        ConnectionPlan::Sentinel(plan) => {
-            let mut sentinel = redis::sentinel::Sentinel::build(plan.sentinel_urls.clone())
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-            let node = super::client::sentinel_node_info(plan);
-            let client = connect_with_timeout(plan.connect_timeout,
-                sentinel.async_master_for(&plan.master_name, Some(&node))).await?;
-            (client, plan.connect_timeout)
+        ConnectionPlan::Cluster(p) => {
+            let seed = p
+                .node_urls
+                .first()
+                .ok_or_else(|| DriverError::InvalidConfig("no Redis cluster seed".into()))?;
+            direct(
+                seed,
+                &p.tls,
+                p.username.as_deref(),
+                p.password.as_deref(),
+                p.connect_timeout,
+            )
+            .await
         }
-    };
-    connect_with_timeout(timeout, client.get_async_monitor()).await
+        ConnectionPlan::Sentinel(p) => match sentinel(p).await {
+            Err(DriverError::ConnectionFailed(_)) if p.tls.prefer_fallback => {
+                sentinel(&plaintext_sentinel_plan(p)).await
+            }
+            result => result,
+        },
+    }
 }
