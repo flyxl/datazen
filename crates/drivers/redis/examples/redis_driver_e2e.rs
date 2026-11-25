@@ -1,5 +1,10 @@
 //! Real-server driver journeys. Run via the E2E fixture, never against a user DB.
 
+#[path = "redis_driver_e2e/codec.rs"]
+mod codec;
+#[path = "redis_driver_e2e/resource.rs"]
+mod resource;
+
 use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DatabaseDriver};
 use datazen_driver_redis::factories;
 use serde_json::{json, Value};
@@ -97,7 +102,9 @@ impl Journey<'_> {
         let response = self.command("get_key_raw", json!({"key":key})).await;
         assert_eq!(response["keyType"], "string");
         assert_eq!(response["rawB64"], "AP8HAA==");
-        let plain = self.command("get_key", json!({"key":"contract:catalog"})).await;
+        let plain = self
+            .command("get_key", json!({"key":"contract:catalog"}))
+            .await;
         assert!(plain.is_object());
         self.command("set_ttl", json!({"key":key,"ttlSeconds":80}))
             .await;
@@ -306,7 +313,9 @@ async fn main() {
     .unwrap();
     let factory = factories()[0];
     assert_eq!(factory.driver_id(), "redis");
-    assert!(factory.resource_provider().is_some());
+    let provider = factory
+        .resource_provider()
+        .expect("registered Redis resource provider");
     let driver = factory.create();
     let server = driver.test_connection(&cfg).await.unwrap();
     assert!(!server.server_version.is_empty());
@@ -321,8 +330,10 @@ async fn main() {
     suite.aggregates().await;
     suite.observe().await;
     suite.stream().await;
+    codec::run(&mut suite).await;
     driver.disconnect(handle).await.unwrap();
+    resource::run(provider.as_ref(), &cfg, port).await;
     println!(
-        "PASS: real Redis driver catalog, exact/binary keys, aggregates, observations and Streams"
+        "PASS: real Redis driver catalog, exact/binary keys, aggregates, observations, Streams, real resource sessions and stored-value decoding"
     );
 }
