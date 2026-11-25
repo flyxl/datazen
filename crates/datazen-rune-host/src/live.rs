@@ -71,6 +71,9 @@ pub(crate) fn host_registry() -> DriverRegistry {
 
 #[path = "native_kv.rs"]
 mod native_kv;
+#[path = "live_table_targets.rs"]
+mod live_table_targets;
+use live_table_targets::LiveTableTargets;
 
 /// A job on the worker's channel, with the generation the UI expects back.
 enum HostJob {
@@ -149,6 +152,7 @@ struct LiveSession {
     driver: Option<Arc<dyn DatabaseDriver>>,
     handle: Option<ConnectionHandle>,
     database: Option<String>,
+    table_targets: LiveTableTargets,
     /// The connection id the session was opened for (N4's read context).
     connection: Option<String>,
     /// The connection's read-only flag, as opened (N6's commit facts).
@@ -627,6 +631,7 @@ impl LiveAdapter {
                     .map_err(|error| error.to_string())?,
             ),
             database: source_config.database.clone(),
+            table_targets: Default::default(),
             connection: Some(source_connection.to_owned()),
             read_only: source_config.read_only,
         }));
@@ -889,6 +894,7 @@ async fn open_connection(
             driver: Some(driver),
             handle: Some(handle),
             database: Some(format!("db{db}")),
+            table_targets: Default::default(),
             connection: Some(id.to_owned()),
             read_only: config.read_only,
         }).await?;
@@ -899,11 +905,15 @@ async fn open_connection(
     let databases = driver.get_databases(&handle).await.map_err(|error| error.to_string())?;
 
     let mut nodes = Vec::new();
+    let mut table_targets = LiveTableTargets::default();
     for database in &databases {
         let tables = driver
             .get_tables(&handle, database, None)
             .await
             .map_err(|error| error.to_string())?;
+        for table in &tables {
+            table_targets.remember(database, table);
+        }
         let mut schemas: Vec<String> = driver
             .get_schemas(&handle, database)
             .await
@@ -925,6 +935,7 @@ async fn open_connection(
             .map(|schema| {
                 let tables_of: Vec<String> = tables
                     .iter()
+                    .filter(|table| !table.name.is_empty())
                     .filter(|table| match &table.schema {
                         Some(name) => *name == schema,
                         // A schema-less driver: every table sits under the
@@ -948,7 +959,9 @@ async fn open_connection(
         kv_state: Default::default(),
         driver: Some(driver),
         handle: Some(handle),
-        database: databases.first().cloned(),
+        database: config.database.filter(|name| databases.contains(name))
+            .or_else(|| databases.first().cloned()),
+        table_targets,
         connection: Some(id.to_owned()),
         read_only: config.read_only,
     }).await?;
@@ -1089,7 +1102,7 @@ async fn read_table(
     sort: Option<ColumnSort>,
     filter: Option<ColumnFilter>,
 ) -> Result<TablePage, String> {
-    let (driver, handle, database, connection) = {
+    let (driver, handle, target, connection, read_only) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
             return Err("the live session is not open".into());
@@ -1097,8 +1110,9 @@ async fn read_table(
         (
             session.driver.clone().expect("checked"),
             session.handle.clone().expect("checked"),
-            session.database.clone(),
+            session.table_targets.resolve(table)?,
             session.connection.clone().unwrap_or_default(),
+            session.read_only,
         )
     };
     let driver_type = driver.driver_type();
@@ -1108,9 +1122,9 @@ async fn read_table(
         target: ExecutionTarget::new(
             ConnectionId::new(connection),
             datazen::connection::domain::NamespaceTarget::new(
-                database.clone(),
+                Some(target.database.clone()),
                 None,
-                None,
+                target.schema.clone(),
                 Vec::new(),
             ),
         ),
@@ -1136,8 +1150,8 @@ async fn read_table(
             connection_id: binding.target.connection_id.to_string(),
             db_session_id: "datazen-native".into(),
             driver_type,
-            database: database.clone(),
-            schema: None,
+            database: Some(target.database.clone()),
+            schema: target.schema.clone(),
             table: table.to_owned(),
         },
         page,
@@ -1158,9 +1172,8 @@ async fn read_table(
         .map_err(|error| error.to_string())?;
     // N10: warm the structure cache — one schema read beside the page read,
     // both local-file speed, so the structure pages answer from memory.
-    let schema_database = database.clone().unwrap_or_else(|| "main".into());
     if let Ok(schema) = driver
-        .get_table_schema(&handle, table, &schema_database, None)
+        .get_table_schema(&handle, table, &target.database, target.schema.as_deref())
         .await
     {
         schemas
@@ -1193,7 +1206,7 @@ async fn read_table(
         sort,
         filter,
         primary_key,
-        read_only: None,
+        read_only: read_only.then(|| "Connection is read only.".to_owned()),
     })
 }
 
@@ -1210,7 +1223,7 @@ async fn read_structure(
     schemas: &Arc<Mutex<std::collections::HashMap<String, datazen_driver_api::TableSchema>>>,
     table: &str,
 ) -> Result<TableStructure, String> {
-    let (driver, handle, database) = {
+    let (driver, handle, target) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
             return Err("the live session is not open".into());
@@ -1218,10 +1231,9 @@ async fn read_structure(
         (
             session.driver.clone().expect("checked"),
             session.handle.clone().expect("checked"),
-            session.database.clone(),
+            session.table_targets.resolve(table)?,
         )
     };
-    let schema_database = database.clone().unwrap_or_else(|| "main".into());
     // The schema: the shared cache first, the driver on a miss — the same
     // miss path `read_table` warms beside every page read. The guard drops
     // before the match: the miss arm takes the lock again to insert.
@@ -1230,7 +1242,7 @@ async fn read_structure(
         Some(schema) => schema,
         None => {
             let schema = driver
-                .get_table_schema(&handle, table, &schema_database, None)
+                .get_table_schema(&handle, table, &target.database, target.schema.as_deref())
                 .await
                 .map_err(|error| error.to_string())?;
             if schema.columns.is_empty() {
@@ -1253,7 +1265,8 @@ async fn read_structure(
             serde_json::json!({
                 "kind": "table",
                 "name": table,
-                "database": schema_database,
+                "database": target.database,
+                "schema": target.schema,
             }),
         )
         .await
@@ -1511,7 +1524,7 @@ async fn commit_edits(
     session: &Arc<Mutex<LiveSession>>,
     batch: datazen_ui_api::CellEditBatch,
 ) -> Result<u32, String> {
-    let (driver, connection, database, read_only) = {
+    let (driver, connection, target, read_only) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
             return Err("the live session is not open".into());
@@ -1519,7 +1532,7 @@ async fn commit_edits(
         (
             session.driver.clone().expect("checked"),
             session.connection.clone().unwrap_or_default(),
-            session.database.clone(),
+            session.table_targets.resolve(&batch.table)?,
             session.read_only,
         )
     };
@@ -1529,15 +1542,15 @@ async fn commit_edits(
         connection_id: connection.clone(),
         db_session_id: "datazen-native".into(),
         driver_type,
-        database,
-        schema: None,
+        database: Some(target.database),
+        schema: target.schema,
         table: batch.table.clone(),
     };
     let facts = ConnectionFacts {
         database_type: driver.driver_type(),
         read_only,
         database: context.database.clone(),
-        schema: None,
+        schema: context.schema.clone(),
         config_revision: profiles.revision_of(&connection),
     };
     let columns = SessionColumns { session: Arc::clone(session) };

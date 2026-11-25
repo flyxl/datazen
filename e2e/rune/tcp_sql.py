@@ -57,10 +57,17 @@ class DisposableSql:
 class TcpSqlJourneys:
     def run_server_journey(self, engine, config):
         database = DisposableSql(engine, config)
-        table = f"aaa_rune_e2e_{uuid.uuid4().hex[:12]}"
-        database.query(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY, label VARCHAR(80) NOT NULL);")
-        self.addCleanup(database.query, f"DROP TABLE {table};")
-        database.query(f"INSERT INTO {table} VALUES (1, 'server-before'), (2, 'server-control');")
+        tag = uuid.uuid4().hex[:12]
+        table = f"aaa_rune_e2e_{tag}"
+        relation = table
+        if engine == "postgresql":
+            schema = f"aaa_rune_e2e_{tag}"
+            database.query(f"CREATE SCHEMA {schema};")
+            self.addCleanup(database.query, f"DROP SCHEMA {schema};")
+            relation = f"{schema}.{table}"
+        database.query(f"CREATE TABLE {relation} (id INTEGER PRIMARY KEY, label VARCHAR(80) NOT NULL);")
+        self.addCleanup(database.query, f"DROP TABLE {relation};")
+        database.query(f"INSERT INTO {relation} VALUES (1, 'server-before'), (2, 'server-control');")
         database.write_profile(self.store)
         browse = [tap(.5, "conn-open-e2e-tcp-sql"), tap(4, f"tree-table-{table}")]
         catalog = self.replay(browse, until=6)
@@ -68,8 +75,12 @@ class TcpSqlJourneys:
         self.expect_rendered(catalog, text="server-before", within="cell-0-1")
         self.expect_rendered(catalog, text="server-control", within="cell-1-1")
 
-        sql = f"SELECT label FROM {table} WHERE id=2;"
-        result = self.replay(query_steps(sql, "e2e-tcp-sql"), until=11.5)
+        sql = f"SELECT label FROM {relation} WHERE id=2;"
+        # Use a paste event instead of racing the typing timer for qualified
+        # names. The real SQL editor handles it like interactive clipboard input.
+        actions = query_steps(sql, "e2e-tcp-sql")
+        actions[-2] = {"t": 5, "type": "paste", "text": sql}
+        result = self.replay(actions, until=11.5)
         self.expect_rendered(result, text=database.query(sql), within="result-workspace")
         self.assertFalse(visible(result, text="server-before", within="result-workspace"))
 
@@ -80,9 +91,40 @@ class TcpSqlJourneys:
         ], until=12)
         self.expect_rendered(edited, text="server-after", within="cell-0-1")
         self.assertEqual(
-            database.query(f"SELECT label FROM {table} ORDER BY id;").splitlines(),
+            database.query(f"SELECT label FROM {relation} ORDER BY id;").splitlines(),
             ["server-after", "server-control"],
         )
+
+        database.write_profile(self.store, read_only=True)
+        locked = self.replay([*browse, tap(6.5, "cell-0-1"), key(6.85, "Enter")], until=8)
+        self.expect_rendered(locked, text="server-after", within="cell-0-1")
+        self.assertFalse(visible(locked, key="grid-editor"))
+        self.assertEqual(
+            database.query(f"SELECT label FROM {relation} ORDER BY id;").splitlines(),
+            ["server-after", "server-control"],
+        )
+
+    def run_postgres_collision(self, config):
+        database = DisposableSql("postgresql", config)
+        tag = uuid.uuid4().hex[:12]
+        schema = f"aaa_rune_alt_{tag}"
+        table = f"aaa_rune_collision_{tag}"
+        database.query(f"CREATE SCHEMA {schema};")
+        self.addCleanup(database.query, f"DROP SCHEMA {schema};")
+        for relation, value in ((f"{schema}.{table}", "schema-specific"), (f"public.{table}", "public-specific")):
+            database.query(f"CREATE TABLE {relation} (id INTEGER PRIMARY KEY, label VARCHAR(80) NOT NULL);")
+            self.addCleanup(database.query, f"DROP TABLE {relation};")
+            database.query(f"INSERT INTO {relation} VALUES (1, '{value}');")
+        database.write_profile(self.store)
+        tree = self.replay([tap(.5, "conn-open-e2e-tcp-sql"), tap(4, f"tree-table-{table}")],
+                           until=6.5)
+        self.expect_rendered(tree, text="This table name is ambiguous across namespaces.",
+                             within="table-read-error")
+        self.assertFalse(visible(tree, text="schema-specific"))
+        self.assertFalse(visible(tree, text="public-specific"))
+        self.assertFalse(visible(tree, key="commit-staged"))
+        self.assertEqual(database.query(f"SELECT label FROM {schema}.{table};"), "schema-specific")
+        self.assertEqual(database.query(f"SELECT label FROM public.{table};"), "public-specific")
 
 
 def with_tcp_journeys(suite, configs):
@@ -93,3 +135,8 @@ def with_tcp_journeys(suite, configs):
             return self.run_server_journey(engine, config)
 
         setattr(suite, f"test_{engine}_native_catalog_query_edit", journey)
+        if engine == "postgresql":
+            def collision(self, config=config):
+                return self.run_postgres_collision(config)
+
+            setattr(suite, "test_postgresql_refuses_ambiguous_namespace", collision)

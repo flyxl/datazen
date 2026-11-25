@@ -38,6 +38,11 @@ impl AppState {
             filter: self.filter.clone(),
         };
         if self.desktop.begin_job(job) {
+            self.table_read_error = None;
+            if self.grid.table_label() != title {
+                self.grid = DataGrid::new();
+                self.grid.set_editable(false);
+            }
             self.table_loading = Some(generation);
             self.active = Section::Workspace;
             return true;
@@ -519,6 +524,9 @@ impl AppState {
                         ));
                         self.desktop_catalog = Some(catalog.clone());
                         self.desktop_connection = Some(id);
+                        self.grid = DataGrid::new();
+                        self.grid.set_editable(false);
+                        self.table_read_error = None;
                         self.query_history.reset();
                         self.refresh_query_history_if_open();
                         self.active = Section::Workspace;
@@ -569,11 +577,18 @@ impl AppState {
                 if generation != self.read_generation {
                     return;
                 }
-                if let Ok(page) = page {
-                    self.table_page = page.page;
-                    self.grid.load_page(&page);
-                    self.grid.set_editable(page.read_only.is_none());
-                    self.apply_table_column_widths();
+                match page {
+                    Ok(page) => {
+                        self.table_read_error = None;
+                        self.table_page = page.page;
+                        self.grid.load_page(&page);
+                        self.grid.set_editable(page.read_only.is_none());
+                        self.apply_table_column_widths();
+                    }
+                    Err(error) => {
+                        self.grid.set_editable(false);
+                        self.table_read_error = Some(error);
+                    }
                 }
             }
             AdapterDelivery::StructureRead { generation, table, structure } => {

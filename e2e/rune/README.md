@@ -26,9 +26,8 @@ coverage.
 
 ## Opt-in real SQL servers
 
-`--postgres-config FILE` and `--mysql-config FILE` each add one named journey
-to either Python command. An unconfigured engine is not included in the test
-counts. The config is a private JSON file with `host` (`127.0.0.1`),
+`--postgres-config FILE` adds two named journeys and `--mysql-config FILE`
+adds one. An unconfigured engine is not included in the test counts. The config is a private JSON file with `host` (`127.0.0.1`),
 `port` (integer), `database` (`datazen_e2e`), `user`, `password`, and
 `client` (path to `psql` or `mysql`). Do not commit the config. Use disposable
 servers only; create a `rune_e2e_fixture(marker VARCHAR(40) NOT NULL)` marker
@@ -37,6 +36,9 @@ any other database or marker before mutating anything. Each journey creates
 and removes just its own randomized table. This verifies connection,
 catalog/browse, SQL result, and committed inline edit against the selected
 server and compares persisted rows using an independent CLI process.
+PostgreSQL verifies a non-default schema and safe refusal of same-name
+relations when the UI only carries a bare table name. Explicitly selecting one
+homonymous relation across namespaces remains separate work.
 
 ## Migration inventory
 

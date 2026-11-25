@@ -23,6 +23,7 @@ class NativeJourneys(OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpS
         self.root = Path(tmp.name)
         self.store = self.root / "connections.json"
         self.db = self.root / "customers.sqlite"
+        self.replays = 0
         self.env = {
             **os.environ,
             "DATAZEN_NATIVE_KEYRING": "file",
@@ -36,6 +37,7 @@ class NativeJourneys(OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpS
         (self.root / "runtime").mkdir(mode=0o700)
 
     def replay(self, actions, *, until=1, exit_code=0):
+        self.replays += 1
         script, tree = self.root / "input.json", self.root / "tree.json"
         tree.unlink(missing_ok=True)
         script.write_text(json.dumps(actions), encoding="utf-8")
@@ -51,7 +53,7 @@ class NativeJourneys(OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpS
         self.assertTrue(tree.is_file(), result.stdout + result.stderr)
         parsed = json.loads(tree.read_text(encoding="utf-8"))
         if ARTIFACTS:
-            (ARTIFACTS / f"{self._testMethodName}.tree.json").write_text(
+            (ARTIFACTS / f"{self._testMethodName}-{self.replays:02d}.tree.json").write_text(
                 json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8"
             )
         return parsed

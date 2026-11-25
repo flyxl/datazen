@@ -220,6 +220,7 @@ impl AppState {
         // catalog belongs to the session too.
         self.next_read_generation();
         self.table_loading = None;
+        self.table_read_error = None;
         self.commit_loading = None;
         self.query_loading = None;
         self.connect_loading = None;

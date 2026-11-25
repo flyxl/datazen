@@ -2,9 +2,11 @@
 """Build the native app with LLVM instrumentation and report E2E-only line coverage."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -97,6 +99,7 @@ def run_journeys(binary, output, env, jobs, servers):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--target-dir", type=Path, default=ROOT / "target" / "rune-e2e-coverage")
     parser.add_argument("--jobs", default=1, type=int, help="number of independent test shards")
     parser.add_argument("--postgres-config", type=Path)
     parser.add_argument("--mysql-config", type=Path)
@@ -117,8 +120,8 @@ def main():
     source = {"commit": git("rev-parse", "HEAD"),
               "working_tree_dirty": bool(git("status", "--porcelain"))}
     profdata, cov = llvm_tools()
-    target = ROOT / "target" / "rune-e2e-coverage"
-    binary = target / "debug" / "datazen-native"
+    target = args.target_dir.resolve()
+    built_binary = target / "debug" / "datazen-native"
     env = {**os.environ, "CARGO_TARGET_DIR": str(target), "CARGO_INCREMENTAL": "0",
            "RUSTFLAGS": "-C instrument-coverage", "CARGO_PROFILE_DEV_DEBUG": "0"}
     env.pop("CARGO_ENCODED_RUSTFLAGS", None)
@@ -129,7 +132,13 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="e2e-prof-", dir=output) as directory:
         profiles = Path(directory)
-        # Only the production application subprocesses inherit this pattern.
+        # Freeze the executable used for both replay and export. Developing or
+        # compiling the same worktree during replay cannot mix profraw mappings.
+        binary = profiles / "datazen-native"
+        shutil.copy2(built_binary, binary)
+        with binary.open("rb") as source_binary:
+            source["binary_sha256"] = hashlib.file_digest(source_binary, "sha256").hexdigest()
+        source["rustc"] = subprocess.check_output(["rustc", "--version"], text=True).strip()
         env["LLVM_PROFILE_FILE"] = str(profiles / "%p-%m.profraw")
         journeys = run_journeys(binary, output, env, args.jobs, servers)
         journeys["server_engines"] = sorted(servers)
@@ -151,17 +160,20 @@ def main():
         with tempfile.TemporaryDirectory(prefix="lcov-", dir=output) as directory:
             raw_lcov = Path(directory) / "all.lcov"
             export(raw_lcov, "-format=lcov")
-            with raw_lcov.open(encoding="utf-8") as source, (output / "rune-e2e.lcov").open(
+            with raw_lcov.open(encoding="utf-8") as lcov_source, (output / "rune-e2e.lcov").open(
                 "w", encoding="utf-8"
             ) as scoped:
                 keep = False
-                for line in source:
+                for line in lcov_source:
                     if line.startswith("SF:"):
                         path = ROOT / line[3:].rstrip("\n")
+                        resolved = path.resolve()
                         keep = ".." not in path.parts and any(
-                            path.resolve().is_relative_to(ROOT / "crates" / crate / "src")
+                            resolved.is_relative_to(ROOT / "crates" / crate / "src")
                             for crate in SCOPE
                         )
+                        if keep:
+                            line = f"SF:{resolved.relative_to(ROOT)}\n"
                     if keep:
                         scoped.write(line)
                     if line == "end_of_record\n":

@@ -44,7 +44,8 @@ impl AppState {
             connection_id,
         });
         if !self.query_history.pending {
-            self.query_history.result = Some(Err("Query history is unavailable in this host.".into()));
+            self.query_history.result =
+                Some(Err("Query history is unavailable in this host.".into()));
         }
     }
 

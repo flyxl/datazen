@@ -29,10 +29,10 @@ class QueryHistoryJourney:
         first = self.replay(run_twice, until=15.5)
         self.expect_rendered(first, key="query-history-list")
         self.expect_rendered(first, text=failing.rstrip(";"), within="query-history-entry-0")
-        self.expect_rendered(first, text="Failed", within="query-history-entry-0")
+        self.expect_rendered(first, key="query-history-failure", within="query-history-entry-0")
         self.expect_rendered(first, key="query-history-entry-error", within="query-history-entry-0")
         self.expect_rendered(first, text=successful.rstrip(";"), within="query-history-entry-1")
-        self.expect_rendered(first, text="Succeeded", within="query-history-entry-1")
+        self.expect_rendered(first, key="query-history-success", within="query-history-entry-1")
 
         history_path = self.root / "query-history.json"
         saved_history = json.loads(history_path.read_text())

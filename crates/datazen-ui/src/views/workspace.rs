@@ -90,6 +90,12 @@ pub fn workspace_body(
         query_workspace(state, theme, dark)
     } else if let Some((database, schema)) = &state.er_schema {
         er_view(state, database, schema, theme, dark)
+    } else if let Some(error) = state.table_read_error.as_ref().filter(|_| {
+        state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Table)
+    }) {
+        col().key("table-read-error").w_full().padding(16.0).child(
+            text(error.clone()).font(type_::LABEL).color(theme.text).w_full(),
+        )
     } else if state.grid.has_page() {
         table_workspace(state, theme, dark)
     } else {
