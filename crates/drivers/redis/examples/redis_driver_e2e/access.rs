@@ -1,0 +1,111 @@
+use datazen_driver_api::ConnectionConfig;
+use datazen_driver_redis::set_settings_allow_flush;
+use serde_json::json;
+
+use super::Journey;
+
+pub async fn authenticated(journey: &mut Journey<'_>, config: &ConnectionConfig, proof: &str) {
+    let password = format!(">{proof}");
+    let acl: String = journey
+        .read(
+            "ACL",
+            &[
+                "SETUSER",
+                "read-fixture",
+                "on",
+                &password,
+                "~contract:*",
+                "+PING",
+                "+SELECT",
+                "+INFO",
+                "+GET",
+                "+TYPE",
+                "+TTL",
+                "+SCAN",
+            ],
+        )
+        .await;
+    assert_eq!(acl, "OK");
+
+    let mut restricted = config.clone();
+    restricted.username = Some("read-fixture".into());
+    restricted.password = Some(proof.into());
+    restricted.read_only = true;
+    let driver = journey.driver;
+    assert!(driver.test_connection(&restricted).await.is_ok());
+    let handle = driver.connect(&restricted).await.unwrap();
+    assert!(driver
+        .get_databases(&handle)
+        .await
+        .unwrap()
+        .contains(&"db0".into()));
+
+    let read = driver.query(&handle, "GET contract:catalog").await.unwrap();
+    assert_eq!(read.rows.len(), 1);
+    let write = driver
+        .execute_command(
+            &handle,
+            "set_string",
+            json!({"key":"contract:catalog","value":"denied","keepTtl":false}),
+        )
+        .await;
+    assert!(write.is_err());
+    let untouched: String = journey.read("GET", &["contract:catalog"]).await;
+    assert_eq!(untouched, "written");
+
+    driver.disconnect(handle).await.unwrap();
+    restricted.password = Some("invalid-fixture-password".into());
+    assert!(driver.test_connection(&restricted).await.is_err());
+    assert!(driver.connect(&restricted).await.is_err());
+    let deleted: u64 = journey.read("ACL", &["DELUSER", "read-fixture"]).await;
+    assert_eq!(deleted, 1);
+}
+
+pub async fn flush_guard(journey: &mut Journey<'_>, proof: &str) {
+    let witness: Option<String> = journey.read("GET", &["contract:fixture"]).await;
+    assert_eq!(
+        witness.as_deref(),
+        Some(proof),
+        "Refuse to flush anything but this process's private test fixture."
+    );
+    set_settings_allow_flush(false);
+    let command = json!({"dbIndex":3,"allowFlush":true});
+    assert!(journey
+        .driver
+        .execute_command(journey.handle, "flush_db", command.clone())
+        .await
+        .is_err());
+    set_settings_allow_flush(true);
+    journey
+        .command(
+            "set_string",
+            json!({"dbIndex":3,"key":"contract:shall-go","value":"fixture"}),
+        )
+        .await;
+    assert!(journey
+        .driver
+        .execute_command(
+            journey.handle,
+            "flush_db",
+            json!({"dbIndex":3,"allowFlush":false})
+        )
+        .await
+        .is_err());
+    journey.command("flush_db", command).await;
+    let previous = journey
+        .command("scan_keys", json!({"dbIndex":3,"pattern":"contract:*"}))
+        .await;
+    assert_eq!(previous["keys"], json!([]));
+    assert_eq!(
+        journey.read::<u64>("EXISTS", &["contract:fixture"]).await,
+        1
+    );
+    journey
+        .command("flush_all", json!({"allowFlush":true}))
+        .await;
+    assert_eq!(
+        journey.read::<u64>("EXISTS", &["contract:fixture"]).await,
+        0
+    );
+    set_settings_allow_flush(false);
+}

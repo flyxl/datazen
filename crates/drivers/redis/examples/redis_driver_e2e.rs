@@ -1,5 +1,7 @@
 //! Real-server driver journeys. Run via the E2E fixture, never against a user DB.
 
+#[path = "redis_driver_e2e/access.rs"]
+mod access;
 #[path = "redis_driver_e2e/codec.rs"]
 mod codec;
 #[path = "redis_driver_e2e/extra.rs"]
@@ -339,9 +341,11 @@ async fn main() {
         extra::json_document(&mut suite).await;
     }
     codec::run(&mut suite).await;
-    driver.disconnect(handle).await.unwrap();
+    access::authenticated(&mut suite, &cfg, &proof).await;
     resource::run(provider.as_ref(), &cfg, port).await;
+    access::flush_guard(&mut suite, &proof).await;
+    driver.disconnect(handle).await.unwrap();
     println!(
-        "PASS: real Redis driver catalog, exact/binary keys, aggregates, observations, Streams, real resource sessions and stored-value decoding"
+        "PASS: real Redis driver catalog, exact/binary keys, aggregates, observations, Streams, real resource sessions, codecs, ACL and disposal guards"
     );
 }
