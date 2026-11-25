@@ -91,6 +91,45 @@ pub(crate) fn redis_value_to_rows(
             }],
             vec![vec![Some(Value::String(text.clone()))]],
         ),
+        redis::Value::Map(entries) => {
+            let columns = vec![
+                ColumnInfo {
+                    name: "field".into(),
+                    data_type: "string".into(),
+                    nullable: false,
+                },
+                ColumnInfo {
+                    name: "value".into(),
+                    data_type: "string".into(),
+                    nullable: true,
+                },
+            ];
+            let rows = entries
+                .iter()
+                .map(|(key, val)| vec![Some(redis_to_value(key)), Some(redis_to_value(val))])
+                .collect();
+            (columns, rows)
+        }
+        redis::Value::Set(items) => {
+            let columns = vec![ColumnInfo {
+                name: "value".into(),
+                data_type: "string".into(),
+                nullable: false,
+            }];
+            let rows = items
+                .iter()
+                .map(|item| vec![Some(redis_to_value(item))])
+                .collect();
+            (columns, rows)
+        }
+        redis::Value::Double(value) if value.is_finite() => (
+            vec![ColumnInfo {
+                name: "result".into(),
+                data_type: "float".into(),
+                nullable: false,
+            }],
+            vec![vec![Some(Value::Float(*value))]],
+        ),
         redis::Value::Array(items) => {
             if items.len() >= 2 && items.len() % 2 == 0 && looks_like_hash(items) {
                 let columns = vec![

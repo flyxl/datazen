@@ -84,6 +84,35 @@ pub async fn run(journey: &mut Journey<'_>) {
     let browse = journey.command("scan_keys", browse_sorted).await;
     assert_eq!(browse["keys"][0]["preview"], preview_resp2);
 
+    let map = driver
+        .query(handle, "HGETALL contract:protocol:hash")
+        .await
+        .unwrap();
+    assert_eq!(map.rows.len(), 3);
+    assert_eq!(map.columns[0].name, "field");
+    assert!(map.rows.contains(&vec![
+        Some(Value::String("two".into())),
+        Some(Value::String("deux".into()))
+    ]));
+    let members = driver.query(handle, "SMEMBERS contract:set").await.unwrap();
+    assert_eq!(members.rows, vec![vec![Some(Value::String("a".into()))]]);
+    let score = driver
+        .query(handle, "ZSCORE contract:protocol:sorted second")
+        .await
+        .unwrap();
+    assert_eq!(score.rows, vec![vec![Some(Value::Float(2.25))]]);
+    let console = journey.command("exec", json!({
+        "commands":"INFO server\nSMEMBERS contract:set\nZSCORE contract:protocol:sorted second\nZRANGE contract:protocol:sorted 0 -1 WITHSCORES\nCONFIG GET databases"
+    })).await;
+    let rows = console["results"].as_array().unwrap();
+    assert!(rows[0]["value"]
+        .as_str()
+        .unwrap()
+        .contains("redis_version:"));
+    assert_eq!(rows[1]["value"], "{a}");
+    assert_eq!(rows[2]["value"], "2.25");
+    assert_eq!(rows[3]["value"], "[[half, 0.5], [second, 2.25]]");
+    assert_eq!(rows[4]["dangerLevel"], "ultra-danger");
     let info_text = driver.query(handle, "INFO server").await.unwrap();
     assert!(
         matches!(&info_text.rows[0][0], Some(Value::String(info)) if info.contains("redis_version"))
