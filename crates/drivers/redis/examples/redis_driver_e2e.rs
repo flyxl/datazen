@@ -268,6 +268,38 @@ impl Journey<'_> {
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[1]["value"], "PONG");
         assert_eq!(rows[2]["ok"], false);
+        // Exercise the real slow-log lifecycle, not just its parser.
+        assert_eq!(
+            self.read::<String>("CONFIG", &["SET", "slowlog-log-slower-than", "0"])
+                .await,
+            "OK"
+        );
+        assert_eq!(
+            self.read::<String>("GET", &["contract:catalog"]).await,
+            "written"
+        );
+        assert_eq!(
+            self.read::<String>("CONFIG", &["SET", "slowlog-log-slower-than", "-1"])
+                .await,
+            "OK"
+        );
+        let slow = self.command("slowlog_get", json!({"count":10})).await;
+        assert!(slow.to_string().contains("contract:catalog"), "{slow}");
+        assert!(self
+            .driver
+            .execute_command(self.handle, "slowlog_reset", json!({"confirm":false}))
+            .await
+            .is_err());
+        assert!(self.read::<u64>("SLOWLOG", &["LEN"]).await > 0);
+        assert_eq!(
+            self.command("slowlog_reset", json!({"confirm":true})).await["ok"],
+            true
+        );
+        assert_eq!(self.read::<u64>("SLOWLOG", &["LEN"]).await, 0);
+        assert_eq!(
+            self.command("slowlog_get", json!({"count":0})).await,
+            json!([])
+        );
         let status = self.command("pubsub_stats", json!({})).await;
         assert_eq!(status["totalMessages"], 0);
         assert_eq!(

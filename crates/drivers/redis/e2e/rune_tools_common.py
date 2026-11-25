@@ -84,10 +84,10 @@ class Lab:
         log.seek(0)
         raise RuntimeError(log.read())
 
-    def store(self, port, database="0", options=None):
+    def store(self, port, database="0", options=None, *, username=None, password=None):
         profile = {"id": "tools", "name": "Native Redis", "databaseType": "redis",
                    "database": database, "host": "127.0.0.1", "port": port, "readOnly": False,
-                   "options": options}
+                   "options": options, "username": username, "password": password}
         Path(self.env["DATAZEN_NATIVE_CONNECTIONS"]).write_text(
             json.dumps({"connections": [profile]}), encoding="utf-8"
         )

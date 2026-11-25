@@ -88,15 +88,19 @@ def pubsub(lab):
     port = lab.port()
     lab.start(port)
     lab.store(port)
+    pubsub_on_saved_profile(lab, "pubsub")
+
+
+def pubsub_on_saved_profile(lab, label):
     subscribed = [*TOOLS, *enter(4.2, "native-kv-channel-patterns", "native-*"),
                   tap(5.8, "native-kv-subscribe"), *enter(6.9, "native-kv-channel", "native-events"),
                   *enter(8.25, "native-kv-message", "native-payload"),
                   tap(9.5, "native-kv-publish"), tap(11.2, "native-kv-read-messages")]
-    result = output(lab.replay("pubsub", subscribed, 12.7))
+    result = output(lab.replay(label, subscribed, 12.7))
     assert "native-events" in result and "native-payload" in result, result
-    stopped = lab.replay("pubsub-stop", [*subscribed, tap(13.1, "native-kv-unsubscribe")], 14.4)
+    stopped = lab.replay(f"{label}-stop", [*subscribed, tap(13.1, "native-kv-unsubscribe")], 14.4)
     assert "Unsubscribed" in output(stopped)
-    print("PASS: real Redis pattern Pub/Sub and unsubscribe")
+    print(f"PASS: {label} pattern Pub/Sub and unsubscribe")
 
 
 def search(lab):
@@ -184,6 +188,7 @@ def topology(lab):
                                  "sentinelMasterName": "native-test"})
     tree = lab.replay("sentinel", [*OPEN, tap(4, "native-kv-key-0")], 6.5)
     assert element(tree, "native-kv-value")["text"] == "sentinel-value"
+    pubsub_on_saved_profile(lab, "sentinel-pubsub")
 
     port = lab.port(cluster=True)
     lab.start(port, ["--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf",
@@ -198,6 +203,7 @@ def topology(lab):
     tree = lab.replay("cluster", [*OPEN, tap(4, "native-kv-key-0"), tap(5, "native-kv-db-next")], 6.8)
     assert element(tree, "native-kv-context")["text"] == "Redis · DB 0"
     assert element(tree, "native-kv-value")["text"] == "cluster-value"
+    pubsub_on_saved_profile(lab, "cluster-pubsub")
     print("PASS: real Sentinel and single-node Cluster profiles")
 
 
@@ -342,6 +348,23 @@ def cluster_multishard(lab):
     ], 6.2)))
     primary_addresses = {node["addr"] for node in topology_result["nodes"] if node["role"] == "master"}
     assert primary_addresses == {f"127.0.0.1:{port}" for port in ports}, topology_result
+    # The cluster client's routed pipeline folds any ACL failure into one
+    # error. The workbench should retry per command and keep the allowed data.
+    import secrets
+
+    password = secrets.token_hex(12)
+    for port in ports:
+        assert lab.cli(port, "ACL", "SETUSER", "browse-fixture", "on", f">{password}",
+                       "~*", "+@all", "-memory", "-object") == "OK"
+    lab.store(remote_port, options={"topology": "cluster"},
+              username="browse-fixture", password=password)
+    scoped = [*OPEN, *enter(3.3, "native-kv-pattern", remote), tap(5, "native-kv-pattern-apply"),
+              tap(6.3, "native-kv-key-0"), tap(7.8, "native-kv-tool-toggle")]
+    props = json.loads(output(lab.replay("cluster-acl-degradation", [
+        *scoped, tap(9, "native-kv-key-properties"),
+    ], 10.6)))
+    assert props["type"] == "string" and not props["missing"], props
+    assert props["memoryBytes"] is None and props["encoding"] is None, props
     print("PASS: two Cluster primaries, anchored pagination, slot-routed exact lookup and discovered primaries")
 
 
