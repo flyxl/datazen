@@ -48,9 +48,34 @@ pub async fn run(journey: &mut Journey<'_>) {
         .await;
     assert!(before.is_object());
 
+    let sorted = "contract:protocol:sorted";
+    assert_eq!(
+        journey
+            .read::<u32>("ZADD", &[sorted, "0.5", "half", "2.25", "second"])
+            .await,
+        2
+    );
+    let expected_sorted = json!([{"member":"half","score":0.5},{"member":"second","score":2.25}]);
+    let get_sorted = json!({"key":sorted});
+    let browse_sorted = json!({"pattern":sorted});
+    let sorted_resp2 = journey.command("get_key", get_sorted.clone()).await;
+    let preview_resp2 = journey.command("scan_keys", browse_sorted.clone()).await;
+    assert_eq!(sorted_resp2["value"], expected_sorted);
+    let preview_resp2 = preview_resp2["keys"][0]["preview"].clone();
+    assert!(preview_resp2.as_str().unwrap().contains("2.25"));
     // Redis itself negotiates RESP3; subsequent commands go through the same
     // public driver connection and carry the real protocol's map responses.
     driver.query(handle, "HELLO 3").await.unwrap();
+    let detail = journey.command("get_key", json!({"key":hash})).await;
+    assert_eq!(
+        detail["value"],
+        json!({"one":"un","two":"deux","three":"trois"})
+    );
+    let detail = journey.command("get_key", get_sorted).await;
+    assert_eq!(detail["value"], expected_sorted);
+    let browse = journey.command("scan_keys", browse_sorted).await;
+    assert_eq!(browse["keys"][0]["preview"], preview_resp2);
+
     let info_text = driver.query(handle, "INFO server").await.unwrap();
     assert!(
         matches!(&info_text.rows[0][0], Some(Value::String(info)) if info.contains("redis_version"))

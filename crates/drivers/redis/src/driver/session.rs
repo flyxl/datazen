@@ -235,21 +235,13 @@ where
             Ok(serde_json::json!({ "value": v.unwrap_or_default() }))
         }
         "hash" => {
-            let pairs: Vec<String> = redis::cmd("HGETALL")
+            // HGETALL returns flat pairs in RESP2 and a map in RESP3.
+            let fields: std::collections::BTreeMap<String, String> = redis::cmd("HGETALL")
                 .arg(key)
                 .query_async(conn)
                 .await
                 .map_err(|e| e.to_string())?;
-            let mut obj = serde_json::Map::new();
-            for chunk in pairs.chunks(2) {
-                if chunk.len() == 2 {
-                    obj.insert(
-                        chunk[0].clone(),
-                        serde_json::Value::String(chunk[1].clone()),
-                    );
-                }
-            }
-            Ok(serde_json::Value::Object(obj))
+            Ok(serde_json::json!(fields))
         }
         "list" => {
             let vals: Vec<String> = redis::cmd("LRANGE")
@@ -270,7 +262,7 @@ where
             Ok(serde_json::json!(vals))
         }
         "zset" => {
-            let vals: Vec<String> = redis::cmd("ZRANGE")
+            let raw: redis::Value = redis::cmd("ZRANGE")
                 .arg(key)
                 .arg(0)
                 .arg(-1)
@@ -278,14 +270,11 @@ where
                 .query_async(conn)
                 .await
                 .map_err(|e| e.to_string())?;
-            let mut members = Vec::new();
-            for chunk in vals.chunks(2) {
-                if chunk.len() == 2 {
-                    let score: f64 = chunk[1].parse().unwrap_or(0.0);
-                    members.push(serde_json::json!({ "member": chunk[0], "score": score }));
-                }
-            }
-            Ok(serde_json::json!(members))
+            let members: Vec<_> = crate::ops::parse::parse_scored_pairs(&raw)?
+                .into_iter()
+                .map(|(member, score)| serde_json::json!({"member":member,"score":score}))
+                .collect();
+            Ok(serde_json::Value::Array(members))
         }
         "stream" => {
             let entries: Vec<redis::Value> = redis::cmd("XRANGE")

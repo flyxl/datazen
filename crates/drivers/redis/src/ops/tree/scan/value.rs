@@ -139,7 +139,12 @@ pub fn render_preview(key_type: &str, preview_reply: Option<&RValue>) -> String 
             format!("{vals:?}")
         }
         "zset" => {
-            let vals = preview_reply.map(reply_array).unwrap_or_default();
+            let vals = preview_reply
+                .and_then(|raw| crate::ops::parse::parse_scored_pairs(raw).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .flat_map(|(member, score)| [member, score.to_string()])
+                .collect::<Vec<_>>();
             format!("{vals:?}")
         }
         "hash" => {
