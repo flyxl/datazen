@@ -24,6 +24,34 @@ pub async fn run(journey: &mut Journey<'_>, base: &ConnectionConfig) {
         Err(DriverError::InvalidConfig(_))
     ));
 
+    for (options, expected) in [
+        (
+            json!({"tls":{"enabled":true,"certPath":"unused-fixture.crt"}}),
+            "both be set",
+        ),
+        (
+            json!({"tls":{"enabled":true,"caPath":"fixture-ca-is-absent.crt"}}),
+            "file not found",
+        ),
+        (
+            json!({"tls":{"enabled":true,"caPath":"."}}),
+            "failed to read TLS",
+        ),
+        (
+            json!({"tls":{"enabled":true,"certPath":"unused-fixture.crt","keyPath":"unused-fixture.key"}}),
+            "client certificate file not found",
+        ),
+    ] {
+        let mut test = base.clone();
+        test.options = options.as_object().cloned();
+        test.ssl_mode = SslMode::Prefer;
+        let error = driver.connect(&test).await.unwrap_err();
+        assert!(
+            matches!(&error, DriverError::SslError(detail) if detail.contains(expected)),
+            "{error}"
+        );
+    }
+
     let mut tls = base.clone();
     tls.connection_timeout = 1;
     tls.ssl_mode = SslMode::Require;
@@ -151,5 +179,25 @@ pub async fn legacy(
         .await;
     assert_ne!(delivered, redis::Value::Nil);
     assert_eq!(j.command("stream_lag", query).await["lag"], 1);
+    let password = format!("{proof}:@%/legacy");
+    assert_eq!(
+        j.read::<String>("CONFIG", &["SET", "requirepass", &password])
+            .await,
+        "OK"
+    );
+    assert!(driver.test_connection(&config).await.is_err());
+    config.password = Some(password);
+    let authorized = driver.test_connection(&config).await.unwrap();
+    assert!(authorized.server_version.starts_with("5."));
+    let authenticated = driver.connect(&config).await.unwrap();
+    let found = driver
+        .query(&authenticated, "GET contract:legacy:expiring")
+        .await
+        .unwrap();
+    assert_eq!(
+        found.rows[0][0],
+        Some(datazen_driver_api::Value::String("after".into()))
+    );
+    driver.disconnect(authenticated).await.unwrap();
     driver.disconnect(handle).await.unwrap();
 }
