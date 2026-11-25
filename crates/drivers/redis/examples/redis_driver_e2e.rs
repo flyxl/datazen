@@ -4,6 +4,8 @@
 mod access;
 #[path = "redis_driver_e2e/codec.rs"]
 mod codec;
+#[path = "redis_driver_e2e/connections.rs"]
+mod connections;
 #[path = "redis_driver_e2e/extra.rs"]
 mod extra;
 #[path = "redis_driver_e2e/protocol.rs"]
@@ -350,6 +352,7 @@ async fn main() {
     search::run(&mut suite).await;
     protocol::run(&mut suite).await;
     validation::run(&mut suite).await;
+    connections::run(&mut suite, &cfg).await;
     access::authenticated(&mut suite, &cfg, &proof).await;
     resource::run(provider.as_ref(), &cfg, port).await;
     access::flush_guard(&mut suite, &proof).await;

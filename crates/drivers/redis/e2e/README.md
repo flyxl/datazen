@@ -77,7 +77,11 @@ This gate instruments the native application and the public driver-boundary
 example. Each journey uses its own disposable Redis instance. It merges
 only their execution profiles, counts production lines in
 `crates/drivers/redis/src`, and exits nonzero unless all journeys pass and
-line coverage is strictly greater than 90%. It writes per-journey logs,
+line coverage is strictly greater than 90%. A passing suite must emit its
+own application profile. For inspection, the runner writes a Redis-only
+LCOV trace, the merged profile, build fingerprints, and per-journey logs.
+Pass `--retain-binaries` to keep the exact instrumented executables too.
+It also writes
 render trees where applicable, and a machine-readable `summary.json`.
 The suite requires TLS and JSON support. Use `--server`, `--cli`,
 `--json-server`, and `--redis-json-module` to select suitable binaries

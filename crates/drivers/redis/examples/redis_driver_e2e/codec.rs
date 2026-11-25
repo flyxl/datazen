@@ -28,6 +28,51 @@ async fn round_trip(journey: &mut Journey<'_>, codec: &str, stored: &[u8]) -> Va
         .await
 }
 
+fn java_utf(out: &mut Vec<u8>, value: &str) {
+    out.extend_from_slice(&(value.len() as u16).to_be_bytes());
+    out.extend_from_slice(value.as_bytes());
+}
+
+fn java_primitive_record() -> Vec<u8> {
+    let mut out = vec![0xac, 0xed, 0, 5, 0x73, 0x72];
+    java_utf(&mut out, "Record");
+    out.extend_from_slice(&1_i64.to_be_bytes());
+    out.extend_from_slice(&[2, 0, 10]);
+    for (kind, name) in [
+        (b'B', "byte"),
+        (b'C', "char"),
+        (b'D', "double"),
+        (b'F', "float"),
+        (b'I', "int"),
+        (b'J', "long"),
+        (b'S', "short"),
+        (b'Z', "flag"),
+    ] {
+        out.push(kind);
+        java_utf(&mut out, name);
+    }
+    out.push(b'L');
+    java_utf(&mut out, "one");
+    out.push(0x74);
+    java_utf(&mut out, "Ljava/lang/String;");
+    out.push(b'L');
+    java_utf(&mut out, "two");
+    out.push(0x71);
+    out.extend_from_slice(&0x7e0001_u32.to_be_bytes());
+    out.extend_from_slice(&[0x78, 0x70, (-3_i8) as u8]);
+    out.extend_from_slice(&u16::from(b'Q').to_be_bytes());
+    out.extend_from_slice(&f64::from(2.25).to_be_bytes());
+    out.extend_from_slice(&f32::NEG_INFINITY.to_be_bytes());
+    out.extend_from_slice(&256_i32.to_be_bytes());
+    out.extend_from_slice(&(-70000_i64).to_be_bytes());
+    out.extend_from_slice(&(-42_i16).to_be_bytes());
+    out.extend_from_slice(&[1, 0x74]);
+    java_utf(&mut out, "memoized");
+    out.push(0x71);
+    out.extend_from_slice(&0x7e0003_u32.to_be_bytes());
+    out
+}
+
 pub async fn run(journey: &mut Journey<'_>) {
     let json_document = br#"{"fixture":[1,2,3]}"#;
     let mut gzip = GzEncoder::new(Vec::new(), Compression::default());
@@ -88,6 +133,15 @@ pub async fn run(journey: &mut Journey<'_>) {
         ("java", java_string, json!("Fixture")),
         ("java", java_object, json!({"$class":"Fixture","x":7})),
         ("java", java_array, json!({"$array":"[I","items":[7,-11]})),
+        (
+            "java",
+            java_primitive_record(),
+            json!({
+                "$class":"Record","byte":-3,"char":"Q","double":2.25,
+                "float":"-Infinity","int":256,"long":-70000,"short":-42,
+                "flag":true,"one":"memoized","two":"memoized"
+            }),
+        ),
     ];
     for (codec, stored, expected) in structured {
         let result = round_trip(journey, codec, &stored).await;
