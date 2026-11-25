@@ -171,4 +171,34 @@ pub async fn run(journey: &mut Journey<'_>) {
         assert_eq!(refused["ok"], false, "{codec}: {refused}");
         assert_eq!(refused["reason"], "decode-failed");
     }
+
+    for (payload, reason) in [
+        (
+            json!({"codec":"unsupported-fixture","data":"YQ=="}),
+            "unknown-codec",
+        ),
+        (json!({"codec":"msgpack"}), "missing-data"),
+        (
+            json!({"codec":"msgpack","data":"not-base64"}),
+            "invalid-base64",
+        ),
+        (json!({"codec":"msgpack","data":""}), "empty-payload"),
+        (json!({"codec":"pb","data":"YQ=="}), "codec-not-implemented"),
+    ] {
+        let rejected = journey.command("decode_value", payload).await;
+        assert_eq!(rejected["reason"], reason, "{rejected}");
+        assert_eq!(rejected["ok"], false);
+        if reason == "codec-not-implemented" {
+            assert_eq!(rejected["suggestedCodec"], "base64");
+        }
+    }
+
+    let mut correct_container = GzEncoder::new(Vec::new(), Compression::default());
+    correct_container.write_all(b"fixture data").unwrap();
+    let wrong_codec = round_trip(journey, "zlib", &correct_container.finish().unwrap()).await;
+    assert_eq!(wrong_codec["ok"], false);
+    assert_eq!(wrong_codec["suggestedCodec"], "gzip");
+    let wrong_codec = round_trip(journey, "msgpack", &java_primitive_record()).await;
+    assert_eq!(wrong_codec["ok"], false);
+    assert_eq!(wrong_codec["suggestedCodec"], "java");
 }
