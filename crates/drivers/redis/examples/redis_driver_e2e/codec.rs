@@ -56,6 +56,19 @@ pub async fn run(journey: &mut Journey<'_>) {
     let mut java_string = vec![0xac, 0xed, 0, 5, 0x74, 0, 7];
     java_string.extend_from_slice(b"Fixture");
 
+    // Java Object Serialization stream protocol §6.4: one ordinary object
+    // and one primitive array, with empty class annotations.
+    let mut java_object = vec![0xac, 0xed, 0, 5, 0x73, 0x72, 0, 7];
+    java_object.extend_from_slice(b"Fixture");
+    java_object.extend_from_slice(&1_i64.to_be_bytes());
+    java_object.extend_from_slice(&[2, 0, 1, b'I', 0, 1, b'x', 0x78, 0x70]);
+    java_object.extend_from_slice(&7_i32.to_be_bytes());
+    let mut java_array = vec![0xac, 0xed, 0, 5, 0x75, 0x72, 0, 2, b'[', b'I'];
+    java_array.extend_from_slice(&0x4dba602676eab2a5_i64.to_be_bytes());
+    java_array.extend_from_slice(&[2, 0, 0, 0x78, 0x70]);
+    java_array.extend_from_slice(&2_i32.to_be_bytes());
+    java_array.extend_from_slice(&7_i32.to_be_bytes());
+    java_array.extend_from_slice(&(-11_i32).to_be_bytes());
     let structured = [
         (
             "msgpack",
@@ -73,6 +86,8 @@ pub async fn run(journey: &mut Journey<'_>) {
             json!([7, "x"]),
         ),
         ("java", java_string, json!("Fixture")),
+        ("java", java_object, json!({"$class":"Fixture","x":7})),
+        ("java", java_array, json!({"$array":"[I","items":[7,-11]})),
     ];
     for (codec, stored, expected) in structured {
         let result = round_trip(journey, codec, &stored).await;
