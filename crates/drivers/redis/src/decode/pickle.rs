@@ -23,6 +23,7 @@ const OP_POP_MARK: u8 = b'1';
 const OP_DUP: u8 = b'2';
 // Memo (read/write, harmless for data)
 const OP_GET: u8 = b'g';
+const OP_PUT: u8 = b'p';
 const OP_BINGET: u8 = b'h';
 const OP_MEMOIZE: u8 = 0x94;
 const OP_BINPUT: u8 = b'q';
@@ -53,6 +54,7 @@ const OP_TUPLE1: u8 = 0x85;
 const OP_TUPLE2: u8 = 0x86;
 const OP_TUPLE3: u8 = 0x87;
 const OP_EMPTY_LIST: u8 = b']';
+const OP_LIST: u8 = b'l';
 const OP_APPEND: u8 = b'a';
 const OP_APPENDS: u8 = b'e';
 const OP_EMPTY_DICT: u8 = b'}';
@@ -204,10 +206,15 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
                 let n = r.le_u64()? as usize;
                 stack.push(StackItem::Val(json_bytes(r.take(n)?)));
             }
-            OP_UNICODE => stack.push(StackItem::Val(json_str(r.until_newline()?))),
+            OP_UNICODE => stack.push(StackItem::Val(json_text_unicode(r.until_newline()?)?)),
             OP_INT => stack.push(StackItem::Val(json_int_line(r.until_newline()?))),
             OP_LONG => stack.push(StackItem::Val(json_long_line(r.until_newline()?))),
             OP_FLOAT => stack.push(StackItem::Val(json_float_line(r.until_newline()?))),
+            OP_PUT => {
+                let id = parse_memo_index(r.until_newline()?)?;
+                let value = top_value_ref(&stack)?;
+                memo_set(&mut memo, id, value)?;
+            }
             OP_BINPUT => {
                 let id = r.byte()? as usize;
                 let v = top_value_ref(&stack)?;
@@ -225,10 +232,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
             }
             OP_GET | OP_BINGET | OP_LONG_BGET => {
                 let id = match op {
-                    OP_GET => std::str::from_utf8(r.until_newline()?)
-                        .map_err(|_| "invalid pickle memo index")?
-                        .parse::<usize>()
-                        .map_err(|_| "invalid pickle memo index")?,
+                    OP_GET => parse_memo_index(r.until_newline()?)?,
                     OP_BINGET => r.byte()? as usize,
                     _ => r.le_u32()? as usize,
                 };
@@ -260,6 +264,10 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
                 stack.push(StackItem::Val(JsonValue::Array(items)));
             }
             OP_EMPTY_LIST => stack.push(StackItem::Val(JsonValue::Array(vec![]))),
+            OP_LIST => {
+                let items = pop_to_mark(&mut stack)?;
+                stack.push(StackItem::Val(JsonValue::Array(items)));
+            }
             OP_APPEND => {
                 let v = top_value(&mut stack)?;
                 append_to_list(&mut stack, vec![v])?;
@@ -269,7 +277,11 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
                 append_to_list(&mut stack, items)?;
             }
             OP_EMPTY_DICT => stack.push(StackItem::Val(JsonValue::Object(Map::new()))),
-            OP_DICT => stack.push(StackItem::Val(JsonValue::Object(Map::new()))),
+            OP_DICT => {
+                let items = pop_to_mark(&mut stack)?;
+                stack.push(StackItem::Val(JsonValue::Object(Map::new())));
+                setmany_into_dict(&mut stack, items)?;
+            }
             OP_SETITEM => {
                 let value = top_value(&mut stack)?;
                 let key = top_value(&mut stack)?;
@@ -334,6 +346,13 @@ fn pop_to_mark(stack: &mut Vec<StackItem>) -> Result<Vec<JsonValue>, String> {
     }
 }
 
+fn parse_memo_index(bytes: &[u8]) -> Result<usize, String> {
+    std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|index| index.parse().ok())
+        .ok_or_else(|| "invalid pickle memo index".to_string())
+}
+
 fn memo_set(memo: &mut Vec<Option<JsonValue>>, id: usize, value: JsonValue) -> Result<(), String> {
     if id >= MAX_MEMBERS {
         return Err("pickle memo index exceeds limit".into());
@@ -396,6 +415,36 @@ fn key_to_string(key: &JsonValue) -> String {
     }
 }
 
+/// Protocol 0 uses Python's raw-unicode-escape convention: Latin-1 bytes
+/// plus \uXXXX and \UXXXXXXXX for escapes emitted by the pickler.
+fn json_text_unicode(mut bytes: &[u8]) -> Result<JsonValue, String> {
+    let mut result = String::new();
+    while let Some((&byte, rest)) = bytes.split_first() {
+        let escaped = match (byte, rest.first()) {
+            (b'\\', Some(b'u')) => 4,
+            (b'\\', Some(b'U')) => 8,
+            _ => 0,
+        };
+        if escaped == 0 {
+            result.push(char::from(byte));
+            bytes = rest;
+            continue;
+        }
+        let digits = rest
+            .get(1..=escaped)
+            .ok_or("truncated pickle Unicode escape")?;
+        let character = std::str::from_utf8(digits)
+            .ok()
+            .filter(|digits| digits.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .and_then(|digits| u32::from_str_radix(digits, 16).ok())
+            .and_then(char::from_u32)
+            .ok_or("invalid pickle Unicode escape")?;
+        result.push(character);
+        bytes = &rest[escaped + 1..];
+    }
+    Ok(JsonValue::String(result))
+}
+
 fn json_str(bytes: &[u8]) -> JsonValue {
     JsonValue::String(String::from_utf8_lossy(bytes).into_owned())
 }
@@ -416,6 +465,9 @@ fn json_float(f: f64) -> JsonValue {
 }
 
 fn json_int_line(b: &[u8]) -> JsonValue {
+    if b == b"00" || b == b"01" {
+        return JsonValue::Bool(b == b"01");
+    }
     match String::from_utf8_lossy(b).trim().parse::<i64>() {
         Ok(n) => JsonValue::from(n),
         Err(_) => JsonValue::String(String::from_utf8_lossy(b).into_owned()),

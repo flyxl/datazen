@@ -19,7 +19,9 @@ from rune_tools_common import Lab
 def write_pickle_fixtures(root: Path):
     label = "数据"
     nested = {"items": [label, None, 256, -123456, 2.25, label], "tuple": (True, False, 4)}
-    cases = [(pickle.dumps(nested, protocol=p), nested) for p in (2, 3, 4, 5)]
+    cases = [(pickle.dumps(nested, protocol=p), nested) for p in (0, 1, 2, 3, 4, 5)]
+    text = "latin café; 数据; 🌍; backslash \\n; newline \n."
+    cases.append((pickle.dumps(text, protocol=0), text))
     binary = bytes(range(256))
     for protocol in (3, 4, 5):
         cases.append((pickle.dumps(binary, protocol=protocol),
