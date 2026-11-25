@@ -272,3 +272,45 @@ pub async fn tree(j: &mut Journey<'_>) {
     assert_eq!(complete["cursor"], 0);
     assert_eq!(complete["children"].as_array().unwrap().len(), 40);
 }
+
+pub async fn batch(j: &mut Journey<'_>) {
+    let from = "contract:batch:from:";
+    let to = "contract:batch:to:";
+    let key = format!("{from}valid");
+    let missing = format!("{from}missing");
+    let unrelated = "contract:batch:untouched";
+    assert_eq!(
+        j.read::<String>("SET", &[&key, "stored", "EX", "120"])
+            .await,
+        "OK"
+    );
+    assert_eq!(
+        j.read::<String>("SET", &[unrelated, "untouched"]).await,
+        "OK"
+    );
+    let ttl = j
+        .command(
+            "batch_set_ttl",
+            json!({"keys":[key,missing],"ttl_seconds":-1}),
+        )
+        .await;
+    assert_eq!(ttl["updated"], 1);
+    assert_eq!(ttl["errors"][0]["key"], missing);
+    assert_eq!(j.read::<i64>("PTTL", &[&key]).await, -1);
+    let rename = j
+        .command(
+            "batch_rename_prefix",
+            json!({
+                "old_prefix":from,"new_prefix":to,"keys":[key,missing,unrelated]
+            }),
+        )
+        .await;
+    assert_eq!(rename["renamed"], 1);
+    assert_eq!(rename["errors"][0]["key"], missing);
+    assert_eq!(j.read::<u64>("EXISTS", &[&key]).await, 0);
+    assert_eq!(
+        j.read::<String>("GET", &[&format!("{to}valid")]).await,
+        "stored"
+    );
+    assert_eq!(j.read::<String>("GET", &[unrelated]).await, "untouched");
+}

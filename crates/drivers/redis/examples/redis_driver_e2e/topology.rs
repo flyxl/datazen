@@ -271,6 +271,8 @@ async fn metadata_acl(
             "-pttl",
             "-object",
             "-exists",
+            "-del",
+            "-expire",
         ])
         .query_async(&mut oracle)
         .await
@@ -308,6 +310,25 @@ async fn metadata_acl(
     assert_eq!(children["children"][0]["key"], key);
     assert_eq!(children["children"][0]["logicalLen"], "cluster".len());
     assert!(children["children"][0]["memBytes"].is_null());
+    let deletion = j
+        .command("batch_delete_pattern", json!({"pattern":key}))
+        .await;
+    assert_eq!(deletion["deleted"], 0);
+    assert_eq!(deletion["errors"][0]["key"], key);
+    assert!(deletion["errors"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("NOPERM"));
+    let expiry = j
+        .command("batch_set_ttl", json!({"keys":[key],"ttlSeconds":60}))
+        .await;
+    assert_eq!(expiry["updated"], 0);
+    assert!(expiry["errors"][0]["error"]
+        .as_str()
+        .unwrap()
+        .contains("NOPERM"));
+    assert_eq!(j.read::<String>("GET", &[key]).await, "cluster");
+    assert_eq!(j.read::<i64>("PTTL", &[key]).await, -1);
     let sample = j.command("memory_sample", json!({"limit":1})).await;
     assert_eq!(sample["samples"].as_array().unwrap().len(), 1);
     assert_eq!(sample["samples"][0]["bytes"], 0);
