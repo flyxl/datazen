@@ -35,7 +35,14 @@ where
         .find(|g| g.name == group)
         .ok_or_else(|| format!("consumer group '{}' not found", group))?;
 
-    // If no entries delivered yet, lag = stream length (all entries are pending)
+    // Redis 7+ reports the number of undelivered entries, or null if it
+    // cannot infer it. A stream ID's timestamp is not an entry count.
+    if let Some(lag) = group_info.measured_lag {
+        return Ok(StreamLagResult { lag });
+    }
+
+    // Older servers do not report lag. Preserve their best-effort fallback.
+    // If nothing was delivered yet, use the stream length.
     if group_info.last_delivered_id.is_empty() || group_info.last_delivered_id == "0-0" {
         // Get stream length
         let len: u64 = redis::cmd("XLEN")

@@ -126,5 +126,30 @@ pub async fn legacy(
     assert_eq!(written["keepTtlFallback"], true);
     assert_eq!(j.read::<i64>("PTTL", &[persistent]).await, -1);
     assert_eq!(j.read::<Vec<u8>>("GET", &[persistent]).await, [0, 255]);
+    let stream = "contract:legacy:stream";
+    for id in ["12-1", "12-2"] {
+        assert_eq!(
+            j.read::<String>("XADD", &[stream, id, "field", "value"])
+                .await,
+            id
+        );
+    }
+    assert_eq!(
+        j.read::<String>("XGROUP", &["CREATE", stream, "batch", "0"])
+            .await,
+        "OK"
+    );
+    let query = json!({"key":stream,"group":"batch"});
+    assert_eq!(j.command("stream_lag", query.clone()).await["lag"], 2);
+    let delivered: redis::Value = j
+        .read(
+            "XREADGROUP",
+            &[
+                "GROUP", "batch", "reader", "COUNT", "1", "STREAMS", stream, ">",
+            ],
+        )
+        .await;
+    assert_ne!(delivered, redis::Value::Nil);
+    assert_eq!(j.command("stream_lag", query).await["lag"], 1);
     driver.disconnect(handle).await.unwrap();
 }

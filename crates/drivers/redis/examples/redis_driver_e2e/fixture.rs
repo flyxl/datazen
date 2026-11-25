@@ -461,7 +461,7 @@ impl Journey<'_> {
         assert_eq!(groups, json!([]));
 
         let pending_key = "contract:stream:pending";
-        for (id, payload) in [("100-1", "first"), ("100-2", "second")] {
+        for (id, payload) in [("100-1", "first"), ("500-0", "second")] {
             let created = self
                 .command(
                     "xadd",
@@ -485,12 +485,12 @@ impl Journey<'_> {
         let view = self
             .command(
                 "xrange",
-                json!({"key":pending_key,"start":"100-2","end":"+"}),
+                json!({"key":pending_key,"start":"500-0","end":"+"}),
             )
             .await;
         assert_eq!(
             view["entries"],
-            json!([{"id":"100-2","fields":{"payload":"second"}}])
+            json!([{"id":"500-0","fields":{"payload":"second"}}])
         );
         self.command(
             "xgroup_create",
@@ -554,6 +554,17 @@ impl Journey<'_> {
             .await
             .unwrap_err();
         assert!(missing.to_string().contains("not found"));
+        // Setting a group's delivery cursor to an ID between entries does not
+        // give Redis enough evidence to report the count. Preserve its null.
+        assert_eq!(
+            self.read::<String>("XGROUP", &["SETID", pending_key, "pending", "200-0"])
+                .await,
+            "OK"
+        );
+        let unknown = self
+            .command("stream_lag", json!({"key":pending_key,"group":"pending"}))
+            .await;
+        assert_eq!(unknown["lag"], Value::Null);
     }
 }
 

@@ -58,6 +58,7 @@ pub(crate) fn parse_xinfo_groups(raw: &redis::Value) -> Result<Vec<StreamGroupIn
         let mut consumers = 0u64;
         let mut pending = 0u64;
         let mut last_delivered_id = String::new();
+        let mut measured_lag = None;
 
         match group {
             redis::Value::Array(fields) => {
@@ -72,6 +73,7 @@ pub(crate) fn parse_xinfo_groups(raw: &redis::Value) -> Result<Vec<StreamGroupIn
                         "consumers" => consumers = value_to_u64(val),
                         "pending" => pending = value_to_u64(val),
                         "last-delivered-id" => last_delivered_id = value_to_string(val),
+                        "lag" => measured_lag = Some(read_group_lag(val)),
                         _ => {}
                     }
                 }
@@ -84,6 +86,7 @@ pub(crate) fn parse_xinfo_groups(raw: &redis::Value) -> Result<Vec<StreamGroupIn
                         "consumers" => consumers = value_to_u64(v),
                         "pending" => pending = value_to_u64(v),
                         "last-delivered-id" => last_delivered_id = value_to_string(v),
+                        "lag" => measured_lag = Some(read_group_lag(v)),
                         _ => {}
                     }
                 }
@@ -97,12 +100,20 @@ pub(crate) fn parse_xinfo_groups(raw: &redis::Value) -> Result<Vec<StreamGroupIn
                 consumers,
                 pending,
                 last_delivered_id,
+                measured_lag,
             });
         }
     }
 
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
+}
+
+fn read_group_lag(raw: &redis::Value) -> Option<u64> {
+    match raw {
+        redis::Value::Int(lag) => (*lag).try_into().ok(),
+        _ => None,
+    }
 }
 
 pub(crate) fn parse_xpending_entries(raw: &redis::Value) -> Result<XpendingResult, String> {

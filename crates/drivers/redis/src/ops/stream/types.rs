@@ -49,6 +49,9 @@ pub struct StreamGroupInfo {
     pub consumers: u64,
     pub pending: u64,
     pub last_delivered_id: String,
+    /// Absent on older Redis; explicitly null when Redis cannot measure lag.
+    #[serde(skip)]
+    pub(crate) measured_lag: Option<Option<u64>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
