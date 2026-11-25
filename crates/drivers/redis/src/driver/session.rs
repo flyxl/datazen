@@ -288,7 +288,7 @@ where
             Ok(serde_json::json!(members))
         }
         "stream" => {
-            let raw: redis::Value = redis::cmd("XRANGE")
+            let entries: Vec<redis::Value> = redis::cmd("XRANGE")
                 .arg(key)
                 .arg("-")
                 .arg("+")
@@ -297,10 +297,11 @@ where
                 .query_async(conn)
                 .await
                 .map_err(|e| e.to_string())?;
-            match crate::value::stream_entry_to_json(&raw) {
-                Ok(v) => Ok(v),
-                Err(()) => Ok(serde_json::json!([])),
-            }
+            let rows: Vec<_> = entries
+                .iter()
+                .filter_map(|entry| crate::value::stream_entry_to_json(entry).ok())
+                .collect();
+            Ok(serde_json::Value::Array(rows))
         }
         other => Ok(serde_json::json!({ "type": other })),
     }

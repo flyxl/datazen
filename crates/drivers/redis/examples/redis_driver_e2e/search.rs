@@ -54,6 +54,44 @@ pub async fn run(journey: &mut Journey<'_>) {
     assert_eq!(by_key["matched"][0]["key"], "contract:search:hash");
     assert_eq!(by_key["matched"][0]["matchedIn"], "key");
 
+    let mut cursor = 0;
+    let mut task = None;
+    let mut observed = Vec::new();
+    for _ in 0..256 {
+        let page = journey
+            .command(
+                "scan_values",
+                json!({
+                    "query":"ordinary", "mode":"value", "pattern":"contract:search:*",
+                    "count":3, "cursor":cursor, "task_id":task
+                }),
+            )
+            .await;
+        let page_task = page["taskId"].as_str().unwrap();
+        if let Some(prior) = task.as_deref() {
+            assert_eq!(page_task, prior);
+        }
+        task = Some(page_task.to_owned());
+        observed.extend(page["matched"].as_array().unwrap().iter().map(|hit| {
+            assert_eq!(hit["matchedIn"], "value");
+            hit["key"].as_str().unwrap().to_owned()
+        }));
+        cursor = page["cursor"].as_u64().unwrap();
+        if cursor == 0 {
+            assert_eq!(page["done"], true);
+            break;
+        }
+    }
+    assert_eq!(cursor, 0);
+    observed.sort();
+    observed.dedup();
+    assert_eq!(
+        observed,
+        (0..40)
+            .map(|i| format!("{prefix}{i:02}"))
+            .collect::<Vec<_>>()
+    );
+
     let started = journey
         .command(
             "scan_values",

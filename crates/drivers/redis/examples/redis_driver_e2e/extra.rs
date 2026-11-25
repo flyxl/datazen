@@ -23,6 +23,61 @@ pub async fn archive_and_metadata(journey: &mut Journey<'_>) {
         let detail = journey.command("get_key", json!({"key":key})).await;
         assert!(detail.is_object(), "{kind}: {detail}");
     }
+    let hash = "contract:detail:hash";
+    assert_eq!(
+        journey
+            .read::<u64>("HSET", &[hash, "a", "1", "b", "2"])
+            .await,
+        2
+    );
+    let detail = journey.command("get_key", json!({"key":hash})).await;
+    assert_eq!(detail["value"], json!({"a":"1","b":"2"}));
+    let raw = journey
+        .command("get_key_raw", json!({"key":hash,"with_memory":true}))
+        .await;
+    assert_eq!(raw["logicalLen"], 2);
+    assert_eq!(raw["rawB64"], Value::Null);
+    assert_eq!(
+        raw["memBytes"],
+        journey.read::<u64>("MEMORY", &["USAGE", hash]).await
+    );
+
+    let large_key = "contract:detail:large";
+    let data = "x".repeat(5 * 1024 * 1024 + 1);
+    assert_eq!(
+        journey.read::<String>("SET", &[large_key, &data]).await,
+        "OK"
+    );
+    let raw = journey
+        .command("get_key_raw", json!({"key":large_key}))
+        .await;
+    assert_eq!(raw["logicalLen"], data.len());
+    assert_eq!(raw["truncated"], true);
+    assert_eq!(raw["rawB64"], Value::Null);
+    assert_eq!(journey.read::<u64>("DEL", &[large_key]).await, 1);
+
+    let stream = "contract:detail:stream";
+    let first = journey
+        .read::<String>("XADD", &[stream, "1-0", "field", "first"])
+        .await;
+    let second = journey
+        .read::<String>("XADD", &[stream, "2-0", "field", "second", "other", "data"])
+        .await;
+    let detail = journey.command("get_key", json!({"key":stream})).await;
+    assert_eq!(
+        detail["value"],
+        json!([
+            {"id":first,"fields":{"field":"first"}},
+            {"id":second,"fields":{"field":"second","other":"data"}},
+        ])
+    );
+    assert_eq!(
+        journey.read::<u64>("XDEL", &[stream, "1-0", "2-0"]).await,
+        2
+    );
+    let empty = journey.command("get_key", json!({"key":stream})).await;
+    assert_eq!(empty["value"], json!([]));
+
     let key = "contract:archive";
     journey
         .command(
