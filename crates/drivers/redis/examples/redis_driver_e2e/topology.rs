@@ -218,6 +218,13 @@ pub async fn run(
     inspect(driver, &routed, cluster, "cluster", proof).await;
     plaintext_negotiation(driver, &routed, cluster, "cluster").await;
     metadata_acl(driver, &routed, cluster, proof).await;
+    if let (Ok(primary), Ok(replica), Ok(sentinel)) = (
+        std::env::var("REDIS_E2E_FAILOVER_PRIMARY"),
+        std::env::var("REDIS_E2E_FAILOVER_REPLICA"),
+        std::env::var("REDIS_E2E_FAILOVER_SENTINEL"),
+    ) {
+        promoted_primary(driver, base, &primary, &replica, &sentinel, proof).await;
+    }
 }
 
 async fn plaintext_negotiation(
@@ -444,5 +451,105 @@ async fn authenticated_sentinel(
         .await
         .unwrap();
     assert_eq!(result.rows[0][0], Some(Value::String("sentinel".into())));
+    driver.disconnect(handle).await.unwrap();
+}
+
+async fn promoted_primary(
+    driver: &dyn DatabaseDriver,
+    base: &ConnectionConfig,
+    primary: &str,
+    replica: &str,
+    sentinel: &str,
+    proof: &str,
+) {
+    let node = |port: &str| redis::Client::open(format!("redis://127.0.0.1:{port}/0")).unwrap();
+    let mut oracle = node(primary)
+        .get_multiplexed_async_connection()
+        .await
+        .unwrap();
+    let witness: String = redis::cmd("GET")
+        .arg("contract:fixture")
+        .query_async(&mut oracle)
+        .await
+        .unwrap();
+    assert_eq!(witness, proof);
+    let mut config = base.clone();
+    config.options = json!({"topology":"sentinel","sentinelMasterName":"native-test",
+        "sentinelNodes":[format!("127.0.0.1:{sentinel}")] })
+    .as_object()
+    .cloned();
+    let handle = driver.connect(&config).await.unwrap();
+    let existing = driver.query(&handle, "CLIENT ID").await.unwrap();
+    let Some(Value::Integer(id)) = existing.rows[0][0] else {
+        panic!("expected Redis client ID")
+    };
+    let mut control = node(sentinel)
+        .get_multiplexed_async_connection()
+        .await
+        .unwrap();
+    let triggered: String = redis::cmd("SENTINEL")
+        .arg(&["FAILOVER", "native-test"])
+        .query_async(&mut control)
+        .await
+        .unwrap();
+    assert_eq!(triggered, "OK");
+    tokio::time::timeout(Duration::from_secs(25), async {
+        loop {
+            let address: Vec<String> = redis::cmd("SENTINEL")
+                .arg(&["GET-MASTER-ADDR-BY-NAME", "native-test"])
+                .query_async(&mut control)
+                .await
+                .unwrap();
+            if address.get(1).is_some_and(|port| port == replica) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .expect("Sentinel must promote the synchronized fixture replica");
+    // Role changes can close existing regular clients. Reopen each oracle;
+    // preserve only the driver's original handle for the reconnection check.
+    let mut promoted = node(replica)
+        .get_multiplexed_async_connection()
+        .await
+        .unwrap();
+    let fresh: String = redis::cmd("GET")
+        .arg("contract:fixture")
+        .query_async(&mut promoted)
+        .await
+        .unwrap();
+    assert_eq!(fresh, proof);
+    let mut old = node(primary)
+        .get_multiplexed_async_connection()
+        .await
+        .unwrap();
+    let killed: u32 = redis::cmd("CLIENT")
+        .arg(&["KILL", "ID", &id.to_string()])
+        .query_async(&mut old)
+        .await
+        .unwrap();
+    assert!(
+        killed <= 1,
+        "only the fixture driver's old socket may be closed"
+    );
+    let written = driver
+        .execute_command(
+            &handle,
+            "set_string",
+            json!({
+                "key":"contract:failover:new-primary","value":"promoted"
+            }),
+        )
+        .await
+        .unwrap()
+        .data;
+    assert_eq!(written["ok"], true);
+    let value: String = redis::cmd("GET")
+        .arg("contract:failover:new-primary")
+        .query_async(&mut promoted)
+        .await
+        .unwrap();
+    assert_eq!(value, "promoted");
     driver.disconnect(handle).await.unwrap();
 }

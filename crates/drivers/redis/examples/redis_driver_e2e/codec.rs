@@ -82,6 +82,46 @@ pub async fn run(journey: &mut Journey<'_>) {
     let mut deflate = DeflateEncoder::new(Vec::new(), Compression::default());
     deflate.write_all(json_document).unwrap();
 
+    let rejected: Vec<Value> =
+        serde_json::from_slice(&std::fs::read("pickle-errors.json").unwrap()).unwrap();
+    for case in rejected {
+        let bytes = STANDARD.decode(case["data"].as_str().unwrap()).unwrap();
+        let result = round_trip(journey, "pickle", &bytes).await;
+        assert_eq!(result["reason"], "decode-failed");
+        assert!(
+            result["message"]
+                .as_str()
+                .unwrap()
+                .contains(case["message"].as_str().unwrap()),
+            "{result}"
+        );
+    }
+    // Both byte strings were written by Java ObjectOutputStream.
+    let doubles = STANDARD
+        .decode("rO0ABXVyAAJbRD6mjBSrY1oeAgAAeHAAAAADP/QAAAAAAAB/+AAAAAAAAH/wAAAAAAAA")
+        .unwrap();
+    let result = round_trip(journey, "java", &doubles).await;
+    let decoded: Value = serde_json::from_str(result["json"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        decoded,
+        json!({"$array":"[D","items":[1.25,"NaN","Infinity"]})
+    );
+    let enum_data = STANDARD.decode("rO0ABX5yABZqYXZhLmxhbmcuVGhyZWFkJFN0YXRlAAAAAAAAAAASAAB4cgAOamF2YS5sYW5nLkVudW0AAAAAAAAAABIAAHhwdAAIUlVOTkFCTEU=").unwrap();
+    let unsupported = round_trip(journey, "java", &enum_data).await;
+    assert!(unsupported["message"]
+        .as_str()
+        .unwrap()
+        .contains("enum deserialization"));
+    let incomplete = round_trip(journey, "java", &doubles[..doubles.len() - 1]).await;
+    assert!(incomplete["message"]
+        .as_str()
+        .unwrap()
+        .contains("unexpected EOF"));
+    let mut zlib_sample = ZlibEncoder::new(Vec::new(), Compression::default());
+    zlib_sample.write_all(b"wire content").unwrap();
+    let wrong = round_trip(journey, "gzip", &zlib_sample.finish().unwrap()).await;
+    assert_eq!(wrong["suggestedCodec"], "zlib");
+
     for (codec, stored) in [
         ("none", json_document.to_vec()),
         ("base64", STANDARD.encode(json_document).into_bytes()),

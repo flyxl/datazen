@@ -38,10 +38,27 @@ def write_pickle_fixtures(root: Path):
     for scalar in (123, -45, 2.5, 10**30):
         expected = str(scalar) if scalar == 10**30 else scalar
         cases.append((pickle.dumps(scalar, protocol=0), expected))
+    cases.extend((pickle.dumps(value, protocol=4), expected) for value, expected in [
+        ({7: "number", True: "boolean", None: "null-key"},
+         {"7": "number", "true": "boolean", "null": "null-key"}),
+        ((float("inf"), float("-inf"), float("nan")), ["inf", "-inf", "NaN"]),
+    ])
     (root / "pickle-fixtures.json").write_text(json.dumps([
         {"data": base64.b64encode(payload).decode("ascii"), "expected": expected}
         for payload, expected in cases
     ]), encoding="utf-8")
+    from datetime import date
+    refused = [
+        (pickle.dumps(date(2026, 1, 1), protocol=4), "refusing to parse"),
+        (pickle.dumps("truncated here", protocol=3)[:-2], "unexpected EOF"),
+        (pickle.dumps(123, protocol=3)[:-1], "unexpected end of pickle stream"),
+        (pickle.dumps({1, 2}, protocol=4), "unsupported pickle opcode"),
+    ]
+    (root / "pickle-errors.json").write_text(json.dumps([
+        {"data": base64.b64encode(payload).decode("ascii"), "message": message}
+        for payload, message in refused
+    ]), encoding="utf-8")
+
 
 
 def main():
@@ -88,6 +105,24 @@ def main():
             lab.start(protected_sentinel, sentinel=port, sentinel_password=sentinel_password)
             lab.env.update(REDIS_E2E_AUTH_SENTINEL_PORT=str(protected_sentinel),
                            REDIS_E2E_AUTH_SENTINEL_PASSWORD=sentinel_password)
+            # Isolate promotion from the primary used by the other journeys.
+            primary = lab.port()
+            lab.start(primary, ["--repl-diskless-sync-delay", "0"])
+            replica = lab.port()
+            lab.start(replica, ["--replicaof", "127.0.0.1", str(primary)])
+            failover_sentinel = lab.port()
+            lab.start(failover_sentinel, sentinel=primary)
+            assert lab.cli(primary, "SET", "contract:fixture", nonce) == "OK"
+            deadline = time.monotonic() + 20
+            while True:
+                candidates = lab.cli(failover_sentinel, "SENTINEL", "REPLICAS", "native-test")
+                if f"127.0.0.1:{replica}" in candidates and lab.cli(replica, "GET", "contract:fixture") == nonce:
+                    break
+                assert time.monotonic() < deadline, "Sentinel never discovered a synchronized replica"
+                time.sleep(.2)
+            lab.env.update(REDIS_E2E_FAILOVER_PRIMARY=str(primary),
+                           REDIS_E2E_FAILOVER_REPLICA=str(replica),
+                           REDIS_E2E_FAILOVER_SENTINEL=str(failover_sentinel))
         if args.legacy_server:
             legacy_args = copy.copy(args)
             legacy_args.server = str(args.legacy_server.resolve(strict=True))
@@ -98,7 +133,7 @@ def main():
             lab.env["REDIS_E2E_LEGACY_PORT"] = str(legacy_port)
         fixture_args = ["--redis-driver-fixture"] if args.native_harness else []
         subprocess.run([str(args.binary.resolve(strict=True)), *fixture_args, str(port), nonce, *(["json"] if args.test_json else [])],
-                       cwd=root, env=lab.env, timeout=60, check=True)
+                       cwd=root, env=lab.env, timeout=95 if args.test_topology else 60, check=True)
 
 
 if __name__ == "__main__":
