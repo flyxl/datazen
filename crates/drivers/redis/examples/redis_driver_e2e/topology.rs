@@ -493,21 +493,29 @@ async fn promoted_primary(
         .await
         .unwrap();
     assert_eq!(triggered, "OK");
-    tokio::time::timeout(Duration::from_secs(25), async {
+    async fn role(client: redis::Client) -> Option<String> {
+        let mut connection = client.get_multiplexed_async_connection().await.ok()?;
+        let role: Vec<redis::Value> = redis::cmd("ROLE").query_async(&mut connection).await.ok()?;
+        redis::from_redis_value(role.first()?).ok()
+    }
+    tokio::time::timeout(Duration::from_secs(35), async {
         loop {
             let address: Vec<String> = redis::cmd("SENTINEL")
                 .arg(&["GET-MASTER-ADDR-BY-NAME", "native-test"])
                 .query_async(&mut control)
                 .await
                 .unwrap();
-            if address.get(1).is_some_and(|port| port == replica) {
+            if address.get(1).is_some_and(|port| port == replica)
+                && role(node(replica)).await.as_deref() == Some("master")
+                && role(node(primary)).await.as_deref() == Some("slave")
+            {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     })
     .await
-    .expect("Sentinel must promote the synchronized fixture replica");
+    .expect("Sentinel must finish promotion and demote the old primary");
     // Role changes can close existing regular clients. Reopen each oracle;
     // preserve only the driver's original handle for the reconnection check.
     let mut promoted = node(replica)
