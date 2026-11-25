@@ -436,3 +436,77 @@ pub async fn stream_overview(j: &mut Journey<'_>) {
     assert_eq!(limited["truncated"], true);
     assert_eq!(limited["rows"].as_array().unwrap().len(), 1);
 }
+
+pub async fn multi_page_workbench(j: &mut Journey<'_>, port: u16) {
+    let client = redis::Client::open(format!("redis://127.0.0.1:{port}/7")).unwrap();
+    let mut witness = client.get_multiplexed_async_connection().await.unwrap();
+    assert_eq!(
+        redis::cmd("DBSIZE")
+            .query_async::<u32>(&mut witness)
+            .await
+            .unwrap(),
+        0
+    );
+    let mut pipe = redis::pipe();
+    for i in 0..640 {
+        let key = format!("contract:multi-page:{i:04}");
+        match i % 4 {
+            0 => {
+                pipe.cmd("SET").arg(&key).arg("fixture-value").ignore();
+            }
+            1 => {
+                pipe.cmd("HSET")
+                    .arg(&key)
+                    .arg(&["name", "fixture"])
+                    .ignore();
+            }
+            2 => {
+                pipe.cmd("SADD").arg(&key).arg("member").ignore();
+            }
+            _ => {
+                pipe.cmd("LPUSH").arg(&key).arg("item").ignore();
+            }
+        }
+    }
+    pipe.query_async::<()>(&mut witness).await.unwrap();
+    let small = j
+        .command("type_distribution", json!({"dbIndex":7,"sampleLimit":25}))
+        .await;
+    assert_eq!(small["dbsize"], 640);
+    assert_eq!(small["sampled"], 25);
+    assert_eq!(small["truncated"], true);
+    let all = j
+        .command(
+            "type_distribution",
+            json!({"dbIndex":7,"sampleLimit":10_000}),
+        )
+        .await;
+    assert_eq!(
+        all,
+        json!({
+            "counts":{"hash":160,"list":160,"set":160,"string":160},
+            "sampled":640,"dbsize":640,"truncated":false
+        })
+    );
+
+    // Sampling must not confuse different types or turn a scoped sample into a count.
+    let sample = j
+        .command("memory_sample", json!({"dbIndex":7,"limit":525}))
+        .await;
+    let entries = sample["samples"].as_array().unwrap();
+    assert_eq!(entries.len(), 525);
+    assert_eq!(sample["truncated"], true);
+    assert!(entries
+        .iter()
+        .all(|entry| entry["bytes"].as_u64().unwrap() > 0 && entry["missing"] == false));
+    assert!(entries
+        .windows(2)
+        .all(|pair| pair[0]["bytes"].as_u64().unwrap() >= pair[1]["bytes"].as_u64().unwrap()));
+    assert_eq!(
+        redis::cmd("DBSIZE")
+            .query_async::<u32>(&mut witness)
+            .await
+            .unwrap(),
+        640
+    );
+}
