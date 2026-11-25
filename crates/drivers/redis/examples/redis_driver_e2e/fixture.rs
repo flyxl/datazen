@@ -12,6 +12,8 @@ mod extra;
 mod guarded;
 #[path = "protocol.rs"]
 mod protocol;
+#[path = "pubsub.rs"]
+mod pubsub;
 #[path = "resource.rs"]
 mod resource;
 #[path = "search.rs"]
@@ -613,6 +615,7 @@ pub async fn run_cli(mut args: impl Iterator<Item = String>) {
     guarded::run(&mut suite, json.is_some()).await;
     validation::run(&mut suite).await;
     connections::run(&mut suite, &cfg).await;
+    pubsub::run(&mut suite, &cfg.id).await;
     access::authenticated(&mut suite, &cfg, &proof).await;
     resource::run(provider.as_ref(), &cfg, port).await;
     if let (Ok(sentinel), Ok(cluster)) = (
