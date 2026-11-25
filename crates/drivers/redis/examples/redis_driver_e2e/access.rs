@@ -21,6 +21,7 @@ pub async fn authenticated(journey: &mut Journey<'_>, config: &ConnectionConfig,
                 "+GET",
                 "+TYPE",
                 "+TTL",
+                "+STRLEN",
                 "+SCAN",
             ],
         )
@@ -54,6 +55,59 @@ pub async fn authenticated(journey: &mut Journey<'_>, config: &ConnectionConfig,
     assert_eq!(untouched, "written");
 
     driver.disconnect(handle).await.unwrap();
+    // Disable the application's read-only guard; the server's ACL must
+    // still reject writes and denied commands without mutating the fixture.
+    restricted.read_only = false;
+    let handle = driver.connect(&restricted).await.unwrap();
+    let raw = driver
+        .execute_command(
+            &handle,
+            "get_key_raw",
+            json!({
+                "key":"contract:catalog","withMemory":true
+            }),
+        )
+        .await
+        .unwrap()
+        .data;
+    assert_eq!(raw["rawB64"], "d3JpdHRlbg==");
+    assert_eq!(raw["logicalLen"], 7);
+    assert!(
+        raw["memBytes"].is_null(),
+        "MEMORY was not allowed by the fixture ACL"
+    );
+    for (name, input) in [
+        (
+            "set_string",
+            json!({"key":"contract:catalog","value":"never written"}),
+        ),
+        (
+            "scan_values",
+            json!({"pattern":"contract:catalog","query":"written","mode":"value"}),
+        ),
+    ] {
+        let error = driver
+            .execute_command(&handle, name, input)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("NOPERM"), "{name}: {error}");
+    }
+    let key_hits = driver
+        .execute_command(
+            &handle,
+            "scan_values",
+            json!({
+                "pattern":"contract:catalog","query":"catalog","mode":"key"
+            }),
+        )
+        .await
+        .unwrap()
+        .data;
+    assert_eq!(key_hits["matched"][0]["key"], "contract:catalog");
+    let value: String = journey.read("GET", &["contract:catalog"]).await;
+    assert_eq!(value, "written");
+    driver.disconnect(handle).await.unwrap();
+
     restricted.password = Some("invalid-fixture-password".into());
     assert!(driver.test_connection(&restricted).await.is_err());
     assert!(driver.connect(&restricted).await.is_err());
