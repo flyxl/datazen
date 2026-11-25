@@ -329,33 +329,69 @@ where
     let mut matched: Vec<MatchHit> = Vec::new();
     let mut bytes_used: u64 = 0;
 
-    // Value matching: pipeline TYPE + STRLEN + GETRANGE(peek) per key.
+    // Ask TYPE before reading values: applying GETRANGE to a non-String
+    // would fail the whole RESP pipeline before we can skip that key.
     if mode != SearchMode::Key && !keys.is_empty() {
-        let peek_end = guard.per_value_peek.saturating_sub(1).max(0) as i64;
-        let mut pipe = redis::pipe();
+        let peek_end = guard.per_value_peek.saturating_sub(1) as i64;
+        let mut types = redis::pipe();
         for key in &keys {
-            pipe.cmd("TYPE").arg(key);
-            pipe.cmd("STRLEN").arg(key);
-            pipe.cmd("GETRANGE").arg(key).arg(0).arg(peek_end);
+            types.cmd("TYPE").arg(key);
         }
-        let results: Vec<redis::Value> = pipe
+        let replies: Vec<redis::Value> = types
             .query_async(conn)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let strings: Vec<&String> = keys
+            .iter()
+            .zip(&replies)
+            .filter_map(|(key, reply)| {
+                (crate::value::preview::value_to_string(reply) == "string").then_some(key)
+            })
+            .collect();
 
-        for (i, key) in keys.iter().enumerate() {
-            let key_type = crate::value::preview::value_to_string(&results[i * 3]);
-            if key_type != "string" {
-                continue;
+        if !strings.is_empty() {
+            let mut ranges = redis::pipe();
+            for key in &strings {
+                ranges.cmd("GETRANGE").arg(*key).arg(0).arg(peek_end);
             }
-            let data = bulk_bytes(&results[i * 3 + 2]);
-            bytes_used = bytes_used.saturating_add(data.len() as u64);
-            if contains_ignore_case(&data, needle) {
-                matched.push(MatchHit {
-                    key: key.clone(),
-                    matched_in: "value",
-                    preview: preview_around(&data, needle),
-                });
+            let values: Vec<redis::Value> = match ranges.query_async(conn).await {
+                Ok(values) => values,
+                Err(error) if error.code() == Some("WRONGTYPE") => {
+                    // A concurrent rewrite may occur between TYPE and GETRANGE.
+                    // Retry individual reads only in that case to skip changed keys.
+                    let mut values = Vec::with_capacity(strings.len());
+                    for key in &strings {
+                        match redis::cmd("GETRANGE")
+                            .arg(*key)
+                            .arg(0)
+                            .arg(peek_end)
+                            .query_async(conn)
+                            .await
+                        {
+                            Ok(value) => values.push(value),
+                            Err(error) if error.code() == Some("WRONGTYPE") => {
+                                values.push(redis::Value::Nil)
+                            }
+                            Err(error) => return Err(DriverError::QueryFailed(error.to_string())),
+                        }
+                    }
+                    values
+                }
+                Err(error) => return Err(DriverError::QueryFailed(error.to_string())),
+            };
+            for (key, response) in strings.into_iter().zip(values) {
+                if matches!(response, redis::Value::Nil) {
+                    continue;
+                }
+                let data = bulk_bytes(&response);
+                bytes_used = bytes_used.saturating_add(data.len() as u64);
+                if contains_ignore_case(&data, needle) {
+                    matched.push(MatchHit {
+                        key: key.clone(),
+                        matched_in: "value",
+                        preview: preview_around(&data, needle),
+                    });
+                }
             }
         }
     }

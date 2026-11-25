@@ -8,10 +8,13 @@ use datazen_driver_api::{
     namespace::NamespaceTarget,
     resource::{
         AcquireResourceRequest, Baseline, BudgetPermit, BudgetPort, CommandCall,
-        DescribeResourceRequest, IdentityScope, ResourceError, ResourceProvider, ResourcePurpose,
-        ResourceScope, ResultChunk, ResultSink,
+        DescribeResourceRequest, IdentityScope, InitializationRequirement, ResourceError,
+        ResourceProvider, ResourcePurpose, ResourceScope, ResultChunk, ResultSink,
     },
-    session::{CloseDisposition, CompletionStatus, ContextChangeDisposition, TransactionOptions},
+    session::{
+        CloseDisposition, CompletionStatus, ContextChangeDisposition, ResetDisposition,
+        SessionHandleKind, SessionHandleRef, TransactionOptions,
+    },
     ConnectionConfig, QueryExecutionId,
 };
 use serde_json::json;
@@ -50,11 +53,17 @@ struct Sink {
     chunks: Mutex<Vec<ResultChunk>>,
     completed: AtomicBool,
     failed: AtomicBool,
+    refuses_rows: bool,
 }
 
 #[async_trait]
 impl ResultSink for Sink {
     async fn write(&self, chunk: ResultChunk) -> Result<(), ResourceError> {
+        if self.refuses_rows {
+            return Err(ResourceError::SinkRejected {
+                reason: "fixture refuses rows".into(),
+            });
+        }
         self.chunks.lock().unwrap().push(chunk);
         Ok(())
     }
@@ -83,25 +92,51 @@ pub async fn run(provider: &dyn ResourceProvider, config: &ConnectionConfig, por
     assert_eq!(description.namespace_shape.path_segments.len(), 1);
     let ledger = Arc::new(Budget::default());
     let budget: Arc<dyn BudgetPort> = ledger.clone();
-    let resource = provider
-        .acquire_resource(
-            &AcquireResourceRequest {
-                connection_config: config.clone(),
-                target,
-                scope: ResourceScope {
-                    purpose: ResourcePurpose::InteractiveQuery,
-                    max_physical_connections: 1,
-                    holds_open_transaction: false,
-                    pin_for_streaming: false,
-                },
-                identity_scope: IdentityScope::default(),
-                baseline: Baseline::new(Vec::new()),
-            },
-            &budget,
-        )
-        .await
-        .unwrap();
-    assert_eq!(ledger.taken.load(Ordering::SeqCst), 1);
+    let request = AcquireResourceRequest {
+        connection_config: config.clone(),
+        target,
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 1,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::new(Vec::new()),
+    };
+    let unsupported_baseline = Baseline::new(vec![InitializationRequirement {
+        id: "fixture-init".into(),
+        sql: "PING".into(),
+        mandatory: true,
+        idempotent: true,
+    }]);
+    let mut bad = request.clone();
+    bad.scope.max_physical_connections = 0;
+    assert!(matches!(
+        provider.acquire_resource(&bad, &budget).await,
+        Err(ResourceError::BudgetDenied { .. })
+    ));
+    let mut bad = request.clone();
+    bad.scope.holds_open_transaction = true;
+    assert!(provider.acquire_resource(&bad, &budget).await.is_err());
+    let mut bad = request.clone();
+    bad.baseline = unsupported_baseline.clone();
+    assert!(provider.acquire_resource(&bad, &budget).await.is_err());
+    let mut bad = request.clone();
+    bad.target = NamespaceTarget::empty().with_database("x");
+    assert!(provider.acquire_resource(&bad, &budget).await.is_err());
+    assert_eq!(ledger.taken.load(Ordering::SeqCst), 0);
+
+    let mut bad = request.clone();
+    bad.connection_config.port = Some(0);
+    assert!(provider.acquire_resource(&bad, &budget).await.is_err());
+    let mut bad = request.clone();
+    bad.target = NamespaceTarget::empty().with_database("db999999");
+    assert!(provider.acquire_resource(&bad, &budget).await.is_err());
+    assert_eq!(ledger.taken.load(Ordering::SeqCst), 2);
+    assert_eq!(ledger.released.load(Ordering::SeqCst), 2);
+    let resource = provider.acquire_resource(&request, &budget).await.unwrap();
+    assert_eq!(ledger.taken.load(Ordering::SeqCst), 3);
 
     let observation = provider.observe_session(&resource).await.unwrap();
     assert!(observation.protocol_drained);
@@ -147,6 +182,26 @@ pub async fn run(provider: &dyn ResourceProvider, config: &ConnectionConfig, por
         .unwrap();
     assert_eq!(sink.chunks.lock().unwrap().len(), 2);
 
+    let refusing = Sink {
+        refuses_rows: true,
+        ..Default::default()
+    };
+    assert!(matches!(
+        provider
+            .execute_on_resource(
+                &resource,
+                &execution,
+                &CommandCall::new("query", json!({"sql":"PING"})),
+                &refusing
+            )
+            .await,
+        Err(ResourceError::SinkRejected { .. })
+    ));
+    assert!(!refusing.completed.load(Ordering::SeqCst));
+    assert!(provider
+        .change_context(&resource, &NamespaceTarget::empty().with_schema("refused"))
+        .await
+        .is_err());
     let refusal = Sink::default();
     assert!(provider
         .execute_on_resource(
@@ -186,10 +241,24 @@ pub async fn run(provider: &dyn ResourceProvider, config: &ConnectionConfig, por
         .request_cancel(&resource, &execution)
         .await
         .is_err());
-    provider
-        .reset_resource(&resource, &Baseline::new(Vec::new()))
+    assert!(provider
+        .reset_resource(&resource, &unsupported_baseline)
         .await
-        .unwrap();
+        .is_err());
+    assert_eq!(
+        provider
+            .reset_resource(&resource, &Baseline::new(Vec::new()))
+            .await
+            .unwrap(),
+        ResetDisposition::Discard
+    );
+    let unissued = SessionHandleRef::new(
+        "fixture-cursor",
+        SessionHandleKind::Cursor,
+        resource.resource_key(),
+        resource.runtime_epoch(),
+    );
+    assert!(provider.close_handle(&resource, &unissued).await.is_err());
     assert_eq!(
         provider.close_resource(&resource).await.unwrap(),
         CloseDisposition::Closed
@@ -198,6 +267,7 @@ pub async fn run(provider: &dyn ResourceProvider, config: &ConnectionConfig, por
         provider.close_resource(&resource).await.unwrap(),
         CloseDisposition::Closed
     );
+    assert!(provider.close_handle(&resource, &unissued).await.is_ok());
     assert!(provider.observe_session(&resource).await.is_err());
-    assert_eq!(ledger.released.load(Ordering::SeqCst), 1);
+    assert_eq!(ledger.released.load(Ordering::SeqCst), 3);
 }

@@ -102,9 +102,10 @@ def main():
     env.pop("CARGO_ENCODED_RUSTFLAGS", None)
     with tempfile.TemporaryDirectory(prefix="redis-cov-build-") as temp:
         env["LLVM_PROFILE_FILE"] = str(Path(temp) / "%p-%m.profraw")
+        # One Cargo invocation keeps the two Rust programs on the same
+        # resolved feature graph before LLVM profiles are combined.
         subprocess.run(["cargo", "build", "--locked", "-p", "datazen-rune-host",
-                        "--bin", "datazen-native"], env=env, cwd=ROOT, check=True)
-        subprocess.run(["cargo", "build", "--locked", "-p", "datazen-driver-redis",
+                        "-p", "datazen-driver-redis", "--bin", "datazen-native",
                         "--example", "redis_driver_e2e"], env=env, cwd=ROOT, check=True)
 
     with tempfile.TemporaryDirectory(prefix="redis-cov-e2e-") as temp:
@@ -142,9 +143,13 @@ def main():
         merged = output / "redis-e2e.profdata"
         subprocess.run([profdata, "merge", "-sparse", "-o", merged, *raw], check=True)
         with (output / "llvm-summary.json").open("w", encoding="utf-8") as report:
-            subprocess.run([cov, "export", "-summary-only", f"-instr-profile={merged}", binary,
-                            "-object", driver_binary],
-                           stdout=report, check=True)
+            process = subprocess.run([cov, "export", "-summary-only", f"-instr-profile={merged}", binary,
+                                      "-object", driver_binary],
+                                     stdout=report, stderr=subprocess.PIPE, check=True, text=True)
+        if process.stderr:
+            print(process.stderr, file=sys.stderr, end="")
+        if "mismatched data" in process.stderr:
+            raise SystemExit("Rejecting mismatched application coverage profiles; rebuild both programs together.")
     return 0 if summarize(json.loads((output / "llvm-summary.json").read_text()), results, output) else 1
 
 
