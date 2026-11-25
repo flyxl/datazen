@@ -9,6 +9,8 @@ pub async fn run(journey: &mut Journey<'_>, base: &ConnectionConfig) {
         json!({"topology":"sentinel","sentinelNodes":["127.0.0.1:1"]}),
         json!({"topology":"sentinel","sentinelMasterName":"fixture"}),
         json!({"topology":"cluster","clusterNodes":["malformed:port"]}),
+        json!({"topology":"cluster","clusterNodes":[":6379"]}),
+        json!({"topology":"cluster","clusterNodes":["127.0.0.1"]}),
     ] {
         let mut config = base.clone();
         config.options = topology.as_object().cloned();
@@ -50,6 +52,31 @@ pub async fn run(journey: &mut Journey<'_>, base: &ConnectionConfig) {
             matches!(&error, DriverError::SslError(detail) if detail.contains(expected)),
             "{error}"
         );
+    }
+
+    let mut invalid_prefixed_db = base.clone();
+    invalid_prefixed_db.database = Some("dbnot-a-number".into());
+    assert!(matches!(
+        driver.connect(&invalid_prefixed_db).await,
+        Err(DriverError::InvalidConfig(_))
+    ));
+    let port = base.port.unwrap();
+    let addr = format!("127.0.0.1:{port}");
+    let info = journey
+        .command("info", json!({"nodeAddr":addr,"section":"server"}))
+        .await;
+    assert!(info.as_str().unwrap().contains("redis_version"));
+    for addr in [":6379", "127.0.0.1"] {
+        assert!(matches!(
+            driver
+                .execute_command(
+                    journey.handle,
+                    "info",
+                    json!({"nodeAddr":addr,"section":"server"})
+                )
+                .await,
+            Err(DriverError::InvalidConfig(_))
+        ));
     }
 
     let mut tls = base.clone();
@@ -179,6 +206,28 @@ pub async fn legacy(
         .await;
     assert_ne!(delivered, redis::Value::Nil);
     assert_eq!(j.command("stream_lag", query).await["lag"], 1);
+    let overview = j.command("stream_overview", json!({"limit":1})).await;
+    assert_eq!(overview["truncated"], false);
+    assert_eq!(overview["rows"][0]["key"], stream);
+    assert_eq!(overview["rows"][0]["length"], 2);
+    let old_stream = "contract:legacy:trimmed-stream";
+    assert_eq!(
+        j.read::<String>("XADD", &[old_stream, "20-0", "field", "value"])
+            .await,
+        "20-0"
+    );
+    assert_eq!(
+        j.read::<String>("XGROUP", &["CREATE", old_stream, "readers", "20-0"])
+            .await,
+        "OK"
+    );
+    let lag = json!({"key":old_stream,"group":"readers"});
+    assert_eq!(j.command("stream_lag", lag.clone()).await["lag"], 0);
+    assert_eq!(j.read::<u32>("XDEL", &[old_stream, "20-0"]).await, 1);
+    assert_eq!(
+        j.command("stream_lag", lag).await["lag"],
+        serde_json::Value::Null
+    );
     let password = format!("{proof}:@%/legacy");
     assert_eq!(
         j.read::<String>("CONFIG", &["SET", "requirepass", &password])

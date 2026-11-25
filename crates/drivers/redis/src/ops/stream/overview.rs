@@ -16,33 +16,57 @@ where
     let mut stream_keys = Vec::new();
     let mut seen = HashSet::new();
     let mut cursor = 0u64;
+    let mut filter_on_server = true;
     let truncated = 'scan: loop {
-        let raw: redis::Value = redis::cmd("SCAN")
-            .arg(cursor)
-            .arg("COUNT")
-            .arg(200)
-            .query_async(conn)
-            .await
-            .map_err(|e| e.to_string())?;
+        let mut scan = redis::cmd("SCAN");
+        scan.arg(cursor).arg("COUNT").arg(200);
+        if filter_on_server {
+            scan.arg("TYPE").arg("stream");
+        }
+        let raw: redis::Value = match scan.query_async(conn).await {
+            Ok(raw) => raw,
+            Err(error)
+                if filter_on_server
+                    && error.kind() == redis::ErrorKind::ResponseError
+                    && error
+                        .detail()
+                        .is_some_and(|detail| detail.eq_ignore_ascii_case("syntax error")) =>
+            {
+                // Redis 5 does not understand SCAN TYPE. Retry the same page
+                // once without the option; do not downgrade an ACL/IO failure.
+                filter_on_server = false;
+                continue;
+            }
+            Err(error) => return Err(error.to_string()),
+        };
         let (next, batch) = parse_scan_result(&raw);
-        if !batch.is_empty() {
+        let candidates = if filter_on_server || batch.is_empty() {
+            batch
+        } else {
             let mut pipe = redis::pipe();
             for key in &batch {
                 pipe.cmd("TYPE").arg(key);
             }
             let types: Vec<redis::Value> =
                 pipe.query_async(conn).await.map_err(|e| e.to_string())?;
-
-            for (key, ty) in batch.into_iter().zip(types.into_iter()) {
-                if value_to_string(&ty).eq_ignore_ascii_case("stream") && seen.insert(key.clone()) {
-                    // Prove another stream exists before declaring truncation.
-                    // Total database size includes unrelated key types and SCAN
-                    // can report duplicate keys while the data changes.
-                    if stream_keys.len() == limit {
-                        break 'scan true;
-                    }
-                    stream_keys.push(key);
+            batch
+                .into_iter()
+                .zip(types)
+                .filter_map(|(key, ty)| {
+                    value_to_string(&ty)
+                        .eq_ignore_ascii_case("stream")
+                        .then_some(key)
+                })
+                .collect()
+        };
+        for key in candidates {
+            if seen.insert(key.clone()) {
+                // Prove another stream exists before declaring truncation.
+                // SCAN can report duplicate keys while the data changes.
+                if stream_keys.len() == limit {
+                    break 'scan true;
                 }
+                stream_keys.push(key);
             }
         }
         if next == 0 {
