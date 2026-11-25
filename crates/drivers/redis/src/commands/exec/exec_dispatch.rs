@@ -43,12 +43,14 @@ fn opt_bool(input: &JsonValue, field: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn db_index(input: &JsonValue) -> u32 {
-    input
-        .get("dbIndex")
-        .or_else(|| input.get("db_index"))
-        .and_then(JsonValue::as_u64)
-        .unwrap_or(0) as u32
+fn db_index(input: &JsonValue) -> Result<u32, DriverError> {
+    match input.get("dbIndex").or_else(|| input.get("db_index")) {
+        None | Some(JsonValue::Null) => Ok(0),
+        Some(index) => index
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .ok_or_else(|| DriverError::InvalidConfig("dbIndex must be a non-negative 32-bit integer".into())),
+    }
 }
 
 fn opt_string_vec(input: &JsonValue, field: &str) -> Vec<String> {
@@ -98,7 +100,7 @@ pub(super) async fn dispatch(
     input: JsonValue,
 ) -> Result<CommandResult, DriverError> {
     let id = handle.pool_id.as_str();
-    let db = db_index(&input);
+    let db = db_index(&input)?;
 
     match command {
         "scan_keys" => {

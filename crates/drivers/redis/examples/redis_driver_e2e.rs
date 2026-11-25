@@ -12,6 +12,8 @@ mod protocol;
 mod resource;
 #[path = "redis_driver_e2e/search.rs"]
 mod search;
+#[path = "redis_driver_e2e/validation.rs"]
+mod validation;
 
 use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DatabaseDriver};
 use datazen_driver_redis::factories;
@@ -347,6 +349,7 @@ async fn main() {
     codec::run(&mut suite).await;
     search::run(&mut suite).await;
     protocol::run(&mut suite).await;
+    validation::run(&mut suite).await;
     access::authenticated(&mut suite, &cfg, &proof).await;
     resource::run(provider.as_ref(), &cfg, port).await;
     access::flush_guard(&mut suite, &proof).await;
