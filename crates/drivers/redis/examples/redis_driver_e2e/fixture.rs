@@ -128,6 +128,36 @@ impl Journey<'_> {
         self.command("rename", json!({"key":key,"newKey":"contract:renamed"}))
             .await;
         assert_eq!(self.read::<u64>("EXISTS", &["contract:renamed"]).await, 1);
+        let policy_key = "contract:ttl-policy";
+        assert_eq!(
+            self.read::<String>("SET", &[policy_key, "before", "PX", "120000"])
+                .await,
+            "OK"
+        );
+        let starting_ttl = self.read::<i64>("PTTL", &[policy_key]).await;
+        let kept = self
+            .command("set_string", json!({"key":policy_key,"value":"after"}))
+            .await;
+        assert_eq!(
+            kept,
+            json!({"ok":true,"keepTtl":true,"keepTtlFallback":false})
+        );
+        assert!((1..=starting_ttl).contains(&self.read::<i64>("PTTL", &[policy_key]).await));
+        let raw = self
+            .command(
+                "set_string_raw",
+                json!({
+                    "key":policy_key,"data_b64":"AP8=","keep_ttl":false
+                }),
+            )
+            .await;
+        assert_eq!(
+            raw,
+            json!({"ok":true,"keepTtl":false,"keepTtlFallback":false})
+        );
+        assert_eq!(self.read::<i64>("PTTL", &[policy_key]).await, -1);
+        assert_eq!(self.read::<Vec<u8>>("GET", &[policy_key]).await, [0, 255]);
+
         let probe = self
             .command("key_probe", json!({"key":"contract:renamed"}))
             .await;
@@ -211,6 +241,65 @@ impl Journey<'_> {
         assert_eq!(
             self.read::<Vec<String>>("LRANGE", &[list, "0", "-1"]).await,
             ["c"]
+        );
+
+        let pushed = self
+            .command(
+                "list_push",
+                json!({"key":list,"side":"left","values":["a","b"]}),
+            )
+            .await;
+        assert_eq!(pushed["ok"], true);
+        let ranged = self
+            .command("list_range", json!({"key":list,"start":0,"stop":1}))
+            .await;
+        assert_eq!(ranged["items"], json!(["b", "a"]));
+        assert_eq!(
+            self.command("list_pop", json!({"key":list,"side":"left"}))
+                .await,
+            "b"
+        );
+        assert_eq!(
+            self.command(
+                "list_pop",
+                json!({"key":"contract:list:missing","side":"left"})
+            )
+            .await,
+            Value::Null
+        );
+        assert_eq!(
+            self.command("list_push", json!({"key":list,"side":"left","values":[]}))
+                .await["ok"],
+            true
+        );
+        for (op, body, message) in [
+            (
+                "list_push",
+                json!({"key":list,"side":"middle","values":["d"]}),
+                "invalid side",
+            ),
+            (
+                "list_pop",
+                json!({"key":list,"side":"middle"}),
+                "invalid side",
+            ),
+            (
+                "list_set",
+                json!({"key":list,"index":100,"value":"d"}),
+                "index out of range",
+            ),
+            ("list_range", json!({"key":"contract:catalog"}), "WRONGTYPE"),
+        ] {
+            let error = self
+                .driver
+                .execute_command(self.handle, op, body)
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains(message), "{error}");
+        }
+        assert_eq!(
+            self.read::<Vec<String>>("LRANGE", &[list, "0", "-1"]).await,
+            ["a", "c"]
         );
 
         let set = "contract:set";
