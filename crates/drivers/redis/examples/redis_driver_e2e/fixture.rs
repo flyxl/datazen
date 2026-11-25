@@ -93,6 +93,71 @@ impl Journey<'_> {
             .await
             .unwrap();
         assert!(!schema.columns.is_empty());
+        let legacy_schema = self
+            .driver
+            .get_table_schema(self.handle, "contract:catalog", "", None)
+            .await
+            .unwrap();
+        assert_eq!(legacy_schema.columns[0].data_type, "string");
+        for (db, schema) in [
+            ("db0", Some("not-a-schema")),
+            ("", None),
+            ("dbnot-a-number", None),
+        ] {
+            assert!(self
+                .driver
+                .get_tables(self.handle, db, schema)
+                .await
+                .is_err());
+        }
+        let echo = self
+            .driver
+            .query_with_params(self.handle, "ECHO fixture", &[])
+            .await
+            .unwrap();
+        assert_eq!(
+            echo.rows[0][0],
+            Some(datazen_driver_api::Value::String("fixture".into()))
+        );
+        assert_eq!(
+            self.driver
+                .execute(self.handle, "SET contract:generic value")
+                .await
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            self.read::<String>("GET", &["contract:generic"]).await,
+            "value"
+        );
+        let mut progress = |_| panic!("unsupported SQL operations must not start");
+        assert!(matches!(
+            self.driver
+                .dump_database_with_progress(
+                    self.handle,
+                    "db0",
+                    &datazen_driver_api::BackupDumpOptions::default(),
+                    &mut progress
+                )
+                .await,
+            Err(datazen_driver_api::DriverError::NotSupported(_))
+        ));
+        assert!(matches!(
+            self.driver
+                .restore_sql_with_progress(
+                    self.handle,
+                    "SET contract:generic changed",
+                    None,
+                    &mut progress
+                )
+                .await,
+            Err(datazen_driver_api::DriverError::NotSupported(_))
+        ));
+        assert_eq!(
+            self.read::<String>("GET", &["contract:generic"]).await,
+            "value"
+        );
+
         assert!(!self
             .driver
             .get_server_info(self.handle)
