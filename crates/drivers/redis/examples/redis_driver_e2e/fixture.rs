@@ -10,6 +10,8 @@ mod connections;
 mod extra;
 #[path = "guarded.rs"]
 mod guarded;
+#[path = "monitor.rs"]
+mod monitor;
 #[path = "protocol.rs"]
 mod protocol;
 #[path = "pubsub.rs"]
@@ -614,6 +616,7 @@ pub async fn run_cli(mut args: impl Iterator<Item = String>) {
     suite.keys().await;
     suite.aggregates().await;
     suite.observe().await;
+    monitor::run(&mut suite).await;
     suite.stream().await;
     extra::archive_and_metadata(&mut suite).await;
     extra::tree(&mut suite).await;

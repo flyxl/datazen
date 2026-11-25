@@ -59,6 +59,11 @@ pub async fn authenticated(journey: &mut Journey<'_>, config: &ConnectionConfig,
     // still reject writes and denied commands without mutating the fixture.
     restricted.read_only = false;
     let handle = driver.connect(&restricted).await.unwrap();
+    let monitor = driver
+        .execute_command(&handle, "monitor_start", json!({}))
+        .await
+        .unwrap_err();
+    assert!(monitor.to_string().contains("NOPERM"), "{monitor}");
     let raw = driver
         .execute_command(
             &handle,
