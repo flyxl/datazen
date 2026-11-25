@@ -357,3 +357,38 @@ pub async fn batch(j: &mut Journey<'_>) {
     );
     assert_eq!(j.read::<String>("GET", &[unrelated]).await, "untouched");
 }
+
+pub async fn stream_overview(j: &mut Journey<'_>) {
+    let empty = j
+        .command("stream_overview", json!({"dbIndex":6,"limit":1}))
+        .await;
+    assert_eq!(empty, json!({"rows":[],"truncated":false}));
+    j.command(
+        "set_string",
+        json!({"dbIndex":6,"key":"contract:overview:nonstream","value":"string"}),
+    )
+    .await;
+    for key in ["contract:overview:b", "contract:overview:a"] {
+        let created = j
+            .command(
+                "xadd",
+                json!({"dbIndex":6,"key":key,"fields":{"value":"entry"}}),
+            )
+            .await;
+        assert!(created["id"].is_string());
+    }
+    let full = j
+        .command("stream_overview", json!({"dbIndex":6,"limit":2}))
+        .await;
+    assert_eq!(full["truncated"], false, "{full}");
+    let rows = full["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["key"], "contract:overview:a");
+    assert_eq!(rows[1]["key"], "contract:overview:b");
+    assert_eq!(rows[1]["length"], 1);
+    let limited = j
+        .command("stream_overview", json!({"dbIndex":6,"limit":1}))
+        .await;
+    assert_eq!(limited["truncated"], true);
+    assert_eq!(limited["rows"].as_array().unwrap().len(), 1);
+}

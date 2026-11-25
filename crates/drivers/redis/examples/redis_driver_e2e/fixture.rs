@@ -59,6 +59,15 @@ impl Journey<'_> {
             .any(|command| command.id == "type_distribution"));
         assert!(commands.iter().any(|command| command.id == "dump_keys"));
         assert_eq!(self.driver.driver_type(), "redis");
+        assert_eq!(
+            self.driver.driver_category(),
+            datazen_driver_api::DriverCategory::KeyValue
+        );
+        assert_eq!(self.driver.quote_char(), '\0');
+        assert_eq!(
+            self.driver.quote_ident("fixture:unquoted key"),
+            "fixture:unquoted key"
+        );
         assert_eq!(self.driver.default_port(), Some(6379));
         assert_eq!(self.driver.default_host(), Some("127.0.0.1"));
         assert!(self
@@ -346,6 +355,9 @@ impl Journey<'_> {
             )
             .await;
         assert!(info.to_string().contains("redis_version"));
+        let full = self.command("info_filtered", json!({})).await;
+        assert!(full["sections"].as_array().unwrap().len() > 1);
+        assert_eq!(full["totalEntries"], full["matchedEntries"]);
         let unknown = self
             .command(
                 "info_filtered",
@@ -618,6 +630,7 @@ pub async fn run_cli(mut args: impl Iterator<Item = String>) {
     suite.observe().await;
     monitor::run(&mut suite).await;
     suite.stream().await;
+    extra::stream_overview(&mut suite).await;
     extra::archive_and_metadata(&mut suite).await;
     extra::tree(&mut suite).await;
     extra::batch(&mut suite).await;

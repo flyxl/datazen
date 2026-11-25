@@ -110,4 +110,47 @@ pub async fn run(j: &mut Journey<'_>, config_id: &str) {
         .await
         .unwrap_err();
     assert!(gone.to_string().contains("subscription not found"));
+    let ids_in = |line: &str| {
+        line.lines()
+            .filter_map(|row| {
+                row.split_whitespace()
+                    .find_map(|field| field.strip_prefix("id="))
+                    .map(str::to_owned)
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let before = ids_in(
+        &j.read::<String>("CLIENT", &["LIST", "TYPE", "PUBSUB"])
+            .await,
+    );
+    let reconnect_channel = "contract:event:disconnect";
+    j.command("pubsub_subscribe", json!({"channels":[reconnect_channel]}))
+        .await;
+    let after = ids_in(
+        &j.read::<String>("CLIENT", &["LIST", "TYPE", "PUBSUB"])
+            .await,
+    );
+    let ids: Vec<_> = after.difference(&before).map(String::as_str).collect();
+    assert_eq!(
+        ids.len(),
+        1,
+        "only this fixture's just-opened subscription may be closed"
+    );
+    assert_eq!(j.read::<u64>("CLIENT", &["KILL", "ID", ids[0]]).await, 1);
+    tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            let active = j.command("pubsub_list_subscriptions", json!({})).await;
+            if active["subscriptions"] == json!([]) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("a socket Redis closed must disappear from subscription state");
+    assert_eq!(
+        j.read::<u64>("PUBLISH", &[reconnect_channel, "not delivered"])
+            .await,
+        0
+    );
 }

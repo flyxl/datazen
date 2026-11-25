@@ -6,33 +6,26 @@ use super::types::StreamOverviewResult;
 use super::types::StreamOverviewRow;
 use crate::driver::parse_scan_result;
 use redis::AsyncCommands;
+use std::collections::HashSet;
 
 pub async fn stream_overview<C>(conn: &mut C, limit: u32) -> Result<StreamOverviewResult, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
     let limit = limit.max(1) as usize;
-    let db_size: u64 = redis::cmd("DBSIZE")
-        .query_async(conn)
-        .await
-        .map_err(|e| e.to_string())?;
-
     let mut stream_keys = Vec::new();
+    let mut seen = HashSet::new();
     let mut cursor = 0u64;
-    let scan_exhausted = 'scan: {
-        loop {
-            let raw: redis::Value = redis::cmd("SCAN")
-                .arg(cursor)
-                .arg("COUNT")
-                .arg(200)
-                .query_async(conn)
-                .await
-                .map_err(|e| e.to_string())?;
-            let (next, batch) = parse_scan_result(&raw);
-            if batch.is_empty() && next == 0 {
-                break 'scan true;
-            }
-
+    let truncated = 'scan: loop {
+        let raw: redis::Value = redis::cmd("SCAN")
+            .arg(cursor)
+            .arg("COUNT")
+            .arg(200)
+            .query_async(conn)
+            .await
+            .map_err(|e| e.to_string())?;
+        let (next, batch) = parse_scan_result(&raw);
+        if !batch.is_empty() {
             let mut pipe = redis::pipe();
             for key in &batch {
                 pipe.cmd("TYPE").arg(key);
@@ -41,22 +34,21 @@ where
                 pipe.query_async(conn).await.map_err(|e| e.to_string())?;
 
             for (key, ty) in batch.into_iter().zip(types.into_iter()) {
-                if value_to_string(&ty).eq_ignore_ascii_case("stream") {
-                    stream_keys.push(key);
-                    if stream_keys.len() >= limit {
-                        break;
+                if value_to_string(&ty).eq_ignore_ascii_case("stream") && seen.insert(key.clone()) {
+                    // Prove another stream exists before declaring truncation.
+                    // Total database size includes unrelated key types and SCAN
+                    // can report duplicate keys while the data changes.
+                    if stream_keys.len() == limit {
+                        break 'scan true;
                     }
+                    stream_keys.push(key);
                 }
             }
-
-            if stream_keys.len() >= limit {
-                break 'scan cursor == 0;
-            }
-            cursor = next;
-            if cursor == 0 {
-                break 'scan true;
-            }
         }
+        if next == 0 {
+            break 'scan false;
+        }
+        cursor = next;
     };
 
     let mut rows = Vec::with_capacity(stream_keys.len());
@@ -91,6 +83,5 @@ where
             .then_with(|| a.key.cmp(&b.key))
     });
 
-    let truncated = !scan_exhausted || db_size > rows.len() as u64;
     Ok(StreamOverviewResult { rows, truncated })
 }

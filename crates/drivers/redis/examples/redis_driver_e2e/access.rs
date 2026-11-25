@@ -59,6 +59,50 @@ pub async fn authenticated(journey: &mut Journey<'_>, config: &ConnectionConfig,
     // still reject writes and denied commands without mutating the fixture.
     restricted.read_only = false;
     let handle = driver.connect(&restricted).await.unwrap();
+    let denied_commands = [
+        ("modules_list", json!({})),
+        ("slowlog_get", json!({"count":2})),
+        ("slowlog_reset", json!({"confirm":true})),
+        ("memory_usage_key", json!({"key":"contract:catalog"})),
+        ("memory_sample", json!({})),
+        ("type_distribution", json!({"sampleLimit":3})),
+        ("stream_lag", json!({"key":"contract:stream","group":"g"})),
+        (
+            "xrange",
+            json!({"key":"contract:stream","start":"-","end":"+"}),
+        ),
+        (
+            "pubsub_publish",
+            json!({"channel":"contract:access","message":"not sent"}),
+        ),
+    ];
+    for (name, input) in denied_commands {
+        let error = driver
+            .execute_command(&handle, name, input)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("NOPERM"), "{name}: {error}");
+    }
+    assert_eq!(
+        journey
+            .read::<String>("ACL", &["SETUSER", "read-fixture", "+dbsize", "-scan"])
+            .await,
+        "OK"
+    );
+    for name in ["memory_sample", "type_distribution", "stream_overview"] {
+        let error = driver
+            .execute_command(&handle, name, json!({}))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("NOPERM"), "{name}: {error}");
+    }
+    assert_eq!(
+        journey
+            .read::<String>("ACL", &["SETUSER", "read-fixture", "-dbsize", "+scan"])
+            .await,
+        "OK"
+    );
+
     let monitor = driver
         .execute_command(&handle, "monitor_start", json!({}))
         .await
