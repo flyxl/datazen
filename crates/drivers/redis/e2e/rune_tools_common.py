@@ -22,10 +22,11 @@ class Lab:
                     "DATAZEN_NATIVE_KEYRING": "file", "XDG_DATA_HOME": str(root / "data"),
                     "XDG_CONFIG_HOME": str(root / "config"), "XDG_CACHE_HOME": str(root / "cache")}
 
-    def cli(self, port, *command, db=0, ca=None):
+    def cli(self, port, *command, db=0, ca=None, client_identity=None):
+        identity = ["--cert", str(client_identity[0]), "--key", str(client_identity[1])] if client_identity else []
         return subprocess.check_output(
             [self.args.cli, "-h", "127.0.0.1", "-p", str(port), "-n", str(db),
-             *(["--tls", "--cacert", str(ca)] if ca is not None else []), "--raw", *command],
+             *(["--tls", "--cacert", str(ca)] if ca is not None else []), *identity, "--raw", *command],
             text=True, stderr=subprocess.STDOUT, timeout=8,
         ).strip()
 
@@ -45,7 +46,7 @@ class Lab:
                 return port
         raise RuntimeError("No local Redis cluster port pair available")
 
-    def start(self, port, extra=(), sentinel=None, ca=None):
+    def start(self, port, extra=(), sentinel=None, ca=None, client_identity=None):
         directory = self.root / f"redis-{port}"
         directory.mkdir()
         argv = [self.args.server]
@@ -76,7 +77,7 @@ class Lab:
         deadline = time.monotonic() + 8
         while proc.poll() is None and time.monotonic() <= deadline:
             try:
-                if self.cli(port, "PING", ca=ca) == "PONG":
+                if self.cli(port, "PING", ca=ca, client_identity=client_identity) == "PONG":
                     return
             except subprocess.CalledProcessError:
                 pass

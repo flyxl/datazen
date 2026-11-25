@@ -592,6 +592,28 @@ def tls(lab):
     assert not any(n.get("key") == "native-kv-key-0" for n in untrusted["elements"])
     print("PASS: native TLS with a trusted CA; an untrusted CA is rejected")
 
+    client_cert, client_key, client_csr = (lab.root / name for name in ("client.crt", "client.key", "client.csr"))
+    ext.write_text("extendedKeyUsage=clientAuth\n", encoding="utf-8")
+    make("req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=DataZen test client",
+         "-keyout", client_key, "-out", client_csr)
+    make("x509", "-req", "-in", client_csr, "-CA", ca, "-CAkey", ca_key, "-CAserial",
+         lab.root / "ca.srl", "-days", "1", "-extfile", ext, "-out", client_cert)
+    port = lab.port()
+    identity = (client_cert, client_key)
+    lab.start(port, ["--port", "0", "--tls-port", str(port), "--tls-auth-clients", "yes",
+                     "--tls-cert-file", str(cert), "--tls-key-file", str(key),
+                     "--tls-ca-cert-file", str(ca)], ca=ca, client_identity=identity)
+    assert lab.cli(port, "SET", "mtls-key", "verified-mutual-tls", ca=ca, client_identity=identity) == "OK"
+    lab.store(port, options={"tls": {"enabled": True, "caPath": str(ca),
+                                    "certPath": str(client_cert), "keyPath": str(client_key)}})
+    tree = lab.replay("tls-mutual", [*OPEN, tap(4.5, "native-kv-key-0")], 6)
+    assert element(tree, "native-kv-value")["text"] == "verified-mutual-tls"
+    lab.store(port, options={"tls": {"enabled": True, "caPath": str(ca)}})
+    without_identity = lab.replay("tls-missing-client-identity", OPEN, 6)
+    assert not any(n.get("key") == "native-kv-key-0" for n in without_identity["elements"])
+    print("PASS: native mutual TLS with a client certificate; connections without a certificate are rejected")
+
+
 
 def redis_json(lab):
     port = lab.port()
