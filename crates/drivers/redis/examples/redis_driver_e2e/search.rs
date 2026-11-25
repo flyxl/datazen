@@ -92,6 +92,52 @@ pub async fn run(journey: &mut Journey<'_>) {
             .collect::<Vec<_>>()
     );
 
+    let wide = "contract:search:wide";
+    let body = format!(
+        "{}Mark\0ß{} literal \\xZZ",
+        "a".repeat(180),
+        "b".repeat(180)
+    );
+    assert_eq!(journey.read::<String>("SET", &[wide, &body]).await, "OK");
+    for query in ["mark\\x00\\xc3\\x9f", "MARK\\x00\\xC3\\x9F"] {
+        let result = journey
+            .command(
+                "scan_values",
+                json!({
+                    "query":query,"pattern":wide,"mode":"value","count":256,
+                }),
+            )
+            .await;
+        let row = &result["matched"][0];
+        assert_eq!(row["key"], wide);
+        let preview = row["preview"].as_str().unwrap();
+        assert!(
+            preview.starts_with('…') && preview.ends_with('…'),
+            "{preview}"
+        );
+        assert!(preview.contains("Mark\0ß"));
+    }
+    let literal = journey
+        .command(
+            "scan_values",
+            json!({
+                "query":"\\xZZ","pattern":wide,"mode":"value","count":256,
+            }),
+        )
+        .await;
+    assert_eq!(literal["matched"][0]["key"], wide);
+    let empty = journey
+        .command(
+            "scan_values",
+            json!({
+                "query":"","pattern":wide,"mode":"value","count":256,
+            }),
+        )
+        .await;
+    let preview = empty["matched"][0]["preview"].as_str().unwrap();
+    assert!(preview.starts_with('a') && preview.ends_with('…'));
+    assert_eq!(journey.read::<u64>("DEL", &[wide]).await, 1);
+
     let started = journey
         .command(
             "scan_values",

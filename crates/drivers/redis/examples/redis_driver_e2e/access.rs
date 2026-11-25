@@ -104,6 +104,23 @@ pub async fn authenticated(journey: &mut Journey<'_>, config: &ConnectionConfig,
         .unwrap()
         .data;
     assert_eq!(key_hits["matched"][0]["key"], "contract:catalog");
+    assert_eq!(
+        journey
+            .read::<String>("ACL", &["SETUSER", "read-fixture", "-type"])
+            .await,
+        "OK"
+    );
+    let type_denial = driver
+        .execute_command(
+            &handle,
+            "scan_values",
+            json!({
+                "pattern":"contract:catalog","query":"written","mode":"value"
+            }),
+        )
+        .await
+        .unwrap_err();
+    assert!(type_denial.to_string().contains("NOPERM"), "{type_denial}");
     let value: String = journey.read("GET", &["contract:catalog"]).await;
     assert_eq!(value, "written");
     driver.disconnect(handle).await.unwrap();

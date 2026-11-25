@@ -150,10 +150,53 @@ pub async fn json_document(journey: &mut Journey<'_>) {
         .await;
     assert_eq!(selected["value"], json!([[1, 2]]));
     assert_eq!(selected["rawText"], Value::Null);
+    let path = journey
+        .command(
+            "json_get",
+            json!({
+                "key":key,"path":"$.second","raw":true
+            }),
+        )
+        .await;
+    assert_eq!(path["rawText"], "[[1,2]]");
+    let module_value = journey.command("get_key", json!({"key":key})).await;
+    assert_eq!(
+        module_value["value"]["type"]
+            .as_str()
+            .unwrap()
+            .to_ascii_lowercase(),
+        "rejson-rl"
+    );
+    let frame = journey
+        .command("get_key_raw", json!({"key":key,"withMemory":true}))
+        .await;
+    assert_eq!(frame["rawB64"], Value::Null);
+    assert_eq!(frame["logicalLen"], 0);
+    assert!(frame["memBytes"].as_u64().unwrap() > 0);
+    let listed = journey
+        .command(
+            "scan_keys",
+            json!({
+                "pattern":"contract:*","keyType":"json","count":256
+            }),
+        )
+        .await;
+    assert!(listed["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["key"] == key));
     for (command, payload) in [
         ("json_get", json!({"key":" ","path":"$"})),
         ("json_set", json!({"key":key,"path":" ","value":"1"})),
         ("json_set", json!({"key":key,"path":"$","value":"invalid"})),
+        ("json_set", json!({"key":key,"path":"$","value":"  "})),
+        (
+            "json_set",
+            json!({"key":"contract:catalog","path":"$","value":"{}"}),
+        ),
+        ("json_get", json!({"key":"contract:catalog","path":"$"})),
+        ("json_del", json!({"key":"contract:catalog","path":"$"})),
         ("json_del", json!({"key":key,"path":" "})),
     ] {
         assert!(journey
