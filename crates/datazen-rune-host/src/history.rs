@@ -19,6 +19,34 @@ fn io_error(error: impl std::fmt::Display) -> HistoryError {
     HistoryError::new(error.to_string())
 }
 
+/// Read query history off the frame loop using the shared history use case.
+pub(crate) async fn read_native_query_history(
+    history: &datazen::history::HistoryService,
+    connection_id: &str,
+) -> Result<datazen_ui_api::QueryHistorySnapshot, String> {
+    let page = history
+        .query_history_page(&QueryHistoryFilter {
+            limit: 50,
+            connection_id: Some(connection_id),
+            ..Default::default()
+        })
+        .await
+        .map_err(|_| "Could not read query history.".to_owned())?;
+    Ok(datazen_ui_api::QueryHistorySnapshot {
+        total: page.total,
+        entries: page
+            .entries
+            .into_iter()
+            .map(|entry| datazen_ui_api::QueryHistoryRecord {
+                id: entry.id,
+                sql: entry.sql,
+                success: entry.success,
+                error_message: entry.error_message,
+            })
+            .collect(),
+    })
+}
+
 fn parse_error(path: &Path, error: impl std::fmt::Display) -> HistoryError {
     HistoryError::new(format!("parse {}: {error}", path.display()))
 }

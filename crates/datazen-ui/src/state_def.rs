@@ -96,6 +96,7 @@ pub struct AppState {
     pub next_query_result_id: u32,
     /// A3: favorites/history/snippets sidebar inside the query workspace.
     pub query_sidebar_panel: QuerySidebarPanel,
+    pub(crate) query_history: crate::query_history_state::QueryHistoryState,
     /// A3: last honest notice from a toolbar action without a host capability.
     pub query_notice: Option<String>,
     /// A5: table/chart presentation of the query result workspace.
@@ -565,6 +566,7 @@ impl Default for AppState {
             selected_query_result: None,
             next_query_result_id: 1,
             query_sidebar_panel: QuerySidebarPanel::Favorites,
+            query_history: Default::default(),
             query_notice: None,
             result_view: ResultView::Table,
             result_find: TextEdit::new(String::new()),

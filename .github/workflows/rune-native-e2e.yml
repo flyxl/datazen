@@ -1,0 +1,32 @@
+name: Rune native E2E coverage
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      CARGO_BUILD_JOBS: "2"
+      WGPU_BACKEND: vulkan
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install headless Vulkan and native linker dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libvulkan1 mesa-vulkan-drivers
+      - name: Install Rust coverage tools
+        run: |
+          rustup toolchain install stable --profile minimal --component llvm-tools-preview
+          rustup override set stable
+      - name: Run native E2E and enforce 90% line coverage
+        run: python3 e2e/rune/coverage.py --output "$RUNNER_TEMP/rune-e2e"
+      - name: Preserve coverage and UI snapshots
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rune-native-e2e
+          path: ${{ runner.temp }}/rune-e2e

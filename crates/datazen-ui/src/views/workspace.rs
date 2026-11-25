@@ -24,6 +24,7 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 // the workspace/ directory mirrors the React layout (WappIcon.tsx is its
 // first port — the manifest-icon-or-puzzle glyph the wapp page shell,
 // default cards, navigator and tab bar reuse).
+mod query_history;
 pub mod wapp_icon;
 // T067: the host-side shell around a sandboxed wapp page — the lazy entry
 // resolve with its per-wapp cache, the 10s load watchdog, the reload/retry
@@ -472,13 +473,13 @@ fn query_sidebar(state: &AppState, theme: tok::Theme) -> El {
                         .font(type_::LABEL)
                         .color(theme.text),
                 )
-                .on_press(move |s: &mut AppState| s.query_sidebar_panel = panel),
+                .on_press(move |s: &mut AppState| s.select_query_sidebar(panel)),
         );
     }
 
     let content = match state.query_sidebar_panel {
         crate::types::QuerySidebarPanel::Favorites => query_favorites_panel(state, theme),
-        crate::types::QuerySidebarPanel::History => query_history_panel(theme),
+        crate::types::QuerySidebarPanel::History => query_history::panel(state, theme),
         crate::types::QuerySidebarPanel::Snippets => query_snippets_panel(state, theme),
     };
 
@@ -493,15 +494,6 @@ fn query_sidebar(state: &AppState, theme: tok::Theme) -> El {
         .child(text("Query library").font(type_::TITLE).color(theme.text))
         .child(tabs)
         .child(content)
-}
-
-fn query_history_panel(theme: tok::Theme) -> El {
-    col().key("query-history-panel").w_full().gap(6.0).child(
-        text("Query history is not exposed to the Rune UI in this host.")
-            .font(type_::LABEL)
-            .color(theme.text_secondary)
-            .w_full(),
-    )
 }
 
 fn query_favorites_panel(state: &AppState, theme: tok::Theme) -> El {

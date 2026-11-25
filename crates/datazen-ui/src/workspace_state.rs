@@ -519,6 +519,8 @@ impl AppState {
                         ));
                         self.desktop_catalog = Some(catalog.clone());
                         self.desktop_connection = Some(id);
+                        self.query_history.reset();
+                        self.refresh_query_history_if_open();
                         self.active = Section::Workspace;
                         if self.native_kv.is_some() {
                             self.tabs = Default::default();
@@ -651,6 +653,9 @@ impl AppState {
                 }
                 self.reload_table_page();
             }
+            AdapterDelivery::QueryHistoryRead { generation, result } => {
+                self.query_history.deliver(generation, result);
+            }
             AdapterDelivery::QueryPage { generation, page } => {
                 if self.query_loading == Some(generation) {
                     self.query_loading = None;
@@ -658,6 +663,7 @@ impl AppState {
                 if let Ok(page) = page {
                     self.deliver_query_result(generation, page);
                 }
+                self.refresh_query_history_if_open();
             }
             AdapterDelivery::WorkflowRun { generation, results } => {
                 if self.workflow_loading == Some(generation) {

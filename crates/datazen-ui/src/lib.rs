@@ -100,6 +100,7 @@ pub mod connections_io_state;
 // T293: the tab-closed notification (panelCloseNotifier.ts).
 pub mod panel_close_notifier;
 // T385: the query-run request bridge (queryRunRequestStore.ts).
+mod query_history_state;
 pub mod query_run_request_store;
 // T421: the schema request tracker (schemaRequestTracker.ts).
 pub mod schema_request_tracker;

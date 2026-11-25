@@ -2028,6 +2028,11 @@ pub enum AdapterJob {
         generation: u32,
         name: String,
     },
+    /// Load the newest persisted query history for one open connection.
+    ReadQueryHistory {
+        generation: u32,
+        connection_id: String,
+    },
     /// Run one SQL statement, the job twin of the workspace's `execute`.
     RunQuery {
         generation: u32,
@@ -2074,6 +2079,7 @@ pub enum AdapterDelivery {
     },
     /// A commit job's landed edit count (or its failure sentence).
     CommitCount { generation: u32, count: Result<u32, String> },
+    QueryHistoryRead { generation: u32, result: Result<QueryHistorySnapshot, String> },
     /// A query job's result page (or its failure sentence).
     QueryPage { generation: u32, page: Result<TablePage, String> },
     /// A workflow run's step report (or its failure sentence) (T8).
@@ -2081,6 +2087,21 @@ pub enum AdapterDelivery {
         generation: u32,
         results: Result<Vec<WorkflowStepResult>, String>,
     },
+}
+
+/// A connection-scoped page of the native host's persisted SQL history.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueryHistorySnapshot {
+    pub entries: Vec<QueryHistoryRecord>,
+    pub total: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueryHistoryRecord {
+    pub id: String,
+    pub sql: String,
+    pub success: bool,
+    pub error_message: Option<String>,
 }
 
 /// One (table, column) a value search found the value in (T4): how many

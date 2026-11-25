@@ -535,3 +535,54 @@ Tauri 2 前端传参为 **camelCase**（如 `defaultFileName`），不要用 sna
 | `e2e/teardown-e2e-env.sh` | 跑后清理临时表、重置 seed |
 | `e2e/lib/testDataLifecycle.ts` | WDIO 全局 IPC setup/teardown |
 | `src-tauri/Cargo.toml` → `webdriver` feature | 启用 `tauri-plugin-webdriver` |
+
+## Rune 原生桌面 E2E
+
+旧 `pnpm e2e` 仍验证 React/Tauri。Rune 的测试从
+[`e2e/rune/run.py`](../../e2e/rune/run.py) 启动实际的
+`datazen-native`，使用 Rune 的原生运行时回放按键和点击（按元素 key 定位），
+从渲染树验证可见结果，并用独立 SQLite 连接核验数据库写入。每个用例使用私有的
+临时目录，不读取本机已保存的连接，不用 mock driver。这是无窗口回放，不覆盖
+操作系统窗口、托盘交互、安装包启动或真实的 PostgreSQL/MySQL/Redis 服务。
+
+Linux 需有 Vulkan（无物理 GPU 可用 Mesa lavapipe）和 `libxkbcommon` 开发包。
+从包含 `vendor/rune` 子模块的检出运行：
+
+```bash
+cargo build --locked -p datazen-rune-host --bin datazen-native
+python3 e2e/rune/run.py target/debug/datazen-native
+rustup component add llvm-tools-preview
+python3 e2e/rune/coverage.py --output target/rune-e2e-report
+```
+
+覆盖率门禁只合并上述 E2E 进程生成的 LLVM profile，不混入构建脚本、单测或
+其它集成测试；分母为本平台原生二进制中三个 Rune crate（`datazen-ui`、
+`datazen-ui-api`、`datazen-rune-host`）的 LLVM 映射源码行，不含 vendor、共享
+内核和数据库驱动。报告显示三个 crate 各自及合并的已覆盖行数/总行数，不按
+crate 百分比取平均；用例失败、没有有效 profile 或精确行覆盖率低于 90%
+均为失败。GitHub Actions 的 Rune 覆盖率工作流只保留验证产物，不上传发布包。
+
+### 离线用例迁移范围
+
+`e2e/rune/run.py` 包含连接、基础表浏览、DDL 及查询的原生冒烟。
+[`e2e/rune/offline.py`](../../e2e/rune/offline.py) 补充以下旧版旅程在 Rune
+原生入口上的对应覆盖。每个用例自建 SQLite 库或只用本地配置文件，不属于
+依赖外部数据库的测试组。
+
+| 旧套件 | Rune 离线覆盖 |
+| --- | --- |
+| `settings.ts` | 主题、分页大小和查询行数设置持久化；非法页大小不落盘；本地 SQL 片段新增、重启读取、删除 |
+| `connection-search-group.ts` / `connection-validation.ts` | 连接搜索忽略大小写、无结果提示、取消新建不保存 |
+| `table-filter.ts` / `sqlite.ts` | 单列筛选和清空、三态排序、翻页、列/索引/外键、查询 SQLite 视图 |
+| `sql-query.ts` / `chart-views.ts` | 结果查找与下一处命中、数值结果图表与表格切换、只读连接不写库 |
+| `export-import.ts` / `backup-database.ts` | CSV 与 JSON 真落盘并与数据库核对、取消不落盘、SQLite 备份在独立库中恢复；导入只验证缺源文件时的表单错误 |
+
+覆盖率命令可加 `--jobs 3` 分片。每个用例仍使用独立临时目录，
+所有分片均通过且合并后的覆盖率达到阈值才算通过。
+
+这不是旧套件的全量迁移。Rune 当前查询历史侧栏只有占位提示，数据导入向导
+尚未把选定文件写入目标表；不要把占位或点击完成当作业务验证。旧版的多条件
+筛选、视图树、完整导入等用例也不能用上表的子集替代。平台窗口和发布包验证、
+真实 PostgreSQL/MySQL/Redis、跨驱动同步和结构对比仍未在这里覆盖。跨库传输必须
+独立查目标库验证数据；当前 Rune 工具页的 `confirm_transfer` 使用内存工作区
+的模拟作业，确认页或进度条出现不代表真实写入。

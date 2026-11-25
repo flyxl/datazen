@@ -6,6 +6,13 @@ pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if !editor.focused() || editor.composition().is_some() {
         return false;
     }
+    // Match the standard select-all shortcut in the custom editors, which
+    // do not receive the platform text field's built-in selection handling.
+    if ev.is_command('a') {
+        editor.set_main_selection(0, editor.doc().len());
+        editor.completion_close();
+        return true;
+    }
     // T1: the system clipboard vocabulary. Copy and cut answer the selection;
     // paste asks the shell for the clipboard and the app root's on_paste
     // lands it in the editor (no platform text field is focused here).

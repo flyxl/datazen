@@ -41,7 +41,9 @@ use datazen_ui_api::{
     SchemaNode, Snippet, TablePage, TableStructure, ValueSearchHit, Workflow,
     WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
 };
-use datazen_ui_api::{FavoriteSpec, ImportPreview, ImportedConnectionSpec, InboundRef};
+use datazen_ui_api::{
+    FavoriteSpec, ImportPreview, ImportedConnectionSpec, InboundRef, QueryHistorySnapshot,
+};
 use datazen::workflow::domain::error::WorkflowError;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -109,6 +111,7 @@ enum HostJob {
         generation: u32,
         batch: datazen_ui_api::CellEditBatch,
     },
+    ReadQueryHistory { generation: u32, connection_id: String },
     RunQuery {
         generation: u32,
         sql: String,
@@ -133,6 +136,7 @@ enum HostAnswer {
     /// One table's inbound references (or its failure sentence) (E3).
     InboundRefs { generation: u32, table: String, refs: Result<Vec<InboundRef>, String> },
     CommitCount { generation: u32, count: Result<u32, String> },
+    QueryHistoryRead { generation: u32, result: Result<QueryHistorySnapshot, String> },
     QueryPage { generation: u32, page: Result<TablePage, String> },
 }
 
@@ -374,6 +378,11 @@ impl LiveAdapter {
                                     generation,
                                     count: Err(format!("the job runtime did not start: {error}")),
                                 },
+                                HostJob::ReadQueryHistory { generation, .. } =>
+                                    HostAnswer::QueryHistoryRead {
+                                        generation,
+                                        result: Err("The query history worker did not start.".into()),
+                                    },
                                 HostJob::RunQuery { generation, .. } => HostAnswer::QueryPage {
                                     generation,
                                     page: Err(format!("the job runtime did not start: {error}")),
@@ -499,6 +508,12 @@ impl LiveAdapter {
                                 batch,
                             ));
                             HostAnswer::CommitCount { generation, count }
+                        }
+                        HostJob::ReadQueryHistory { generation, connection_id } => {
+                            let result = runtime.block_on(crate::history::read_native_query_history(
+                                &worker_history, &connection_id,
+                            ));
+                            HostAnswer::QueryHistoryRead { generation, result }
                         }
                         HostJob::RunQuery { generation, sql } => {
                             let started = std::time::Instant::now();
@@ -2222,6 +2237,9 @@ impl DesktopAdapter for LiveAdapter {
             AdapterJob::CommitCells { generation, batch } => {
                 HostJob::CommitCells { generation, batch }
             }
+            AdapterJob::ReadQueryHistory { generation, connection_id } => {
+                HostJob::ReadQueryHistory { generation, connection_id }
+            }
             AdapterJob::RunQuery { generation, sql } => HostJob::RunQuery { generation, sql },
             AdapterJob::ValueSearch { generation, value, mode } => {
                 HostJob::ValueSearch { generation, value, mode }
@@ -2267,6 +2285,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::CommitCount { generation, count } => {
                     deliveries.push(AdapterDelivery::CommitCount { generation, count });
+                }
+                HostAnswer::QueryHistoryRead { generation, result } => {
+                    deliveries.push(AdapterDelivery::QueryHistoryRead { generation, result });
                 }
                 HostAnswer::QueryPage { generation, page } => {
                     deliveries.push(AdapterDelivery::QueryPage { generation, page });
