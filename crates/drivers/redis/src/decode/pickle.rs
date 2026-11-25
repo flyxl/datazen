@@ -11,6 +11,7 @@ use serde_json::{Map, Value as JsonValue};
 
 const MAX_LEN: usize = 50 * 1024 * 1024;
 const MAX_MEMBERS: usize = 1_000_000;
+const MAX_INTEGER_BYTES: usize = 4_096;
 
 // Frame/protocol
 const OP_PROTO: u8 = 0x80;
@@ -38,6 +39,8 @@ const OP_BININT: u8 = b'J';
 const OP_BININT1: u8 = b'K';
 const OP_BININT2: u8 = b'M';
 const OP_LONG: u8 = b'L';
+const OP_LONG1: u8 = 0x8a;
+const OP_LONG4: u8 = 0x8b;
 const OP_FLOAT: u8 = b'F';
 const OP_BINFLOAT: u8 = b'G';
 const OP_BINBYTES: u8 = b'B';
@@ -174,6 +177,17 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
             OP_BININT => {
                 let n = r.le_u32()? as i32;
                 stack.push(StackItem::Val(JsonValue::from(n as i64)));
+            }
+            OP_LONG1 | OP_LONG4 => {
+                let length = if op == OP_LONG1 {
+                    r.byte()? as usize
+                } else {
+                    r.le_u32()? as usize
+                };
+                if length > MAX_INTEGER_BYTES {
+                    return Err("pickle integer exceeds size limit".into());
+                }
+                stack.push(StackItem::Val(json_binary_long(r.take(length)?)));
             }
             OP_BINFLOAT => {
                 let b = r.take(8)?;
@@ -471,6 +485,19 @@ fn json_int_line(b: &[u8]) -> JsonValue {
     match String::from_utf8_lossy(b).trim().parse::<i64>() {
         Ok(n) => JsonValue::from(n),
         Err(_) => JsonValue::String(String::from_utf8_lossy(b).into_owned()),
+    }
+}
+
+fn json_binary_long(bytes: &[u8]) -> JsonValue {
+    // LONG1/LONG4 hold signed, little-endian two's-complement data.
+    let integer = num_bigint::BigInt::from_signed_bytes_le(bytes);
+    let decimal = integer.to_string();
+    if let Ok(value) = decimal.parse::<i64>() {
+        JsonValue::from(value)
+    } else if let Ok(value) = decimal.parse::<u64>() {
+        JsonValue::from(value)
+    } else {
+        JsonValue::String(decimal)
     }
 }
 

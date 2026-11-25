@@ -23,6 +23,14 @@ def write_pickle_fixtures(root: Path):
     cases = [(pickle.dumps(nested, protocol=p), nested) for p in (0, 1, 2, 3, 4, 5)]
     text = "latin café; 数据; 🌍; backslash \\n; newline \n."
     cases.append((pickle.dumps(text, protocol=0), text))
+    memo = [f"label-{i}" for i in range(280)]
+    memo.append(memo[275])
+    cases.extend((pickle.dumps(value, protocol=p), value)
+                 for p in (2, 5) for value in (memo, (), ("single",)))
+    for integer in (2**40, -(2**40), 2**64 - 1, 2**64, -(2**80), 2**2048):
+        expected = integer if -(2**63) <= integer < 2**64 else str(integer)
+        cases.append((pickle.dumps(integer, protocol=5), expected))
+    cases.append((pickle.dumps(b"short\0bytes", protocol=5), "c2hvcnQAYnl0ZXM="))
     binary = bytes(range(256))
     for protocol in (3, 4, 5):
         cases.append((pickle.dumps(binary, protocol=protocol),

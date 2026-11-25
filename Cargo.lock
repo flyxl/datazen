@@ -2571,6 +2571,7 @@ dependencies = [
  "datazen-driver-api",
  "flate2",
  "futures-util",
+ "num-bigint",
  "redis",
  "rmpv",
  "rustls 0.23.43",
