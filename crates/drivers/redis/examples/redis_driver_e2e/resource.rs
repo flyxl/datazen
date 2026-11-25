@@ -140,6 +140,13 @@ pub async fn run(provider: &dyn ResourceProvider, config: &ConnectionConfig, por
 
     let observation = provider.observe_session(&resource).await.unwrap();
     assert!(observation.protocol_drained);
+    let next = provider.observe_session(&resource).await.unwrap();
+    assert!(next.context_revision > observation.context_revision);
+    assert!(!provider
+        .connection_handle(&resource)
+        .unwrap()
+        .pool_id
+        .is_empty());
     let execution = QueryExecutionId::new("fixture-command");
     let sink = Sink::default();
     let result = provider
@@ -252,6 +259,98 @@ pub async fn run(provider: &dyn ResourceProvider, config: &ConnectionConfig, por
             .unwrap(),
         ResetDisposition::Discard
     );
+    let out_of_range = provider
+        .change_context(
+            &resource,
+            &NamespaceTarget::empty().with_database("db999999"),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        out_of_range.to_string().contains("999999"),
+        "{out_of_range}"
+    );
+    let default_db = NamespaceTarget::empty();
+    assert_eq!(
+        provider
+            .change_context(&resource, &default_db)
+            .await
+            .unwrap(),
+        ContextChangeDisposition::Confirmed
+    );
+    let marker = Sink::default();
+    provider
+        .execute_on_resource(
+            &resource,
+            &execution,
+            &CommandCall::new(
+                "execute",
+                json!({"sql":"SET contract:resource:root on-db0"}),
+            ),
+            &marker,
+        )
+        .await
+        .unwrap();
+    let client = redis::Client::open(format!("redis://127.0.0.1:{port}/0")).unwrap();
+    let mut oracle = client.get_multiplexed_async_connection().await.unwrap();
+    let value: String = redis::cmd("GET")
+        .arg("contract:resource:root")
+        .query_async(&mut oracle)
+        .await
+        .unwrap();
+    assert_eq!(value, "on-db0");
+
+    let named = Sink::default();
+    provider
+        .execute_on_resource(
+            &resource,
+            &execution,
+            &CommandCall::new(
+                "execute",
+                json!({"sql":"CLIENT SETNAME datazen-resource-fixture"}),
+            ),
+            &named,
+        )
+        .await
+        .unwrap();
+    let clients: String = redis::cmd("CLIENT")
+        .arg("LIST")
+        .query_async(&mut oracle)
+        .await
+        .unwrap();
+    let id = clients
+        .lines()
+        .find(|line| {
+            line.split_whitespace()
+                .any(|token| token == "name=datazen-resource-fixture")
+        })
+        .unwrap()
+        .split_whitespace()
+        .find_map(|token| token.strip_prefix("id="))
+        .unwrap();
+    let killed: u32 = redis::cmd("CLIENT")
+        .arg(&["KILL", "ID", id])
+        .query_async(&mut oracle)
+        .await
+        .unwrap();
+    assert_eq!(killed, 1);
+    assert!(matches!(
+        provider.observe_session(&resource).await,
+        Err(ResourceError::Driver(_))
+    ));
+    let dropped = Sink::default();
+    let error = provider
+        .execute_on_resource(
+            &resource,
+            &execution,
+            &CommandCall::new("execute", json!({"sql":"PING"})),
+            &dropped,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(error, ResourceError::Driver(_)));
+    assert!(dropped.failed.load(Ordering::SeqCst));
+    assert!(!dropped.completed.load(Ordering::SeqCst));
     let unissued = SessionHandleRef::new(
         "fixture-cursor",
         SessionHandleKind::Cursor,
