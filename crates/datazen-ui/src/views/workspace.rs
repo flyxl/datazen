@@ -82,6 +82,9 @@ pub fn workspace_body(
     dark: bool,
     layer: &mut Vec<El>,
 ) -> El {
+    if let Some(workbench) = &state.native_kv {
+        return super::native_kv::workbench_view(workbench, theme, dark);
+    }
     let content = if query_selected(state) {
         query_workspace(state, theme, dark)
     } else if let Some((database, schema)) = &state.er_schema {

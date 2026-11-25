@@ -11,6 +11,7 @@ use serde_json::{Map, Value as JsonValue};
 
 const MAX_LEN: usize = 50 * 1024 * 1024;
 const MAX_MEMBERS: usize = 1_000_000;
+const MAX_INTEGER_BYTES: usize = 4_096;
 
 // Frame/protocol
 const OP_PROTO: u8 = 0x80;
@@ -23,6 +24,9 @@ const OP_POP_MARK: u8 = b'1';
 const OP_DUP: u8 = b'2';
 // Memo (read/write, harmless for data)
 const OP_GET: u8 = b'g';
+const OP_PUT: u8 = b'p';
+const OP_BINGET: u8 = b'h';
+const OP_MEMOIZE: u8 = 0x94;
 const OP_BINPUT: u8 = b'q';
 const OP_LONG_BINPUT: u8 = b'r';
 const OP_LONG_BGET: u8 = b'j';
@@ -35,6 +39,8 @@ const OP_BININT: u8 = b'J';
 const OP_BININT1: u8 = b'K';
 const OP_BININT2: u8 = b'M';
 const OP_LONG: u8 = b'L';
+const OP_LONG1: u8 = 0x8a;
+const OP_LONG4: u8 = 0x8b;
 const OP_FLOAT: u8 = b'F';
 const OP_BINFLOAT: u8 = b'G';
 const OP_BINBYTES: u8 = b'B';
@@ -51,6 +57,7 @@ const OP_TUPLE1: u8 = 0x85;
 const OP_TUPLE2: u8 = 0x86;
 const OP_TUPLE3: u8 = 0x87;
 const OP_EMPTY_LIST: u8 = b']';
+const OP_LIST: u8 = b'l';
 const OP_APPEND: u8 = b'a';
 const OP_APPENDS: u8 = b'e';
 const OP_EMPTY_DICT: u8 = b'}';
@@ -62,9 +69,9 @@ const OP_GLOBAL: u8 = b'c';
 const OP_STACK_GLOBAL: u8 = 0x93;
 const OP_REDUCE: u8 = b'R';
 const OP_INST: u8 = b'i';
-const OP_OBJ: u8 = 0xef;
+const OP_OBJ: u8 = b'o';
 const OP_NEWOBJ: u8 = 0x81;
-const OP_NEWOBJ_EX: u8 = 0xc2;
+const OP_NEWOBJ_EX: u8 = 0x92;
 const OP_BUILD: u8 = b'b';
 const OP_PERSID: u8 = b'P';
 const OP_BINPERSID: u8 = b'Q';
@@ -171,6 +178,17 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
                 let n = r.le_u32()? as i32;
                 stack.push(StackItem::Val(JsonValue::from(n as i64)));
             }
+            OP_LONG1 | OP_LONG4 => {
+                let length = if op == OP_LONG1 {
+                    r.byte()? as usize
+                } else {
+                    r.le_u32()? as usize
+                };
+                if length > MAX_INTEGER_BYTES {
+                    return Err("pickle integer exceeds size limit".into());
+                }
+                stack.push(StackItem::Val(json_binary_long(r.take(length)?)));
+            }
             OP_BINFLOAT => {
                 let b = r.take(8)?;
                 let f = f64::from_bits(u64::from_be_bytes([
@@ -202,25 +220,35 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
                 let n = r.le_u64()? as usize;
                 stack.push(StackItem::Val(json_bytes(r.take(n)?)));
             }
-            OP_UNICODE => stack.push(StackItem::Val(json_str(r.until_newline()?))),
+            OP_UNICODE => stack.push(StackItem::Val(json_text_unicode(r.until_newline()?)?)),
             OP_INT => stack.push(StackItem::Val(json_int_line(r.until_newline()?))),
             OP_LONG => stack.push(StackItem::Val(json_long_line(r.until_newline()?))),
             OP_FLOAT => stack.push(StackItem::Val(json_float_line(r.until_newline()?))),
+            OP_PUT => {
+                let id = parse_memo_index(r.until_newline()?)?;
+                let value = top_value_ref(&stack)?;
+                memo_set(&mut memo, id, value)?;
+            }
             OP_BINPUT => {
                 let id = r.byte()? as usize;
                 let v = top_value_ref(&stack)?;
-                memo_set(&mut memo, id, v);
+                memo_set(&mut memo, id, v)?;
             }
             OP_LONG_BINPUT => {
                 let id = r.le_u32()? as usize;
                 let v = top_value_ref(&stack)?;
-                memo_set(&mut memo, id, v);
+                memo_set(&mut memo, id, v)?;
             }
-            OP_GET | OP_LONG_BGET => {
-                let id = if op == OP_GET {
-                    r.byte()? as usize
-                } else {
-                    r.le_u32()? as usize
+            OP_MEMOIZE => {
+                let id = memo.len();
+                let value = top_value_ref(&stack)?;
+                memo_set(&mut memo, id, value)?;
+            }
+            OP_GET | OP_BINGET | OP_LONG_BGET => {
+                let id = match op {
+                    OP_GET => parse_memo_index(r.until_newline()?)?,
+                    OP_BINGET => r.byte()? as usize,
+                    _ => r.le_u32()? as usize,
                 };
                 let v = memo
                     .get(id)
@@ -250,6 +278,10 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
                 stack.push(StackItem::Val(JsonValue::Array(items)));
             }
             OP_EMPTY_LIST => stack.push(StackItem::Val(JsonValue::Array(vec![]))),
+            OP_LIST => {
+                let items = pop_to_mark(&mut stack)?;
+                stack.push(StackItem::Val(JsonValue::Array(items)));
+            }
             OP_APPEND => {
                 let v = top_value(&mut stack)?;
                 append_to_list(&mut stack, vec![v])?;
@@ -259,7 +291,11 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<JsonValue, String> {
                 append_to_list(&mut stack, items)?;
             }
             OP_EMPTY_DICT => stack.push(StackItem::Val(JsonValue::Object(Map::new()))),
-            OP_DICT => stack.push(StackItem::Val(JsonValue::Object(Map::new()))),
+            OP_DICT => {
+                let items = pop_to_mark(&mut stack)?;
+                stack.push(StackItem::Val(JsonValue::Object(Map::new())));
+                setmany_into_dict(&mut stack, items)?;
+            }
             OP_SETITEM => {
                 let value = top_value(&mut stack)?;
                 let key = top_value(&mut stack)?;
@@ -324,11 +360,22 @@ fn pop_to_mark(stack: &mut Vec<StackItem>) -> Result<Vec<JsonValue>, String> {
     }
 }
 
-fn memo_set(memo: &mut Vec<Option<JsonValue>>, id: usize, value: JsonValue) {
+fn parse_memo_index(bytes: &[u8]) -> Result<usize, String> {
+    std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|index| index.parse().ok())
+        .ok_or_else(|| "invalid pickle memo index".to_string())
+}
+
+fn memo_set(memo: &mut Vec<Option<JsonValue>>, id: usize, value: JsonValue) -> Result<(), String> {
+    if id >= MAX_MEMBERS {
+        return Err("pickle memo index exceeds limit".into());
+    }
     if id >= memo.len() {
         memo.resize(id + 1, None);
     }
     memo[id] = Some(value);
+    Ok(())
 }
 
 fn append_to_list(stack: &mut Vec<StackItem>, items: Vec<JsonValue>) -> Result<(), String> {
@@ -382,6 +429,36 @@ fn key_to_string(key: &JsonValue) -> String {
     }
 }
 
+/// Protocol 0 uses Python's raw-unicode-escape convention: Latin-1 bytes
+/// plus \uXXXX and \UXXXXXXXX for escapes emitted by the pickler.
+fn json_text_unicode(mut bytes: &[u8]) -> Result<JsonValue, String> {
+    let mut result = String::new();
+    while let Some((&byte, rest)) = bytes.split_first() {
+        let escaped = match (byte, rest.first()) {
+            (b'\\', Some(b'u')) => 4,
+            (b'\\', Some(b'U')) => 8,
+            _ => 0,
+        };
+        if escaped == 0 {
+            result.push(char::from(byte));
+            bytes = rest;
+            continue;
+        }
+        let digits = rest
+            .get(1..=escaped)
+            .ok_or("truncated pickle Unicode escape")?;
+        let character = std::str::from_utf8(digits)
+            .ok()
+            .filter(|digits| digits.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .and_then(|digits| u32::from_str_radix(digits, 16).ok())
+            .and_then(char::from_u32)
+            .ok_or("invalid pickle Unicode escape")?;
+        result.push(character);
+        bytes = &rest[escaped + 1..];
+    }
+    Ok(JsonValue::String(result))
+}
+
 fn json_str(bytes: &[u8]) -> JsonValue {
     JsonValue::String(String::from_utf8_lossy(bytes).into_owned())
 }
@@ -402,9 +479,25 @@ fn json_float(f: f64) -> JsonValue {
 }
 
 fn json_int_line(b: &[u8]) -> JsonValue {
+    if b == b"00" || b == b"01" {
+        return JsonValue::Bool(b == b"01");
+    }
     match String::from_utf8_lossy(b).trim().parse::<i64>() {
         Ok(n) => JsonValue::from(n),
         Err(_) => JsonValue::String(String::from_utf8_lossy(b).into_owned()),
+    }
+}
+
+fn json_binary_long(bytes: &[u8]) -> JsonValue {
+    // LONG1/LONG4 hold signed, little-endian two's-complement data.
+    let integer = num_bigint::BigInt::from_signed_bytes_le(bytes);
+    let decimal = integer.to_string();
+    if let Ok(value) = decimal.parse::<i64>() {
+        JsonValue::from(value)
+    } else if let Ok(value) = decimal.parse::<u64>() {
+        JsonValue::from(value)
+    } else {
+        JsonValue::String(decimal)
     }
 }
 

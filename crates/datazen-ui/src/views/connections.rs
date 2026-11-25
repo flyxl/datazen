@@ -13,6 +13,9 @@ use rune::{col, row, text, El};
 use crate::ui::palette;
 use rune::{FileDialogOptions, Tx};
 
+#[path = "redis_connection_form.rs"]
+mod redis_form;
+
 /// The connections page: the home body. The connection form and the import
 /// dialog float over it from the root modal layer (`views/modals.rs`).
 pub fn connection_list(state: &AppState, theme: tok::Theme, dark: bool) -> El {
@@ -519,6 +522,8 @@ pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -
                 ),
         );
 
+    let redis_options = redis_form::view(state, theme, dark);
+
     let error_text = state.connection_error.clone().unwrap_or_default();
     let error_row = row()
         .key("connection-form-error")
@@ -535,6 +540,6 @@ pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -
         .key("connection-form")
         .w_full()
         .gap(16.0)
-        .child(col().key("connection-form-fields").w_full().gap(16.0).child(basic).child(connection).child(advanced).child(ssh))
+        .child(col().key("connection-form-fields").w_full().gap(16.0).child(basic).child(connection).child(redis_options).child(advanced).child(ssh))
         .child(error_row)
 }

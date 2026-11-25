@@ -16,15 +16,15 @@ const STREAM_VERSION: u16 = 0x0005;
 const TC_NULL: u8 = 0x70;
 const TC_REFERENCE: u8 = 0x71;
 const TC_CLASSDESC: u8 = 0x72;
-const TC_OBJECT: u8 = 0x65;
+const TC_OBJECT: u8 = 0x73;
 const TC_STRING: u8 = 0x74;
-const TC_ARRAY: u8 = 0xDC;
+const TC_ARRAY: u8 = 0x75;
 const TC_LONGSTRING: u8 = 0x7C;
 const TC_ENDBLOCKDATA: u8 = 0x78;
 const TC_BLOCKDATA: u8 = 0x77;
 const TC_BLOCKDATALONG: u8 = 0x7A;
 const TC_CLASS: u8 = 0x76;
-const TC_ENUM: u8 = 0xFE;
+const TC_ENUM: u8 = 0x7E;
 
 const SC_WRITE_METHOD: u8 = 0x01;
 const SC_SERIALIZABLE: u8 = 0x02;
@@ -38,6 +38,14 @@ struct Stream<'a> {
     data: &'a [u8],
     pos: usize,
     handles: Vec<Option<JsonValue>>,
+}
+
+fn modified_utf8(bytes: &[u8]) -> Result<String, String> {
+    // The Java serialization wire format uses modified UTF-8 for both
+    // strings and the UTF fields in class descriptors.
+    cesu8::from_java_cesu8(bytes)
+        .map(|text| text.into_owned())
+        .map_err(|error| format!("invalid Java modified UTF-8: {error}"))
 }
 
 impl<'a> Stream<'a> {
@@ -85,7 +93,7 @@ impl<'a> Stream<'a> {
     fn utf(&mut self) -> Result<String, String> {
         let n = self.u16()? as usize;
         let bytes = self.take(n)?;
-        Ok(String::from_utf8_lossy(bytes).into_owned())
+        modified_utf8(bytes)
     }
     fn peek(&self) -> Option<u8> {
         self.data.get(self.pos).copied()
@@ -147,7 +155,7 @@ impl<'a> Stream<'a> {
                     return Err("invalid Java long-string length".to_string());
                 }
                 let bytes = self.take(n as usize)?;
-                let s = String::from_utf8_lossy(bytes).into_owned();
+                let s = modified_utf8(bytes)?;
                 self.set_handle(idx, JsonValue::String(s.clone()));
                 Ok(JsonValue::String(s))
             }
@@ -166,8 +174,8 @@ impl<'a> Stream<'a> {
             TC_ARRAY => self.read_array(depth),
             TC_CLASS => {
                 // A class descriptor as a value: outline its name only.
-                let _ = self.new_handle();
                 let _desc = self.read_class_desc(depth)?;
+                let _ = self.new_handle();
                 Ok(serde_json::json!({ "$class": "java.lang.Class" }))
             }
             TC_ENUM => Err("Java enum deserialization is not supported".to_string()),
@@ -176,6 +184,9 @@ impl<'a> Stream<'a> {
     }
 
     fn read_class_desc(&mut self, depth: u32) -> Result<Option<DescInfo>, String> {
+        if depth > MAX_DEPTH {
+            return Err("Java class descriptor exceeds nesting limit".to_string());
+        }
         match self.peek() {
             Some(TC_NULL) => {
                 self.byte()?;
@@ -195,6 +206,9 @@ impl<'a> Stream<'a> {
                 let _svuid = self.i64()?;
                 self.set_handle(idx, JsonValue::String(name.clone()));
                 let flags = self.byte()?;
+                if flags & !(SC_SERIALIZABLE | SC_WRITE_METHOD) != 0 {
+                    return Err("Unsupported Java class descriptor flags".to_string());
+                }
                 let mut fields = Vec::new();
                 if flags & SC_SERIALIZABLE != 0 {
                     let count = self.u16()? as usize;
@@ -212,7 +226,9 @@ impl<'a> Stream<'a> {
                     }
                 }
                 let has_write = flags & SC_WRITE_METHOD != 0;
-                let super_desc = self.read_class_desc(depth)?;
+                // The descriptor's annotation (including its end marker) precedes the superclass.
+                self.skip_class_annotation()?;
+                let super_desc = self.read_class_desc(depth + 1)?;
                 Ok(Some(DescInfo {
                     name,
                     fields,
@@ -225,10 +241,10 @@ impl<'a> Stream<'a> {
     }
 
     fn read_object(&mut self, depth: u32) -> Result<JsonValue, String> {
-        let obj_idx = self.new_handle();
         let desc = self
             .read_class_desc(depth)?
             .ok_or_else(|| "object with null class descriptor".to_string())?;
+        let obj_idx = self.new_handle();
 
         // Collect the superclass chain base-first: values are written from the
         // most general class to the most derived.
@@ -266,7 +282,7 @@ impl<'a> Stream<'a> {
 
     fn read_field_value(&mut self, typecode: u8, depth: u32) -> Result<JsonValue, String> {
         match typecode {
-            b'B' => Ok(JsonValue::from(self.byte()? as i16)),
+            b'B' => Ok(JsonValue::from(self.byte()? as i8)),
             b'Z' => Ok(JsonValue::Bool(self.byte()? != 0)),
             b'S' => {
                 let b = self.take(2)?;
@@ -311,29 +327,31 @@ impl<'a> Stream<'a> {
                     let _ = self.take(n)?;
                     skipped += n;
                 }
-                Some(_) => {
-                    // An embedded object value inside the annotation stream.
-                    let _ = self.read_content(MAX_DEPTH)?;
-                }
+                Some(_) => return Err("Java annotation contains unsupported object data".into()),
                 None => return Err("unterminated Java class annotation".to_string()),
             }
         }
     }
 
     fn read_array(&mut self, depth: u32) -> Result<JsonValue, String> {
-        let arr_idx = self.new_handle();
         let desc = self
             .read_class_desc(depth)?
             .ok_or_else(|| "array with null class descriptor".to_string())?;
+        let arr_idx = self.new_handle();
         let len = self.u32()? as usize;
         if len > MAX_MEMBERS {
             return Err("Java array exceeds length limit".to_string());
         }
-        // Component type code is the last char of the descriptor name (e.g. "[I").
-        let comp = desc.name.chars().last().unwrap_or('L');
+        // Primitive, object and nested arrays all start with "[" followed by
+        // the component descriptor.
+        let component = desc
+            .name
+            .strip_prefix('[')
+            .and_then(|name| name.bytes().next())
+            .ok_or("Invalid Java array class descriptor")?;
         let mut arr = Vec::with_capacity(len.min(1024));
         for _ in 0..len {
-            arr.push(self.read_field_value(comp as u8, depth)?);
+            arr.push(self.read_field_value(component, depth)?);
         }
         let out = serde_json::json!({ "$array": desc.name, "items": arr });
         self.set_handle(arr_idx, out.clone());
@@ -402,6 +420,7 @@ mod tests {
         utf("s", &mut b);
         b.push(TC_STRING);
         utf("Ljava/lang/String;", &mut b);
+        b.push(TC_ENDBLOCKDATA); // empty class annotation
         b.push(TC_NULL); // superClass descriptor
                          // field values (base-first = only this class)
         b.extend_from_slice(&5i32.to_be_bytes()); // n

@@ -59,9 +59,8 @@ pub(crate) struct LivenessProbe;
 /// deliberately elsewhere: `database.rs:110-124 get_tables` opens a *pinned*
 /// connection so that enumerating databases cannot flip the shared session.)
 ///
-/// `INFO server` is issued through the same `with_redis_conn!` dispatch as every
-/// other command, so this works identically for standalone, cluster and
-/// sentinel topologies without the provider knowing which it has.
+/// The shared probe handles the wire reply of each topology. For Redis
+/// Cluster, it routes INFO to one connected node rather than broadcasting.
 ///
 /// The registry write lock is held across the await, which is this crate's own
 /// established convention (`get_databases`, `get_server_info` both do it). The
@@ -73,10 +72,7 @@ pub(crate) async fn probe_liveness(
     let mut conns = driver.connections.write().await;
     let rc = RedisDriver::get_conn(&mut conns, handle).map_err(ResourceError::Driver)?;
 
-    crate::with_redis_conn!(&mut rc.live, |conn| {
-        crate::driver::session::info_server_on(conn).await
-    })
-    .map_err(|error| {
+    crate::driver::session::info_server_on(&mut rc.live).await.map_err(|error| {
         ResourceError::Driver(DriverError::QueryFailed(format!(
             "session observation failed: the INFO server probe on the resource's own \
              connection did not answer: {error}"

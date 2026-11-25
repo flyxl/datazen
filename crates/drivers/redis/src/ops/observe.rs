@@ -83,13 +83,19 @@ pub struct SlowlogEntry {
 
 pub async fn fetch_info<C>(conn: &mut C, section: Option<&str>) -> Result<String, String>
 where
-    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+    C: SlotRoutedConnection,
 {
     let mut cmd = redis::cmd("INFO");
     if let Some(sec) = section.filter(|s| !s.is_empty()) {
         cmd.arg(sec);
     }
-    cmd.query_async(conn).await.map_err(|e| e.to_string())
+    // Cluster normally broadcasts INFO, returning an address-to-reply map.
+    // The public monitor contract expects one INFO document.
+    let reply = conn
+        .command_on_one_node(&cmd)
+        .await
+        .map_err(|e| e.to_string())?;
+    String::from_redis_value(&reply).map_err(|e| e.to_string())
 }
 
 /// Cursor-sample a database's largest keys, reading `MEMORY USAGE`, `TYPE` and
@@ -260,7 +266,7 @@ pub async fn info_filtered<C>(
     search: Option<&str>,
 ) -> Result<InfoFilteredResult, String>
 where
-    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+    C: SlotRoutedConnection,
 {
     let raw = fetch_info(conn, section).await?;
     let sections = parse_info_sections(&raw);

@@ -211,7 +211,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             object_schema(
                 serde_json::json!({
                     "dbIndex": db,
-                    "key": key,
+                    "key": key, "createOnly": { "type": "boolean" }, "expectedValue": { "type": "string" },
                     "value": { "type": "string" },
                     "keepTtl": { "type": "boolean", "description": "Defaults to true; pass false to clear the expiry" }
                 }),
@@ -239,7 +239,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "HSET a hash field",
             "redis:allow-hash-set",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "field": { "type": "string" }, "value": { "type": "string" } }),
+                serde_json::json!({ "dbIndex": db, "key": key, "createFieldOnly": { "type": "boolean" }, "expectedValue": { "type": "string" }, "field": { "type": "string" }, "value": { "type": "string" } }),
                 &["key", "field", "value"],
             ),
         ),
@@ -249,7 +249,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "HDEL hash fields",
             "redis:allow-hash-del",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "fields": strings }),
+                serde_json::json!({ "dbIndex": db, "key": key, "fields": strings, "guardedField": {"type":"string"}, "expectedValue": {"type":"string"} }),
                 &["key", "fields"],
             ),
         ),
@@ -259,7 +259,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "LPUSH or RPUSH values",
             "redis:allow-list-push",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "side": { "type": "string" }, "values": strings }),
+                serde_json::json!({ "dbIndex": db, "key": key, "appendExistingOnly": { "type": "boolean" }, "appendValue": { "type": "string" }, "side": { "type": "string" }, "values": strings }),
                 &["key", "side", "values"],
             ),
         ),
@@ -269,7 +269,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "LSET a list index",
             "redis:allow-list-set",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "index": { "type": "integer" }, "value": { "type": "string" } }),
+                serde_json::json!({ "dbIndex": db, "key": key, "expectedValue": { "type": "string" }, "index": { "type": "integer" }, "value": { "type": "string" } }),
                 &["key", "index", "value"],
             ),
         ),
@@ -279,7 +279,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "LPOP or RPOP",
             "redis:allow-list-pop",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "side": { "type": "string" } }),
+                serde_json::json!({ "dbIndex": db, "key": key, "side": { "type": "string" }, "expectedHead": {"type":"string"} }),
                 &["key", "side"],
             ),
         ),
@@ -309,7 +309,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "SADD members",
             "redis:allow-set-add",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "members": strings }),
+                serde_json::json!({ "dbIndex": db, "key": key, "existingMember": { "type": "string" }, "members": strings }),
                 &["key", "members"],
             ),
         ),
@@ -319,7 +319,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "SREM members",
             "redis:allow-set-remove",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "members": strings }),
+                serde_json::json!({ "dbIndex": db, "key": key, "members": strings, "guardedMember": {"type":"string"} }),
                 &["key", "members"],
             ),
         ),
@@ -329,7 +329,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "ZADD members",
             "redis:allow-zset-add",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "members": { "type": "array" } }),
+                serde_json::json!({ "dbIndex": db, "key": key, "createMemberOnly": { "type": "boolean" }, "expectedScore": { "type": "string" }, "existingMember": { "type": "string" }, "newScore": { "type": "string" }, "members": { "type": "array" } }),
                 &["key", "members"],
             ),
         ),
@@ -339,7 +339,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "ZREM members",
             "redis:allow-zset-remove",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "members": strings }),
+                serde_json::json!({ "dbIndex": db, "key": key, "members": strings, "guardedMember": {"type":"string"}, "expectedScore": {"type":"string"} }),
                 &["key", "members"],
             ),
         ),
@@ -359,7 +359,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "Rename a key",
             "redis:allow-rename",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "newKey": { "type": "string" } }),
+                serde_json::json!({ "dbIndex": db, "key": key, "noOverwrite": { "type": "boolean" }, "newKey": { "type": "string" } }),
                 &["key", "newKey"],
             ),
         ),
@@ -371,7 +371,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             object_schema(
                 serde_json::json!({
                     "dbIndex": db,
-                    "key": key,
+                    "key": key, "expectedType": { "type": "string" },
                     "ttlSeconds": { "type": "integer" },
                     "expireAt": { "type": "integer", "description": "Unix timestamp seconds for EXPIREAT" }
                 }),
@@ -657,7 +657,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "JSON.SET",
             "redis:allow-json-set",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "path": { "type": "string" }, "value": { "type": "string" } }),
+                serde_json::json!({ "dbIndex": db, "key": key, "expectedDocument": { "type": "string" }, "path": { "type": "string" }, "value": { "type": "string" } }),
                 &["key", "path", "value"],
             ),
         ),
@@ -687,7 +687,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "Append a stream entry",
             "redis:allow-xadd",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "fields": { "type": "object" }, "id": { "type": "string" } }),
+                serde_json::json!({ "dbIndex": db, "key": key, "existingField": { "type": "string" }, "fieldValue": { "type": "string" }, "fields": { "type": "object" }, "id": { "type": "string" } }),
                 &["key", "fields"],
             ),
         ),
@@ -697,7 +697,8 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
             "Create a consumer group",
             "redis:allow-xgroup-create",
             object_schema(
-                serde_json::json!({ "dbIndex": db, "key": key, "group": { "type": "string" }, "startId": { "type": "string" } }),
+                serde_json::json!({ "dbIndex": db, "key": key, "group": { "type": "string" }, "startId": { "type": "string" },
+                    "existingStreamOnly": { "type": "boolean" } }),
                 &["key", "group"],
             ),
         ),

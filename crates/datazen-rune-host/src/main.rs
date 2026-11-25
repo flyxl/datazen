@@ -5,6 +5,15 @@
 //! same adapter seam.
 
 fn main() {
+    #[cfg(feature = "redis-e2e-fixture")]
+    {
+        let mut fixture_args = std::env::args().skip(1);
+        if fixture_args.next().as_deref() == Some("--redis-driver-fixture") {
+            datazen_driver_redis::e2e_fixture::run_cli(fixture_args);
+            return;
+        }
+    }
+
     let path = datazen_rune_host::default_connections_path();
     let repository = match datazen_rune_host::FileConnectionRepository::open(&path) {
         Ok(repository) => std::sync::Arc::new(repository),

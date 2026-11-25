@@ -20,21 +20,24 @@ pub(crate) fn parse_redis_command_args(s: &str) -> Result<Vec<String>, DriverErr
         }
         if bytes[i] == b'"' {
             i += 1;
-            let mut cur = String::new();
+            let mut cur = Vec::new();
             while i < bytes.len() {
                 if bytes[i] == b'\\' && i + 1 < bytes.len() {
                     i += 1;
-                    cur.push(bytes[i] as char);
+                    cur.push(bytes[i]);
                     i += 1;
                 } else if bytes[i] == b'"' {
                     i += 1;
                     break;
                 } else {
-                    cur.push(bytes[i] as char);
+                    cur.push(bytes[i]);
                     i += 1;
                 }
             }
-            out.push(cur);
+            out.push(
+                String::from_utf8(cur)
+                    .map_err(|_| DriverError::QueryFailed("Invalid UTF-8 argument".into()))?,
+            );
         } else {
             let start = i;
             while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
@@ -87,6 +90,45 @@ pub(crate) fn redis_value_to_rows(
                 nullable: false,
             }],
             vec![vec![Some(Value::String(text.clone()))]],
+        ),
+        redis::Value::Map(entries) => {
+            let columns = vec![
+                ColumnInfo {
+                    name: "field".into(),
+                    data_type: "string".into(),
+                    nullable: false,
+                },
+                ColumnInfo {
+                    name: "value".into(),
+                    data_type: "string".into(),
+                    nullable: true,
+                },
+            ];
+            let rows = entries
+                .iter()
+                .map(|(key, val)| vec![Some(redis_to_value(key)), Some(redis_to_value(val))])
+                .collect();
+            (columns, rows)
+        }
+        redis::Value::Set(items) => {
+            let columns = vec![ColumnInfo {
+                name: "value".into(),
+                data_type: "string".into(),
+                nullable: false,
+            }];
+            let rows = items
+                .iter()
+                .map(|item| vec![Some(redis_to_value(item))])
+                .collect();
+            (columns, rows)
+        }
+        redis::Value::Double(value) if value.is_finite() => (
+            vec![ColumnInfo {
+                name: "result".into(),
+                data_type: "float".into(),
+                nullable: false,
+            }],
+            vec![vec![Some(Value::Float(*value))]],
         ),
         redis::Value::Array(items) => {
             if items.len() >= 2 && items.len() % 2 == 0 && looks_like_hash(items) {
@@ -187,4 +229,15 @@ pub(crate) fn looks_like_hash(items: &[redis::Value]) -> bool {
             redis::Value::BulkString(_) | redis::Value::SimpleString(_)
         )
     })
+}
+
+#[cfg(test)]
+mod command_tests {
+    use super::parse_redis_command_args;
+
+    #[test]
+    fn quoted_commands_preserve_non_ascii_bytes() {
+        let command = parse_redis_command_args(r#"GET "键 名""#).unwrap();
+        assert_eq!(command, ["GET", "键 名"]);
+    }
 }

@@ -1,5 +1,14 @@
 //! DataZen path driver: redis
 
+// Linking the fixture into the same instrumented application avoids mismatched
+// function maps from two separately built executables. Normal builds omit it.
+#[cfg(feature = "e2e-fixture")]
+extern crate self as datazen_driver_redis;
+#[cfg(feature = "e2e-fixture")]
+#[doc(hidden)]
+#[path = "../examples/redis_driver_e2e/fixture.rs"]
+pub mod e2e_fixture;
+
 use std::sync::{Arc, OnceLock};
 
 use datazen_driver_api::capabilities::CapabilitySet;

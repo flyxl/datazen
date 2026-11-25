@@ -4,6 +4,7 @@ use base64::Engine;
 use datazen_driver_api::*;
 use redis::AsyncCommands;
 
+use crate::connect::RedisLiveConn;
 use crate::types::{KeyDetail, ValueFrame};
 
 pub(crate) async fn select_db_on<C>(conn: &mut C, db_index: u32) -> Result<(), String>
@@ -17,15 +18,24 @@ where
         .map_err(|e| e.to_string())
 }
 
-pub(crate) async fn info_server_on<C>(conn: &mut C) -> Result<String, String>
+/// Read the configured DB count from both RESP2's flat CONFIG reply and RESP3's map.
+pub(crate) async fn configured_database_count_on<C>(conn: &mut C) -> Result<Option<u32>, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
-    redis::cmd("INFO")
-        .arg("server")
+    let settings: std::collections::BTreeMap<String, u32> = redis::cmd("CONFIG")
+        .arg("GET")
+        .arg("databases")
         .query_async(conn)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|error| error.to_string())?;
+    Ok(settings.get("databases").copied())
+}
+
+pub(crate) async fn info_server_on(conn: &mut RedisLiveConn) -> Result<String, String> {
+    crate::with_redis_conn!(conn, |socket| {
+        crate::ops::observe::fetch_info(socket, Some("server")).await
+    })
 }
 
 pub(crate) async fn query_cmd_on<C>(
@@ -239,21 +249,13 @@ where
             Ok(serde_json::json!({ "value": v.unwrap_or_default() }))
         }
         "hash" => {
-            let pairs: Vec<String> = redis::cmd("HGETALL")
+            // HGETALL returns flat pairs in RESP2 and a map in RESP3.
+            let fields: std::collections::BTreeMap<String, String> = redis::cmd("HGETALL")
                 .arg(key)
                 .query_async(conn)
                 .await
                 .map_err(|e| e.to_string())?;
-            let mut obj = serde_json::Map::new();
-            for chunk in pairs.chunks(2) {
-                if chunk.len() == 2 {
-                    obj.insert(
-                        chunk[0].clone(),
-                        serde_json::Value::String(chunk[1].clone()),
-                    );
-                }
-            }
-            Ok(serde_json::Value::Object(obj))
+            Ok(serde_json::json!(fields))
         }
         "list" => {
             let vals: Vec<String> = redis::cmd("LRANGE")
@@ -274,7 +276,7 @@ where
             Ok(serde_json::json!(vals))
         }
         "zset" => {
-            let vals: Vec<String> = redis::cmd("ZRANGE")
+            let raw: redis::Value = redis::cmd("ZRANGE")
                 .arg(key)
                 .arg(0)
                 .arg(-1)
@@ -282,17 +284,14 @@ where
                 .query_async(conn)
                 .await
                 .map_err(|e| e.to_string())?;
-            let mut members = Vec::new();
-            for chunk in vals.chunks(2) {
-                if chunk.len() == 2 {
-                    let score: f64 = chunk[1].parse().unwrap_or(0.0);
-                    members.push(serde_json::json!({ "member": chunk[0], "score": score }));
-                }
-            }
-            Ok(serde_json::json!(members))
+            let members: Vec<_> = crate::ops::parse::parse_scored_pairs(&raw)?
+                .into_iter()
+                .map(|(member, score)| serde_json::json!({"member":member,"score":score}))
+                .collect();
+            Ok(serde_json::Value::Array(members))
         }
         "stream" => {
-            let raw: redis::Value = redis::cmd("XRANGE")
+            let entries: Vec<redis::Value> = redis::cmd("XRANGE")
                 .arg(key)
                 .arg("-")
                 .arg("+")
@@ -301,10 +300,11 @@ where
                 .query_async(conn)
                 .await
                 .map_err(|e| e.to_string())?;
-            match crate::value::stream_entry_to_json(&raw) {
-                Ok(v) => Ok(v),
-                Err(()) => Ok(serde_json::json!([])),
-            }
+            let rows: Vec<_> = entries
+                .iter()
+                .filter_map(|entry| crate::value::stream_entry_to_json(entry).ok())
+                .collect();
+            Ok(serde_json::Value::Array(rows))
         }
         other => Ok(serde_json::json!({ "type": other })),
     }

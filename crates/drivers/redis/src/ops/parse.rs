@@ -41,6 +41,37 @@ pub(crate) fn parse_flat_string_array(v: &redis::Value) -> Result<Vec<String>, S
     Ok(items.iter().map(value_to_string).collect())
 }
 
+/// ZRANGE WITHSCORES returns flat members/scores in RESP2 and a list of
+/// two-element member/score arrays in RESP3.
+pub(crate) fn parse_scored_pairs(raw: &redis::Value) -> Result<Vec<(String, f64)>, String> {
+    use redis::{FromRedisValue, Value};
+    let Value::Array(values) = raw else {
+        return Err("expected a ranked Redis list".into());
+    };
+    let pair = |member: &Value, score: &Value| {
+        let score = f64::from_redis_value(score).map_err(|e| e.to_string())?;
+        Ok((value_to_string(member), score))
+    };
+    if matches!(values.first(), Some(Value::Array(_))) {
+        return values
+            .iter()
+            .map(|item| match item {
+                Value::Array(pair_values) if pair_values.len() == 2 => {
+                    pair(&pair_values[0], &pair_values[1])
+                }
+                _ => Err("expected a member and score in a ranked Redis list".into()),
+            })
+            .collect();
+    }
+    if values.len() % 2 != 0 {
+        return Err("expected even member and score items in a ranked Redis list".into());
+    }
+    values
+        .chunks_exact(2)
+        .map(|items| pair(&items[0], &items[1]))
+        .collect()
+}
+
 pub(crate) fn parse_zscan_result(raw: &redis::Value) -> Result<(u64, Vec<(String, f64)>), String> {
     match raw {
         redis::Value::Array(items) if items.len() == 2 => {

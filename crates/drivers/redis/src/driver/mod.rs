@@ -12,7 +12,7 @@ use crate::types::{KeyDetail, ValueFrame};
 
 use crate::connect::{
     build_connection_plan, looks_like_connection_loss, open_live_conn, open_pinned_node_conn,
-    ConnectionPlan, RedisLiveConn,
+    ConnectionPlan, RedisLiveConn, Topology,
 };
 use crate::with_redis_conn;
 use session::{get_key_detail_on, get_key_raw_on, info_server_on, select_db_on};
@@ -45,9 +45,7 @@ macro_rules! with_live_op_topo {
         let mut conns = $self.connections.write().await;
         let rc = RedisDriver::get_conn(&mut conns, &handle)?;
         let $topo = rc.live.topology();
-        RedisDriver::select_db(&mut rc.live, $db_index)
-            .await
-            .map_err(DriverError::QueryFailed)?;
+        RedisDriver::select_db_with_reconnect(&mut rc.live, $db_index).await?;
         let mut result = with_redis_conn!(&mut rc.live, |$conn| $body);
         if result.is_err()
             && rc.live.is_sentinel()
@@ -141,6 +139,21 @@ impl RedisDriver {
 
     pub(crate) async fn select_db(live: &mut RedisLiveConn, db_index: u32) -> Result<(), String> {
         with_redis_conn!(live, |conn| select_db_on(conn, db_index).await)
+    }
+
+    /// A lost Sentinel socket can fail at SELECT before the operation itself
+    /// runs. Re-resolve the master and retry that SELECT once.
+    async fn select_db_with_reconnect(
+        live: &mut RedisLiveConn,
+        db_index: u32,
+    ) -> Result<(), DriverError> {
+        match Self::select_db(live, db_index).await {
+            Err(error) if live.is_sentinel() && looks_like_connection_loss(&error) => {
+                live.rediscover_sentinel_master().await?;
+                Self::select_db(live, db_index).await.map_err(DriverError::QueryFailed)
+            }
+            result => result.map_err(DriverError::QueryFailed),
+        }
     }
 
     /// Open a dedicated connection already `SELECT`ed onto `db_index`.
@@ -245,9 +258,7 @@ impl RedisDriver {
             "redis get_key_detail: lock acquired"
         );
         let rc = Self::get_conn(&mut conns, handle)?;
-        Self::select_db(&mut rc.live, db_index)
-            .await
-            .map_err(DriverError::QueryFailed)?;
+        Self::select_db_with_reconnect(&mut rc.live, db_index).await?;
         let key = key.to_string();
         with_redis_conn!(&mut rc.live, |conn| get_key_detail_on(conn, &key).await)
     }
@@ -267,9 +278,7 @@ impl RedisDriver {
             "redis get_key_raw: lock acquired"
         );
         let rc = Self::get_conn(&mut conns, handle)?;
-        Self::select_db(&mut rc.live, db_index)
-            .await
-            .map_err(DriverError::QueryFailed)?;
+        Self::select_db_with_reconnect(&mut rc.live, db_index).await?;
         let key = key.to_string();
         with_redis_conn!(&mut rc.live, |conn| get_key_raw_on(conn, &key, with_memory)
             .await)
@@ -280,30 +289,18 @@ impl RedisDriver {
         &self,
         handle: &ConnectionHandle,
     ) -> Result<Vec<serde_json::Value>, DriverError> {
-        // 1. Determine db_count from CONFIG GET databases on the shared connection.
+        // Cluster exposes only DB 0; a CONFIG reply from all nodes is not
+        // a list of logical databases. Other deployments give the true count.
         let db_count = {
             let mut conns = self.connections.write().await;
             let rc = Self::get_conn(&mut conns, handle)?;
-            with_redis_conn!(&mut rc.live, |conn| {
-                redis::cmd("CONFIG")
-                    .arg("GET")
-                    .arg("databases")
-                    .query_async::<redis::Value>(conn)
-                    .await
-                    .map_err(|e| e.to_string())
-            })
-            .map_err(DriverError::QueryFailed)
-            .and_then(|cfg_val| match cfg_val {
-                redis::Value::Array(ref items) if items.len() >= 2 => {
-                    let s = match &items[1] {
-                        redis::Value::BulkString(b) => String::from_utf8_lossy(b).into_owned(),
-                        redis::Value::Int(i) => i.to_string(),
-                        _ => "16".to_string(),
-                    };
-                    Ok(s.parse::<u32>().unwrap_or(16))
-                }
-                _ => Ok(16),
-            })?
+            if rc.live.topology() == Topology::Cluster {
+                1
+            } else {
+                with_redis_conn!(&mut rc.live, |socket| session::configured_database_count_on(socket).await)
+                    .map_err(DriverError::QueryFailed)?
+                    .unwrap_or(16)
+            }
         };
 
         // 2. Get the connection plan for creating dedicated connections.
@@ -412,6 +409,7 @@ impl RedisDriver {
         Ok(crate::ops::value_search::abort_task(&session, requested).await)
     }
 
+    plugin_on_db!(plugin_guarded_edit, (key: &str, edit: crate::ops::guarded_edit::Edit<'_>) -> bool, |conn| crate::ops::guarded_edit::edit(conn, key, edit));
     plugin_on_db!(plugin_set_string, (key: &str, value: &str, keep_ttl: Option<bool>) -> crate::ops::write::SetStringOutcome, |conn| crate::ops::write::set_string_with_ttl_policy(conn, key, value.as_bytes(), keep_ttl));
     plugin_on_db!(plugin_set_string_bytes, (key: &str, bytes: &[u8], keep_ttl: Option<bool>) -> crate::ops::write::SetStringOutcome, |conn| crate::ops::write::set_string_with_ttl_policy(conn, key, bytes, keep_ttl));
     plugin_on_db!(plugin_set_expire_at, (key: &str, expire_at: i64) -> (), |conn| crate::ops::set_expire_at(conn, key, expire_at));
@@ -482,8 +480,7 @@ impl RedisDriver {
                 .map_err(DriverError::QueryFailed)?;
         }
 
-        let info: String = with_redis_conn!(&mut live, |conn| info_server_on(conn).await)
-            .map_err(DriverError::QueryFailed)?;
+        let info = info_server_on(&mut live).await.map_err(DriverError::QueryFailed)?;
 
         let version = info
             .lines()
@@ -621,9 +618,15 @@ impl RedisDriver {
         if let Some(addr) = node_addr.filter(|s| !s.trim().is_empty()) {
             let plan = self.connection_plan(connection_id).await?;
             let mut conn = open_pinned_node_conn(&plan, addr.trim()).await?;
-            select_db_on(&mut conn, db_index)
-                .await
-                .map_err(DriverError::QueryFailed)?;
+            if matches!(plan, ConnectionPlan::Cluster(_)) {
+                if db_index != 0 {
+                    return Err(DriverError::InvalidConfig("Redis Cluster only supports DB 0".into()));
+                }
+            } else {
+                select_db_on(&mut conn, db_index)
+                    .await
+                    .map_err(DriverError::QueryFailed)?;
+            }
             return crate::ops::exec::exec_commands(&mut conn, &commands)
                 .await
                 .map_err(DriverError::QueryFailed);

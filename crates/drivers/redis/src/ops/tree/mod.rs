@@ -80,7 +80,9 @@ fn split_children(keys: &[String], prefix: &str, seps: &[&str]) -> Vec<ChildEntr
     let prefix_len = prefix.len();
 
     for key in keys {
-        let rest = &key[prefix_len..];
+        let Some(rest) = key.strip_prefix(prefix) else {
+            continue;
+        };
         let (segment, sep_len) = find_next_segment(rest, seps);
         if sep_len == 0 {
             // Leaf key — no separator after prefix.
@@ -170,7 +172,14 @@ where
         + Send
         + crate::ops::workbench::SlotRoutedConnection,
 {
-    let pattern = format!("{prefix}*");
+    let mut pattern = String::with_capacity(prefix.len() + 1);
+    for ch in prefix.chars() {
+        if matches!(ch, '*' | '?' | '[' | ']' | '\\') {
+            pattern.push('\\');
+        }
+        pattern.push(ch);
+    }
+    pattern.push('*');
     let sep_str = sep.unwrap_or(DEFAULT_SEP);
     let sep_chars: Vec<String> = sep_str.chars().map(|c| c.to_string()).collect();
     let seps: Vec<&str> = sep_chars.iter().map(|s| s.as_str()).collect();

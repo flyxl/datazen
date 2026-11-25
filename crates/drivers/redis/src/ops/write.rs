@@ -71,14 +71,14 @@ where
         // Not the keyword being refused (transport, ACL, WRONGTYPE, …): C-3
         // keeps those a generic IPC error — no PTTL probe, no second write,
         // and no claim that this server lacks KEEPTTL.
-        Err(rejected) if !is_keepttl_keyword_rejection(&rejected) => Err(rejected),
+        Err(rejected) if !is_keepttl_keyword_rejection(&rejected) => Err(rejected.to_string()),
         Err(rejected) => {
             let remaining = match pttl_millis(conn, key).await {
                 Ok(ms) => ms,
                 // The rescue path is unavailable too (old server without PTTL,
                 // ACL refusal, …): surface the original KEEPTTL rejection, which
                 // is the error the user can actually act on.
-                Err(_) => return Err(rejected),
+                Err(_) => return Err(rejected.to_string()),
             };
             let retried = if remaining > 0 {
                 set_with_expiry(conn, key, value, remaining).await
@@ -99,14 +99,22 @@ where
 
 /// Did the server reject the `KEEPTTL` **keyword itself** (C-4)?
 ///
-/// Only that refusal (Redis < 6.0, or a proxy stripping the keyword) may arm
-/// the `PTTL` + `PX` rescue. The two accepted shapes are what a server emits
-/// when *this* command's argument list is refused: it echoes `KEEPTTL` back,
-/// or reports an unknown option for `SET`. Anything else — `WRONGTYPE`,
-/// `READONLY`, ACL, transport — is thrown verbatim with no fallback claimed.
-fn is_keepttl_keyword_rejection(message: &str) -> bool {
-    let m = message.to_ascii_lowercase();
-    m.contains("keepttl") || (m.contains("unknown option") && m.contains("'set'"))
+/// Only a server response refusing the options may arm the PTTL + PX rescue.
+fn is_keepttl_keyword_rejection(error: &redis::RedisError) -> bool {
+    if error.kind() != redis::ErrorKind::ResponseError {
+        return false;
+    }
+    let detail = error
+        .detail()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    // Redis 5 replies with exactly ERR syntax error. Since the driver supplies
+    // the fixed SET <key> <value> KEEPTTL form using bulk arguments, the only
+    // optional token that Redis can reject here is KEEPTTL.
+    detail == "syntax error"
+        || detail.contains("keepttl")
+        || (detail.contains("unknown option") && detail.contains("'set'"))
 }
 
 /// Remaining lifetime in milliseconds; negative means "no expiry to preserve".
@@ -133,7 +141,7 @@ where
         .map_err(|e| e.to_string())
 }
 
-async fn set_keeping_ttl<C>(conn: &mut C, key: &str, value: &[u8]) -> Result<(), String>
+async fn set_keeping_ttl<C>(conn: &mut C, key: &str, value: &[u8]) -> redis::RedisResult<()>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -143,7 +151,6 @@ where
         .arg("KEEPTTL")
         .query_async::<()>(conn)
         .await
-        .map_err(|e| e.to_string())
 }
 
 async fn set_with_expiry<C>(

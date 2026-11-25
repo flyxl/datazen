@@ -2567,9 +2567,11 @@ version = "0.0.10"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "cesu8",
  "datazen-driver-api",
  "flate2",
  "futures-util",
+ "num-bigint",
  "redis",
  "rmpv",
  "rustls 0.23.43",
@@ -2713,6 +2715,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "uuid",
+ "zip 2.4.2",
 ]
 
 [[package]]

@@ -43,12 +43,14 @@ fn opt_bool(input: &JsonValue, field: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn db_index(input: &JsonValue) -> u32 {
-    input
-        .get("dbIndex")
-        .or_else(|| input.get("db_index"))
-        .and_then(JsonValue::as_u64)
-        .unwrap_or(0) as u32
+fn db_index(input: &JsonValue) -> Result<u32, DriverError> {
+    match input.get("dbIndex").or_else(|| input.get("db_index")) {
+        None | Some(JsonValue::Null) => Ok(0),
+        Some(index) => index
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .ok_or_else(|| DriverError::InvalidConfig("dbIndex must be a non-negative 32-bit integer".into())),
+    }
 }
 
 fn opt_string_vec(input: &JsonValue, field: &str) -> Vec<String> {
@@ -98,7 +100,7 @@ pub(super) async fn dispatch(
     input: JsonValue,
 ) -> Result<CommandResult, DriverError> {
     let id = handle.pool_id.as_str();
-    let db = db_index(&input);
+    let db = db_index(&input)?;
 
     match command {
         "scan_keys" => {
@@ -230,6 +232,16 @@ pub(super) async fn dispatch(
             )
         }
         "set_string" => {
+            if opt_bool(&input, "createOnly") {
+                let edit = crate::ops::guarded_edit::Edit::Create { value: req_str(&input, "value")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
+            if input.get("expectedValue").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::String { expected: req_str(&input, "expectedValue")?, value: req_str(&input, "value")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let keep_ttl = crate::ops::write::keep_ttl_policy(&input);
             let outcome = driver
                 .plugin_set_string(
@@ -332,6 +344,16 @@ pub(super) async fn dispatch(
             json_ok(serde_json::json!({ "cursor": next, "members": scored }))
         }
         "hash_set" => {
+            if opt_bool(&input, "createFieldOnly") {
+                let edit = crate::ops::guarded_edit::Edit::HashAdd { field: req_str(&input, "field")?, value: req_str(&input, "value")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
+            if input.get("expectedValue").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::Hash { field: req_str(&input, "field")?, expected: req_str(&input, "expectedValue")?, value: req_str(&input, "value")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             driver
                 .plugin_hash_set(
                     id,
@@ -344,6 +366,11 @@ pub(super) async fn dispatch(
             Ok(ok())
         }
         "hash_del" => {
+            if input.get("expectedValue").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::HashRemove { field: req_str(&input, "guardedField")?, previous: req_str(&input, "expectedValue")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let fields = string_vec(&input, "fields")?;
             driver
                 .plugin_hash_del(id, db, req_str(&input, "key")?, &fields)
@@ -351,6 +378,11 @@ pub(super) async fn dispatch(
             Ok(ok())
         }
         "list_push" => {
+            if opt_bool(&input, "appendExistingOnly") {
+                let edit = crate::ops::guarded_edit::Edit::ListAppend { value: req_str(&input, "appendValue")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let side = req_str(&input, "side")?;
             let values = string_vec(&input, "values")?;
             driver
@@ -359,6 +391,11 @@ pub(super) async fn dispatch(
             Ok(ok())
         }
         "list_set" => {
+            if input.get("expectedValue").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::List { index: req_i64(&input, "index")?, expected: req_str(&input, "expectedValue")?, value: req_str(&input, "value")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             driver
                 .plugin_list_set(
                     id,
@@ -370,11 +407,16 @@ pub(super) async fn dispatch(
                 .await?;
             Ok(ok())
         }
-        "list_pop" => json_ok(
-            driver
-                .plugin_list_pop(id, db, req_str(&input, "key")?, req_str(&input, "side")?)
-                .await?,
-        ),
+        "list_pop" => {
+            if input.get("expectedHead").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::ListRemoveHead { previous: req_str(&input, "expectedHead")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
+            json_ok(
+                driver.plugin_list_pop(id, db, req_str(&input, "key")?, req_str(&input, "side")?).await?,
+            )
+        }
         "list_index" => json_ok(
             driver
                 .plugin_list_index(id, db, req_str(&input, "key")?, req_i64(&input, "index")?)
@@ -395,6 +437,11 @@ pub(super) async fn dispatch(
             )
         }
         "set_add" => {
+            if input.get("existingMember").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::SetAdd { member: req_str(&input, "existingMember")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let members = string_vec(&input, "members")?;
             driver
                 .plugin_set_add(id, db, req_str(&input, "key")?, &members)
@@ -402,6 +449,11 @@ pub(super) async fn dispatch(
             Ok(ok())
         }
         "set_remove" => {
+            if input.get("guardedMember").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::SetRemove { member: req_str(&input, "guardedMember")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let members = string_vec(&input, "members")?;
             driver
                 .plugin_set_remove(id, db, req_str(&input, "key")?, &members)
@@ -409,6 +461,16 @@ pub(super) async fn dispatch(
             Ok(ok())
         }
         "zset_add" => {
+            if opt_bool(&input, "createMemberOnly") {
+                let edit = crate::ops::guarded_edit::Edit::ZsetAdd { member: req_str(&input, "existingMember")?, score: req_str(&input, "newScore")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
+            if input.get("expectedScore").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::Zset { member: req_str(&input, "existingMember")?, expected: req_str(&input, "expectedScore")?, score: req_str(&input, "newScore")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let members: Vec<ZsetMember> = serde_json::from_value(
                 input
                     .get("members")
@@ -422,6 +484,11 @@ pub(super) async fn dispatch(
             Ok(ok())
         }
         "zset_remove" => {
+            if input.get("expectedScore").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::ZsetRemove { member: req_str(&input, "guardedMember")?, previous: req_str(&input, "expectedScore")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let members = string_vec(&input, "members")?;
             driver
                 .plugin_zset_remove(id, db, req_str(&input, "key")?, &members)
@@ -433,6 +500,11 @@ pub(super) async fn dispatch(
             json_ok(driver.plugin_delete_keys(id, db, &keys).await?)
         }
         "rename" => {
+            if opt_bool(&input, "noOverwrite") {
+                let edit = crate::ops::guarded_edit::Edit::Rename { target: req_str(&input, "newKey")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let new_key = input
                 .get("newKey")
                 .or_else(|| input.get("new_key"))
@@ -446,6 +518,11 @@ pub(super) async fn dispatch(
             Ok(ok())
         }
         "set_ttl" => {
+            if input.get("expectedType").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::Ttl { expected_type: req_str(&input, "expectedType")?, seconds: req_i64(&input, "ttlSeconds")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let key = req_str(&input, "key")?;
             let expire_at = input
                 .get("expireAt")
@@ -718,6 +795,11 @@ pub(super) async fn dispatch(
                 .await?,
         ),
         "json_set" => {
+            if input.get("expectedDocument").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::Json { expected: req_str(&input, "expectedDocument")?, value: req_str(&input, "value")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             driver
                 .plugin_json_set(
                     id,
@@ -750,6 +832,11 @@ pub(super) async fn dispatch(
                 .await?,
         ),
         "xadd" => {
+            if input.get("existingField").is_some() {
+                let edit = crate::ops::guarded_edit::Edit::Stream { field: req_str(&input, "existingField")?, value: req_str(&input, "fieldValue")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             let fields: std::collections::HashMap<String, String> =
                 serde_json::from_value(input.get("fields").cloned().unwrap_or(JsonValue::Null))
                     .map_err(|e| DriverError::InvalidConfig(e.to_string()))?;
@@ -766,6 +853,11 @@ pub(super) async fn dispatch(
             )
         }
         "xgroup_create" => {
+            if opt_bool(&input, "existingStreamOnly") {
+                let edit = crate::ops::guarded_edit::Edit::StreamGroupCreate { group: req_str(&input, "group")? };
+                let applied = driver.plugin_guarded_edit(id, db, req_str(&input, "key")?, edit).await?;
+                return json_ok(serde_json::json!({ "applied": applied }));
+            }
             driver
                 .plugin_xgroup_create(
                     id,

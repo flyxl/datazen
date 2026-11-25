@@ -494,6 +494,9 @@ impl DesktopAdapter for JobAdapter {
         std::mem::take(&mut self.accepted)
             .into_iter()
             .map(|job| match job {
+                AdapterJob::ReadKv(_) | AdapterJob::CloseKv { .. } => {
+                    unreachable!("the relational fixture does not accept KV jobs")
+                }
                 AdapterJob::RunWorkflow { generation, .. } => AdapterDelivery::WorkflowRun {
                     generation,
                     results: Ok(vec![datazen_ui_api::WorkflowStepResult {
