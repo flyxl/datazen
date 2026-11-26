@@ -581,3 +581,35 @@ class OfflineJourneys:
         # logical contents and schema rather than the physical journal bytes.
         with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
             self.assertEqual(tuple(db.iterdump()), original)
+
+    def test_legacy_sqlite_sidebar_lists_views_under_separate_category(self):
+        """Migrate the show-views-in-sidebar case from sqlite.ts."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                CREATE TABLE posts(id INTEGER PRIMARY KEY, author TEXT, published INTEGER);
+                CREATE VIEW published_posts AS SELECT author FROM posts WHERE published = 1;
+                CREATE VIEW draft_posts AS SELECT author FROM posts WHERE published = 0;
+            """)
+            expected = [name for (name,) in db.execute(
+                "SELECT name FROM sqlite_schema WHERE type = 'view' ORDER BY name"
+            )]
+        category = "tree-views-main-main"
+        collapsed = [OPEN[0], tap(3, category)]
+        initial = self.replay(collapsed, until=4.2)
+        self.expect_rendered(initial, text="视图 (2)", within=category)
+        self.expect_rendered(initial, key="tree-table-posts")
+        for name in expected:
+            self.assertFalse(visible(initial, key=f"tree-table-{name}"))
+
+        reopened = self.replay([*collapsed, tap(4.5, category)], until=5.8)
+        for name in expected:
+            self.expect_rendered(reopened, key=f"tree-table-{name}", within="datazen-navigator")
+        self.expect_rendered(reopened, key="tree-table-posts")
+
+        filtered = [*collapsed, *fill(4.5, "navigator-filter-input", "published")]
+        narrowed = self.replay(filtered, until=6.1)
+        self.expect_rendered(narrowed, text="视图 (1)", within=category)
+        self.expect_rendered(narrowed, key="tree-table-published_posts")
+        self.assertFalse(visible(narrowed, key="tree-table-draft_posts"))
+        self.assertFalse(visible(narrowed, key="tree-table-posts"))

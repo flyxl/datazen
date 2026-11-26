@@ -382,8 +382,16 @@ pub fn object_tree(state: &AppState, theme: tok::Theme) -> El {
 
         for schema in &database.schemas {
             let schema_match = db_match || schema.name.to_lowercase().contains(&filter);
-            let mut table_rows: Vec<El> = Vec::new();
-            for name in &schema.tables {
+            let schema_path = format!("{}/{}", database.name, schema.name);
+            let view_path = format!("{schema_path}/@views");
+            let mut table_rows = Vec::new();
+            let mut view_rows = Vec::new();
+            for (name, is_view) in schema
+                .tables
+                .iter()
+                .map(|name| (name, false))
+                .chain(schema.views.iter().map(|name| (name, true)))
+            {
                 if !filter.is_empty()
                     && !db_match
                     && !schema_match
@@ -395,23 +403,26 @@ pub fn object_tree(state: &AppState, theme: tok::Theme) -> El {
                 let row_el = nav_leaf_row(
                     &format!("tree-table-{name}"),
                     name,
-                    2,
+                    if is_view { 3 } else { 2 },
                     &icons::ICON_TABLE,
                     theme,
                 )
                 .on_press(move |state: &mut AppState| {
                     state.open_table_tab(&title);
                 });
-                table_rows.push(row_el);
+                if is_view {
+                    view_rows.push(row_el);
+                } else {
+                    table_rows.push(row_el);
+                }
             }
-            if table_rows.is_empty() && !(filter.is_empty() || schema_match) {
+            if table_rows.is_empty() && view_rows.is_empty() && !(filter.is_empty() || schema_match) {
                 continue;
             }
             db_has_match = true;
-            let schema_path = format!("{}/{}", database.name, schema.name);
             let schema_key = format!("tree-schema-{}-{}", database.name, schema.name);
             let collapsed = state.collapsed.contains(&schema_path) && filter.is_empty();
-            let schema_label = format!("{} ({})", schema.name, schema.tables.len());
+            let schema_label = format!("{} ({})", schema.name, schema.tables.len() + schema.views.len());
             let schema_row = nav_branch_row(
                 &schema_key,
                 &schema_label,
@@ -425,6 +436,22 @@ pub fn object_tree(state: &AppState, theme: tok::Theme) -> El {
             schema_rows.push(schema_row);
             if !collapsed {
                 schema_rows.extend(table_rows);
+                if !view_rows.is_empty() {
+                    let views_collapsed = state.collapsed.contains(&view_path) && filter.is_empty();
+                    let labels = format!("{} ({})", t("schemaTree.views"), view_rows.len());
+                    schema_rows.push(nav_branch_row(
+                        &format!("tree-views-{}-{}", database.name, schema.name),
+                        &labels,
+                        None,
+                        2,
+                        !views_collapsed,
+                        &icons::ICON_FOLDER,
+                        theme,
+                    ).on_press(move |state: &mut AppState| state.toggle_expand(&view_path)));
+                    if !views_collapsed {
+                        schema_rows.extend(view_rows);
+                    }
+                }
             }
         }
         if !db_has_match && !filter.is_empty() {

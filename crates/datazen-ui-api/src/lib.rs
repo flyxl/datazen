@@ -1773,6 +1773,7 @@ pub struct DatabaseNode {
 pub struct SchemaNode {
     pub name: String,
     pub tables: Vec<String>,
+    pub views: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2988,7 +2989,7 @@ impl WorkspaceApi for MemoryWorkspace {
             name: session.connection_id.clone(),
             schemas: schemas
                 .into_iter()
-                .map(|(name, tables)| SchemaNode { name, tables })
+                .map(|(name, tables)| SchemaNode { name, tables, views: Vec::new() })
                 .collect(),
         }];
         Catalog { databases }

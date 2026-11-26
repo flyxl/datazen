@@ -34,7 +34,7 @@ use datazen::workflow::application::registry::WorkflowRegistry;
 use datazen::workflow::domain::error::WorkflowError;
 use datazen::workflow::domain::model::{WorkflowDefinition, WorkflowStep, WorkflowVisibility};
 use datazen_driver_api::filters::{FilterCondition, FilterOperator, SortCondition};
-use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableType, Value as Cell};
 use datazen_ui_api::native_kv::{native_kv_driver, KvRead, KvReply, NativeKvDriver};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionDraft,
@@ -1138,21 +1138,22 @@ async fn open_connection(
         let schema_nodes = schemas
             .into_iter()
             .map(|schema| {
-                let tables_of: Vec<String> = tables
-                    .iter()
-                    .filter(|table| !table.name.is_empty())
-                    .filter(|table| match &table.schema {
-                        Some(name) => *name == schema,
-                        // A schema-less driver: every table sits under the
-                        // one node.
-                        None => single,
-                    })
-                    .map(|table| table.name.clone())
-                    .collect();
-                SchemaNode {
+                let mut node = SchemaNode {
                     name: schema,
-                    tables: tables_of,
+                    tables: Vec::new(),
+                    views: Vec::new(),
+                };
+                for table in tables.iter().filter(|table| {
+                    !table.name.is_empty()
+                        && table.schema.as_ref().map_or(single, |name| *name == node.name)
+                }) {
+                    let names = match table.table_type {
+                        TableType::View | TableType::MaterializedView => &mut node.views,
+                        TableType::Table | TableType::SystemTable => &mut node.tables,
+                    };
+                    names.push(table.name.clone());
                 }
+                node
             })
             .collect();
         nodes.push(DatabaseNode {

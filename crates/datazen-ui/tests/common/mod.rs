@@ -568,6 +568,7 @@ impl DesktopAdapter for JobAdapter {
                             schemas: vec![SchemaNode {
                                 name: "main".into(),
                                 tables: vec!["events".into(), "users".into()],
+                                views: Vec::new(),
                             }],
                         }],
                     })

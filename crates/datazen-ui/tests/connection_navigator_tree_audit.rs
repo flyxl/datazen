@@ -29,6 +29,7 @@ fn cat() -> datazen_ui_api::Catalog {
             schemas: vec![datazen_ui_api::SchemaNode {
                 name: "public".into(),
                 tables: vec!["users".into(), "orders".into()],
+                views: Vec::new(),
             }],
         }],
     }

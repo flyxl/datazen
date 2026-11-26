@@ -286,6 +286,7 @@ fn a_value_search_lists_hits_and_a_hit_locates_the_table_with_a_filter() {
                     schemas: vec![datazen_ui_api::SchemaNode {
                         name: "main".into(),
                         tables: vec!["events".into(), "users".into()],
+                        views: Vec::new(),
                     }],
                 }],
             }),
