@@ -272,13 +272,13 @@ impl PostgresDriver {
             .pool_for_named_database(handle, &db, DATABASE_POOL_MAX_CONNECTIONS, 0)
             .await?;
 
-        let evicted = {
+        let (selected, evicted) = {
             let mut cache = self.database_pools.write().await;
-            // Another caller may have won the race; prefer the cached pool and
-            // drop the one we just opened.
+            // Another caller may have won the race. Return the cached winner
+            // to this caller, not the newly opened pool that we close below.
             if let Some(entry) = cache.get_mut(&key) {
                 entry.last_used = now;
-                vec![pool.clone()]
+                (entry.pool.clone(), vec![pool])
             } else {
                 cache.insert(
                     key,
@@ -287,13 +287,16 @@ impl PostgresDriver {
                         last_used: now,
                     },
                 );
-                Self::evict_database_pools(&mut cache, &handle.pool_id)
+                (
+                    pool,
+                    Self::evict_database_pools(&mut cache, &handle.pool_id),
+                )
             }
         };
         for stale in evicted {
             stale.close().await;
         }
-        Ok(pool)
+        Ok(selected)
     }
 
     /// Close this handle's foreign-database pools that have been inactive for

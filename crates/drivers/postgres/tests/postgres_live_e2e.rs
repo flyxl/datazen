@@ -265,3 +265,6 @@ mod grid;
 
 #[path = "postgres_live_e2e/temporal.rs"]
 mod temporal;
+
+#[path = "postgres_live_e2e/foreign_pools.rs"]
+mod foreign_pools;

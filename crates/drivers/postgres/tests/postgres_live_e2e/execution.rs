@@ -593,3 +593,147 @@ async fn explicit_target_queries_and_writes_do_not_switch_or_reuse_a_retained_fo
         .await
         .expect("remove foreign fixture");
 }
+
+#[tokio::test]
+async fn retained_registered_transactions_abort_real_postgres_work_on_error_or_cancel() {
+    use datazen_driver_api::session::TransactionState;
+
+    let mut fixture = Fixture::open().await;
+    let table = format!("dz_retained_transaction_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!("CREATE TABLE public.{table}(id int PRIMARY KEY,label text); INSERT INTO public.{table} VALUES (1,'unchanged')"))
+        .execute(&mut fixture.oracle).await.expect("persisted live transaction fixture");
+    let driver = Arc::new(PostgresDriver::new());
+    let retained = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("real retained transaction");
+    let oracle_read = async |conn: &mut sqlx::PgConnection| {
+        sqlx::query_scalar::<_, String>(&format!("SELECT label FROM public.{table} WHERE id=1"))
+            .fetch_one(conn)
+            .await
+            .expect("independent committed data")
+    };
+
+    let tx = driver
+        .begin_transaction(&retained)
+        .await
+        .expect("begin registered write");
+    let bad = QueryExecutionId::new("retained-server-error");
+    driver
+        .prepare_query_execution(&retained, &bad)
+        .await
+        .expect("register actual transaction");
+    let (events, callback) = record();
+    let sql=format!(
+        "UPDATE public.{table} SET label='before SQL error' WHERE id=1; SELECT 10/(1-1); UPDATE public.{table} SET label='must not run' WHERE id=1"
+    );
+    let result = driver
+        .query_stream_with_execution(&retained, &bad, &sql, None, callback)
+        .await;
+    assert!(
+        matches!(result,Err(DriverError::QueryFailed(reason)) if reason.contains("division by zero"))
+    );
+    let records = events.lock().expect("events").clone();
+    assert!(records.iter().any(|e| matches!(
+        e,
+        QueryStreamEvent::StatementEnd {
+            index: 0,
+            rows_affected: Some(1),
+            ..
+        }
+    )));
+    assert!(!records.iter().any(|e| matches!(
+        e,
+        QueryStreamEvent::StatementStart { index: 2, .. } | QueryStreamEvent::Done { .. }
+    )));
+    let in_error = driver
+        .observe_fixed_session(&retained)
+        .await
+        .expect("PostgreSQL retains actual failed transaction");
+    assert_eq!(in_error.transaction_state, TransactionState::Aborted);
+    assert_eq!(oracle_read(&mut fixture.oracle).await, "unchanged");
+    driver
+        .rollback(tx)
+        .await
+        .expect("explicitly roll back real changes");
+
+    let tx = driver
+        .begin_transaction(&retained)
+        .await
+        .expect("begin cancellable transaction");
+    driver
+        .execute(
+            &retained,
+            &format!("UPDATE public.{table} SET label='before cancellation' WHERE id=1"),
+        )
+        .await
+        .expect("one transaction-local update");
+    let id = QueryExecutionId::new("retained-transaction-cancel");
+    driver
+        .prepare_query_execution(&retained, &id)
+        .await
+        .expect("active retained transaction");
+    let marker = format!("sleep_{table}");
+    let worker = {
+        let driver = Arc::clone(&driver);
+        let retained = retained.clone();
+        let id = id.clone();
+        let sql = format!("SELECT 1 FROM pg_sleep(30) /* {marker} */");
+        let (_, callback) = record();
+        tokio::spawn(async move {
+            driver
+                .query_stream_with_execution(&retained, &id, &sql, None, callback)
+                .await
+        })
+    };
+    tokio::time::timeout(Duration::from_secs(5),async {
+        loop {
+            let pending:bool=sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event='PgSleep' AND strpos(query,$1)>0)"
+            ).bind(&marker).fetch_one(&mut fixture.oracle).await.expect("actual backend waiting");
+            if pending { break; }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }).await.expect("transaction worker is really executing");
+    driver
+        .cancel_query_with_execution(&retained, &id)
+        .await
+        .expect("exact out-of-band PostgreSQL cancel");
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), worker)
+            .await
+            .expect("prompt cancellation")
+            .expect("worker completes"),
+        Err(DriverError::QueryCancelled)
+    ));
+    assert_eq!(
+        driver
+            .observe_fixed_session(&retained)
+            .await
+            .expect("still retained")
+            .transaction_state,
+        TransactionState::Aborted
+    );
+    assert_eq!(oracle_read(&mut fixture.oracle).await, "unchanged");
+    driver
+        .rollback(tx)
+        .await
+        .expect("recover cancelled retained transaction");
+    assert_eq!(
+        driver
+            .observe_fixed_session(&retained)
+            .await
+            .expect("reusable PostgreSQL session")
+            .transaction_state,
+        TransactionState::Idle
+    );
+    assert_eq!(oracle_read(&mut fixture.oracle).await, "unchanged");
+    driver
+        .disconnect(retained)
+        .await
+        .expect("release retained resources");
+    sqlx::query(&format!("DROP TABLE public.{table}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("remove transaction fixture");
+}
