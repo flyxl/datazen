@@ -55,10 +55,7 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
     for profile in profiles.iter().filter(|profile| {
         profile.engine == "sqlite"
             || (state.native_transfer.tool == NativeTool::Transfer
-                && match side {
-                    TransferSide::Source => profile.engine == "postgresql",
-                    TransferSide::Target => profile.engine == "mysql",
-                })
+                && matches!(profile.engine.as_str(), "postgresql" | "mysql"))
     }) {
         let connection_id = profile.id.clone();
         let selected = endpoint

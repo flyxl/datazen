@@ -1,4 +1,4 @@
-//! Read-only review and single-table, insert-only PostgreSQL → MySQL transfer.
+//! Read-only review and single-table, insert-only transfer between PostgreSQL and MySQL.
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
@@ -17,8 +17,8 @@ use datazen::migration::data_transfer::{
     TransferMode, TransferPreviewAdapters, ValueFormatter, WriteMode,
 };
 use datazen_driver_api::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, SyncSourceAdapter, SyncTargetAdapter,
-    TableInfo, TableSchema, TableType,
+    ConnectionConfig, ConnectionHandle, DatabaseDriver, IRType, SyncSourceAdapter,
+    SyncTargetAdapter, TableInfo, TableSchema, TableType,
 };
 use datazen_ui_api::native_transfer::{
     NativeSqlScope, NativeTransferRequest, TransferCatalog, TransferChoice, TransferEndpoint,
@@ -250,9 +250,16 @@ async fn prepare(
         return Err("Both selected tables must still exist.".into());
     }
     let source_table = schema(src, sh, &source.scope, &request.source.table).await?;
-    let target_table = schema(tgt, th, &target.scope, &request.target.table).await?;
+    let mut target_table = schema(tgt, th, &target.scope, &request.target.table).await?;
     if target_table.table_options.supports_consistent_snapshot != Some(true) {
-        return Err("The selected MySQL table is not proven transactional.".into());
+        let engine = if target.scope.engine == "mysql" {
+            "MySQL"
+        } else {
+            "PostgreSQL"
+        };
+        return Err(format!(
+            "The selected {engine} table is not proven transactional."
+        ));
     }
     let mut seen_source = HashSet::new();
     let mut seen_target = HashSet::new();
@@ -305,6 +312,36 @@ async fn prepare(
     )
     .await
     .map_err(|_| "Could not verify the source column types.")?;
+    if target.scope.engine == "postgresql" {
+        // The regular Pg catalog suppresses typmods. Validate against the exact
+        // declaration, not an apparently unbounded numeric or varchar.
+        let target_types = adapters
+            .get_source(&target.scope.engine)
+            .ok_or("The target type adapter is unavailable.")?;
+        let mut schemas = HashMap::from([(request.target.table.clone(), target_table)]);
+        enrich_source_types(
+            target_types.as_ref(),
+            tgt,
+            th,
+            &target.endpoint(th),
+            &mut schemas,
+        )
+        .await
+        .map_err(|_| "Could not verify the target column types.")?;
+        target_table = schemas
+            .remove(&request.target.table)
+            .ok_or("Target table structure is unavailable.")?;
+        let source_table = source_schemas
+            .get(&request.source.table)
+            .ok_or("Source table structure is unavailable.")?;
+        validate_reverse_columns(
+            source_table,
+            &target_table,
+            src_adapter.as_ref(),
+            target_types.as_ref(),
+            request,
+        )?;
+    }
     let schema_fingerprint = fingerprint_schemas([
         (
             "source".into(),
@@ -384,6 +421,70 @@ async fn prepare(
     })
 }
 
+/// The shared Pg target adapter does not yet prove arbitrary narrowing safe.
+fn validate_reverse_columns(
+    source: &TableSchema,
+    target: &TableSchema,
+    source_adapter: &dyn SyncSourceAdapter,
+    target_types: &dyn SyncSourceAdapter,
+    request: &NativeTransferRequest,
+) -> Result<(), String> {
+    for (left, right) in &request.columns {
+        let src = source
+            .columns
+            .iter()
+            .find(|c| &c.name == left)
+            .ok_or("Source column is unavailable.")?;
+        let dst = target
+            .columns
+            .iter()
+            .find(|c| &c.name == right)
+            .ok_or("Target column is unavailable.")?;
+        let from = source_adapter.column_to_ir(src, None).ir_type;
+        let to = target_types.column_to_ir(dst, None).ir_type;
+        let target_name = dst.data_type.to_ascii_lowercase();
+        let signed_target = matches!(target_name.as_str(), "smallint" | "integer" | "bigint");
+        let signed_source = !src
+            .data_type
+            .split_ascii_whitespace()
+            .any(|s| s.eq_ignore_ascii_case("unsigned") || s.eq_ignore_ascii_case("zerofill"));
+        let safe = match (&from, &to) {
+            (IRType::Int8 | IRType::Int16, IRType::Int16 | IRType::Int32 | IRType::Int64)
+            | (IRType::Int32, IRType::Int32 | IRType::Int64)
+            | (IRType::Int64, IRType::Int64) => signed_source && signed_target,
+            (
+                IRType::Decimal {
+                    precision: p,
+                    scale: s,
+                },
+                IRType::Decimal {
+                    precision: q,
+                    scale: t,
+                },
+            ) => {
+                *p > 0
+                    && *p >= *s
+                    && (target_name == "numeric" || (*q >= *t && *t >= *s && q - t >= p - s))
+            }
+            (IRType::Varchar { length: Some(p) }, IRType::Varchar { length: Some(q) }) => {
+                target_name.starts_with("character varying(") && q >= p
+            }
+            (IRType::Varchar { length: Some(_) }, IRType::Text) => target_name == "text",
+            (IRType::Varchar { length: Some(_) }, IRType::Varchar { length: None }) => {
+                target_name == "character varying"
+            }
+            _ => false,
+        };
+        if !safe {
+            return Err(format!(
+                "Cannot prove a lossless conversion from {left} ({}) to {right} ({}).",
+                src.data_type, dst.data_type
+            ));
+        }
+    }
+    Ok(())
+}
+
 async fn sides(
     service: &ConnectionService,
     registry: &DriverRegistry,
@@ -394,10 +495,15 @@ async fn sides(
     {
         return Err("Select two different databases.".into());
     }
-    if request.source.sql_scope.as_ref().map(|s| s.engine.as_str()) != Some("postgresql")
-        || request.target.sql_scope.as_ref().map(|s| s.engine.as_str()) != Some("mysql")
-    {
-        return Err("Server transfer currently supports PostgreSQL to MySQL only.".into());
+    let from = request.source.sql_scope.as_ref().map(|s| s.engine.as_str());
+    let to = request.target.sql_scope.as_ref().map(|s| s.engine.as_str());
+    if !matches!(
+        (from, to),
+        (Some("postgresql"), Some("mysql")) | (Some("mysql"), Some("postgresql"))
+    ) {
+        return Err(
+            "Server transfer currently supports PostgreSQL and MySQL in either direction.".into(),
+        );
     }
     Ok((
         Side::load(service, registry, &request.source).await?,
