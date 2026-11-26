@@ -226,3 +226,6 @@ mod admin;
 
 #[path = "postgres_live_e2e/structure.rs"]
 mod structure;
+
+#[path = "postgres_live_e2e/migration.rs"]
+mod migration;
