@@ -298,3 +298,64 @@ async fn mysql_native_batch_handles_comments_without_suppressing_server_executio
     assert_eq!(oracle, 3, "source data intact");
     driver.disconnect(h).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_read_limits_preserve_native_lock_clauses_and_never_cap_cte_writes() {
+    let mut f = Fixture::open().await;
+    let driver = MysqlDriver::new(false);
+    let h = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    let table = format!("dz_limit_locks_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY,v INT) ENGINE=InnoDB;
+      INSERT INTO {table} VALUES (1,1),(2,2),(3,3); SET SESSION innodb_lock_wait_timeout=1;"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let tx = driver.begin_transaction(&h).await.unwrap();
+    let script =
+        format!("SELECT id FROM {table} WHERE id BETWEEN 1 AND 3 ORDER BY id FOR UPDATE NOWAIT");
+    let limited = driver
+        .query_multi(&h, &script, Some(1))
+        .await
+        .expect("LIMIT belongs before native FOR UPDATE");
+    assert_eq!(limited.results[0].rows, [vec![Some(Value::Integer(1))]]);
+    assert!(limited.results[0].truncated);
+    let changed_unlocked = sqlx::query(&format!("UPDATE {table} SET v=43 WHERE id=3"))
+        .execute(&mut f.oracle)
+        .await;
+    assert_eq!(
+        changed_unlocked.as_ref().map(|r| r.rows_affected()).ok(),
+        Some(1),
+        "server bounded lock footprint to the two fetched rows"
+    );
+    let blocked = sqlx::query(&format!("UPDATE {table} SET v=61 WHERE id=1"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap_err();
+    assert!(blocked.to_string().contains("Lock wait timeout"));
+    driver.rollback(tx).await.unwrap();
+    let cte_write =
+        format!("WITH new_value AS (SELECT 8 AS v) UPDATE {table} SET v=(SELECT v FROM new_value)");
+    let applied = driver
+        .query_multi(&h, &cte_write, Some(1))
+        .await
+        .expect("result caps do not touch MySQL CTE UPDATE");
+    assert_eq!(applied.results[0].rows_affected, Some(3));
+    assert!(applied.results[0].columns.is_empty() && applied.results[0].rows.is_empty());
+    let actual: Vec<i32> = sqlx::query_scalar(&format!("SELECT v FROM {table} ORDER BY id"))
+        .fetch_all(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(actual, [8, 8, 8]);
+    let existing = format!("SELECT id FROM {table} ORDER BY id LIMIT 3");
+    let bounded = driver.query_multi(&h, &existing, Some(1)).await.unwrap();
+    assert_eq!(bounded.results[0].rows, [vec![Some(Value::Integer(1))]]);
+    let cte_read = format!(
+        "WITH chosen AS (SELECT id FROM {table} LIMIT 3) SELECT id FROM chosen ORDER BY id"
+    );
+    let bounded = driver.query_multi(&h, &cte_read, Some(1)).await.unwrap();
+    assert_eq!(bounded.results[0].rows, [vec![Some(Value::Integer(1))]]);
+    assert!(bounded.results[0].truncated);
+    driver.disconnect(h).await.unwrap();
+}

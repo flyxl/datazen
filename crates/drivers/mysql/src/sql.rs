@@ -125,10 +125,61 @@ fn leading_sql(mut sql: &str) -> &str {
     }
 }
 
+fn mysql_top_level_words(sql: &str) -> Option<Vec<(String, sqlparser::tokenizer::Location)>> {
+    use sqlparser::{
+        dialect::MySqlDialect,
+        tokenizer::{Token, Tokenizer},
+    };
+    let tokens = Tokenizer::new(&MySqlDialect {}, sql)
+        .tokenize_with_location()
+        .ok()?;
+    let mut depth = 0usize;
+    let mut words = Vec::new();
+    for token in tokens {
+        match token.token {
+            Token::LParen => depth += 1,
+            Token::RParen => depth = depth.saturating_sub(1),
+            Token::Word(word) if depth == 0 && word.quote_style.is_none() => {
+                words.push((word.value.to_ascii_uppercase(), token.span.start));
+            }
+            _ => {}
+        }
+    }
+    Some(words)
+}
+
+fn mysql_cte_returns_rows(words: &[(String, sqlparser::tokenizer::Location)]) -> bool {
+    words
+        .iter()
+        .find_map(|(word, _)| match word.as_str() {
+            "SELECT" | "TABLE" | "VALUES" => Some(true),
+            "UPDATE" | "DELETE" | "INSERT" | "REPLACE" => Some(false),
+            _ => None,
+        })
+        .unwrap_or(false)
+}
+
+fn mysql_sql_offset(sql: &str, location: sqlparser::tokenizer::Location) -> Option<usize> {
+    let mut offset = 0;
+    for (line, text) in sql.split_inclusive('\n').enumerate() {
+        if line as u64 + 1 == location.line {
+            let column = usize::try_from(location.column.checked_sub(1)?).ok()?;
+            return text
+                .char_indices()
+                .nth(column)
+                .map(|(byte, _)| offset + byte);
+        }
+        offset += text.len();
+    }
+    None
+}
+
 pub(crate) fn is_mysql_result_query(sql: &str) -> bool {
-    let upper = leading_sql(sql).to_ascii_uppercase();
+    let main = leading_sql(sql);
+    let upper = main.to_ascii_uppercase();
     upper.starts_with("SELECT")
-        || upper.starts_with("WITH")
+        || (upper.starts_with("WITH")
+            && mysql_top_level_words(main).is_some_and(|words| mysql_cte_returns_rows(&words)))
         || upper.starts_with("SHOW")
         || upper.starts_with("DESCRIBE")
         || upper.starts_with("DESC")
@@ -142,36 +193,39 @@ pub(crate) fn apply_mysql_select_limit(stmt: &str, limit: Option<u32>) -> (Strin
 
     let trimmed = stmt.trim();
     let upper = leading_sql(trimmed).to_ascii_uppercase();
-    let is_select = upper.starts_with("SELECT") || upper.starts_with("WITH");
-    if !is_select {
+    if !upper.starts_with("SELECT") && !upper.starts_with("WITH") {
         return (stmt.to_string(), None);
     }
-
-    use sqlparser::{
-        dialect::MySqlDialect,
-        tokenizer::{Token, Tokenizer},
-    };
-    let Ok(tokens) = Tokenizer::new(&MySqlDialect {}, trimmed).tokenize() else {
+    let Some(words) = mysql_top_level_words(trimmed) else {
         // Keep the native dialect text intact rather than guessing at a rewrite.
         return (stmt.to_string(), Some(lim));
     };
-    let mut depth = 0usize;
-    for token in tokens {
-        match token {
-            Token::LParen => depth += 1,
-            Token::RParen => depth = depth.saturating_sub(1),
-            Token::Word(word)
-                if depth == 0
-                    && word.quote_style.is_none()
-                    && word.value.eq_ignore_ascii_case("LIMIT") =>
-            {
-                return (stmt.to_string(), Some(lim));
-            }
-            _ => {}
-        }
+    if upper.starts_with("WITH") && !mysql_cte_returns_rows(&words) {
+        return (stmt.to_string(), None);
+    }
+    if words.iter().any(|(word, _)| word == "LIMIT") {
+        return (stmt.to_string(), Some(lim));
     }
 
-    // A trailing -- or # comment must not absorb the server-side bound.
-    let effective = format!("{}\nLIMIT {}", trimmed, lim.saturating_add(1));
+    // MySQL's row locks come after LIMIT. Preserve native text (including
+    // comments and optimizer hints), and insert at the clause's token offset.
+    let lock = words.windows(2).find_map(|pair| {
+        let (word, location) = &pair[0];
+        match (word.as_str(), pair[1].0.as_str()) {
+            ("FOR", "UPDATE" | "SHARE") | ("LOCK", "IN") => mysql_sql_offset(trimmed, *location),
+            _ => None,
+        }
+    });
+    let extra = lim.saturating_add(1);
+    let effective = if let Some(offset) = lock {
+        format!(
+            "{}\nLIMIT {extra}\n{}",
+            &trimmed[..offset],
+            &trimmed[offset..]
+        )
+    } else {
+        // A trailing -- or # comment must not absorb the server-side bound.
+        format!("{trimmed}\nLIMIT {extra}")
+    };
     (effective, Some(lim))
 }

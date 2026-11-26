@@ -349,3 +349,67 @@ async fn mysql_native_connection_test_and_schema_listing_honor_account_and_catal
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn mysql_pooled_checkout_restores_declared_catalog_after_native_use_script() {
+    use datazen_driver_api::Value;
+    let mut f = Fixture::open().await;
+    let driver = MysqlDriver::new(false);
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let table = format!("dz_native_pool_{tag}");
+    let b = std::env::var("TEST_MYSQL_DATABASE_B").unwrap();
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY); INSERT INTO {table} VALUES (11);
+      CREATE TABLE {b}.{table}(id INT PRIMARY KEY); INSERT INTO {b}.{table} VALUES (29)"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let mut cfg = f.cfg.clone();
+    cfg.max_pool_size = 1;
+    let h = driver.connect(&cfg).await.unwrap();
+    let sql = format!("SELECT CONNECTION_ID(),DATABASE(),id FROM {table}");
+    let a = driver.query(&h, &sql).await.unwrap();
+    let thread = a.rows[0][0].clone();
+    assert_eq!(
+        a.rows,
+        [vec![
+            thread.clone(),
+            Some(Value::String(f.database.clone())),
+            Some(Value::Integer(11))
+        ]]
+    );
+    let batch = driver
+        .query_multi(&h, &format!("USE `{b}`; {sql}"), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        batch.results[1].rows,
+        [vec![
+            thread.clone(),
+            Some(Value::String(b.clone())),
+            Some(Value::Integer(29))
+        ]]
+    );
+    let fresh = driver.query(&h, &sql).await.unwrap();
+    assert_eq!(
+        fresh.rows, a.rows,
+        "next lease must restore the declared catalog without changing physical identity"
+    );
+    assert_eq!(
+        driver
+            .get_table_schema(&h, &table, "", None)
+            .await
+            .unwrap()
+            .table_name,
+        table
+    );
+    let (local, remote): (i32, i32) = sqlx::query_as(&format!(
+        "SELECT (SELECT id FROM {table}), (SELECT id FROM {b}.{table})"
+    ))
+    .fetch_one(&mut f.oracle)
+    .await
+    .unwrap();
+    assert_eq!((local, remote), (11, 29));
+    driver.disconnect(h).await.unwrap();
+}
