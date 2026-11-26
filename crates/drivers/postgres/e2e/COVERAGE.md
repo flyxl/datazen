@@ -15,7 +15,9 @@ python3 crates/drivers/postgres/e2e/coverage.py \
   --output target/postgres-e2e-report
 ```
 
-Choose a new output directory each time. The runner builds all eligible
+Choose a new output directory each time. Keep the Cargo target directory
+separate for each checkout so cached coverage paths identify its own sources.
+The runner builds all eligible
 integration test targets in one locked Cargo invocation, stages exact
 instrumented binaries, and runs only named live tests. It treats failures,
 skips, missing profiles, or inconsistent LLVM reports as failures. It uses

@@ -309,40 +309,42 @@ impl PostgresDriver {
         result.and(cleanup)
     }
 
-    pub(crate) async fn stream_one_statement<'e, E>(
-        executor: E,
+    async fn stream_one_statement(
+        connection: &mut sqlx::PgConnection,
         stmt: &str,
         limit: Option<u32>,
         index: usize,
         on_event: &QueryStreamCallback,
-    ) -> Result<(), DriverError>
-    where
-        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
-    {
+    ) -> Result<(), DriverError> {
         use futures_util::TryStreamExt;
         let (effective_sql, applied_limit) = apply_select_limit(stmt, limit);
         let stmt_start = Instant::now();
         if is_pg_result_query(&effective_sql) {
-            let mut stream = sqlx::query(effective_sql.as_str()).fetch(executor);
             let mut batcher =
                 QueryRowBatcher::new(Arc::clone(on_event), index, stmt.to_string(), applied_limit);
-            while let Some(row) = stream
-                .try_next()
-                .await
-                .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?
             {
-                if !batcher.started() {
-                    batcher.start(Self::columns_of_row(&row));
+                let mut stream = sqlx::query(effective_sql.as_str()).fetch(&mut *connection);
+                while let Some(row) = stream
+                    .try_next()
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?
+                {
+                    if !batcher.started() {
+                        batcher.start(Self::columns_of_row(&row));
+                    }
+                    let (_, mut decoded) = Self::decode_rows(std::slice::from_ref(&row));
+                    if !batcher.push(decoded.pop().unwrap_or_default()) {
+                        break;
+                    }
                 }
-                let (_, mut decoded) = Self::decode_rows(std::slice::from_ref(&row));
-                if !batcher.push(decoded.pop().unwrap_or_default()) {
-                    break;
-                }
+            }
+            if !batcher.started() {
+                batcher.start(Self::describe_columns(&mut *connection, &effective_sql).await);
             }
             batcher.finish(stmt_start.elapsed().as_millis() as u64, None);
         } else {
             let result = sqlx::query(effective_sql.as_str())
-                .execute(executor)
+                .execute(connection)
                 .await
                 .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?;
             emit_execute_statement(
@@ -652,7 +654,10 @@ impl PostgresDriver {
                         .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
                     let stmt_ms = stmt_start.elapsed().as_millis() as u64;
 
-                    let (columns, mut result_rows) = Self::decode_rows(&rows);
+                    let (mut columns, mut result_rows) = Self::decode_rows(&rows);
+                    if columns.is_empty() {
+                        columns = Self::describe_columns(&mut **conn, &effective_sql).await;
+                    }
                     let truncated = if let Some(lim) = applied_limit {
                         let fetched = result_rows.len() as u32;
                         if fetched > lim {
@@ -715,7 +720,10 @@ impl PostgresDriver {
                     .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
                 let stmt_ms = stmt_start.elapsed().as_millis() as u64;
 
-                let (columns, mut result_rows) = Self::decode_rows(&rows);
+                let (mut columns, mut result_rows) = Self::decode_rows(&rows);
+                if columns.is_empty() {
+                    columns = Self::describe_columns(pool, &effective_sql).await;
+                }
                 let truncated = if let Some(lim) = applied_limit {
                     let fetched = result_rows.len() as u32;
                     if fetched > lim {
@@ -880,7 +888,10 @@ impl PostgresDriver {
                     .await
                     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
                 let elapsed = start.elapsed().as_millis() as u64;
-                let (columns, result_rows) = Self::decode_rows(&rows);
+                let (mut columns, result_rows) = Self::decode_rows(&rows);
+                if columns.is_empty() {
+                    columns = Self::describe_columns(&mut **conn, sql).await;
+                }
                 let row_count = result_rows.len() as u64;
                 return Ok(QueryResult {
                     columns,
@@ -898,7 +909,10 @@ impl PostgresDriver {
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let elapsed = start.elapsed().as_millis() as u64;
 
-        let (columns, result_rows) = Self::decode_rows(&rows);
+        let (mut columns, result_rows) = Self::decode_rows(&rows);
+        if columns.is_empty() {
+            columns = Self::describe_columns(pool, sql).await;
+        }
         let row_count = result_rows.len() as u64;
 
         Ok(QueryResult {

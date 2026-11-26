@@ -235,3 +235,6 @@ mod objects;
 
 #[path = "postgres_live_e2e/sync.rs"]
 mod sync;
+
+#[path = "postgres_live_e2e/execution.rs"]
+mod execution;
