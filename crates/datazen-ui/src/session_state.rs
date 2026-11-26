@@ -209,6 +209,8 @@ impl AppState {
         self.close_kv_workbench();
         self.workspace.disconnect();
         self.tabs = Tabs::new();
+        self.query_database_picker_tab = None;
+        self.query_database_targets.clear();
         self.grid.set_editable(false);
         self.table_page = 0;
         self.sort = None;
@@ -259,6 +261,7 @@ impl AppState {
         if !self.tabs.select(id) {
             return false;
         }
+        self.query_database_picker_tab = None;
         self.sync_grid_to_selected_tab();
         true
     }

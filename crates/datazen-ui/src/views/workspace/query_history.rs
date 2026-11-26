@@ -45,7 +45,9 @@ pub(super) fn panel(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     match &state.query_history.result {
         Some(Err(error)) => panel.child(notice("query-history-error", error.clone())),
         Some(Ok(history)) if !history.entries.is_empty() => {
-            vm.selected_database = history.current_database.clone();
+            vm.selected_database = state.query_database_selection()
+                .map(|(_, context)| context.current.database)
+                .or_else(|| history.current_database.clone());
             vm.history = history
                 .entries
                 .iter()

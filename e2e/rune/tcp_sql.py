@@ -10,15 +10,18 @@ from scenarios import query_steps, tap, visible
 
 
 class DisposableSql:
-    def __init__(self, engine, config_path):
+    def __init__(self, engine, config_path, *, alternate=False):
         self.engine = engine
         config = json.loads(config_path.read_text(encoding="utf-8"))
-        self.database = config["database"]
+        primary = config["database"]
+        if alternate and (engine != "postgresql" or config.get("alternateDatabase") != "datazen_e2e_alt"):
+            raise ValueError("SQL E2E requires the allowlisted PostgreSQL alternate")
+        self.database = config["alternateDatabase"] if alternate else primary
         self.user = config["user"]
         self.port = config["port"]
         self.password = config["password"]
         self.cli = str(Path(config["client"]).resolve(strict=True))
-        if (config["host"] != "127.0.0.1" or self.database != "datazen_e2e"
+        if (config["host"] != "127.0.0.1" or primary != "datazen_e2e"
                 or type(self.port) is not int or not 1 <= self.port <= 65535):
             raise ValueError("SQL E2E requires a private 127.0.0.1 datazen_e2e server")
         marker = self.query("SELECT marker FROM rune_e2e_fixture;")
@@ -41,10 +44,11 @@ class DisposableSql:
             raise AssertionError(f"{self.engine} independent fixture query failed (exit {result.returncode})")
         return result.stdout.strip()
 
-    def write_profile(self, journey, *, read_only=False):
+    def write_profile(self, journey, *, read_only=False, default_database=True):
         journey.write_tcp_profiles([{
             "id": "e2e-tcp-sql", "name": "Rune disposable SQL E2E",
-            "databaseType": self.engine, "database": self.database, "host": "127.0.0.1",
+            "databaseType": self.engine, "host": "127.0.0.1",
+            **({"database": self.database} if default_database else {}),
             "port": self.port, "username": self.user, "password": self.password,
             "readOnly": read_only, "connectionTimeout": 8, "maxPoolSize": 4,
         }])
@@ -398,6 +402,77 @@ class TcpSqlJourneys:
         self.expect_rendered(final, text="after_stop", within="result-data-grid-header")
         self.expect_rendered(final, text=database.query(follow_up), within="result-cell-0-0")
 
+    def run_legacy_postgres_editor_database_context(self, config):
+        """Migrate SQ-CTX-001/002 with a marker-verified pair of real databases."""
+        primary = DisposableSql("postgresql", config)
+        alternate = DisposableSql("postgresql", config, alternate=True)
+        ordered = primary.query("SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname;").splitlines()
+        self.assertEqual(ordered[0], primary.database)
+        self.assertIn(alternate.database, ordered)
+        relation = "public.aaa_rune_context_" + uuid.uuid4().hex[:12]
+        table = {primary.database: "primary marker", alternate.database: "alternate marker"}
+        for connection in (primary, alternate):
+            connection.query(f"CREATE TABLE {relation} (marker TEXT NOT NULL);")
+            self.addCleanup(connection.query, f"DROP TABLE {relation};")
+            connection.query(f"INSERT INTO {relation} VALUES ('{table[connection.database]}');")
+            self.assertEqual(connection.query(f"SELECT current_database(), marker FROM {relation};"),
+                             connection.database + "|" + table[connection.database])
+        (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+        primary.write_profile(self, default_database=False)
+        trigger = "query-context-database-trigger"
+        opened = [tap(.5, "conn-open-e2e-tcp-sql"), tap(5, "conn-toolbar-new-query")]
+        menu = self.replay([*opened, tap(6.5, trigger)], until=8.0)
+        self.expect_rendered(menu, text=primary.database, within=trigger)
+        self.expect_rendered(menu, key="sql-run")
+        for database in table:
+            self.expect_rendered(menu, text=database, within=f"option{ordered.index(database)}")
+        controls = {n["key"]: n["rect"] for n in menu["elements"] if n.get("key") in (trigger, "sql-run")}
+        tx, ty, tw, th = controls[trigger]
+        rx, ry, rw, rh = controls["sql-run"]
+        self.assertGreater(tw, 100.0)
+        self.assertTrue(tx >= rx + rw or rx >= tx + tw, "database selector covers the Run button")
+
+        def sql_guarded(expected_db):
+            expected_marker = table[expected_db]
+            return (f"SELECT current_database() AS actual_database, marker, "
+                    f"1 / (CASE WHEN current_database()='{expected_db}' AND marker='{expected_marker}' "
+                    f"THEN 1 ELSE 0 END) AS route_proof FROM {relation};")
+
+        def run_sql(at, statement, *, script=False):
+            return [tap(at, "sql-editor-scroll"), key(at+.25, "a", cmd=True),
+                    {"t": at+.5, "type": "paste", "text": statement},
+                    tap(at+1.2, "sql-run-script" if script else "sql-run")]
+
+        choose_alt = [tap(6.5, trigger), tap(7.6, f"option{ordered.index(alternate.database)}")]
+        before = sql_guarded(alternate.database)
+        qualified = "SELECT namespace.nspname AS qualified_schema FROM pg_catalog.pg_namespace AS namespace WHERE namespace.nspname='pg_catalog';"
+        self.assertEqual(alternate.query(qualified), "pg_catalog")
+        script = before + " " + qualified
+        actions = [*opened, *choose_alt, *run_sql(8.5, before), *run_sql(13, qualified),
+                   *run_sql(17.5, before), *run_sql(22, script, script=True),
+                   tap(26, "query-sidebar-tab-history")]
+        final = self.replay(actions, until=28.5)
+        self.expect_rendered(final, key="query-result-tab-4")
+        self.expect_rendered(final, key="query-result-tab-5")
+        self.expect_rendered(final, text=f"Database: {alternate.database}", key="history-current-db")
+        self.expect_rendered(final, text=alternate.database, within=trigger)
+        self.expect_rendered(final, text=alternate.database, within="result-cell-0-0")
+        self.expect_rendered(final, text=table[alternate.database], within="result-cell-0-1")
+        histories = json.loads((self.root / "query-history.json").read_text(encoding="utf-8"))
+        self.assertEqual([(r["database"], r["success"]) for r in histories],
+                         [(alternate.database, True)] * 4)
+        self.assertEqual([r["sql"].rstrip(";") for r in histories],
+                         [s.rstrip(";") for s in (before, qualified, before, script)])
+        self.assertEqual(primary.query(f"SELECT marker FROM {relation};"), table[primary.database])
+        self.assertEqual(alternate.query(f"SELECT marker FROM {relation};"), table[alternate.database])
+
+        # A fresh editor in a profile pinned to a database has no selector.
+        alternate.write_profile(self)
+        pinned = self.replay([*opened, *run_sql(7.2, before)], until=11.3)
+        self.assertFalse(visible(pinned, key=trigger))
+        self.expect_rendered(pinned, text=alternate.database, within="result-cell-0-0")
+        self.expect_rendered(pinned, text=table[alternate.database], within="result-cell-0-1")
+
     def run_postgres_collision(self, config):
         database = DisposableSql("postgresql", config)
         tag = uuid.uuid4().hex[:12]
@@ -626,6 +701,12 @@ def with_tcp_journeys(suite, configs):
                 return self.run_legacy_postgres_stop_query(config)
 
             setattr(suite, "test_postgresql_legacy_stop_query_keeps_editor_open", stop_query)
+
+            if "alternateDatabase" in json.loads(config.read_text(encoding="utf-8")):
+                def editor_database_context(self, config=config):
+                    return self.run_legacy_postgres_editor_database_context(config)
+
+                setattr(suite, "test_postgresql_legacy_editor_database_context", editor_database_context)
 
             def collision(self, config=config):
                 return self.run_postgres_collision(config)

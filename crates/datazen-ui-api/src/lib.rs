@@ -1785,6 +1785,18 @@ pub struct ConnectionProfile {
     pub host: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeQueryDatabase {
+    pub connection_id: String,
+    pub database: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueryDatabaseContext {
+    pub current: NativeQueryDatabase,
+    pub choices: Vec<String>,
+}
+
 /// Safe connection test outcomes. Raw driver errors may include credentials
 /// or connection strings, so they never travel in a form delivery.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2109,6 +2121,17 @@ pub trait DesktopAdapter {
     }
 
     fn begin_native_query_script(&mut self, _generation: u32, _sql: String) -> bool {
+        false
+    }
+
+    /// PostgreSQL profiles with no saved database may choose a catalogued database per editor.
+    fn native_query_database_context(&self) -> Option<QueryDatabaseContext> {
+        None
+    }
+
+    fn begin_native_query_at(
+        &mut self, _generation: u32, _sql: String, _target: NativeQueryDatabase, _script: bool,
+    ) -> bool {
         false
     }
 

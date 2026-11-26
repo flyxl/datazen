@@ -398,10 +398,44 @@ impl AppState {
         self.query_loading = None;
     }
 
+    pub(crate) fn query_database_selection(&self) -> Option<(u32, datazen_ui_api::QueryDatabaseContext)> {
+        let tab = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query)?;
+        let mut context = self.desktop.native_query_database_context()?;
+        if self.desktop_connection.as_deref() != Some(context.current.connection_id.as_str())
+            || self.connect_loading.is_some()
+        {
+            return None;
+        }
+        if let Some(target) = self.query_database_targets.get(&tab.id) {
+            context.current = target.clone();
+        }
+        Some((tab.id, context))
+    }
+
+    fn query_database_target(&self) -> Option<datazen_ui_api::NativeQueryDatabase> {
+        let tab = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query)?;
+        // Preserve a previous explicit choice until session replacement clears
+        // it. If it is stale the worker must reject, not choose a fallback.
+        self.query_database_targets.get(&tab.id).cloned()
+            .or_else(|| self.query_database_selection().map(|(_, context)| context.current))
+    }
+
+    pub(crate) fn choose_query_database(&mut self, expected_tab: u32, database: &str) {
+        self.query_database_picker_tab = None;
+        if self.native_query.is_some() || self.query_loading.is_some() {
+            return;
+        }
+        let Some((tab, mut context)) = self.query_database_selection() else { return };
+        if tab == expected_tab && context.choices.iter().any(|choice| choice == database) {
+            context.current.database = database.to_owned();
+            self.query_database_targets.insert(tab, context.current);
+        }
+    }
+
     /// Run the entire document explicitly. Plain Run and its keyboard
     /// shortcut still use only the selected/caret statement.
     pub fn run_query_script(&mut self) {
-        if !self.desktop.supports_native_query_script() {
+        if self.connect_loading.is_some() || !self.desktop.supports_native_query_script() {
             return;
         }
         if self.native_query.is_some() || self.query_loading.is_some() {
@@ -413,7 +447,13 @@ impl AppState {
         };
         let sql = self.sql.doc().to_owned();
         let generation = self.next_query_generation();
-        if self.desktop.begin_native_query_script(generation, sql.clone()) {
+        self.query_database_picker_tab = None;
+        let started = if let Some(target) = self.query_database_target() {
+            self.desktop.begin_native_query_at(generation, sql.clone(), target, true)
+        } else {
+            self.desktop.begin_native_query_script(generation, sql.clone())
+        };
+        if started {
             self.query_notice = None;
             self.query_loading = Some(generation);
             self.native_query = Some(crate::native_query_close::NativeQuery::new(generation, tab_id, sql));
@@ -457,6 +497,9 @@ impl AppState {
     /// remain; unpinned prior tabs are kept for switching). A synchronous
     /// failure restores the previously selected result so the UI stays as it was.
     pub fn run_query(&mut self) {
+        if self.connect_loading.is_some() {
+            return;
+        }
         let native = self.desktop.supports_native_query_stop();
         if native && self.native_query.is_some() {
             self.query_action_notice("A query is still running.");
@@ -484,11 +527,14 @@ impl AppState {
         // N1: a live host runs the statement as a job; the editor keeps its
         // document and the result area says the query is in flight until the
         // delivery lands (dropped when its generation went stale, as in Q5).
-        let job = AdapterJob::RunQuery {
-            generation,
-            sql: sql.clone(),
+        self.query_database_picker_tab = None;
+        let target = self.query_database_target();
+        let started = if let Some(target) = target.as_ref() {
+            self.desktop.begin_native_query_at(generation, sql.clone(), target.clone(), false)
+        } else {
+            self.desktop.begin_job(AdapterJob::RunQuery { generation, sql: sql.clone() })
         };
-        if self.desktop.begin_job(job) {
+        if started {
             self.query_loading = Some(generation);
             if native {
                 if let Some(tab) = self.tabs.selected() {
@@ -497,6 +543,13 @@ impl AppState {
                     ));
                 }
             }
+            return;
+        }
+        if target.is_some() {
+            // Never execute on the fallback connection if the explicit target
+            // became stale between selection and dispatch.
+            let _ = self.close_query_result_tab(tab_id);
+            self.query_action_notice("The selected query database is no longer available.");
             return;
         }
         match self.workspace.execute(&sql) {
@@ -736,6 +789,8 @@ impl AppState {
                         self.native_kv = kv.map(|kind| {
                             crate::views::native_kv::KvWorkbench::new(kind, id.clone(), generation)
                         });
+                        self.query_database_picker_tab = None;
+                        self.query_database_targets.clear();
                         self.desktop_catalog = Some(catalog.clone());
                         self.desktop_connection = Some(id);
                         self.grid = DataGrid::new();
@@ -973,6 +1028,10 @@ impl AppState {
         let previous = self.tabs.selected().map(|tab| tab.id);
         if !self.tabs.close(id) {
             return false;
+        }
+        self.query_database_targets.remove(&id);
+        if self.query_database_picker_tab == Some(id) {
+            self.query_database_picker_tab = None;
         }
         if self.tabs.selected().map(|tab| tab.id) != previous {
             self.sync_grid_to_selected_tab();

@@ -88,7 +88,7 @@ pub fn workspace_body(
     }
     let table_selected = state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Table);
     let content = if query_selected(state) {
-        query_workspace(state, theme, dark)
+        query_workspace(state, theme, dark, layer)
     } else if let Some((database, schema)) = &state.er_schema {
         er_view(state, database, schema, theme, dark)
     } else if let Some(error) = state.table_read_error.as_ref().filter(|_| table_selected) {
@@ -230,7 +230,9 @@ pub fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
 /// E1: the honest state of one table's structure read — a read in flight,
 /// its failure sentence, or the "not loaded" hint for an entry that never
 /// landed. None when the four segments are there to draw.
-pub fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn query_workspace(
+    state: &AppState, theme: tok::Theme, dark: bool, layer: &mut Vec<El>,
+) -> El {
     let sidebar_w =
         splitter::splitter_size(state, QUERY_SIDEBAR_WIDTH_KEY, QUERY_SIDEBAR_WIDTH_DEFAULT) as f32;
     let editor_h =
@@ -350,7 +352,7 @@ pub fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     dark,
                 )),
         )
-        .child(query_toolbar(state, theme))
+        .child(query_toolbar(state, theme, build_query_database_picker(state, theme, dark, layer)))
         .child(editor_split)
         .children(notice)
         .children(loading)
@@ -384,7 +386,34 @@ fn toolbar_button(key: &'static str, label: &str, theme: tok::Theme) -> El {
         .child(text(label.to_owned()).font(type_::LABEL).color(theme.text))
 }
 
-pub fn query_toolbar(state: &AppState, theme: tok::Theme) -> El {
+fn build_query_database_picker(
+    state: &AppState, theme: tok::Theme, dark: bool, layer: &mut Vec<El>,
+) -> Option<El> {
+    use crate::ui::kit::kit;
+    use rune_kit::Select;
+
+    let (tab, context) = state.query_database_selection()?;
+    if state.native_query.is_some() || state.query_loading.is_some() {
+        // Preserve the current value and toolbar geometry while a query owns the target.
+        return Some(toolbar_button("query-context-database-current", &context.current.database,
+                                   theme));
+    }
+    let select = Select::new("query-context-database", &context.choices)
+        .current(Some(context.current.database.as_str()))
+        .width(158.0)
+        .open(state.query_database_picker_tab == Some(tab))
+        .on_toggle(move |state: &mut AppState| {
+            state.query_database_picker_tab =
+                (state.query_database_picker_tab != Some(tab)).then_some(tab);
+        })
+        .on_close(|state: &mut AppState| state.query_database_picker_tab = None)
+        .on_choose(move |state: &mut AppState, value: &str, _tx: &mut Tx| {
+            state.choose_query_database(tab, value);
+        });
+    Some(select.build(kit(dark), layer))
+}
+
+fn query_toolbar(state: &AppState, theme: tok::Theme, database_picker: Option<El>) -> El {
     let mut bar = row()
         .key("query-toolbar")
         .w_full()
@@ -404,7 +433,7 @@ pub fn query_toolbar(state: &AppState, theme: tok::Theme) -> El {
                 .on_press(|s: &mut AppState| s.cancel_query()),
         );
     }
-    bar.child(
+    bar.children(database_picker).child(
             toolbar_button("sql-format", t("query.format"), theme)
                 .on_press(|s: &mut AppState| s.format_query()),
         )

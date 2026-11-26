@@ -191,6 +191,7 @@ enum HostJob {
         sql: String,
         stop: Arc<std::sync::atomic::AtomicBool>,
         script: bool,
+        target: Option<datazen_ui_api::NativeQueryDatabase>,
     },
 }
 
@@ -306,6 +307,7 @@ struct LiveSession {
     driver: Option<Arc<dyn DatabaseDriver>>,
     handle: Option<ConnectionHandle>,
     database: Option<String>,
+    query_databases: Option<datazen_ui_api::QueryDatabaseContext>,
     table_targets: LiveTableTargets,
     /// The connection id the session was opened for (N4's read context).
     connection: Option<String>,
@@ -314,6 +316,14 @@ struct LiveSession {
 }
 
 impl LiveSession {
+    fn allows_query_database(&self, target: &datazen_ui_api::NativeQueryDatabase) -> bool {
+        self.is_open() && self.query_databases.as_ref().is_some_and(|context| {
+            self.connection.as_deref() == Some(target.connection_id.as_str())
+                && target.connection_id == context.current.connection_id
+                && context.choices.contains(&target.database)
+        })
+    }
+
     fn is_open(&self) -> bool {
         self.driver.is_some() && self.handle.is_some()
     }
@@ -758,7 +768,7 @@ impl LiveAdapter {
                             let result = runtime.block_on(live_transfer::run(&worker_service, &worker_registry, request));
                             HostAnswer::NativeTransferFinished { epoch, result }
                         }
-                        HostJob::RunQuery { generation, sql, stop, script } => {
+                        HostJob::RunQuery { generation, sql, stop, script, target } => {
                             let started = std::time::Instant::now();
                             let pages = runtime.block_on(run_query_observed(
                                 &worker_runtime,
@@ -766,6 +776,7 @@ impl LiveAdapter {
                                 &worker_session,
                                 &sql,
                                 script,
+                                target.as_ref(),
                                 &stop,
                                 |terminal| {
                                     let answer = if terminal {
@@ -783,10 +794,14 @@ impl LiveAdapter {
                             let (connection, database) = {
                                 let session =
                                     worker_session.lock().expect("the live session lock");
-                                (
-                                    session.connection.clone().unwrap_or_default(),
-                                    session.database.clone().unwrap_or_default(),
-                                )
+                                if let Some(target) = target.as_ref() {
+                                    (target.connection_id.clone(), target.database.clone())
+                                } else {
+                                    (
+                                        session.connection.clone().unwrap_or_default(),
+                                        session.database.clone().unwrap_or_default(),
+                                    )
+                                }
                             };
                             let elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
                             let execution_stats = if script {
@@ -895,6 +910,7 @@ impl LiveAdapter {
                     .map_err(|error| error.to_string())?,
             ),
             database: source_config.database.clone(),
+            query_databases: None,
             table_targets: Default::default(),
             connection: Some(source_connection.to_owned()),
             read_only: source_config.read_only,
@@ -1180,6 +1196,7 @@ async fn open_connection(
                 driver: Some(driver),
                 handle: Some(handle),
                 database: Some(format!("db{db}")),
+                query_databases: None,
                 table_targets: Default::default(),
                 connection: Some(id.to_owned()),
                 read_only: config.read_only,
@@ -1259,6 +1276,26 @@ async fn open_connection(
     schemas.lock().expect("the schema lock").clear();
     // The session is the adapter's for the reads and commits that follow:
     // swap it in whole, replacing any earlier one.
+    let database = config.database.as_ref()
+        .filter(|name| databases.contains(name))
+        .cloned()
+        .or_else(|| databases.first().cloned());
+    let query_databases = if config.database_type == "postgresql"
+        && config.database.as_deref().is_none_or(str::is_empty)
+        && databases.len() > 1
+    {
+        database.as_ref().map(|current| datazen_ui_api::QueryDatabaseContext {
+            current: datazen_ui_api::NativeQueryDatabase {
+                connection_id: id.to_owned(),
+                database: current.clone(),
+            },
+            // These are the same database names whose live catalog calls
+            // succeeded above, not names inferred from user input.
+            choices: databases,
+        })
+    } else {
+        None
+    };
     replace_live_session(
         session,
         LiveSession {
@@ -1266,10 +1303,8 @@ async fn open_connection(
             kv_state: Default::default(),
             driver: Some(driver),
             handle: Some(handle),
-            database: config
-                .database
-                .filter(|name| databases.contains(name))
-                .or_else(|| databases.first().cloned()),
+            database,
+            query_databases,
             table_targets,
             connection: Some(id.to_owned()),
             read_only: config.read_only,
@@ -2274,7 +2309,7 @@ async fn run_query(
     sql: &str,
 ) -> Result<TablePage, String> {
     let stop = std::sync::atomic::AtomicBool::new(false);
-    first_query_page(run_query_observed(runtime, profiles, session, sql, false, &stop, |_| {}).await)
+    first_query_page(run_query_observed(runtime, profiles, session, sql, false, None, &stop, |_| {}).await)
 }
 
 fn first_query_page(
@@ -2290,6 +2325,7 @@ async fn run_query_observed(
     session: &Arc<Mutex<LiveSession>>,
     sql: &str,
     script: bool,
+    target: Option<&datazen_ui_api::NativeQueryDatabase>,
     stop: &std::sync::atomic::AtomicBool,
     note_execution: impl Fn(bool),
 ) -> Result<Vec<live_sqlite_script::CollectedPage>, String> {
@@ -2308,11 +2344,15 @@ async fn run_query_observed(
         } else {
             None
         };
-        (
-            session.connection.clone().unwrap_or_default(),
-            session.database.clone(),
-            dialect,
-        )
+        let database = if let Some(target) = target {
+            if !session.allows_query_database(target) {
+                return Err("The selected query database is no longer available.".into());
+            }
+            Some(target.database.clone())
+        } else {
+            session.database.clone()
+        };
+        (session.connection.clone().unwrap_or_default(), database, dialect)
     };
     let page_count = match dialect {
         Some(dialect) => dialect.statement_count(sql)?,
@@ -2506,9 +2546,12 @@ fn connection_draft_record(
 }
 
 impl LiveAdapter {
-    fn enqueue_query(&mut self, generation: u32, sql: String, script: bool) -> bool {
+    fn enqueue_query(
+        &mut self, generation: u32, sql: String, script: bool,
+        target: Option<datazen_ui_api::NativeQueryDatabase>,
+    ) -> bool {
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let job = HostJob::RunQuery { generation, sql, stop: Arc::clone(&stop), script };
+        let job = HostJob::RunQuery { generation, sql, stop: Arc::clone(&stop), script, target };
         let sent = self.jobs.lock().is_ok_and(|jobs| jobs.send(job).is_ok());
         if sent {
             self.query_stops.insert(generation, stop);
@@ -2721,7 +2764,21 @@ impl DesktopAdapter for LiveAdapter {
         if !self.supports_native_query_script() {
             return false;
         }
-        self.enqueue_query(generation, sql, true)
+        self.enqueue_query(generation, sql, true, None)
+    }
+
+    fn native_query_database_context(&self) -> Option<datazen_ui_api::QueryDatabaseContext> {
+        self.session.lock().ok()?.query_databases.clone()
+    }
+
+    fn begin_native_query_at(
+        &mut self, generation: u32, sql: String,
+        target: datazen_ui_api::NativeQueryDatabase, script: bool,
+    ) -> bool {
+        if !self.session.lock().is_ok_and(|session| session.allows_query_database(&target)) {
+            return false;
+        }
+        self.enqueue_query(generation, sql, script, Some(target))
     }
 
     fn request_native_query_stop(&mut self, generation: u32) -> bool {
@@ -2811,7 +2868,7 @@ impl DesktopAdapter for LiveAdapter {
                 connection_id,
             },
             AdapterJob::RunQuery { generation, sql } => {
-                return self.enqueue_query(generation, sql, false);
+                return self.enqueue_query(generation, sql, false, None);
             }
             AdapterJob::ValueSearch {
                 generation,

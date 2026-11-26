@@ -74,6 +74,8 @@ pub struct AppState {
     pub value_presentation_registry:
         crate::support::value_presentation::registry::ValuePresentationRegistry,
     pub tabs: Tabs,
+    pub query_database_picker_tab: Option<u32>,
+    pub query_database_targets: std::collections::HashMap<u32, datazen_ui_api::NativeQueryDatabase>,
     /// The page the workspace last opened for the selected table tab.
     pub table_page: u32,
     /// The sort the table page is opened with.
@@ -569,6 +571,8 @@ impl Default for AppState {
             connections_load_error: None,
             value_presentation_registry: Default::default(),
             tabs: Tabs::new(),
+            query_database_picker_tab: None,
+            query_database_targets: Default::default(),
             table_page: 0,
             sort: None,
             filter: None,
