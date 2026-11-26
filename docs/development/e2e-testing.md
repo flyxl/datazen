@@ -576,6 +576,7 @@ crate 百分比取平均；用例失败、没有有效 profile 或精确行覆�
 | `connection-search-group.ts` / `connection-validation.ts` | 连接搜索忽略大小写、无结果提示、取消新建不保存 |
 | `table-filter.ts` / `sqlite.ts` | 单列筛选和清空、三态排序、翻页、列/索引/外键、查询 SQLite 视图 |
 | `sql-query.ts` / `chart-views.ts` | 结果查找与下一处命中、数值结果图表与表格切换、只读连接不写库 |
+| `sqlite.ts` 查询结果分批 | 单条真实 SQLite 查询跨 500 行批次保留 600 行，查询结果定位到最后一行并与独立查询核对 |
 | `export-import.ts` / `backup-database.ts` | CSV 与 JSON 真落盘并与数据库核对、取消不落盘、SQLite 备份在独立库中恢复；导入只验证缺源文件时的表单错误 |
 | `sql-query.ts` 收藏 | 从设置保存当前 SQL 到真实收藏文件；重启加载但不自动执行，显式执行并与 SQLite 比对；改名不改身份，删除保留回收站文件 |
 | `query-history.ts` | 真 SQL 成功/失败、重启持久化、连接隔离、加载历史语句后手动重新执行 |

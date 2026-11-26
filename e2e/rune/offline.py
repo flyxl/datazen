@@ -253,3 +253,24 @@ class OfflineJourneys:
         with sqlite3.connect(self.db) as db:
             self.assertEqual(db.execute(
                 "SELECT customer_name FROM customers WHERE id=1").fetchone(), ("fixture-ada",))
+
+    def test_sqlite_query_retains_rows_across_result_batches(self):
+        fixture(self.store, self.db)
+        sql = ("WITH RECURSIVE n(i) AS(SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<600) "
+               "SELECT i, 'batch-'||i AS marker FROM n;")
+        with sqlite3.connect(self.db) as connection:
+            expected = connection.execute(sql).fetchall()
+        self.assertEqual((len(expected), expected[-1]), (600, (600, "batch-600")))
+        tree = self.replay([
+            *query_steps(sql), *fill(11.0, "result-find-input", expected[-1][1]),
+            tap(12.5, "result-find-apply"),
+        ], until=14.0)
+        self.expect_rendered(tree, key="result-grid-status", text="result · 600 rows × 2 cols")
+        self.expect_rendered(tree, key="result-find-count", text="1 of 1")
+        self.expect_rendered(tree, key="result-status-text")
+        # The status prefix is localized; check the exact global cell address.
+        self.assertTrue(any(
+            node.get("key") == "result-status-text"
+            and (node.get("text") or "").endswith(" · 600 rows × 2 cols · selection r599c1..r599c1")
+            for node in tree["elements"]
+        ))
