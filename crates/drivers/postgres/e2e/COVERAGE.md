@@ -33,3 +33,34 @@ Use `--report-only` while measuring progress below 90%; it never waives
 real test failures or skips. `--legacy-baseline --report-only` omits the
 new driver journeys and is not an acceptance run. The separate Rune
 native UI and Redis E2E gates have different source scopes.
+
+## PG-wire aliases
+
+QuestDB and Apache Cloudberry are aliases registered in this same crate, not
+standalone crates with their own production line denominators. Test each product
+with its own server. The PostgreSQL report is not evidence that an alias can
+execute a PostgreSQL-only feature.
+
+### QuestDB
+
+Use the [official Linux QuestDB runtime](https://questdb.com/docs/getting-started/quick-start/)
+(verified with 10.2.0):
+
+```sh
+python3 crates/drivers/postgres/e2e/questdb_coverage.py \
+  --questdb-script /path/to/questdb/bin/questdb.sh \
+  --output target/questdb-e2e-report
+```
+
+The runner creates a fresh data directory and random PGWire credentials, starts
+QuestDB HTTP and PGWire on loopback, verifies the native `build()` response and
+a fresh fixture marker, and records only QuestDB integration profiles. The
+PostgreSQL test binaries are linked into the coverage analysis to retain the
+full shared source denominator, but none is executed. The gate defaults to a
+strict 90% threshold. Use `--report-only` to measure progress below it. This
+does not waive a failed or skipped live case.
+
+QuestDB's PGWire compatibility does not provide all PostgreSQL administration
+or session features. For example, QuestDB 10.2.0 does not expose
+`pg_backend_pid()` or `pg_catalog.pg_stat_activity`, which the shared retained
+resource path currently uses. Those paths are not credited by these tests.
