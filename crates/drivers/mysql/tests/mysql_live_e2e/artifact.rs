@@ -1,0 +1,314 @@
+use super::{resource::Ledger, Fixture};
+use datazen_driver_api::{
+    namespace::NamespaceTarget,
+    resource::{
+        AcquireResourceRequest, Baseline, BudgetPort, CommandCall, IdentityScope, ResourceError,
+        ResourcePurpose, ResourceScope, ResultChunk, ResultSink,
+    },
+    session::{CancelDisposition, CloseDisposition},
+    DatabaseDriver, DriverError, QueryExecutionId, Value,
+};
+use serde_json::{json, Value as Json};
+use std::{
+    io::Write,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
+    time::Duration,
+};
+
+struct FileQuota {
+    file: Mutex<std::fs::File>,
+    headers_allowed: bool,
+    writes_allowed: usize,
+    writes: AtomicUsize,
+}
+impl FileQuota {
+    fn new(path: &std::path::Path, headers_allowed: bool, writes_allowed: usize) -> Self {
+        Self {
+            file: Mutex::new(std::fs::File::create(path).unwrap()),
+            headers_allowed,
+            writes_allowed,
+            writes: AtomicUsize::new(0),
+        }
+    }
+    fn full() -> ResourceError {
+        ResourceError::SinkRejected {
+            reason: "test artifact byte budget exhausted".into(),
+        }
+    }
+    fn append(&self, item: Json) -> Result<(), ResourceError> {
+        writeln!(self.file.lock().unwrap(), "{item}").map_err(|_| Self::full())
+    }
+}
+#[async_trait::async_trait]
+impl ResultSink for FileQuota {
+    async fn write(&self, chunk: ResultChunk) -> Result<(), ResourceError> {
+        if self.writes.fetch_add(1, Ordering::Relaxed) >= self.writes_allowed {
+            return Err(Self::full());
+        }
+        let encoded = serde_json::to_vec(&chunk.rows).unwrap();
+        assert!(
+            encoded.len() <= 1024 * 1024,
+            "real provider must bound bytes independently of its sink"
+        );
+        self.append(json!({"kind":"rows","index":chunk.statement_index,"length":encoded.len(),"count":chunk.rows.len()}))
+    }
+    async fn write_output(&self, item: Json) -> Result<(), ResourceError> {
+        if !self.headers_allowed && item["kind"] == "statementColumns" {
+            return Err(Self::full());
+        }
+        self.append(item)
+    }
+    async fn complete(&self) -> Result<(), ResourceError> {
+        self.append(json!({"kind":"complete"}))
+    }
+    async fn fail(&self, reason: &str) -> Result<(), ResourceError> {
+        self.append(json!({"kind":"failure","reason":reason}))
+    }
+}
+
+#[tokio::test]
+async fn mysql_real_artifact_rejections_drain_the_same_connection_at_each_delivery_boundary() {
+    let f = Fixture::open().await;
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|d| d.driver_id() == "mysql")
+        .unwrap();
+    let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+    let driver = factory.create();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let request = |purpose| AcquireResourceRequest {
+        connection_config: f.cfg.clone(),
+        target: NamespaceTarget::empty().with_database(f.database.clone()),
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+        scope: ResourceScope {
+            purpose,
+            max_physical_connections: 8,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+    };
+    let fixed = provider
+        .acquire_resource(&request(ResourcePurpose::InteractiveQuery), &budget)
+        .await
+        .unwrap();
+    let lease = provider
+        .acquire_resource(&request(ResourcePurpose::MetadataInspection), &budget)
+        .await
+        .unwrap();
+    let h = provider.connection_handle(&fixed).unwrap();
+    let original = driver
+        .query(&h, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap()
+        .rows;
+    let dir = tempfile::tempdir().unwrap();
+    let large="WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<4) SELECT n, REPEAT('w',430000) AS wide FROM seq";
+    let tiny = "SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3";
+    for (label, headers, writes, sql, expected_attempts) in [
+        ("metadata", false, 9, large, 0),
+        ("first-packet", true, 0, large, 1),
+        ("byte-window", true, 1, large, 2),
+        ("end-flush", true, 1, tiny, 2),
+    ] {
+        let path = dir.path().join(format!("{label}.ndjson"));
+        let artifact = FileQuota::new(&path, headers, writes);
+        let err = provider
+            .execute_on_resource(
+                &fixed,
+                &QueryExecutionId::new(label),
+                &CommandCall::new("query", json!({"sql":sql})),
+                &artifact,
+            )
+            .await
+            .expect_err("actual separate artifact rejection");
+        assert!(
+            matches!(err,ResourceError::SinkRejected{reason} if reason=="test artifact byte budget exhausted")
+        );
+        assert_eq!(artifact.writes.load(Ordering::Relaxed), expected_attempts);
+        assert_eq!(
+            driver
+                .query(&h, "SELECT CONNECTION_ID()")
+                .await
+                .expect("surviving exact native protocol socket")
+                .rows,
+            original
+        );
+    }
+    let path = dir.path().join("success.ndjson");
+    let artifact = FileQuota::new(&path, true, 9);
+    provider
+        .execute_on_resource(
+            &fixed,
+            &QueryExecutionId::new("full-artifact"),
+            &CommandCall::new("query", json!({"sql":large})),
+            &artifact,
+        )
+        .await
+        .expect("actual four wide rows from mysql");
+    let results: Vec<Json> = std::fs::read_to_string(&path)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let batches: Vec<_> = results
+        .iter()
+        .filter(|e| e["kind"] == "rows")
+        .map(|e| e["count"].as_u64().unwrap())
+        .collect();
+    assert_eq!(batches, [1, 2, 1]);
+    let admin = CommandCall::new("list_tables", json!({"database":f.database}));
+    assert!(matches!(
+        provider
+            .execute_on_resource(
+                &fixed,
+                &QueryExecutionId::new("retained-refuses-admin"),
+                &admin,
+                &artifact
+            )
+            .await,
+        Err(ResourceError::OperationNotSupported { .. })
+    ));
+    provider
+        .execute_on_resource(
+            &lease,
+            &QueryExecutionId::new("real-leased-admin"),
+            &admin,
+            &artifact,
+        )
+        .await
+        .expect("leased command reports actual native catalog");
+    let actual = std::fs::read_to_string(&path).unwrap();
+    assert!(actual.contains("commandResult") && actual.contains("rune_e2e_fixture"));
+    assert_eq!(
+        provider.close_resource(&fixed).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert_eq!(
+        provider.close_resource(&lease).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn mysql_resource_cancels_one_running_query_and_keeps_its_original_native_socket() {
+    let mut f = Fixture::open().await;
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|d| d.driver_id() == "mysql")
+        .unwrap();
+    let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+    let driver = factory.create();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let fixed = provider
+        .acquire_resource(
+            &AcquireResourceRequest {
+                connection_config: f.cfg.clone(),
+                target: NamespaceTarget::empty().with_database(f.database.clone()),
+                identity_scope: IdentityScope::default(),
+                baseline: Baseline::default(),
+                scope: ResourceScope {
+                    purpose: ResourcePurpose::InteractiveQuery,
+                    max_physical_connections: 8,
+                    holds_open_transaction: false,
+                    pin_for_streaming: false,
+                },
+            },
+            &budget,
+        )
+        .await
+        .unwrap();
+    let connection = provider.connection_handle(&fixed).unwrap();
+    let pid_rows = driver
+        .query(&connection, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap()
+        .rows;
+    let Some(Value::Integer(pid)) = pid_rows[0][0] else {
+        panic!("actual MySQL thread id")
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let file = Arc::new(FileQuota::new(&dir.path().join("cancel.ndjson"), true, 9));
+    let execution = QueryExecutionId::new("resource-real-cancel");
+    let marker = format!("wait_{}", uuid::Uuid::new_v4().simple());
+    let worker = tokio::spawn({
+        let (provider, fixed, execution, file) = (
+            provider.clone(),
+            fixed.clone(),
+            execution.clone(),
+            file.clone(),
+        );
+        let sql = format!("SELECT 1 + SLEEP(20) AS {marker}");
+        async move {
+            provider
+                .execute_on_resource(
+                    &fixed,
+                    &execution,
+                    &CommandCall::new("query", json!({"sql":sql})),
+                    &*file,
+                )
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let statement: Option<String> = sqlx::query_scalar(
+                "SELECT CAST(INFO AS CHAR) FROM information_schema.PROCESSLIST WHERE ID=?",
+            )
+            .bind(pid)
+            .fetch_optional(&mut f.oracle)
+            .await
+            .expect("visible real MySQL query")
+            .flatten();
+            if statement.as_deref().is_some_and(|s| s.contains(&marker)) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("native thread observed running");
+    let cancel = provider
+        .request_cancel(&fixed, &execution)
+        .await
+        .expect("real execution-addressed cancellation");
+    assert_eq!(cancel.disposition, CancelDisposition::Requested);
+    let terminal = tokio::time::timeout(Duration::from_secs(5), worker)
+        .await
+        .expect("active MySQL query stops")
+        .expect("worker");
+    assert!(
+        matches!(
+            terminal,
+            Err(ResourceError::Driver(DriverError::QueryCancelled))
+        ),
+        "{terminal:?}"
+    );
+    assert_eq!(
+        driver
+            .query(&connection, "SELECT CONNECTION_ID()")
+            .await
+            .expect("exact same MySQL threads after drain")
+            .rows,
+        pid_rows
+    );
+    assert_eq!(
+        provider
+            .request_cancel(&fixed, &execution)
+            .await
+            .unwrap()
+            .disposition,
+        CancelDisposition::NotRegistered
+    );
+    assert_eq!(
+        provider.close_resource(&fixed).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}

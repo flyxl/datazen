@@ -281,17 +281,19 @@ impl MysqlDriver {
     pub(crate) async fn dump_routines_inner(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
     ) -> Result<String, DriverError> {
-        Ok(dump_mysql_routines(self, handle).await)
+        let database = catalog::dump_database_name(self, handle, database).await?;
+        dump_mysql_routines(self, handle, &database).await
     }
 
     pub(crate) async fn dump_triggers_inner(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
     ) -> Result<String, DriverError> {
-        Ok(dump_mysql_triggers(self, handle).await)
+        let database = catalog::dump_database_name(self, handle, database).await?;
+        dump_mysql_triggers(self, handle, &database).await
     }
 
     pub(crate) async fn structure_capabilities_inner(

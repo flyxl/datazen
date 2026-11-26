@@ -3,88 +3,104 @@
 use super::MysqlDriver;
 use datazen_driver_api::*;
 
-/// Best-effort dump of stored procedures and functions via SHOW CREATE.
-pub(crate) async fn dump_mysql_routines(driver: &MysqlDriver, handle: &ConnectionHandle) -> String {
-    let mut out = String::new();
-    for (show_status, kind) in [
-        ("SHOW PROCEDURE STATUS WHERE Db = DATABASE()", "PROCEDURE"),
-        ("SHOW FUNCTION STATUS WHERE Db = DATABASE()", "FUNCTION"),
-    ] {
-        let Ok(result) = driver.query(handle, show_status).await else {
-            continue;
-        };
-        let name_idx = result
-            .columns
-            .iter()
-            .position(|c| c.name.eq_ignore_ascii_case("Name"));
-        let Some(name_idx) = name_idx else {
-            continue;
-        };
-        for row in &result.rows {
-            let Some(Value::String(name)) = row.get(name_idx).and_then(|v| v.as_ref()) else {
-                continue;
-            };
-            if name.is_empty() {
-                continue;
-            }
-            let create_sql = format!("SHOW CREATE {kind} {}", driver.quote_ident(name));
-            let Ok(create_result) = driver.query(handle, &create_sql).await else {
-                out.push_str(&format!("-- Error dumping {kind} {name}\n"));
-                continue;
-            };
-            let col_name = if kind == "PROCEDURE" {
-                "Create Procedure"
-            } else {
-                "Create Function"
-            };
-            if let Some(ddl) = extract_named_create_column(&create_result, col_name) {
-                out.push_str(&format!("-- {kind}: {name}\n"));
-                out.push_str(&wrap_mysql_client_routine(&ddl));
-                out.push('\n');
-            }
-        }
-    }
-    out
+/// Decode values from a text-only catalog column, even when MySQL tags
+/// the column as binary on the wire. Invalid UTF-8 is not an identifier.
+fn catalog_text(value: &Value) -> Option<&str> {
+    let text = match value {
+        Value::String(text) => text.as_str(),
+        Value::Bytes(bytes) => std::str::from_utf8(bytes).ok()?,
+        _ => return None,
+    };
+    (!text.is_empty()).then_some(text)
 }
 
-/// Best-effort dump of triggers via SHOW TRIGGERS + SHOW CREATE TRIGGER.
-pub(crate) async fn dump_mysql_triggers(driver: &MysqlDriver, handle: &ConnectionHandle) -> String {
+pub(crate) async fn dump_database_name(
+    driver: &MysqlDriver,
+    handle: &ConnectionHandle,
+    requested: &str,
+) -> Result<String, DriverError> {
+    if !requested.trim().is_empty() {
+        return Ok(requested.to_owned());
+    }
+    let result = driver.query(handle, "SELECT DATABASE()").await?;
+    result.rows.first().and_then(|row| row.first())
+        .and_then(Option::as_ref).and_then(catalog_text).map(str::to_owned)
+        .ok_or_else(|| DriverError::InvalidConfig("backup database is required".into()))
+}
+
+/// Read and dump exactly the selected catalog; never USE another database
+/// on the retained connection to discover its routines.
+pub(crate) async fn dump_mysql_routines(
+    driver: &MysqlDriver,
+    handle: &ConnectionHandle,
+    database: &str,
+) -> Result<String, DriverError> {
     let mut out = String::new();
-    let Ok(result) = driver.query(handle, "SHOW TRIGGERS").await else {
-        return out;
-    };
-    let name_idx = result
-        .columns
-        .iter()
-        .position(|c| c.name.eq_ignore_ascii_case("Trigger"));
-    let Some(name_idx) = name_idx else {
-        return out;
-    };
-    for row in &result.rows {
-        let Some(Value::String(name)) = row.get(name_idx).and_then(|v| v.as_ref()) else {
-            continue;
-        };
-        if name.is_empty() {
-            continue;
-        }
-        let create_sql = format!("SHOW CREATE TRIGGER {}", driver.quote_ident(name));
-        match driver.query(handle, &create_sql).await {
-            Ok(create_result) => {
-                if let Some(ddl) =
-                    extract_named_create_column(&create_result, "SQL Original Statement")
-                        .or_else(|| extract_named_create_column(&create_result, "Create Trigger"))
-                {
-                    out.push_str(&format!("-- TRIGGER: {name}\n"));
-                    out.push_str(&wrap_mysql_client_routine(&ddl));
-                    out.push('\n');
-                }
-            }
-            Err(e) => {
-                out.push_str(&format!("-- Error dumping trigger {name}: {e}\n"));
-            }
+    for (kind, ddl_column) in [
+        ("PROCEDURE", "Create Procedure"),
+        ("FUNCTION", "Create Function"),
+    ] {
+        let result = driver.query_with_params(
+            handle,
+            "SELECT ROUTINE_NAME AS name FROM information_schema.ROUTINES \
+             WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = ? ORDER BY ROUTINE_NAME",
+            &[Value::String(database.to_owned()), Value::String(kind.to_owned())],
+        ).await?;
+        for row in &result.rows {
+            let name = row.first().and_then(Option::as_ref).and_then(catalog_text)
+                .ok_or_else(|| DriverError::QueryFailed("missing routine catalog name".into()))?;
+            let sql = format!(
+                "SHOW CREATE {kind} {}.{}",
+                driver.quote_ident(database),
+                driver.quote_ident(name)
+            );
+            let create = driver.query(handle, &sql).await?;
+            append_mysql_routine(&mut out, kind, name, extract_named_create_column(&create, ddl_column))?;
         }
     }
-    out
+    Ok(out)
+}
+
+pub(crate) async fn dump_mysql_triggers(
+    driver: &MysqlDriver,
+    handle: &ConnectionHandle,
+    database: &str,
+) -> Result<String, DriverError> {
+    let mut out = String::new();
+    let result = driver.query_with_params(
+        handle,
+        "SELECT TRIGGER_NAME AS name FROM information_schema.TRIGGERS \
+         WHERE TRIGGER_SCHEMA = ? ORDER BY TRIGGER_NAME",
+        &[Value::String(database.to_owned())],
+    ).await?;
+    for row in &result.rows {
+        let name = row.first().and_then(Option::as_ref).and_then(catalog_text)
+            .ok_or_else(|| DriverError::QueryFailed("missing trigger catalog name".into()))?;
+        let sql = format!(
+            "SHOW CREATE TRIGGER {}.{}",
+            driver.quote_ident(database),
+            driver.quote_ident(name)
+        );
+        let create = driver.query(handle, &sql).await?;
+        let ddl = extract_named_create_column(&create, "SQL Original Statement")
+            .or_else(|| extract_named_create_column(&create, "Create Trigger"));
+        append_mysql_routine(&mut out, "TRIGGER", name, ddl)?;
+    }
+    Ok(out)
+}
+
+fn append_mysql_routine(
+    output: &mut String,
+    kind: &str,
+    name: &str,
+    ddl: Option<String>,
+) -> Result<(), DriverError> {
+    let ddl = ddl.ok_or_else(|| DriverError::QueryFailed(format!("{kind} definition is unavailable")))?;
+    let label = datazen_driver_api::sql_dump::stream::comment_label(name);
+    output.push_str(&format!("-- {kind}: {label}\n"));
+    output.push_str(&wrap_mysql_client_routine(&ddl));
+    output.push('\n');
+    Ok(())
 }
 
 pub(crate) fn wrap_mysql_client_routine(ddl: &str) -> String {
@@ -100,10 +116,7 @@ pub(crate) fn extract_named_create_column(result: &QueryResult, col_name: &str) 
         .position(|c| c.name.eq_ignore_ascii_case(col_name))?;
     let row = result.rows.first()?;
     let cell = row.get(col_idx)?.as_ref()?;
-    match cell {
-        Value::String(s) if !s.is_empty() => Some(s.clone()),
-        _ => None,
-    }
+    catalog_text(cell).map(str::to_owned)
 }
 
 /// Extract the `Create Table` column from `SHOW CREATE TABLE` result rows.

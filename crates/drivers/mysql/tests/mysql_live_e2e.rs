@@ -131,6 +131,8 @@ async fn mysql_dependency_catalog_status_matches_real_server_visibility() {
     assert_eq!(contract.data["dependencies"], json!([]));
     driver.disconnect(handle).await.unwrap();
 }
+#[path = "mysql_live_e2e/artifact.rs"]
+mod artifact;
 #[path = "mysql_live_e2e/catalog.rs"]
 mod catalog;
 #[path = "mysql_live_e2e/connection.rs"]

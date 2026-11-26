@@ -73,6 +73,25 @@ impl super::MysqlDriver {
         Ok(execution.cancel_requested)
     }
 
+    pub(crate) async fn settled_cancel_requested(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<bool, DriverError> {
+        let gate = {
+            let executions = self.query_executions.lock().await;
+            let execution = executions.get(execution_id).ok_or_else(|| {
+                DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+            })?;
+            if execution.session_id != handle.id {
+                return Err(DriverError::QueryExecutionSessionMismatch);
+            }
+            execution.cancel_gate.clone()
+        };
+        let _guard = gate.lock().await;
+        self.is_cancel_requested(handle, execution_id).await
+    }
+
     pub(crate) async fn bind_thread_id(
         &self,
         handle: &ConnectionHandle,

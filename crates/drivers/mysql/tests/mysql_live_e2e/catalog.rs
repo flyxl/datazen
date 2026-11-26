@@ -329,3 +329,71 @@ async fn mysql_retained_metadata_distinguishes_real_relation_names_temp_state_an
         .await
         .expect("close and remove session-only objects");
 }
+
+#[tokio::test]
+async fn mysql_same_session_can_dump_routines_and_triggers_from_explicit_foreign_catalog() {
+    let mut f = Fixture::open().await;
+    let d = datazen_driver_mysql::MysqlDriver::new(false);
+    let h = d
+        .connect_fixed_session(&f.cfg)
+        .await
+        .expect("fixed physical session for routine export");
+    let a = f.database.clone();
+    let b = std::env::var("TEST_MYSQL_DATABASE_B").unwrap();
+    let key = uuid::Uuid::new_v4().simple().to_string();
+    let relation = format!("dz_export_rows_{key}");
+    let routine = format!("dz_export_fun_{key}");
+    let trigger = format!("dz_export_trigger_{key}");
+    for (catalog, label) in [(&a, "primary_decoy"), (&b, "foreign_requested")] {
+        for sql in [
+            format!("CREATE TABLE {catalog}.{relation}(t VARCHAR(70))"),
+            format!("CREATE FUNCTION {catalog}.{routine}() RETURNS VARCHAR(70) DETERMINISTIC RETURN '{label} $$'"),
+            format!("CREATE TRIGGER {catalog}.{trigger} BEFORE INSERT ON {catalog}.{relation} FOR EACH ROW SET NEW.t='{label}'"),
+        ] {sqlx::raw_sql(&sql).execute(&mut f.oracle).await.expect("same name, genuinely distinct live catalog contents");}
+    }
+    let foreign_sql = d
+        .dump_routines(&h, &b)
+        .await
+        .expect("query routine catalog without USE");
+    assert!(foreign_sql.contains("foreign_requested $$") && !foreign_sql.contains("primary_decoy"));
+    assert!(
+        foreign_sql.contains("DELIMITER //"),
+        "literal delimiter is not a command boundary"
+    );
+    let foreign_triggers = d
+        .dump_triggers(&h, &b)
+        .await
+        .expect("query trigger catalog without USE");
+    assert!(
+        foreign_triggers.contains("foreign_requested")
+            && !foreign_triggers.contains("primary_decoy")
+    );
+    let native: String = sqlx::query_scalar(&format!("SELECT {b}.{routine}()"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .expect("actual foreign routine result");
+    assert_eq!(native, "foreign_requested $$");
+    sqlx::query(&format!("INSERT INTO {b}.{relation} VALUES('initial')"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(&format!("SELECT t FROM {b}.{relation}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap(),
+        "foreign_requested"
+    );
+    assert_eq!(
+        d.query(&h, "SELECT DATABASE()").await.unwrap().rows,
+        [vec![Some(Value::String(a.clone()))]]
+    );
+    let own = d
+        .dump_routines(&h, "")
+        .await
+        .expect("blank target means actual retained database");
+    assert!(own.contains("primary_decoy $$") && !own.contains("foreign_requested"));
+    d.disconnect(h)
+        .await
+        .expect("release original session after export");
+}

@@ -119,6 +119,7 @@ impl MysqlDriver {
             let mut affected = 0u64;
             let mut truncated = false;
             let mut delivery_error = None;
+            let mut query_error = None;
             let mut drain_deadline = None;
             let mut drain_failed = false;
             let mut stream = if let Some(parameters) = parameters {
@@ -148,9 +149,7 @@ impl MysqlDriver {
                     Ok(None) => break,
                     Err(error) => {
                         if delivery_error.is_none() {
-                            delivery_error = Some(ResourceError::Driver(DriverError::QueryFailed(
-                                error.to_string(),
-                            )));
+                            query_error = Some(DriverError::QueryFailed(error.to_string()));
                         }
                         break;
                     }
@@ -271,6 +270,15 @@ impl MysqlDriver {
             let invalidation = Self::clear_after_possible_use(&mut **conn, &effective_sql).await;
             if let Some(error) = delivery_error {
                 return Err(error);
+            }
+            // KILL QUERY can finish on the wire with no rows and no server
+            // error. Use the operation's settled cancellation receipt, not
+            // success inferred from the empty result.
+            if self.settled_cancel_requested(handle, execution_id).await? {
+                return Err(DriverError::QueryCancelled.into());
+            }
+            if let Some(error) = query_error {
+                return Err(error.into());
             }
             invalidation.map_err(|error| DriverError::QueryFailed(error.to_string()))?;
             if !batch.is_empty() {
