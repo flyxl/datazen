@@ -214,3 +214,67 @@ class TransferJourneys:
             self.assertEqual(dest.execute("SELECT * FROM receiving ORDER BY id").fetchall(),
                              [(1, None, "retained"), (2, "明细", "retained"), (8, "sentinel", "existing")])
         self.assertEqual(self.db.read_bytes(), source_original)
+
+    def test_sqlite_mapping_editor_returns_to_quick_mapping_and_resets_on_table_change(self):
+        target = self.root / "transfer-mapping-table-change.sqlite"
+        with sqlite3.connect(self.db) as source:
+            source.executescript("""
+                CREATE TABLE incoming(id INTEGER PRIMARY KEY, note TEXT);
+                INSERT INTO incoming VALUES (1, 'mapped');
+            """)
+        with sqlite3.connect(target) as dest:
+            dest.executescript("""
+                CREATE TABLE a_previous(id INTEGER PRIMARY KEY, note TEXT);
+                INSERT INTO a_previous VALUES (8, 'previous');
+                CREATE TABLE z_current(id INTEGER PRIMARY KEY, note TEXT DEFAULT 'default');
+                INSERT INTO z_current VALUES (9, 'current');
+            """)
+        self.store.write_text(json.dumps({"connections": [
+            {"id": identifier, "name": identifier, "databaseType": "sqlite",
+             "database": str(path), "connectionTimeout": 8}
+            for identifier, path in (("source", self.db), ("target", target))
+        ]}), encoding="utf-8")
+        old_source = self.db.read_bytes()
+        old_target = target.read_bytes()
+        setup = [
+            tap(.5, "rail-tools"),
+            tap(1.6, "native-transfer-source-profile-source"),
+            tap(2.1, "native-transfer-target-profile-target"),
+            tap(3.5, "native-transfer-map"),
+            tap(4.4, "native-transfer-toggle-column-editor"),
+        ]
+        via_editor = self.replay(setup, until=5.45)
+        self.expect_rendered(via_editor, text="id", within="data-transfer-target-select-id-field-trigger")
+        self.expect_rendered(via_editor, key="data-transfer-column-row-note")
+
+        quick_then_switch = [
+            *setup, tap(5.3, "native-transfer-toggle-column-editor"),
+            tap(6.3, "native-transfer-target-table"),
+        ]
+        cleared = self.replay([*quick_then_switch, tap(7.6, "native-transfer-review")], until=9)
+        self.expect_rendered(cleared, text="z_current", within="native-transfer-target")
+        self.expect_rendered(cleared, key="native-transfer-error", text="Add at least one column mapping.")
+        self.assertFalse(visible(cleared, key="native-transfer-pair-0"))
+        self.assertFalse(visible(cleared, key="native-transfer-yes"))
+        self.assertEqual(target.read_bytes(), old_target)
+
+        refreshed = [
+            *quick_then_switch, tap(7.6, "native-transfer-toggle-column-editor"),
+            tap(8.7, "data-transfer-auto-match"), tap(9.65, "data-transfer-skip-note"),
+            tap(10.6, "native-transfer-toggle-column-editor"),
+        ]
+        quick = self.replay(refreshed, until=11.5)
+        self.expect_rendered(quick, key="native-transfer-pair-0", text="id → id")
+        self.assertFalse(visible(quick, key="native-transfer-pair-1"))
+        self.assertFalse(visible(quick, key="data-transfer-column-editor"))
+        self.assertEqual(target.read_bytes(), old_target)
+
+        finished = self.replay([
+            *refreshed, tap(11.5, "native-transfer-review"), tap(13.1, "native-transfer-yes"),
+        ], until=15)
+        self.expect_rendered(finished, key="native-transfer-success", text="Inserted 1 rows.")
+        with sqlite3.connect(target) as dest:
+            self.assertEqual(dest.execute("SELECT * FROM a_previous").fetchall(), [(8, "previous")])
+            self.assertEqual(dest.execute("SELECT * FROM z_current ORDER BY id").fetchall(),
+                             [(1, "default"), (9, "current")])
+        self.assertEqual(self.db.read_bytes(), old_source)
