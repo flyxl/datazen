@@ -2,7 +2,7 @@
 
 use crate::postgres::PostgresDriver;
 use datazen_driver_api::*;
-use sqlx::{Column, Executor, Postgres, Row};
+use sqlx::{Column, Executor, Postgres, Row, ValueRef};
 
 const JS_MAX_SAFE_INT: i64 = 9_007_199_254_740_991;
 const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
@@ -158,13 +158,19 @@ impl PostgresDriver {
                                 .ok()
                                 .map(Value::Json)
                                 .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
-                            s @ ("INET" | "CIDR" | "MACADDR" | "MACADDR8") => {
-                                Self::decode_custom_cell(row, i, |bytes| {
-                                    decode_network_binary(bytes, s)
-                                })
-                                .or_else(|| Some(format!("<{}>", s.to_lowercase())))
-                                .map(Value::String)
-                            }
+                            s @ ("INET" | "CIDR" | "MACADDR" | "MACADDR8") => row
+                                .try_get_raw(i)
+                                .ok()
+                                .filter(|raw| !raw.is_null())
+                                .map(|_| {
+                                    // Keep a placeholder for an unrecognized representation,
+                                    // but never turn a real SQL NULL into an apparent value.
+                                    let value = Self::decode_custom_cell(row, i, |bytes| {
+                                        decode_network_binary(bytes, s)
+                                    })
+                                    .unwrap_or_else(|| format!("<{}>", s.to_lowercase()));
+                                    Value::String(value)
+                                }),
                             "INTERVAL" => row
                                 .try_get::<sqlx::postgres::types::PgInterval, _>(i)
                                 .ok()
@@ -305,7 +311,7 @@ fn decode_network_binary(bytes: &[u8], type_name: &str) -> Option<String> {
                 _ => return None,
             };
             let full_width = u16::from(bits) == u16::try_from(address_len * 8).ok()?;
-            Some(if full_width {
+            Some(if type_name == "INET" && full_width {
                 address
             } else {
                 format!("{}/{}", address, bits)

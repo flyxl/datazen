@@ -650,10 +650,11 @@ async fn kill_pg_process(
 async fn fetch_pg_server_status(
     conn: &mut sqlx::PgConnection,
 ) -> Result<CommandResult, DriverError> {
-    let max_connections: i64 = sqlx::query_scalar("SELECT current_setting('max_connections')::int")
-        .fetch_one(&mut *conn)
-        .await
-        .unwrap_or(0);
+    let max_connections: i64 =
+        sqlx::query_scalar("SELECT current_setting('max_connections')::bigint")
+            .fetch_one(&mut *conn)
+            .await
+            .unwrap_or(0);
 
     let row = sqlx::query(
         r#"
