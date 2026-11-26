@@ -186,10 +186,16 @@ impl Visitor for ViewScopeMapper<'_> {
                     ));
                 }
                 if let Some(dependency) = candidates.first() {
-                    if dependency.source.name != dependency.target.name {
-                        self.patches
-                            .push((table.span, quote_mysql_identifier(&dependency.target.name)));
-                    }
+                    // CREATE VIEW target.v does not set the connection's
+                    // current database for unqualified names in the body.
+                    self.patches.push((
+                        table.span,
+                        format!(
+                            "{}.{}",
+                            quote_mysql_identifier(self.target_scope),
+                            quote_mysql_identifier(&dependency.target.name)
+                        ),
+                    ));
                     return ControlFlow::Continue(());
                 }
                 ControlFlow::Break(format!(
@@ -321,7 +327,7 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(mapped.definition, "SELECT old_items.name FROM `new_items`");
+        assert_eq!(mapped.definition, "SELECT old_items.name FROM `target_db`.`new_items`");
     }
 
     #[test]

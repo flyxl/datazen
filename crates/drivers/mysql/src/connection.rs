@@ -91,8 +91,18 @@ impl super::MysqlDriver {
         conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
         sql: &str,
     ) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
-        use sqlx::Executor;
-        (&mut **conn).execute(sql).await
+        use sqlx::{Connection, Executor};
+        let result = (&mut **conn).execute(sql).await;
+        // An earlier statement may have executed USE even if a later one
+        // failed. Never reuse prepared statements from the prior catalog.
+        // Overmatch text containing USE so comments, dialect extensions and
+        // batches cannot bypass invalidation by defeating a SQL classifier.
+        if sql.as_bytes().windows(3).any(|part| part.eq_ignore_ascii_case(b"use")) {
+            if let Err(error) = conn.clear_cached_statements().await {
+                return result.and(Err(error));
+            }
+        }
+        result
     }
 
     /// Execute `USE \`db\`` via the MySQL text protocol (COM_QUERY).
@@ -104,15 +114,9 @@ impl super::MysqlDriver {
         use_sql: &str,
         db: &str,
     ) -> Result<(), DriverError> {
-        use sqlx::Connection;
         Self::execute_text_on_conn(conn, use_sql)
             .await
             .map_err(|e| DriverError::QueryFailed(format!("Failed to USE database `{db}`: {e}")))?;
-        conn.clear_cached_statements().await.map_err(|e| {
-            DriverError::QueryFailed(format!(
-                "Failed to clear statement cache after USE `{db}`: {e}"
-            ))
-        })?;
         Ok(())
     }
 

@@ -181,15 +181,15 @@ impl super::MysqlDriver {
                                 .ok()
                                 .map(Value::String),
                             s if s.contains("BIT") => row
-                                .try_get::<bool, _>(i)
+                                .try_get::<u64, _>(i)
                                 .ok()
-                                .map(|v| Value::Integer(if v { 1 } else { 0 }))
-                                .or_else(|| {
-                                    row.try_get::<u8, _>(i)
-                                        .ok()
-                                        .map(|v| Value::Integer(v as i64))
-                                })
-                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                                .map(|bits| {
+                                    if bits > JS_MAX_SAFE_INT as u64 {
+                                        Value::String(bits.to_string())
+                                    } else {
+                                        Value::Integer(bits as i64)
+                                    }
+                                }),
                             s if s.contains("BOOL") || s.contains("BOOLEAN") => {
                                 row.try_get::<bool, _>(i).ok().map(Value::Bool)
                             }
@@ -210,10 +210,19 @@ impl super::MysqlDriver {
                                 })
                                 .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
                             s if s.contains("TIME") => row
-                                .try_get::<chrono::NaiveTime, _>(i)
+                                .try_get::<sqlx::mysql::types::MySqlTime, _>(i)
                                 .ok()
-                                .map(|t| Value::String(t.format("%H:%M:%S%.f").to_string()))
-                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                                .map(|value| {
+                                    let sign = if value.sign().is_negative() { "-" } else { "" };
+                                    let mut text = format!(
+                                        "{sign}{:02}:{:02}:{:02}",
+                                        value.hours(), value.minutes(), value.seconds()
+                                    );
+                                    if value.microseconds() != 0 {
+                                        text.push_str(&format!(".{:06}", value.microseconds()));
+                                    }
+                                    Value::String(text)
+                                }),
                             s if s.contains("YEAR") => row
                                 .try_get::<u16, _>(i)
                                 .ok()

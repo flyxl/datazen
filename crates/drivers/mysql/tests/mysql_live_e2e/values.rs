@@ -37,6 +37,22 @@ async fn mysql_wire_materialized_and_streaming_preserve_exact_native_values() {
     assert_eq!(actual.rows[0][2], Some(Value::String(expected.1)));
     assert_eq!(actual.rows[0][4], Some(Value::Bytes(expected.2)));
     assert_eq!(actual.rows[0][6], Some(Value::String(expected.3)));
+    let independent: (String, u64) = sqlx::query_as(&format!(
+        "SELECT CAST(clock AS CHAR), CAST(flag AS UNSIGNED) FROM {table} WHERE id=1"
+    ))
+    .fetch_one(&mut f.oracle)
+    .await
+    .expect("native signed TIME and multi-bit oracle");
+    assert_eq!(
+        actual.rows[0][9],
+        Some(Value::String(independent.0)),
+        "signed MySQL TIME is not a clock-only value"
+    );
+    assert_eq!(
+        actual.rows[0][10],
+        Some(Value::Integer(independent.1 as i64)),
+        "BIT(8) is more than a boolean"
+    );
     assert_eq!(actual.rows[1][6], Some(Value::String(String::new())));
     assert!(actual.rows[1]
         .iter()

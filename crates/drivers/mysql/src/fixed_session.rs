@@ -3,7 +3,7 @@ use crate::MysqlDriver;
 use datazen_driver_api::namespace::NamespaceTarget;
 use datazen_driver_api::session::{ObservationConfidence, SessionContext, TransactionState};
 use datazen_driver_api::*;
-use sqlx::Row;
+use sqlx::{Executor, Row};
 
 impl MysqlDriver {
     pub(crate) async fn open_fixed_session(
@@ -68,11 +68,10 @@ impl MysqlDriver {
             .cloned()
             .ok_or_else(|| DriverError::SessionLost)?;
         let mut connection = pinned.lock().await;
-        let row =
-            sqlx::query("SELECT DATABASE(), CURRENT_USER(), @@session.autocommit, CONNECTION_ID()")
-                .fetch_one(&mut **connection)
-                .await
-                .map_err(fixed_observation_error)?;
+        let row = (&mut **connection)
+            .fetch_one("SELECT DATABASE(), CURRENT_USER(), @@session.autocommit, CONNECTION_ID()")
+            .await
+            .map_err(fixed_observation_error)?;
         let id: u64 = row.try_get(3).map_err(decode_error)?;
         if id != expected_id {
             return Err(DriverError::SessionLost);
