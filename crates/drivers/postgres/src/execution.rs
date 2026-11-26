@@ -16,6 +16,7 @@ pub(crate) struct PgQueryExecution {
     pub target_pool: Option<PgPool>,
     pub backend_pid: Option<i32>,
     pub cancel_requested: bool,
+    pub(crate) running: bool,
     pub transactional: bool,
 }
 
@@ -388,6 +389,15 @@ impl PostgresDriver {
         if execution.session_id != handle.id {
             return Err(DriverError::QueryExecutionSessionMismatch);
         }
+        if execution.running {
+            return Err(DriverError::QueryFailed(format!(
+                "query execution '{}' is already running",
+                execution_id.as_str()
+            )));
+        }
+        // Claim before exposing a target pool or PID. A second submission
+        // cannot steal cancellation or finish the original registration.
+        execution.running = true;
         execution.target_pool = Some(pool);
         if !use_retained {
             // A foreign route uses a new checkout. Cancellation may only
@@ -420,6 +430,7 @@ impl PostgresDriver {
                 target_pool,
                 backend_pid: self.fixed_sessions.read().await.get(&handle.id).copied(),
                 cancel_requested: false,
+                running: false,
                 transactional,
             },
         );

@@ -249,3 +249,89 @@ async fn postgres_grid_estimates_seeks_and_applies_bound_edits_against_real_rows
         .expect("closed retained edit scope");
     driver.disconnect(handle).await.expect("clean live driver");
 }
+
+#[tokio::test]
+async fn postgres_typed_keyset_boundary_agrees_with_catalog_ordering() {
+    let mut fixture = Fixture::open().await;
+    let table = format!("dz_typed_grid_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {table}(id int PRIMARY KEY, flag bool NOT NULL,
+          bytes bytea NOT NULL, score float8 NOT NULL, shape jsonb NOT NULL, stamp timestamptz NOT NULL);
+         INSERT INTO {table}(id, flag, bytes, score, shape, stamp) VALUES
+           (1,false,decode('00ff','hex'),1.5,'[1,2]','2024-02-29+00'),
+           (2,false,decode('00ff','hex'),1.5,'[1,2]','2024-02-29+00'),
+           (3,false,decode('00ff','hex'),1.5,'[1,2]','2024-03-01+00'),
+           (4,false,decode('00ff','hex'),1.5,'[1,3]','2024-02-29+00'),
+           (5,false,decode('00ff','hex'),2.0,'[1,2]','2024-02-29+00'),
+           (6,false,decode('abcd','hex'),1.5,'[1,2]','2024-02-29+00'),
+           (7,true,decode('00ff','hex'),1.5,'[1,2]','2024-02-29+00')"
+    ))
+    .execute(&mut fixture.oracle).await.expect("independent typed ordering fixture");
+    let driver = PostgresDriver::new();
+    let handle = driver.connect(&fixture.config).await.unwrap();
+    let order_names = ["flag", "bytes", "score", "shape", "stamp", "id"];
+    let order = order_names
+        .iter()
+        .map(|name| ((*name).to_string(), false))
+        .collect::<Vec<_>>();
+    let ordering = order_names.join(", ");
+    let entire: Vec<i32> =
+        sqlx::query_scalar(&format!("SELECT id FROM {table} ORDER BY {ordering}"))
+            .fetch_all(&mut fixture.oracle)
+            .await
+            .expect("independent native row ordering");
+    assert_eq!(entire, [1, 2, 3, 4, 5, 6, 7]);
+    let projection = driver
+        .query(
+            &handle,
+            &format!("SELECT {ordering} FROM {table} ORDER BY {ordering} LIMIT 2"),
+        )
+        .await
+        .expect("typed first page");
+    let mut values: Vec<_> = projection.rows[1]
+        .iter()
+        .cloned()
+        .map(Option::unwrap)
+        .collect();
+    // The explicit Timestamp cursor kind also needs a usable SQL predicate.
+    if let Value::String(stamp) = &values[4] {
+        values[4] = Value::Timestamp(stamp.clone());
+    }
+    let boundary: Vec<_> = order_names
+        .iter()
+        .zip(values)
+        .map(|(name, value)| ((*name).to_string(), value))
+        .collect();
+    let seek = driver
+        .keyset_predicate_sql(&order, &boundary)
+        .expect("typed quoted keyset boundary");
+    let later = driver
+        .query(
+            &handle,
+            &format!("SELECT id FROM {table} WHERE {seek} ORDER BY {ordering}"),
+        )
+        .await
+        .expect("PostgreSQL accepts binary, JSON, boolean, float and zoned time literals");
+    assert_eq!(
+        later.rows,
+        entire[2..]
+            .iter()
+            .map(|id| vec![Some(Value::Integer(i64::from(*id)))])
+            .collect::<Vec<_>>()
+    );
+    let only_true = [("flag".to_string(), Value::Bool(true))];
+    let seek = driver
+        .keyset_predicate_sql(&order[..1], &only_true)
+        .unwrap();
+    assert!(driver
+        .query(&handle, &format!("SELECT id FROM {table} WHERE {seek}"))
+        .await
+        .unwrap()
+        .rows
+        .is_empty());
+    driver.disconnect(handle).await.unwrap();
+    sqlx::query(&format!("DROP TABLE {table}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .unwrap();
+}

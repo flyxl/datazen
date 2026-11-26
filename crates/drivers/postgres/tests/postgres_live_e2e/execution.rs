@@ -1114,3 +1114,150 @@ async fn postgres_scripts_stop_after_first_server_error_without_claiming_later_w
         .await
         .unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn registered_execution_has_one_owner_and_never_runs_post_cancel_statements() {
+    use tokio::sync::oneshot;
+    let mut fixture = Fixture::open().await;
+    let table = format!("dz_batch_cancel_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!("CREATE TABLE {table}(id int PRIMARY KEY)"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("independent batch fixture");
+    let driver = Arc::new(PostgresDriver::new());
+    for retained in [false, true] {
+        let handle = if retained {
+            driver.connect_fixed_session(&fixture.config).await.unwrap()
+        } else {
+            driver.connect(&fixture.config).await.unwrap()
+        };
+        let tx = if retained {
+            Some(
+                driver
+                    .begin_transaction(&handle)
+                    .await
+                    .expect("actual retained transaction"),
+            )
+        } else {
+            None
+        };
+        let id = QueryExecutionId::new(format!("single-owner-{retained}"));
+        driver.prepare_query_execution(&handle, &id).await.unwrap();
+        let first_id = if retained { 11 } else { 1 };
+        let later_id = first_id + 1;
+        let sql = format!(
+            "INSERT INTO {table} VALUES ({first_id}); INSERT INTO {table} VALUES ({later_id})"
+        );
+        let (first_completed, first_observed) = oneshot::channel();
+        let first_completed = Mutex::new(Some(first_completed));
+        let (resume, gate) = std::sync::mpsc::channel();
+        // The synchronous consumer callback is the point between statements;
+        // block it for independent readback and server cancel acknowledgement.
+        let gate = Mutex::new(gate);
+        let callback: QueryStreamCallback = Arc::new(move |event| {
+            if matches!(
+                event,
+                QueryStreamEvent::StatementEnd {
+                    index: 0,
+                    rows_affected: Some(1),
+                    ..
+                }
+            ) {
+                first_completed
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .unwrap()
+                    .send(())
+                    .unwrap();
+                tokio::task::block_in_place(|| {
+                    let _ = gate.lock().unwrap().recv_timeout(Duration::from_secs(10));
+                });
+            }
+        });
+        let worker = {
+            let driver = Arc::clone(&driver);
+            let handle = handle.clone();
+            let id = id.clone();
+            tokio::spawn(async move {
+                driver
+                    .query_stream_with_execution(&handle, &id, &sql, None, callback)
+                    .await
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(5), first_observed)
+            .await
+            .expect("first statement finished")
+            .unwrap();
+        if !retained {
+            let duplicate = format!("INSERT INTO {table} VALUES (99)");
+            let (_, ignored) = record();
+            let result = tokio::time::timeout(
+                Duration::from_secs(3),
+                driver.query_stream_with_execution(&handle, &id, &duplicate, None, ignored),
+            )
+            .await
+            .expect("duplicate submission must be rejected immediately");
+            if result.is_ok() {
+                // The old implementation accepts and commits the competing write.
+                // Release the original task before surfacing the regression.
+                resume.send(()).unwrap();
+                let _ = worker.await;
+                let count: i64 =
+                    sqlx::query_scalar(&format!("SELECT count(*) FROM {table} WHERE id=99"))
+                        .fetch_one(&mut fixture.oracle)
+                        .await
+                        .unwrap();
+                panic!(
+                    "duplicate execution reached PostgreSQL (competing persisted rows: {count})"
+                );
+            }
+            assert!(result.unwrap_err().to_string().contains("already running"));
+        }
+        let oracle_sql = format!("SELECT id FROM {table} ORDER BY id");
+        let observed: Vec<i32> = sqlx::query_scalar(&oracle_sql)
+            .fetch_all(&mut fixture.oracle)
+            .await
+            .unwrap();
+        assert_eq!(observed, [1], "only real committed work is visible outside");
+        driver
+            .cancel_query_with_execution(&handle, &id)
+            .await
+            .expect("cancel acknowledges actual first statement's backend");
+        resume.send(()).expect("continue after cancellation");
+        assert!(
+            matches!(
+                tokio::time::timeout(Duration::from_secs(5), worker)
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                Err(DriverError::QueryCancelled)
+            ),
+            "the next statement must not start"
+        );
+        assert!(matches!(
+            driver.cancel_query_with_execution(&handle, &id).await,
+            Err(DriverError::QueryExecutionNotFound(_))
+        ));
+        if let Some(tx) = tx {
+            driver
+                .rollback(tx)
+                .await
+                .expect("rollback the actual retained first statement");
+        }
+        let final_rows: Vec<i32> = sqlx::query_scalar(&oracle_sql)
+            .fetch_all(&mut fixture.oracle)
+            .await
+            .unwrap();
+        assert_eq!(
+            final_rows,
+            [1],
+            "the duplicate and later statement never reached PostgreSQL"
+        );
+        driver.disconnect(handle).await.unwrap();
+    }
+    sqlx::query(&format!("DROP TABLE {table}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .unwrap();
+}

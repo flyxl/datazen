@@ -358,6 +358,7 @@ async fn transaction_execution_cancel_is_pending_until_target_is_bound() {
             target_pool: None,
             backend_pid: None,
             cancel_requested: false,
+            running: false,
             transactional: true,
         },
     );
@@ -680,6 +681,7 @@ mod stream_target_pool {
                 target_pool: None,
                 backend_pid: None,
                 cancel_requested: false,
+                running: false,
                 transactional: false,
             },
         );
