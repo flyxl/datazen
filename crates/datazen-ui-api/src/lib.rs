@@ -2080,6 +2080,10 @@ pub trait DesktopAdapter {
     }
 
     /// Whether this adapter can request precise runtime query cancellation.
+    fn supports_native_cell_preview(&self) -> bool {
+        false
+    }
+
     fn supports_native_query_stop(&self) -> bool {
         false
     }
@@ -2421,6 +2425,14 @@ pub enum AdapterJob {
         generation: u32,
         batch: CellEditBatch,
     },
+    /// Read-only preview of existing-row edits using live catalog metadata.
+    PreviewCells { nonce: u32, batch: CellEditBatch },
+    /// Explicit confirmation: the host rebuilds and rechecks the reviewed plan.
+    CommitReviewedCells {
+        generation: u32,
+        batch: CellEditBatch,
+        review: CellEditReview,
+    },
     /// Run one workflow through the host's engine (T8): the real executor
     /// over the live session, every step kind it supports.
     RunWorkflow {
@@ -2526,6 +2538,10 @@ pub enum AdapterDelivery {
         generation: u32,
         count: Result<u32, String>,
     },
+    CellPreviewRead {
+        nonce: u32,
+        result: Result<CellEditPreview, String>,
+    },
     QueryHistoryRead {
         generation: u32,
         result: Result<QueryHistorySnapshot, String>,
@@ -2588,6 +2604,20 @@ pub struct CellEditBatch {
     pub sort: Option<ColumnSort>,
     pub filter: Option<ColumnFilter>,
     pub rows: Vec<RowEdit>,
+}
+
+/// Identity of the exact plan confirmed by the user.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CellEditReview {
+    pub fingerprint: String,
+    pub config_revision: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CellEditPreview {
+    pub review: CellEditReview,
+    pub updates: Vec<(String, Vec<String>)>,
+    pub warnings: Vec<(String, String)>,
 }
 
 /// One edited row of the loaded page.

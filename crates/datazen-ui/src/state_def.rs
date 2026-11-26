@@ -117,6 +117,7 @@ pub struct AppState {
     /// A commit job the host accepted and has not answered yet (N1). The
     /// dirty marks stay until the delivery lands.
     pub commit_loading: Option<u32>,
+    pub(crate) edit_preview: crate::native_edit_preview::NativeEditPreview,
     /// A query job the host accepted and has not answered yet (N1).
     pub query_loading: Option<u32>,
     pub(crate) native_query: Option<crate::native_query_close::NativeQuery>,
@@ -583,6 +584,7 @@ impl Default for AppState {
             table_loading: None,
             table_read_error: None,
             commit_loading: None,
+            edit_preview: Default::default(),
             query_loading: None,
             native_query: None,
             connect_loading: None,

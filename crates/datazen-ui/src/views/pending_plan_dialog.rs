@@ -101,6 +101,7 @@ impl RowChangePlanVm {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PendingPlanAction {
     Close,
+    Commit,
 }
 
 #[allow(dead_code)] // host port; remove when the panel wires the dialog.
@@ -128,6 +129,27 @@ pub fn build<S: 'static>(
     on_action: &Option<PendingPlanActionFn<S>>,
     dark: bool,
     layer: &mut Vec<El>,
+) {
+    build_dialog(plan, open, on_action, dark, layer, false);
+}
+
+pub(crate) fn build_with_commit<S: 'static>(
+    plan: Option<&RowChangePlanVm>,
+    open: bool,
+    on_action: &Option<PendingPlanActionFn<S>>,
+    dark: bool,
+    layer: &mut Vec<El>,
+) {
+    build_dialog(plan, open, on_action, dark, layer, true);
+}
+
+fn build_dialog<S: 'static>(
+    plan: Option<&RowChangePlanVm>,
+    open: bool,
+    on_action: &Option<PendingPlanActionFn<S>>,
+    dark: bool,
+    layer: &mut Vec<El>,
+    confirm: bool,
 ) {
     let Some(plan) = plan else {
         return;
@@ -250,7 +272,7 @@ pub fn build<S: 'static>(
         .key(CLOSE_KEY)
         .on_press(emit(on_action, PendingPlanAction::Close));
 
-    Dialog::new(DIALOG_KEY, t("tableData.previewTitle"))
+    let mut dialog = Dialog::new(DIALOG_KEY, t("tableData.previewTitle"))
         .open(open)
         .description(plan.description())
         .width(520.0)
@@ -258,6 +280,16 @@ pub fn build<S: 'static>(
         .body_pad((20.0, 16.0))
         .child(body)
         .footer(close)
-        .on_close(emit(on_action, PendingPlanAction::Close))
-        .build(k, layer);
+        .on_close(emit(on_action, PendingPlanAction::Close));
+    if confirm && !plan.updates.is_empty() {
+        dialog = dialog.footer(
+            Button::new(t("tableData.commit"))
+                .variant(ButtonVariant::Contrast)
+                .control_size(ControlSize::Small)
+                .build(k)
+                .key("pending-plan-commit")
+                .on_press(emit(on_action, PendingPlanAction::Commit)),
+        );
+    }
+    dialog.build(k, layer);
 }

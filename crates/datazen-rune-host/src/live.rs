@@ -172,7 +172,9 @@ enum HostJob {
     CommitCells {
         generation: u32,
         batch: datazen_ui_api::CellEditBatch,
+        review: Option<datazen_ui_api::CellEditReview>,
     },
+    PreviewCells { nonce: u32, batch: datazen_ui_api::CellEditBatch },
     ReadQueryHistory {
         generation: u32,
         connection_id: String,
@@ -261,6 +263,10 @@ enum HostAnswer {
     CommitCount {
         generation: u32,
         count: Result<u32, String>,
+    },
+    CellPreviewRead {
+        nonce: u32,
+        result: Result<datazen_ui_api::CellEditPreview, String>,
     },
     QueryHistoryRead {
         generation: u32,
@@ -529,6 +535,10 @@ impl LiveAdapter {
                                     generation,
                                     count: Err(format!("the job runtime did not start: {error}")),
                                 },
+                                HostJob::PreviewCells { nonce, .. } => HostAnswer::CellPreviewRead {
+                                    nonce,
+                                    result: Err("The preview worker did not start.".into()),
+                                },
                                 HostJob::ReadQueryHistory { generation, .. } =>
                                     HostAnswer::QueryHistoryRead {
                                         generation,
@@ -650,15 +660,17 @@ impl LiveAdapter {
                                 runtime.block_on(inbound_references(&worker_session, &table));
                             HostAnswer::InboundRefs { generation, table, refs }
                         }
-                        HostJob::CommitCells { generation, batch } => {
+                        HostJob::CommitCells { generation, batch, review } => {
                             let count = runtime.block_on(commit_edits(
-                                &worker_runtime,
-                                &worker_registry,
-                                &worker_profiles,
-                                &worker_session,
-                                batch,
+                                &worker_runtime, &worker_profiles, &worker_session, batch, review,
                             ));
                             HostAnswer::CommitCount { generation, count }
+                        }
+                        HostJob::PreviewCells { nonce, batch } => {
+                            let result = runtime.block_on(preview_edit_batch(
+                                &worker_profiles, &worker_session, &batch,
+                            ));
+                            HostAnswer::CellPreviewRead { nonce, result }
                         }
                         HostJob::ReadQueryHistory { generation, connection_id } => {
                             let database = worker_session.lock().ok().and_then(|session| {
@@ -1765,13 +1777,13 @@ impl ArtifactChunkReader for RuntimeChunks {
 /// — and `commit_changes` executes it over the runtime in owned-session mode.
 /// A failure keeps the grid's dirty marks (the UI's side of the contract); the
 /// count that comes back is the rows that landed.
-async fn commit_edits(
-    runtime: &Arc<RuntimeConnectionUseCases>,
-    registry: &Arc<DriverRegistry>,
+type NativeEditPlan = datazen::table_editing::change_set::RowChangePlan;
+
+async fn build_edit_plan(
     profiles: &Arc<crate::backend::HostProfiles>,
     session: &Arc<Mutex<LiveSession>>,
-    batch: datazen_ui_api::CellEditBatch,
-) -> Result<u32, String> {
+    batch: &datazen_ui_api::CellEditBatch,
+) -> Result<(Arc<dyn DatabaseDriver>, ConnectionFacts, SessionColumns, NativeEditPlan), String> {
     let (driver, connection, target, read_only) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
@@ -1784,7 +1796,6 @@ async fn commit_edits(
             session.read_only,
         )
     };
-    let _ = registry; // the live session's driver is the one the page was read through
     let driver_type = driver.driver_type();
     let context = RowChangeTableContext {
         connection_id: connection.clone(),
@@ -1842,6 +1853,39 @@ async fn commit_edits(
     )
     .await
     .map_err(|error| error.to_string())?;
+    Ok((driver, facts, columns, plan))
+}
+
+async fn preview_edit_batch(
+    profiles: &Arc<crate::backend::HostProfiles>,
+    session: &Arc<Mutex<LiveSession>>,
+    batch: &datazen_ui_api::CellEditBatch,
+) -> Result<datazen_ui_api::CellEditPreview, String> {
+    let (_, facts, _, plan) = build_edit_plan(profiles, session, batch).await?;
+    Ok(datazen_ui_api::CellEditPreview {
+        review: datazen_ui_api::CellEditReview {
+            fingerprint: plan.fingerprint,
+            config_revision: facts.config_revision,
+        },
+        updates: plan.updates.into_iter()
+            .map(|entry| (entry.sql_template, entry.parameter_summary)).collect(),
+        warnings: plan.warnings.into_iter().map(|entry| (entry.code, entry.message)).collect(),
+    })
+}
+
+async fn commit_edits(
+    runtime: &Arc<RuntimeConnectionUseCases>,
+    profiles: &Arc<crate::backend::HostProfiles>,
+    session: &Arc<Mutex<LiveSession>>,
+    batch: datazen_ui_api::CellEditBatch,
+    review: Option<datazen_ui_api::CellEditReview>,
+) -> Result<u32, String> {
+    let (driver, facts, columns, plan) = build_edit_plan(profiles, session, &batch).await?;
+    if review.is_some_and(|checked| {
+        checked.fingerprint != plan.fingerprint || checked.config_revision != facts.config_revision
+    }) {
+        return Err("The reviewed changes or connection changed. Preview again.".into());
+    }
     let request = CommitPendingChangesRequest {
         db_session_id: "datazen-native".into(),
         fingerprint: plan.fingerprint.clone(),
@@ -2542,6 +2586,10 @@ impl DesktopAdapter for LiveAdapter {
         true
     }
 
+    fn supports_native_cell_preview(&self) -> bool {
+        true
+    }
+
     fn supports_native_query_stop(&self) -> bool {
         true
     }
@@ -2618,8 +2666,12 @@ impl DesktopAdapter for LiveAdapter {
             AdapterJob::InboundRefs { generation, table } => {
                 HostJob::InboundRefs { generation, table }
             }
+            AdapterJob::PreviewCells { nonce, batch } => HostJob::PreviewCells { nonce, batch },
             AdapterJob::CommitCells { generation, batch } => {
-                HostJob::CommitCells { generation, batch }
+                HostJob::CommitCells { generation, batch, review: None }
+            }
+            AdapterJob::CommitReviewedCells { generation, batch, review } => {
+                HostJob::CommitCells { generation, batch, review: Some(review) }
             }
             AdapterJob::ReadQueryHistory {
                 generation,
@@ -2754,6 +2806,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::CommitCount { generation, count } => {
                     deliveries.push(AdapterDelivery::CommitCount { generation, count });
+                }
+                HostAnswer::CellPreviewRead { nonce, result } => {
+                    deliveries.push(AdapterDelivery::CellPreviewRead { nonce, result });
                 }
                 HostAnswer::QueryHistoryRead { generation, result } => {
                     deliveries.push(AdapterDelivery::QueryHistoryRead { generation, result });

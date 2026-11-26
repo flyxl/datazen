@@ -54,6 +54,16 @@ pub fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
     if let Some(dialog) = dialog {
         dialog.build(kit(dark), &mut layer);
     }
+    if let Some(plan) = state.active_cell_preview() {
+        use crate::views::pending_plan_dialog::{self, PendingPlanAction, PendingPlanActionFn};
+        let action: Option<PendingPlanActionFn<AppState>> = Some(std::rc::Rc::new(|state, action| {
+            match action {
+                PendingPlanAction::Close => state.close_cell_preview(),
+                PendingPlanAction::Commit => state.commit_cell_preview(),
+            }
+        }));
+        pending_plan_dialog::build_with_commit(Some(plan), true, &action, dark, &mut layer);
+    }
     // T012: the write-proposal host renders at the app root in React
     // (`App.tsx:104`), above every page and beside the dialogs — its own
     // layer entries land after them, as the receipt / audit toasts do.

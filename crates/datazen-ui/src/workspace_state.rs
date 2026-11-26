@@ -764,7 +764,11 @@ impl AppState {
                     }
                 }
             }
+            AdapterDelivery::CellPreviewRead { nonce, result } => {
+                self.deliver_cell_preview(nonce, result);
+            }
             AdapterDelivery::CommitCount { generation, count } => {
+                self.finish_reviewed_commit(generation, &count);
                 if self.commit_loading == Some(generation) {
                     self.commit_loading = None;
                 }

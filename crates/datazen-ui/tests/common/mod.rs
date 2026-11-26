@@ -639,6 +639,14 @@ impl DesktopAdapter for JobAdapter {
                     Ok(1)
                 },
             },
+            AdapterJob::PreviewCells { nonce, .. } => AdapterDelivery::CellPreviewRead {
+                nonce,
+                result: Err("edit preview not enabled in this test adapter".into()),
+            },
+            AdapterJob::CommitReviewedCells { generation, .. } => AdapterDelivery::CommitCount {
+                generation,
+                count: Err("reviewed commit not enabled in this test adapter".into()),
+            },
             AdapterJob::RunQuery { generation, .. } => AdapterDelivery::QueryPage {
                 generation,
                 page: Ok(TablePage {

@@ -902,3 +902,54 @@ class OfflineJourneys:
         self.assertAlmostEqual(returned_node[2], base_node[2], delta=1)
         self.assertAlmostEqual(returned_scale, base_scale, delta=.02)
         self.expect_rendered(returned, key="er-col-customers-1", text="customer_name")
+
+    def test_legacy_staged_grid_update_previews_bound_sql_rolls_back_and_confirms(self):
+        """Migrate table-edit.ts DE-006–008 with real SQLite rows."""
+        fixture(self.store, self.db)
+        baseline = [(1, "fixture-ada"), (2, "fixture-lin")]
+
+        def rows():
+            with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+                return db.execute("SELECT * FROM customers ORDER BY id").fetchall()
+
+        def stage(value, at=5):
+            return [
+                {**tap(at, "cell-0-1"), "type": "double-click"},
+                key(at + .6, "a", cmd=True), type_text(at + .9, value), key(at + 1.8, "Enter"),
+            ]
+
+        draft = "Ada's draft"
+        first = [*OPEN, *stage(draft), tap(7.6, "pending-preview")]
+        preview = self.replay(first, until=9.5)
+        self.expect_rendered(preview, key="pending-changes-bar")
+        self.expect_rendered(preview, key="pending-plan-dialog")
+        self.expect_rendered(preview, key="pending-plan-fingerprint", within="pending-plan-dialog")
+        self.expect_rendered(preview, key="pending-plan-statement-sql-0", within="pending-plan-dialog")
+        template = next(n["text"] for n in preview["elements"]
+                        if n.get("key") == "pending-plan-statement-sql-0")
+        self.assertIn("UPDATE", template.upper())
+        self.assertIn("?", template)
+        self.assertNotIn(draft, template, "value must not be interpolated into the SQL template")
+        self.expect_rendered(preview, key="pending-plan-statement-params-0", within="pending-plan-dialog")
+        params = next(n["text"] for n in preview["elements"]
+                      if n.get("key") == "pending-plan-statement-params-0")
+        self.assertIn(draft, params)
+        self.assertEqual(rows(), baseline)
+
+        rolled_back = [*first, tap(9.7, "pending-plan-close"), tap(10.6, "rollback-staged")]
+        rolled = self.replay(rolled_back, until=12.0)
+        self.assertFalse(visible(rolled, key="pending-plan-dialog"))
+        self.assertFalse(visible(rolled, key="pending-changes-bar"))
+        self.expect_rendered(rolled, text="fixture-ada", within="cell-0-1")
+        self.assertEqual(rows(), baseline)
+
+        committed = "Ada's committed"
+        second = [*rolled_back, *stage(committed, at=12.4), tap(15.0, "pending-preview")]
+        result = self.replay([*second, tap(17.1, "pending-plan-commit")], until=19.5)
+        self.assertFalse(visible(result, key="pending-plan-dialog"))
+        self.assertFalse(visible(result, key="pending-changes-bar"))
+        self.expect_rendered(result, text=committed, within="cell-0-1")
+        self.assertEqual(rows(), [(1, committed), (2, "fixture-lin")])
+        reloaded = self.replay(OPEN, until=5.5)
+        self.expect_rendered(reloaded, text=committed, within="cell-0-1")
+        self.expect_rendered(reloaded, text="fixture-lin", within="cell-1-1")

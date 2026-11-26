@@ -121,6 +121,9 @@ fn status_banner(state: &crate::AppState, muted: rune::Color, well: rune::Color)
     if state.table_loading.is_some() {
         lines.push(("table-loading-banner".into(), "Loading table page…".into()));
     }
+    if let Some(error) = state.active_cell_preview_error() {
+        lines.push(("pending-preview-error".into(), error.to_owned()));
+    }
     if state.commit_loading.is_some() {
         lines.push(("commit-loading-banner".into(), "Saving staged changes…".into()));
     }
@@ -162,7 +165,7 @@ fn pending_changes_bar(state: &crate::AppState, muted: rune::Color, well: rune::
     if dirty == 0 || state.grid.read_only_reason().is_some() {
         return row().key("pending-changes-bar").w_full().h(0.0);
     }
-    row()
+    let mut bar = row()
         .key("pending-changes-bar")
         .w_full()
         .h(28.0)
@@ -178,7 +181,20 @@ fn pending_changes_bar(state: &crate::AppState, muted: rune::Color, well: rune::
             ))
             .font(label_style())
             .color(muted),
-        )
+        );
+    if state.desktop.supports_native_cell_preview() && state.commit_loading.is_none() {
+        bar = bar.child(row()
+            .key("pending-preview")
+            .h(24.0)
+            .px(8.0)
+            .center_y()
+            .role("button")
+            .focusable(true)
+            .label(t("tableData.preview"))
+            .child(text(t("tableData.preview")).font(label_style()).color(muted))
+            .on_press(|state: &mut crate::AppState| state.request_cell_preview()));
+    }
+    bar
 }
 
 /// T5: foreign-key navigation bar with A4 breadcrumb trail.
