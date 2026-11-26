@@ -748,3 +748,131 @@ async fn rendered_postgres_index_rollback_uses_the_reviewed_physical_namespace()
     .await
     .expect("remove genuine index fixtures");
 }
+
+#[tokio::test]
+async fn migrated_postgres_foreign_key_modes_apply_real_enforcement_timing() {
+    let mut fixture = Fixture::open().await;
+    let schema = format!("dz_fk_modes_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!(
+        "CREATE SCHEMA {schema};
+         CREATE TABLE {schema}.parent(id int PRIMARY KEY);
+         CREATE TABLE {schema}.child(id int PRIMARY KEY, mandatory int, can_defer int);"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("independent fixture");
+    let driver = PostgresDriver::new();
+    let handle = driver.connect_fixed_session(&fixture.config).await.unwrap();
+    driver
+        .execute(&handle, &format!("SET search_path TO {schema}, pg_catalog"))
+        .await
+        .unwrap();
+    let renderer = driver.migration_renderer().unwrap();
+    for (name, column, deferrability) in [
+        (
+            "per_row",
+            "mandatory",
+            ForeignKeyDeferrability::NotDeferrable,
+        ),
+        (
+            "initially_verified",
+            "can_defer",
+            ForeignKeyDeferrability::DeferrableInitiallyImmediate,
+        ),
+    ] {
+        apply(
+            &driver,
+            &handle,
+            renderer.as_ref(),
+            Op::AddForeignKey {
+                table: format!("{schema}.child"),
+                foreign_key: ForeignKeyInfo {
+                    name: name.into(),
+                    columns: vec![column.into()],
+                    referenced_table: format!("{schema}.parent"),
+                    referenced_columns: vec!["id".into()],
+                    on_update: "NO ACTION".into(),
+                    on_delete: "NO ACTION".into(),
+                    deferrability,
+                },
+            },
+        )
+        .await;
+    }
+    let child = format!("{schema}.child");
+    let options: Vec<(String, bool, bool)> = sqlx::query_as(
+        "SELECT conname::text, condeferrable, condeferred FROM pg_constraint
+         WHERE conrelid=to_regclass($1) AND contype='f' ORDER BY conname",
+    )
+    .bind(&child)
+    .fetch_all(&mut fixture.oracle)
+    .await
+    .unwrap();
+    assert_eq!(
+        options,
+        [
+            ("initially_verified".into(), true, false),
+            ("per_row".into(), false, false)
+        ]
+    );
+    let learned = driver
+        .get_table_schema(
+            &handle,
+            "child",
+            fixture.config.database.as_deref().unwrap(),
+            Some(&schema),
+        )
+        .await
+        .expect("re-read applied constraint metadata");
+    assert_eq!(
+        learned
+            .foreign_keys
+            .iter()
+            .map(|fk| (fk.name.as_str(), fk.deferrability))
+            .collect::<std::collections::BTreeMap<_, _>>(),
+        [
+            (
+                "initially_verified",
+                ForeignKeyDeferrability::DeferrableInitiallyImmediate
+            ),
+            ("per_row", ForeignKeyDeferrability::NotDeferrable)
+        ]
+        .into_iter()
+        .collect()
+    );
+    let violation = sqlx::query(&format!("INSERT INTO {child} VALUES (1,NULL,23)"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect_err("initial mode really checks at statement level");
+    assert_eq!(
+        violation.as_database_error().unwrap().code().as_deref(),
+        Some("23503")
+    );
+    let tx = driver.begin_transaction(&handle).await.unwrap();
+    let no_defer = driver
+        .execute(&handle, "SET CONSTRAINTS per_row DEFERRED")
+        .await
+        .expect_err("not-deferrable can never switch timing");
+    assert!(no_defer.to_string().contains("not deferrable"));
+    driver.rollback(tx).await.unwrap();
+    let tx = driver.begin_transaction(&handle).await.unwrap();
+    run(
+        &driver,
+        &handle,
+        "SET CONSTRAINTS initially_verified DEFERRED;
+        INSERT INTO child VALUES (2,NULL,55); INSERT INTO parent VALUES (55);",
+    )
+    .await;
+    driver.commit(tx).await.unwrap();
+    let persisted: Vec<(i32, Option<i32>, Option<i32>)> =
+        sqlx::query_as(&format!("SELECT id,mandatory,can_defer FROM {child}"))
+            .fetch_all(&mut fixture.oracle)
+            .await
+            .unwrap();
+    assert_eq!(persisted, [(2, None, Some(55))]);
+    driver.disconnect(handle).await.unwrap();
+    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+        .execute(&mut fixture.oracle)
+        .await
+        .unwrap();
+}
