@@ -1009,3 +1009,110 @@ async fn budgeted_pg_resources_adopt_existing_live_control_pool_and_release_last
     .await
     .expect("independent PostgreSQL confirms all test backends closed");
 }
+
+#[derive(Default)]
+struct PausedClose {
+    ledger: Budget,
+    first_release: std::sync::atomic::AtomicBool,
+    release_waiting: tokio::sync::Notify,
+    release_ack: tokio::sync::Notify,
+}
+
+#[async_trait::async_trait]
+impl BudgetPort for PausedClose {
+    async fn acquire_physical_connections(&self, n: u32) -> Result<BudgetPermit, ResourceError> {
+        self.ledger.acquire_physical_connections(n).await
+    }
+
+    async fn release_physical_connections(
+        &self,
+        permit: &BudgetPermit,
+    ) -> Result<(), ResourceError> {
+        if !self
+            .first_release
+            .swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            self.release_waiting.notify_one();
+            self.release_ack.notified().await;
+        }
+        self.ledger.release_physical_connections(permit).await
+    }
+}
+
+#[tokio::test]
+async fn concurrent_close_waits_for_confirmed_postgres_and_budget_cleanup() {
+    use std::time::Duration;
+    let mut fixture = Fixture::open().await;
+    let database = fixture.config.database.clone().unwrap();
+    let count = async |oracle: &mut sqlx::PgConnection| -> i64 {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()",
+        )
+        .bind(&database)
+        .fetch_one(oracle)
+        .await
+        .unwrap()
+    };
+    let baseline = count(&mut fixture.oracle).await;
+    let driver = Arc::new(PostgresDriver::new());
+    let provider = Arc::new(PostgresResourceProvider::new(driver.clone()));
+    let ledger = Arc::new(PausedClose::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let request = AcquireResourceRequest {
+        connection_config: fixture.config.clone(),
+        target: NamespaceTarget::empty().with_database(database.clone()),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 16,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    };
+    let resource = provider
+        .acquire_resource(&request, &budget)
+        .await
+        .expect("live resource");
+    let owner = provider
+        .connection_handle(&resource)
+        .expect("actual data handle");
+    assert!(driver.query(&owner, "SELECT 1").await.is_ok());
+    assert!(count(&mut fixture.oracle).await > baseline);
+    let first = provider.clone();
+    let closing = resource.clone();
+    let pending = tokio::spawn(async move { first.close_resource(&closing).await });
+    tokio::time::timeout(Duration::from_secs(8), ledger.release_waiting.notified())
+        .await
+        .expect("close reaches resource budget acknowledgment");
+    assert!(
+        !resource.is_closed(),
+        "close cannot be confirmed before budget acknowledgment"
+    );
+    assert_eq!(
+        provider.close_resource(&resource).await.unwrap(),
+        CloseDisposition::CloseUnconfirmed
+    );
+    assert!(
+        provider.connection_handle(&resource).is_err(),
+        "close-only, not a reopen"
+    );
+    ledger.release_ack.notify_one();
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(8), pending)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(resource.is_closed());
+    assert!(ledger.ledger.0.lock().unwrap().is_empty());
+    tokio::time::timeout(Duration::from_secs(4), async {
+        while count(&mut fixture.oracle).await != baseline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("independent PG proves the physical data and control sockets closed");
+}
