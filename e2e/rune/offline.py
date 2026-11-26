@@ -1,6 +1,7 @@
 """Rune migrations of legacy settings, grid, catalog and local file journeys."""
 import csv
 import json
+import socket
 import sqlite3
 
 from scenarios import fixture, query_steps, tap, type_text, visible
@@ -380,6 +381,44 @@ class OfflineJourneys:
             self.expect_rendered(tree, key=row)
         self.assertEqual(json.loads(self.store.read_text(encoding="utf-8")), before)
         self.assertFalse(self.db.exists())
+
+    def test_legacy_connection_probe_rejects_missing_host_and_invalid_port(self):
+        """Migrate TC-CONN-005: validation is visible before any connection attempt."""
+        (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+        create = tap(.5, "connections-create-first")
+        field = "connection-address-input"
+        blank = [create, tap(1.3, field), key(1.6, "a", cmd=True), key(1.85, "Backspace"),
+                 tap(2.4, "connection-test")]
+        tree = self.replay(blank, until=3.3)
+        self.expect_rendered(tree, text="Host or address is required.",
+                             within="connection-probe-status")
+        self.expect_rendered(tree, key="connection-dialog")
+        self.expect_rendered(tree, key="connection-test")
+        invalid = [*blank, *fill(3.6, field, "127.0.0.1:no-port")]
+        tree = self.replay(invalid, until=4.9)
+        self.assertFalse(visible(tree, key="connection-probe-status"))
+        tree = self.replay([*invalid, tap(5, "connection-test")], until=6)
+        self.expect_rendered(tree, text="Use host or host:port with a numeric port.",
+                             within="connection-probe-status")
+        self.assertFalse(self.store.exists())
+
+    def test_legacy_connection_probe_fails_for_unreachable_loopback_endpoint(self):
+        """Migrate TC-CONN-006 without DNS or an external network dependency."""
+        (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+        # Keep this assigned port reserved but never listen: no other test
+        # can accidentally occupy it and make the negative case succeed.
+        with socket.socket() as unused_endpoint:
+            unused_endpoint.bind(("127.0.0.1", 0))
+            port = unused_endpoint.getsockname()[1]
+            actions = [tap(.5, "connections-create-first"),
+                       *fill(1.4, "connection-address-input", f"127.0.0.1:{port}"),
+                       tap(3, "connection-test")]
+            tree = self.replay(actions, until=10.5)
+        self.expect_rendered(tree, text="Could not connect. Check the address and that the server is running.",
+                             within="connection-probe-status")
+        self.expect_rendered(tree, key="connection-dialog")
+        self.expect_rendered(tree, key="connection-test")
+        self.assertFalse(self.store.exists())
 
     def test_connection_dialog_cancel_does_not_save_draft(self):
         actions = [tap(.5, "connections-create-first"),

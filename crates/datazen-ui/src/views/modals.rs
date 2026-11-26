@@ -279,7 +279,7 @@ fn connection_dialog(state: &AppState, theme: tok::Theme, dark: bool) -> Dialog 
             Button::new(t("newConn.testConnection"))
                 .variant(ButtonVariant::Neutral)
                 .control_size(ControlSize::ExtraLarge)
-                .on_press(AppState::test_redis_connection_form)
+                .on_press(AppState::test_connection_form)
                 .build(kit(dark))
                 .key("connection-test"),
         )

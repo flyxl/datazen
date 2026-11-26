@@ -38,7 +38,7 @@ use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableType, Value as C
 use datazen_ui_api::native_kv::{native_kv_driver, KvRead, KvReply, NativeKvDriver};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionDraft,
-    ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode,
+    ConnectionProbeError, ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode,
     Snippet, TablePage, TableStructure, ValueSearchHit, Workflow, WorkflowStepResult,
     DESKTOP_NOT_IMPLEMENTED,
 };
@@ -119,6 +119,10 @@ enum HostJob {
     AppendNativeCsv {
         epoch: u32,
         review: CsvImportReview,
+    },
+    ProbeConnection {
+        request_id: u64,
+        config: datazen_driver_api::ConnectionConfig,
     },
     ProbeRedis {
         epoch: u64,
@@ -216,6 +220,10 @@ enum HostAnswer {
     NativeCsvAppended {
         epoch: u32,
         result: Result<usize, String>,
+    },
+    ConnectionProbed {
+        request_id: u64,
+        result: Result<(), ConnectionProbeError>,
     },
     RedisProbed {
         epoch: u64,
@@ -516,6 +524,9 @@ impl LiveAdapter {
                                     epoch, result: Err("The schema comparison worker could not start.".into()),
                                 },
                                 HostJob::CloseKv { .. } => continue,
+                                HostJob::ProbeConnection { request_id, .. } => HostAnswer::ConnectionProbed {
+                                    request_id, result: Err(ConnectionProbeError::Unavailable),
+                                },
                                 HostJob::ProbeRedis { epoch, .. } => HostAnswer::RedisProbed {
                                     epoch, result: Err("The Redis connection test is unavailable.".into()),
                                 },
@@ -597,6 +608,10 @@ impl LiveAdapter {
                                 &worker_session, &connection_id, session_generation,
                             ));
                             continue;
+                        }
+                        HostJob::ProbeConnection { request_id, config } => {
+                            let result = runtime.block_on(probe_connection(&registry, config));
+                            HostAnswer::ConnectionProbed { request_id, result }
                         }
                         HostJob::ProbeRedis { epoch, config } => {
                             let result = runtime.block_on(async {
@@ -2407,6 +2422,22 @@ fn ui_write(setting: &datazen_ui_api::Setting) -> UiWrite {
     }
 }
 
+async fn probe_connection(
+    registry: &DriverRegistry,
+    config: datazen_driver_api::ConnectionConfig,
+) -> Result<(), ConnectionProbeError> {
+    use datazen_driver_api::DriverError;
+    use ConnectionProbeError as Error;
+
+    let driver = registry.get(&config.database_type).await.ok_or(Error::Unavailable)?;
+    match tokio::time::timeout(std::time::Duration::from_secs(6), driver.test_connection(&config)).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(DriverError::AuthenticationFailed(_))) => Err(Error::AuthenticationFailed),
+        Ok(Err(DriverError::ConnectionTimeout)) | Err(_) => Err(Error::TimedOut),
+        Ok(Err(_)) => Err(Error::CannotConnect),
+    }
+}
+
 fn connection_draft_record(
     draft: &ConnectionDraft,
     id: String,
@@ -2575,6 +2606,32 @@ impl DesktopAdapter for LiveAdapter {
 
     fn save_connection(&mut self, draft: &ConnectionDraft) -> Result<(), String> {
         self.save_connection_with_options(draft, None)
+    }
+
+    fn begin_connection_probe(
+        &mut self,
+        request_id: u64,
+        draft: &ConnectionDraft,
+    ) -> Result<(), ConnectionProbeError> {
+        let engine = draft.engine.trim();
+        // Only linked TCP engines. A file-driver test could create a database,
+        // and Redis has its own topology/TLS-safe draft conversion.
+        if engine == "redis" || self.default_connection_port(engine).is_none() {
+            return Err(ConnectionProbeError::Unavailable);
+        }
+        if draft.address.trim().is_empty() {
+            return Err(ConnectionProbeError::MissingAddress);
+        }
+        let config = connection_draft_record(draft, "native-connection-probe".into(), 4, false)
+            .map_err(|_| ConnectionProbeError::InvalidAddress)?;
+        if config.host.as_deref().is_none_or(str::is_empty) || config.port == Some(0) {
+            return Err(ConnectionProbeError::InvalidAddress);
+        }
+        self.jobs
+            .lock()
+            .map_err(|_| ConnectionProbeError::Unavailable)?
+            .send(HostJob::ProbeConnection { request_id, config })
+            .map_err(|_| ConnectionProbeError::Unavailable)
     }
 
     fn begin_redis_probe(
@@ -2776,6 +2833,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::NativeSchemaCompared { epoch, result } => {
                     deliveries.push(AdapterDelivery::NativeSchemaCompared { epoch, result });
+                }
+                HostAnswer::ConnectionProbed { request_id, result } => {
+                    deliveries.push(AdapterDelivery::ConnectionProbed { request_id, result });
                 }
                 HostAnswer::RedisProbed { epoch, result } => {
                     deliveries.push(AdapterDelivery::RedisProbed { epoch, result });

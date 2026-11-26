@@ -100,6 +100,38 @@ class TcpSqlJourneys:
             ["server-after", "server-control"],
         )
 
+    def run_legacy_mysql_probe_authentication(self, config):
+        """Migrate TC-CONN-007 using real authentication on the disposable MySQL fixture."""
+        database = DisposableSql("mysql", config)
+        (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+        invalid = "incorrect-rune-probe-" + uuid.uuid4().hex
+        base = [
+            tap(.5, "connections-create-first"), tap(1.4, "connection-engine-option-mysql"),
+            *fill(2.1, "connection-address-input", f"127.0.0.1:{database.port}"),
+            *fill(3.4, "connection-database-input", database.database),
+            *fill(4.8, "connection-username-input", database.user),
+        ]
+
+        def password(value):
+            # Paste like an actual secure editor, but never print either value.
+            return [tap(6, "connection-password-input"),
+                    {"t": 6.4, "type": "paste", "text": value},
+                    tap(7, "connection-test")]
+
+        denied = self.replay([*base, *password(invalid)], until=13.5)
+        self.expect_rendered(denied, text="Authentication failed. Check the username and password.",
+                             within="connection-probe-status")
+        self.expect_rendered(denied, key="connection-dialog")
+        self.assertFalse(invalid in json.dumps(denied), "wrong password appeared in the app tree")
+        self.assertFalse(self.store.exists())
+
+        connected = self.replay([*base, *password(database.password)], until=13.5)
+        self.expect_rendered(connected, text="Connection test succeeded.",
+                             within="connection-probe-status")
+        self.expect_rendered(connected, key="connection-dialog")
+        self.assertFalse(database.password in json.dumps(connected), "password appeared in the app tree")
+        self.assertFalse(self.store.exists())
+
     def run_postgres_collision(self, config):
         database = DisposableSql("postgresql", config)
         tag = uuid.uuid4().hex[:12]
@@ -275,6 +307,11 @@ def with_tcp_journeys(suite, configs):
             return self.run_server_journey(engine, config)
 
         setattr(suite, f"test_{engine}_native_catalog_query_edit", journey)
+        if engine == "mysql":
+            def probe_authentication(self, config=config):
+                return self.run_legacy_mysql_probe_authentication(config)
+
+            setattr(suite, "test_mysql_legacy_connection_probe_authentication", probe_authentication)
         if engine == "postgresql":
             def confirm_close(self, config=config):
                 return self.run_legacy_close_running_query(config, confirm=True)

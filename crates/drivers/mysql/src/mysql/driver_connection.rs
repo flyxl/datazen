@@ -15,7 +15,15 @@ impl MysqlDriver {
             .acquire_timeout(timeout)
             .connect_with(opts)
             .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            .map_err(|error| match &error {
+                sqlx::Error::Database(database) if database
+                    .try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
+                    .is_some_and(|mysql| mysql.number() == 1045) =>
+                {
+                    DriverError::AuthenticationFailed("MySQL rejected the credentials.".into())
+                }
+                _ => DriverError::ConnectionFailed(error.to_string()),
+            })?;
 
         let result = sqlx::query("SELECT version()")
             .fetch_one(&pool)

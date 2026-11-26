@@ -1785,6 +1785,19 @@ pub struct ConnectionProfile {
     pub host: Option<String>,
 }
 
+/// Safe connection test outcomes. Raw driver errors may include credentials
+/// or connection strings, so they never travel in a form delivery.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConnectionProbeError {
+    MissingAddress,
+    InvalidAddress,
+    Unavailable,
+    TunnelUnavailable,
+    AuthenticationFailed,
+    CannotConnect,
+    TimedOut,
+}
+
 /// The connection form's one save (E5): the fields both ports speak — the
 /// memory port keeps its name/engine/address semantics and ignores the
 /// credentials, the live host maps all six onto its `ConnectionConfig`
@@ -2160,6 +2173,15 @@ pub trait DesktopAdapter {
     /// its `ConnectionConfig` and persists it through the connection use
     /// case — the password lands sealed (T10). The default answers the
     /// fixed error; the UI falls back to the memory port.
+    /// Test an unsaved TCP draft without replacing the active connection.
+    fn begin_connection_probe(
+        &mut self,
+        _request_id: u64,
+        _draft: &ConnectionDraft,
+    ) -> Result<(), ConnectionProbeError> {
+        Err(ConnectionProbeError::Unavailable)
+    }
+
     /// Probe a Redis draft without persisting it or changing the live connection.
     fn begin_redis_probe(
         &mut self,
@@ -2495,6 +2517,10 @@ pub enum AdapterDelivery {
     NativeSchemaCompared {
         epoch: u32,
         result: Result<native_transfer::NativeSchemaDiff, String>,
+    },
+    ConnectionProbed {
+        request_id: u64,
+        result: Result<(), ConnectionProbeError>,
     },
     RedisProbed {
         epoch: u64,

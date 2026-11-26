@@ -565,6 +565,14 @@ impl AppState {
             AdapterDelivery::NativeSchemaCompared { epoch, result } => {
                 self.native_transfer.schema_completed(epoch, result);
             }
+            AdapterDelivery::ConnectionProbed { request_id, result } => {
+                if self.connection_dialog_open && self.connection_probe_pending
+                    && request_id == self.connection_probe_id
+                {
+                    self.connection_probe_pending = false;
+                    self.connection_probe_result = Some(result);
+                }
+            }
             AdapterDelivery::RedisProbed { epoch, result } => {
                 if self.connection_dialog_open && epoch == self.connection_dialog_epoch {
                     self.redis_probe_pending = false;

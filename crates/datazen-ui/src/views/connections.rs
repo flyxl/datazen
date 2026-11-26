@@ -243,6 +243,7 @@ fn form_input(
         .fill(theme.card)
         .border(1.0, theme.card_border)
         .on_edit(edit)
+        .on_change(|state: &mut AppState, _| state.invalidate_connection_probe())
         .build(dark)
 }
 
@@ -261,6 +262,7 @@ fn password_input(
         .border(1.0, theme.card_border)
         .secure()
         .on_edit(edit)
+        .on_change(|state: &mut AppState, _| state.invalidate_connection_probe())
         .build(dark)
 }
 
@@ -476,6 +478,7 @@ pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -
                             .color(theme.text),
                         )
                         .on_press(|state: &mut AppState| {
+                            state.invalidate_connection_probe();
                             state.connection_ssh_enabled = !state.connection_ssh_enabled;
                         }),
                 ),
@@ -563,10 +566,35 @@ fn connection_form_body(
         col().key("connection-form-fields").w_full().gap(16.0),
         |body, field| body.child(field),
     );
-    col()
+    let form = col()
         .key("connection-form")
         .w_full()
         .gap(16.0)
         .child(fields)
-        .child(error_row)
+        .child(error_row);
+    if let Some(status) = connection_probe_status(state) {
+        form.child(
+            row().key("connection-probe-status").role("status").w_full().child(text(status).wrap())
+        )
+    } else {
+        form
+    }
+}
+
+fn connection_probe_status(state: &AppState) -> Option<&'static str> {
+    use datazen_ui_api::ConnectionProbeError as Error;
+
+    if state.connection_probe_pending {
+        return Some(t("newConn.testing"));
+    }
+    Some(t(match state.connection_probe_result? {
+        Ok(()) => "newConn.nativeProbeConnected",
+        Err(Error::MissingAddress) => "newConn.nativeProbeMissingAddress",
+        Err(Error::InvalidAddress) => "newConn.nativeProbeInvalidAddress",
+        Err(Error::Unavailable) => "newConn.nativeProbeUnavailable",
+        Err(Error::TunnelUnavailable) => "newConn.nativeProbeTunnelUnavailable",
+        Err(Error::AuthenticationFailed) => "newConn.nativeProbeAuthenticationFailed",
+        Err(Error::CannotConnect) => "newConn.nativeProbeCannotConnect",
+        Err(Error::TimedOut) => "newConn.nativeProbeTimedOut",
+    }))
 }

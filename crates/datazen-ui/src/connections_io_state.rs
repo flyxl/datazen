@@ -35,6 +35,7 @@ impl AppState {
 
     pub fn open_connection_dialog(&mut self) {
         self.connection_dialog_open = true;
+        self.invalidate_connection_probe();
         self.redis_probe_pending = false;
         self.redis_probe_result = None;
         self.redis_form_options = Default::default();
@@ -66,6 +67,7 @@ impl AppState {
 
     pub fn close_connection_dialog(&mut self) {
         self.connection_dialog_open = false;
+        self.invalidate_connection_probe();
         self.connection_error = None;
         self.connection_form_snapshots.clear();
         self.connection_password = TextEdit::new("");
@@ -75,6 +77,7 @@ impl AppState {
         if self.connection_engine.text == engine {
             return;
         }
+        self.invalidate_connection_probe();
         // The in-memory demo has no linked engine vocabulary; keep its old
         // immediate form behavior and let the native driver own defaults.
         if self.desktop.available_engines().is_empty() {
@@ -130,7 +133,39 @@ impl AppState {
         options
     }
 
-    pub(crate) fn test_redis_connection_form(&mut self) {
+    pub(crate) fn test_connection_form(&mut self) {
+        if !self.connection_dialog_open {
+            return;
+        }
+        let engine = self.connection_engine.text.trim().to_owned();
+        if engine == "redis" {
+            self.test_redis_connection_form();
+            return;
+        }
+        if self.connection_probe_pending {
+            return;
+        }
+        self.invalidate_connection_probe();
+        if self.connection_ssh_enabled {
+            self.connection_probe_result = Some(Err(
+                datazen_ui_api::ConnectionProbeError::TunnelUnavailable,
+            ));
+            return;
+        }
+        let draft = self.connection_form_draft(engine);
+        match self.desktop.begin_connection_probe(self.connection_probe_id, &draft) {
+            Ok(()) => self.connection_probe_pending = true,
+            Err(error) => self.connection_probe_result = Some(Err(error)),
+        }
+    }
+
+    pub(crate) fn invalidate_connection_probe(&mut self) {
+        self.connection_probe_id = self.connection_probe_id.wrapping_add(1);
+        self.connection_probe_pending = false;
+        self.connection_probe_result = None;
+    }
+
+    fn test_redis_connection_form(&mut self) {
         if !self.connection_dialog_open
             || self.redis_probe_pending
             || self.connection_engine.text.trim() != "redis"
