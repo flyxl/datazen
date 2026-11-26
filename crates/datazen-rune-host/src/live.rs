@@ -38,7 +38,8 @@ use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableType, Value as C
 use datazen_ui_api::native_kv::{native_kv_driver, KvRead, KvReply, NativeKvDriver};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionDraft,
-    ConnectionProbeError, ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode,
+    ConnectionProbeError, ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter,
+    ProgressSnapshot, QueryExecutionStats, SchemaNode,
     Snippet, TablePage, TableStructure, ValueSearchHit, Workflow, WorkflowStepResult,
     DESKTOP_NOT_IMPLEMENTED,
 };
@@ -288,6 +289,7 @@ enum HostAnswer {
     QueryPage {
         generation: u32,
         page: Result<TablePage, String>,
+        execution_stats: Option<QueryExecutionStats>,
     },
     QueryScriptPages {
         generation: u32,
@@ -587,6 +589,7 @@ impl LiveAdapter {
                                 HostJob::RunQuery { generation, script: false, .. } => HostAnswer::QueryPage {
                                     generation,
                                     page: Err(format!("the job runtime did not start: {error}")),
+                                    execution_stats: None,
                                 },
                                 HostJob::ValueSearch { generation, .. } => {
                                     HostAnswer::ValueSearched {
@@ -785,6 +788,14 @@ impl LiveAdapter {
                                     session.database.clone().unwrap_or_default(),
                                 )
                             };
+                            let elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+                            let execution_stats = if script {
+                                None
+                            } else {
+                                pages.as_ref().ok().and_then(|pages| pages.first()).map(|result| {
+                                    QueryExecutionStats { affected_rows: result.affected_rows, elapsed_ms }
+                                })
+                            };
                             runtime.block_on(worker_history.add_query_history(
                                 datazen::history::QueryHistoryEntry {
                                     id: uuid::Uuid::new_v4().to_string(),
@@ -793,19 +804,19 @@ impl LiveAdapter {
                                     schema: None,
                                     sql: sql.clone(),
                                     executed_at: chrono::Utc::now(),
-                                    execution_time_ms: started
-                                        .elapsed()
-                                        .as_millis()
-                                        .min(u64::MAX as u128) as u64,
-                                    rows_affected: None,
+                                    execution_time_ms: elapsed_ms,
+                                    rows_affected: execution_stats.and_then(|stats| stats.affected_rows),
                                     success: pages.is_ok(),
                                     error_message: pages.as_ref().err().cloned(),
                                 },
                             ));
                             if script {
-                                HostAnswer::QueryScriptPages { generation, pages }
+                                HostAnswer::QueryScriptPages {
+                                    generation,
+                                    pages: pages.map(|pages| pages.into_iter().map(|result| result.page).collect()),
+                                }
                             } else {
-                                HostAnswer::QueryPage { generation, page: first_query_page(pages) }
+                                HostAnswer::QueryPage { generation, page: first_query_page(pages), execution_stats }
                             }
                         }
                     };
@@ -2266,8 +2277,11 @@ async fn run_query(
     first_query_page(run_query_observed(runtime, profiles, session, sql, false, &stop, |_| {}).await)
 }
 
-fn first_query_page(result: Result<Vec<TablePage>, String>) -> Result<TablePage, String> {
-    result?.into_iter().next().ok_or_else(|| "no query result page".into())
+fn first_query_page(
+    result: Result<Vec<live_sqlite_script::CollectedPage>, String>,
+) -> Result<TablePage, String> {
+    result?.into_iter().next().map(|result| result.page)
+        .ok_or_else(|| "no query result page".into())
 }
 
 async fn run_query_observed(
@@ -2278,8 +2292,8 @@ async fn run_query_observed(
     script: bool,
     stop: &std::sync::atomic::AtomicBool,
     note_execution: impl Fn(bool),
-) -> Result<Vec<TablePage>, String> {
-    let (connection, database) = {
+) -> Result<Vec<live_sqlite_script::CollectedPage>, String> {
+    let (connection, database, dialect) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
             return Err("the live session is not open".into());
@@ -2287,18 +2301,22 @@ async fn run_query_observed(
         if session.kv.is_some() {
             return Err("SQL queries are not available in the KV workbench.".into());
         }
-        if script && !session.driver.as_ref().is_some_and(|driver| driver.driver_type() == "sqlite") {
-            return Err("Running a SELECT script is only supported for SQLite.".into());
-        }
+        let dialect = if script {
+            Some(session.driver.as_ref()
+                .and_then(|driver| live_sqlite_script::ScriptDialect::linked_driver(&driver.driver_type()))
+                .ok_or("Running a SELECT script is only supported for SQLite and PostgreSQL.")?)
+        } else {
+            None
+        };
         (
             session.connection.clone().unwrap_or_default(),
             session.database.clone(),
+            dialect,
         )
     };
-    let page_count = if script {
-        live_sqlite_script::select_statement_count(sql)?
-    } else {
-        1
+    let page_count = match dialect {
+        Some(dialect) => dialect.statement_count(sql)?,
+        None => 1,
     };
     let ctx = crate::host_request_context().clone();
     let token = runtime
@@ -2693,8 +2711,9 @@ impl DesktopAdapter for LiveAdapter {
 
     fn supports_native_query_script(&self) -> bool {
         self.session.lock().is_ok_and(|session| {
-            session.is_open()
-                && session.driver.as_ref().is_some_and(|driver| driver.driver_type() == "sqlite")
+            session.is_open() && session.driver.as_ref().is_some_and(|driver| {
+                live_sqlite_script::ScriptDialect::linked_driver(&driver.driver_type()).is_some()
+            })
         })
     }
 
@@ -2931,9 +2950,9 @@ impl DesktopAdapter for LiveAdapter {
                     self.query_stops.remove(&generation);
                     deliveries.push(AdapterDelivery::QueryScriptPages { generation, pages });
                 }
-                HostAnswer::QueryPage { generation, page } => {
+                HostAnswer::QueryPage { generation, page, execution_stats } => {
                     self.query_stops.remove(&generation);
-                    deliveries.push(AdapterDelivery::QueryPage { generation, page });
+                    deliveries.push(AdapterDelivery::QueryPage { generation, page, execution_stats });
                 }
             }
         }

@@ -649,6 +649,7 @@ impl DesktopAdapter for JobAdapter {
             },
             AdapterJob::RunQuery { generation, .. } => AdapterDelivery::QueryPage {
                 generation,
+                execution_stats: None,
                 page: Ok(TablePage {
                     table: "result".into(),
                     columns: vec!["job".into()],

@@ -132,6 +132,143 @@ class TcpSqlJourneys:
         self.assertFalse(database.password in json.dumps(connected), "password appeared in the app tree")
         self.assertFalse(self.store.exists())
 
+    def run_legacy_postgres_affected_rows(self, config):
+        """Migrate sql-query.ts SQ-012 against a real, disposable PostgreSQL server."""
+        database = DisposableSql("postgresql", config)
+        relation = f"public.aaa_rune_affected_{uuid.uuid4().hex[:12]}"
+        database.query(f"CREATE TABLE {relation} (id INTEGER PRIMARY KEY, val TEXT NOT NULL);")
+        self.addCleanup(database.query, f"DROP TABLE {relation};")
+        database.query(f"INSERT INTO {relation} VALUES (1, 'first'), (2, 'second'), (3, 'untouched');")
+        database.write_profile(self)
+        (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+
+        def execute(sql):
+            actions = [
+                tap(.5, "conn-open-e2e-tcp-sql"),
+                tap(3.6, "conn-toolbar-new-query"),
+                tap(4.5, "sql-editor-scroll"),
+                {"t": 4.8, "type": "key", "name": "a", "cmd": True},
+                {"t": 5.2, "type": "paste", "text": sql},
+                tap(7, "sql-run"),
+            ]
+            return self.replay(actions, until=11)
+
+        def check_outcome(tree, affected):
+            self.expect_rendered(tree, key="execution-summary-card")
+            self.expect_rendered(tree, text=f"{affected} rows affected", within="execution-summary-rows")
+            duration = next((node.get("text", "") for node in tree["elements"]
+                             if (node.get("text") or "").endswith(" ms")
+                             and visible(tree, text=node["text"], within="execution-summary-elapsed")), "")
+            self.assertRegex(duration, r"^\d+ ms$")
+            self.expect_rendered(tree, text=duration, within="execution-summary-elapsed")
+            self.assertFalse(visible(tree, key="result-grid"))
+
+        def rows():
+            return database.query(f"SELECT id, val FROM {relation} ORDER BY id;").splitlines()
+
+        self.assertEqual(rows(), ["1|first", "2|second", "3|untouched"])
+        changed = execute(f"UPDATE {relation} SET val='updated' WHERE id IN (1, 2);")
+        check_outcome(changed, 2)
+        expected = ["1|updated", "2|updated", "3|untouched"]
+        self.assertEqual(rows(), expected)
+
+        unchanged = execute(f"UPDATE {relation} SET val='unexpected' WHERE id=-1;")
+        check_outcome(unchanged, 0)
+        self.assertEqual(rows(), expected)
+
+        no_results = execute(f"SELECT val FROM {relation} WHERE id=-1;")
+        self.assertFalse(visible(no_results, key="execution-summary-rows"))
+        self.expect_rendered(no_results, text="val", within="result-data-grid-header")
+        self.assertEqual(rows(), expected)
+
+    def run_legacy_postgres_stream_result_status(self, config):
+        """Migrate sql-query.ts SQ-002/SQ-004 and the over-one-batch result."""
+        database = DisposableSql("postgresql", config)
+        database.write_profile(self)
+        base = ("SELECT n, 'legacy-pg-batch-' || n AS batch_marker "
+                "FROM generate_series(1, 600) AS generated(n)")
+        expected = database.query(base + " ORDER BY n;").splitlines()
+        self.assertEqual((len(expected), expected[0], expected[-1]),
+                         (600, "1|legacy-pg-batch-1", "600|legacy-pg-batch-600"))
+        marker = expected[-1].partition("|")[2]
+        sql = base + " CROSS JOIN (SELECT pg_sleep(0.075)) AS delay ORDER BY n;"
+        actions = query_steps(sql, "e2e-tcp-sql")
+        actions[-2] = {"t": 5, "type": "paste", "text": sql}
+        tree = self.replay([
+            *actions, *fill(11.0, "result-find-input", marker),
+            tap(12.5, "result-find-apply"),
+        ], until=14.2)
+
+        self.expect_rendered(tree, key="result-grid-status", text="result · 600 rows × 2 cols")
+        self.expect_rendered(tree, text="batch_marker", within="result-data-grid-header")
+        self.expect_rendered(tree, key="result-find-count", text="1 of 1")
+        selection = next(node["text"] for node in tree["elements"]
+                         if node.get("key") == "result-status-text")
+        self.assertTrue(selection.endswith(" · 600 rows × 2 cols · selection r599c1..r599c1"))
+        duration = next((node.get("text", "") for node in tree["elements"]
+                         if node.get("key") == "query-result-duration"), "")
+        self.assertRegex(duration, r"^\d+ ms$")
+        # Do not accept a fabricated zero duration for a server query that really waits.
+        self.assertGreaterEqual(int(duration.split()[0]), 75)
+        self.expect_rendered(tree, key="query-result-duration", text=duration)
+        self.assertFalse(visible(tree, key="execution-summary-rows"))
+
+    def run_legacy_postgres_select_script(self, config):
+        """Migrate PostgreSQL SQ-011 using the real ordered result artifacts."""
+        database = DisposableSql("postgresql", config)
+        before = "SELECT $str$first;result$str$ AS first_value"
+        after = "SELECT 29 AS second_value"
+        empty = "SELECT 77 AS empty_value WHERE FALSE"
+        self.assertEqual([database.query(sql) for sql in (before, after, empty)],
+                         ["first;result", "29", ""])
+        database.write_profile(self)
+
+        def execute(sql):
+            actions = [
+                tap(.5, "conn-open-e2e-tcp-sql"),
+                tap(3.4, "conn-toolbar-new-query"),
+                tap(4.5, "sql-editor-scroll"),
+                {"t": 4.8, "type": "key", "name": "a", "cmd": True},
+                {"t": 5.2, "type": "paste", "text": sql},
+                tap(7, "sql-run-script"),
+            ]
+            return actions
+
+        actions = execute(";\n".join((before, after, empty)) + ";")
+        labels = ("first_value", "second_value", "empty_value")
+        values = ("first;result", "29", None)
+
+        def expect_page(tree, index):
+            for ident in (1, 2, 3):
+                self.expect_rendered(tree, key=f"query-result-tab-{ident}")
+            self.expect_rendered(tree, text=labels[index], within="result-data-grid-header")
+            for peer in range(len(labels)):
+                if peer != index:
+                    self.assertFalse(visible(tree, text=labels[peer], within="result-data-grid-header"))
+            if values[index] is None:
+                self.expect_rendered(tree, key="result-grid-status", text="result · 0 rows × 1 cols")
+                self.assertFalse(visible(tree, key="result-cell-0-0"))
+            else:
+                self.expect_rendered(tree, text=values[index], within="result-cell-0-0")
+                self.expect_rendered(tree, key="result-grid-status", text="result · 1 rows × 1 cols")
+
+        expect_page(self.replay(actions, until=11), 0)
+        second = [*actions, tap(10, "query-result-label-2")]
+        expect_page(self.replay(second, until=11.5), 1)
+        third = [*second, tap(11.5, "query-result-label-3")]
+        expect_page(self.replay(third, until=12.7), 2)
+        expect_page(self.replay([*third, tap(12.8, "query-result-label-1")], until=14), 0)
+
+        table = "aaa_rune_script_rejected_" + uuid.uuid4().hex[:12]
+        self.addCleanup(database.query, f"DROP TABLE IF EXISTS public.{table}")
+        mixed = before + f"; SELECT 1 INTO public.{table};"
+        blocked = self.replay(execute(mixed), until=10)
+        self.expect_rendered(blocked,
+                             text="The PostgreSQL script may contain only non-mutating SELECT statements.",
+                             within="query-notice")
+        self.assertFalse(visible(blocked, key="result-workspace"))
+        self.assertEqual(database.query(f"SELECT to_regclass('public.{table}') IS NULL;"), "t")
+
     def run_postgres_collision(self, config):
         database = DisposableSql("postgresql", config)
         tag = uuid.uuid4().hex[:12]
@@ -326,6 +463,21 @@ def with_tcp_journeys(suite, configs):
                 return self.run_legacy_history_scope_and_search(config)
 
             setattr(suite, "test_postgresql_legacy_history_scope_and_search", history_scope)
+
+            def affected_rows(self, config=config):
+                return self.run_legacy_postgres_affected_rows(config)
+
+            setattr(suite, "test_postgresql_legacy_dml_reports_affected_rows", affected_rows)
+
+            def stream_result_status(self, config=config):
+                return self.run_legacy_postgres_stream_result_status(config)
+
+            setattr(suite, "test_postgresql_legacy_stream_result_status", stream_result_status)
+
+            def select_script(self, config=config):
+                return self.run_legacy_postgres_select_script(config)
+
+            setattr(suite, "test_postgresql_legacy_select_script_result_tabs", select_script)
 
             def collision(self, config=config):
                 return self.run_postgres_collision(config)

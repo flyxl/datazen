@@ -1,11 +1,52 @@
-//! Validation and result collection for native SQLite SELECT scripts.
+//! Native SQL script validation and ordered result collection.
 
-use datazen::execution::domain::sql_guard::tokenize_sql;
-use datazen_driver_api::resource::ResultChunk;
+use datazen::execution::domain::sql_guard::{check_sql, sql_main_keyword, tokenize_sql};
+use datazen_driver_api::resource::{ResultChunk, StatementSummary};
 use datazen_ui_api::TablePage;
 use serde_json::Value;
 
-pub(super) fn select_statement_count(sql: &str) -> Result<usize, String> {
+#[derive(Clone, Copy)]
+pub(super) enum ScriptDialect {
+    Sqlite,
+    Postgres,
+}
+
+impl ScriptDialect {
+    pub(super) fn linked_driver(name: &str) -> Option<Self> {
+        match name {
+            "sqlite" => Some(Self::Sqlite),
+            "postgresql" => Some(Self::Postgres),
+            _ => None,
+        }
+    }
+
+    pub(super) fn statement_count(self, sql: &str) -> Result<usize, String> {
+        match self {
+            Self::Sqlite => sqlite_statement_count(sql),
+            Self::Postgres => postgres_statement_count(sql),
+        }
+    }
+}
+
+fn postgres_statement_count(sql: &str) -> Result<usize, String> {
+    // This is the same splitter as the PostgreSQL resource stream. In
+    // particular, ordinary, escaped, and dollar-quoted semicolons do not create tabs.
+    let statements = datazen_driver_api::sql_dump::split_sql_statements(sql);
+    if !(2..=20).contains(&statements.len()) {
+        return Err("Enter 2 to 20 PostgreSQL SELECT statements.".into());
+    }
+    if statements.iter().any(|statement| {
+        !tokenize_sql(statement)
+            .first()
+            .is_some_and(|token| token.eq_ignore_ascii_case("select"))
+            || check_sql(statement, true, false).is_err()
+    }) {
+        return Err("The PostgreSQL script may contain only non-mutating SELECT statements.".into());
+    }
+    Ok(statements.len())
+}
+
+fn sqlite_statement_count(sql: &str) -> Result<usize, String> {
     let ranges = datazen_driver_sqlite::sqlite_statement_ranges(sql)
         .map_err(|_| "The SQLite script is not complete.")?;
     if !(2..=20).contains(&ranges.len()) {
@@ -27,6 +68,12 @@ struct Page {
     rows: Vec<Vec<String>>,
     has_metadata: bool,
     has_rows: bool,
+    summary: Option<StatementSummary>,
+}
+
+pub(super) struct CollectedPage {
+    pub(super) page: TablePage,
+    pub(super) affected_rows: Option<u64>,
 }
 
 pub(super) struct ResultPages {
@@ -43,6 +90,15 @@ impl ResultPages {
     }
 
     pub(super) fn push(&mut self, output: Value) -> Result<(), String> {
+        if output["kind"] == "statementSummary" {
+            if let Ok(summary) = serde_json::from_value::<StatementSummary>(output) {
+                if let Some(page) = self.pages.get_mut(summary.statement_index) {
+                    // The statement's final total is not a row-batch increment.
+                    page.summary = Some(summary);
+                }
+            }
+            return Ok(());
+        }
         if output["kind"] == "statementMetadata" {
             let index = output["statementIndex"]
                 .as_u64()
@@ -57,16 +113,26 @@ impl ResultPages {
                     Ok(())
                 };
             };
-            if self.script && page.has_metadata {
-                return Err("Duplicate statement metadata.".into());
-            }
             if let Some(columns) = output["columns"].as_array() {
-                page.columns = columns
+                let names: Vec<String> = columns
                     .iter()
                     .filter_map(|column| column["name"].as_str())
                     .map(str::to_owned)
                     .collect();
+                if self.script && names.len() != columns.len() {
+                    return Err("Statement metadata has an invalid column name.".into());
+                }
+                // PostgreSQL publishes metadata through the resource stream
+                // and the host emits the completed statement metadata again.
+                // An identical header is idempotent, but disagreement would
+                // make it unsafe to render the rows as belonging to this tab.
+                if self.script && page.has_metadata && page.columns != names {
+                    return Err("Conflicting statement metadata.".into());
+                }
+                page.columns = names;
                 page.has_metadata = true;
+            } else if self.script {
+                return Err("Statement metadata has no column list.".into());
             }
             return Ok(());
         }
@@ -90,31 +156,48 @@ impl ResultPages {
         Ok(())
     }
 
-    pub(super) fn finish(self) -> Result<Vec<TablePage>, String> {
+    pub(super) fn finish(self) -> Result<Vec<CollectedPage>, String> {
         if self.script
             && self
                 .pages
                 .iter()
-                .any(|page| !page.has_metadata || !page.has_rows)
+                .any(|page| {
+                    // PostgreSQL has a typed terminal summary even for an empty
+                    // SELECT. Never invent a page without metadata and completion.
+                    !page.has_metadata || page.columns.is_empty()
+                        || !(page.has_rows || page.summary.is_some())
+                })
         {
-            return Err("The SQLite script returned incomplete statement results.".into());
+            return Err("The SELECT script returned incomplete statement results.".into());
         }
         Ok(self
             .pages
             .into_iter()
             .map(|page| {
                 let total = page.rows.len() as u32;
-                TablePage {
-                    table: "result".into(),
-                    columns: page.columns,
-                    rows: page.rows,
-                    page: 0,
-                    page_size: total.max(1),
-                    total_rows: total,
-                    sort: None,
-                    filter: None,
-                    primary_key: Vec::new(),
-                    read_only: Some("query result".into()),
+                let affected_rows = if page.has_metadata && page.columns.is_empty() && total == 0 {
+                    page.summary.and_then(|summary| {
+                        let verb = sql_main_keyword(&summary.sql)?;
+                        matches!(verb.as_str(), "INSERT" | "UPDATE" | "DELETE" | "MERGE")
+                            .then_some(summary.rows_affected).flatten()
+                    })
+                } else {
+                    None
+                };
+                CollectedPage {
+                    page: TablePage {
+                        table: "result".into(),
+                        columns: page.columns,
+                        rows: page.rows,
+                        page: 0,
+                        page_size: total.max(1),
+                        total_rows: total,
+                        sort: None,
+                        filter: None,
+                        primary_key: Vec::new(),
+                        read_only: Some("query result".into()),
+                    },
+                    affected_rows,
                 }
             })
             .collect())

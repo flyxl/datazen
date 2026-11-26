@@ -2103,7 +2103,7 @@ pub trait DesktopAdapter {
         false
     }
 
-    /// Native SQLite can explicitly run a bounded script of read-only SELECTs.
+    /// Supported native SQL drivers can explicitly run a bounded script of SELECT statements.
     fn supports_native_query_script(&self) -> bool {
         false
     }
@@ -2494,6 +2494,14 @@ pub enum AdapterJob {
     },
 }
 
+/// End-to-end execution time and, for a non-tabular DML command, the server's
+/// authoritative affected-row total. A missing total is not zero.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QueryExecutionStats {
+    pub affected_rows: Option<u64>,
+    pub elapsed_ms: u64,
+}
+
 /// A completed job's answer. The generation is the requesting job's; the UI
 /// matches it against the live one before writing any state.
 #[derive(Clone, Debug, PartialEq)]
@@ -2601,8 +2609,9 @@ pub enum AdapterDelivery {
     QueryPage {
         generation: u32,
         page: Result<TablePage, String>,
+        execution_stats: Option<QueryExecutionStats>,
     },
-    /// Ordered result pages from one explicitly submitted SQLite script.
+    /// Ordered result pages from one explicitly submitted SELECT script.
     QueryScriptPages {
         generation: u32,
         pages: Result<Vec<TablePage>, String>,

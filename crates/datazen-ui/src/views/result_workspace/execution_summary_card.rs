@@ -13,9 +13,9 @@
 //!
 //! ## Consumer / removal stage
 //!
-//! No production host mounts this card yet; the result workspace owns the VM,
-//! performs the copy and clears `copied` after 2000ms. Until then every
-//! reusable item carries a per-item `#[allow(dead_code)]` with this stage.
+//! The native workspace mounts this card for authoritative command totals.
+//! When the owner supplies SQL and handles copy, it also clears `copied`
+//! after 2000ms. The compact native totals don't mount that optional block.
 
 use std::rc::Rc;
 
@@ -42,8 +42,8 @@ pub const COPIED_FEEDBACK_MS: u64 = 2000;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SummaryResultVm {
     pub sql: String,
-    pub rows_affected: Option<i64>,
-    pub execution_time_ms: i64,
+    pub rows_affected: Option<u64>,
+    pub execution_time_ms: u64,
 }
 
 /// Host-owned copy feedback state.

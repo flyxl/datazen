@@ -20,7 +20,8 @@ fn job_adapter_delivers_only_the_work_it_accepts() {
         host.poll_jobs().as_slice(),
         [AdapterDelivery::QueryPage {
             generation: 2,
-            page: Ok(_)
+            page: Ok(_),
+            execution_stats: None,
         }]
     ));
 }

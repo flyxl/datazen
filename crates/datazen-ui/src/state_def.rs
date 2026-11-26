@@ -27,6 +27,7 @@ pub struct QueryResultTab {
     pub id: u32,
     pub label: String,
     pub generation: Option<u32>,
+    pub execution_stats: Option<datazen_ui_api::QueryExecutionStats>,
     pub grid: Option<DataGrid>,
     pub pinned: bool,
 }

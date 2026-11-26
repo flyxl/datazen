@@ -220,6 +220,7 @@ impl AppState {
             id,
             label,
             generation,
+            execution_stats: None,
             grid: None,
             pinned: false,
         });
@@ -315,6 +316,15 @@ impl AppState {
     /// a newer run or invalidated by a cancel — are dropped on the floor.
     /// A3: lands in the matching result tab and makes it selected.
     pub fn deliver_query_result(&mut self, generation: u32, page: TablePage) {
+        self.deliver_query_result_with_stats(generation, page, None);
+    }
+
+    fn deliver_query_result_with_stats(
+        &mut self,
+        generation: u32,
+        page: TablePage,
+        execution_stats: Option<datazen_ui_api::QueryExecutionStats>,
+    ) {
         if generation != self.query_generation {
             return;
         }
@@ -322,7 +332,15 @@ impl AppState {
         let tab_id = self.ensure_query_result_tab_for_generation(generation);
         self.selected_query_result = Some(tab_id);
         self.restore_selected_query_result_grid();
-        self.load_result_page(page.columns, page.rows);
+        if let Some(tab) = self.query_result_tabs.iter_mut().find(|tab| tab.id == tab_id) {
+            tab.execution_stats = execution_stats;
+        }
+        if execution_stats.is_some_and(|stats| stats.affected_rows.is_some()) {
+            self.result_grid = None;
+            self.result_focused = false;
+        } else {
+            self.load_result_page(page.columns, page.rows);
+        }
         self.park_selected_query_result_grid();
         self.restore_selected_query_result_grid();
     }
@@ -362,7 +380,7 @@ impl AppState {
             self.query_loading = Some(generation);
             self.native_query = Some(crate::native_query_close::NativeQuery::new(generation, tab_id, sql));
         } else {
-            self.query_action_notice("The SQLite script could not start.");
+            self.query_action_notice("The SELECT script could not start.");
         }
     }
 
@@ -855,13 +873,13 @@ impl AppState {
                 self.deliver_query_script(generation, pages);
                 self.refresh_query_history_if_open();
             }
-            AdapterDelivery::QueryPage { generation, page } => {
+            AdapterDelivery::QueryPage { generation, page, execution_stats } => {
                 self.finish_running_query(generation, false);
                 if self.query_loading == Some(generation) {
                     self.query_loading = None;
                 }
                 if let Ok(page) = page {
-                    self.deliver_query_result(generation, page);
+                    self.deliver_query_result_with_stats(generation, page, execution_stats);
                 }
                 self.refresh_query_history_if_open();
             }

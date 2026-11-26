@@ -268,9 +268,31 @@ pub fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     });
 
     let result_tabs = query_result_tabs_bar(state, theme);
-    let result_body = match &state.result_grid {
-        Some(grid) => result_workspace(state, grid, theme, dark),
-        None => col()
+    let execution_stats = state.selected_query_result.and_then(|id| {
+        state.query_result_tabs.iter().find(|tab| tab.id == id)?.execution_stats
+    });
+    let elapsed_ms = execution_stats.map(|stats| stats.elapsed_ms);
+    let command_stats = execution_stats.and_then(|stats| {
+        stats.affected_rows.map(|count| (count, stats.elapsed_ms))
+    });
+    let result_body = match (command_stats, &state.result_grid) {
+        (Some((affected_rows, execution_time_ms)), _) => {
+            use crate::views::result_workspace::execution_summary_card::{
+                build, ExecutionSummaryCardVm, SummaryResultVm,
+            };
+            let summary = ExecutionSummaryCardVm {
+                result: SummaryResultVm {
+                    rows_affected: Some(affected_rows),
+                    execution_time_ms,
+                    ..SummaryResultVm::default()
+                },
+                copied: false,
+            };
+            col().key("result-workspace").w_full()
+                .child(build::<AppState>(&summary, None, None, dark))
+        }
+        (None, Some(grid)) => result_workspace(state, grid, theme, dark, elapsed_ms),
+        (None, None) => col()
             .key("query-results")
             .w_full()
             .h(120.0)
@@ -577,10 +599,11 @@ fn result_workspace(
     grid: &crate::data_grid::DataGrid,
     theme: tok::Theme,
     dark: bool,
+    elapsed_ms: Option<u64>,
 ) -> El {
     let toggle = result_view_toggle(state, theme);
     let find_bar = result_find_bar(state, grid, theme, dark);
-    let status = result_status_bar(state, grid, theme);
+    let status = result_status_bar(state, grid, theme, elapsed_ms);
     let body = match state.result_view {
         ResultView::Table => crate::data_grid::result_panel(
             grid,
@@ -707,8 +730,17 @@ fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: t
         )
 }
 
+fn result_duration(key: &'static str, elapsed_ms: u64, theme: tok::Theme) -> El {
+    text(format!("{elapsed_ms} ms")).key(key).font(type_::LABEL).color(theme.text_secondary)
+}
+
 /// A5: status bar for the result workspace (rows/cols/state/selection).
-fn result_status_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: tok::Theme) -> El {
+fn result_status_bar(
+    state: &AppState,
+    grid: &crate::data_grid::DataGrid,
+    theme: tok::Theme,
+    elapsed_ms: Option<u64>,
+) -> El {
     let exec = if state.query_loading.is_some() {
         t("query.running").to_owned()
     } else {
@@ -737,6 +769,7 @@ fn result_status_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme:
         .w_full()
         .h(24.0)
         .px(8.0)
+        .gap(12.0)
         .center_y()
         .radius(6.0)
         .fill(theme.control_off)
@@ -746,6 +779,7 @@ fn result_status_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme:
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
         )
+        .children(elapsed_ms.map(|ms| result_duration("query-result-duration", ms, theme)))
 }
 
 /// A5: derive chart bars from a result grid (label, numeric value).
