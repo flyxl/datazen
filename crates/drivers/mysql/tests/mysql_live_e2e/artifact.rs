@@ -1,19 +1,19 @@
-use super::{resource::Ledger, Fixture};
+use super::{Fixture, resource::Ledger};
 use datazen_driver_api::{
+    DatabaseDriver, DriverError, QueryExecutionId, Value,
     namespace::NamespaceTarget,
     resource::{
         AcquireResourceRequest, Baseline, BudgetPort, CommandCall, IdentityScope, ResourceError,
         ResourcePurpose, ResourceScope, ResultChunk, ResultSink,
     },
     session::{CancelDisposition, CloseDisposition},
-    DatabaseDriver, DriverError, QueryExecutionId, Value,
 };
-use serde_json::{json, Value as Json};
+use serde_json::{Value as Json, json};
 use std::{
     io::Write,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -107,7 +107,7 @@ async fn mysql_real_artifact_rejections_drain_the_same_connection_at_each_delive
         .unwrap()
         .rows;
     let dir = tempfile::tempdir().unwrap();
-    let large="WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<4) SELECT n, REPEAT('w',430000) AS wide FROM seq";
+    let large = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<4) SELECT n, REPEAT('w',430000) AS wide FROM seq";
     let tiny = "SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3";
     for (label, headers, writes, sql, expected_attempts) in [
         ("metadata", false, 9, large, 0),
@@ -308,6 +308,122 @@ async fn mysql_resource_cancels_one_running_query_and_keeps_its_original_native_
     );
     assert_eq!(
         provider.close_resource(&fixed).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn mysql_losing_native_backend_midstream_never_reopens_a_retained_identity() {
+    let mut f = Fixture::open().await;
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|d| d.driver_id() == "mysql")
+        .unwrap();
+    let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+    let driver = factory.create();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let req = AcquireResourceRequest {
+        connection_config: f.cfg.clone(),
+        target: NamespaceTarget::empty().with_database(f.database.clone()),
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 8,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+    };
+    let h = provider.acquire_resource(&req, &budget).await.unwrap();
+    let other = provider.acquire_resource(&req, &budget).await.unwrap();
+    let phys = provider.connection_handle(&h).unwrap();
+    let stable = provider.connection_handle(&other).unwrap();
+    let foreign_before = driver
+        .query(&stable, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap()
+        .rows;
+    let Some(Value::Integer(pid)) = driver
+        .query(&phys, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap()
+        .rows[0][0]
+    else {
+        panic!("actual MySQL target")
+    };
+    let marker = format!("dz_lost_{}", uuid::Uuid::new_v4().simple());
+    let exec = QueryExecutionId::new("socket-disappears-while-running");
+    let dir = tempfile::tempdir().unwrap();
+    let sink = Arc::new(FileQuota::new(&dir.path().join("lost.jsonl"), true, 10));
+    let worker = tokio::spawn({
+        let (provider, h, exec, sink) = (provider.clone(), h.clone(), exec.clone(), sink.clone());
+        let sql = format!("SELECT 1+SLEEP(20) AS {marker}");
+        async move {
+            provider
+                .execute_on_resource(
+                    &h,
+                    &exec,
+                    &CommandCall::new("query", json!({"sql":sql})),
+                    &*sink,
+                )
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(4),async{
+        loop{
+            let active:i64=sqlx::query_scalar("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID=? AND LOCATE(?, INFO)>0")
+            .bind(pid).bind(&marker).fetch_one(&mut f.oracle).await.unwrap();
+            if active==1{break;}
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }).await.expect("independent connection confirms actual owned MySQL query in progress");
+    assert_eq!(
+        provider
+            .request_cancel(&other, &exec)
+            .await
+            .unwrap()
+            .disposition,
+        CancelDisposition::Unsupported
+    );
+    sqlx::raw_sql(&format!("KILL CONNECTION {pid}"))
+        .execute(&mut f.oracle)
+        .await
+        .expect("terminate this isolated fixture connection only");
+    let outcome = tokio::time::timeout(Duration::from_secs(6), worker)
+        .await
+        .expect("native disconnect unwinds")
+        .unwrap();
+    assert!(
+        matches!(outcome,Err(ResourceError::Driver(DriverError::ConnectionFailed(message))) if message.contains("SessionLost"))
+    );
+    assert!(provider.observe_session(&h).await.is_err());
+    assert!(
+        provider
+            .execute_on_resource(
+                &h,
+                &QueryExecutionId::new("no-lost-reopen"),
+                &CommandCall::new("query", json!({"sql":"SELECT 1"})),
+                &*sink
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        driver
+            .query(&stable, "SELECT CONNECTION_ID()")
+            .await
+            .unwrap()
+            .rows,
+        foreign_before
+    );
+    assert_eq!(
+        provider.close_resource(&h).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert_eq!(
+        provider.close_resource(&other).await.unwrap(),
         CloseDisposition::Closed
     );
     assert!(ledger.0.lock().unwrap().is_empty());

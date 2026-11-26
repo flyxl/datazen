@@ -508,8 +508,8 @@ async fn estimate_mysql_table_rows(
         .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
     let schema = input["schema"].as_str();
 
-    let estimated_rows: Option<i64> = if let Some(db) = schema {
-        sqlx::query_scalar(
+    let estimated_rows: Option<u64> = if let Some(db) = schema {
+        sqlx::query_scalar::<_, Option<u64>>(
             "SELECT TABLE_ROWS FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
         )
         .bind(db)
@@ -517,14 +517,16 @@ async fn estimate_mysql_table_rows(
         .fetch_optional(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?
+        .flatten()
     } else {
-        sqlx::query_scalar(
+        sqlx::query_scalar::<_, Option<u64>>(
             "SELECT TABLE_ROWS FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?",
         )
         .bind(table)
         .fetch_optional(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?
+        .flatten()
     };
 
     Ok(CommandResult {

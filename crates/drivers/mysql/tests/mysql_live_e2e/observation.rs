@@ -1,5 +1,6 @@
-use super::{resource::Ledger, Fixture};
+use super::{Fixture, resource::Ledger};
 use datazen_driver_api::{
+    ConnectionConfig, DatabaseDriver, QueryExecutionId, Value,
     namespace::NamespaceTarget,
     resource::{
         AcquireResourceRequest, Baseline, BudgetPort, IdentityScope, ResourceError,
@@ -9,7 +10,6 @@ use datazen_driver_api::{
         CancelDisposition, CloseDisposition, EffectOutcome, ObservationConfidence,
         TransactionOptions, TransactionState,
     },
-    ConnectionConfig, DatabaseDriver, QueryExecutionId, Value,
 };
 use std::sync::Arc;
 
@@ -47,7 +47,12 @@ async fn mysql_performance_schema_proves_raw_transaction_without_guessing_uninst
     for definition in [
         "UPDATE performance_schema.setup_instruments SET ENABLED='YES', TIMED='YES' WHERE NAME='transaction'",
         "UPDATE performance_schema.setup_consumers SET ENABLED='YES' WHERE NAME IN ('events_transactions_current','thread_instrumentation','global_instrumentation')",
-    ] {sqlx::query(definition).execute(&mut f.oracle).await.expect("authentic disposable runtime instrumentation");}
+    ] {
+        sqlx::query(definition)
+            .execute(&mut f.oracle)
+            .await
+            .expect("authentic disposable runtime instrumentation");
+    }
 
     let resource = provider
         .acquire_resource(&request(&f.cfg, ResourcePurpose::InteractiveQuery), &budget)
@@ -228,4 +233,87 @@ async fn mysql_provider_does_not_acknowledge_commit_of_a_lost_backend_or_leak_ad
         CloseDisposition::Closed
     );
     assert!(ledger.0.lock().unwrap().is_empty());
+}
+
+#[derive(Default)]
+struct PausedLedger {
+    inner: Ledger,
+    pending: tokio::sync::Notify,
+    proceed: tokio::sync::Notify,
+}
+#[async_trait::async_trait]
+impl BudgetPort for PausedLedger {
+    async fn acquire_physical_connections(
+        &self,
+        n: u32,
+    ) -> Result<datazen_driver_api::resource::BudgetPermit, ResourceError> {
+        self.inner.acquire_physical_connections(n).await
+    }
+    async fn release_physical_connections(
+        &self,
+        permit: &datazen_driver_api::resource::BudgetPermit,
+    ) -> Result<(), ResourceError> {
+        self.pending.notify_one();
+        self.proceed.notified().await;
+        self.inner.release_physical_connections(permit).await
+    }
+}
+#[tokio::test]
+async fn mysql_parallel_close_does_not_claim_full_settlement_before_real_socket_and_budget_close() {
+    let mut f = Fixture::open().await;
+    let driver = factory().create();
+    let provider = provider();
+    let ledger = Arc::new(PausedLedger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let owned = provider
+        .acquire_resource(&request(&f.cfg, ResourcePurpose::InteractiveQuery), &budget)
+        .await
+        .unwrap();
+    let h = provider.connection_handle(&owned).unwrap();
+    let Some(Value::Integer(pid)) = driver
+        .query(&h, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap()
+        .rows[0][0]
+    else {
+        panic!("real mysql owned pid")
+    };
+    let release = ledger.pending.notified();
+    let first = tokio::spawn({
+        let (p, h) = (provider.clone(), owned.clone());
+        async move { p.close_resource(&h).await }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(4), release)
+        .await
+        .expect("socket cleanup happened and accounting awaits acknowledgement");
+    assert_eq!(
+        provider.close_resource(&owned).await.unwrap(),
+        CloseDisposition::CloseUnconfirmed
+    );
+    assert!(provider.observe_session(&owned).await.is_err());
+    assert_eq!(ledger.inner.0.lock().unwrap().len(), 1);
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let held: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID=?",
+            )
+            .bind(pid)
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+            if held == 0 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+        }
+    })
+    .await
+    .expect("independent MySQL confirms the original socket is already gone");
+    ledger.proceed.notify_one();
+    assert_eq!(first.await.unwrap().unwrap(), CloseDisposition::Closed);
+    assert_eq!(
+        provider.close_resource(&owned).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.inner.0.lock().unwrap().is_empty());
 }

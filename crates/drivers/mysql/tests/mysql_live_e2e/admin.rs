@@ -2,8 +2,8 @@ use super::Fixture;
 use datazen_driver_api::{DatabaseDriver, DriverError};
 use serde_json::json;
 use sqlx::{
-    mysql::{MySqlConnectOptions, MySqlSslMode},
     Connection, MySqlConnection,
+    mysql::{MySqlConnectOptions, MySqlSslMode},
 };
 use std::time::Duration;
 
@@ -51,10 +51,12 @@ async fn admin_creates_grants_inspects_and_revokes_access_on_real_mysql() {
         .await
         .expect("actual account login");
     let select = format!("SELECT note FROM `{db}`.`sample`");
-    assert!(sqlx::query_scalar::<_, String>(&select)
-        .fetch_one(&mut limited)
-        .await
-        .is_err());
+    assert!(
+        sqlx::query_scalar::<_, String>(&select)
+            .fetch_one(&mut limited)
+            .await
+            .is_err()
+    );
     driver
         .execute_command(
             &handle,
@@ -72,9 +74,11 @@ async fn admin_creates_grants_inspects_and_revokes_access_on_real_mysql() {
         .fetch_all(&mut limited)
         .await
         .expect("actual grants");
-    assert!(grants
-        .iter()
-        .any(|grant| grant.contains("SELECT") && grant.contains("WITH GRANT OPTION")));
+    assert!(
+        grants
+            .iter()
+            .any(|grant| grant.contains("SELECT") && grant.contains("WITH GRANT OPTION"))
+    );
     driver
         .execute_command(
             &handle,
@@ -87,10 +91,12 @@ async fn admin_creates_grants_inspects_and_revokes_access_on_real_mysql() {
     let mut limited = MySqlConnection::connect_with(&opts)
         .await
         .expect("new session observes revoked grants");
-    assert!(sqlx::query_scalar::<_, String>(&select)
-        .fetch_one(&mut limited)
-        .await
-        .is_err());
+    assert!(
+        sqlx::query_scalar::<_, String>(&select)
+            .fetch_one(&mut limited)
+            .await
+            .is_err()
+    );
     limited.close().await.expect("ordinary close");
     let status = driver
         .execute_command(&handle, "server_status_snapshot", json!({}))
@@ -143,11 +149,13 @@ async fn admin_process_list_and_cancel_affect_only_the_fixture_backend() {
         .execute_command(&handle, "list_processes", json!({}))
         .await
         .expect("real process list");
-    assert!(listed.data["processes"]
-        .as_array()
-        .expect("processes")
-        .iter()
-        .any(|p| p["pid"].as_u64() == Some(pid)));
+    assert!(
+        listed.data["processes"]
+            .as_array()
+            .expect("processes")
+            .iter()
+            .any(|p| p["pid"].as_u64() == Some(pid))
+    );
     let worker = tokio::spawn(async move {
         let result = sqlx::query_scalar::<_, i32>("SELECT SLEEP(20)")
             .fetch_one(&mut f.oracle)
@@ -200,10 +208,12 @@ async fn admin_process_list_and_cancel_affect_only_the_fixture_backend() {
         .execute_command(&handle, "kill_process", json!({"pid":pid,"force":true}))
         .await
         .expect("terminate only owned fixture backend");
-    assert!(sqlx::query_scalar::<_, i32>("SELECT 1")
-        .fetch_one(&mut oracle)
-        .await
-        .is_err());
+    assert!(
+        sqlx::query_scalar::<_, i32>("SELECT 1")
+            .fetch_one(&mut oracle)
+            .await
+            .is_err()
+    );
     assert_eq!(
         driver
             .query(&handle, "SELECT 2")
@@ -214,4 +224,130 @@ async fn admin_process_list_and_cancel_affect_only_the_fixture_backend() {
         1
     );
     driver.disconnect(handle).await.expect("disconnect");
+}
+
+#[tokio::test]
+async fn mysql_admin_reports_exact_native_grants_and_refuses_incomplete_or_unauthorized_requests() {
+    let mut f = Fixture::open().await;
+    let (admin, handle) = f.connect().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let user = format!("dz_acl_{}", &tag[..20]);
+    let password = uuid::Uuid::new_v4().simple().to_string();
+    let database = format!("dz_fixture_mysql_acl_{}", &tag[..20]);
+    for (cmd, args) in [
+        ("create_database", json!({"name":database})),
+        ("create_user", json!({"username":user,"password":password})),
+        (
+            "grant_privileges",
+            json!({"username":user,"database":database,"privileges":["SELECT"]}),
+        ),
+        (
+            "grant_privileges",
+            json!({"username":user,"privileges":["PROCESS"]}),
+        ),
+    ] {
+        admin
+            .execute_command(&handle, cmd, args)
+            .await
+            .expect("actual administrative operations in verified fixture");
+    }
+    sqlx::raw_sql(&format!("CREATE TABLE {database}.tracked(id INT NOT NULL); INSERT INTO {database}.tracked VALUES(8);"))
+      .execute(&mut f.oracle).await.expect("actual limited catalog");
+    let grants = admin
+        .execute_command(&handle, "list_privileges", json!({}))
+        .await
+        .expect("real user privilege listing");
+    assert!(grants.data["grants"].as_array().unwrap().iter().any(|g| {
+        g["grantee"]
+            .as_str()
+            .is_some_and(|name| name.contains(&user))
+            && g["privilege"] == "PROCESS"
+    }));
+    let mut limited_cfg = f.cfg.clone();
+    limited_cfg.username = Some(user.clone());
+    limited_cfg.password = Some(password);
+    limited_cfg.database = Some(database.clone());
+    limited_cfg.max_pool_size = 1;
+    let limited = admin
+        .connect(&limited_cfg)
+        .await
+        .expect("actual least privilege tenant session");
+    let estimation = admin
+        .execute_command(
+            &limited,
+            "estimate_table_rows",
+            json!({"schema":database,"table":"tracked"}),
+        )
+        .await
+        .expect("ordinary MySQL estimate scoped to actual target");
+    assert!(estimation.data["estimatedRows"].is_number());
+    assert!(matches!(
+        admin
+            .execute_command(
+                &limited,
+                "create_database",
+                json!({"name":format!("dz_fixture_mysql_denied_{tag}")})
+            )
+            .await,
+        Err(DriverError::QueryFailed(_))
+    ));
+    let read = admin
+        .query(&limited, "SELECT id FROM tracked")
+        .await
+        .expect("ACL allows configured scope read only");
+    assert_eq!(
+        read.rows,
+        [vec![Some(datazen_driver_api::Value::Integer(8))]]
+    );
+    for (cmd, args) in [
+        ("create_database", json!({})),
+        ("drop_database", json!({})),
+        ("create_user", json!({})),
+        ("drop_user", json!({})),
+        ("grant_privileges", json!({"username":user})),
+        ("grant_privileges", json!({"username":user,"privileges":[]})),
+        ("revoke_privileges", json!({"username":user})),
+        (
+            "revoke_privileges",
+            json!({"username":user,"privileges":[]}),
+        ),
+        ("estimate_table_rows", json!({})),
+    ] {
+        assert!(
+            matches!(
+                admin.execute_command(&handle, cmd, args).await,
+                Err(DriverError::InvalidConfig(_))
+            ),
+            "missing user-required field rejected through actual command handler: {cmd}"
+        );
+    }
+    admin
+        .execute_command(
+            &handle,
+            "revoke_privileges",
+            json!({"username":user,"privileges":["PROCESS"]}),
+        )
+        .await
+        .expect("global grant revocation on actual mysql");
+    let exists:i64=sqlx::query_scalar("SELECT COUNT(*) FROM information_schema.USER_PRIVILEGES WHERE LOCATE(?,GRANTEE)>0 AND PRIVILEGE_TYPE='PROCESS'")
+        .bind(&user).fetch_one(&mut f.oracle).await.expect("independently verify actual grant revocation");
+    assert_eq!(exists, 0);
+    let row: i32 = sqlx::query_scalar(&format!("SELECT id FROM {database}.tracked"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(
+        row, 8,
+        "malformed commands never mutate legitimate owned catalog data"
+    );
+    admin.disconnect(limited).await.unwrap();
+    admin
+        .execute_command(&handle, "drop_user", json!({"username":user}))
+        .await
+        .unwrap();
+    admin
+        .execute_command(&handle, "drop_database", json!({"name":database}))
+        .await
+        .unwrap();
+    admin.disconnect(handle).await.unwrap();
 }
