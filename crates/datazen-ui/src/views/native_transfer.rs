@@ -1,6 +1,6 @@
-//! Live SQLite transfer and read-only schema diff, separate from demo data tools.
-use crate::state_def::AppState;
-use datazen_ui_api::native_transfer::{TransferChoice, TransferSide};
+//! Live SQLite transfer, schema diff and sync preview, separate from demo tools.
+use crate::{native_transfer_state::NativeTool, state_def::AppState};
+use datazen_ui_api::native_transfer::{TransferChoice, TransferSide, NATIVE_SYNC_ROW_LIMIT};
 use rune::tok::{self, type_};
 use rune::{col, row, text, El, ScrollSpec};
 
@@ -115,7 +115,7 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
     }
     if let Some(column) = endpoint
         .selected_column()
-        .filter(|_| !state.native_transfer.show_schema_diff)
+        .filter(|_| state.native_transfer.tool == NativeTool::Transfer)
     {
         panel = panel.child(button(
             format!("native-transfer-{prefix}-column"),
@@ -126,7 +126,9 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
             },
         ));
     }
-    if side == TransferSide::Target && catalog.read_only && !state.native_transfer.show_schema_diff
+    if side == TransferSide::Target
+        && catalog.read_only
+        && state.native_transfer.tool == NativeTool::Transfer
     {
         panel = panel.child(label(
             "native-transfer-read-only",
@@ -156,17 +158,22 @@ pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
                     "native-tool-transfer",
                     "Data Transfer",
                     theme,
-                    |s| s.set_native_schema_diff(false),
+                    |s| s.set_native_tool(NativeTool::Transfer),
                 ))
                 .child(button(
                     "native-tool-schema-diff",
                     "Schema Diff",
                     theme,
-                    |s| s.set_native_schema_diff(true),
-                )),
+                    |s| s.set_native_tool(NativeTool::SchemaDiff),
+                ))
+                .child(button("native-tool-data-sync", "Data Sync", theme, |s| {
+                    s.set_native_tool(NativeTool::SyncPreview)
+                })),
         );
-    if transfer.show_schema_diff {
-        return schema_diff_view(page, state, theme);
+    match transfer.tool {
+        NativeTool::SchemaDiff => return schema_diff_view(page, state, theme),
+        NativeTool::SyncPreview => return sync_preview_view(page, state, theme),
+        NativeTool::Transfer => {}
     }
     let mut page = page
         .child(
@@ -327,6 +334,48 @@ fn schema_diff_view(page: rune::El, state: &AppState, theme: tok::Theme) -> El {
             format!("Changed on target: {column} ({})", aspects.join(", ")),
             theme,
         ));
+    }
+    page.child(results)
+}
+
+fn sync_preview_view(page: El, state: &AppState, theme: tok::Theme) -> El {
+    let sync = &state.native_transfer;
+    let mut page = page
+        .child(text("SQLite Data Sync Preview").font(type_::TITLE).color(theme.text))
+        .child(label(
+            "native-sync-scope",
+            format!("Read-only preview. Matching columns and primary keys required; up to {NATIVE_SYNC_ROW_LIMIT} rows per table."),
+            theme,
+        ))
+        .child(endpoint(state, TransferSide::Source, theme))
+        .child(endpoint(state, TransferSide::Target, theme));
+    if sync.previewing_sync {
+        return page.child(label("native-sync-running", "Comparing rows…", theme));
+    }
+    page = page.child(button(
+        "native-sync-compare",
+        "Preview row differences",
+        theme,
+        |s| s.preview_native_sync(),
+    ));
+    if let Some(error) = &sync.sync_error {
+        return page.child(label("native-sync-error", error.clone(), theme));
+    }
+    let Some(preview) = &sync.sync_preview else {
+        return page;
+    };
+    let mut results = col().key("native-sync-results").w_full().gap(4.0);
+    for (key, caption, count) in [
+        ("native-sync-insert", "Would insert", preview.source_only),
+        ("native-sync-update", "Would update", preview.changed),
+        ("native-sync-unchanged", "Unchanged", preview.unchanged),
+        (
+            "native-sync-target-only",
+            "Target-only (kept)",
+            preview.target_only,
+        ),
+    ] {
+        results = results.child(label(key, format!("{caption}: {count}"), theme));
     }
     page.child(results)
 }

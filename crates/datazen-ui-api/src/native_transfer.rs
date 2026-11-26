@@ -1,4 +1,4 @@
-//! Typed vocabulary for the native, data-only SQLite transfer.
+//! Typed vocabulary for live SQLite migration tools.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransferSide {
     Source,
@@ -46,7 +46,7 @@ pub struct NativeTransferRequest {
 
 /// A read-only request. Unlike transfer, it carries no mappings or write mode.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NativeSchemaDiffRequest {
+pub struct SqliteReadComparison {
     pub source: TransferEndpoint,
     pub target: TransferEndpoint,
 }
@@ -58,3 +58,13 @@ pub struct NativeSchemaDiff {
     /// Column name plus the attributes that differ (not executable SQL).
     pub changed: Vec<(String, Vec<String>)>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeSyncPreview {
+    pub source_only: usize,
+    pub changed: usize,
+    pub unchanged: usize,
+    pub target_only: usize,
+}
+
+pub const NATIVE_SYNC_ROW_LIMIT: u32 = 1000;

@@ -76,8 +76,10 @@ mod live_table_targets;
 use live_table_targets::LiveTableTargets;
 #[path = "live_transfer.rs"]
 mod live_transfer;
+#[path = "live_sync.rs"]
+mod live_sync;
 use datazen_ui_api::native_transfer::{
-    NativeSchemaDiff, NativeSchemaDiffRequest, NativeTransferRequest, TransferCatalog,
+    NativeSchemaDiff, NativeSyncPreview, NativeTransferRequest, SqliteReadComparison, TransferCatalog,
     TransferChoice, TransferSide,
 };
 
@@ -85,7 +87,8 @@ use datazen_ui_api::native_transfer::{
 enum HostJob {
     ReadNativeTransfer { epoch: u32, side: TransferSide, choice: TransferChoice },
     RunNativeTransfer { epoch: u32, request: NativeTransferRequest },
-    CompareNativeSchema { epoch: u32, request: NativeSchemaDiffRequest },
+    CompareNativeSchema { epoch: u32, request: SqliteReadComparison },
+    PreviewNativeSync { epoch: u32, request: SqliteReadComparison },
     ProbeRedis { epoch: u64, config: datazen_driver_api::ConnectionConfig },
     ReadKv(KvRead),
     CloseKv { connection_id: String, session_generation: u32 },
@@ -135,6 +138,7 @@ enum HostAnswer {
     NativeTransferRead { epoch: u32, side: TransferSide, result: Result<TransferCatalog, String> },
     NativeTransferFinished { epoch: u32, result: Result<u64, String> },
     NativeSchemaCompared { epoch: u32, result: Result<NativeSchemaDiff, String> },
+    NativeSyncPreviewed { epoch: u32, result: Result<NativeSyncPreview, String> },
     RedisProbed { epoch: u64, result: Result<(), String> },
     KvRead { request: KvRead, result: Result<KvReply, String> },
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
@@ -362,6 +366,9 @@ impl LiveAdapter {
                                 HostJob::RunNativeTransfer { epoch, .. } => HostAnswer::NativeTransferFinished {
                                     epoch, result: Err("The transfer worker could not start.".into()),
                                 },
+                                HostJob::PreviewNativeSync { epoch, .. } => HostAnswer::NativeSyncPreviewed {
+                                    epoch, result: Err("The data sync preview worker could not start.".into()),
+                                },
                                 HostJob::CompareNativeSchema { epoch, .. } => HostAnswer::NativeSchemaCompared {
                                     epoch, result: Err("The schema comparison worker could not start.".into()),
                                 },
@@ -543,6 +550,10 @@ impl LiveAdapter {
                         HostJob::ReadNativeTransfer { epoch, side, choice } => {
                             let result = runtime.block_on(live_transfer::catalog(&worker_service, &worker_registry, choice));
                             HostAnswer::NativeTransferRead { epoch, side, result }
+                        }
+                        HostJob::PreviewNativeSync { epoch, request } => {
+                            let result = runtime.block_on(live_sync::preview(&worker_service, &worker_registry, request));
+                            HostAnswer::NativeSyncPreviewed { epoch, result }
                         }
                         HostJob::CompareNativeSchema { epoch, request } => {
                             let result = runtime.block_on(live_transfer::compare_schema(&worker_service, &worker_registry, request));
@@ -2272,6 +2283,7 @@ impl DesktopAdapter for LiveAdapter {
         let job = match job {
             AdapterJob::ReadNativeTransfer { epoch, side, choice } => HostJob::ReadNativeTransfer { epoch, side, choice },
             AdapterJob::RunNativeTransfer { epoch, request } => HostJob::RunNativeTransfer { epoch, request },
+            AdapterJob::PreviewNativeSync { epoch, request } => HostJob::PreviewNativeSync { epoch, request },
             AdapterJob::CompareNativeSchema { epoch, request } => HostJob::CompareNativeSchema { epoch, request },
             AdapterJob::ReadKv(request) => HostJob::ReadKv(request),
             AdapterJob::CloseKv { connection_id, session_generation } =>
@@ -2314,6 +2326,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::NativeTransferFinished { epoch, result } => {
                     deliveries.push(AdapterDelivery::NativeTransferFinished { epoch, result });
+                }
+                HostAnswer::NativeSyncPreviewed { epoch, result } => {
+                    deliveries.push(AdapterDelivery::NativeSyncPreviewed { epoch, result });
                 }
                 HostAnswer::NativeSchemaCompared { epoch, result } => {
                     deliveries.push(AdapterDelivery::NativeSchemaCompared { epoch, result });

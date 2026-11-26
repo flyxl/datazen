@@ -1981,9 +1981,13 @@ pub enum AdapterJob {
         side: native_transfer::TransferSide,
         choice: native_transfer::TransferChoice,
     },
+    PreviewNativeSync {
+        epoch: u32,
+        request: native_transfer::SqliteReadComparison,
+    },
     CompareNativeSchema {
         epoch: u32,
-        request: native_transfer::NativeSchemaDiffRequest,
+        request: native_transfer::SqliteReadComparison,
     },
     RunNativeTransfer {
         epoch: u32,
@@ -2069,6 +2073,10 @@ pub enum AdapterDelivery {
         result: Result<native_transfer::TransferCatalog, String>,
     },
     NativeTransferFinished { epoch: u32, result: Result<u64, String> },
+    NativeSyncPreviewed {
+        epoch: u32,
+        result: Result<native_transfer::NativeSyncPreview, String>,
+    },
     NativeSchemaCompared {
         epoch: u32,
         result: Result<native_transfer::NativeSchemaDiff, String>,

@@ -17,14 +17,16 @@ use datazen_driver_api::{
     ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableType,
 };
 use datazen_ui_api::native_transfer::{
-    NativeSchemaDiff, NativeSchemaDiffRequest, NativeTransferRequest, TransferCatalog,
-    TransferChoice,
+    NativeSchemaDiff, NativeTransferRequest, SqliteReadComparison, TransferCatalog, TransferChoice,
 };
 
 const MAIN: &str = "main";
 const SQLITE: &str = "sqlite";
 
-async fn profile(service: &ConnectionService, id: &str) -> Result<ConnectionConfig, String> {
+pub(super) async fn profile(
+    service: &ConnectionService,
+    id: &str,
+) -> Result<ConnectionConfig, String> {
     let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
     let config = service
         .get(&scope, id)
@@ -44,14 +46,14 @@ async fn profile(service: &ConnectionService, id: &str) -> Result<ConnectionConf
     Ok(config)
 }
 
-async fn driver(registry: &DriverRegistry) -> Result<Arc<dyn DatabaseDriver>, String> {
+pub(super) async fn driver(registry: &DriverRegistry) -> Result<Arc<dyn DatabaseDriver>, String> {
     registry
         .get(&SQLITE.to_owned())
         .await
         .ok_or_else(|| "The SQLite driver is unavailable.".into())
 }
 
-async fn identity(
+pub(super) async fn identity(
     driver: &dyn DatabaseDriver,
     handle: &ConnectionHandle,
 ) -> Result<String, String> {
@@ -62,7 +64,7 @@ async fn identity(
         .ok_or_else(|| "Could not verify the SQLite file identity.".into())
 }
 
-async fn tables(
+pub(super) async fn tables(
     driver: &dyn DatabaseDriver,
     handle: &ConnectionHandle,
 ) -> Result<Vec<TableInfo>, String> {
@@ -132,7 +134,7 @@ pub(super) async fn catalog(
 pub(super) async fn compare_schema(
     service: &ConnectionService,
     registry: &DriverRegistry,
-    request: NativeSchemaDiffRequest,
+    request: SqliteReadComparison,
 ) -> Result<NativeSchemaDiff, String> {
     if request.source.connection_id == request.target.connection_id
         || request.source.identity == request.target.identity
