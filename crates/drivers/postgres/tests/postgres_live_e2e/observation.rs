@@ -804,3 +804,126 @@ async fn pg_wire_alias_factories_can_close_their_own_live_resources_and_transact
         assert!(ledger.0.lock().unwrap().is_empty());
     }
 }
+
+#[derive(Default)]
+struct PausedAdmission {
+    ledger: Budget,
+    acquired: std::sync::atomic::AtomicUsize,
+    release_retries: std::sync::atomic::AtomicUsize,
+    waiting: tokio::sync::Notify,
+    resume: tokio::sync::Notify,
+}
+
+#[async_trait::async_trait]
+impl BudgetPort for PausedAdmission {
+    async fn acquire_physical_connections(&self, n: u32) -> Result<BudgetPermit, ResourceError> {
+        let index = self
+            .acquired
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if index == 1 {
+            self.waiting.notify_one();
+            self.resume.notified().await;
+        }
+        if index == 0 {
+            let permit_id = format!("data-{}", uuid::Uuid::new_v4());
+            self.ledger.0.lock().unwrap().push(permit_id.clone());
+            Ok(BudgetPermit {
+                permit_id,
+                physical_connections: n,
+            })
+        } else {
+            self.ledger.acquire_physical_connections(n).await
+        }
+    }
+
+    async fn release_physical_connections(
+        &self,
+        permit: &BudgetPermit,
+    ) -> Result<(), ResourceError> {
+        if permit.permit_id.starts_with("data-")
+            && self
+                .release_retries
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                == 0
+        {
+            return Err(ResourceError::BudgetDenied {
+                requested: permit.physical_connections,
+                reason: "fixture budget ledger briefly unavailable".into(),
+            });
+        }
+        self.ledger.release_physical_connections(permit).await
+    }
+}
+
+#[tokio::test]
+async fn abandoning_real_postgres_admission_closes_sockets_and_retries_budget_release() {
+    use std::sync::atomic::Ordering::SeqCst;
+    use std::time::Duration;
+    let mut fixture = Fixture::open().await;
+    let database = fixture.config.database.clone().unwrap();
+    let before = async |oracle: &mut sqlx::PgConnection| -> i64 {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()",
+        )
+        .bind(&database)
+        .fetch_one(oracle)
+        .await
+        .unwrap()
+    };
+    let baseline = before(&mut fixture.oracle).await;
+    let provider = Arc::new(PostgresResourceProvider::new(Arc::new(
+        PostgresDriver::new(),
+    )));
+    let ledger = Arc::new(PausedAdmission::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let request = AcquireResourceRequest {
+        connection_config: fixture.config.clone(),
+        target: NamespaceTarget::empty().with_database(database.clone()),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 16,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    };
+    let pending = tokio::spawn(async move { provider.acquire_resource(&request, &budget).await });
+    tokio::time::timeout(Duration::from_secs(8), ledger.waiting.notified())
+        .await
+        .expect("real data socket opened before control permits");
+    assert!(
+        before(&mut fixture.oracle).await > baseline,
+        "independent PG sees the partially opened resource"
+    );
+    assert_eq!(
+        ledger.ledger.0.lock().unwrap().len(),
+        1,
+        "one already-owned data permit"
+    );
+    pending.abort();
+    assert!(pending.await.unwrap_err().is_cancelled());
+    ledger.resume.notify_one();
+    tokio::time::timeout(Duration::from_secs(8), async {
+        loop {
+            if ledger.ledger.0.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("owned cleanup completes after caller cancellation");
+    assert_eq!(ledger.acquired.load(SeqCst), 2);
+    assert!(
+        ledger.release_retries.load(SeqCst) >= 2,
+        "failed host-ledger release was not mistaken for success"
+    );
+    tokio::time::timeout(Duration::from_secs(4), async {
+        while before(&mut fixture.oracle).await != baseline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("independent PG confirms no remaining sockets");
+}
