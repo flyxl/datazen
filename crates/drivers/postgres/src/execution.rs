@@ -31,13 +31,29 @@ impl PostgresDriver {
         &self,
         handle: &ConnectionHandle,
         target: SqlTarget<'_>,
-    ) -> Result<PgPool, DriverError> {
+    ) -> Result<(PgPool, bool), DriverError> {
         match target.database() {
             None => {
                 let pools = self.pools.read().await;
-                Self::get_pool(&pools, handle).cloned()
+                Ok((Self::get_pool(&pools, handle)?.clone(), true))
             }
-            Some(database) => self.pool_for_target(handle, database).await,
+            Some(database) => {
+                let same_database = self.is_active_database(handle, database).await;
+                Ok((self.pool_for_target(handle, database).await?, same_database))
+            }
+        }
+    }
+
+    /// A retained checkout belongs only to the session's own catalog.
+    async fn checkout_for_query(
+        &self,
+        handle: &ConnectionHandle,
+        use_retained: bool,
+    ) -> Option<Arc<tokio::sync::Mutex<sqlx::pool::PoolConnection<sqlx::Postgres>>>> {
+        if use_retained {
+            self.transactions.lock().await.get(&handle.id).cloned()
+        } else {
+            None
         }
     }
 
@@ -66,23 +82,16 @@ impl PostgresDriver {
         if self.is_active_database(handle, database).await {
             return Ok(());
         }
-        let observed = self
-            .fixed_contexts
-            .read()
-            .await
-            .get(&handle.id)
-            .map(|context| context.transaction_state);
-        match observed {
-            // Pinned but idle: the foreign target gets its own pool below.
-            Some(datazen_driver_api::session::TransactionState::Idle) => return Ok(()),
-            // Active, aborted or unobserved: fail closed, the transaction may
-            // not reach the target and a guess silently reads the wrong catalog.
-            Some(_) => {}
-            None => {
-                if !self.transactions.lock().await.contains_key(&handle.id) {
-                    return Ok(());
-                }
+        let retained = self.fixed_sessions.read().await.contains_key(&handle.id);
+        if retained {
+            // The last UI observation can be stale after the user starts
+            // BEGIN/COMMIT directly. Ask PostgreSQL before crossing catalogs.
+            let context = self.read_fixed_session(handle).await?;
+            if context.transaction_state == datazen_driver_api::session::TransactionState::Idle {
+                return Ok(());
             }
+        } else if !self.transactions.lock().await.contains_key(&handle.id) {
+            return Ok(());
         }
         Err(DriverError::TransactionError(format!(
             "cannot run a statement for database '{database}' inside a transaction: \
@@ -370,6 +379,7 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
         pool: PgPool,
+        use_retained: bool,
     ) -> Result<(), DriverError> {
         let mut executions = self.query_executions.lock().await;
         let execution = executions.get_mut(execution_id).ok_or_else(|| {
@@ -379,6 +389,12 @@ impl PostgresDriver {
             return Err(DriverError::QueryExecutionSessionMismatch);
         }
         execution.target_pool = Some(pool);
+        if !use_retained {
+            // A foreign route uses a new checkout. Cancellation may only
+            // target that checkout once the running statement binds its PID.
+            execution.transactional = false;
+            execution.backend_pid = None;
+        }
         Ok(())
     }
 
@@ -515,7 +531,7 @@ impl PostgresDriver {
             let pools = self.pools.read().await;
             Self::get_pool(&pools, handle)?.clone()
         };
-        self.query_on(handle, sql, &pool).await
+        self.query_on(handle, sql, &pool, true).await
     }
 
     /// [`Self::query_impl`] against an explicit target: the schema is inlined
@@ -528,8 +544,8 @@ impl PostgresDriver {
     ) -> Result<QueryResult, DriverError> {
         self.ensure_transaction_reaches(handle, target).await?;
         let sql = self.qualified_sql(sql, target);
-        let pool = self.resolve_statement_pool(handle, target).await?;
-        self.query_on(handle, &sql, &pool).await
+        let (pool, use_retained) = self.resolve_statement_pool(handle, target).await?;
+        self.query_on(handle, &sql, &pool, use_retained).await
     }
 
     async fn query_on(
@@ -537,9 +553,10 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         sql: &str,
         pool: &PgPool,
+        use_retained: bool,
     ) -> Result<QueryResult, DriverError> {
         {
-            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+            let pinned = self.checkout_for_query(handle, use_retained).await;
 
             if let Some(pinned) = pinned {
                 let mut conn = pinned.lock().await;
@@ -598,7 +615,7 @@ impl PostgresDriver {
             let pools = self.pools.read().await;
             Self::get_pool(&pools, handle)?.clone()
         };
-        self.query_multi_on(handle, sql, limit, &pool).await
+        self.query_multi_on(handle, sql, limit, &pool, true).await
     }
 
     /// [`Self::query_multi_impl`] against an explicit target.
@@ -611,8 +628,9 @@ impl PostgresDriver {
     ) -> Result<MultiQueryResult, DriverError> {
         self.ensure_transaction_reaches(handle, target).await?;
         let sql = self.qualified_sql(sql, target);
-        let pool = self.resolve_statement_pool(handle, target).await?;
-        self.query_multi_on(handle, &sql, limit, &pool).await
+        let (pool, use_retained) = self.resolve_statement_pool(handle, target).await?;
+        self.query_multi_on(handle, &sql, limit, &pool, use_retained)
+            .await
     }
 
     async fn query_multi_on(
@@ -621,6 +639,7 @@ impl PostgresDriver {
         sql: &str,
         limit: Option<u32>,
         pool: &PgPool,
+        use_retained: bool,
     ) -> Result<MultiQueryResult, DriverError> {
         let statements = sql_dump::split_sql_statements(sql);
         if statements.is_empty() {
@@ -633,7 +652,7 @@ impl PostgresDriver {
         let total_start = Instant::now();
         let mut results = Vec::with_capacity(statements.len());
 
-        let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+        let pinned = self.checkout_for_query(handle, use_retained).await;
 
         if let Some(pinned) = pinned {
             let mut conn = pinned.lock().await;
@@ -780,7 +799,7 @@ impl PostgresDriver {
             let pools = self.pools.read().await;
             Self::get_pool(&pools, handle)?.clone()
         };
-        self.query_stream_on(handle, sql, limit, &pool, on_event)
+        self.query_stream_on(handle, sql, limit, &pool, true, on_event)
             .await
     }
 
@@ -795,8 +814,8 @@ impl PostgresDriver {
     ) -> Result<(), DriverError> {
         self.ensure_transaction_reaches(handle, target).await?;
         let sql = self.qualified_sql(sql, target);
-        let pool = self.resolve_statement_pool(handle, target).await?;
-        self.query_stream_on(handle, &sql, limit, &pool, on_event)
+        let (pool, use_retained) = self.resolve_statement_pool(handle, target).await?;
+        self.query_stream_on(handle, &sql, limit, &pool, use_retained, on_event)
             .await
     }
 
@@ -806,6 +825,7 @@ impl PostgresDriver {
         sql: &str,
         limit: Option<u32>,
         pool: &PgPool,
+        use_retained: bool,
         on_event: QueryStreamCallback,
     ) -> Result<(), DriverError> {
         let statements = sql_dump::split_sql_statements(sql);
@@ -816,7 +836,7 @@ impl PostgresDriver {
 
         let total_start = Instant::now();
         {
-            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+            let pinned = self.checkout_for_query(handle, use_retained).await;
 
             if let Some(pinned) = pinned {
                 let mut conn = pinned.lock().await;
@@ -853,7 +873,8 @@ impl PostgresDriver {
             let pools = self.pools.read().await;
             Self::get_pool(&pools, handle)?.clone()
         };
-        self.query_with_params_on(handle, sql, params, &pool).await
+        self.query_with_params_on(handle, sql, params, &pool, true)
+            .await
     }
 
     /// [`Self::query_with_params_impl`] against an explicit target.
@@ -866,8 +887,9 @@ impl PostgresDriver {
     ) -> Result<QueryResult, DriverError> {
         self.ensure_transaction_reaches(handle, target).await?;
         let sql = self.qualified_sql(sql, target);
-        let pool = self.resolve_statement_pool(handle, target).await?;
-        self.query_with_params_on(handle, &sql, params, &pool).await
+        let (pool, use_retained) = self.resolve_statement_pool(handle, target).await?;
+        self.query_with_params_on(handle, &sql, params, &pool, use_retained)
+            .await
     }
 
     async fn query_with_params_on(
@@ -876,9 +898,10 @@ impl PostgresDriver {
         sql: &str,
         params: &[Value],
         pool: &PgPool,
+        use_retained: bool,
     ) -> Result<QueryResult, DriverError> {
         {
-            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+            let pinned = self.checkout_for_query(handle, use_retained).await;
 
             if let Some(pinned) = pinned {
                 let mut conn = pinned.lock().await;
@@ -932,7 +955,7 @@ impl PostgresDriver {
             let pools = self.pools.read().await;
             Self::get_pool(&pools, handle)?.clone()
         };
-        self.execute_on(handle, sql, &pool).await
+        self.execute_on(handle, sql, &pool, true).await
     }
 
     /// [`Self::execute_impl`] against an explicit target.
@@ -944,8 +967,8 @@ impl PostgresDriver {
     ) -> Result<u64, DriverError> {
         self.ensure_transaction_reaches(handle, target).await?;
         let sql = self.qualified_sql(sql, target);
-        let pool = self.resolve_statement_pool(handle, target).await?;
-        self.execute_on(handle, &sql, &pool).await
+        let (pool, use_retained) = self.resolve_statement_pool(handle, target).await?;
+        self.execute_on(handle, &sql, &pool, use_retained).await
     }
 
     async fn execute_on(
@@ -953,9 +976,10 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         sql: &str,
         pool: &PgPool,
+        use_retained: bool,
     ) -> Result<u64, DriverError> {
         {
-            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+            let pinned = self.checkout_for_query(handle, use_retained).await;
             tracing::debug!(
                 pinned_transaction = pinned.is_some(),
                 sql = %sql.chars().take(80).collect::<String>(),

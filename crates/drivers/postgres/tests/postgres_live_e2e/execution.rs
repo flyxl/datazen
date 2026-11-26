@@ -313,3 +313,205 @@ async fn registered_execution_cancels_only_its_real_postgres_statement() {
     driver.disconnect(control).await.expect("control cleanup");
     driver.disconnect(handle).await.expect("worker cleanup");
 }
+
+#[tokio::test]
+async fn explicit_target_queries_and_writes_do_not_switch_or_reuse_a_retained_foreign_database() {
+    let mut fixture = Fixture::open().await;
+    let database = fixture
+        .config
+        .database
+        .as_deref()
+        .expect("fixture database");
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let other = format!("dz_fixture_route_{tag}");
+    let table = format!("route_records_{tag}");
+    sqlx::query(&format!("CREATE DATABASE {other}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("disposable explicit target");
+    let mut other_oracle = fixture.connect_to(&other).await;
+    for (oracle, label) in [
+        (&mut fixture.oracle, "source"),
+        (&mut other_oracle, "foreign"),
+    ] {
+        sqlx::raw_sql(&format!(
+            "CREATE TABLE public.{table}(id integer PRIMARY KEY,label text); INSERT INTO public.{table} VALUES (1,'{label}')"
+        )).execute(oracle).await.expect("same relation name but different databases");
+    }
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("retained source session");
+    let initial = driver
+        .observe_fixed_session(&handle)
+        .await
+        .expect("exact retained initial state");
+    let foreign = SqlTarget::new(Some(&other), Some("public"));
+    let read_sql = format!("SELECT current_database()::text,label FROM {table} WHERE id=1");
+    let initial_cross = driver
+        .query_at(&handle, &read_sql, foreign)
+        .await
+        .expect("explicit cross target query");
+    let count = driver
+        .execute_at(
+            &handle,
+            &format!("UPDATE {table} SET label='foreign edited' WHERE id=1"),
+            foreign,
+        )
+        .await
+        .expect("explicit foreign write matches one row");
+    let current_label = async |oracle: &mut sqlx::PgConnection| {
+        sqlx::query_scalar::<_, String>(&format!("SELECT label FROM public.{table}"))
+            .fetch_one(oracle)
+            .await
+            .expect("independent persisted database value")
+    };
+    let before_cross =
+        initial_cross.rows == vec![vec![super::string(&other), super::string("foreign")]];
+    let outside_source = current_label(&mut fixture.oracle).await;
+    let edited_foreign = current_label(&mut other_oracle).await;
+    // Gather red evidence for both paths before failing; the fixture data is
+    // isolated regardless of which database the driver accidentally used.
+    assert!(before_cross && outside_source=="source" && edited_foreign=="foreign edited",
+        "cross-target must read and write its explicit database: read={:?}, source={outside_source:?}, target={edited_foreign:?}",
+        initial_cross.rows);
+    assert_eq!(count, 1);
+    let expected = vec![vec![super::string(&other), super::string("foreign edited")]];
+    let bound = driver
+        .query_with_params_at(
+            &handle,
+            &format!("SELECT current_database()::text,label FROM {table} WHERE id=$1::int"),
+            &[Value::Integer(1)],
+            foreign,
+        )
+        .await
+        .expect("foreign prepared query");
+    assert_eq!(bound.rows, expected);
+    let script = driver
+        .query_multi_at(
+            &handle,
+            &format!("{read_sql}; SELECT current_database()::text"),
+            None,
+            foreign,
+        )
+        .await
+        .expect("foreign materialized script");
+    assert_eq!(script.results[0].rows, expected);
+    assert_eq!(script.results[1].rows, vec![vec![super::string(&other)]]);
+    let (events, callback) = record();
+    driver
+        .query_stream_at(&handle, &read_sql, None, foreign, callback)
+        .await
+        .expect("foreign wire stream");
+    assert!(events
+        .lock()
+        .expect("actual output events")
+        .iter()
+        .any(|event| matches!(event,
+            QueryStreamEvent::Rows{rows,..} if rows == &expected)));
+    let exec = QueryExecutionId::new("retained-cross-target");
+    driver
+        .prepare_query_execution(&handle, &exec)
+        .await
+        .expect("register exact route");
+    let (events, callback) = record();
+    driver
+        .query_stream_with_execution_at(&handle, &exec, &read_sql, None, foreign, callback)
+        .await
+        .expect("registered foreign wire stream");
+    assert!(events
+        .lock()
+        .expect("typed foreign output")
+        .iter()
+        .any(|event| matches!(event,
+            QueryStreamEvent::Rows{rows,..} if rows == &expected)));
+
+    // The retained session is still physically bound to its original
+    // database. Check a real snapshot and auth identity before and after an
+    // unannounced transaction, with no pre-observation to refresh any cache.
+    let snapshot = driver
+        .begin_read_snapshot(&handle)
+        .await
+        .expect("real source snapshot");
+    let local = driver
+        .query(&handle, &read_sql)
+        .await
+        .expect("snapshot source read");
+    assert_eq!(
+        local.rows,
+        vec![vec![super::string(database), super::string("source")]]
+    );
+    sqlx::query(&format!(
+        "UPDATE public.{table} SET label='external source edit'"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("separate writer commits");
+    assert_eq!(
+        driver
+            .query(&handle, &read_sql)
+            .await
+            .expect("same source snapshot")
+            .rows,
+        local.rows
+    );
+    assert!(matches!(
+        driver.query_at(&handle, &read_sql, foreign).await,
+        Err(DriverError::TransactionError(_))
+    ));
+    assert!(matches!(
+        driver
+            .execute_at(
+                &handle,
+                &format!("UPDATE {table} SET label='must not apply'"),
+                foreign
+            )
+            .await,
+        Err(DriverError::TransactionError(_))
+    ));
+    assert_eq!(current_label(&mut other_oracle).await, "foreign edited");
+    driver
+        .rollback(snapshot)
+        .await
+        .expect("end source snapshot");
+    assert_eq!(
+        driver
+            .query_at(&handle, &read_sql, foreign)
+            .await
+            .expect("foreign read after rollback")
+            .rows,
+        expected
+    );
+    assert_eq!(
+        driver
+            .query(&handle, &read_sql)
+            .await
+            .expect("source sees external commit")
+            .rows,
+        vec![vec![
+            super::string(database),
+            super::string("external source edit")
+        ]]
+    );
+    let now = driver
+        .observe_fixed_session(&handle)
+        .await
+        .expect("original session unchanged");
+    assert_eq!(now.namespace, initial.namespace);
+    assert_eq!(now.effective_identity, initial.effective_identity);
+    assert_eq!(now.search_path, initial.search_path);
+    driver
+        .disconnect(handle)
+        .await
+        .expect("release both retained and shadow pools");
+    drop(other_oracle);
+    sqlx::raw_sql(&format!("DROP TABLE public.{table}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("remove source fixture");
+    sqlx::query(&format!("DROP DATABASE {other}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("remove foreign fixture");
+}

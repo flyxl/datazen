@@ -482,16 +482,16 @@ impl DatabaseDriver for PostgresDriver {
         // refuse a foreign target instead of silently reading another catalog.
         self.ensure_transaction_reaches(handle, target).await?;
         let sql = self.qualified_sql(sql, target);
-        let pool = self.resolve_statement_pool(handle, target).await?;
+        let (pool, use_retained) = self.resolve_statement_pool(handle, target).await?;
         let statements = sql_dump::split_sql_statements(&sql);
         if statements.is_empty() {
-            self.pin_query_execution_pool(handle, execution_id, pool)
+            self.pin_query_execution_pool(handle, execution_id, pool, use_retained)
                 .await?;
             self.finish_query_execution(handle, execution_id).await?;
             on_event(QueryStreamEvent::Done { total_time_ms: 0 });
             return Ok(());
         }
-        self.pin_query_execution_pool(handle, execution_id, pool)
+        self.pin_query_execution_pool(handle, execution_id, pool, use_retained)
             .await?;
         self.stream_registered_execution(handle, execution_id, &statements, limit, &on_event)
             .await

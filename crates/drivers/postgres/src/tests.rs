@@ -697,7 +697,7 @@ mod stream_target_pool {
         let pool = registered(&driver, &handle, &id).await;
 
         driver
-            .pin_query_execution_pool(&handle, &id, pool.clone())
+            .pin_query_execution_pool(&handle, &id, pool.clone(), true)
             .await
             .unwrap();
 
@@ -723,7 +723,7 @@ mod stream_target_pool {
             pool_id: "p".into(),
         };
         let err = driver
-            .pin_query_execution_pool(&other, &id, pool)
+            .pin_query_execution_pool(&other, &id, pool, true)
             .await
             .expect_err("a stream must not repin another session's execution");
         assert!(
@@ -742,7 +742,7 @@ mod stream_target_pool {
         let id = QueryExecutionId::new("exec-missing");
 
         let err = driver
-            .pin_query_execution_pool(&handle, &id, lazy_pool())
+            .pin_query_execution_pool(&handle, &id, lazy_pool(), true)
             .await
             .expect_err("an unregistered execution cannot be pinned");
         assert!(
