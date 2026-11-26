@@ -816,7 +816,7 @@ impl AppState {
     /// workspace shows, so the tab strip and its content stay on one page.
     pub fn sync_grid_to_selected_tab(&mut self) {
         self.active = Section::Workspace;
-        self.er_schema = None;
+        self.close_er();
         self.table_page = 0;
         self.filter = None;
         self.filter_column = 0;

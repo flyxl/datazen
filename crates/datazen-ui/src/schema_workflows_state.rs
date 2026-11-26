@@ -109,6 +109,8 @@ impl AppState {
                 .map(|node| node.tables.clone())
                 .unwrap_or_default();
             self.er_schema = Some((database.name.clone(), schema));
+            self.er_selected = None;
+            self.er_search.clear();
             self.active = Section::Workspace;
             for table in tables {
                 self.begin_structure_read(&table);
@@ -117,6 +119,8 @@ impl AppState {
     }
     pub fn close_er(&mut self) {
         self.er_schema = None;
+        self.er_selected = None;
+        self.er_search.clear();
     }
 
     /// The selected table tab's title, if any.

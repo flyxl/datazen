@@ -755,3 +755,123 @@ class OfflineJourneys:
         for (ax, ay, aw, ah), (bx, by, bw, bh) in combinations(boxes, 2):
             self.assertTrue(ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay,
                             "SQLite ER table nodes overlap")
+
+    def test_legacy_er_statistics_count_one_declared_relationship_for_composite_fk(self):
+        """Migrate er-diagram.ts ER-006 with real SQLite catalog metadata."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                CREATE TABLE warehouse (region TEXT, code INTEGER, PRIMARY KEY(region, code));
+                CREATE TABLE inventory (
+                    row_id INTEGER PRIMARY KEY, region TEXT, code INTEGER,
+                    FOREIGN KEY(region, code) REFERENCES warehouse(region, code)
+                );
+                INSERT INTO warehouse VALUES ('north', 1);
+                INSERT INTO inventory VALUES (10, 'north', 1);
+            """)
+            tables = [name for (name,) in db.execute(
+                "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name"
+            )]
+            parts = db.execute("PRAGMA foreign_key_list(inventory)").fetchall()
+            links = len({part[0] for part in parts})
+            original = tuple(db.iterdump())
+        self.assertEqual((len(tables), len(parts), links), (3, 2, 1))
+        self.assertEqual([(part[2], part[3], part[4]) for part in parts],
+                         [("warehouse", "region", "region"), ("warehouse", "code", "code")])
+
+        opened = [OPEN[0], tap(3, "er-button")]
+        stats = self.replay(opened, until=6)
+        self.expect_rendered(stats, key="er-table-count", text=f"{len(tables)} 张表",
+                             within="er-diagram-stats")
+        self.expect_rendered(stats, key="er-relationship-count", text=f"{links} 个已声明外键",
+                             within="er-diagram-stats")
+
+        def states(node, expected_key):
+            if node.get("key") == expected_key:
+                return node.get("states", [])
+            for child in node.get("children", ()):
+                hit = states(child, expected_key)
+                if hit is not None:
+                    return hit
+            return None
+
+        self.assertIn("unchecked", states(stats["accessibility"], "er-box-inventory"))
+        selected = self.replay([*opened, tap(6.2, "er-title-inventory")], until=7.7)
+        self.expect_rendered(selected, key="er-box-inventory", within="er-canvas")
+        self.assertIn("checked", states(selected["accessibility"], "er-box-inventory"))
+        self.assertIn("unchecked", states(selected["accessibility"], "er-box-warehouse"))
+        self.expect_rendered(selected, key="er-relationship-count", text="1 个已声明外键")
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+            self.assertEqual(tuple(db.iterdump()), original)
+
+    def test_legacy_er_search_filters_visible_catalog_nodes_and_can_be_cleared(self):
+        """Migrate er-diagram.ts ER-007 with non-vacuous matching assertions."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                CREATE TABLE pg_inventory (id INTEGER PRIMARY KEY);
+                CREATE TABLE pg_receipts (id INTEGER PRIMARY KEY);
+            """)
+            matches = [name for (name,) in db.execute("""
+                SELECT name FROM sqlite_schema
+                WHERE type = 'table' AND substr(lower(name), 1, 3) = 'pg_' ORDER BY name
+            """)]
+        self.assertEqual(matches, ["pg_inventory", "pg_receipts"])
+        search = "er-diagram-search"
+        opened = [OPEN[0], tap(3, "er-button")]
+        filtered = [*opened, *fill(5, search, "PG_")]
+        view = self.replay(filtered, until=6.7)
+        for name in matches:
+            self.expect_rendered(view, key=f"er-box-{name}", within="er-canvas")
+        self.assertFalse(visible(view, key="er-box-customers"))
+        self.assertFalse(visible(view, key="er-search-no-matches"))
+
+        no_match = [*filtered, *fill(7, search, "missing-table")]
+        empty = self.replay(no_match, until=9.0)
+        self.expect_rendered(empty, key="er-search-no-matches", within="er-canvas")
+        for name in [*matches, "customers"]:
+            self.assertFalse(visible(empty, key=f"er-box-{name}"))
+
+        full = self.replay([*no_match, tap(9.2, search), key(9.4, "a", cmd=True),
+                            key(9.7, "Backspace")], until=11)
+        for name in [*matches, "customers"]:
+            self.expect_rendered(full, key=f"er-box-{name}", within="er-canvas")
+        self.assertFalse(visible(full, key="er-search-no-matches"))
+
+    def test_legacy_er_relayout_restores_nonoverlapping_table_locations(self):
+        """Migrate er-diagram.ts ER-013 and show that re-layout really moves a node."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                CREATE TABLE east_nodes (id INTEGER PRIMARY KEY);
+                CREATE TABLE west_nodes (id INTEGER PRIMARY KEY);
+            """)
+            names = [name for (name,) in db.execute(
+                "SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name"
+            )]
+        opened = [OPEN[0], tap(3, "er-button")]
+
+        def bounds(tree):
+            result = {}
+            for name in names:
+                box = f"er-box-{name}"
+                self.expect_rendered(tree, key=box, within="er-canvas")
+                result[name] = next(n["rect"] for n in tree["elements"] if n.get("key") == box)
+            return result
+
+        baseline = bounds(self.replay(opened, until=6))
+        left, nearby = names[:2]
+        horizontal = baseline[nearby][0] - baseline[left][0]
+        self.assertGreater(horizontal, 0)
+        drag = {**tap(6.2, f"er-title-{left}"), "type": "drag", "dx": horizontal, "dy": 0, "dur": .7}
+        moved = bounds(self.replay([*opened, drag], until=7.7))
+        self.assertGreater(moved[left][0] - baseline[left][0], 30,
+                           "drag must actually move a real table node")
+        self.assertEqual(moved[nearby], baseline[nearby])
+
+        reset = bounds(self.replay([*opened, drag, tap(8.0, "er-diagram-relayout")], until=9.6))
+        self.assertEqual(reset, baseline)
+        from itertools import combinations
+        for (ax, ay, aw, ah), (bx, by, bw, bh) in combinations(reset.values(), 2):
+            self.assertTrue(ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay,
+                            "re-layout left two rendered table nodes overlapping")

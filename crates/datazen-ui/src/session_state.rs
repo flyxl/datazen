@@ -218,7 +218,7 @@ impl AppState {
         self.result_grid = None;
         self.result_focused = false;
         self.collapsed.clear();
-        self.er_schema = None;
+        self.close_er();
         self.er_positions.clear();
         self.er_drag = None;
         // N1: a read the disconnect invalidates must not land later, and no

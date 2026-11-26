@@ -136,6 +136,8 @@ pub struct AppState {
     pub table_view: TableView,
     /// The ER diagram's open schema, as (database, schema).
     pub er_schema: Option<(String, String)>,
+    pub er_selected: Option<String>,
+    pub er_search: TextEdit,
     /// ER box positions per table, canvas points. UI state only, never the port.
     pub er_positions: std::collections::BTreeMap<String, (f32, f32)>,
     /// The box being dragged: its table and where the gesture started.
@@ -590,6 +592,8 @@ impl Default for AppState {
             collapsed: std::collections::BTreeSet::new(),
             table_view: TableView::Data,
             er_schema: None,
+            er_selected: None,
+            er_search: TextEdit::default(),
             er_positions: std::collections::BTreeMap::new(),
             er_drag: None,
             column_drafts: std::collections::BTreeMap::new(),

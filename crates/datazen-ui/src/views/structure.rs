@@ -35,6 +35,11 @@ pub fn er_view(
         .and_then(|db| db.schemas.iter().find(|node| node.name == schema))
         .map(|node| node.tables.clone())
         .unwrap_or_default();
+    let filter = state.er_search.text.trim().to_lowercase();
+    let mut shown = 0;
+    let mut declared = 0;
+    let mut loading = false;
+    let mut unavailable = false;
     let mut canvas = col()
         .key("er-canvas")
         .w_full()
@@ -45,15 +50,45 @@ pub fn er_view(
         // E1: the ER boxes read the structure cache only — the open asked
         // for every table of the schema, and a box whose read has not
         // landed says so instead of drawing a phantom empty table.
-        let columns = state
-            .structures
-            .get(table)
-            .and_then(|entry| entry.data.as_ref())
-            .map(|data| data.columns.as_slice());
+        let entry = state.structures.get(table);
+        let data = entry.and_then(|entry| entry.data.as_ref());
+        if let Some(data) = data {
+            // One catalog constraint is one relation, even for several columns.
+            declared += data.foreign_keys.len();
+        } else if entry.is_some_and(|entry| entry.error.is_some()) {
+            unavailable = true;
+        } else {
+            loading = true;
+        }
+        let columns = data.map(|data| data.columns.as_slice());
+        if !filter.is_empty() && !table.to_lowercase().contains(&filter) {
+            continue;
+        }
+        shown += 1;
         let default = ((index % 3) as f32 * 230.0, (index / 3) as f32 * 180.0);
         let (x, y) = state.er_positions.get(table).copied().unwrap_or(default);
-        canvas = canvas.child(er_box(table, columns, x, y, theme, dark));
+        let selected = state.er_selected.as_deref() == Some(table.as_str());
+        canvas = canvas.child(er_box(table, columns, x, y, theme, dark, selected));
     }
+    if shown == 0 && !filter.is_empty() {
+        canvas = canvas.child(text(t("select.noMatches")).key("er-search-no-matches")
+            .font(type_::LABEL).color(theme.text_secondary));
+    }
+    let relationship_count = if unavailable {
+        t("erDiagram.relationCountUnavailable").to_owned()
+    } else if loading {
+        t("erDiagram.loading").to_owned()
+    } else {
+        t("erDiagram.declaredRelationCount").replace("{count}", &declared.to_string())
+    };
+    let stats = row()
+        .key("er-diagram-stats")
+        .w_full()
+        .gap(10.0)
+        .child(text(t("erDiagram.tableCount").replace("{count}", &tables.len().to_string()))
+            .key("er-table-count").font(type_::LABEL).color(theme.text_secondary))
+        .child(text(relationship_count).key("er-relationship-count")
+            .font(type_::LABEL).color(theme.text_secondary));
     col()
         .key("er-page")
         .w_full()
@@ -70,6 +105,29 @@ pub fn er_view(
                         .font(type_::LABEL)
                         .color(theme.text_secondary),
                 )
+                .child(TextField::new("er-diagram-search", &state.er_search)
+                    .label(t("erDiagram.searchTables"))
+                    .placeholder(t("erDiagram.searchTables"))
+                    .width(190.0)
+                    .on_edit(|state: &mut AppState| &mut state.er_search)
+                    .build(dark))
+                .child(
+                    row()
+                        .key("er-diagram-relayout")
+                        .h(24.0)
+                        .px(8.0)
+                        .center_y()
+                        .radius(6.0)
+                        .fill(theme.control_off)
+                        .role("button")
+                        .focusable(true)
+                        .label(t("erDiagram.relayout"))
+                        .child(text(t("erDiagram.relayout")).font(type_::LABEL).color(theme.text))
+                        .on_press(|state: &mut AppState| {
+                            state.er_drag = None;
+                            state.er_positions.clear();
+                        }),
+                )
                 .child(
                     row()
                         .key("er-close")
@@ -82,6 +140,7 @@ pub fn er_view(
                         .on_press(|state: &mut AppState| state.close_er()),
                 ),
         )
+        .child(stats)
         .child(canvas)
 }
 
@@ -94,10 +153,12 @@ pub fn er_box(
     y: f32,
     theme: tok::Theme,
     dark: bool,
+    selected: bool,
 ) -> El {
     let collapsed = columns.is_some_and(|columns| columns.len() > 12);
     let table = table.to_owned();
     let drag_table = table.clone();
+    let select_table = table.clone();
     let box_fill = palette::er_box_fill(dark);
     let mut class_box = col()
         .key(format!("er-box-{table}"))
@@ -105,6 +166,12 @@ pub fn er_box(
         .w(200.0)
         .radius(8.0)
         .fill(box_fill)
+        .border(1.0, if selected { tok::accent(0, dark) } else { Color::TRANSPARENT })
+        .role("button")
+        .label(table.clone())
+        .checked(selected)
+        .focusable(true)
+        .on_press(move |state: &mut AppState| state.er_selected = Some(select_table.clone()))
         .px(8.0)
         .py(6.0)
         .gap(2.0)
