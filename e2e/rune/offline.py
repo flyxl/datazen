@@ -315,3 +315,73 @@ class OfflineJourneys:
         self.expect_rendered(committed, text="Ada, staged", within="cell-0-1")
         self.expect_rendered(committed, text="17", within="cell-0-2")
         self.assertEqual(rows(), [(1, "Ada, staged", 17), before[1]])
+
+    def test_sqlite_grid_rejects_atomic_batch_then_commits_corrected_values(self):
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as connection:
+            connection.executescript("""
+                CREATE TABLE edit_audit (id INTEGER, name TEXT);
+                CREATE TRIGGER reject_second_edit BEFORE UPDATE ON customers
+                WHEN OLD.id=2 AND NEW.customer_name='reject-this'
+                BEGIN SELECT RAISE(ABORT, 'fixture rejected row two'); END;
+                CREATE TRIGGER log_edits AFTER UPDATE ON customers
+                BEGIN INSERT INTO edit_audit VALUES (NEW.id, NEW.customer_name); END;
+            """)
+
+        def stored():
+            with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as connection:
+                return (
+                    connection.execute("SELECT * FROM customers ORDER BY id").fetchall(),
+                    connection.execute("SELECT * FROM edit_audit ORDER BY rowid").fetchall(),
+                )
+
+        def edit(t, cell, value):
+            return [tap(t, cell), key(t + .35, "Enter"), tap(t + .6, "grid-editor"),
+                    key(t + .95, "a", cmd=True), type_text(t + 1.3, value),
+                    key(t + 2.15, "Enter")]
+
+        before = ([(1, "fixture-ada"), (2, "fixture-lin")], [])
+        invalid = [*OPEN, *edit(4.8, "cell-0-1", "first-valid"),
+                   *edit(7.4, "cell-1-1", "reject-this"), tap(10.2, "commit-staged")]
+        rejected = self.replay(invalid, until=12.6)
+        self.assertFalse(visible(rejected, key="commit-loading-banner"))
+        self.expect_rendered(rejected, text="2 pending changes — use Commit/Rollback",
+                             within="pending-changes-bar")
+        self.expect_rendered(rejected, text="first-valid", within="cell-0-1")
+        self.expect_rendered(rejected, text="reject-this", within="cell-1-1")
+        self.assertEqual(stored(), before, "failed row must roll back the valid edit and its audit entry")
+
+        discarded = self.replay([*invalid, tap(13.0, "rollback-staged")], until=14.8)
+        self.assertFalse(visible(discarded, key="pending-changes-bar"))
+        self.expect_rendered(discarded, text="fixture-ada", within="cell-0-1")
+        self.expect_rendered(discarded, text="fixture-lin", within="cell-1-1")
+        self.assertEqual(stored(), before)
+
+        committed = self.replay([*invalid, *edit(13.2, "cell-1-1", "second-valid"),
+                                 tap(16.0, "commit-staged")], until=18.6)
+        self.assertFalse(visible(committed, key="commit-loading-banner"))
+        self.assertFalse(visible(committed, key="pending-changes-bar"))
+        self.expect_rendered(committed, text="first-valid", within="cell-0-1")
+        self.expect_rendered(committed, text="second-valid", within="cell-1-1")
+        expected = [(1, "first-valid"), (2, "second-valid")]
+        self.assertEqual(stored(), (expected, expected))
+
+    def test_sqlite_grid_without_primary_key_refuses_to_persist_staged_edit(self):
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as connection:
+            connection.executescript("""
+                CREATE TABLE keyless (label TEXT);
+                INSERT INTO keyless VALUES ('first'), ('first');
+            """)
+        actions = [OPEN[0], tap(3, "tree-table-keyless"), tap(5, "cell-0-0"),
+                   key(5.4, "Enter"), *fill(5.75, "grid-editor", "not-persisted"),
+                   key(6.9, "Enter"), tap(7.6, "commit-staged")]
+        tree = self.replay(actions, until=9.5)
+        self.expect_rendered(tree, text="not-persisted", within="cell-0-0")
+        self.expect_rendered(tree, text="first", within="cell-1-0")
+        self.expect_rendered(tree, text="1 pending change — use Commit/Rollback",
+                             within="pending-changes-bar")
+        self.assertFalse(visible(tree, key="commit-loading-banner"))
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as connection:
+            self.assertEqual(connection.execute("SELECT label FROM keyless ORDER BY rowid").fetchall(),
+                             [("first",), ("first",)])
