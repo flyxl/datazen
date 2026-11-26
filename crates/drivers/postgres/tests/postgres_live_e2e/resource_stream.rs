@@ -321,3 +321,92 @@ async fn live_resource_stream_writes_bounded_artifacts_and_preserves_retained_se
     driver.disconnect(retained).await.expect("fixed cleanup");
     driver.disconnect(pooled).await.expect("pool cleanup");
 }
+
+#[tokio::test]
+async fn losing_a_real_postgres_backend_midstream_tombstones_the_retained_checkout() {
+    let mut fixture = Fixture::open().await;
+    let driver = std::sync::Arc::new(PostgresDriver::new());
+    let retained = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("retained streaming checkout");
+    let pid = match driver
+        .query(&retained, "SELECT pg_backend_pid()")
+        .await
+        .expect("live original backend")
+        .rows[0][0]
+    {
+        Some(Value::Integer(pid)) => i32::try_from(pid).expect("actual postgres PID"),
+        _ => panic!("unexpected postgres pid representation"),
+    };
+    let store = tempfile::tempdir().expect("disposable stream artifact");
+    let artifact = std::sync::Arc::new(Artifact::new(&store, "connection-lost.ndjson", 16 * 1024));
+    let worker = {
+        let driver = driver.clone();
+        let retained = retained.clone();
+        let artifact = artifact.clone();
+        tokio::spawn(async move {
+            stream(
+                &driver,
+                &retained,
+                "SELECT 21 AS may_never_arrive FROM pg_sleep(30)",
+                None,
+                None,
+                &artifact,
+            )
+            .await
+        })
+    };
+    use std::time::Duration;
+    tokio::time::timeout(Duration::from_secs(5),async {
+        loop {
+            let active:bool=sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event='PgSleep')")
+                .bind(pid).fetch_one(&mut fixture.oracle).await.expect("independent live backend witness");
+            if active {break}
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }).await.expect("real retained stream is executing");
+    assert!(
+        sqlx::query_scalar::<_, bool>("SELECT pg_terminate_backend($1)")
+            .bind(pid)
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .expect("dispose only the isolated live backend")
+    );
+    let failure = tokio::time::timeout(Duration::from_secs(7), worker)
+        .await
+        .expect("finite protocol drain")
+        .expect("retained worker joined")
+        .expect_err("lost retained session cannot report successful output");
+    assert!(
+        matches!(failure,ResourceError::Driver(datazen_driver_api::DriverError::ConnectionFailed(reason)) if reason.contains("SessionLost"))
+    );
+    assert!(!artifact
+        .records()
+        .iter()
+        .any(|record| record["kind"] == "statementSummary"));
+    assert!(driver.observe_fixed_session(&retained).await.is_err());
+    let later = Artifact::new(&store, "later-rejected.ndjson", 4096);
+    assert!(stream(
+        &driver,
+        &retained,
+        "SELECT 1 AS must_not_be_reconnected",
+        None,
+        None,
+        &later
+    )
+    .await
+    .is_err());
+    assert!(later.records().is_empty());
+    assert!(!sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1)"
+    )
+    .bind(pid)
+    .fetch_one(&mut fixture.oracle)
+    .await
+    .expect("exact original backend is gone"));
+    driver
+        .disconnect(retained)
+        .await
+        .expect("resource can still be cleaned");
+}

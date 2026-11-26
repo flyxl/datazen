@@ -153,13 +153,21 @@ pub(crate) fn apply_select_limit(stmt: &str, limit: Option<u32>) -> (String, Opt
         return (stmt.to_string(), Some(lim));
     }
 
-    let effective = format!("{} LIMIT {}", trimmed, lim + 1);
+    // A trailing line comment must not swallow the actual server-side cap.
+    // One extra row is always representable in PostgreSQL's bigint LIMIT.
+    let effective = format!("{trimmed}\nLIMIT {}", u64::from(lim) + 1);
     (effective, Some(lim))
 }
 
 /// Rough heuristic: scan the SQL outside of string literals, dollar-quotes,
 /// and parenthesised sub-expressions for the keyword `LIMIT`.
 pub(crate) fn has_top_level_limit(sql: &str) -> bool {
+    // PostgreSQL permits underscores, dollar signs and non-ASCII characters in
+    // unquoted identifiers. None of them ends a LIMIT keyword token.
+    fn identifier_byte(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$') || !byte.is_ascii()
+    }
+
     let bytes = sql.as_bytes();
     let len = bytes.len();
     let mut i = 0usize;
@@ -242,9 +250,9 @@ pub(crate) fn has_top_level_limit(sql: &str) -> bool {
             }
             b'L' | b'l' if depth == 0 => {
                 if i + 5 <= len
-                    && sql[i..i + 5].eq_ignore_ascii_case("LIMIT")
-                    && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric())
-                    && (i + 5 >= len || !bytes[i + 5].is_ascii_alphanumeric())
+                    && bytes[i..i + 5].eq_ignore_ascii_case(b"LIMIT")
+                    && (i == 0 || !identifier_byte(bytes[i - 1]))
+                    && (i + 5 >= len || !identifier_byte(bytes[i + 5]))
                 {
                     return true;
                 }

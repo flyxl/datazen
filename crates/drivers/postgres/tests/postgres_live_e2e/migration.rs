@@ -329,3 +329,123 @@ async fn rendered_relational_migration_round_trips_constraints_on_the_server() {
         .await
         .expect("remove isolated migration schema");
 }
+
+#[tokio::test]
+async fn reviewed_schema_diff_deploy_rolls_back_all_ddl_then_retries_on_real_postgres() {
+    use datazen::migration::schema_diff::{
+        build_column_plan, execute_schema_diff_deploy, DeployOptions, DeployStatus,
+    };
+
+    let mut fixture = Fixture::open().await;
+    let database = fixture
+        .config
+        .database
+        .as_deref()
+        .expect("fixture database");
+    let schema = format!("dz_reviewed_{}", uuid::Uuid::new_v4().simple());
+    let desired = format!("{schema}.desired");
+    let target = format!("{schema}.current");
+    sqlx::raw_sql(&format!(
+        "CREATE SCHEMA {schema};
+         CREATE TABLE {desired}(id integer PRIMARY KEY, required text NOT NULL DEFAULT 'future', reviewed_note text);
+         CREATE TABLE {target}(id integer PRIMARY KEY, required text);
+         INSERT INTO {target} VALUES(11,NULL),(22,'keep')"
+    )).execute(&mut fixture.oracle).await.expect("genuinely distinct source and target schemas");
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect(&fixture.config)
+        .await
+        .expect("live migration handle");
+    let source = driver
+        .get_table_schema(&handle, "desired", database, Some(&schema))
+        .await
+        .expect("actual desired catalog snapshot");
+    let current = driver
+        .get_table_schema(&handle, "current", database, Some(&schema))
+        .await
+        .expect("actual current catalog snapshot");
+    let plan = build_column_plan(&target, &source, &current, "postgresql")
+        .expect("build reviewed PostgreSQL migration SQL");
+    assert!(plan.requirements.is_empty(), "{:?}", plan.requirements);
+    assert!(plan
+        .statements
+        .iter()
+        .any(|statement| statement.sql.contains("ADD COLUMN")));
+    assert!(plan
+        .statements
+        .iter()
+        .any(|statement| statement.sql.contains("NOT NULL")));
+    let rollback =
+        execute_schema_diff_deploy(&driver, &handle, &plan, DeployOptions::default(), None).await;
+    assert_eq!(
+        rollback.status,
+        DeployStatus::RolledBack,
+        "live finished deploy: {:?}",
+        rollback.errors
+    );
+    assert!(rollback
+        .errors
+        .iter()
+        .any(|error| error.contains("contains null values")));
+    assert!(!sqlx::query_scalar::<_,bool>(
+        "SELECT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid=to_regclass($1) AND attname='reviewed_note' AND NOT attisdropped)"
+    ).bind(&target).fetch_one(&mut fixture.oracle).await.expect("independent catalog after rollback"),
+    "the earlier additive DDL actually rolled back");
+    let original: Vec<(i32, Option<String>)> =
+        sqlx::query_as(&format!("SELECT id,required FROM {target} ORDER BY id"))
+            .fetch_all(&mut fixture.oracle)
+            .await
+            .expect("committed rows after failed deploy");
+    assert_eq!(original, [(11, None), (22, Some("keep".into()))]);
+
+    sqlx::query(&format!(
+        "UPDATE {target} SET required='cleaned beforehand' WHERE id=11"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("scope fixture remediation to its missing value");
+    let success =
+        execute_schema_diff_deploy(&driver, &handle, &plan, DeployOptions::default(), None).await;
+    assert_eq!(
+        success.status,
+        DeployStatus::Committed,
+        "live deploy after remediation: {:?}",
+        success.errors
+    );
+    assert_eq!(success.executed_count, plan.statements.len());
+    let applied: Vec<(i32, String, Option<String>)> = sqlx::query_as(&format!(
+        "SELECT id,required,reviewed_note FROM {target} ORDER BY id"
+    ))
+    .fetch_all(&mut fixture.oracle)
+    .await
+    .expect("independent real DDL and row result");
+    assert_eq!(
+        applied,
+        [
+            (11, "cleaned beforehand".into(), None),
+            (22, "keep".into(), None)
+        ]
+    );
+    let default_value: String = sqlx::query_scalar(&format!(
+        "INSERT INTO {target}(id) VALUES(33) RETURNING required"
+    ))
+    .fetch_one(&mut fixture.oracle)
+    .await
+    .expect("new target defaults really persist");
+    assert_eq!(default_value, "future");
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(&format!("SELECT count(*) FROM {desired}"))
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .expect("desired source not mutated"),
+        0
+    );
+    driver
+        .disconnect(handle)
+        .await
+        .expect("migration cleanup session");
+    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("clean real migration scope");
+}

@@ -612,14 +612,14 @@ fn apply_select_limit_is_independent_of_subquery_limit() {
     );
     assert_eq!(
         apply_select_limit("SELECT * FROM t", Some(10)),
-        ("SELECT * FROM t LIMIT 11".into(), Some(10))
+        ("SELECT * FROM t\nLIMIT 11".into(), Some(10))
     );
     assert_eq!(
         apply_select_limit("SELECT * FROM t LIMIT 3", Some(10)),
         ("SELECT * FROM t LIMIT 3".into(), Some(10))
     );
     let (sql, cap) = apply_select_limit("SELECT * FROM (SELECT * FROM t LIMIT 5) s", Some(10));
-    assert!(sql.ends_with(" LIMIT 11"), "{sql}");
+    assert!(sql.ends_with("\nLIMIT 11"), "{sql}");
     assert_eq!(cap, Some(10));
     assert_eq!(
         apply_select_limit("INSERT INTO t VALUES (1)", Some(10)),
