@@ -242,7 +242,7 @@ impl MysqlDriver {
         on_progress: &mut (dyn FnMut(DumpProgress) + Send),
     ) -> Result<String, DriverError> {
         let snapshot = if opts.single_transaction {
-            self.begin_transaction(handle).await.ok()
+            Some(self.begin_read_snapshot(handle).await?)
         } else {
             None
         };
@@ -270,9 +270,9 @@ impl MysqlDriver {
         .await;
         if let Some(tx) = snapshot {
             if result.is_ok() {
-                let _ = self.commit(tx).await;
-            } else {
-                let _ = self.rollback(tx).await;
+                self.commit(tx).await?;
+            } else if self.rollback(tx).await.is_err() {
+                tracing::warn!("could not confirm rollback of MySQL backup snapshot");
             }
         }
         result

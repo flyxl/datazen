@@ -184,11 +184,14 @@ pub(crate) async fn dump(
     if opts.schema_only && opts.data_only {
         return Err(DriverError::InvalidConfig("conflicting backup options".into()).into());
     }
-    if opts.single_transaction {
-        driver
-            .execute(handle, "START TRANSACTION WITH CONSISTENT SNAPSHOT")
-            .await?;
-    }
+    let snapshot = if opts.single_transaction {
+        // MySQL implicitly commits an open transaction on raw START.
+        // The driver first sets isolation on the retained checkout, which
+        // MySQL rejects without changing any active transaction.
+        Some(driver.begin_read_snapshot(handle).await?)
+    } else {
+        None
+    };
     let outcome = async {
         if opts.create_database {
             stream::text(
@@ -215,19 +218,11 @@ pub(crate) async fn dump(
         .await
     }
     .await;
-    if opts.single_transaction {
-        let end = driver
-            .execute(
-                handle,
-                if outcome.is_ok() {
-                    "COMMIT"
-                } else {
-                    "ROLLBACK"
-                },
-            )
-            .await;
+    if let Some(snapshot) = snapshot {
         if outcome.is_ok() {
-            end?;
+            driver.commit(snapshot).await?;
+        } else if driver.rollback(snapshot).await.is_err() {
+            tracing::warn!("could not confirm rollback of MySQL backup snapshot");
         }
     }
     outcome

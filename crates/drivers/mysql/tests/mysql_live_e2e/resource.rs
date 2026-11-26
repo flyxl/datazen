@@ -488,3 +488,166 @@ async fn mysql_resource_stream_persists_batch_metadata_and_recovers_after_quota_
     );
     assert!(ledger.0.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn mysql_backup_snapshot_refuses_to_commit_user_transaction_and_persists_a_real_artifact() {
+    use datazen_driver_api::{BackupDumpOptions, DriverError};
+    let mut f = Fixture::open().await;
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|p| p.driver_id() == "mysql")
+        .unwrap();
+    let driver = factory.create();
+    let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let fixed = provider
+        .acquire_resource(
+            &AcquireResourceRequest {
+                connection_config: f.cfg.clone(),
+                identity_scope: IdentityScope::default(),
+                target: NamespaceTarget::empty().with_database(f.database.clone()),
+                baseline: Baseline::default(),
+                scope: ResourceScope {
+                    purpose: ResourcePurpose::InteractiveQuery,
+                    max_physical_connections: 8,
+                    holds_open_transaction: false,
+                    pin_for_streaming: false,
+                },
+            },
+            &budget,
+        )
+        .await
+        .expect("actual retained MySQL resource");
+    let handle = provider
+        .connection_handle(&fixed)
+        .expect("actual driver handle");
+    let table = format!("dz_backup_user_work_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!("CREATE TABLE {table}(id INT PRIMARY KEY)"))
+        .execute(&mut f.oracle)
+        .await
+        .expect("independent created table");
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("backup.ndjson");
+    let artifact = Artifact(Mutex::new(std::fs::File::create(&path).unwrap()));
+    let opts = BackupDumpOptions {
+        single_transaction: true,
+        schema_only: true,
+        create_database: true,
+        ..Default::default()
+    };
+    let call = |options: &BackupDumpOptions| {
+        CommandCall::new(
+            "backup_dump",
+            json!({"database":f.database,"options":options}),
+        )
+    };
+    for (id, invalid) in [
+        ("missing-db", json!({"options":opts})),
+        (
+            "invalid-options",
+            json!({"database":f.database,"options":"invalid"}),
+        ),
+        (
+            "conflicting-options",
+            json!({"database":f.database,"options":BackupDumpOptions{schema_only:true,data_only:true,..Default::default()}}),
+        ),
+        (
+            "wrong-catalog",
+            json!({"database":std::env::var("TEST_MYSQL_DATABASE_B").unwrap(),"options":opts}),
+        ),
+    ] {
+        assert!(matches!(
+            provider
+                .execute_on_resource(
+                    &fixed,
+                    &QueryExecutionId::new(id),
+                    &CommandCall::new("backup_dump", invalid),
+                    &artifact
+                )
+                .await,
+            Err(ResourceError::Driver(DriverError::InvalidConfig(_)))
+        ));
+    }
+    driver
+        .execute(&handle, "START TRANSACTION")
+        .await
+        .expect("stage user SQL transaction not registered in provider");
+    driver
+        .execute(&handle, &format!("INSERT INTO {table} VALUES(17)"))
+        .await
+        .expect("uncommitted user edit");
+    let nested = provider
+        .execute_on_resource(
+            &fixed,
+            &QueryExecutionId::new("nested-backup"),
+            &call(&opts),
+            &artifact,
+        )
+        .await;
+    let visible: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(
+        visible, 0,
+        "a backup must not implicitly commit this real user edit"
+    );
+    assert!(matches!(
+        nested,
+        Err(ResourceError::Driver(DriverError::TransactionError(_)))
+    ));
+    assert!(
+        matches!(
+            driver
+                .dump_database_with_progress(&handle, &f.database, &opts, &mut |_| {})
+                .await,
+            Err(DriverError::TransactionError(_))
+        ),
+        "direct backup must reject the same live nesting"
+    );
+    assert_eq!(
+        driver
+            .query(&handle, &format!("SELECT id FROM {table}"))
+            .await
+            .expect("original transaction still usable")
+            .rows,
+        [vec![Some(Value::Integer(17))]]
+    );
+    driver
+        .execute(&handle, "ROLLBACK")
+        .await
+        .expect("user retains control of original edit");
+    let visible: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(visible, 0);
+    provider
+        .execute_on_resource(
+            &fixed,
+            &QueryExecutionId::new("successful-backup"),
+            &call(&opts),
+            &artifact,
+        )
+        .await
+        .expect("snapshot runs once safely afterward");
+    let saved = std::fs::read_to_string(&path).expect("actual persisted SQL artifact events");
+    assert!(saved.contains("CREATE DATABASE IF NOT EXISTS") && saved.contains(&table));
+    driver
+        .execute(&handle, &format!("INSERT INTO {table} VALUES(23)"))
+        .await
+        .expect("snapshot no longer holds the session read only");
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>(&format!("SELECT id FROM {table}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .expect("actual durable new write"),
+        23
+    );
+    assert_eq!(
+        provider.close_resource(&fixed).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}
