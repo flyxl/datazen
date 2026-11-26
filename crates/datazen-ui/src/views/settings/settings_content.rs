@@ -181,6 +181,8 @@ pub struct SettingsContent<'a, S: 'static> {
     /// — segment 2's table through the view-model seam.
     syntax_presets: Vec<(String, String)>,
     contributions: Vec<SettingsContribution>,
+    // The native host can supply its wired body while retaining the shared navigation.
+    host_body: Option<El>,
     // the child section slots
     language_packs_card: Option<El>,
     update_section: Option<El>,
@@ -231,6 +233,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             ),
             syntax_presets: Vec::new(),
             contributions: Vec::new(),
+            host_body: None,
             language_packs_card: None,
             update_section: None,
             table_data_section: None,
@@ -474,10 +477,16 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         self
     }
 
+    /// Mount a host-owned section body without activating unwired settings actions.
+    pub fn host_body(mut self, body: El) -> Self {
+        self.host_body = Some(body);
+        self
+    }
+
     // ---- build ----
 
     /// The page: the nav rail and the content pane in one row.
-    pub fn build(self) -> El {
+    pub fn build(mut self) -> El {
         let k = kit(self.dark);
         let active = self.state.active_section;
         let sections = available_sections(self.capabilities);
@@ -489,7 +498,11 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             .min_w(0.0)
             .gap(0.0);
         page = page.child(self.build_nav(&k, &sections, active));
-        page = page.child(self.build_content(&k, &sections, active));
+        let body = self
+            .host_body
+            .take()
+            .unwrap_or_else(|| self.build_content(&k, &sections, active));
+        page = page.child(body);
         page
     }
 

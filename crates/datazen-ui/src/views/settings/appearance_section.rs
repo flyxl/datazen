@@ -195,6 +195,8 @@ pub struct AppearanceSection<'a, S: 'static> {
     wapps: &'a [AppearanceWappVm],
     /// The last apply error (the red line).
     error: Option<&'a str>,
+    modes: &'a [ThemeMode],
+    show_theme_packs: bool,
     on_mode_change: Option<Rc<dyn Fn(&mut S, ThemeMode)>>,
     on_pack_change: Option<Rc<dyn Fn(&mut S, PackChoice)>>,
     /// Which select's listbox is open (`None` closed, the single-open
@@ -210,11 +212,24 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
             theme,
             wapps,
             error: None,
+            modes: &ThemeMode::MODES,
+            show_theme_packs: true,
             on_mode_change: None,
             on_pack_change: None,
             open_select: None,
             set_open: None,
         }
+    }
+
+    /// Restrict choices to the preferences the active host can persist and apply.
+    pub fn supported_modes(mut self, modes: &'a [ThemeMode]) -> Self {
+        self.modes = modes;
+        self
+    }
+
+    pub fn show_theme_packs(mut self, show: bool) -> Self {
+        self.show_theme_packs = show;
+        self
     }
 
     /// The apply error line (`updateSettings`' rejection message).
@@ -269,9 +284,9 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
 
         // -- The color scheme row --
         let scheme_labels: Vec<String> =
-            ThemeMode::MODES.iter().map(|mode| t(mode.label_key()).to_owned()).collect();
+            self.modes.iter().map(|mode| t(mode.label_key()).to_owned()).collect();
         let scheme_values: Vec<String> =
-            ThemeMode::MODES.iter().map(|mode| mode.as_str().to_owned()).collect();
+            self.modes.iter().map(|mode| mode.as_str().to_owned()).collect();
         let mode_label = t(self.theme.mode.label_key()).to_owned();
         let mut scheme_select = Select::new("appearance-color-scheme-select", &scheme_labels)
             .values(&scheme_values)
@@ -290,9 +305,10 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
         }
         if let (Some(on_mode), set_open) = (&self.on_mode_change, self.set_open.clone()) {
             let on_mode = Rc::clone(on_mode);
+            let modes = self.modes.to_vec();
             scheme_select =
                 scheme_select.on_choose(move |state: &mut S, value: &str, _tx: &mut rune::Tx| {
-                    if let Some(mode) = ThemeMode::MODES.iter().find(|mode| mode.as_str() == value)
+                    if let Some(mode) = modes.iter().find(|mode| mode.as_str() == value)
                     {
                         on_mode(state, *mode);
                     }
@@ -312,67 +328,69 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
             scheme_control,
         ));
 
-        // -- The theme pack row --
-        let mut pack_labels = vec![t("settings.theme.packDefault").to_owned()];
-        pack_labels.extend(theme_options.iter().map(|option| option.label.clone()));
-        let mut pack_values = vec![BUILTIN_PACK_VALUE.to_owned()];
-        pack_values.extend(theme_options.iter().map(|option| option.pack_id.clone()));
-        // The current the kit matches by LABEL: the builtin default's
-        // label, or the active option's label.
-        let current_pack_label = active_pack_id
-            .and_then(|id| {
-                theme_options.iter().find(|option| option.pack_id == id).map(|option| option.label.clone())
-            })
-            .unwrap_or_else(|| t("settings.theme.packDefault").to_owned());
-        let pack_hint = if theme_options.is_empty() { t("settings.appearance.emptyHint") } else { "" };
-        let mut pack_select = Select::new("appearance-theme-select", &pack_labels)
-            .values(&pack_values)
-            .current(Some(&current_pack_label))
-            .label(t("settings.theme.pack"))
-            .open(open_flag::<S>(&self.open_select, s) == Some(1));
-        if let (Some(set_open), open_slot) = (&self.set_open, self.open_select.clone()) {
-            let toggle_open = Rc::clone(set_open);
-            let close_open = Rc::clone(set_open);
-            pack_select = pack_select
-                .on_toggle(move |state: &mut S| {
-                    let next = if open_flag(&open_slot, state) == Some(1) { None } else { Some(1) };
-                    toggle_open(state, next);
+        if self.show_theme_packs {
+            // -- The theme pack row --
+            let mut pack_labels = vec![t("settings.theme.packDefault").to_owned()];
+            pack_labels.extend(theme_options.iter().map(|option| option.label.clone()));
+            let mut pack_values = vec![BUILTIN_PACK_VALUE.to_owned()];
+            pack_values.extend(theme_options.iter().map(|option| option.pack_id.clone()));
+            // The current the kit matches by LABEL: the builtin default's
+            // label, or the active option's label.
+            let current_pack_label = active_pack_id
+                .and_then(|id| {
+                    theme_options.iter().find(|option| option.pack_id == id).map(|option| option.label.clone())
                 })
-                .on_close(move |state: &mut S| close_open(state, None));
-        }
-        if let (Some(on_pack), set_open) = (&self.on_pack_change, self.set_open.clone()) {
-            let on_pack = Rc::clone(on_pack);
-            // The guard reads the preference this build closed over —
-            // React's per-render closure, verbatim.
-            let active = self.theme.clone();
-            pack_select =
-                pack_select.on_choose(move |state: &mut S, value: &str, _tx: &mut rune::Tx| {
-                    if let Some(choice) = resolve_pack_choice(value, &active) {
-                        on_pack(state, choice);
-                    }
-                    if let Some(set_open) = &set_open {
-                        set_open(state, None);
-                    }
-                });
-        }
-        let pack_control = pack_select.build(&k, layer);
-        section = section.child(setting_row(
-            &k,
-            layer,
-            format!("{key}-pack-row"),
-            t("settings.theme.pack"),
-            pack_hint,
-            pack_control,
-        ));
+                .unwrap_or_else(|| t("settings.theme.packDefault").to_owned());
+            let pack_hint = if theme_options.is_empty() { t("settings.appearance.emptyHint") } else { "" };
+            let mut pack_select = Select::new("appearance-theme-select", &pack_labels)
+                .values(&pack_values)
+                .current(Some(&current_pack_label))
+                .label(t("settings.theme.pack"))
+                .open(open_flag::<S>(&self.open_select, s) == Some(1));
+            if let (Some(set_open), open_slot) = (&self.set_open, self.open_select.clone()) {
+                let toggle_open = Rc::clone(set_open);
+                let close_open = Rc::clone(set_open);
+                pack_select = pack_select
+                    .on_toggle(move |state: &mut S| {
+                        let next = if open_flag(&open_slot, state) == Some(1) { None } else { Some(1) };
+                        toggle_open(state, next);
+                    })
+                    .on_close(move |state: &mut S| close_open(state, None));
+            }
+            if let (Some(on_pack), set_open) = (&self.on_pack_change, self.set_open.clone()) {
+                let on_pack = Rc::clone(on_pack);
+                // The guard reads the preference this build closed over —
+                // React's per-render closure, verbatim.
+                let active = self.theme.clone();
+                pack_select =
+                    pack_select.on_choose(move |state: &mut S, value: &str, _tx: &mut rune::Tx| {
+                        if let Some(choice) = resolve_pack_choice(value, &active) {
+                            on_pack(state, choice);
+                        }
+                        if let Some(set_open) = &set_open {
+                            set_open(state, None);
+                        }
+                    });
+            }
+            let pack_control = pack_select.build(&k, layer);
+            section = section.child(setting_row(
+                &k,
+                layer,
+                format!("{key}-pack-row"),
+                t("settings.theme.pack"),
+                pack_hint,
+                pack_control,
+            ));
 
-        // -- The orphan hint --
-        if active_plugin_theme_missing {
-            section = section.child(
-                text(t("settings.appearance.missingHint").to_owned())
-                    .font(tok::type_::LABEL)
-                    .color(k.c.warning.fg) // React text-amber-500
-                    .key("appearance-orphan-hint"),
-            );
+            // -- The orphan hint --
+            if active_plugin_theme_missing {
+                section = section.child(
+                    text(t("settings.appearance.missingHint").to_owned())
+                        .font(tok::type_::LABEL)
+                        .color(k.c.warning.fg) // React text-amber-500
+                        .key("appearance-orphan-hint"),
+                );
+            }
         }
 
         // -- The apply error --

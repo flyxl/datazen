@@ -24,12 +24,47 @@ class OfflineJourneys:
 
     def test_settings_theme_persists_after_relaunch(self):
         appearance = tap(1.4, "settings-nav-appearance")
-        tree = self.replay([SETTINGS, appearance, tap(2.3, "settings-theme")], until=3.5)
-        self.expect_rendered(tree, text="Theme: Light", within="settings-theme")
+        scheme = "appearance-color-scheme-select-trigger"
+        opened = [SETTINGS, appearance, tap(2.3, scheme)]
+        choices = self.replay(opened, until=3.1)
+        self.expect_rendered(choices, key="option0")
+        self.expect_rendered(choices, key="option1")
+        self.assertFalse(visible(choices, key="option2"))
+        self.assertFalse(visible(choices, key="appearance-theme-select-trigger"))
+        self.assertFalse((self.root / "settings.json").exists(), "opening does not save")
+
+        tree = self.replay([*opened, tap(3.4, "option0")], until=4.6)
+        self.assertFalse(visible(tree, key="option0"))
+        self.expect_rendered(tree, key=scheme)
         settings = json.loads((self.root / "settings.json").read_text())
         self.assertIs(settings["ui"]["themeDark"], False)
-        self.expect_rendered(self.replay([SETTINGS, appearance], until=2.4),
-                             text="Theme: Light", within="settings-theme")
+
+        relaunched = self.replay([SETTINGS, appearance], until=2.4)
+        self.expect_rendered(relaunched, key=scheme)
+        # Native defaults to dark; persist the explicit opposite choice again
+        # after confirming the new process restored light.
+        self.assertTrue(any(visible(relaunched, text=label, within=scheme)
+                            for label in ("Light", "浅色")))
+        dark = self.replay([*opened, tap(3.4, "option1")], until=4.6)
+        self.assertFalse(visible(dark, key="option1"))
+        settings = json.loads((self.root / "settings.json").read_text())
+        self.assertIs(settings["ui"]["themeDark"], True)
+
+    def test_settings_theme_failed_save_keeps_previous_choice_and_reports_error(self):
+        blocked = self.root / "settings.json"
+        blocked.mkdir()
+        sentinel = blocked / "keep"
+        sentinel.write_text("unchanged", encoding="utf-8")
+        scheme = "appearance-color-scheme-select-trigger"
+        tree = self.replay([
+            SETTINGS, tap(1.4, "settings-nav-appearance"), tap(2.3, scheme),
+            tap(3.4, "option0"),
+        ], until=4.8)
+        self.expect_rendered(tree, key="settings-error")
+        self.assertTrue(any(visible(tree, text=label, within=scheme)
+                            for label in ("Dark", "深色")))
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "unchanged")
+        self.assertEqual(list(blocked.iterdir()), [sentinel])
 
     def test_settings_page_size_and_query_limit_survive_restart(self):
         tree = self.replay([
@@ -43,6 +78,37 @@ class OfflineJourneys:
         tree = self.replay([SETTINGS, DATA_SETTINGS], until=2.5)
         self.expect_rendered(tree, text="Rows per page: 17", within="settings-data")
         self.expect_rendered(tree, text="Query max rows: 23", within="settings-data")
+
+    def test_settings_navigation_changes_real_grid_page_boundary_after_restart(self):
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as connection:
+            connection.execute("DELETE FROM customers")
+            connection.executemany("INSERT INTO customers VALUES (?, ?)",
+                                   [(i, f"row-{i:02}") for i in range(1, 53)])
+            expected = {
+                size: connection.execute(
+                    "SELECT customer_name FROM customers ORDER BY id LIMIT 1 OFFSET ?",
+                    (size,),
+                ).fetchone()[0] for size in (17, 25)
+            }
+        self.root.joinpath("settings.json").write_text(
+            json.dumps({"ui": {"tablePageSize": 17, "queryMaxRows": 23}}), encoding="utf-8")
+        next_page = [*OPEN, tap(5.0, "page-next")]
+        first = self.replay(next_page, until=6.9)
+        self.expect_rendered(first, key="grid-page-label", text="Page 2 / 4")
+        self.expect_rendered(first, text=expected[17], within="cell-0-1")
+
+        changed = self.replay([SETTINGS, DATA_SETTINGS,
+                               *fill(2.2, "settings-page-size-input", "25"),
+                               tap(3.3, "settings-page-size-set")], until=4.7)
+        self.expect_rendered(changed, text="Rows per page: 25", within="settings-data")
+        self.assertFalse(visible(changed, key="settings-error"))
+        settings = json.loads(self.root.joinpath("settings.json").read_text())["ui"]
+        self.assertEqual((settings["tablePageSize"], settings["queryMaxRows"]), (25, 23))
+
+        second = self.replay(next_page, until=6.9)
+        self.expect_rendered(second, key="grid-page-label", text="Page 2 / 3")
+        self.expect_rendered(second, text=expected[25], within="cell-0-1")
 
     def test_settings_invalid_page_size_is_not_saved(self):
         tree = self.replay([

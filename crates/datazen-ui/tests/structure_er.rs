@@ -310,7 +310,7 @@ fn applying_the_drafts_lands_and_a_failure_keeps_them() {
 }
 
 #[test]
-fn the_theme_toggles_through_the_port_and_survives_reopening() {
+fn the_theme_choice_writes_through_the_port_and_survives_reopening() {
     use datazen_ui_api::{Setting, SettingsApi};
 
     let mut runtime = runtime();
@@ -324,7 +324,7 @@ fn the_theme_toggles_through_the_port_and_survives_reopening() {
         runtime.state.set_settings_section("appearance");
         runtime.settle_all();
         runtime.frame(0.0);
-    assert!(runtime.find("settings-theme").is_some());
+    assert!(runtime.find("appearance-color-scheme-select-trigger").is_some());
 
     runtime
         .state
@@ -333,17 +333,19 @@ fn the_theme_toggles_through_the_port_and_survives_reopening() {
         .unwrap();
     runtime.frame(0.0);
 
-    let (x, y) = runtime.find("settings-theme").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
+    for key in ["appearance-color-scheme-select-trigger", "option0"] {
+        let (x, y) = runtime.find(key).unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+    }
     assert!(
         runtime
             .state
             .workspace
             .read_settings()
             .contains(&Setting::Theme { dark: false }),
-        "the toggle wrote the port"
+        "the explicit choice wrote the port"
     );
 
     // Leave and come back: the setting is where the port keeps it.
@@ -367,10 +369,12 @@ fn the_theme_toggles_through_the_port_and_survives_reopening() {
         "reopening the page keeps the theme"
     );
 
-    let (x, y) = runtime.find("settings-theme").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
+    for key in ["appearance-color-scheme-select-trigger", "option1"] {
+        let (x, y) = runtime.find(key).unwrap();
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        runtime.frame(0.0);
+    }
     assert!(runtime
         .state
         .workspace

@@ -149,7 +149,8 @@ pub struct AppState {
     pub settings_error: Option<String>,
     /// Selected settings section (A6): grouped navigation + deep-link within
     /// the settings page. Addressable by key so a specific section can be opened.
-    pub settings_section: String,
+    pub(crate) settings_content: crate::views::settings_content_state::SettingsContentState,
+    pub(crate) appearance_select: Option<usize>,
     /// A1: the connections home's filter input (name/engine/id search).
     pub connection_search: TextEdit,
     /// A1: the connections card list's expanded state (show all / show less).
@@ -595,7 +596,8 @@ impl Default for AppState {
             page_size_input: TextEdit::new(String::new()),
             max_rows_input: TextEdit::new(String::new()),
             settings_error: None,
-            settings_section: "general".into(),
+            settings_content: Default::default(),
+            appearance_select: None,
             connection_search: TextEdit::new(String::new()),
             connections_show_all: false,
             home_copied_id: None,

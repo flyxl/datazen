@@ -6,7 +6,6 @@ use super::*;
 use crate::constants::*;
 use crate::i18n::t;
 use crate::icons::{self, section_icon};
-use crate::settings_state::{SettingsSectionDef, SETTINGS_NAV_GROUPS, SETTINGS_SECTIONS};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
 use crate::ui::field::TextField;
@@ -142,92 +141,16 @@ pub mod settings_ui;
 /// navigation switching is observable and addressable.
 pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let active = state.settings_section();
-    // The page is one row of the page column, which also holds the content
-    // toolbar, the tab strip and the status bar: `h_full` measured the whole
-    // column (the padding box) and pushed the status bar past the window's
-    // bottom edge. A grown leftover keeps the page inside its slot.
-    row()
-        .key("settings-page")
-        .w_full()
-        .grow(1.0)
-        .min_h(0.0)
-        .min_w(0.0)
-        .gap(0.0)
-        .child(settings_nav(state, theme, active))
-        .child(settings_content(state, theme, dark, active))
-}
-
-fn settings_nav(state: &AppState, theme: tok::Theme, active: &str) -> El {
-    let mut nav = col()
-        .key("settings-nav")
-        .w(180.0)
-        .h_full()
-        .px(8.0)
-        .py(8.0)
-        .gap(2.0)
-        .fill(theme.bg);
-
-    for (group_id, group_label) in SETTINGS_NAV_GROUPS {
-        let mut group = col()
-            .key(format!("settings-nav-group-{group_id}"))
-            .w_full()
-            .gap(2.0)
-            .pt(10.0)
-            .child(
-                row()
-                    .key(format!("settings-nav-group-label-{group_id}"))
-                    .w_full()
-                    .h(20.0)
-                    .px(12.0)
-                    .center_y()
-                    .child(
-                        text(t(group_label).to_owned())
-                            .font(type_::LABEL)
-                            .color(theme.text_secondary),
-                    ),
-            );
-        for section in SETTINGS_SECTIONS
-            .iter()
-            .filter(|section| section.group == group_id)
-        {
-            let is_active = section.id == active;
-            let id = section.id;
-            let fill = if is_active {
-                theme.control_off
-            } else {
-                theme.bg
-            };
-            let label_color = if is_active {
-                theme.text
-            } else {
-                theme.text_secondary
-            };
-            group = group.child(
-                row()
-                    .key(format!("settings-nav-{id}"))
-                    .w_full()
-                    .h(30.0)
-                    .px(12.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(fill)
-                    .child(
-                        text(t(section.label_key).to_owned())
-                            .font(type_::LABEL)
-                            .color(label_color),
-                    )
-                    .on_press(move |state: &mut AppState| state.set_settings_section(id)),
-            );
-        }
-        nav = nav.child(group);
-    }
-    nav
+    settings_content::SettingsContent::new(&state.settings_content, dark, cfg!(target_os = "macos"))
+        .on_select_section(|state: &mut AppState, section| state.set_settings_section(section))
+        .host_body(settings_content(state, theme, dark, active))
+        .build()
 }
 
 fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &str) -> El {
     let body = match active {
         "general" => general_section(state, theme, dark),
-        "appearance" => appearance_section(state, theme),
+        "appearance" => appearance_section(state, theme, dark),
         "dataBrowsing" => data_browsing_section(state, theme, dark),
         "editor" => editor_section(state, theme, dark),
         "behavior" => behavior_section(state, theme),
@@ -264,44 +187,42 @@ fn general_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .child(favorites_section(state, theme, dark))
 }
 
-fn appearance_section(state: &AppState, theme: tok::Theme) -> El {
-    let settings = state.ui_settings();
-    let dark = settings
-        .iter()
+fn appearance_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    use appearance_section::{AppearanceSection, ThemeMode, ThemePreference};
+
+    let persisted_dark = state
+        .ui_settings()
+        .into_iter()
         .find_map(|setting| match setting {
-            Setting::Theme { dark } => Some(*dark),
+            Setting::Theme { dark } => Some(dark),
             _ => None,
         })
-        .unwrap_or(true);
+        .unwrap_or(dark);
+    let preference = ThemePreference {
+        mode: if persisted_dark {
+            ThemeMode::Dark
+        } else {
+            ThemeMode::Light
+        },
+        pack_id: None,
+    };
+    let mut overlays = Vec::new();
+    let section = AppearanceSection::new(&preference, &[])
+        .supported_modes(&[ThemeMode::Light, ThemeMode::Dark])
+        .show_theme_packs(false)
+        .on_mode_change(|state: &mut AppState, mode| state.save_builtin_theme(mode == ThemeMode::Dark))
+        .listbox(
+            |state| state.appearance_select,
+            |state, value| state.appearance_select = value,
+        )
+        .build(state, dark, &mut overlays);
+
     col()
         .key("settings-section-appearance")
         .w_full()
-        .gap(12.0)
-        .child(section_title(t("settings.appearance"), theme))
-        .child(
-            row()
-                .key("settings-appearance")
-                .w_full()
-                .h(32.0)
-                .gap(12.0)
-                .center_y()
-                .child(
-                    row()
-                        .key("settings-theme")
-                        .h(28.0)
-                        .px(10.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(
-                            text(if dark { "Theme: Dark" } else { "Theme: Light" }.to_owned())
-                                .font(type_::LABEL)
-                                .color(theme.text),
-                        )
-                        .on_press(|state: &mut AppState| state.toggle_theme()),
-                ),
-        )
+        .child(section)
         .child(settings_error_row(state, theme))
+        .children(overlays)
 }
 
 fn data_browsing_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {

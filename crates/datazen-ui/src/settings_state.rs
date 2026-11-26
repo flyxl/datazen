@@ -109,13 +109,14 @@ impl AppState {
     /// Deep-link form (A6): the selected settings section key. Unknown keys
     /// normalize to `general` so callers can address any of the 12 sections.
     pub fn settings_section(&self) -> &'static str {
-        parse_settings_section(&self.settings_section)
+        self.settings_content.active_section
     }
 
     /// Select a settings section by key (A6). Accepts deep-link ids such as
     /// `appearance` or `mcpServer`; invalid ids fall back to `general`.
     pub fn set_settings_section(&mut self, section: &str) {
-        self.settings_section = parse_settings_section(section).to_owned();
+        self.appearance_select = None;
+        self.settings_content.select_section(parse_settings_section(section));
     }
 
     pub fn ui_settings(&self) -> Vec<Setting> {
@@ -303,6 +304,10 @@ impl AppState {
     /// live host persists it through its connection use case (the password
     /// lands sealed), the memory port keeps its semantics.
     /// Flip the theme. The only write goes to the settings in force.
+    pub(crate) fn save_builtin_theme(&mut self, dark: bool) {
+        self.settings_error = self.write_ui_setting(Setting::Theme { dark }).err();
+    }
+
     pub fn toggle_theme(&mut self) {
         let dark = self
             .ui_settings()
