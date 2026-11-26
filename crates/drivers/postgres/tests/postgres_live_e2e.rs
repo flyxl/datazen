@@ -232,3 +232,6 @@ mod migration;
 
 #[path = "postgres_live_e2e/objects.rs"]
 mod objects;
+
+#[path = "postgres_live_e2e/sync.rs"]
+mod sync;
