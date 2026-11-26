@@ -93,3 +93,65 @@ class TransferJourneys:
                              text="The transfer did not commit. Check the mappings and table constraints.")
         self.assertFalse(visible(duplicate, key="native-transfer-success"))
         self.assertEqual(target_rows(), expected)
+
+    def test_sqlite_mapped_transfer_only_writes_reviewed_nondefault_table(self):
+        target = self.root / "transfer-selected.sqlite"
+        with sqlite3.connect(self.db) as connection:
+            connection.executescript("""
+                CREATE TABLE a_source_decoy(decoy_id INTEGER PRIMARY KEY, decoy_text TEXT);
+                INSERT INTO a_source_decoy VALUES (40, 'decoy source');
+                CREATE TABLE z_source_selected(item_id INTEGER PRIMARY KEY, item_label TEXT);
+                INSERT INTO z_source_selected VALUES (7, 'verified source');
+            """)
+        with sqlite3.connect(target) as connection:
+            connection.executescript("""
+                CREATE TABLE a_target_decoy(decoy_id INTEGER PRIMARY KEY, decoy_text TEXT);
+                INSERT INTO a_target_decoy VALUES (50, 'decoy target');
+                CREATE TABLE z_target_selected(target_id INTEGER PRIMARY KEY, target_label TEXT);
+                INSERT INTO z_target_selected VALUES (80, 'pre-existing');
+            """)
+        original = target.read_bytes()
+        source_original = self.db.read_bytes()
+        self.store.write_text(json.dumps({"connections": [
+            {"id": "transfer-src", "name": "Source fixture", "databaseType": "sqlite",
+             "database": str(self.db), "connectionTimeout": 8},
+            {"id": "transfer-dst", "name": "Target fixture", "databaseType": "sqlite",
+             "database": str(target), "connectionTimeout": 8},
+        ]}), encoding="utf-8")
+
+        wrong = [
+            tap(.5, "rail-tools"),
+            tap(1.6, "native-transfer-source-profile-transfer-src"),
+            tap(2.1, "native-transfer-target-profile-transfer-dst"),
+            tap(3.6, "native-transfer-source-table"), tap(4.1, "native-transfer-target-table"),
+            tap(5.2, "native-transfer-target-column"), tap(5.6, "native-transfer-map"),
+            tap(6.2, "native-transfer-map"),
+        ]
+        rejected = self.replay(wrong, until=7.3)
+        self.expect_rendered(rejected, key="native-transfer-pair-0", text="item_id → target_label")
+        self.expect_rendered(rejected, key="native-transfer-error", text="Each column can be mapped once.")
+        self.assertFalse(visible(rejected, key="native-transfer-pair-1"))
+        self.assertEqual(target.read_bytes(), original)
+
+        repaired = [
+            *wrong, tap(7.6, "native-transfer-remove-0"),
+            tap(8.15, "native-transfer-target-column"), tap(8.7, "native-transfer-map"),
+            tap(9.25, "native-transfer-source-column"), tap(9.75, "native-transfer-target-column"),
+            tap(10.3, "native-transfer-map"), tap(11.2, "native-transfer-review"),
+        ]
+        reviewed = self.replay(repaired, until=12.6)
+        self.expect_rendered(reviewed, key="native-transfer-confirm",
+                             text="From Source fixture / z_source_selected to Target fixture / z_target_selected")
+        self.expect_rendered(reviewed, key="native-transfer-confirm-pair-0", text="item_id → target_id")
+        self.expect_rendered(reviewed, key="native-transfer-confirm-pair-1", text="item_label → target_label")
+        self.assertFalse(visible(reviewed, text="item_id → target_label"))
+        self.assertEqual(target.read_bytes(), original)
+
+        result = self.replay([*repaired, tap(13.1, "native-transfer-yes")], until=15.5)
+        self.expect_rendered(result, key="native-transfer-success", text="Inserted 1 rows.")
+        with sqlite3.connect(target) as connection:
+            self.assertEqual(connection.execute("SELECT * FROM a_target_decoy").fetchall(),
+                             [(50, "decoy target")])
+            self.assertEqual(connection.execute("SELECT * FROM z_target_selected ORDER BY target_id").fetchall(),
+                             [(7, "verified source"), (80, "pre-existing")])
+        self.assertEqual(self.db.read_bytes(), source_original)
