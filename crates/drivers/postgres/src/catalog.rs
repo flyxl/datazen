@@ -2,7 +2,9 @@
 
 use crate::postgres::PostgresDriver;
 use crate::sql::{collect_named_ddl_column, pg_regclass_name};
-use crate::structure::{caps_for_version, plan_structure_changes_with_caps};
+use crate::structure::{
+    caps_for_version, plan_structure_changes_with_primary_key, primary_key_changed, qualified_table,
+};
 use datazen_driver_api::*;
 use sqlx::Row;
 
@@ -734,6 +736,47 @@ impl PostgresDriver {
         request: &StructureChangeRequest,
     ) -> Result<StructureChangePlan, DriverError> {
         let caps = self.structure_capabilities_impl(handle).await?;
-        plan_structure_changes_with_caps(&caps, request)
+        let primary_key_name = if request.mode == StructureChangeMode::Alter
+            && primary_key_changed(request)
+            && request
+                .original_columns
+                .iter()
+                .any(|column| column.is_primary_key)
+        {
+            let mut connection = crate::session_connection::for_session(self, handle, "").await?;
+            let relation = qualified_table(request.schema.as_deref(), &request.table);
+            let key = sqlx::query_as::<_, (String, Vec<String>)>(
+                r#"SELECT k.conname::text, ARRAY(
+                       SELECT a.attname::text FROM pg_catalog.pg_attribute a
+                       WHERE a.attrelid = k.conrelid AND a.attnum = ANY(k.conkey)
+                   )
+                   FROM pg_catalog.pg_constraint k
+                   WHERE k.conrelid = pg_catalog.to_regclass($1) AND k.contype = 'p'"#,
+            )
+            .bind(&relation)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+            let expected = request
+                .original_columns
+                .iter()
+                .filter(|c| c.is_primary_key)
+                .map(|c| c.name.as_str())
+                .collect::<std::collections::HashSet<_>>();
+            let Some((name, _)) = key.filter(|(_, actual)| {
+                actual
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<std::collections::HashSet<_>>() == expected
+            }) else {
+                return Err(DriverError::InvalidConfig(
+                    "PostgreSQL primary key changed; reload the structure before applying this plan".into(),
+                ));
+            };
+            Some(name)
+        } else {
+            None
+        };
+        plan_structure_changes_with_primary_key(&caps, request, primary_key_name.as_deref())
     }
 }

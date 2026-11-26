@@ -237,3 +237,119 @@ async fn reviewed_structure_plan_round_trips_real_postgres_catalog_and_rolls_bac
         .expect("remove disposable structure schema");
     driver.disconnect(handle).await.expect("driver cleanup");
 }
+
+#[tokio::test]
+async fn reviewed_primary_key_replacement_resolves_real_constraint_and_replays_composite_key() {
+    let mut fixture = Fixture::open().await;
+    let schema = format!("pk_revision_{}", uuid::Uuid::new_v4().simple());
+    let table = "event records";
+    let relation = format!("{schema}.\"{table}\"");
+    sqlx::raw_sql(&format!(
+        "CREATE SCHEMA {schema};
+         CREATE TABLE {relation} (
+             old_id integer CONSTRAINT \"legacy.custom primary\" PRIMARY KEY,
+             tenant integer NOT NULL DEFAULT 9,
+             event integer NOT NULL
+         );
+         INSERT INTO {relation} VALUES (1, 5, 7)"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("real customized key and rows");
+
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("retained structure editor");
+    let key = column(
+        json!({"id":"id","name":"old_id","dataType":"integer","nullable":false,"isPrimaryKey":true}),
+    );
+    let tenant = column(
+        json!({"id":"tenant","name":"tenant","dataType":"integer","nullable":false,"defaultValue":"9"}),
+    );
+    let event = column(json!({"id":"event","name":"event","dataType":"integer","nullable":false}));
+    let mut retired_key = key.clone();
+    retired_key.is_primary_key = false;
+    retired_key.nullable = true;
+    let mut new_tenant = tenant.clone();
+    new_tenant.is_primary_key = true;
+    new_tenant.default_value = None;
+    let mut new_event = event.clone();
+    new_event.is_primary_key = true;
+    let request = StructureChangeRequest {
+        mode: StructureChangeMode::Alter,
+        schema: Some(schema),
+        table: table.into(),
+        original_columns: vec![key, tenant, event],
+        current_columns: vec![retired_key, new_tenant, new_event],
+        original_indexes: vec![],
+        current_indexes: vec![],
+    };
+    let mut stale = request.clone();
+    stale.original_columns[0].name = "renamed_after_opening".into();
+    assert!(matches!(
+        driver.plan_structure_changes(&handle, &stale).await,
+        Err(datazen_driver_api::DriverError::InvalidConfig(message))
+          if message.contains("reload the structure")
+    ));
+    let plan = driver
+        .plan_structure_changes(&handle, &request)
+        .await
+        .expect("reviewable replacement plan");
+    let primary_key = async |conn: &mut sqlx::PgConnection| {
+        sqlx::query_as::<_, (String, String)>("SELECT conname::text, pg_get_constraintdef(oid) FROM pg_constraint WHERE contype = 'p' AND conrelid = to_regclass($1)")
+            .bind(&relation)
+            .fetch_one(conn)
+            .await
+            .expect("independent PostgreSQL key")
+    };
+    assert_eq!(
+        primary_key(&mut fixture.oracle).await,
+        (
+            "legacy.custom primary".into(),
+            "PRIMARY KEY (old_id)".into()
+        )
+    );
+    execute_plan(&driver, &handle, &plan, false).await;
+    assert_eq!(
+        primary_key(&mut fixture.oracle).await.0,
+        "legacy.custom primary"
+    );
+    execute_plan(&driver, &handle, &plan, true).await;
+    assert_eq!(
+        primary_key(&mut fixture.oracle).await.1,
+        "PRIMARY KEY (tenant, event)"
+    );
+    sqlx::query(&format!(
+        "INSERT INTO {relation} (tenant,event) VALUES (5, 8)"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("former key is nullable");
+    let duplicate = sqlx::query(&format!(
+        "INSERT INTO {relation} (tenant,event) VALUES (5, 7)"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect_err("new composite key is enforced");
+    assert_eq!(
+        duplicate
+            .as_database_error()
+            .and_then(|e| e.code())
+            .as_deref(),
+        Some("23505")
+    );
+    let no_default = sqlx::query(&format!("INSERT INTO {relation} (event) VALUES (9)"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect_err("obsolete tenant default was dropped");
+    assert_eq!(
+        no_default
+            .as_database_error()
+            .and_then(|e| e.code())
+            .as_deref(),
+        Some("23502")
+    );
+    driver.disconnect(handle).await.expect("disconnect editor");
+}

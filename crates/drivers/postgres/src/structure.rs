@@ -62,7 +62,7 @@ fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
-fn qualified_table(schema: Option<&str>, table: &str) -> String {
+pub(crate) fn qualified_table(schema: Option<&str>, table: &str) -> String {
     match schema.filter(|s| !s.is_empty()) {
         Some(s) => format!("{}.{}", quote_ident(s), quote_ident(table)),
         None => quote_ident(table),
@@ -232,10 +232,28 @@ fn build_create_index_sql(
     Ok(sql)
 }
 
-/// Plan DDL statements using precomputed capabilities (pure, testable).
+pub(crate) fn primary_key_changed(request: &StructureChangeRequest) -> bool {
+    fn key_ids(columns: &[StructureColumnDraft]) -> impl Iterator<Item = &str> {
+        columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.id.as_str())
+    }
+    key_ids(&request.original_columns).ne(key_ids(&request.current_columns))
+}
+
+/// Offline DDL planner. Dropping a key needs the live constraint name.
 pub fn plan_structure_changes_with_caps(
     caps: &StructureCapabilities,
     request: &StructureChangeRequest,
+) -> Result<StructureChangePlan, DriverError> {
+    plan_structure_changes_with_primary_key(caps, request, None)
+}
+
+pub(crate) fn plan_structure_changes_with_primary_key(
+    caps: &StructureCapabilities,
+    request: &StructureChangeRequest,
+    primary_key_name: Option<&str>,
 ) -> Result<StructureChangePlan, DriverError> {
     if request.mode == StructureChangeMode::Create {
         return plan_create_table(caps, request);
@@ -251,7 +269,29 @@ pub fn plan_structure_changes_with_caps(
     let curr_idx = indexes_by_id(&request.current_indexes);
 
     let mut statements: Vec<PlanStatement> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
+    let change_key = primary_key_changed(request);
+    if change_key {
+        require_cap(caps.alter_primary_key, "ALTER PRIMARY KEY")?;
+        if request
+            .original_columns
+            .iter()
+            .any(|column| column.is_primary_key)
+        {
+            let name = primary_key_name.ok_or_else(|| {
+                DriverError::Unsupported(
+                    "replacing the primary key requires its live PostgreSQL constraint name".into(),
+                )
+            })?;
+            statements.push(PlanStatement {
+                sql: format!(
+                    "ALTER TABLE {table_ref} DROP CONSTRAINT {}",
+                    quote_ident(name)
+                ),
+                summary: format!("Drop primary key {name}"),
+                risk: StatementRisk::Destructive,
+            });
+        }
+    }
 
     // Drop removed indexes first (before dropping columns they may reference).
     for (id, idx) in &orig_idx {
@@ -355,30 +395,6 @@ pub fn plan_structure_changes_with_caps(
             });
         }
 
-        if orig.is_primary_key != curr.is_primary_key {
-            require_cap(caps.alter_primary_key, "ALTER PRIMARY KEY")?;
-            warnings.push(format!(
-                "Primary key change on column {} may require manual constraint naming",
-                curr.name
-            ));
-            if curr.is_primary_key {
-                statements.push(PlanStatement {
-                    sql: format!("ALTER TABLE {table_ref} ADD PRIMARY KEY ({col_name})"),
-                    summary: format!("Add primary key on column {}", curr.name),
-                    risk: StatementRisk::Rewrite,
-                });
-            } else {
-                statements.push(PlanStatement {
-                    sql: format!(
-                        "ALTER TABLE {table_ref} DROP CONSTRAINT IF EXISTS {}_pkey",
-                        request.table
-                    ),
-                    summary: format!("Drop primary key involving column {}", curr.name),
-                    risk: StatementRisk::Destructive,
-                });
-            }
-        }
-
         if orig.comment != curr.comment {
             require_cap(caps.comment, "COMMENT ON COLUMN")?;
             let comment = curr.comment.as_deref().unwrap_or("");
@@ -389,6 +405,20 @@ pub fn plan_structure_changes_with_caps(
                 ),
                 summary: format!("Set comment on column {}", curr.name),
                 risk: StatementRisk::Additive,
+            });
+        }
+    }
+
+    if change_key {
+        let columns = primary_key_columns(&request.current_columns);
+        if !columns.is_empty() {
+            statements.push(PlanStatement {
+                sql: format!(
+                    "ALTER TABLE {table_ref} ADD PRIMARY KEY ({})",
+                    columns.join(", ")
+                ),
+                summary: "Add primary key".into(),
+                risk: StatementRisk::Rewrite,
             });
         }
     }
@@ -431,7 +461,7 @@ pub fn plan_structure_changes_with_caps(
 
     Ok(StructureChangePlan {
         statements,
-        warnings,
+        warnings: vec![],
     })
 }
 
