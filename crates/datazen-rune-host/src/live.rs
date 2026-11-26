@@ -257,7 +257,7 @@ enum HostAnswer {
     },
     WorkflowRun {
         generation: u32,
-        results: Result<Vec<WorkflowStepResult>, String>,
+        results: Result<datazen_ui_api::NativeWorkflowRun, String>,
     },
     TablePage {
         generation: u32,
@@ -2216,8 +2216,10 @@ async fn run_workflow_engine(
     repository: &Arc<dyn ConnectionRepository>,
     session: &Arc<Mutex<LiveSession>>,
     name: &str,
-) -> Result<Vec<WorkflowStepResult>, String> {
+) -> Result<datazen_ui_api::NativeWorkflowRun, String> {
+    use datazen::workflow::domain::model::StepStatus;
     use datazen::workflow::engine::executor::WorkflowExecutor;
+    use datazen_ui_api::{StepStatus as UiStatus, WorkflowExecutionResult};
 
     let scope = crate::dashboards::host_scope();
     let definition = workflows
@@ -2245,9 +2247,9 @@ async fn run_workflow_engine(
     )
     .await
     .map_err(|error| error)?;
-    // A failing workflow still carries its step report — the list is the
-    // report; only a workflow that could not run at all is an error.
-    Ok(result
+    // A failed step still has a real engine report. This port preserves it
+    // alongside the previous compact summaries; neither triggers a second run.
+    let summaries = result
         .steps
         .iter()
         .map(|step| WorkflowStepResult {
@@ -2255,7 +2257,7 @@ async fn run_workflow_engine(
                 .sql_executed
                 .clone()
                 .unwrap_or_else(|| step.step_id.clone()),
-            ok: step.status == datazen::workflow::domain::model::StepStatus::Success,
+            ok: step.status == StepStatus::Success,
             summary: match (&step.error, &step.result) {
                 (Some(error), _) => error.clone(),
                 (None, Some(value)) => {
@@ -2268,7 +2270,30 @@ async fn run_workflow_engine(
                 (None, None) => format!("{:?}", step.status),
             },
         })
-        .collect())
+        .collect();
+    let steps = result.steps.into_iter().map(|step| datazen_ui_api::StepExecutionResult {
+        step_id: step.step_id,
+        step_type: step.step_type,
+        status: match step.status {
+            StepStatus::Success => UiStatus::Success,
+            StepStatus::Failed => UiStatus::Failed,
+            StepStatus::Skipped => UiStatus::Skipped,
+            StepStatus::TimedOut => UiStatus::TimedOut,
+        },
+        result: step.result,
+        execution_time_ms: step.execution_time_ms,
+        error: step.error,
+        connection_name: step.connection_name,
+        sql_executed: step.sql_executed,
+    }).collect();
+    let report = WorkflowExecutionResult {
+        success: result.success,
+        final_output: result.final_output,
+        steps,
+        total_time_ms: result.total_time_ms,
+        error: result.error,
+    };
+    Ok(datazen_ui_api::NativeWorkflowRun { summaries, report })
 }
 
 async fn value_search_scan(
@@ -2926,7 +2951,7 @@ impl DesktopAdapter for LiveAdapter {
                     generation,
                     results,
                 } => {
-                    deliveries.push(AdapterDelivery::WorkflowRun {
+                    deliveries.push(AdapterDelivery::NativeWorkflowRun {
                         generation,
                         results,
                     });
@@ -3461,6 +3486,21 @@ impl DesktopAdapter for LiveAdapter {
             visibility: WorkflowVisibility::User,
         };
         futures_executor::block_on(self.workflows.save(&scope, &definition))
+    }
+
+    fn delete_visible_workflow(&mut self, name: &str) -> Result<(), String> {
+        let scope = crate::dashboards::host_scope();
+        // This native list projects a display name as the row id. Resolve it
+        // against current *user-visible* records, and refuse ambiguity rather
+        // than guessing or including a dashboard-owned hidden definition.
+        let definitions = futures_executor::block_on(self.workflows.list_definitions(&scope));
+        let mut matches = definitions.iter().filter(|entry| entry.name == name);
+        let selected = matches.next().ok_or("The selected workflow is no longer available.")?;
+        if matches.next().is_some() {
+            return Err("Several workflows have that name; nothing was deleted.".into());
+        }
+        futures_executor::block_on(self.workflows.delete(&scope, &selected.id))
+            .map_err(|_| "The selected workflow could not be deleted.".into())
     }
 
     fn run_workflow(&mut self, name: &str) -> Result<Vec<WorkflowStepResult>, String> {
@@ -4410,13 +4450,13 @@ mod tests {
     ) -> Option<Result<Vec<WorkflowStepResult>, String>> {
         for _ in 0..300 {
             for delivery in adapter.poll_jobs() {
-                if let AdapterDelivery::WorkflowRun {
+                if let AdapterDelivery::NativeWorkflowRun {
                     generation: g,
                     results,
                 } = delivery
                 {
                     if g == generation {
-                        return Some(results);
+                        return Some(results.map(|result| result.summaries));
                     }
                 }
             }

@@ -218,6 +218,27 @@ pub struct StatementPreview {
 }
 
 impl WorkflowExecutionResult {
+    /// Preserve the real engine's bounded result shape and stable step identities.
+    pub fn from_native_report(result: datazen_ui_api::WorkflowExecutionResult) -> Self {
+        let steps = result.steps.into_iter().map(|step| StepExecutionResult {
+            step_id: step.step_id,
+            step_type: Some(step.step_type),
+            status: WorkflowStepStatus::from_str(step.status.as_str()),
+            result: step.result,
+            execution_time_ms: step.execution_time_ms,
+            error: step.error,
+            connection_name: step.connection_name,
+            sql_executed: step.sql_executed,
+        }).collect();
+        Self {
+            success: result.success,
+            final_output: result.final_output,
+            steps,
+            total_time_ms: result.total_time_ms,
+            error: result.error,
+        }
+    }
+
     /// The honest bridge from the port's lite run report (name / ok /
     /// summary per step) to this VM: every step keeps its text as the id, a
     /// failure carries its summary as the step's error line, and nothing the

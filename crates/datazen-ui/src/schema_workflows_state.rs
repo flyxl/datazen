@@ -273,7 +273,17 @@ impl AppState {
     /// too (React's `setPanels` in `runWorkflowInPanel`) and re-seeds the
     /// step view at the order's first shown step.
     pub fn set_workflow_results(&mut self, results: Vec<WorkflowStepResult>) {
-        self.workflow_execution = Some(WorkflowExecutionResult::from_step_results(&results));
+        let report = WorkflowExecutionResult::from_step_results(&results);
+        self.set_workflow_report(results, report);
+    }
+
+    pub(crate) fn set_native_workflow_report(&mut self, result: datazen_ui_api::NativeWorkflowRun) {
+        let report = WorkflowExecutionResult::from_native_report(result.report);
+        self.set_workflow_report(result.summaries, report);
+    }
+
+    fn set_workflow_report(&mut self, results: Vec<WorkflowStepResult>, report: WorkflowExecutionResult) {
+        self.workflow_execution = Some(report);
         self.workflow_results = results;
         let order = self.workflow_step_order;
         let answer = self.workflow_execution.clone();

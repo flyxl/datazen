@@ -1899,6 +1899,14 @@ pub struct WorkflowStepResult {
     pub summary: String,
 }
 
+/// Native asynchronous delivery: retain the compact summaries for callers that
+/// use them, and preserve the engine's typed result for the workflow workspace.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NativeWorkflowRun {
+    pub summaries: Vec<WorkflowStepResult>,
+    pub report: WorkflowExecutionResult,
+}
+
 /// One workflow: a name and its steps, in order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Workflow {
@@ -2402,6 +2410,11 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    /// Delete the uniquely selected visible workflow via the host registry.
+    fn delete_visible_workflow(&mut self, _name: &str) -> Result<(), String> {
+        Err("workflow delete needs the live host".into())
+    }
+
     /// Run a workflow through the host (N13); every step reports name,
     /// success and one summary line. The default answers the fixed error;
     /// the UI falls back to the memory port.
@@ -2657,6 +2670,11 @@ pub enum AdapterDelivery {
     WorkflowRun {
         generation: u32,
         results: Result<Vec<WorkflowStepResult>, String>,
+    },
+    /// Rich report delivered by the real native host, not by the lite fallback.
+    NativeWorkflowRun {
+        generation: u32,
+        results: Result<NativeWorkflowRun, String>,
     },
 }
 

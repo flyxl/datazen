@@ -546,21 +546,15 @@ impl AppState {
         }
     }
 
-    /// React's `aiCommands.workflowDelete` — the delete use case has no
-    /// adapter method, so the flow is the honest failure branch (the catch
-    /// the answer routing reads).
-    pub fn delete_workflow(&mut self, _workflow_id: &str) -> Result<(), String> {
-        let error = "workflow delete needs the live host; the workflow delete use case is not \
-                     wired into this Rune build yet"
-            .to_owned();
-        Err(error)
+    /// Run removal only after the page's actual confirmation.
+    pub fn delete_workflow(&mut self, workflow_id: &str) -> Result<(), String> {
+        self.desktop.delete_visible_workflow(workflow_id)?;
+        self.workflow_operation_error = None;
+        self.workflow_deleted(workflow_id);
+        Ok(())
     }
 
-    /// The delete answer's success transition — the wiring's call once the
-    /// adapter deletes: the workflow's run panels close (React's
-    /// `prev.filter`), the list reloads. No production caller exists yet;
-    /// tests pin the transition.
-    #[allow(dead_code)] // the workflow host wiring is the production caller
+    /// The confirmed workflow's run panels close and the list reloads.
     pub fn workflow_deleted(&mut self, workflow_id: &str) {
         let active_id = self.workflow_active_panel.clone();
         self.workflow_panels.retain(|panel| {

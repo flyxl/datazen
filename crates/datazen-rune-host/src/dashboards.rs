@@ -170,11 +170,13 @@ impl WorkflowDefinitionRepository for FileWorkflowStore {
 
     fn delete_workflow(&self, _scope: &OrganizationScope, id: &str) -> Result<(), String> {
         let mut records = self.state.lock().expect("the workflow store lock");
-        let before = records.len();
-        records.retain(|record| record.id != id);
-        if records.len() != before {
-            self.persist(&records)?;
+        if !records.iter().any(|record| record.id == id) {
+            return Ok(());
         }
+        let updated = records.iter().filter(|record| record.id != id)
+            .cloned().collect::<Vec<_>>();
+        self.persist(&updated)?;
+        *records = updated;
         Ok(())
     }
 }

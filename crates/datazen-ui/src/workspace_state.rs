@@ -1021,6 +1021,18 @@ impl AppState {
                 }
                 self.refresh_query_history_if_open();
             }
+            AdapterDelivery::NativeWorkflowRun { generation, results } => {
+                if self.workflow_loading == Some(generation) {
+                    self.workflow_loading = None;
+                }
+                if generation != self.workflow_generation {
+                    return;
+                }
+                match results {
+                    Ok(result) => self.set_native_workflow_report(result),
+                    Err(_) => self.clear_workflow_results(),
+                }
+            }
             AdapterDelivery::WorkflowRun {
                 generation,
                 results,

@@ -132,3 +132,108 @@ steps:
                              [(1, "夜班 O'Neil", 35, "integer"),
                               (2, expected[0], expected[1], "integer"),
                               (3, "fixture-decoy", 99, "integer")])
+
+
+    def test_legacy_workflow_confirmed_delete_preserves_unrelated_definition(self):
+        """The save/list/delete slice of SW-01 through the real native host."""
+        target = "e2e-workflow-delete-target"
+        decoy = "e2e-workflow-delete-keep"
+        store = self.root / "workflows.json"
+
+        def create(name, marker):
+            document = f"name: {name}\nsteps:\n  - SELECT {marker} AS saved_marker\n"
+            return self.replay([
+                tap(.5, "rail-workflows"), tap(1.8, "workflow-create"),
+                tap(3, "workflow-mode-yaml"), tap(3.8, "yaml-editor-scroll"),
+                key(4.1, "a", cmd=True), type_text(4.4, document),
+                tap(7.8, "workflow-yaml-save"),
+            ], until=9.1)
+
+        self.expect_rendered(create(target, 32), key=f"workflow-{target}")
+        with_both = create(decoy, 81)
+        self.expect_rendered(with_both, key=f"workflow-{target}")
+        self.expect_rendered(with_both, key=f"workflow-{decoy}")
+        records = {row["name"]: row for row in json.loads(store.read_text(encoding="utf-8"))}
+        self.assertEqual(set(records), {target, decoy})
+        self.assertIn("SELECT 32 AS saved_marker", records[target]["definitionYaml"])
+        self.assertIn("SELECT 81 AS saved_marker", records[decoy]["definitionYaml"])
+        original = store.read_bytes()
+
+        ask = [tap(.5, "rail-workflows"), tap(2.3, f"workflow-{target}-delete")]
+        confirm_panel = self.replay(ask, until=3.8)
+        self.expect_rendered(confirm_panel, key="workflow-confirm-dialog")
+        self.expect_rendered(confirm_panel, key="workflow-confirm-dialog-confirm")
+        self.assertEqual(store.read_bytes(), original)
+
+        canceled = self.replay([*ask, tap(4, "workflow-confirm-dialog-cancel")], until=5.3)
+        self.assertFalse(visible(canceled, key="workflow-confirm-dialog"))
+        self.expect_rendered(canceled, key=f"workflow-{target}")
+        self.assertEqual(store.read_bytes(), original)
+
+        deleted = self.replay([*ask, tap(4, "workflow-confirm-dialog-confirm")], until=5.8)
+        self.assertFalse(visible(deleted, key=f"workflow-{target}"))
+        self.assertFalse(visible(deleted, key="workflow-operation-error"))
+        self.expect_rendered(deleted, key=f"workflow-{decoy}")
+        self.assertEqual(json.loads(store.read_text(encoding="utf-8")), [records[decoy]])
+
+        reopened = self.replay([tap(.5, "rail-workflows")], until=2.5)
+        self.assertFalse(visible(reopened, key=f"workflow-{target}"))
+        self.expect_rendered(reopened, key=f"workflow-{decoy}")
+        self.assertEqual(json.loads(store.read_text(encoding="utf-8")), [records[decoy]])
+
+
+    def test_legacy_workflow_window_switches_live_steps_and_closes_run_tab(self):
+        """Migrate the original workflow run-tab and step-navigation journey."""
+        fixture(self.store, self.db)
+        name = "e2e-workflow-run-tabs"
+        first = "SELECT customer_name AS person FROM customers ORDER BY id"
+        second = "SELECT id AS chosen FROM customers WHERE id=2"
+        document = f"name: {name}\nsteps:\n  - {first}\n  - {second}\n"
+        save_at = 4.4 + .027 * len(document) + 2
+        saved = self.replay([
+            tap(.5, "rail-workflows"), tap(1.8, "workflow-create"),
+            tap(3, "workflow-mode-yaml"), tap(3.8, "yaml-editor-scroll"),
+            key(4.1, "a", cmd=True), type_text(4.4, document),
+            tap(save_at, "workflow-yaml-save"),
+        ], until=save_at + 1.6)
+        self.expect_rendered(saved, key=f"workflow-{name}")
+        fixture_uri = f"{self.db.as_uri()}?mode=ro"
+        with sqlite3.connect(fixture_uri, uri=True) as db:
+            self.assertEqual(db.execute(first).fetchall(), [("fixture-ada",), ("fixture-lin",)])
+            self.assertEqual(db.execute(second).fetchall(), [(2,)])
+
+        opened = [
+            tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-workflows"),
+            tap(4.5, f"workflow-{name}"), tap(6, "workflow-execute-button"),
+        ]
+        result = self.replay(opened, until=9)
+        self.expect_rendered(result, key="workflow-tab-wf-1")
+        self.expect_rendered(result, key="workflow-tab-wf-1-close")
+        self.expect_rendered(result, key="workflow-steps")
+        for step in ("s1", "s2"):
+            self.expect_rendered(result, key=f"workflow-step-{step}")
+            self.expect_rendered(result, key=f"workflow-step-{step}-status", text="✓")
+        self.assertFalse(visible(result, key="workflow-empty-hint"))
+
+        from_second = self.replay([*opened, tap(8.7, "workflow-step-s2")], until=10.0)
+        self.expect_rendered(from_second, key="workflow-step-detail-id", text="s2")
+        self.expect_rendered(from_second, key="workflow-step-sql-text", text=second)
+        self.expect_rendered(from_second, key="workflow-step-table-col-0", text="chosen")
+        self.expect_rendered(from_second, key="workflow-step-table-cell-0-0", text="2")
+        self.assertFalse(visible(from_second, key="workflow-step-table-row-1"))
+        switched = self.replay([
+            *opened, tap(8.7, "workflow-step-s2"), tap(10.3, "workflow-step-s1"),
+        ], until=11.5)
+        self.expect_rendered(switched, key="workflow-step-detail-id", text="s1")
+        self.expect_rendered(switched, key="workflow-step-sql-text", text=first)
+        self.expect_rendered(switched, key="workflow-step-table-col-0", text="person")
+        self.expect_rendered(switched, key="workflow-step-table-cell-0-0", text="fixture-ada")
+        self.expect_rendered(switched, key="workflow-step-table-cell-1-0", text="fixture-lin")
+
+        closed = self.replay([*opened, tap(9, "workflow-tab-wf-1-close")], until=10.8)
+        self.expect_rendered(closed, key="workflow-empty-hint")
+        self.expect_rendered(closed, key=f"workflow-{name}")
+        for gone in ("workflow-tab-wf-1", "workflow-steps", "workflow-step-detail"):
+            self.assertFalse(visible(closed, key=gone))
+        with sqlite3.connect(fixture_uri, uri=True) as db:
+            self.assertEqual(db.execute(first).fetchall(), [("fixture-ada",), ("fixture-lin",)])
