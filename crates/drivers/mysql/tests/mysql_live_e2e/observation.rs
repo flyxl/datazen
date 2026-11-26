@@ -317,3 +317,136 @@ async fn mysql_parallel_close_does_not_claim_full_settlement_before_real_socket_
     );
     assert!(ledger.inner.0.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn mysql_fixed_typed_begin_does_not_implicitly_commit_native_transactions() {
+    use datazen_driver_api::{DriverError, Value};
+    let mut f = Fixture::open().await;
+    let driver = datazen_driver_mysql::MysqlDriver::new(false);
+    let fixed = driver
+        .connect_fixed_session(&f.cfg)
+        .await
+        .expect("real pinned session");
+    let pooled = driver
+        .connect(&f.cfg)
+        .await
+        .expect("separate pooled session");
+    let table = format!("dz_nested_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY) ENGINE=InnoDB"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let visible = async |oracle: &mut sqlx::MySqlConnection| {
+        sqlx::query_scalar::<_, i32>(&format!("SELECT id FROM {table} ORDER BY id"))
+            .fetch_all(oracle)
+            .await
+            .unwrap()
+    };
+
+    // The real server's next-transaction read-only setting must survive the
+    // nesting guard. Set it independently and verify the InnoDB write refusal.
+    driver
+        .execute(&fixed, "SET TRANSACTION READ ONLY")
+        .await
+        .unwrap();
+    let read_only = driver
+        .begin_transaction(&fixed)
+        .await
+        .expect("accept idle next READ ONLY");
+    assert!(
+        matches!(
+            driver.begin_transaction(&fixed).await,
+            Err(DriverError::TransactionError(ref detail)) if detail.contains("already open")
+        ),
+        "an active transaction need not have written rows"
+    );
+    assert!(
+        matches!(driver.execute(&fixed,&format!("INSERT INTO {table} VALUES (3)")).await,
+       Err(DriverError::QueryFailed(detail)) if detail.contains("READ ONLY")||detail.contains("read-only"))
+    );
+    driver
+        .rollback(read_only)
+        .await
+        .expect("rollback read-only transaction");
+    assert!(visible(&mut f.oracle).await.is_empty());
+
+    let tx = driver
+        .begin_transaction(&fixed)
+        .await
+        .expect("start retained transaction");
+    driver
+        .execute(&fixed, &format!("INSERT INTO {table} VALUES(7)"))
+        .await
+        .unwrap();
+    assert!(visible(&mut f.oracle).await.is_empty());
+    assert!(
+        matches!(driver.begin_transaction(&fixed).await,Err(DriverError::TransactionError(ref msg)) if msg.contains("already open"))
+    );
+    assert!(
+        visible(&mut f.oracle).await.is_empty(),
+        "refused nested typed BEGIN must never persist pending changes"
+    );
+    assert_eq!(
+        driver
+            .query(&fixed, &format!("SELECT id FROM {table}"))
+            .await
+            .unwrap()
+            .rows,
+        [vec![Some(Value::Integer(7))]]
+    );
+    driver.rollback(tx).await.unwrap();
+    assert!(visible(&mut f.oracle).await.is_empty());
+
+    driver.execute(&fixed, "START TRANSACTION").await.unwrap();
+    driver
+        .execute(&fixed, &format!("INSERT INTO {table} VALUES(9)"))
+        .await
+        .unwrap();
+    assert!(matches!(
+        driver.begin_transaction(&fixed).await,
+        Err(DriverError::TransactionError(_))
+    ));
+    assert!(
+        visible(&mut f.oracle).await.is_empty(),
+        "native raw transaction is not determined by the driver's previous typed calls"
+    );
+    driver.execute(&fixed, "ROLLBACK").await.unwrap();
+    assert!(visible(&mut f.oracle).await.is_empty());
+
+    let pool_tx = driver.begin_transaction(&pooled).await.unwrap();
+    assert!(matches!(
+        driver.begin_transaction(&pooled).await,
+        Err(DriverError::TransactionError(_))
+    ));
+    assert!(matches!(
+        driver.begin_read_snapshot(&pooled).await,
+        Err(DriverError::TransactionError(_))
+    ));
+    let id = pool_tx.id.clone();
+    let resource = pool_tx.connection_id.clone();
+    driver.rollback(pool_tx).await.unwrap();
+    let ended = || datazen_driver_api::TransactionHandle {
+        id: id.clone(),
+        connection_id: resource.clone(),
+    };
+    assert!(matches!(
+        driver.rollback(ended()).await,
+        Err(DriverError::TransactionError(_))
+    ));
+    assert!(matches!(
+        driver.commit(ended()).await,
+        Err(DriverError::TransactionError(_))
+    ));
+
+    let writable = driver.begin_transaction(&fixed).await.unwrap();
+    driver
+        .execute(&fixed, &format!("INSERT INTO {table} VALUES(22)"))
+        .await
+        .unwrap();
+    driver.commit(writable).await.unwrap();
+    assert_eq!(visible(&mut f.oracle).await, [22]);
+    driver.disconnect(pooled).await.unwrap();
+    driver.disconnect(fixed).await.unwrap();
+}

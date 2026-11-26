@@ -15,6 +15,7 @@ impl MysqlDriver {
                 .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
             drop(txs);
             let mut conn = pinned.lock().await;
+            Self::reject_nested_fixed_transaction(&mut conn).await?;
             Self::execute_text_on_conn(&mut *conn, "BEGIN")
                 .await
                 .map_err(|e| DriverError::TransactionError(e.to_string()))?;
@@ -56,6 +57,33 @@ impl MysqlDriver {
             id: format!("mysql_tx_{}", uuid::Uuid::new_v4()),
             connection_id: handle.id.clone(),
         })
+    }
+
+    // BEGIN would implicitly commit an existing MySQL transaction. A savepoint
+    // is ignored outside a transaction, so only a successful RELEASE proves
+    // that one was active. Unlike SET TRANSACTION this probe leaves the user's
+    // one-shot isolation/access settings alone. It also works for raw SQL
+    // transactions when Performance Schema observation is unavailable.
+    async fn reject_nested_fixed_transaction(
+        conn: &mut sqlx::MySqlConnection,
+    ) -> Result<(), DriverError> {
+        let name = format!("datazen_begin_{}", uuid::Uuid::new_v4().simple());
+        Self::execute_text_on_conn(conn, &format!("SAVEPOINT {name}"))
+            .await
+            .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+        match Self::execute_text_on_conn(conn, &format!("RELEASE SAVEPOINT {name}")).await {
+            Ok(_) => Err(DriverError::TransactionError(
+                "A transaction is already open on this connection".into(),
+            )),
+            Err(sqlx::Error::Database(error))
+                if error
+                    .try_downcast_ref::<sqlx::mysql::MySqlDatabaseError>()
+                    .is_some_and(|error| error.number() == 1305) =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(DriverError::TransactionError(error.to_string())),
+        }
     }
 
     pub(crate) async fn begin_read_snapshot_inner(
