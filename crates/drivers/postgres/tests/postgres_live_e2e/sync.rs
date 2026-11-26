@@ -306,3 +306,178 @@ async fn sync_adapters_round_trip_live_scalar_catalog_values_and_refuse_lossy_st
         .await
         .expect("remove sync fixtures");
 }
+
+#[tokio::test]
+async fn sync_preserves_live_postgres_network_and_interval_text_at_target_width() {
+    let mut fixture = Fixture::open().await;
+    let schema = format!("sync_physical_{}", uuid::Uuid::new_v4().simple());
+    let physical = format!("{schema}.physical");
+    sqlx::raw_sql(&format!(
+        r#"
+        CREATE SCHEMA {schema};
+        CREATE TABLE {physical} (
+            id integer PRIMARY KEY, ip inet, subnet cidr, hardware macaddr, wide_hardware macaddr8,
+            elapsed interval, any_precision numeric, short_flag bit varying(3), total money,
+            object_id oid, document xml, labels integer[]
+        );
+        INSERT INTO {physical} (id,ip,subnet,hardware,wide_hardware,elapsed,any_precision)
+        VALUES (7,'1234:5678:9abc:def0:2345:6789:abcd:ef01/127',
+                '1234:5678:9abc:def0:2345:6789:abcd:ef00/127',
+                '08:00:2B:01:02:03','08:00:2B:FF:FE:01:02:03',
+                '-01:02:03.456789',12345678901234567890.01);
+    "#
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("real PostgreSQL native storage");
+    let factory = inventory::iter::<SyncAdapterFactory>
+        .into_iter()
+        .find(|factory| factory.db_types.contains(&"postgresql"))
+        .expect("linked PostgreSQL sync adapter");
+    let adapter = (factory.create)();
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("retained transfer session");
+    driver
+        .execute(&handle, &format!("SET search_path TO {schema}, public"))
+        .await
+        .expect("explicit source search path");
+    let metadata = driver
+        .query(
+            &handle,
+            &adapter
+                .source
+                .full_column_types_query("physical")
+                .expect("catalog SQL"),
+        )
+        .await
+        .expect("resolve real unqualified source");
+    let full_types: HashMap<_, _> = metadata
+        .rows
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [Some(Value::String(name)), Some(Value::String(ty))] => (name.clone(), ty.clone()),
+            _ => panic!("unknown catalog row"),
+        })
+        .collect();
+    let database = fixture
+        .config
+        .database
+        .as_deref()
+        .expect("disposable PostgreSQL database");
+    let schema_result = driver
+        .get_table_schema(&handle, "physical", database, Some(&schema))
+        .await
+        .expect("native source catalog");
+    let ir = adapter
+        .source
+        .table_to_ir(&schema_result, Some(&full_types));
+    let ty = |name| {
+        &ir.columns
+            .iter()
+            .find(|col| col.name == name)
+            .expect("native source column")
+            .ir_type
+    };
+    assert_eq!(ty("ip"), &IRType::Varchar { length: Some(45) });
+    assert_eq!(ty("subnet"), &IRType::Varchar { length: Some(43) });
+    assert_eq!(ty("hardware"), &IRType::Varchar { length: Some(17) });
+    assert_eq!(ty("elapsed"), &IRType::Varchar { length: Some(255) });
+    assert_eq!(
+        ty("any_precision"),
+        &IRType::Decimal {
+            precision: 0,
+            scale: 0
+        }
+    );
+    assert_eq!(ty("short_flag"), &IRType::Blob);
+    assert_eq!(
+        ty("total"),
+        &IRType::Decimal {
+            precision: 19,
+            scale: 2
+        }
+    );
+    assert_eq!(ty("object_id"), &IRType::Int32);
+    assert_eq!(ty("document"), &IRType::Text);
+    assert_eq!(ty("labels"), &IRType::Json);
+    let labels = schema_result
+        .columns
+        .iter()
+        .find(|col| col.name == "labels")
+        .expect("actual array column");
+    assert!(
+        adapter
+            .source
+            .validate_transfer_source_column(labels)
+            .is_err(),
+        "array transfer fails closed rather than inserting a null"
+    );
+    let key = schema_result
+        .columns
+        .iter()
+        .find(|col| col.name == "id")
+        .expect("actual numeric key");
+    let key_contract = adapter
+        .source
+        .sync_key_contract(key)
+        .expect("numeric key contract");
+    let order = adapter
+        .source
+        .sync_key_order_expression("id", &key_contract);
+    let names = [
+        "ip",
+        "subnet",
+        "hardware",
+        "wide_hardware",
+        "elapsed",
+        "any_precision",
+    ];
+    let projected = names.join(", ");
+    let observed = driver
+        .query(
+            &handle,
+            &format!("SELECT {projected} FROM physical ORDER BY {order}"),
+        )
+        .await
+        .expect("query actual binary source values");
+    assert_eq!(observed.rows.len(), 1);
+    let columns = names
+        .iter()
+        .map(|name| format!("{name} {}", adapter.target.ir_type_to_native(ty(name))))
+        .collect::<Vec<_>>()
+        .join(", ");
+    driver
+        .execute(&handle, &format!("CREATE TABLE mapped ({columns})"))
+        .await
+        .expect("apply mapped PostgreSQL DDL");
+    let values = names
+        .iter()
+        .zip(&observed.rows[0])
+        .map(|(name, value)| adapter.target.format_literal(value, ty(name)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    driver
+        .execute(&handle, &format!("INSERT INTO mapped VALUES ({values})"))
+        .await
+        .expect("live source values fit their mapped destination types");
+    let source = sqlx::query_as::<_, (String, String, String, String, String, String)>(&format!(
+        "SELECT ip::text,subnet::text,hardware::text,wide_hardware::text,elapsed::text,any_precision::text FROM {physical}"
+    )).fetch_one(&mut fixture.oracle).await.expect("independent PostgreSQL source text");
+    let target = sqlx::query_as::<_, (String, String, String, String, String, String)>(&format!(
+        "SELECT ip,subnet,hardware,wide_hardware,elapsed,any_precision::text FROM {schema}.mapped"
+    ))
+    .fetch_one(&mut fixture.oracle)
+    .await
+    .expect("independent PostgreSQL mapped result");
+    assert_eq!(
+        source, target,
+        "no truncation, lost sign, or altered precision"
+    );
+    driver
+        .disconnect(handle)
+        .await
+        .expect("close transfer session");
+}

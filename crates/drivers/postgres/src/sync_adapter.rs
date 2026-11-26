@@ -370,7 +370,8 @@ impl SyncSourceAdapter for PgSyncAdapter {
                 },
                 "inet" => IRType::Varchar { length: Some(45) },
                 "cidr" => IRType::Varchar { length: Some(43) },
-                "macaddr" | "macaddr8" => IRType::Varchar { length: Some(17) },
+                "macaddr" => IRType::Varchar { length: Some(17) },
+                "macaddr8" => IRType::Varchar { length: Some(23) },
                 "interval" => IRType::Varchar { length: Some(255) },
                 "money" => IRType::Decimal {
                     precision: 19,
