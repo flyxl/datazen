@@ -28,6 +28,8 @@ pub struct QueryResultTab {
     pub label: String,
     pub generation: Option<u32>,
     pub execution_stats: Option<datazen_ui_api::QueryExecutionStats>,
+    pub error_key: Option<&'static str>,
+    pub error_copied_until: Option<f64>,
     pub grid: Option<DataGrid>,
     pub pinned: bool,
 }

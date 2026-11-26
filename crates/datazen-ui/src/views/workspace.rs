@@ -268,15 +268,31 @@ pub fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     });
 
     let result_tabs = query_result_tabs_bar(state, theme);
-    let execution_stats = state.selected_query_result.and_then(|id| {
-        state.query_result_tabs.iter().find(|tab| tab.id == id)?.execution_stats
+    let selected_result = state.selected_query_result.and_then(|id| {
+        state.query_result_tabs.iter().find(|tab| tab.id == id)
+    });
+    let execution_stats = selected_result.and_then(|tab| tab.execution_stats);
+    let selected_error = selected_result.and_then(|tab| {
+        tab.error_key.map(|key| (tab.id, key, tab.error_copied_until.is_some()))
     });
     let elapsed_ms = execution_stats.map(|stats| stats.elapsed_ms);
     let command_stats = execution_stats.and_then(|stats| {
         stats.affected_rows.map(|count| (count, stats.elapsed_ms))
     });
-    let result_body = match (command_stats, &state.result_grid) {
-        (Some((affected_rows, execution_time_ms)), _) => {
+    let result_body = match (selected_error, command_stats, &state.result_grid) {
+        (Some((tab, key, copied)), _, _) => {
+            use crate::ui::{copyable::CopyableError, kit::kit};
+            col().key("result-workspace").w_full().px(8.0).py(6.0).child(
+                CopyableError::new("query-error-message", t(key))
+                    .copy_button(true)
+                    .copied(copied)
+                    .on_copy_tx(move |s: &mut AppState, tx| {
+                        s.mark_query_error_copied(tab, tx.clock());
+                    })
+                    .build::<AppState>(kit(dark)),
+            )
+        }
+        (None, Some((affected_rows, execution_time_ms)), _) => {
             use crate::views::result_workspace::execution_summary_card::{
                 build, ExecutionSummaryCardVm, SummaryResultVm,
             };
@@ -291,8 +307,8 @@ pub fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             col().key("result-workspace").w_full()
                 .child(build::<AppState>(&summary, None, None, dark))
         }
-        (None, Some(grid)) => result_workspace(state, grid, theme, dark, elapsed_ms),
-        (None, None) => col()
+        (None, None, Some(grid)) => result_workspace(state, grid, theme, dark, elapsed_ms),
+        (None, None, None) => col()
             .key("query-results")
             .w_full()
             .h(120.0)

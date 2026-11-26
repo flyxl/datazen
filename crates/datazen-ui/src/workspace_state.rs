@@ -221,6 +221,8 @@ impl AppState {
             label,
             generation,
             execution_stats: None,
+            error_key: None,
+            error_copied_until: None,
             grid: None,
             pinned: false,
         });
@@ -343,6 +345,42 @@ impl AppState {
         }
         self.park_selected_query_result_grid();
         self.restore_selected_query_result_grid();
+    }
+
+    fn deliver_query_failure(&mut self, generation: u32, error: &str) {
+        if generation != self.query_generation {
+            return;
+        }
+        // Surface a stable classified reason. Other driver/transport detail
+        // is deliberately not copied into the UI or system clipboard.
+        let key = match error {
+            "the statement failed: Cancelled" => return,
+            "the statement failed: SqlError" => "query.nativeStatementRejected",
+            _ => "query.nativeStatementFailed",
+        };
+        if let Some(tab) = self.query_result_tabs.iter_mut()
+            .find(|tab| tab.generation == Some(generation))
+        {
+            tab.error_key = Some(key);
+            tab.error_copied_until = None;
+        }
+    }
+
+    pub(crate) fn mark_query_error_copied(&mut self, id: u32, now: f64) {
+        if let Some(tab) = self.query_result_tabs.iter_mut().find(|tab| tab.id == id) {
+            tab.error_copied_until = Some(now + 1.5);
+        }
+    }
+
+    pub(crate) fn query_copy_feedback_tick(&mut self, now: f64) -> bool {
+        let mut dirty = false;
+        for tab in &mut self.query_result_tabs {
+            if tab.error_copied_until.is_some_and(|until| now >= until) {
+                tab.error_copied_until = None;
+                dirty = true;
+            }
+        }
+        dirty
     }
 
     /// Cancel the in-flight query: bumping the generation invalidates every
@@ -878,8 +916,9 @@ impl AppState {
                 if self.query_loading == Some(generation) {
                     self.query_loading = None;
                 }
-                if let Ok(page) = page {
-                    self.deliver_query_result_with_stats(generation, page, execution_stats);
+                match page {
+                    Ok(page) => self.deliver_query_result_with_stats(generation, page, execution_stats),
+                    Err(error) => self.deliver_query_failure(generation, &error),
                 }
                 self.refresh_query_history_if_open();
             }

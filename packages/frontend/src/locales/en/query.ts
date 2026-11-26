@@ -14,6 +14,8 @@ const pack = {
   'query.execute': 'Execute',
   'query.run': 'Run',
   'query.runSelectScript': 'Run SELECT Script',
+  'query.nativeStatementRejected': 'The database rejected the SQL statement.',
+  'query.nativeStatementFailed': 'The query did not complete.',
   'query.runSelection': 'Run Selection',
   'query.stop': 'Stop',
   'query.totalTime': 'Total Time',

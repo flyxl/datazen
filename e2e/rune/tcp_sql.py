@@ -269,6 +269,135 @@ class TcpSqlJourneys:
         self.assertFalse(visible(blocked, key="result-workspace"))
         self.assertEqual(database.query(f"SELECT to_regclass('public.{table}') IS NULL;"), "t")
 
+    def run_legacy_postgres_query_error_and_recovery(self, config):
+        """Migrate PostgreSQL SQ-002's live error and copy feedback."""
+        database = DisposableSql("postgresql", config)
+        database.write_profile(self)
+        (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+        missing = f"aaa_rune_missing_{uuid.uuid4().hex[:12]}"
+        self.assertEqual(database.query(f"SELECT to_regclass('public.{missing}') IS NULL;"), "t")
+        error = "The database rejected the SQL statement."
+        bad = f"SELECT * FROM public.{missing};"
+        actions = query_steps(bad, "e2e-tcp-sql")
+        actions[-2] = {"t": 5, "type": "paste", "text": bad}
+        captured = self.replay(actions, until=10.5)
+        self.expect_rendered(captured, text=error, key="query-error-message-text")
+        self.expect_rendered(captured, text="Copy", within="query-error-message-copy")
+        self.assertFalse(visible(captured, key="result-grid"))
+
+        copied = [*actions, tap(10, "query-error-message-copy")]
+        self.expect_rendered(self.replay(copied, until=10.7),
+                             text="Copied", within="query-error-message-copy")
+        self.expect_rendered(self.replay(copied, until=12.5),
+                             text="Copy", within="query-error-message-copy")
+
+        fixed = "SELECT 1703 AS corrected_value;"
+        recovered = self.replay([
+            *actions, tap(10.6, "sql-editor-scroll"),
+            {"t": 11, "type": "key", "name": "a", "cmd": True},
+            {"t": 11.5, "type": "paste", "text": fixed},
+            tap(12, "sql-run"),
+        ], until=14)
+        self.expect_rendered(recovered, text="corrected_value", within="result-data-grid-header")
+        self.expect_rendered(recovered, text=database.query(fixed), within="result-cell-0-0")
+        self.assertFalse(visible(recovered, key="query-error-message"))
+
+    def run_legacy_postgres_selected_sql(self, config, *, shortcut):
+        """Migrate SQ-013 and SQ-014 with the real toolbar and keyboard paths."""
+        database = DisposableSql("postgresql", config)
+        database.write_profile(self)
+        relation = f"public.aaa_rune_selected_{uuid.uuid4().hex[:12]}"
+        database.query(f"CREATE TABLE {relation} (id INTEGER PRIMARY KEY, label TEXT NOT NULL);")
+        self.addCleanup(database.query, f"DROP TABLE {relation};")
+        database.query(f"INSERT INTO {relation} VALUES (1, 'unchanged');")
+        snapshot = f"SELECT id, label FROM {relation} ORDER BY id;"
+        old = database.query(snapshot)
+        self.assertEqual(old, "1|unchanged")
+
+        payload = "键盘;选中" if shortcut else "按钮;选中"
+        fragment = f"SELECT '{payload}'::text AS picked_only"
+        sql = (f"UPDATE {relation} SET label='outside-selection' WHERE id=1;\n"
+               + fragment + " UNION ALL SELECT 'unselected sibling';")
+        expected = database.query(fragment)
+        self.assertEqual(expected, payload)
+        editor = query_steps(sql, "e2e-tcp-sql")[:-1]
+        editor[-1] = {"t": 5, "type": "paste", "text": sql}
+        invoke = key(12, "Enter", cmd=True) if shortcut else tap(12, "sql-run")
+        tree = self.replay([
+            *editor, *fill(8.5, "sql-find-input", fragment),
+            tap(10.8, "sql-find-next"), invoke,
+        ], until=15)
+        self.expect_rendered(tree, text="picked_only", within="result-data-grid-header")
+        self.expect_rendered(tree, text=expected, within="result-cell-0-0")
+        self.expect_rendered(tree, key="result-grid-status", text="result · 1 rows × 1 cols")
+        self.assertFalse(visible(tree, text="unselected sibling", within="result-workspace"))
+        self.assertEqual(database.query(snapshot), old)
+
+    def run_legacy_postgres_stop_query(self, config):
+        """Migrate SQ-001: Stop cancels the real active statement without closing the editor."""
+        from concurrent.futures import ThreadPoolExecutor
+        from time import monotonic, sleep
+
+        database = DisposableSql("postgresql", config)
+        database.write_profile(self)
+        marker = f"rune_toolbar_stop_{uuid.uuid4().hex}"
+
+        def predicate(tag):
+            return (f"pid <> pg_backend_pid() AND state='active' "
+                    f"AND datname=current_database() AND query LIKE '%/* {tag} */%'")
+
+        def run(tag):
+            statement = f"SELECT pg_sleep(60) /* {tag} */;"
+            steps = query_steps(statement, "e2e-tcp-sql")
+            steps[-2] = {"t": 5, "type": "paste", "text": statement}
+            return steps
+
+        preview_tag = marker + "_preview"
+        for tag in (preview_tag, marker):
+            self.addCleanup(database.query, "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE "
+                            + predicate(tag) + ";")
+
+        preview = self.replay(run(preview_tag), until=10.4)
+        self.expect_rendered(preview, key="sql-cancel")
+        self.expect_rendered(preview, key="query-loading")
+        self.expect_rendered(preview, text="Command+Enter runs the statement at the cursor",
+                             within="query-main")
+        database.query("SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE "
+                       + predicate(preview_tag) + ";")
+
+        follow_up = "SELECT 151 AS after_stop;"
+        actions = [
+            *run(marker), tap(11.2, "sql-cancel"),
+            tap(14, "sql-editor-scroll"), key(14.3, "a", cmd=True),
+            {"t": 14.7, "type": "paste", "text": follow_up}, tap(15.6, "sql-run"),
+        ]
+
+        active_since = None
+        stopped_before_replay_ended = False
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            replay = pool.submit(self.replay, actions, until=18.3)
+            deadline = monotonic() + 58
+            while not replay.done() and monotonic() < deadline:
+                seen = database.query("SELECT pid FROM pg_stat_activity WHERE " + predicate(marker) + ";")
+                if seen and active_since is None:
+                    active_since = monotonic()
+                elif not seen and active_since is not None:
+                    # Ended before the replay closed the window and well before
+                    # a naturally completed 60-second query could fool the test.
+                    stopped_before_replay_ended = not replay.done() and monotonic() - active_since < 35
+                    break
+                sleep(.13)
+            final = replay.result()
+
+        self.assertIsNotNone(active_since, "the original statement never started on PostgreSQL")
+        self.assertTrue(stopped_before_replay_ended, "Stop did not end the active statement before teardown")
+        self.expect_rendered(final, key="tab-1")
+        self.assertFalse(visible(final, key="sql-cancel"))
+        self.assertFalse(visible(final, key="query-loading"))
+        self.assertFalse(visible(final, key="running-close-dialog"))
+        self.expect_rendered(final, text="after_stop", within="result-data-grid-header")
+        self.expect_rendered(final, text=database.query(follow_up), within="result-cell-0-0")
+
     def run_postgres_collision(self, config):
         database = DisposableSql("postgresql", config)
         tag = uuid.uuid4().hex[:12]
@@ -478,6 +607,25 @@ def with_tcp_journeys(suite, configs):
                 return self.run_legacy_postgres_select_script(config)
 
             setattr(suite, "test_postgresql_legacy_select_script_result_tabs", select_script)
+
+            def error_and_recovery(self, config=config):
+                return self.run_legacy_postgres_query_error_and_recovery(config)
+
+            setattr(suite, "test_postgresql_legacy_query_error_and_recovery", error_and_recovery)
+
+            def selected_by_button(self, config=config):
+                return self.run_legacy_postgres_selected_sql(config, shortcut=False)
+
+            def selected_by_keyboard(self, config=config):
+                return self.run_legacy_postgres_selected_sql(config, shortcut=True)
+
+            setattr(suite, "test_postgresql_legacy_selected_sql_button", selected_by_button)
+            setattr(suite, "test_postgresql_legacy_selected_sql_keyboard", selected_by_keyboard)
+
+            def stop_query(self, config=config):
+                return self.run_legacy_postgres_stop_query(config)
+
+            setattr(suite, "test_postgresql_legacy_stop_query_keeps_editor_open", stop_query)
 
             def collision(self, config=config):
                 return self.run_postgres_collision(config)

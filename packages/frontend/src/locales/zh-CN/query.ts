@@ -13,6 +13,8 @@ const pack = {
   'query.execute': '执行',
   'query.run': '运行',
   'query.runSelectScript': '运行 SELECT 脚本',
+  'query.nativeStatementRejected': '数据库拒绝了此 SQL 语句。',
+  'query.nativeStatementFailed': '查询未完成。',
   'query.runSelection': '运行选中',
   'query.stop': '停止',
   'query.totalTime': '总耗时',
