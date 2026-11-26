@@ -397,3 +397,76 @@ async fn mysql_same_session_can_dump_routines_and_triggers_from_explicit_foreign
         .await
         .expect("release original session after export");
 }
+
+#[tokio::test]
+async fn mysql_data_only_consistent_dump_replays_exact_rows_on_an_independent_target() {
+    let mut f = Fixture::open().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let source = format!("dz_fixture_mysql_dumpsrc_{}", &tag[..24]);
+    let dest = format!("dz_fixture_mysql_dumpdst_{}", &tag[..24]);
+    sqlx::raw_sql(&format!(r#"CREATE DATABASE {source} DEFAULT CHARSET=utf8mb4;
+        CREATE DATABASE {dest} DEFAULT CHARSET=utf8mb4;
+        CREATE TABLE {source}.sample (id INT PRIMARY KEY, label VARCHAR(100), bin VARBINARY(90), exact_amount DECIMAL(50,10), document JSON, stamp DATETIME(6)) ENGINE=InnoDB;
+        CREATE TABLE {dest}.sample LIKE {source}.sample;
+        INSERT INTO {source}.sample VALUES
+          (1,'雪; 雨',X'00ff8027',1234567890123456789012345.0000000001,JSON_OBJECT('note','春'),'2024-02-29 00:12:13.123456'),
+          (2,NULL,X'',-0.0000000001,NULL,NULL);"#))
+        .execute(&mut f.oracle).await.expect("actual distinct source and target for a file-style dump");
+    let mut cfg = f.cfg.clone();
+    cfg.database = Some(source.clone());
+    let driver = datazen_driver_mysql::MysqlDriver::new(false);
+    let h = driver.connect(&cfg).await.expect("actual source pool");
+    let sql = driver
+        .dump_database(
+            &h,
+            &source,
+            &BackupDumpOptions {
+                data_only: true,
+                single_transaction: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("read actual source snapshot and return SQL artifact");
+    assert!(!sql.contains("CREATE TABLE"));
+    assert!(
+        sql.contains("INSERT INTO"),
+        "expected actual data-only SQL, got {sql}"
+    );
+    let mut dst = MySqlConnection::connect_with(
+        &MySqlConnectOptions::new()
+            .host("127.0.0.1")
+            .port(f.cfg.port.unwrap())
+            .database(&dest)
+            .username(f.cfg.username.as_deref().unwrap())
+            .password(f.cfg.password.as_deref().unwrap())
+            .ssl_mode(MySqlSslMode::Disabled),
+    )
+    .await
+    .expect("separate restore oracle");
+    sqlx::raw_sql(&sql)
+        .execute(&mut dst)
+        .await
+        .expect("MySQL itself executes the generated artifact");
+    type Actual = (
+        i32,
+        Option<String>,
+        Vec<u8>,
+        String,
+        Option<String>,
+        Option<String>,
+    );
+    let read=format!("SELECT id,label,bin,CAST(exact_amount AS CHAR),CAST(document AS CHAR),CAST(stamp AS CHAR) FROM {source}.sample ORDER BY id");
+    let original: Vec<Actual> = sqlx::query_as(&read)
+        .fetch_all(&mut f.oracle)
+        .await
+        .expect("independent original values");
+    let restored:Vec<Actual>=sqlx::query_as("SELECT id,label,bin,CAST(exact_amount AS CHAR),CAST(document AS CHAR),CAST(stamp AS CHAR) FROM sample ORDER BY id")
+        .fetch_all(&mut dst).await.expect("independent restore values");
+    assert_eq!(restored, original);
+    assert_eq!(
+        driver.query(&h, "SELECT DATABASE()").await.unwrap().rows,
+        [vec![Some(Value::String(source))]]
+    );
+    driver.disconnect(h).await.expect("read snapshot released");
+}

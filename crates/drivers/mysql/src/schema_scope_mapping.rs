@@ -4,7 +4,7 @@ use std::{collections::HashSet, ops::ControlFlow};
 
 use datazen_driver_api::{ObjectKind, SchemaObjectScopeDependency, SchemaObjectScopeMapping};
 use sqlparser::{
-    ast::{ObjectName, ObjectNamePart, Query, Statement, Visit, Visitor},
+    ast::{Expr, Ident, ObjectName, ObjectNamePart, Query, Statement, TableFactor, Visit, Visitor},
     dialect::MySqlDialect,
     parser::Parser,
     tokenizer::Span,
@@ -41,6 +41,7 @@ pub(super) fn map_view_scope(
         target_scope,
         dependencies,
         cte_names: HashSet::new(),
+        explicit_aliases: HashSet::new(),
         patches: Vec::new(),
     };
     if let ControlFlow::Break(reason) = statements[0].visit(&mut mapper) {
@@ -136,7 +137,25 @@ struct ViewScopeMapper<'a> {
     target_scope: &'a str,
     dependencies: &'a [SchemaObjectScopeDependency],
     cte_names: HashSet<String>,
+    explicit_aliases: HashSet<(u64, u64)>,
     patches: Vec<(Span, String)>,
+}
+
+impl ViewScopeMapper<'_> {
+    fn replacement_table(&self, table: &Ident, target: &str) -> String {
+        let mut replacement = quote_mysql_identifier(target);
+        if table.value != target
+            && !self
+                .explicit_aliases
+                .contains(&(table.span.start.line, table.span.start.column))
+        {
+            // References such as old_table.column in the SELECT list still
+            // denote this relation after a mapped physical table rename.
+            replacement.push_str(" AS ");
+            replacement.push_str(&quote_mysql_identifier(&table.value));
+        }
+        replacement
+    }
 }
 
 impl Visitor for ViewScopeMapper<'_> {
@@ -149,6 +168,50 @@ impl Visitor for ViewScopeMapper<'_> {
                     .iter()
                     .map(|cte| cte.alias.name.value.to_ascii_lowercase()),
             );
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn pre_visit_table_factor(&mut self, relation: &TableFactor) -> ControlFlow<Self::Break> {
+        if let TableFactor::Table {
+            name,
+            alias: Some(_),
+            ..
+        } = relation
+        {
+            if let Some(ObjectNamePart::Identifier(table)) = name.0.last() {
+                self.explicit_aliases
+                    .insert((table.span.start.line, table.span.start.column));
+            }
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn pre_visit_expr(&mut self, expr: &Expr) -> ControlFlow<Self::Break> {
+        if let Expr::CompoundIdentifier(parts) = expr {
+            if let [schema, table, _column] = parts.as_slice() {
+                if schema.value == self.source_scope {
+                    if let Some(dependency) = self.dependencies.iter().find(|dep| {
+                        dep.source.schema.as_deref() == Some(self.source_scope)
+                            && dep.source.name == table.value
+                    }) {
+                        if dependency.target.name == table.value {
+                            self.patches
+                                .push((schema.span, quote_mysql_identifier(self.target_scope)));
+                        } else {
+                            // Renamed relations keep their old correlation
+                            // name. An alias cannot have a database qualifier.
+                            self.patches.push((
+                                Span {
+                                    start: schema.span.start,
+                                    end: table.span.end,
+                                },
+                                quote_mysql_identifier(&table.value),
+                            ));
+                        }
+                    }
+                }
+            }
         }
         ControlFlow::Continue(())
     }
@@ -193,7 +256,7 @@ impl Visitor for ViewScopeMapper<'_> {
                         format!(
                             "{}.{}",
                             quote_mysql_identifier(self.target_scope),
-                            quote_mysql_identifier(&dependency.target.name)
+                            self.replacement_table(table, &dependency.target.name)
                         ),
                     ));
                     return ControlFlow::Continue(());
@@ -217,8 +280,10 @@ impl Visitor for ViewScopeMapper<'_> {
                     self.patches
                         .push((schema.span, quote_mysql_identifier(self.target_scope)));
                     if dependency.source.name != dependency.target.name {
-                        self.patches
-                            .push((table.span, quote_mysql_identifier(&dependency.target.name)));
+                        self.patches.push((
+                            table.span,
+                            self.replacement_table(table, &dependency.target.name),
+                        ));
                     }
                 }
                 ControlFlow::Continue(())
@@ -327,7 +392,10 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(mapped.definition, "SELECT old_items.name FROM `target_db`.`new_items`");
+        assert_eq!(
+            mapped.definition,
+            "SELECT old_items.name FROM `target_db`.`new_items` AS `old_items`"
+        );
     }
 
     #[test]

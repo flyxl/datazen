@@ -100,3 +100,64 @@ async fn mysql_wire_materialized_and_streaming_preserve_exact_native_values() {
         .await
         .expect("close native connection");
 }
+
+#[tokio::test]
+async fn mysql_decodes_native_unsigned_widths_and_wide_bits_without_rounding() {
+    let mut f = Fixture::open().await;
+    let (driver, handle) = f.connect().await;
+    let table = format!("dz_unsigned_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!(
+        r#"CREATE TABLE {table} (
+       id INT PRIMARY KEY, i8u TINYINT UNSIGNED, i16u SMALLINT UNSIGNED,
+       i24u MEDIUMINT UNSIGNED, i32u INT UNSIGNED, i64u BIGINT UNSIGNED, i64s BIGINT,
+       bool_bias BIT(1), wide BIT(64), yr YEAR, fraction FLOAT, blend DOUBLE,
+       today DATE, when_present DATETIME(6), elapsed TIME(6));
+       INSERT INTO {table} VALUES (1,255,65535,16777215,4294967295,42,-9223372036854775808,
+            b'1', CAST(18446744073709551615 AS UNSIGNED),2024,1.125,-3.25,
+            '2024-02-29','2024-02-29 01:02:03.654321','01:02:03.000002'),
+            (2,0,0,0,0,0,-1,b'0',0,2000,0,0,'2000-01-01','2000-01-01 00:00:00','00:00:00')"#
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .expect("actual MySQL extremes and ordinary zero");
+    let check = driver
+        .query(&handle, &format!("SELECT * FROM {table} ORDER BY id"))
+        .await
+        .expect("real typed wire result");
+    let actual = &check.rows[0];
+    assert_eq!(
+        &actual[1..6],
+        [
+            Some(Value::Integer(255)),
+            Some(Value::Integer(65535)),
+            Some(Value::Integer(16777215)),
+            Some(Value::Integer(4294967295)),
+            Some(Value::Integer(42)),
+        ]
+    );
+    let extremes: (String, String) = sqlx::query_as(&format!(
+        "SELECT CAST(i64s AS CHAR),CAST(CAST(wide AS UNSIGNED) AS CHAR) FROM {table} WHERE id=1"
+    ))
+    .fetch_one(&mut f.oracle)
+    .await
+    .expect("independent exact large integer and wide bit oracle");
+    assert_eq!(actual[6], Some(Value::String(extremes.0)));
+    assert_eq!(actual[7], Some(Value::Integer(1)));
+    assert_eq!(actual[8], Some(Value::String(extremes.1)));
+    assert_eq!(actual[9], Some(Value::Integer(2024)));
+    assert_eq!(actual[10], Some(Value::Float(1.125)));
+    assert_eq!(actual[11], Some(Value::Float(-3.25)));
+    assert_eq!(actual[12], Some(Value::String("2024-02-29".into())));
+    assert_eq!(
+        actual[13],
+        Some(Value::String("2024-02-29 01:02:03.654321".into()))
+    );
+    assert_eq!(actual[14], Some(Value::String("01:02:03.000002".into())));
+    assert_eq!(check.rows[1][7], Some(Value::Integer(0)));
+    assert_eq!(check.rows[1][8], Some(Value::Integer(0)));
+    assert_eq!(check.rows[1][14], Some(Value::String("00:00:00".into())));
+    driver
+        .disconnect(handle)
+        .await
+        .expect("typed fixture cleanup");
+}

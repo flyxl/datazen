@@ -95,7 +95,7 @@ async fn mysql_rendered_view_scope_switches_real_local_relations_but_keeps_exter
     assert!(renderer
         .map_schema_object_scope(ObjectKind::View, &source, &target, &definition, &deps[..1])
         .is_err());
-    let alternate = format!("SELECT v FROM {local}");
+    let alternate = format!("SELECT {local}.v FROM {local}");
     let mapped_unqualified = renderer
         .map_schema_object_scope(ObjectKind::View, &source, &target, &alternate, &deps)
         .expect("unqualified real local relation")
@@ -124,6 +124,41 @@ async fn mysql_rendered_view_scope_switches_real_local_relations_but_keeps_exter
         .await
         .expect("actual renamed relation");
     assert_eq!(actual, 73);
+    for (number, body) in [
+        (
+            1,
+            format!("SELECT alias_name.v FROM `{source}`.`{local}` AS alias_name"),
+        ),
+        (
+            2,
+            format!("SELECT `{source}`.`{local}`.v FROM `{source}`.`{local}`"),
+        ),
+    ] {
+        let definition = renderer
+            .map_schema_object_scope(ObjectKind::View, &source, &target, &body, &deps)
+            .expect("independently prove real source identifiers")
+            .unwrap()
+            .definition;
+        let variant = format!("{view}_{number}");
+        let ddl = renderer
+            .render(&MigrationOperation::CreateView {
+                view: MigrationView {
+                    schema: Some(target.clone()),
+                    name: variant.clone(),
+                    definition,
+                },
+            })
+            .expect("native target view shape");
+        driver
+            .execute(&handle, &ddl.sql)
+            .await
+            .expect("retain valid explicit or implicit correlation");
+        let actual: i32 = sqlx::query_scalar(&format!("SELECT v FROM {target}.{variant}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .expect("real view uses renamed native base table");
+        assert_eq!(actual, 73);
+    }
     driver
         .disconnect(handle)
         .await
