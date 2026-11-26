@@ -581,3 +581,107 @@ async fn mysql_migration_applies_and_reverts_native_table_options_and_default() 
     }
     driver.disconnect(handle).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_catalog_roundtrips_native_constraint_names_with_escaped_punctuation() {
+    use datazen_driver_api::{DriverError, MigrationRisk};
+    let mut f = Fixture::open().await;
+    let (driver, handle) = f.connect().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let parent = format!("dz_quoted_parent_{tag}");
+    let child = format!("dz_quoted_child_{tag}");
+    let fk = format!("fk`wire_{tag}");
+    let check = format!("ck`wire_{tag}");
+    let parent_fields = ["left,key", "right)key"];
+    let child_fields = ["ref,key", "ref)key"];
+    let quote = |name: &str| driver.quote_ident(name);
+    let p = parent_fields.map(quote);
+    let c = child_fields.map(quote);
+    let fk_ident = quote(&fk);
+    let check_ident = quote(&check);
+    let sql = format!(
+        r#"CREATE TABLE {parent} ({} INT NOT NULL,{} INT NOT NULL,PRIMARY KEY ({},{}));
+      CREATE TABLE {child} (id INT PRIMARY KEY,{} INT NOT NULL,{} INT NOT NULL, note VARCHAR(64),
+        CONSTRAINT {fk_ident} FOREIGN KEY ({},{}) REFERENCES {parent} ({},{}) ON UPDATE CASCADE ON DELETE NO ACTION,
+        CONSTRAINT {check_ident} CHECK ((CHAR_LENGTH(note)>2 AND note <> 'marker CHECK(\\)') OR note IS NULL))
+        COMMENT='not a CHECK(x) declaration';
+      INSERT INTO {parent} VALUES (5,6); INSERT INTO {child} VALUES(1,5,6,'okay')"#,
+        p[0], p[1], p[0], p[1], c[0], c[1], c[0], c[1], p[0], p[1]
+    );
+    sqlx::raw_sql(&sql)
+        .execute(&mut f.oracle)
+        .await
+        .expect("real quoted MySQL constraints");
+
+    let schema = driver
+        .get_table_schema(&handle, &child, &f.database, None)
+        .await
+        .unwrap();
+    assert_eq!(schema.foreign_keys.len(), 1);
+    let edge = schema.foreign_keys[0].clone();
+    assert_eq!(edge.name, fk);
+    assert_eq!(edge.columns, child_fields);
+    assert_eq!(edge.referenced_columns, parent_fields);
+    assert_eq!(edge.referenced_table, parent);
+    assert_eq!(edge.on_update, "CASCADE");
+    assert!(matches!(edge.on_delete.as_str(), "RESTRICT" | "NO ACTION"));
+    assert_eq!(schema.check_constraints.len(), 1);
+    assert_eq!(schema.check_constraints[0].name, check);
+    assert!(
+        schema.check_constraints[0]
+            .expression
+            .contains("marker CHECK(")
+    );
+    let control = sqlx::query_scalar::<_, String>(
+        "SELECT CAST(CONSTRAINT_NAME AS CHAR) FROM information_schema.REFERENTIAL_CONSTRAINTS
+       WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME=?",
+    )
+    .bind(&child)
+    .fetch_one(&mut f.oracle)
+    .await
+    .unwrap();
+    assert_eq!(control, fk);
+    let renderer = driver.migration_renderer().unwrap();
+    let drop = renderer
+        .render(&Op::DropForeignKey {
+            table: child.clone(),
+            foreign_key: edge.clone(),
+        })
+        .unwrap();
+    assert_eq!(drop.risk, MigrationRisk::Destructive);
+    driver
+        .execute(&handle, &drop.sql)
+        .await
+        .expect("native drop targets exact escaped name");
+    let create = renderer
+        .render(&Op::AddForeignKey {
+            table: child.clone(),
+            foreign_key: ForeignKeyInfo {
+                on_delete: "NO ACTION".into(),
+                ..edge
+            },
+        })
+        .unwrap();
+    driver
+        .execute(&handle, &create.sql)
+        .await
+        .expect("same exact catalog FK can be replayed");
+    driver
+        .execute(
+            &handle,
+            &format!("UPDATE {parent} SET {}=16 WHERE {}=6", p[1], p[1]),
+        )
+        .await
+        .unwrap();
+    let state: (i32, i32) =
+        sqlx::query_as(&format!("SELECT {},{} FROM {child} WHERE id=1", c[0], c[1]))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+    assert_eq!(state, (5, 16));
+    assert!(
+        matches!(driver.execute(&handle,&format!("UPDATE {child} SET note='a' WHERE id=1")).await,
+       Err(DriverError::QueryFailed(detail)) if detail.contains("Check constraint"))
+    );
+    driver.disconnect(handle).await.unwrap();
+}

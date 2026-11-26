@@ -28,27 +28,57 @@ impl MysqlDriver {
 
     /// Extract a parenthesized list of backtick-quoted identifiers after a keyword.
     pub(crate) fn extract_backtick_list_after(s: &str, keyword: &str) -> Vec<String> {
-        if let Some(pos) = s.find(keyword) {
-            let after = &s[pos + keyword.len()..];
-            if let Some(paren_start) = after.find('(') {
-                let inner = &after[paren_start + 1..];
-                if let Some(paren_end) = inner.find(')') {
-                    let list_str = &inner[..paren_end];
-                    return list_str
-                        .split(',')
-                        .filter_map(|part| {
-                            let t = part.trim();
-                            if t.starts_with('`') && t.ends_with('`') && t.len() >= 2 {
-                                Some(t[1..t.len() - 1].to_string())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
+        let Some((_, mut rest)) = s.split_once(keyword) else {
+            return Vec::new();
+        };
+        // REFERENCES can include quoted table names that themselves contain
+        // parentheses. Only the first opening parenthesis outside a name
+        // begins the column list.
+        loop {
+            match rest.find(['`', '(']).map(|index| &rest[index..]) {
+                Some(input) if input.starts_with('(') => {
+                    rest = &input[1..];
+                    break;
                 }
+                Some(input) => {
+                    let Some((_, tail)) = Self::take_backtick_name(input) else {
+                        return Vec::new();
+                    };
+                    rest = tail;
+                }
+                None => return Vec::new(),
             }
         }
-        Vec::new()
+        let mut names = Vec::new();
+        loop {
+            let Some((name, tail)) = Self::take_backtick_name(rest.trim_start()) else {
+                return Vec::new();
+            };
+            names.push(name);
+            let tail = tail.trim_start();
+            if tail.starts_with(')') {
+                return names;
+            }
+            let Some(next) = tail.strip_prefix(',') else {
+                return Vec::new();
+            };
+            rest = next;
+        }
+    }
+
+    /// Decode one MySQL backtick-delimited identifier and return its tail.
+    pub(crate) fn take_backtick_name(input: &str) -> Option<(String, &str)> {
+        let body = input.strip_prefix('`')?;
+        let mut offset = 0;
+        while let Some(index) = body[offset..].find('`').map(|delta| offset + delta) {
+            let tail = &body[index + 1..];
+            if tail.starts_with('`') {
+                offset = index + 2;
+            } else {
+                return Some((body[..index].replace("``", "`"), tail));
+            }
+        }
+        None
     }
 
     pub(crate) fn extract_rule(s: &str, keyword: &str) -> String {

@@ -159,16 +159,10 @@ impl MysqlDriver {
 
     /// Extract the first backtick-quoted identifier after a keyword.
     fn extract_backtick_after(s: &str, keyword: &str) -> String {
-        if let Some(pos) = s.find(keyword) {
-            let after = &s[pos + keyword.len()..];
-            if let Some(start) = after.find('`') {
-                let inner = &after[start + 1..];
-                if let Some(end) = inner.find('`') {
-                    return inner[..end].to_string();
-                }
-            }
-        }
-        String::new()
+        s.split_once(keyword)
+            .and_then(|(_, after)| Self::take_backtick_name(after.trim_start()))
+            .map(|(name, _)| name)
+            .unwrap_or_default()
     }
 
     pub(crate) fn extract_qualified_table_after(s: &str, keyword: &str) -> String {
@@ -187,28 +181,11 @@ impl MysqlDriver {
                 return String::new();
             }
             let part = if bytes[index] == b'`' {
-                index += 1;
-                let content_start = index;
-                let mut value = String::new();
-                let mut closed = false;
-                while index < bytes.len() {
-                    if bytes[index] == b'`' {
-                        if index + 1 < bytes.len() && bytes[index + 1] == b'`' {
-                            index += 2;
-                        } else {
-                            value = after[content_start..index].replace("``", "`");
-                            index += 1;
-                            closed = true;
-                            break;
-                        }
-                    } else {
-                        index += 1;
-                    }
-                }
-                if !closed {
+                let Some((name, tail)) = Self::take_backtick_name(&after[index..]) else {
                     return String::new();
-                }
-                value
+                };
+                index = after.len() - tail.len();
+                name
             } else {
                 let start = index;
                 while index < bytes.len()
