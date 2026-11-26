@@ -141,9 +141,124 @@ class TcpMetadataJourneys:
                 self.expect_rendered(ddl, text=line, within="table-ddl")
 
 
+    def run_postgres_table_ddl(self, config):
+        database = DisposableSql("postgresql", config)
+        tag = uuid.uuid4().hex[:10]
+        schema = f"AAA Rune's {tag}"
+        table = f'AAA Report "draft" {tag}'
+        owner = f'Owner {tag}'
+        secondary = f'By Label {tag}'
+
+        def ident(name):
+            return '"' + name.replace('"', '""') + '"'
+
+        def literal(value):
+            return "'" + value.replace("'", "''") + "'"
+
+        relation = f"{ident(schema)}.{ident(table)}"
+        reference = f"{ident(schema)}.{ident(owner)}"
+        database.query(f"CREATE SCHEMA {ident(schema)};")
+        self.addCleanup(database.query, f"DROP SCHEMA {ident(schema)};")
+        database.query(f"CREATE TABLE {reference} (id integer PRIMARY KEY);")
+        self.addCleanup(database.query, f"DROP TABLE {reference};")
+        database.query(f"""
+            INSERT INTO {reference} VALUES (11);
+            CREATE TABLE {relation} (
+                id integer,
+                "Owner Key" integer NOT NULL,
+                "Label" varchar(31) DEFAULT 'owner''s label',
+                score integer DEFAULT 7 NOT NULL,
+                CONSTRAINT "Report PK" PRIMARY KEY (id),
+                CONSTRAINT "Owner FK" FOREIGN KEY ("Owner Key")
+                    REFERENCES {reference} (id) ON DELETE RESTRICT,
+                CONSTRAINT "Positive Score" CHECK (score >= 0)
+            );
+            CREATE UNIQUE INDEX {ident(secondary)} ON {relation} ("Label", "Owner Key")
+                WHERE score > 0;
+            INSERT INTO {relation} (id, "Owner Key") VALUES (1, 11);
+        """)
+        self.addCleanup(database.query, f"DROP TABLE {relation};")
+        oid = f"{literal(relation)}::pg_catalog.regclass"
+
+        def oracle():
+            columns = records(database, f"""
+                SELECT quote_ident(a.attname) || '|' || format_type(a.atttypid, a.atttypmod)
+                    || '|' || a.attnotnull::text || '|' || COALESCE(pg_get_expr(d.adbin, d.adrelid), '')
+                FROM pg_catalog.pg_attribute a
+                LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+                WHERE a.attrelid={oid} AND a.attnum > 0 AND NOT a.attisdropped
+                ORDER BY a.attnum;
+            """)
+            constraints = records(database, f"""
+                SELECT quote_ident(conname) || '|' || pg_get_constraintdef(oid)
+                FROM pg_catalog.pg_constraint WHERE conrelid={oid} ORDER BY conname;
+            """)
+            indexes = database.query(f"""
+                SELECT pg_get_indexdef(i.indexrelid)
+                FROM pg_catalog.pg_index i
+                JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+                WHERE i.indrelid={oid} AND c.relname={literal(secondary)};
+            """)
+            rows = records(database, f"""
+                SELECT id::text || '|' || "Owner Key"::text || '|' || "Label" || '|' || score::text
+                FROM {relation} ORDER BY id;
+            """)
+            return columns, constraints, indexes, rows
+
+        original = oracle()
+        columns, constraints, index, rows = original
+        self.assertEqual([column[0] for column in columns], ["id", '"Owner Key"', '"Label"', "score"])
+        self.assertEqual(rows, [["1", "11", "owner's label", "7"]])
+        self.assertEqual({name for name, _ in constraints}, {'"Report PK"', '"Owner FK"', '"Positive Score"'})
+        self.assertTrue(index.startswith(f"CREATE UNIQUE INDEX {ident(secondary)} ON {relation}"))
+        self.assertIn("WHERE (score > 0)", index)
+        database.write_profile(self.store, read_only=True)
+        actions = [tap(.5, "conn-open-e2e-tcp-sql"), tap(4, f"tree-table-{table}"),
+                   tap(5.6, "view-ddl")]
+        ddl = self.replay(actions, until=8.1)
+        self.expect_rendered(ddl, key=f"tree-schema-{database.database}-{schema}")
+        self.expect_rendered(ddl, text=f"CREATE TABLE {relation} (", within="table-ddl")
+        container = next(n["path"] for n in ddl["elements"] if n.get("key") == "table-ddl")
+        lines = [n["text"] for n in ddl["elements"] if n.get("text")
+                 and n["path"].startswith(container + "/")]
+        normalized = [line.strip().removesuffix(",") for line in lines]
+        for name, kind, not_null, default in columns:
+            expected = f"{name} {kind}"
+            if default:
+                expected += f" DEFAULT {default}"
+            if not_null == "true":
+                expected += " NOT NULL"
+            self.assertIn(expected, normalized)
+        for name, definition in constraints:
+            self.assertIn(f"CONSTRAINT {name} {definition}", normalized)
+        self.assertEqual([line for line in normalized if line.startswith("CREATE UNIQUE INDEX")],
+                         [index + ";"], "the primary-key index must not be emitted twice")
+        self.assertEqual(oracle(), original)
+
+        # The current navigator addresses rows by bare name. When that key
+        # becomes ambiguous, it must not display the public table's DDL.
+        decoy = f"public.{ident(table)}"
+        database.query(f"CREATE TABLE {decoy} (decoy_only integer); INSERT INTO {decoy} VALUES (42);")
+        self.addCleanup(database.query, f"DROP TABLE {decoy};")
+        refused = self.replay(actions[:2], until=6.5)
+        self.expect_rendered(refused, text="This table name is ambiguous across namespaces.",
+                             within="table-read-error")
+        # Refusal happens before a readable table workspace or DDL tab exists.
+        self.assertFalse(visible(refused, key="view-ddl"))
+        self.assertFalse(visible(refused, key="table-ddl"))
+        self.assertFalse(visible(refused, text="decoy_only"))
+        self.assertEqual(oracle(), original)
+        self.assertEqual(database.query(f"SELECT decoy_only FROM {decoy};"), "42")
+
+
 def with_metadata_journeys(suite, configs):
     for engine, config in configs.items():
         def journey(self, engine=engine, config=config):
             self.run_metadata_journey(engine, config)
 
         setattr(suite, f"test_{engine}_native_catalog_structure_matches_server", journey)
+        if engine == "postgresql":
+            def table_ddl(self, config=config):
+                return self.run_postgres_table_ddl(config)
+
+            setattr(suite, "test_postgresql_native_table_ddl_uses_exact_namespace", table_ddl)

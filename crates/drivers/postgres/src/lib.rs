@@ -25,6 +25,7 @@ mod sql;
 mod sql_target;
 mod structure;
 mod sync_adapter;
+mod table_object_ddl;
 mod transfer_identity;
 mod type_decode;
 mod type_normalizer;

@@ -470,6 +470,15 @@ impl PostgresDriver {
         command: &str,
         mut input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
+        if command == "get_object_ddl"
+            && input.get("kind").and_then(serde_json::Value::as_str)
+                .and_then(datazen_driver_api::schema_objects::ObjectKind::parse)
+                == Some(datazen_driver_api::schema_objects::ObjectKind::Table)
+        {
+            // PostgreSQL table definitions need bound catalog lookups rather
+            // than the legacy text-only object SQL provider.
+            return crate::table_object_ddl::table_object_ddl(self, handle, &input).await;
+        }
         if command == "drop_database" {
             // PostgreSQL cannot drop the currently-open database, nor one that still
             // has active backends. Handle it on the driver so we can move our own pool
