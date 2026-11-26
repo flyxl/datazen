@@ -380,11 +380,26 @@ impl PostgresDriver {
         let (schema, bare_view) = crate::sql::resolve_pg_table_schema(view, schema);
         let qualified = pg_regclass_name(schema, bare_view);
         let mut connection = crate::session_connection::for_session(self, handle, database).await?;
-        let row = sqlx::query("SELECT pg_get_viewdef($1::regclass, true) AS def")
-            .bind(&qualified)
-            .fetch_one(&mut *connection)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        // Deparsing with the source session's search_path can omit schema
+        // qualifiers that a different restore session needs. Resolve the
+        // intended view first, then deparse with only pg_catalog visible.
+        // OFFSET 0 keeps the two read CTEs separate when PostgreSQL inlines
+        // CTEs; the config setters themselves are volatile.
+        let row = sqlx::query(
+            "WITH saved AS ( \
+               SELECT pg_catalog.current_setting('search_path') AS path, $1::pg_catalog.regclass AS view_oid OFFSET 0 \
+             ), restricted AS ( \
+               SELECT path, view_oid, pg_catalog.set_config('search_path', 'pg_catalog', true) FROM saved \
+             ), definition AS ( \
+               SELECT path, pg_catalog.pg_get_viewdef(view_oid, true) AS def FROM restricted OFFSET 0 \
+             ), restored AS ( \
+               SELECT def, pg_catalog.set_config('search_path', path, true) FROM definition \
+             ) SELECT def FROM restored",
+        )
+        .bind(&qualified)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let def: String = row.try_get("def").unwrap_or_default();
         if def.trim().is_empty() {
             return Err(DriverError::QueryFailed(format!(
@@ -392,8 +407,7 @@ impl PostgresDriver {
             )));
         }
         Ok(format!(
-            "CREATE OR REPLACE VIEW {} AS\n{};\n",
-            self.quote_ident(&qualified),
+            "CREATE OR REPLACE VIEW {qualified} AS\n{};\n",
             def.trim().trim_end_matches(';')
         ))
     }
@@ -420,19 +434,37 @@ impl PostgresDriver {
     pub(crate) async fn dump_triggers_impl(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
     ) -> Result<String, DriverError> {
         let result = self
-            .query(
+            .query_at(
                 handle,
-                "SELECT n.nspname AS schema, t.tgname AS name, \
-                 pg_get_triggerdef(t.oid) AS ddl \
-                 FROM pg_trigger t \
-                 JOIN pg_class c ON c.oid = t.tgrelid \
-                 JOIN pg_namespace n ON n.oid = c.relnamespace \
-                 WHERE NOT t.tgisinternal \
-                   AND n.nspname NOT IN ('pg_catalog','information_schema') \
-                 ORDER BY 1, 2",
+                // A trigger's function must be schema-qualified even when
+                // visible on the source search_path. Aggregate one row even
+                // for an empty catalog so the path is always restored.
+                "WITH saved AS ( \
+                   SELECT pg_catalog.current_setting('search_path') AS path OFFSET 0 \
+                 ), restricted AS ( \
+                   SELECT path, pg_catalog.set_config('search_path', 'pg_catalog', true) FROM saved \
+                 ), definitions AS ( \
+                   SELECT path, (SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object( \
+                       'schema', n.nspname, 'name', t.tgname, 'ddl', pg_catalog.pg_get_triggerdef(t.oid)) \
+                     ORDER BY n.nspname, c.relname, t.tgname) \
+                     FROM pg_catalog.pg_trigger t \
+                     JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid \
+                     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+                     WHERE NOT t.tgisinternal \
+                     AND n.nspname NOT IN ('pg_catalog','information_schema')) AS entries \
+                   FROM restricted OFFSET 0 \
+                 ), restored AS ( \
+                   SELECT entries, pg_catalog.set_config('search_path', path, true) FROM definitions \
+                 ) SELECT trigger.schema, trigger.name, trigger.ddl FROM restored \
+                   LEFT JOIN LATERAL pg_catalog.jsonb_array_elements(restored.entries) \
+                     WITH ORDINALITY AS item(record, ord) ON true \
+                   LEFT JOIN LATERAL pg_catalog.jsonb_to_record(item.record) \
+                     AS trigger(schema text, name text, ddl text) ON true \
+                   ORDER BY item.ord",
+                SqlTarget::new(Some(database), None),
             )
             .await?;
         Ok(collect_named_ddl_column(&result, "ddl", "TRIGGER"))

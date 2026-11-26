@@ -241,3 +241,6 @@ mod execution;
 
 #[path = "postgres_live_e2e/observation.rs"]
 mod observation;
+
+#[path = "postgres_live_e2e/backup.rs"]
+mod backup;

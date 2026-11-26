@@ -354,7 +354,7 @@ async fn admin_status_and_process_actions_match_the_live_server() {
 
 // Open an independent connection without logging fixture credentials.
 impl Fixture {
-    async fn connect_to(&self, database: &str) -> PgConnection {
+    pub(super) async fn connect_to(&self, database: &str) -> PgConnection {
         let opts = PgConnectOptions::new()
             .host("127.0.0.1")
             .port(self.config.port.expect("checked fixture port"))

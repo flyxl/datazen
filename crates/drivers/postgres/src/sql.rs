@@ -19,8 +19,8 @@ pub(crate) fn parse_pg_table_ref(table: &str) -> (Option<&str>, &str) {
 /// the value mean exactly the name it spells, and is a no-op for names that are
 /// lower case anyway.
 ///
-/// Every caller binds this into `$1::regclass` — it is never interpolated into
-/// SQL text — so quoting here cannot double-quote at a use site.
+/// Bind the resulting name to `$1::regclass` for lookup, and use it directly
+/// (without re-quoting) when emitting an exact relation reference in DDL.
 pub(crate) fn pg_regclass_name(schema: Option<&str>, table: &str) -> String {
     fn quote(name: &str) -> String {
         format!("\"{}\"", name.replace('"', "\"\""))
