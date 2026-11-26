@@ -223,3 +223,6 @@ async fn binary_and_streaming_queries_preserve_real_postgres_values() {
 
 #[path = "postgres_live_e2e/admin.rs"]
 mod admin;
+
+#[path = "postgres_live_e2e/structure.rs"]
+mod structure;
