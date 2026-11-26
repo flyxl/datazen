@@ -163,10 +163,10 @@ async fn native_questdb_bound_writes_and_script_recovery_keep_exact_values() {
         .await
         .expect("real connectivity check");
     assert_eq!(info.server_type, "questdb");
-    let independent_version: String = sqlx::query_scalar("SELECT version()")
+    let independent_version: String = sqlx::query_scalar("SELECT build()")
         .fetch_one(&mut oracle)
         .await
-        .expect("native PGWire server version");
+        .expect("genuine QuestDB version, not protocol compatibility label");
     assert_eq!(info.server_version, independent_version);
 
     let raw_password = cfg.password.clone().expect("fixture password");
@@ -179,6 +179,12 @@ async fn native_questdb_bound_writes_and_script_recovery_keep_exact_values() {
     );
 
     let handle = driver.connect(&cfg).await.expect("open genuine QuestDB");
+    let live_info = driver
+        .get_server_info(&handle)
+        .await
+        .expect("server info on native QuestDB");
+    assert_eq!(live_info.server_type, "questdb");
+    assert_eq!(live_info.server_version, independent_version);
     let table = format!("dzen_bind_{}", uuid::Uuid::new_v4().simple());
     let code = "north; '渠' \\ sensor";
     driver

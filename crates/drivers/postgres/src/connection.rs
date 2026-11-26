@@ -438,6 +438,15 @@ impl PostgresDriver {
             })
     }
 
+    fn version_query(database_type: Option<&str>) -> &'static str {
+        match database_type {
+            // QuestDB's version() advertises a PostgreSQL compatibility
+            // version, not the version of the engine the user connected to.
+            Some("questdb") => "SELECT build()",
+            _ => "SELECT version()",
+        }
+    }
+
     pub(crate) async fn test_connection_impl(
         &self,
         config: &ConnectionConfig,
@@ -452,7 +461,7 @@ impl PostgresDriver {
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
 
-        let result = sqlx::query("SELECT version()")
+        let result = sqlx::query(Self::version_query(Some(&config.database_type)))
             .fetch_one(&pool)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()));
@@ -628,7 +637,11 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
     ) -> Result<ServerInfo, DriverError> {
         let mut connection = crate::session_connection::for_session(self, handle, "").await?;
-        let row = sqlx::query("SELECT version()")
+        let sql = Self::version_query(
+            self.connect_configs.read().await.get(&handle.pool_id)
+                .map(|config| config.database_type.as_str()),
+        );
+        let row = sqlx::query(sql)
             .fetch_one(&mut *connection)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
