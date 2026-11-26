@@ -582,7 +582,7 @@ crate 百分比取平均；用例失败、没有有效 profile 或精确行覆�
 | `workflow.ts` / `workflow-window.ts` | YAML 错误校验、保存后重启、执行真实的 SQLite 写入并用第二个连接读回 |
 | `data-dashboard-sql-add.ts` | 创建并保存真实 SQL widget；独立 SQLite 连接修改数据后，重启并手动刷新，验证图表变化和隐藏工作流未出现在普通列表 |
 | `data-transfer-window.ts` / `journeys/data-transfer-journey.ts` | 原生工具从真实 SQLite 文件向另一文件的现有表映射列并追加数据；独立读回区分 NULL 和空串、确认原行和默认值；另外验证执行前取消、只读目标、同文件别名和键冲突均不写入数据；另验证选择非默认表、修复重复映射后仅写入所选表 |
-| `schema-diff-window.ts` | 原生工具以只读方式比较两个真实 SQLite 文件的表列，验证源列缺失、目标额外列、类型变化、无差异和同文件别名拒绝；独立读取核对两端结构、数据及文件未改变 |
+| `schema-diff-window.ts` | 原生工具以只读方式比较两个真实 SQLite 文件的表列，验证源列缺失、目标额外列、类型变化、可空性与默认值变化、无差异和同文件别名拒绝；独立读取核对两端结构、数据及文件未改变 |
 
 覆盖率命令可加 `--jobs 3` 分片。每个用例仍使用独立临时目录；
 默认所有用例通过且合并后的覆盖率达到阈值才算通过。`--report-only`

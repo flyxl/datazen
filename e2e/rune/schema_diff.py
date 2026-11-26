@@ -99,3 +99,46 @@ class SchemaDiffJourney:
         self.assertFalse(visible(equal, key="native-schema-results"))
         self.assertFalse(visible(equal, key="native-transfer-yes"))
         expect_unchanged()
+
+    def test_sqlite_schema_diff_detects_nullability_and_default_without_ddl(self):
+        target = self.root / "column-options.sqlite"
+        for path, table in (
+            (self.db, "CREATE TABLE records (id INTEGER PRIMARY KEY, label TEXT NOT NULL DEFAULT 'source')"),
+            (target, "CREATE TABLE records (id INTEGER PRIMARY KEY, label TEXT DEFAULT 'target')"),
+        ):
+            with closing(sqlite3.connect(path)) as connection:
+                connection.execute(table)
+                connection.execute("INSERT INTO records (id) VALUES (1)")
+                connection.commit()
+        before = {path: path.read_bytes() for path in (self.db, target)}
+
+        def profile(identifier, name, path):
+            return {"id": identifier, "name": name, "databaseType": "sqlite",
+                    "database": str(path), "connectionTimeout": 8}
+
+        self.store.write_text(json.dumps({"connections": [
+            profile("options-src", "Options Source", self.db),
+            profile("options-dst", "Options Target", target),
+        ]}), encoding="utf-8")
+        setup = [tap(.5, "rail-tools"), tap(1.2, "native-tool-schema-diff")]
+        empty = self.replay([*setup, tap(2.0, "native-schema-compare")], until=3)
+        self.expect_rendered(empty, key="native-schema-error",
+                             text="Select an existing source and target table.")
+        self.assertFalse(visible(empty, key="native-schema-results"))
+        rendered = self.replay([
+            *setup, tap(2.0, "native-transfer-source-profile-options-src"),
+            tap(2.6, "native-transfer-target-profile-options-dst"),
+            tap(4.1, "native-schema-compare"),
+        ], until=6.2)
+        self.expect_rendered(rendered, key="native-schema-changed-0",
+                             text="Changed on target: label (nullability, default)")
+        for key in ("native-schema-missing-0", "native-schema-extra-0", "native-schema-changed-1",
+                    "native-schema-error", "native-transfer-yes"):
+            self.assertFalse(visible(rendered, key=key), f"Unexpected rendered node {key}")
+        for path, required, default in ((self.db, 1, "source"), (target, 0, "target")):
+            self.assertEqual(path.read_bytes(), before[path])
+            with closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)) as db:
+                self.assertEqual(db.execute("""
+                    SELECT [notnull], dflt_value FROM pragma_table_info('records') WHERE name = 'label'
+                """).fetchall(), [(required, f"'{default}'")])
+                self.assertEqual(db.execute("SELECT label FROM records").fetchall(), [(default,)])
