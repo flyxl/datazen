@@ -51,6 +51,7 @@ driver-specific assertions are added.
 | Connection, settings, SQLite, grid, SQL, chart, exports, backups | Offline native smoke and focused journeys; see development E2E documentation | Connection editing/group drag, session recovery, clips, platform window operations, complete import/restore flow, per-locale validation |
 | `query-history.ts` | Real successful and failed SQL, reload, connection isolation, load a saved statement and explicitly rerun | Database-grouped all-scope, search, history lifecycle/delete |
 | `workflow.ts`, `workflow-window.ts` | Offline editor error, YAML save/restart, actual SQLite write and independent readback | Typed step output, variables, conditional and linked steps, execution history, workflow-to-dashboard |
+| `data-dashboard-sql-add.ts` | Real SQLite SQL widget creation, persisted chart and hidden workflow, restart + manual refresh after an independent database change | Multi-board import/export and scheduled refresh behavior |
 | Host SQL contract and driver-specific journeys | Opt-in PostgreSQL/MySQL browse/query/edit slice | Both-engine matrix for full contract, indexes/DDL, schema tree and pool rotation, maintenance commands |
 | Redis | Separate checked-in native real-server fixture and driver production line coverage | Verify any additional legacy-only behavior separately |
 | Migrations and transfer | Existing UI activation/validation paths are not proof of transfer | Real source/target readback, diff/apply, heterogeneous transfers, synchronization, recovery |

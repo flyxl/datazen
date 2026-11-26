@@ -579,6 +579,7 @@ crate 百分比取平均；用例失败、没有有效 profile 或精确行覆�
 | `export-import.ts` / `backup-database.ts` | CSV 与 JSON 真落盘并与数据库核对、取消不落盘、SQLite 备份在独立库中恢复；导入只验证缺源文件时的表单错误 |
 | `query-history.ts` | 真 SQL 成功/失败、重启持久化、连接隔离、加载历史语句后手动重新执行 |
 | `workflow.ts` / `workflow-window.ts` | YAML 错误校验、保存后重启、执行真实的 SQLite 写入并用第二个连接读回 |
+| `data-dashboard-sql-add.ts` | 创建并保存真实 SQL widget；独立 SQLite 连接修改数据后，重启并手动刷新，验证图表变化和隐藏工作流未出现在普通列表 |
 
 覆盖率命令可加 `--jobs 3` 分片。每个用例仍使用独立临时目录；
 默认所有用例通过且合并后的覆盖率达到阈值才算通过。`--report-only`
