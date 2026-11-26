@@ -430,12 +430,18 @@ async fn fetch_mysql_server_status(
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
     let mut status_variables: Vec<serde_json::Value> = Vec::new();
+    let (mut innodb_requests, mut innodb_reads) = (None, None);
     for row in all_status {
         let name = decode_mysql_text(&row, "Variable_name");
         if name.eq_ignore_ascii_case("Rsa_public_key") {
             continue;
         }
         let value = decode_mysql_text(&row, "Value");
+        if name.eq_ignore_ascii_case("Innodb_buffer_pool_read_requests") {
+            innodb_requests = value.parse::<u64>().ok();
+        } else if name.eq_ignore_ascii_case("Innodb_buffer_pool_reads") {
+            innodb_reads = value.parse::<u64>().ok();
+        }
         status_variables.push(json!({ "name": name, "value": value }));
     }
 
@@ -446,31 +452,15 @@ async fn fetch_mysql_server_status(
         "delete": com_delete,
     });
 
-    // InnoDB 缓存命中率（百分比）：read_requests 命中 / 总读取请求。
-    // 从 SHOW GLOBAL STATUS 中已读取的变量里取（缺省任一统计时隐藏该卡片/指标）。
-    let innodb_read_requests: Option<i64> = sqlx::query_scalar::<_, String>(
-        "SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Innodb_buffer_pool_read_requests'",
-    )
-    .fetch_optional(&mut *conn)
-    .await
-    .ok()
-    .flatten()
-    .and_then(|s| s.parse::<i64>().ok());
-    let innodb_reads: Option<i64> = sqlx::query_scalar::<_, String>(
-        "SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Innodb_buffer_pool_reads'",
-    )
-    .fetch_optional(&mut *conn)
-    .await
-    .ok()
-    .flatten()
-    .and_then(|s| s.parse::<i64>().ok());
-    let mut innodb_hit_ratio: Option<String> = None;
-    if let (Some(req), Some(read)) = (innodb_read_requests, innodb_reads) {
-        let hit = req - read;
-        if req > 0 {
-            innodb_hit_ratio = Some(format!("{:.2}%", (hit as f64 / req as f64) * 100.0));
-        }
-    }
+    // Derive both counters from the same SHOW GLOBAL STATUS snapshot.
+    // MySQL 8 no longer exposes information_schema.GLOBAL_STATUS.
+    let innodb_hit_ratio = innodb_requests
+        .zip(innodb_reads)
+        .filter(|(requests, _)| *requests > 0)
+        .map(|(requests, reads)| {
+            let hits = requests.saturating_sub(reads);
+            format!("{:.2}%", 100.0 * hits as f64 / requests as f64)
+        });
 
     let mut data = json!({
         "version": version,

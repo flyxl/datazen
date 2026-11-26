@@ -351,3 +351,59 @@ async fn mysql_admin_reports_exact_native_grants_and_refuses_incomplete_or_unaut
         .unwrap();
     admin.disconnect(handle).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_admin_reports_a_native_innodb_cache_ratio_from_the_same_status_snapshot() {
+    let mut f = Fixture::open().await;
+    let (driver, h) = f.connect().await;
+    let table = format!("dz_innodb_status_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY,val INT) ENGINE=InnoDB;
+      INSERT INTO {table} VALUES (1,111),(2,222);"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let row: i32 = sqlx::query_scalar(&format!("SELECT val FROM {table} WHERE id=2"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(row, 222);
+    let requests: (String, String) =
+        sqlx::query_as("SHOW GLOBAL STATUS LIKE 'Innodb_buffer_pool_read_requests'")
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+    assert!(requests.1.parse::<u64>().unwrap() > 0);
+    let loaded = driver
+        .execute_command(&h, "server_status_snapshot", json!({}))
+        .await
+        .unwrap();
+    let statuses = loaded.data["statusVariables"].as_array().unwrap();
+    let get = |key: &str| -> u64 {
+        statuses
+            .iter()
+            .find(|v| {
+                v["name"]
+                    .as_str()
+                    .is_some_and(|n| n.eq_ignore_ascii_case(key))
+            })
+            .unwrap()["value"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap()
+    };
+    let total = get("Innodb_buffer_pool_read_requests");
+    let reads = get("Innodb_buffer_pool_reads");
+    let expected = format!(
+        "{:.2}%",
+        100.0 * total.saturating_sub(reads) as f64 / total as f64
+    );
+    assert_eq!(
+        loaded.data["innodbHitRatio"].as_str(),
+        Some(expected.as_str()),
+        "a valid native MySQL 8 snapshot must expose its buffer-pool hit ratio"
+    );
+    driver.disconnect(h).await.unwrap();
+}

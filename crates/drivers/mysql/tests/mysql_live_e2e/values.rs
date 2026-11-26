@@ -54,11 +54,13 @@ async fn mysql_wire_materialized_and_streaming_preserve_exact_native_values() {
         "BIT(8) is more than a boolean"
     );
     assert_eq!(actual.rows[1][6], Some(Value::String(String::new())));
-    assert!(actual.rows[1]
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| *i != 0 && *i != 6)
-        .all(|(_, v)| v.is_none()));
+    assert!(
+        actual.rows[1]
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != 0 && *i != 6)
+            .all(|(_, v)| v.is_none())
+    );
     let events = Arc::new(Mutex::new(Vec::new()));
     driver
         .query_stream(&handle, &sql, None, {
@@ -160,4 +162,94 @@ async fn mysql_decodes_native_unsigned_widths_and_wide_bits_without_rounding() {
         .disconnect(handle)
         .await
         .expect("typed fixture cleanup");
+}
+
+#[tokio::test]
+async fn mysql_prepared_parameters_roundtrip_native_scalar_null_json_and_temporal_values() {
+    let mut f = Fixture::open().await;
+    let (driver, pooled) = f.connect().await;
+    let fixed = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    let table = format!("dz_bound_wire_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY,enabled BOOLEAN, narrow TINYINT,
+      small SMALLINT, medium MEDIUMINT, real_value FLOAT, wide_value DOUBLE, occurred DATETIME(6),
+      nullable_note VARCHAR(40), doc JSON, raw_value VARBINARY(12))"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let payload = serde_json::json!({"flag":true,"label":"雪\\folder","empty":null});
+    let occurred = "2030-02-28 04:11:12.123456";
+    for (h, id, enabled) in [(&pooled, 1, true), (&fixed, 2, false)] {
+        let affected = driver
+            .execute_with_params(
+                h,
+                &format!("INSERT INTO {table} VALUES(?,?,?,?,?,?,?,?,?,?,?)"),
+                &[
+                    Value::Integer(id),
+                    Value::Bool(enabled),
+                    Value::Integer(-120),
+                    Value::Integer(-31_000),
+                    Value::Integer(-8_000_000),
+                    Value::Float(-0.625),
+                    Value::Float(0.3125),
+                    Value::Timestamp(occurred.into()),
+                    Value::Null,
+                    Value::Json(payload.clone()),
+                    Value::Bytes(vec![0, 255, 92, 39]),
+                ],
+            )
+            .await
+            .unwrap();
+        assert_eq!(affected, 1);
+        let result=driver.query_with_params(h,&format!("SELECT narrow,small,medium,real_value,wide_value,occurred,nullable_note,doc,raw_value FROM {table} WHERE id=? AND enabled=?"),
+         &[Value::Integer(id),Value::Bool(enabled)]).await.unwrap();
+        assert_eq!(
+            result.rows,
+            [vec![
+                Some(Value::Integer(-120)),
+                Some(Value::Integer(-31_000)),
+                Some(Value::Integer(-8_000_000)),
+                Some(Value::Float(-0.625)),
+                Some(Value::Float(0.3125)),
+                Some(Value::String(occurred.into())),
+                None,
+                Some(Value::Json(payload.clone())),
+                Some(Value::Bytes(vec![0, 255, 92, 39]))
+            ]]
+        );
+    }
+    type Native = (
+        i32,
+        i8,
+        Option<String>,
+        sqlx::types::Json<serde_json::Value>,
+        Vec<u8>,
+        String,
+    );
+    let stored:Vec<Native>=sqlx::query_as(&format!("SELECT id,enabled,nullable_note,doc,raw_value,CAST(occurred AS CHAR) FROM {table} ORDER BY id"))
+       .fetch_all(&mut f.oracle).await.unwrap();
+    assert_eq!(
+        stored,
+        [
+            (
+                1,
+                1,
+                None,
+                sqlx::types::Json(payload.clone()),
+                vec![0, 255, 92, 39],
+                occurred.into()
+            ),
+            (
+                2,
+                0,
+                None,
+                sqlx::types::Json(payload),
+                vec![0, 255, 92, 39],
+                occurred.into()
+            )
+        ]
+    );
+    driver.disconnect(fixed).await.unwrap();
+    driver.disconnect(pooled).await.unwrap();
 }
