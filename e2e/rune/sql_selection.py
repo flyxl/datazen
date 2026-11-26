@@ -59,3 +59,16 @@ class SqlSelectionJourneys:
         self.expect_rendered(tree, text="Select one SQL statement before running.", within="query-notice")
         self.assertFalse(visible(tree, key="result-workspace"))
         self.assertEqual(self.sql_customer_rows(), original)
+
+    def test_native_sql_editor_refuses_incomplete_input_without_executing_valid_prefix(self):
+        original = self.sql_fixture_before()
+        sql = ("UPDATE customers SET customer_name='must-not-run' WHERE id=1;\n"
+               "SELECT 'unfinished;仍未关闭")
+        tree = self.replay([*query_steps(sql)[:-1], tap(9.2, "sql-run")], until=11)
+        self.expect_rendered(tree, key="query-notice")
+        self.assertTrue(any(
+            "The SQLite statement is not complete." in (node.get("text") or "")
+            for node in tree["elements"]
+        ))
+        self.assertFalse(visible(tree, key="result-workspace"))
+        self.assertEqual(self.sql_customer_rows(), original)

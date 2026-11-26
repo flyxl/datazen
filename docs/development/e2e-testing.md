@@ -576,7 +576,7 @@ crate 百分比取平均；用例失败、没有有效 profile 或精确行覆�
 | `connection-search-group.ts` / `connection-validation.ts` | 连接搜索忽略大小写、无结果提示、取消新建不保存 |
 | `table-filter.ts` / `sqlite.ts` | 单列筛选和清空、三态排序、翻页、列/索引/外键、查询 SQLite 视图 |
 | `sql-query.ts` / `chart-views.ts` | 结果查找与下一处命中、数值结果图表与表格切换、只读连接不写库 |
-| `sql-query.ts` 选区和光标执行 | SQLite 仅执行所选文本或光标所在语句，保留字符串中的 UTF-8 与分号；拒绝多语句选区，独立核对邻近未选中的写语句没有生效 |
+| `sql-query.ts` 选区和光标执行 | SQLite 仅执行所选文本或光标所在语句，保留字符串中的 UTF-8 与分号；拒绝多语句选区和未闭合的 SQL，独立核对邻近未选中的写语句没有生效 |
 | `sqlite.ts` 查询结果分批 | 单条真实 SQLite 查询跨 500 行批次保留 600 行，查询结果定位到最后一行并与独立查询核对 |
 | `export-import.ts` / `backup-database.ts` | CSV 与 JSON 真落盘并与数据库核对、取消不落盘、SQLite 备份在独立库中恢复 |
 | `table-dirty-cells.ts` | 真实 SQLite 网格暂存三格，恢复其中一格后待提交数由 3 降为 2，独立确认提交前数据不变且提交仅落地剩余两格 |
