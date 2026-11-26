@@ -805,3 +805,177 @@ async fn mysql_transfer_explicit_native_index_mapping_applies_after_live_catalog
     assert_eq!(saved, "actual default");
     driver.disconnect(handle).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_native_transfer_proves_portable_key_size_defaults_and_catalog_metadata() {
+    use datazen_driver_api::{IndexInfo, MigrationOperation};
+    let mut f = Fixture::open().await;
+    let (driver, h) = f.connect().await;
+    let marker = uuid::Uuid::new_v4().simple().to_string();
+    let src = format!("dz_tail_source_{marker}");
+    let dst = format!("dz_tail_target_{marker}");
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {src}(enabled BOOLEAN DEFAULT TRUE, symbol CHAR(4) CHARACTER SET utf8mb4,
+       ascii_note VARCHAR(12) CHARACTER SET ascii, raw_total DEC(16,4), amount INT,
+       generated_value INT GENERATED ALWAYS AS (amount+1) STORED);
+       INSERT INTO {src}(symbol,ascii_note,raw_total,amount) VALUES('雨','valid',11.25,7);"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let factory = inventory::iter::<SyncAdapterFactory>
+        .into_iter()
+        .find(|r| r.db_types.contains(&"mysql"))
+        .unwrap();
+    let adapters = (factory.create)();
+    let target = &adapters.target;
+    let source = driver
+        .get_table_schema(&h, &src, &f.database, None)
+        .await
+        .unwrap();
+    let fields = adapters.source.table_to_ir(&source, None);
+    let field = |name: &str| {
+        fields
+            .columns
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap()
+            .clone()
+    };
+    for (database, schema) in [("", Some(f.database.as_str())), ("", None)] {
+        let preflight = adapters
+            .source
+            .unsupported_transfer_structure_query(database, schema, &src)
+            .unwrap();
+        let actual = driver.query(&h, &preflight).await.unwrap();
+        assert_eq!(actual.rows.len(), 2);
+        let blockers = format!("{:?}", actual.rows);
+        assert!(blockers.contains("generated_value") && blockers.contains("ascii_note"));
+    }
+    let normalized = driver.type_normalizer().unwrap();
+    assert_eq!(normalized.normalize_type("BOOL"), "BOOLEAN");
+    let decimal = source
+        .columns
+        .iter()
+        .find(|c| c.name == "raw_total")
+        .unwrap();
+    assert_eq!(
+        normalized.normalize_type("DEC(16,4)"),
+        normalized.normalize_type(&decimal.data_type)
+    );
+    let explicit_default_width = target.ir_type_to_native(&IRType::Varchar { length: None });
+    let preview_text = target.ir_type_to_native(&IRType::Text);
+    driver.execute(&h,&format!("CREATE TABLE {dst}(enabled BOOLEAN, symbol CHAR(4),short_note {explicit_default_width},body {preview_text}) CHARACTER SET utf8mb4"))
+       .await.unwrap();
+    let key = [field("enabled"), field("symbol")];
+    assert_eq!(key[0].ir_type, IRType::Bool);
+    assert!(target.validate_index_columns(&key).is_ok());
+    assert!(
+        target
+            .transfer_default_capable_type_for(&key[0].ir_type)
+            .is_none()
+    );
+    let statement = driver
+        .migration_renderer()
+        .unwrap()
+        .render(&MigrationOperation::CreateIndex {
+            table: dst.clone(),
+            index: IndexInfo {
+                name: "native_bool_char".into(),
+                columns: vec!["enabled".into(), "symbol".into()],
+                is_primary: false,
+                is_unique: false,
+                index_type: "BTREE".into(),
+            },
+        })
+        .unwrap();
+    driver.execute(&h, &statement.sql).await.unwrap();
+    let enabled: i8 = sqlx::query_scalar(&format!("SELECT enabled FROM {src}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    let sql = format!(
+        "INSERT INTO {dst}(enabled,symbol) VALUES({},'雨')",
+        target.format_literal(&Some(Value::Bool(enabled != 0)), &IRType::Bool)
+    );
+    driver.execute(&h, &sql).await.unwrap();
+    let verified: (i8, String) = sqlx::query_as(&format!("SELECT enabled,symbol FROM {dst}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(verified, (1, "雨".into()));
+    let columns:Vec<(String,String)>=sqlx::query_as("SELECT CAST(COLUMN_NAME AS CHAR),CAST(COLUMN_TYPE AS CHAR) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME IN ('short_note','body') ORDER BY COLUMN_NAME")
+      .bind(&dst).fetch_all(&mut f.oracle).await.unwrap();
+    assert_eq!(
+        columns,
+        [
+            ("body".into(), "text".into()),
+            ("short_note".into(), "varchar(255)".into())
+        ]
+    );
+    let table = driver
+        .get_table_schema(&h, &dst, &f.database, None)
+        .await
+        .unwrap();
+    assert!(table.indexes.iter().any(|index|index.name=="native_bool_char"&&index.columns==["enabled","symbol"]));
+
+    let metadata = target
+        .transfer_target_character_metadata_query("", Some(&f.database), &src)
+        .unwrap();
+    let rows = driver.query(&h, &metadata).await.unwrap();
+    let text = |value: &Option<Value>| match value {
+        Some(Value::String(text)) => Some(text.clone()),
+        Some(Value::Bytes(bytes)) => String::from_utf8(bytes.clone()).ok(),
+        _ => None,
+    };
+    let get = |name: &str| {
+        rows.rows
+            .iter()
+            .find(|r| text(&r[0]).as_deref() == Some(name))
+            .unwrap()
+    };
+    let symbol = get("symbol");
+    let numeric = get("raw_total");
+    let ascii = get("ascii_note");
+    let native = source.columns.iter().find(|c| c.name == "symbol").unwrap();
+    let ir = field("symbol");
+    let real_charset = text(&symbol[1]).unwrap();
+    let real_collation = text(&symbol[2]).unwrap();
+    assert!(
+        target
+            .validate_transfer_target_character_metadata(
+                &ir,
+                &native.data_type,
+                Some(&real_charset),
+                Some(&real_collation),
+                false
+            )
+            .is_ok()
+    );
+    assert!(
+        target
+            .validate_transfer_target_character_metadata(
+                &ir,
+                &native.data_type,
+                Some(&real_charset),
+                text(&numeric[2]).as_deref(),
+                false
+            )
+            .unwrap_err()
+            .contains("collation was not inspected")
+    );
+    assert!(
+        target
+            .validate_transfer_target_character_metadata(
+                &ir,
+                &native.data_type,
+                Some(&real_charset),
+                text(&ascii[2]).as_deref(),
+                false
+            )
+            .unwrap_err()
+            .contains("does not belong to character set")
+    );
+    driver.disconnect(h).await.unwrap();
+}
