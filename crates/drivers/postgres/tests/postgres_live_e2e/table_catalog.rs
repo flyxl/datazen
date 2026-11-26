@@ -302,6 +302,31 @@ async fn postgres_result_origin_reads_real_base_view_and_materialized_catalog_ki
         assert!(origin.columns[0].passthrough);
         assert!(!origin.columns[2].passthrough);
     }
+    let detailed = driver
+        .get_table_schema(&handle, "cached", database, Some(&schema))
+        .await
+        .expect("read-only materialized view still has real projected columns");
+    let simple = driver
+        .get_columns(&handle, "cached", database, Some(&schema))
+        .await
+        .expect("column-only metadata must agree with full real snapshot");
+    let catalog_columns: Vec<(String,String)> = sqlx::query_as(
+        "SELECT a.attname::text, format_type(a.atttypid,a.atttypmod) FROM pg_attribute a WHERE a.attrelid=to_regclass($1) AND a.attnum>0 ORDER BY a.attnum"
+    ).bind(format!("{schema}.cached")).fetch_all(&mut fixture.oracle).await.expect("independent physical cached columns");
+    for fields in [&detailed.columns, &simple.0] {
+        assert_eq!(
+            fields
+                .iter()
+                .map(|column| (column.name.clone(), column.data_type.clone()))
+                .collect::<Vec<_>>(),
+            catalog_columns
+        );
+    }
+    assert!(detailed.primary_keys.is_empty());
+    assert_eq!(
+        detailed.table_options.supports_consistent_snapshot,
+        Some(false)
+    );
     for (name, command) in [
         ("cached", "CREATE MATERIALIZED VIEW"),
         ("projected", "CREATE OR REPLACE VIEW"),
@@ -401,6 +426,39 @@ async fn postgres_catalog_distinguishes_column_visibility_from_missing_or_unread
         .expect("explicit real retained relation metadata")
         .data;
     assert_eq!(exact["resolvedTarget"]["schema"], visible_schema);
+    let legacy = driver
+        .execute_command(
+            &handle,
+            "get_table_schema",
+            json!({
+                "database":db, "schema":visible_schema, "table":"entry"
+            }),
+        )
+        .await
+        .expect("legacy named metadata lookup agrees with exact retained lookup")
+        .data;
+    assert_eq!(legacy["resolvedTarget"], exact["resolvedTarget"]);
+    let server = driver
+        .get_server_info(&handle)
+        .await
+        .expect("metadata of the real retained backend");
+    let version: String = sqlx::query_scalar("SELECT version()")
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .expect("independent server version");
+    assert_eq!(server.server_type, "PostgreSQL");
+    assert_eq!(server.server_version, version);
+    for unsupported in [
+        format!("{qualified} JOIN {qualified} AS another ON true"),
+        format!("{qualified}, {qualified} AS another"),
+        format!("(SELECT id FROM {qualified}) AS derived"),
+        format!(r#""{db}"."{visible_schema}"."entry"."extra""#),
+        r#""unterminated"#.to_owned(),
+    ] {
+        assert!(matches!(driver.execute_command(&handle,"get_table_schema",json!({
+            "database":db,"relationSql":unsupported
+        })).await,Err(DriverError::InvalidConfig(_))),"multi-relation and incomplete targets must not yield a single writable relation: {unsupported}");
+    }
     let ddl_request = json!({"kind":"table","name":"entry","schema":visible_schema,"database":db});
     assert!(
         matches!(

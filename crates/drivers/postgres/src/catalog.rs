@@ -561,7 +561,15 @@ impl PostgresDriver {
                         "one relation is required".into(),
                     ));
                 };
-                let sqlparser::ast::TableFactor::Table { name, .. } = &relation.relation else {
+                if !relation.joins.is_empty() {
+                    return Err(DriverError::InvalidConfig(
+                        "one named relation is required; joins have no single table schema".into(),
+                    ));
+                }
+                let sqlparser::ast::TableFactor::Table {
+                    name, args: None, ..
+                } = &relation.relation
+                else {
                     return Err(DriverError::InvalidConfig(
                         "one named relation is required".into(),
                     ));

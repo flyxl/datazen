@@ -32,7 +32,7 @@ impl PostgresDriver {
         let bare_table = table_name.as_str();
         let regclass = pg_regclass_name(schema, bare_table);
 
-        let cols = sqlx::query(
+        let mut cols = sqlx::query(
             r#"
             SELECT column_name,
                    CASE WHEN data_type = 'USER-DEFINED'
@@ -52,6 +52,10 @@ impl PostgresDriver {
         .fetch_all(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        if cols.is_empty() {
+            cols = materialized_column_rows(conn, schema, bare_table).await?;
+        }
 
         if cols.is_empty() {
             return Ok(TableSchema {

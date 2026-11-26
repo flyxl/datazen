@@ -83,6 +83,38 @@ async fn ensure_pg_relation_exists(
     )))
 }
 
+/// PostgreSQL deliberately omits materialized views from
+/// information_schema.columns. Read their actual projected fields with the
+/// same namespace and visibility boundaries as the ordinary catalog path.
+pub(super) async fn materialized_column_rows(
+    connection: &mut sqlx::PgConnection,
+    schema: Option<&str>,
+    table: &str,
+) -> Result<Vec<sqlx::postgres::PgRow>, DriverError> {
+    sqlx::query(
+        "SELECT a.attname::text AS column_name, \
+                pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type, \
+                pg_catalog.format_type(a.atttypid, a.atttypmod) AS migration_data_type, \
+                CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable, \
+                NULL::text AS column_default, 'NO'::text AS is_identity, \
+                pg_catalog.col_description(c.oid, a.attnum) AS comment \
+         FROM pg_catalog.pg_class c \
+         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+         JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid \
+         WHERE c.relkind = 'm' AND c.relname::text = $1 \
+           AND CASE WHEN $2::text IS NULL THEN pg_catalog.pg_table_is_visible(c.oid) \
+                    ELSE n.nspname::text = $2 END \
+           AND pg_catalog.has_schema_privilege(n.oid, 'USAGE') \
+           AND pg_catalog.has_column_privilege(c.oid, a.attnum, 'SELECT') \
+           AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum",
+    )
+    .bind(table)
+    .bind(schema)
+    .fetch_all(connection)
+    .await
+    .map_err(|error| DriverError::QueryFailed(error.to_string()))
+}
+
 impl PostgresDriver {
     pub(crate) async fn get_columns_impl(
         &self,
@@ -96,7 +128,7 @@ impl PostgresDriver {
         let mut connection = crate::session_connection::for_session(self, handle, database).await?;
         let regclass = pg_regclass_name(schema, bare_table);
 
-        let cols = sqlx::query(
+        let mut cols = sqlx::query(
             r#"
                     SELECT column_name, data_type, is_nullable, column_default, is_identity,
                            col_description((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, ordinal_position) as comment
@@ -111,6 +143,10 @@ impl PostgresDriver {
         .fetch_all(&mut *connection)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        if cols.is_empty() {
+            cols = materialized_column_rows(&mut connection, schema, bare_table).await?;
+        }
 
         // No columns for a relation that does not exist here: the caller asked
         // for a table of another database (or a dropped one). Report it instead
