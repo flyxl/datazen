@@ -245,3 +245,104 @@ async fn native_questdb_bound_writes_and_script_recovery_keep_exact_values() {
         .await
         .expect("release QuestDB pool after error");
 }
+
+#[tokio::test]
+async fn native_questdb_refuses_unobservable_retained_session_without_leaking_budget() {
+    use datazen_driver_api::{
+        namespace::NamespaceTarget,
+        resource::{
+            AcquireResourceRequest, Baseline, BudgetPermit, BudgetPort, IdentityScope,
+            ResourceError, ResourcePurpose, ResourceScope,
+        },
+        DriverError,
+    };
+    use std::collections::BTreeMap;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct Ledger(Mutex<BTreeMap<String, u32>>);
+
+    #[async_trait::async_trait]
+    impl BudgetPort for Ledger {
+        async fn acquire_physical_connections(
+            &self,
+            n: u32,
+        ) -> Result<BudgetPermit, ResourceError> {
+            let id = uuid::Uuid::new_v4().to_string();
+            assert!(self.0.lock().unwrap().insert(id.clone(), n).is_none());
+            Ok(BudgetPermit {
+                permit_id: id,
+                physical_connections: n,
+            })
+        }
+
+        async fn release_physical_connections(
+            &self,
+            permit: &BudgetPermit,
+        ) -> Result<(), ResourceError> {
+            assert_eq!(
+                self.0.lock().unwrap().remove(&permit.permit_id),
+                Some(permit.physical_connections)
+            );
+            Ok(())
+        }
+    }
+
+    let (mut oracle, cfg) = fixture().await;
+    let fault = sqlx::query("SELECT pg_backend_pid()")
+        .fetch_one(&mut oracle)
+        .await
+        .expect_err("QuestDB does not expose the process SQL this resource depends on")
+        .to_string();
+    assert!(fault.contains("pg_backend_pid"), "{fault}");
+
+    let factory = factory();
+    let provider = factory
+        .resource_provider()
+        .expect("alias resolves its own provider");
+    assert_eq!(provider.provider_id(), "questdb");
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let requested = AcquireResourceRequest {
+        connection_config: cfg.clone(),
+        target: NamespaceTarget::empty().with_database("qdb"),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 8,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    };
+    assert!(
+        matches!(
+            provider.acquire_resource(&requested, &budget).await,
+            Err(ResourceError::Driver(DriverError::ConnectionFailed(reason)))
+                if reason.contains("pg_backend_pid")
+        ),
+        "the provider must not report a confirmed retained session on an unobservable backend"
+    );
+    assert!(
+        ledger.0.lock().unwrap().is_empty(),
+        "failed admission must release all physical budget"
+    );
+
+    let direct = factory.create();
+    let handle = direct
+        .connect(&cfg)
+        .await
+        .expect("ordinary QuestDB queries remain available");
+    assert_eq!(
+        direct
+            .query(&handle, "SELECT count() FROM datazen_qdb_marker")
+            .await
+            .expect("real query after refused resource")
+            .rows,
+        [vec![Some(Value::Integer(1))]]
+    );
+    direct
+        .disconnect(handle)
+        .await
+        .expect("release the ordinary session");
+}
