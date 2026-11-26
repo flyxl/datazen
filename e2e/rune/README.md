@@ -26,8 +26,9 @@ coverage.
 
 ## Opt-in real SQL servers
 
-`--postgres-config FILE` adds three named journeys and `--mysql-config FILE`
-adds two. An unconfigured engine is not included in the test counts. The
+`--postgres-config FILE` adds five PostgreSQL-only journeys and
+`--mysql-config FILE` adds two MySQL-only journeys. Passing both adds seven
+cross-engine journeys. Unconfigured engines are not counted. The
 config is a private JSON file with `host` (`127.0.0.1`), `port` (integer), `database` (`datazen_e2e`), `user`, `password`, and
 `client` (path to `psql` or `mysql`). Do not commit the config. Use disposable
 servers only; create a `rune_e2e_fixture(marker VARCHAR(40) NOT NULL)` marker
@@ -48,8 +49,9 @@ When both fixtures are enabled, native Data Transfer exercises insert-only
 copying between PostgreSQL and MySQL in both directions. These journeys
 independently verify exact decimal precision, NULL versus empty text, defaults
 and sentinel rows, and the selected PostgreSQL namespace (the profile schema
-or `public`). They also verify cancellation, rollback on a duplicate target key, and
-preflight refusal of lossy decimal mappings or nontransactional targets. MySQL-to-PostgreSQL initially
+or `public`). They also verify cancellation, duplicate-key rollback, a
+deferred constraint that fails at COMMIT, and refusal of lossy decimal
+mappings or nontransactional targets before writes. MySQL-to-PostgreSQL
 supports only mappings that can prove their type capacity from the catalog:
 signed integers, bounded DECIMAL and bounded VARCHAR.
 

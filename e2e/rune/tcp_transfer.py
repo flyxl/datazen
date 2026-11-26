@@ -200,6 +200,35 @@ class TcpTransferJourneys:
         self.assertEqual(mysql.query(source).splitlines(), values)
 
 
+    def run_reverse_deferred_commit_conflict(self, configs):
+        mysql, pg, schema, table, steps, source, target, decoy, values = self.reverse_fixture(configs, 6)
+        relation = f"{schema}.{table}"
+        pg.query(f"""ALTER TABLE {relation} ADD UNIQUE (amount) DEFERRABLE INITIALLY DEFERRED;
+            UPDATE {relation} SET amount=42.125000 WHERE id=8;""")
+        sentinel = "8|42.125000|keep|sentinel"
+
+        # Distinct IDs and a deferred UNIQUE violation: prove INSERT succeeded
+        # inside the transaction, then inspect the SQLSTATE from COMMIT itself.
+        proof = pg.query(rf"""
+            BEGIN;
+            INSERT INTO {relation}(id, amount, note) VALUES(91,42.125000,'proof');
+            SELECT 'visible-in-transaction' FROM {relation} WHERE id=91;
+            \set ON_ERROR_STOP off
+            COMMIT;
+            \echo :SQLSTATE
+        """)
+        self.assertEqual(proof.splitlines(), ["visible-in-transaction", "23505"])
+        self.assertEqual(pg.query(target), sentinel)
+
+        result = self.replay([*steps, tap(12.5, "native-transfer-yes")], until=17.0)
+        self.expect_rendered(result, key="native-transfer-error",
+                             text="The commit outcome is unknown. Check the target before retrying.")
+        self.assertFalse(visible(result, key="native-transfer-success"))
+        self.assertEqual(pg.query(target), sentinel)
+        self.assertEqual(pg.query(decoy), "8|8.000000|keep|sentinel")
+        self.assertEqual(mysql.query(source).splitlines(), values)
+
+
 def with_sql_transfer_journeys(suite, configs):
     if {"mysql", "postgresql"} <= configs.keys():
         suite.test_postgresql_to_mysql_preserves_exact_reviewed_values = lambda self: self.run_sql_transfer_exact(configs)
@@ -208,3 +237,4 @@ def with_sql_transfer_journeys(suite, configs):
         suite.test_mysql_to_postgresql_preserves_values_and_namespace = lambda self: self.run_reverse_exact(configs)
         suite.test_mysql_to_postgresql_review_refuses_scale_loss = lambda self: self.run_reverse_rejects_scale_loss(configs)
         suite.test_mysql_to_postgresql_duplicate_conflict_keeps_target_unchanged = lambda self: self.run_reverse_duplicate_conflict(configs)
+        suite.test_mysql_to_postgresql_deferred_conflict_fails_at_commit = lambda self: self.run_reverse_deferred_commit_conflict(configs)
