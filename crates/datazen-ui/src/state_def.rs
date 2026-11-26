@@ -119,6 +119,7 @@ pub struct AppState {
     pub commit_loading: Option<u32>,
     /// A query job the host accepted and has not answered yet (N1).
     pub query_loading: Option<u32>,
+    pub(crate) native_query: Option<crate::native_query_close::NativeQuery>,
     /// An open job the host accepted and has not answered yet (N3): the
     /// connections page says so until the catalog or the failure lands.
     pub connect_loading: Option<u32>,
@@ -580,6 +581,7 @@ impl Default for AppState {
             table_read_error: None,
             commit_loading: None,
             query_loading: None,
+            native_query: None,
             connect_loading: None,
             desktop_catalog: None,
             native_kv: None,

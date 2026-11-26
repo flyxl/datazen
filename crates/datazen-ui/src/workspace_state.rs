@@ -328,6 +328,12 @@ impl AppState {
     /// query job in flight also stops waiting: its marker leaves with the
     /// generation, and a late delivery finds only the stale check.
     pub fn cancel_query(&mut self) {
+        if self.desktop.supports_native_query_stop() {
+            if let Some(generation) = self.native_query.as_ref().map(|query| query.generation) {
+                self.request_running_query_stop(generation, false);
+            }
+            return;
+        }
         self.next_query_generation();
         self.query_loading = None;
     }
@@ -338,6 +344,11 @@ impl AppState {
     /// remain; unpinned prior tabs are kept for switching). A synchronous
     /// failure restores the previously selected result so the UI stays as it was.
     pub fn run_query(&mut self) {
+        let native = self.desktop.supports_native_query_stop();
+        if native && self.native_query.is_some() {
+            self.query_action_notice("A query is still running.");
+            return;
+        }
         let sql = match self
             .sql
             .query_execution_text(|sql| self.desktop.editor_statement_ranges(sql))
@@ -366,6 +377,13 @@ impl AppState {
         };
         if self.desktop.begin_job(job) {
             self.query_loading = Some(generation);
+            if native {
+                if let Some(tab) = self.tabs.selected() {
+                    self.native_query = Some(crate::native_query_close::NativeQuery::new(
+                        generation, tab.id, sql,
+                    ));
+                }
+            }
             return;
         }
         match self.workspace.execute(&sql) {
@@ -758,7 +776,14 @@ impl AppState {
             AdapterDelivery::QueryHistoryRead { generation, result } => {
                 self.query_history.deliver(generation, result);
             }
+            AdapterDelivery::QueryTerminal { generation } => {
+                self.finish_running_query(generation, true);
+            }
+            AdapterDelivery::QueryStopRejected { generation } => {
+                self.note_query_stop_rejected(generation);
+            }
             AdapterDelivery::QueryPage { generation, page } => {
+                self.finish_running_query(generation, false);
                 if self.query_loading == Some(generation) {
                     self.query_loading = None;
                 }
@@ -808,6 +833,13 @@ impl AppState {
         }
     }
     pub fn close_tab(&mut self, id: u32) -> bool {
+        if self.maybe_confirm_running_tab_close(id) {
+            return false;
+        }
+        self.close_tab_now(id)
+    }
+
+    pub(crate) fn close_tab_now(&mut self, id: u32) -> bool {
         let previous = self.tabs.selected().map(|tab| tab.id);
         if !self.tabs.close(id) {
             return false;

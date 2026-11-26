@@ -2079,6 +2079,15 @@ pub trait DesktopAdapter {
         false
     }
 
+    /// Whether this adapter can request precise runtime query cancellation.
+    fn supports_native_query_stop(&self) -> bool {
+        false
+    }
+
+    fn request_native_query_stop(&mut self, _generation: u32) -> bool {
+        false
+    }
+
     /// Completed jobs since the last call, oldest first. The default answers
     /// nothing.
     fn poll_jobs(&mut self) -> Vec<AdapterDelivery> {
@@ -2522,6 +2531,10 @@ pub enum AdapterDelivery {
         result: Result<QueryHistorySnapshot, String>,
     },
     /// A query job's result page (or its failure sentence).
+    /// The submitted execution was observed in a terminal runtime state.
+    QueryTerminal { generation: u32 },
+    /// The runtime did not accept a cancellation for this execution.
+    QueryStopRejected { generation: u32 },
     QueryPage {
         generation: u32,
         page: Result<TablePage, String>,

@@ -346,19 +346,21 @@ fn toolbar_button(key: &'static str, label: &str, theme: tok::Theme) -> El {
         .child(text(label.to_owned()).font(type_::LABEL).color(theme.text))
 }
 
-pub fn query_toolbar(_state: &AppState, theme: tok::Theme) -> El {
-    row()
+pub fn query_toolbar(state: &AppState, theme: tok::Theme) -> El {
+    let mut bar = row()
         .key("query-toolbar")
         .w_full()
         .h(28.0)
         .gap(6.0)
         .center_y()
-        .child(toolbar_button("sql-run", t("query.run"), theme).on_press(|s: &mut AppState| s.run_query()))
-        .child(
+        .child(toolbar_button("sql-run", t("query.run"), theme).on_press(|s: &mut AppState| s.run_query()));
+    if !state.desktop.supports_native_query_stop() || state.native_query_selected() {
+        bar = bar.child(
             toolbar_button("sql-cancel", t("common.cancel"), theme)
                 .on_press(|s: &mut AppState| s.cancel_query()),
-        )
-        .child(
+        );
+    }
+    bar.child(
             toolbar_button("sql-format", t("query.format"), theme)
                 .on_press(|s: &mut AppState| s.format_query()),
         )

@@ -229,6 +229,8 @@ impl AppState {
         self.table_read_error = None;
         self.commit_loading = None;
         self.query_loading = None;
+        self.native_query = None;
+        self.running_close_request = None;
         self.connect_loading = None;
         self.desktop_catalog = None;
         self.desktop_connection = None;
@@ -272,10 +274,8 @@ impl AppState {
     /// is T396's port; the host assumes asks arrive serialized, as React's
     /// `useConfirmDialog` does ("one at a time by construction").
     ///
-    /// No production caller yet: the close guard that would ask (the panel
-    /// store's `createRunningCloseGuard` wiring) ports with T396, and until
-    /// then the tab strip's close button keeps closing directly. The entry
-    /// is the host's half of the contract the guard will call.
+    /// The native tab strip asks through the generation-bound running
+    /// query guard; other hosts can use the same dialog contract.
     #[allow(dead_code)]
     pub fn ask_running_execution_close(
         &mut self,
@@ -294,6 +294,9 @@ impl AppState {
     /// settled promise resolves only once.
     pub fn answer_running_execution_close(&mut self, allowed: bool) {
         if let Some(request) = self.running_close_request.take() {
+            if allowed {
+                self.stop_confirmed_tab(&request);
+            }
             self.running_close_outcome = Some((request, allowed));
         }
     }

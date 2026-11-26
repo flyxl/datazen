@@ -180,6 +180,7 @@ enum HostJob {
     RunQuery {
         generation: u32,
         sql: String,
+        stop: Arc<std::sync::atomic::AtomicBool>,
     },
 }
 
@@ -265,6 +266,8 @@ enum HostAnswer {
         generation: u32,
         result: Result<QueryHistorySnapshot, String>,
     },
+    QueryTerminal { generation: u32 },
+    QueryStopRejected { generation: u32 },
     QueryPage {
         generation: u32,
         page: Result<TablePage, String>,
@@ -294,6 +297,7 @@ impl LiveSession {
 }
 
 pub struct LiveAdapter {
+    query_stops: std::collections::HashMap<u32, Arc<std::sync::atomic::AtomicBool>>,
     /// Jobs to the worker.
     jobs: Mutex<tokio::sync::mpsc::UnboundedSender<HostJob>>,
     /// Answers from the worker, drained on the poll path.
@@ -695,13 +699,22 @@ impl LiveAdapter {
                             let result = runtime.block_on(live_transfer::run(&worker_service, &worker_registry, request));
                             HostAnswer::NativeTransferFinished { epoch, result }
                         }
-                        HostJob::RunQuery { generation, sql } => {
+                        HostJob::RunQuery { generation, sql, stop } => {
                             let started = std::time::Instant::now();
-                            let page = runtime.block_on(run_query(
+                            let page = runtime.block_on(run_query_observed(
                                 &worker_runtime,
                                 &worker_profiles,
                                 &worker_session,
                                 &sql,
+                                &stop,
+                                |terminal| {
+                                    let answer = if terminal {
+                                        HostAnswer::QueryTerminal { generation }
+                                    } else {
+                                        HostAnswer::QueryStopRejected { generation }
+                                    };
+                                    let _ = answer_tx.send(answer);
+                                },
                             ));
                             // N9: the executed statement lands in the history
                             // — success and failure alike, with its own
@@ -742,6 +755,7 @@ impl LiveAdapter {
             })
             .expect("the live job worker starts");
         Self {
+            query_stops: Default::default(),
             jobs: Mutex::new(job_tx),
             answers: Mutex::new(answer_rx),
             service,
@@ -2153,6 +2167,18 @@ async fn run_query(
     session: &Arc<Mutex<LiveSession>>,
     sql: &str,
 ) -> Result<TablePage, String> {
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    run_query_observed(runtime, profiles, session, sql, &stop, |_| {}).await
+}
+
+async fn run_query_observed(
+    runtime: &Arc<RuntimeConnectionUseCases>,
+    profiles: &Arc<crate::backend::HostProfiles>,
+    session: &Arc<Mutex<LiveSession>>,
+    sql: &str,
+    stop: &std::sync::atomic::AtomicBool,
+    note_execution: impl Fn(bool),
+) -> Result<TablePage, String> {
     let (connection, database) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
@@ -2198,13 +2224,29 @@ async fn run_query(
         )
         .await
         .map_err(|error| error.to_string())?;
+    // The serial host worker is occupied by this query. Read cancellation
+    // intent outside its job queue and apply it only to this exact receipt.
+    use datazen::execution::CancelDisposition;
+    use std::sync::atomic::Ordering;
     let view = loop {
         let view = runtime
             .get_execution(&ctx, receipt.execution_id.clone())
             .await
             .map_err(|error| error.to_string())?;
         if view.state.is_terminal() {
+            note_execution(true);
             break view;
+        }
+        if stop.swap(false, Ordering::AcqRel) {
+            let receipt = runtime.cancel_execution(&ctx, receipt.execution_id.clone()).await;
+            if !receipt.is_ok_and(|receipt| {
+                matches!(
+                    receipt.disposition,
+                    CancelDisposition::Requested | CancelDisposition::AlreadyFinished
+                )
+            }) {
+                note_execution(false);
+            }
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     };
@@ -2500,6 +2542,18 @@ impl DesktopAdapter for LiveAdapter {
         true
     }
 
+    fn supports_native_query_stop(&self) -> bool {
+        true
+    }
+
+    fn request_native_query_stop(&mut self, generation: u32) -> bool {
+        let Some(stop) = self.query_stops.get(&generation) else {
+            return false;
+        };
+        stop.store(true, std::sync::atomic::Ordering::Release);
+        true
+    }
+
     fn begin_job(&mut self, job: AdapterJob) -> bool {
         let job = match job {
             AdapterJob::ReadNativeTransfer {
@@ -2574,7 +2628,15 @@ impl DesktopAdapter for LiveAdapter {
                 generation,
                 connection_id,
             },
-            AdapterJob::RunQuery { generation, sql } => HostJob::RunQuery { generation, sql },
+            AdapterJob::RunQuery { generation, sql } => {
+                let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let job = HostJob::RunQuery { generation, sql, stop: Arc::clone(&stop) };
+                let sent = self.jobs.lock().expect("the job channel").send(job).is_ok();
+                if sent {
+                    self.query_stops.insert(generation, stop);
+                }
+                return sent;
+            }
             AdapterJob::ValueSearch {
                 generation,
                 value,
@@ -2696,7 +2758,14 @@ impl DesktopAdapter for LiveAdapter {
                 HostAnswer::QueryHistoryRead { generation, result } => {
                     deliveries.push(AdapterDelivery::QueryHistoryRead { generation, result });
                 }
+                HostAnswer::QueryTerminal { generation } => {
+                    deliveries.push(AdapterDelivery::QueryTerminal { generation });
+                }
+                HostAnswer::QueryStopRejected { generation } => {
+                    deliveries.push(AdapterDelivery::QueryStopRejected { generation });
+                }
                 HostAnswer::QueryPage { generation, page } => {
+                    self.query_stops.remove(&generation);
                     deliveries.push(AdapterDelivery::QueryPage { generation, page });
                 }
             }

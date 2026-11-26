@@ -101,6 +101,7 @@ pub mod types;
 pub mod panel_close_notifier;
 // T385: the query-run request bridge (queryRunRequestStore.ts).
 mod query_history_state;
+mod native_query_close;
 pub mod query_run_request_store;
 // T421: the schema request tracker (schemaRequestTracker.ts).
 mod native_csv_state;

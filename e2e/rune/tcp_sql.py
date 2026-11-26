@@ -199,6 +199,73 @@ class TcpSqlJourneys:
         self.assertEqual(markers(restored), (True, True))
         self.assertEqual(json.loads(path.read_text(encoding="utf-8")), persisted)
 
+    def run_legacy_close_running_query(self, config, *, confirm):
+        """Real server observation for unified-tab-bar.ts UTB-007 and UTB-008."""
+        database = DisposableSql("postgresql", config)
+        database.write_profile(self)
+        tag = f"rune_tab_close_{uuid.uuid4().hex}"
+        # Observe the identified statement independently of the Rune host.
+        from concurrent.futures import ThreadPoolExecutor
+        from time import monotonic, sleep
+
+        predicate = (f"pid <> pg_backend_pid() AND state = 'active' "
+                     f"AND datname = current_database() AND query LIKE '%/* {tag} */%'")
+        self.addCleanup(database.query, f"SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE {predicate};")
+        def opening(marker):
+            # Leave headroom for software-rendered replays on shared CI.
+            # The observer still requires the explicit stop well before expiry.
+            statement = f"SELECT pg_sleep(60) /* {marker} */;"
+            run = query_steps(statement, "e2e-tcp-sql")
+            run[-2] = {"t": 5, "type": "paste", "text": statement}
+            return [*run, tap(11.3, "tab-close-1")]
+
+        if confirm:
+            preview_tag = f"{tag}_preview"
+            self.addCleanup(database.query, f"""
+                SELECT pg_cancel_backend(pid) FROM pg_stat_activity
+                WHERE pid <> pg_backend_pid() AND state = 'active'
+                  AND datname = current_database() AND query LIKE '%/* {preview_tag} */%';
+            """)
+            prompt = self.replay(opening(preview_tag), until=13.0)
+            self.expect_rendered(prompt, key="tab-1")
+            self.expect_rendered(prompt, key="sql-cancel")
+            self.expect_rendered(prompt, key="query-loading")
+            self.expect_rendered(prompt, key="running-close-dialog")
+            self.expect_rendered(prompt, key="confirm-dialog-ok")
+        actions = [*opening(tag),
+                   tap(14.4, "confirm-dialog-ok" if confirm else "confirm-dialog-cancel")]
+        observations = []
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            replay = pool.submit(self.replay, actions, until=17.5)
+            deadline = monotonic() + 65
+            while not replay.done() and monotonic() < deadline:
+                seen = database.query(f"SELECT pid FROM pg_stat_activity WHERE {predicate};")
+                observations.append((monotonic(), seen))
+                sleep(.25)
+            tree = replay.result()
+        active = [(at, pid) for at, pid in observations if pid]
+        self.assertTrue(active, "the server never observed the identified live statement")
+        pids = {pid for _, pid in active}
+        self.assertEqual(len(pids), 1, "one opened query must keep one backend identity")
+        self.assertFalse(visible(tree, key="confirm-dialog-ok"))
+        if confirm:
+            self.assertFalse(visible(tree, key="tab-1"))
+            self.assertFalse(visible(tree, key="sql-cancel"))
+            self.expect_rendered(tree, key="workspace-empty")
+            stopped = [at for at, pid in observations if not pid and at > active[-1][0]]
+            self.assertTrue(stopped, "the server statement did not stop while the native window was alive")
+            self.assertLess(stopped[0] - active[0][0], 50, "natural sleep expiry must not count as a stop")
+        else:
+            self.expect_rendered(tree, key="tab-1")
+            self.expect_rendered(tree, key="sql-cancel")
+            self.expect_rendered(tree, key="query-loading")
+            self.assertTrue(all(pid for at, pid in observations
+                                if active[0][0] <= at < active[-1][0]))
+            self.assertLess(observations[-1][0] - active[-1][0], 1.25,
+                            "declining must preserve the running backend until replay teardown")
+            self.assertGreaterEqual(active[-1][0] - active[0][0], 4,
+                                    "the backend must still be active through the prompt and decline")
+
 
 def with_tcp_journeys(suite, configs):
     # Do not discover unprovisioned engines as skipped/pass. Opt-in fixtures
@@ -209,6 +276,15 @@ def with_tcp_journeys(suite, configs):
 
         setattr(suite, f"test_{engine}_native_catalog_query_edit", journey)
         if engine == "postgresql":
+            def confirm_close(self, config=config):
+                return self.run_legacy_close_running_query(config, confirm=True)
+
+            def decline_close(self, config=config):
+                return self.run_legacy_close_running_query(config, confirm=False)
+
+            setattr(suite, "test_postgresql_confirm_tab_close_stops_exact_running_query", confirm_close)
+            setattr(suite, "test_postgresql_decline_tab_close_keeps_exact_running_query", decline_close)
+
             def history_scope(self, config=config):
                 return self.run_legacy_history_scope_and_search(config)
 
