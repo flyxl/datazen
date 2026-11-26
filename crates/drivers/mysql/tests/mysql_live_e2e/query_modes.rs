@@ -148,3 +148,95 @@ async fn mysql_query_shapes_preserve_empty_headers_and_limit_with_real_sql_comme
         driver.disconnect(h).await.expect("native teardown");
     }
 }
+
+#[tokio::test]
+async fn mysql_native_failed_prepared_and_text_statements_do_not_poison_checkout_or_run_batch_tail()
+{
+    use datazen_driver_api::DriverError;
+    let mut f = Fixture::open().await;
+    let driver = MysqlDriver::new(false);
+    let n = uuid::Uuid::new_v4().simple().to_string();
+    let actual = format!("dz_stmt_{n}");
+    let absent = format!("dz_missing_{n}");
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {actual}(id INT PRIMARY KEY,amount INT); INSERT INTO {actual} VALUES(1,7);"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    fn native<T: std::fmt::Debug>(result: Result<T, DriverError>, message: &str) {
+        assert!(
+            matches!(&result,Err(DriverError::QueryFailed(text)) if text.contains(message)),
+            "expected actual MySQL {message}: {result:?}"
+        );
+    }
+    let pool = driver.connect(&f.cfg).await.unwrap();
+    let pinned = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    for h in [&pool, &pinned] {
+        let early = format!("SELECT id FROM {absent}");
+        let early_params = format!("SELECT id FROM {absent} WHERE id=?");
+        let duplicate = format!("INSERT INTO {actual} VALUES(1,99)");
+        let duplicate_params = format!("INSERT INTO {actual} VALUES(?,99)");
+        let want = "doesn't exist";
+        native(driver.query(h, &early).await, want);
+        native(
+            driver
+                .query_with_params(h, &early_params, &[Value::Integer(1)])
+                .await,
+            want,
+        );
+        native(driver.execute(h, &duplicate).await, "Duplicate entry");
+        native(
+            driver
+                .execute_with_params(h, &duplicate_params, &[Value::Integer(1)])
+                .await,
+            "Duplicate entry",
+        );
+        for (bad, detail) in [(&early, want), (&duplicate, "Duplicate entry")] {
+            let follow = format!("{bad}; INSERT INTO {actual} VALUES (7,91)");
+            native(driver.query_multi(h, &follow, None).await, detail);
+            let (events, callback) = collect();
+            native(
+                driver.query_stream(h, &follow, None, callback).await,
+                detail,
+            );
+            assert!(
+                !events
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|event| matches!(event, QueryStreamEvent::Done { .. }))
+            );
+            let id = QueryExecutionId::new(format!("native-registered-{n}-{bad}"));
+            let (_, callback) = collect();
+            driver.prepare_query_execution(h, &id).await.unwrap();
+            native(
+                driver
+                    .query_stream_with_execution(h, &id, &follow, None, callback)
+                    .await,
+                detail,
+            );
+        }
+        let healthy = driver
+            .query_with_params(
+                h,
+                &format!("SELECT amount FROM {actual} WHERE id=?"),
+                &[Value::Integer(1)],
+            )
+            .await
+            .unwrap();
+        assert_eq!(healthy.rows, [vec![Some(Value::Integer(7))]]);
+    }
+    let stored: Vec<(i32, i32)> =
+        sqlx::query_as(&format!("SELECT id,amount FROM {actual} ORDER BY id"))
+            .fetch_all(&mut f.oracle)
+            .await
+            .unwrap();
+    assert_eq!(
+        stored,
+        [(1, 7)],
+        "real statement errors must not permit the later write"
+    );
+    driver.disconnect(pinned).await.unwrap();
+    driver.disconnect(pool).await.unwrap();
+}

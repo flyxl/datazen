@@ -629,6 +629,33 @@ async fn mysql_catalog_command_resolves_exact_native_relation_without_guessing_a
             .any(|line| line.starts_with(&format!("-- Error dumping data for {local}")))
     );
 
+    sqlx::query(&format!("INSERT INTO {foreign} VALUES (3037)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let remote_dump = driver
+        .dump_database(
+            &connected,
+            &remote,
+            &BackupDumpOptions {
+                data_only: true,
+                single_transaction: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("qualified data backup on the original active connection");
+    assert!(
+        remote_dump.contains(&format!(
+            "INSERT INTO {quoted} (`from_other`) VALUES (3037)"
+        )),
+        "dump must read the exact foreign table, regardless of the active catalog: {remote_dump}"
+    );
+    assert!(
+        !remote_dump
+            .lines()
+            .any(|line| line.starts_with(&format!("-- Error dumping data for {local}")))
+    );
     let data = driver.query(&fixed, "SELECT DATABASE()").await.unwrap();
     assert_eq!(data.rows, [vec![Some(Value::String(f.database.clone()))]]);
     let view = format!("view_{suffix}");

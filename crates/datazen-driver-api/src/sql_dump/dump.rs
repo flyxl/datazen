@@ -1,5 +1,6 @@
 //! SQL dump generation: DDL, INSERT batches, and full-database export.
 
+use crate::sql_target::SqlTarget;
 use crate::traits::DatabaseDriver;
 use crate::types::*;
 
@@ -246,7 +247,16 @@ where
     let rel = qualified_ident(&|n| driver.quote_ident(n), object_schema, tname);
     let select_sql = format!("SELECT {} FROM {}", col_names.join(", "), rel);
 
-    match driver.query(handle, &select_sql).await {
+    // Keep the destination INSERT portable, but read from the exact
+    // requested source catalog rather than the connection's default.
+    match driver
+        .query_at(
+            handle,
+            &select_sql,
+            SqlTarget::new(Some(database), object_schema),
+        )
+        .await
+    {
         Ok(result) => {
             let tuples: Vec<String> = result
                 .rows

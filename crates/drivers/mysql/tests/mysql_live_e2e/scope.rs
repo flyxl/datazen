@@ -22,7 +22,9 @@ async fn mysql_rendered_view_scope_switches_real_local_relations_but_keeps_exter
          CREATE TABLE {target}.{mapped}(v INT); INSERT INTO {target}.{mapped} VALUES(73);
          CREATE TABLE {external}.{dependency}(v INT); INSERT INTO {external}.{dependency} VALUES(1000);"
     )).execute(&mut f.oracle).await.expect("three distinct real databases and decoy values");
-    let definition=format!("WITH selected AS (SELECT v FROM `{source}`.`{local}`)\nSELECT selected.v+extra.v AS val, '雨' AS label FROM selected CROSS JOIN `{external}`.`{dependency}` extra");
+    let definition = format!(
+        "WITH selected AS (SELECT v FROM `{source}`.`{local}`)\nSELECT selected.v+extra.v AS val, '雨' AS label FROM selected CROSS JOIN `{external}`.`{dependency}` extra"
+    );
     sqlx::raw_sql(&format!("CREATE VIEW {source}.{view} AS {definition}"))
         .execute(&mut f.oracle)
         .await
@@ -62,12 +64,16 @@ async fn mysql_rendered_view_scope_switches_real_local_relations_but_keeps_exter
         .map_schema_object_scope(ObjectKind::View, &source, &target, &definition, &deps)
         .expect("proved exact mapping")
         .expect("native view mapping supported");
-    assert!(mapping
-        .definition
-        .contains(&format!("`{target}`.`{mapped}`")));
-    assert!(mapping
-        .definition
-        .contains(&format!("`{external}`.`{dependency}`")));
+    assert!(
+        mapping
+            .definition
+            .contains(&format!("`{target}`.`{mapped}`"))
+    );
+    assert!(
+        mapping
+            .definition
+            .contains(&format!("`{external}`.`{dependency}`"))
+    );
     assert_eq!(mapping.dependencies.len(), 2);
     let statement = renderer
         .render(&MigrationOperation::CreateView {
@@ -92,9 +98,11 @@ async fn mysql_rendered_view_scope_switches_real_local_relations_but_keeps_exter
         .expect("actual destination and external data");
     assert_eq!(source_v, (1011, "雨".into()));
     assert_eq!(target_v, (1073, "雨".into()));
-    assert!(renderer
-        .map_schema_object_scope(ObjectKind::View, &source, &target, &definition, &deps[..1])
-        .is_err());
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::View, &source, &target, &definition, &deps[..1])
+            .is_err()
+    );
     let alternate = format!("SELECT {local}.v FROM {local}");
     let mapped_unqualified = renderer
         .map_schema_object_scope(ObjectKind::View, &source, &target, &alternate, &deps)
@@ -163,4 +171,163 @@ async fn mysql_rendered_view_scope_switches_real_local_relations_but_keeps_exter
         .disconnect(handle)
         .await
         .expect("close actual scoped driver");
+}
+
+#[tokio::test]
+async fn mysql_view_scope_preserves_proven_native_names_and_refuses_cte_ambiguity() {
+    let mut f = Fixture::open().await;
+    let (driver, handle) = f.connect().await;
+    let source = f.database.clone();
+    let target = std::env::var("TEST_MYSQL_DATABASE_B").unwrap();
+    let third = std::env::var("MYSQL_MIGRATION_TEST_DATABASE").unwrap();
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    let base = format!("dz_member_{id}");
+    let view = format!("dz_member_view_{id}");
+    let collision = format!("dz_duplicate_{id}");
+    let procedure = format!("dz_not_view_{id}");
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {source}.{base}(v INT);
+        CREATE TABLE {target}.{base}(v INT);
+        CREATE TABLE {third}.{base}(v INT);
+        INSERT INTO {source}.{base} VALUES (13);
+        INSERT INTO {target}.{base} VALUES (83);
+        INSERT INTO {third}.{base} VALUES (10);
+        CREATE PROCEDURE {source}.{procedure}() SELECT 1"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let exact = format!(
+        "SELECT\n `{source}`.`{base}`.v + ext.v AS value, '雪' AS label\nFROM `{source}`.`{base}` JOIN `{third}`.`{base}` AS ext"
+    );
+    let teeter = format!(
+        "WITH `{base}` AS (SELECT 99 AS v FROM DUAL) SELECT `{base}`.v + actual.v AS value
+      FROM `{base}` JOIN `{source}`.`{base}` actual"
+    );
+    sqlx::raw_sql(&format!(
+        "CREATE VIEW {source}.{view} AS {exact}; CREATE VIEW {source}.{collision} AS {teeter}"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let dependencies = async |name: &str| {
+        let lookup = driver
+            .execute_command(
+                &handle,
+                "get_object_dependencies",
+                json!({"kind":"view","schema":source,"name":name}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(lookup.data["complete"], true);
+        serde_json::from_value::<Vec<DatabaseObject>>(lookup.data["dependencies"].clone())
+            .unwrap()
+            .into_iter()
+            .map(|object| {
+                let mut moved = object.clone();
+                if moved.schema.as_deref() == Some(source.as_str()) {
+                    moved.schema = Some(target.clone());
+                }
+                SchemaObjectScopeDependency {
+                    source: object,
+                    target: moved,
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    let deps = dependencies(&view).await;
+    assert_eq!(deps.len(), 2);
+    let renderer = driver.migration_renderer().unwrap();
+    let rendered = renderer
+        .map_schema_object_scope(ObjectKind::View, &source, &target, &exact, &deps)
+        .unwrap()
+        .unwrap();
+    driver
+        .execute(
+            &handle,
+            &renderer
+                .render(&MigrationOperation::CreateView {
+                    view: MigrationView {
+                        schema: Some(target.clone()),
+                        name: view.clone(),
+                        definition: rendered.definition,
+                    },
+                })
+                .unwrap()
+                .sql,
+        )
+        .await
+        .unwrap();
+    let native = (
+        sqlx::query_as::<_, (i64, String)>(&format!("SELECT value,label FROM {source}.{view}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap(),
+        sqlx::query_as::<_, (i64, String)>(&format!("SELECT value,label FROM {target}.{view}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(native, ((23, "雪".into()), (93, "雪".into())));
+
+    let catalog = dependencies(&collision).await;
+    let refusal = renderer
+        .map_schema_object_scope(ObjectKind::View, &source, &target, &teeter, &catalog)
+        .expect_err("CTE shadows a proven physical relation");
+    assert!(
+        refusal.contains("CTE") && refusal.contains("ambiguous"),
+        "{refusal}"
+    );
+    let original: i64 = sqlx::query_scalar(&format!("SELECT value FROM {source}.{collision}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(original, 112);
+    let denied: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM information_schema.VIEWS WHERE TABLE_SCHEMA=? AND TABLE_NAME=?",
+    )
+    .bind(&target)
+    .bind(&collision)
+    .fetch_one(&mut f.oracle)
+    .await
+    .unwrap();
+    assert_eq!(denied, 0);
+    let local = deps
+        .iter()
+        .position(|refd| refd.source.schema.as_deref() == Some(source.as_str()))
+        .unwrap();
+    let external = 1 - local;
+    let mut misses = deps.clone();
+    misses[local].target.schema = Some(third.clone());
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::View, &source, &target, &exact, &misses)
+            .unwrap_err()
+            .contains("Local MySQL")
+    );
+    let mut misses = deps.clone();
+    misses[external].target.schema = Some(target.clone());
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::View, &source, &target, &exact, &misses)
+            .unwrap_err()
+            .contains("External MySQL")
+    );
+    let mut misses = deps.clone();
+    misses[external].source.schema = None;
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::View, &source, &target, &exact, &misses)
+            .unwrap_err()
+            .contains("omitted an exact")
+    );
+    let real_proc = driver.dump_routines(&handle, &source).await.unwrap();
+    assert!(real_proc.contains(&procedure));
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::Procedure, &source, &target, &real_proc, &[])
+            .unwrap()
+            .is_none()
+    );
+    driver.disconnect(handle).await.unwrap();
 }

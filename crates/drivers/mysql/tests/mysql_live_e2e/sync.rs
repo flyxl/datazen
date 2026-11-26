@@ -672,3 +672,136 @@ async fn mysql_transfer_recognizes_real_text_capacity_and_integer_widths_before_
     assert_eq!(independent, (u16::MAX, u64::MAX));
     driver.disconnect(handle).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_transfer_explicit_native_index_mapping_applies_after_live_catalog_preflight() {
+    use datazen_driver_api::{IndexInfo, MigrationOperation, TableOptions};
+    let mut f = Fixture::open().await;
+    let (driver, handle) = f.connect().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let source = format!("dz_native_override_src_{tag}");
+    let target = format!("dz_native_override_dst_{tag}");
+    let nonportable = format!("dz_native_policy_{tag}");
+    let layout = "c CHAR(5), v VARCHAR(8), b VARBINARY(5), t TINYINT, s SMALLINT, m MEDIUMINT,
+        i INT, bi BIGINT, f FLOAT, d DOUBLE, deci DECIMAL(18,5), day DATE, instant DATETIME,
+        yr YEAR, uid CHAR(36), geom POINT";
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {source}({layout}) ENGINE=InnoDB;
+      CREATE TABLE {target} LIKE {source};
+      CREATE TABLE {nonportable}(body TEXT DEFAULT (CONCAT('actual ', 'default'))) ENGINE=MyISAM;
+      INSERT INTO {nonportable} VALUES (DEFAULT);"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let registration = inventory::iter::<SyncAdapterFactory>
+        .into_iter()
+        .find(|f| f.db_types.contains(&"mysql"))
+        .unwrap();
+    let adapters = (registration.create)();
+    let native = driver
+        .get_table_schema(&handle, &source, &f.database, None)
+        .await
+        .unwrap();
+    let fields = [
+        "c", "v", "b", "t", "s", "m", "i", "bi", "f", "d", "deci", "day", "instant", "yr", "uid",
+    ];
+    let mapping = |name: &str| {
+        let catalog = native.columns.iter().find(|col| col.name == name).unwrap();
+        let mut out = adapters.source.column_to_ir(catalog, None);
+        out.ir_type = if name == "uid" {
+            IRType::Uuid
+        } else {
+            IRType::Other(catalog.data_type.clone())
+        };
+        out
+    };
+    let mapped = fields.map(mapping);
+    assert!(mapped.iter().zip(fields).all(|(m, n)| m.name == n));
+    let gep = mapping("geom");
+    assert!(
+        adapters
+            .target
+            .validate_index_columns(&[gep])
+            .unwrap_err()
+            .contains("known bounded type")
+    );
+    adapters
+        .target
+        .validate_index_columns(&mapped)
+        .expect("all explicit destination key sizes proved");
+    let ddl = MigrationOperation::CreateIndex {
+        table: target.clone(),
+        index: IndexInfo {
+            name: "proof_native".into(),
+            columns: fields.map(str::to_owned).to_vec(),
+            is_primary: false,
+            is_unique: false,
+            index_type: "BTREE".into(),
+        },
+    };
+    let sql = driver
+        .migration_renderer()
+        .unwrap()
+        .render(&ddl)
+        .unwrap()
+        .sql;
+    driver
+        .execute(&handle, &sql)
+        .await
+        .expect("native server agrees with planned composite index");
+    let confirmed:Vec<String>=sqlx::query_scalar("SELECT CAST(COLUMN_NAME AS CHAR) FROM information_schema.STATISTICS
+       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME='proof_native' ORDER BY SEQ_IN_INDEX")
+       .bind(&target).fetch_all(&mut f.oracle).await.unwrap();
+    assert_eq!(confirmed, fields);
+
+    let rejected = driver
+        .get_table_schema(&handle, &nonportable, &f.database, None)
+        .await
+        .unwrap();
+    let options = TableOptions {
+        collation: None,
+        ..rejected.table_options.clone()
+    };
+    assert!(
+        adapters
+            .target
+            .render_source_table_options(&options)
+            .unwrap_err()
+            .contains("MyISAM")
+    );
+    let body = adapters.source.column_to_ir(&rejected.columns[0], None);
+    assert!(matches!(
+        &body.default_expr,
+        Some(IRDefault::RawExpression(_))
+    ));
+    assert!(
+        !adapters
+            .target
+            .transfer_allows_column_default(&body.ir_type)
+    );
+    assert!(
+        adapters
+            .target
+            .transfer_default_capable_type_for(&body.ir_type)
+            .is_none()
+    );
+    assert!(
+        adapters
+            .target
+            .default_capable_type_for(&body.ir_type)
+            .is_some()
+    );
+    assert!(
+        body.default_expr
+            .as_ref()
+            .and_then(|value| adapters.target.format_default(value))
+            .is_none()
+    );
+    let saved: String = sqlx::query_scalar(&format!("SELECT body FROM {nonportable}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(saved, "actual default");
+    driver.disconnect(handle).await.unwrap();
+}
