@@ -927,3 +927,85 @@ async fn abandoning_real_postgres_admission_closes_sockets_and_retries_budget_re
     .await
     .expect("independent PG confirms no remaining sockets");
 }
+
+#[tokio::test]
+async fn budgeted_pg_resources_adopt_existing_live_control_pool_and_release_last_owner() {
+    use std::time::Duration;
+    let mut fixture = Fixture::open().await;
+    let database = fixture.config.database.clone().unwrap();
+    let count = async |oracle: &mut sqlx::PgConnection| -> i64 {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()",
+        )
+        .bind(&database)
+        .fetch_one(oracle)
+        .await
+        .unwrap()
+    };
+    let baseline = count(&mut fixture.oracle).await;
+    let driver = Arc::new(PostgresDriver::new());
+    let legacy = driver
+        .connect(&fixture.config)
+        .await
+        .expect("unbudgeted real compatibility connection");
+    let legacy_sockets = count(&mut fixture.oracle).await;
+    assert!(legacy_sockets > baseline);
+    let provider = PostgresResourceProvider::new(driver.clone());
+    let ledger = Arc::new(Budget::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let request = AcquireResourceRequest {
+        connection_config: fixture.config.clone(),
+        target: NamespaceTarget::empty().with_database(database.clone()),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 16,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    };
+    let first = provider
+        .acquire_resource(&request, &budget)
+        .await
+        .expect("adopt already-open control pool");
+    assert_eq!(
+        ledger.0.lock().unwrap().len(),
+        2,
+        "new data + existing control claim now budgeted"
+    );
+    let second = provider
+        .acquire_resource(&request, &budget)
+        .await
+        .expect("another independent data resource");
+    assert_eq!(
+        ledger.0.lock().unwrap().len(),
+        3,
+        "control permit must be shared by both"
+    );
+    provider
+        .observe_session(&first)
+        .await
+        .expect("valid server view");
+    provider
+        .observe_session(&second)
+        .await
+        .expect("independent live backend");
+    provider.close_resource(&first).await.unwrap();
+    provider.close_resource(&second).await.unwrap();
+    assert_eq!(
+        ledger.0.lock().unwrap().len(),
+        1,
+        "previous owner still retains the control pool"
+    );
+    assert!(driver.query(&legacy, "SELECT 1").await.is_ok());
+    driver.disconnect(legacy).await.unwrap();
+    assert!(ledger.0.lock().unwrap().is_empty());
+    tokio::time::timeout(Duration::from_secs(4), async {
+        while count(&mut fixture.oracle).await != baseline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("independent PostgreSQL confirms all test backends closed");
+}

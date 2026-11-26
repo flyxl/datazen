@@ -280,3 +280,6 @@ mod lexical;
 
 #[path = "postgres_live_e2e/statement_rows.rs"]
 mod statement_rows;
+
+#[path = "postgres_live_e2e/transfer_file.rs"]
+mod transfer_file;
