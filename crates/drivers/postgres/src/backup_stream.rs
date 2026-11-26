@@ -5,7 +5,6 @@ use datazen_driver_api::{
     sql_dump::stream::{self, RetainedBackupSource},
     *,
 };
-use sqlx::Row;
 
 struct Source<'a> {
     driver: &'a PostgresDriver,
@@ -58,14 +57,7 @@ impl RetainedBackupSource for Source<'_> {
             &object.name,
         );
         if sql_dump::is_view_like(&object.table_type) {
-            let row = sqlx::query("SELECT pg_get_viewdef($1::regclass,true) AS ddl")
-                .bind(&name)
-                .fetch_one(&mut **connection)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-            let ddl: String = row
-                .try_get("ddl")
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            let ddl = crate::catalog::fetch_pg_view_definition(&mut connection, &name).await?;
             Ok(format!(
                 "CREATE {}VIEW {name} AS\n{};\n",
                 if matches!(object.table_type, TableType::MaterializedView) {
@@ -111,7 +103,7 @@ impl RetainedBackupSource for Source<'_> {
         let sql = if routines {
             "SELECT pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND p.prokind IN ('f','p') ORDER BY n.nspname,p.proname"
         } else {
-            "SELECT pg_get_triggerdef(t.oid) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE NOT t.tgisinternal AND n.nspname NOT IN ('pg_catalog','information_schema') ORDER BY n.nspname,t.tgname"
+            crate::catalog::PG_TRIGGER_DDL_SQL
         };
         self.rows(sql, &stream::DdlSink(sink)).await
     }

@@ -202,3 +202,147 @@ async fn catalog_backup_ddl_restores_owned_sequence_state_schema_and_views() {
             .expect("remove isolated backup round-trip database");
     }
 }
+
+#[path = "../../../http-support/tests/support/backup_runtime.rs"]
+mod runtime_host;
+
+#[tokio::test]
+async fn retained_backup_runtime_streams_and_restores_views_routine_and_trigger() {
+    use datazen::{
+        backup_gateway::backup_to_path, execution::target::*, jobs::CancelToken, shared::id::*,
+        RequestContext,
+    };
+    use datazen_driver_postgres::PostgresResourceProvider;
+    use std::sync::{atomic::Ordering, Arc};
+
+    let mut fixture = Fixture::open().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let origin_name = format!("dz_fixture_backup_live_{tag}");
+    let target_name = format!("dz_fixture_backup_sink_{tag}");
+    for name in [&origin_name, &target_name] {
+        sqlx::query(&format!("CREATE DATABASE {name}"))
+            .execute(&mut fixture.oracle)
+            .await
+            .expect("disposable backup source and restore target");
+    }
+    let mut source = fixture.connect_to(&origin_name).await;
+    let mut target = fixture.connect_to(&target_name).await;
+    let schema = "retained_demo";
+    sqlx::raw_sql(
+        r#"
+        CREATE SCHEMA retained_demo;
+        CREATE TABLE retained_demo.entries (id integer PRIMARY KEY, value text);
+        INSERT INTO retained_demo.entries VALUES(1,'original');
+        CREATE FUNCTION retained_demo.clean_entry() RETURNS trigger LANGUAGE plpgsql
+            AS $$ BEGIN NEW.value := upper(NEW.value); RETURN NEW; END $$;
+        CREATE TRIGGER uppercase_data BEFORE INSERT ON retained_demo.entries
+            FOR EACH ROW EXECUTE FUNCTION retained_demo.clean_entry();
+        CREATE VIEW retained_demo.live_view AS SELECT * FROM retained_demo.entries;
+        CREATE MATERIALIZED VIEW retained_demo.saved_view AS SELECT * FROM retained_demo.entries;
+    "#,
+    )
+    .execute(&mut source)
+    .await
+    .expect("independent source seed before retained artifact");
+
+    let mut config = fixture.config.clone();
+    config.database = Some(origin_name.clone());
+    config.schema = Some(schema.into());
+    let lifecycle = Arc::new(runtime_host::Lifecycle::default());
+    let driver = Arc::new(PostgresDriver::new());
+    let runtime = runtime_host::runtime(
+        config,
+        Arc::new(PostgresResourceProvider::new(driver)),
+        lifecycle.clone(),
+    );
+    let ctx = RequestContext::new(
+        OrganizationId::new("local"),
+        PrincipalId::new("backup-owner"),
+        None,
+        ClientInstanceId::new("pg-e2e"),
+        RequestId::new("pg-retained-restore"),
+        None,
+    );
+    let endpoint = ExecutionTarget::new(
+        ConnectionId::new("p"),
+        NamespaceTarget::new(Some(origin_name.clone()), None, Some(schema.into()), vec![]),
+    );
+    let dir = tempfile::tempdir().expect("isolated SQL artifact");
+    let path = dir.path().join("provider.sql");
+    let result = backup_to_path(
+        runtime.clone(),
+        runtime_host::backup_binder(runtime.clone()),
+        &ctx,
+        endpoint,
+        BackupDumpOptions {
+            single_transaction: true,
+            routines: true,
+            triggers: true,
+            create_database: true,
+            ..Default::default()
+        },
+        &path,
+        false,
+        None,
+        &CancelToken::new(),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "real Runtime retained/PostgreSQL streaming backup"
+    );
+    let dump = std::fs::read_to_string(path).expect("retained filesystem artifact");
+    let prefix = format!("CREATE DATABASE \"{origin_name}\";\n\n");
+    let contents = dump
+        .strip_prefix(&prefix)
+        .expect("driver emits only selected actual database preamble");
+    assert!(contents.contains("CREATE MATERIALIZED VIEW") && contents.contains("CREATE TRIGGER"));
+    assert!(!contents.contains("statementMetadata"));
+    sqlx::query("CREATE SCHEMA retained_demo")
+        .execute(&mut target)
+        .await
+        .expect("prepare a separate target namespace");
+    sqlx::raw_sql(contents)
+        .execute(&mut target)
+        .await
+        .unwrap_or_else(|error| {
+            panic!("streamed backup should restore with unrelated search_path: {error}")
+        });
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT value FROM retained_demo.saved_view WHERE id=1")
+            .fetch_one(&mut target)
+            .await
+            .expect("materialized relation restored after source data"),
+        "original"
+    );
+    let new: String =
+        sqlx::query_scalar("INSERT INTO retained_demo.entries VALUES(2,'fixture') RETURNING value")
+            .fetch_one(&mut target)
+            .await
+            .expect("restored trigger invokes the target routine");
+    assert_eq!(new, "FIXTURE");
+    let actual: Vec<(i32, String)> =
+        sqlx::query_as("SELECT id,value FROM retained_demo.live_view ORDER BY id")
+            .fetch_all(&mut target)
+            .await
+            .expect("real view references its surviving target table");
+    assert_eq!(actual, [(1, "original".into()), (2, "FIXTURE".into())]);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM retained_demo.entries")
+            .fetch_one(&mut source)
+            .await
+            .expect("source remains unchanged"),
+        1
+    );
+    assert_eq!(lifecycle.opened.load(Ordering::SeqCst), 1);
+    assert_eq!(lifecycle.closed.load(Ordering::SeqCst), 1);
+    drop(runtime);
+    drop(source);
+    drop(target);
+    for name in [&origin_name, &target_name] {
+        sqlx::query(&format!("DROP DATABASE {name}"))
+            .execute(&mut fixture.oracle)
+            .await
+            .expect("remove isolated backup DB");
+    }
+}
