@@ -259,3 +259,6 @@ mod identity;
 
 #[path = "postgres_live_e2e/connection_identity.rs"]
 mod connection_identity;
+
+#[path = "postgres_live_e2e/grid.rs"]
+mod grid;

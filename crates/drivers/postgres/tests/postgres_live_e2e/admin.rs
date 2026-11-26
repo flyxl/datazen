@@ -373,3 +373,136 @@ impl Fixture {
             .unwrap_or_else(|_| panic!("independent fixture connection failed"))
     }
 }
+
+#[tokio::test]
+async fn live_postgres_login_and_table_grants_change_only_the_selected_role() {
+    let mut fixture = Fixture::open().await;
+    let database = fixture
+        .config
+        .database
+        .as_deref()
+        .expect("fixture database");
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect(&fixture.config)
+        .await
+        .expect("administrator connection");
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let role = format!("dz_e2e_app_{tag}");
+    let relation = format!("public.dz_role_rows_{tag}");
+    let secret = format!("fixture's-{tag}");
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {relation} (k int); INSERT INTO {relation} VALUES (41)"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("scope the genuine privilege fixture");
+    command(
+        &driver,
+        &handle,
+        "create_user",
+        json!({"username":role,"password":secret}),
+    )
+    .await;
+    let options = PgConnectOptions::new()
+        .host("127.0.0.1")
+        .port(fixture.config.port.expect("fixture port"))
+        .database(database)
+        .username(&role)
+        .password(&secret)
+        .ssl_mode(sqlx::postgres::PgSslMode::Disable);
+    let mut new_role =
+        tokio::time::timeout(Duration::from_secs(5), PgConnection::connect_with(&options))
+            .await
+            .expect("live role login promptly completes")
+            .unwrap_or_else(|_| panic!("driver-created role can't log into marked fixture"));
+
+    let current: String = sqlx::query_scalar("SELECT current_user::text")
+        .fetch_one(&mut new_role)
+        .await
+        .expect("server verifies newly installed login");
+    assert_eq!(current, role);
+    let can_select = async |conn: &mut PgConnection| {
+        sqlx::query_scalar::<_, i32>(&format!("SELECT k FROM {relation}"))
+            .fetch_one(conn)
+            .await
+    };
+    let denied = can_select(&mut new_role)
+        .await
+        .expect_err("login alone does not grant another user's table");
+    assert_eq!(
+        denied.as_database_error().and_then(|e| e.code()).as_deref(),
+        Some("42501")
+    );
+    let args = json!({"username":role,"privileges":["SELECT"]});
+    command(&driver, &handle, "grant_privileges", args.clone()).await;
+    assert_eq!(
+        can_select(&mut new_role)
+            .await
+            .expect("explicit grant applies on actual PG"),
+        41
+    );
+
+    // Invalid UI requests fail with the database still reachable and the
+    // previously granted access unchanged. No invalid SQL is run by the test.
+    for (id, blank) in [
+        ("grant_privileges", json!({"username":role,"privileges":[]})),
+        (
+            "revoke_privileges",
+            json!({"username":role,"privileges":[]}),
+        ),
+        ("drop_schema", json!({})),
+        ("create_schema", json!({})),
+        ("create_database", json!({})),
+        ("create_user", json!({})),
+    ] {
+        assert!(
+            matches!(
+                driver.execute_command(&handle, id, blank).await,
+                Err(datazen_driver_api::DriverError::InvalidConfig(_))
+            ),
+            "incomplete {id} is typed and refused"
+        );
+    }
+    assert_eq!(
+        can_select(&mut new_role)
+            .await
+            .expect("refused request did not revoke legitimate access"),
+        41
+    );
+    command(&driver, &handle, "revoke_privileges", args).await;
+    let denied = can_select(&mut new_role)
+        .await
+        .expect_err("actual revocation after access was granted");
+    assert_eq!(
+        denied.as_database_error().and_then(|e| e.code()).as_deref(),
+        Some("42501")
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>(&format!("SELECT k FROM {relation}"))
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .expect("independent control row"),
+        41
+    );
+    new_role
+        .close()
+        .await
+        .expect("retire newly-created login connection");
+    command(&driver, &handle, "drop_user", json!({"username":role})).await;
+    assert!(!sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=$1)"
+    )
+    .bind(&role)
+    .fetch_one(&mut fixture.oracle)
+    .await
+    .expect("actual role cleanup"));
+    sqlx::query(&format!("DROP TABLE {relation}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("dispose own role fixture table");
+    driver
+        .disconnect(handle)
+        .await
+        .expect("retire administrator connection");
+}
