@@ -207,11 +207,11 @@ impl ErDiagramState {
     }
 
     pub fn zoom_in(&mut self) {
-        self.viewport.zoom = (self.viewport.zoom * ZOOM_STEP).min(MAX_ZOOM);
+        self.viewport.zoom = step_zoom(self.viewport.zoom, true);
     }
 
     pub fn zoom_out(&mut self) {
-        self.viewport.zoom = (self.viewport.zoom / ZOOM_STEP).max(MIN_ZOOM);
+        self.viewport.zoom = step_zoom(self.viewport.zoom, false);
     }
 
     pub fn fit_view(&mut self) {
@@ -247,6 +247,14 @@ const WIDE_TABLE_COLUMNS: usize = 30;
 const ZOOM_STEP: f32 = 1.2;
 const MIN_ZOOM: f32 = 0.1;
 const MAX_ZOOM: f32 = 10.0;
+
+pub(crate) fn step_zoom(zoom: f32, zoom_in: bool) -> f32 {
+    if zoom_in {
+        (zoom * ZOOM_STEP).min(MAX_ZOOM)
+    } else {
+        (zoom / ZOOM_STEP).max(MIN_ZOOM)
+    }
+}
 
 /// Host operations React owns (IPC, clipboard, native menus, export, settings).
 #[allow(dead_code)] // host port; remove with the canvas host.

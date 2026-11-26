@@ -40,12 +40,12 @@ pub fn er_view(
     let mut declared = 0;
     let mut loading = false;
     let mut unavailable = false;
-    let mut canvas = col()
-        .key("er-canvas")
+    let mut world = col()
+        .key("er-diagram-world")
+        .origin(0.0, 0.0)
+        .scale(state.er_zoom)
         .w_full()
-        .h(420.0)
-        .radius(8.0)
-        .fill(theme.control_off);
+        .h_full();
     for (index, table) in tables.iter().enumerate() {
         // E1: the ER boxes read the structure cache only — the open asked
         // for every table of the schema, and a box whose read has not
@@ -68,12 +68,20 @@ pub fn er_view(
         let default = ((index % 3) as f32 * 230.0, (index / 3) as f32 * 180.0);
         let (x, y) = state.er_positions.get(table).copied().unwrap_or(default);
         let selected = state.er_selected.as_deref() == Some(table.as_str());
-        canvas = canvas.child(er_box(table, columns, x, y, theme, dark, selected));
+        world = world.child(er_box(table, columns, x, y, theme, dark, selected));
     }
     if shown == 0 && !filter.is_empty() {
-        canvas = canvas.child(text(t("select.noMatches")).key("er-search-no-matches")
+        world = world.child(text(t("select.noMatches")).key("er-search-no-matches")
             .font(type_::LABEL).color(theme.text_secondary));
     }
+    let canvas = col()
+        .key("er-canvas")
+        .w_full()
+        .h(420.0)
+        .radius(8.0)
+        .fill(theme.control_off)
+        .clip_soft(0.0)
+        .child(world);
     let relationship_count = if unavailable {
         t("erDiagram.relationCountUnavailable").to_owned()
     } else if loading {
@@ -111,6 +119,8 @@ pub fn er_view(
                     .width(190.0)
                     .on_edit(|state: &mut AppState| &mut state.er_search)
                     .build(dark))
+                .child(er_zoom_button(true, theme))
+                .child(er_zoom_button(false, theme))
                 .child(
                     row()
                         .key("er-diagram-relayout")
@@ -142,6 +152,28 @@ pub fn er_view(
         )
         .child(stats)
         .child(canvas)
+}
+
+fn er_zoom_button(zoom_in: bool, theme: tok::Theme) -> El {
+    let (key, label) = if zoom_in {
+        ("er-diagram-zoom-in", t("erDiagram.zoomIn"))
+    } else {
+        ("er-diagram-zoom-out", t("erDiagram.zoomOut"))
+    };
+    row()
+        .key(key)
+        .h(24.0)
+        .px(8.0)
+        .center_y()
+        .radius(6.0)
+        .fill(theme.control_off)
+        .role("button")
+        .focusable(true)
+        .label(label)
+        .child(text(label).font(type_::LABEL).color(theme.text))
+        .on_press(move |state: &mut AppState| {
+            state.er_zoom = super::er::er_diagram_view::step_zoom(state.er_zoom, zoom_in);
+        })
 }
 
 /// One table box. Collapsed boxes show the column count instead of every
@@ -191,7 +223,8 @@ pub fn er_box(
                         if *dragged == drag_table {
                             state.er_positions.insert(
                                 drag_table.clone(),
-                                ((start_x + drag.dx).max(0.0), (start_y + drag.dy).max(0.0)),
+                                ((start_x + drag.dx / state.er_zoom).max(0.0),
+                                 (start_y + drag.dy / state.er_zoom).max(0.0)),
                             );
                         }
                     }

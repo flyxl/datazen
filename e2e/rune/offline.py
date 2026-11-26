@@ -875,3 +875,30 @@ class OfflineJourneys:
         for (ax, ay, aw, ah), (bx, by, bw, bh) in combinations(reset.values(), 2):
             self.assertTrue(ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay,
                             "re-layout left two rendered table nodes overlapping")
+
+    def test_legacy_er_zoom_controls_scale_real_nodes_not_toolbar(self):
+        """Migrate er-diagram.ts ER-005, proving the canvas really zooms."""
+        fixture(self.store, self.db)
+        opened = [OPEN[0], tap(3.0, "er-button")]
+
+        def geometry(tree, label):
+            self.expect_rendered(tree, key=label)
+            node = next(node for node in tree["elements"] if node.get("key") == label)
+            return node["rect"], node["scale"]
+
+        initial = self.replay(opened, until=5.8)
+        base_node, base_scale = geometry(initial, "er-box-customers")
+        base_toolbar, base_toolbar_scale = geometry(initial, "er-diagram-zoom-out")
+        twice_in = [*opened, tap(6, "er-diagram-zoom-in"), tap(7, "er-diagram-zoom-in")]
+        zoomed = self.replay(twice_in, until=8.5)
+        node, scale = geometry(zoomed, "er-box-customers")
+        self.assertGreater(node[2], base_node[2] * 1.3)
+        self.assertAlmostEqual(scale / base_scale, 1.44, delta=.02)
+        self.assertEqual(geometry(zoomed, "er-diagram-zoom-out"), (base_toolbar, base_toolbar_scale))
+
+        returned = self.replay([*twice_in, tap(8.7, "er-diagram-zoom-out"),
+                               tap(9.7, "er-diagram-zoom-out")], until=11)
+        returned_node, returned_scale = geometry(returned, "er-box-customers")
+        self.assertAlmostEqual(returned_node[2], base_node[2], delta=1)
+        self.assertAlmostEqual(returned_scale, base_scale, delta=.02)
+        self.expect_rendered(returned, key="er-col-customers-1", text="customer_name")

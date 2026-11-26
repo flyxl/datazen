@@ -111,6 +111,7 @@ impl AppState {
             self.er_schema = Some((database.name.clone(), schema));
             self.er_selected = None;
             self.er_search.clear();
+            self.er_zoom = 1.0;
             self.active = Section::Workspace;
             for table in tables {
                 self.begin_structure_read(&table);
@@ -121,6 +122,7 @@ impl AppState {
         self.er_schema = None;
         self.er_selected = None;
         self.er_search.clear();
+        self.er_zoom = 1.0;
     }
 
     /// The selected table tab's title, if any.
