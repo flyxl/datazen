@@ -449,3 +449,302 @@ async fn reviewed_schema_diff_deploy_rolls_back_all_ddl_then_retries_on_real_pos
         .await
         .expect("clean real migration scope");
 }
+
+#[tokio::test]
+async fn rendered_postgres_primary_key_uses_qualified_relation_but_bare_constraint_identity() {
+    let mut fixture = Fixture::open().await;
+    let schema = format!("dz_constraint_{}", uuid::Uuid::new_v4().simple());
+    let table = format!("{schema}.accounts");
+    sqlx::raw_sql(&format!(
+        "CREATE SCHEMA {schema};CREATE TABLE {table}(id integer, active boolean);INSERT INTO {table} VALUES(1,true)"
+    )).execute(&mut fixture.oracle).await.expect("actual target relation with no existing primary key");
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect(&fixture.config)
+        .await
+        .expect("real migrated connection");
+    let renderer = driver
+        .migration_renderer()
+        .expect("PostgreSQL migration dialect");
+    let add = apply(
+        &driver,
+        &handle,
+        renderer.as_ref(),
+        Op::AddPrimaryKey {
+            table: table.clone(),
+            columns: vec!["id".into()],
+        },
+    )
+    .await;
+    let key: String = sqlx::query_scalar(
+        "SELECT conname::text FROM pg_constraint WHERE conrelid=to_regclass($1) AND contype='p'",
+    )
+    .bind(&table)
+    .fetch_one(&mut fixture.oracle)
+    .await
+    .expect("exact physical constraint identity");
+    assert_eq!(key, "accounts_pkey");
+    let duplicate = sqlx::query(&format!("INSERT INTO {table} VALUES(1,false)"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect_err("new actual key rejects duplicate rows");
+    assert_eq!(
+        duplicate
+            .as_database_error()
+            .and_then(|error| error.code())
+            .as_deref(),
+        Some("23505")
+    );
+    run(
+        &driver,
+        &handle,
+        add.rollback_sql.as_deref().expect("inverse key rollback"),
+    )
+    .await;
+    let count = sqlx::query_scalar::<_, i64>(&format!("SELECT count(*) FROM {table}"))
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .expect("live key rollback did not touch rows");
+    assert_eq!(count, 1);
+    apply(
+        &driver,
+        &handle,
+        renderer.as_ref(),
+        Op::AddPrimaryKey {
+            table: table.clone(),
+            columns: vec!["id".into()],
+        },
+    )
+    .await;
+    apply(
+        &driver,
+        &handle,
+        renderer.as_ref(),
+        Op::DropPrimaryKey {
+            table: table.clone(),
+            columns: vec!["id".into()],
+        },
+    )
+    .await;
+    assert_eq!(
+        sqlx::query(&format!("INSERT INTO {table} VALUES(1,false)"))
+            .execute(&mut fixture.oracle)
+            .await
+            .expect("reviewed drop targets exact bare key")
+            .rows_affected(),
+        1
+    );
+    driver
+        .disconnect(handle)
+        .await
+        .expect("remove test connection");
+    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("dispose actual constraint scope");
+}
+
+#[tokio::test]
+async fn rendered_postgres_trigger_drop_targets_only_its_catalog_schema_and_relation() {
+    use datazen_driver_api::MigrationTrigger;
+    use serde_json::json;
+
+    let mut fixture = Fixture::open().await;
+    let schema = format!("dz_triggers_{}", uuid::Uuid::new_v4().simple());
+    let first = format!("{schema}.events");
+    let other = format!("{schema}.other_events");
+    sqlx::raw_sql(&format!(
+        r#"
+        CREATE SCHEMA {schema};
+        CREATE TABLE {first}(id integer);
+        CREATE TABLE {other}(id integer);
+        CREATE FUNCTION {schema}.bump() RETURNS trigger LANGUAGE plpgsql AS
+          $$ BEGIN NEW.id := NEW.id+1; RETURN NEW; END $$;
+        CREATE TRIGGER stamp BEFORE INSERT ON {first} FOR EACH ROW EXECUTE FUNCTION {schema}.bump();
+        CREATE TRIGGER stamp BEFORE INSERT ON {other} FOR EACH ROW EXECUTE FUNCTION {schema}.bump();
+    "#
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("two exact live trigger targets sharing name");
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect(&fixture.config)
+        .await
+        .expect("real driver for catalog diff");
+    let renderer = driver.migration_renderer().expect("Postgres renderer");
+    let object=driver.execute_command(&handle,"get_object_ddl",json!({
+        "kind":"trigger","name":"stamp","schema":schema,"targetSchema":schema,"targetName":"events"
+    })).await.expect("actual source trigger catalog DDL");
+    let definition = object.data["ddl"]
+        .as_str()
+        .expect("live DDL text")
+        .to_owned();
+    let trigger = MigrationTrigger {
+        name: "stamp".into(),
+        schema: Some(schema.clone()),
+        target_schema: Some(schema.clone()),
+        target_name: "events".into(),
+        definition,
+    };
+    let dropped = apply(
+        &driver,
+        &handle,
+        renderer.as_ref(),
+        Op::DropTrigger {
+            trigger: trigger.clone(),
+        },
+    )
+    .await;
+    for (table, expected) in [(&first, 1), (&other, 2)] {
+        let observed: i32 =
+            sqlx::query_scalar(&format!("INSERT INTO {table} VALUES(1) RETURNING id"))
+                .fetch_one(&mut fixture.oracle)
+                .await
+                .expect("independent node's trigger behavior");
+        assert_eq!(observed, expected);
+    }
+    run(
+        &driver,
+        &handle,
+        dropped
+            .rollback_sql
+            .as_deref()
+            .expect("captured live trigger definition"),
+    )
+    .await;
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>(&format!("INSERT INTO {first} VALUES (3) RETURNING id"))
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .expect("source target restored"),
+        4
+    );
+    let mut wrong = trigger;
+    wrong.target_schema = Some("public".into());
+    assert!(
+        renderer
+            .render(&Op::DropTrigger { trigger: wrong })
+            .is_err(),
+        "conflicting trigger/target schemas are not safe to project"
+    );
+    driver.disconnect(handle).await.expect("end test session");
+    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("cleanup actual catalog scope");
+}
+
+#[tokio::test]
+async fn rendered_postgres_index_rollback_uses_the_reviewed_physical_namespace() {
+    let mut fixture = Fixture::open().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let intended = format!("dz_index_target_{tag}");
+    let neutral = format!("dz_index_decoy_{tag}");
+    let table = format!("{intended}.accounts");
+    let name = "literal.history";
+    sqlx::raw_sql(&format!(
+        r#"
+        CREATE SCHEMA {intended};CREATE SCHEMA {neutral};
+        CREATE TABLE {table}(id integer, "account.code" text);
+        CREATE TABLE {neutral}.accounts(id integer, "account.code" text);
+        CREATE INDEX "literal.history" ON {neutral}.accounts("account.code");
+        INSERT INTO {table} VALUES(1,'first');
+    "#
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("two actual namespaces with shared index name");
+    let driver = PostgresDriver::new();
+    let h = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("retained admin scope");
+    run(
+        &driver,
+        &h,
+        &format!("SET search_path TO {neutral}, public"),
+    )
+    .await;
+    let renderer = driver.migration_renderer().expect("PostgreSQL renderer");
+    let index = IndexInfo {
+        name: name.into(),
+        columns: vec!["account.code".into()],
+        is_unique: true,
+        is_primary: false,
+        index_type: "btree".into(),
+    };
+    let names = async |oracle: &mut sqlx::PgConnection| {
+        sqlx::query_scalar::<_,String>(
+            "SELECT schemaname::text FROM pg_indexes WHERE indexname=$1 AND schemaname=ANY($2) ORDER BY schemaname"
+        ).bind(name).bind(vec![intended.clone(),neutral.clone()]).fetch_all(oracle).await.expect("actual index ownership")
+    };
+    let first = apply(
+        &driver,
+        &h,
+        renderer.as_ref(),
+        Op::CreateIndex {
+            table: table.clone(),
+            index: index.clone(),
+        },
+    )
+    .await;
+    assert_eq!(names(&mut fixture.oracle).await.len(), 2);
+    let duplicate = sqlx::query(&format!("INSERT INTO {table} VALUES(2,'first')"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect_err("actual unique index guards duplicate input");
+    assert_eq!(
+        duplicate
+            .as_database_error()
+            .and_then(|e| e.code())
+            .as_deref(),
+        Some("23505")
+    );
+    run(
+        &driver,
+        &h,
+        first.rollback_sql.as_deref().expect("reviewed inverse SQL"),
+    )
+    .await;
+    assert_eq!(names(&mut fixture.oracle).await, [neutral.clone()]);
+    apply(
+        &driver,
+        &h,
+        renderer.as_ref(),
+        Op::CreateIndex {
+            table: table.clone(),
+            index: index.clone(),
+        },
+    )
+    .await;
+    apply(
+        &driver,
+        &h,
+        renderer.as_ref(),
+        Op::DropIndex {
+            table: table.clone(),
+            index,
+        },
+    )
+    .await;
+    assert_eq!(names(&mut fixture.oracle).await, [neutral.clone()]);
+    assert_eq!(
+        sqlx::query(&format!("INSERT INTO {table} VALUES(2,'first')"))
+            .execute(&mut fixture.oracle)
+            .await
+            .expect("only intended constraint removed")
+            .rows_affected(),
+        1
+    );
+    driver
+        .disconnect(h)
+        .await
+        .expect("release retained index fixture");
+    sqlx::raw_sql(&format!(
+        "DROP SCHEMA {intended} CASCADE; DROP SCHEMA {neutral} CASCADE"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("remove genuine index fixtures");
+}

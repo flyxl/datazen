@@ -45,6 +45,9 @@ fn append_pg_column_comments(
 }
 
 fn pg_pk_constraint_name(table: &str) -> String {
+    // The relation can name a schema. The constraint is table-local and
+    // PostgreSQL never accepts a qualified constraint name in ALTER TABLE.
+    let (_, table) = crate::sql::parse_pg_table_ref(table);
     format!("{table}_pkey")
 }
 
@@ -126,23 +129,20 @@ fn pg_trigger_ident(trigger: &MigrationTrigger) -> Result<(String, String), Stri
     validate_migration_identifier(&trigger.name)?;
     validate_migration_identifier(&trigger.target_name)?;
     let trigger_schema = pg_object_schema(trigger.schema.as_deref())?;
-    let target_schema = pg_object_schema(
-        trigger
-            .target_schema
-            .as_deref()
-            .or(trigger.schema.as_deref()),
-    )?;
+    let target_schema = pg_object_schema(trigger.target_schema.as_deref())?;
+    if let (Some(trigger_schema), Some(target_schema)) = (&trigger_schema, &target_schema) {
+        if trigger_schema != target_schema {
+            return Err("trigger schema and target relation schema must match".into());
+        }
+    }
     let quote = |value: &str| format!("\"{}\"", value.replace('"', "\"\""));
-    let trigger_ident = format!(
-        "{}{}",
-        trigger_schema
-            .map(|value| format!("{value}."))
-            .unwrap_or_default(),
-        quote(&trigger.name)
-    );
+    // PostgreSQL trigger names are local to the target relation. Only the
+    // relation after ON takes a schema qualifier.
+    let trigger_ident = quote(&trigger.name);
     let target_ident = format!(
         "{}{}",
         target_schema
+            .or(trigger_schema)
             .map(|value| format!("{value}."))
             .unwrap_or_default(),
         quote(&trigger.target_name)
@@ -228,6 +228,13 @@ impl MigrationRenderer for PostgresMigrationRenderer {
             }
         };
         let qi_identifier = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
+        let scoped_index = |table: &str, name: &str| {
+            let (schema, _) = crate::sql::parse_pg_table_ref(table);
+            match schema {
+                Some(schema) => format!("{}.{}", qi_identifier(schema), qi_identifier(name)),
+                None => qi_identifier(name),
+            }
+        };
         match op {
             MigrationOperation::CreateTable {
                 table,
@@ -366,23 +373,23 @@ impl MigrationRenderer for PostgresMigrationRenderer {
                     sql: format!(
                         "CREATE {}INDEX {} ON {} USING {} ({})",
                         if index.is_unique { "UNIQUE " } else { "" },
-                        qi(&index.name),
+                        qi_identifier(&index.name),
                         qi(table),
                         qi_identifier(index_type),
                         index
                             .columns
                             .iter()
-                            .map(|c| qi(c))
+                            .map(|c| qi_identifier(c))
                             .collect::<Vec<_>>()
                             .join(", ")
                     ),
                     risk: MigrationRisk::Additive,
-                    rollback_sql: Some(format!("DROP INDEX {}", qi(&index.name))),
+                    rollback_sql: Some(format!("DROP INDEX {}", scoped_index(table, &index.name))),
                     summary: format!("CREATE INDEX {}.{}", table, index.name),
                 })
             }
-            MigrationOperation::DropIndex { index, .. } => Ok(MigrationStatement {
-                sql: format!("DROP INDEX {}", qi(&index.name)),
+            MigrationOperation::DropIndex { table, index } => Ok(MigrationStatement {
+                sql: format!("DROP INDEX {}", scoped_index(table, &index.name)),
                 risk: MigrationRisk::Destructive,
                 rollback_sql: None,
                 summary: format!("DROP INDEX {}", index.name),
@@ -393,14 +400,14 @@ impl MigrationRenderer for PostgresMigrationRenderer {
                     sql: format!(
                         "ALTER TABLE {} ADD CONSTRAINT {} PRIMARY KEY ({})",
                         qi(table),
-                        qi(&pk_name),
+                        qi_identifier(&pk_name),
                         columns.iter().map(|c| qi(c)).collect::<Vec<_>>().join(", ")
                     ),
                     risk: MigrationRisk::Additive,
                     rollback_sql: Some(format!(
                         "ALTER TABLE {} DROP CONSTRAINT {}",
                         qi(table),
-                        qi(&pk_name)
+                        qi_identifier(&pk_name)
                     )),
                     summary: format!("ADD PRIMARY KEY {}", table),
                 })
@@ -408,7 +415,7 @@ impl MigrationRenderer for PostgresMigrationRenderer {
             MigrationOperation::DropPrimaryKey { table, .. } => {
                 let pk_name = pg_pk_constraint_name(table);
                 Ok(MigrationStatement {
-                    sql: format!("ALTER TABLE {} DROP CONSTRAINT {}", qi(table), qi(&pk_name)),
+                    sql: format!("ALTER TABLE {} DROP CONSTRAINT {}", qi(table), qi_identifier(&pk_name)),
                     risk: MigrationRisk::Destructive,
                     rollback_sql: None,
                     summary: format!("DROP PRIMARY KEY {}", table),
@@ -1515,7 +1522,7 @@ mod tests {
         assert!(create
             .rollback_sql
             .is_some_and(|sql| sql
-                .contains("DROP TRIGGER \"public\".\"audit_insert\" ON \"public\".\"orders\"")));
+                .contains("DROP TRIGGER \"audit_insert\" ON \"public\".\"orders\"")));
         let drop = PostgresMigrationRenderer
             .render(&MigrationOperation::DropTrigger {
                 trigger: trigger.clone(),
