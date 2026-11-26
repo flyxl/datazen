@@ -1990,6 +1990,11 @@ pub enum AdapterJob {
         epoch: u32,
         side: native_transfer::TransferSide,
         choice: native_transfer::TransferChoice,
+        allow_sql: bool,
+    },
+    ReviewNativeTransfer {
+        epoch: u32,
+        request: native_transfer::NativeTransferRequest,
     },
     ReviewNativeCsv {
         epoch: u32,
@@ -2090,6 +2095,7 @@ pub enum AdapterDelivery {
         side: native_transfer::TransferSide,
         result: Result<native_transfer::TransferCatalog, String>,
     },
+    NativeTransferReviewed { epoch: u32, result: Result<String, String> },
     NativeTransferFinished { epoch: u32, result: Result<u64, String> },
     NativeCsvReviewed {
         epoch: u32,

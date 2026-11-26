@@ -488,6 +488,9 @@ impl AppState {
             AdapterDelivery::NativeTransferRead { epoch, side, result } => {
                 self.native_transfer.read_completed(epoch, side, result);
             }
+            AdapterDelivery::NativeTransferReviewed { epoch, result } => {
+                self.native_transfer.review_completed(epoch, result);
+            }
             AdapterDelivery::NativeTransferFinished { epoch, result } => {
                 self.native_transfer.run_completed(epoch, result);
             }

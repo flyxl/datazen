@@ -52,7 +52,14 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
     ));
     let profiles = state.visible_connections();
     let mut list = row().w_full().gap(5.0).flex_wrap();
-    for profile in profiles.iter().filter(|profile| profile.engine == "sqlite") {
+    for profile in profiles.iter().filter(|profile| {
+        profile.engine == "sqlite"
+            || (state.native_transfer.tool == NativeTool::Transfer
+                && match side {
+                    TransferSide::Source => profile.engine == "postgresql",
+                    TransferSide::Target => profile.engine == "mysql",
+                })
+    }) {
         let connection_id = profile.id.clone();
         let selected = endpoint
             .active
@@ -92,9 +99,31 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
     let Some(catalog) = &endpoint.catalog else {
         return panel;
     };
+    if let Some(scope) = &catalog.sql_scope {
+        let namespace = scope.schema.as_ref().map_or_else(
+            || scope.database.clone(),
+            |schema| format!("{} / {schema}", scope.database),
+        );
+        panel = panel.child(label("native-transfer-selected-scope", namespace, theme));
+    }
     let current = catalog.choice.table.as_deref().unwrap_or("No tables");
     panel = panel.child(label("native-transfer-selected-table", current, theme));
-    if !catalog.tables.is_empty() {
+    if catalog.sql_scope.is_some() {
+        let mut list = row().w_full().gap(5.0).flex_wrap();
+        for table in &catalog.tables {
+            let choice = TransferChoice {
+                connection_id: catalog.choice.connection_id.clone(),
+                table: Some(table.clone()),
+            };
+            list = list.child(button(
+                format!("native-transfer-{prefix}-pick-table-{table}"),
+                table.clone(),
+                theme,
+                move |state| state.choose_transfer(side, choice.clone()),
+            ));
+        }
+        panel = panel.child(list);
+    } else if !catalog.tables.is_empty() {
         let next = catalog
             .tables
             .iter()
@@ -176,11 +205,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
         NativeTool::Transfer => {}
     }
     let mut page = page
-        .child(
-            text("SQLite Data Transfer")
-                .font(type_::TITLE)
-                .color(theme.text),
-        )
+        .child(text("Data Transfer").font(type_::TITLE).color(theme.text))
         .child(label(
             "native-transfer-scope",
             "Insert into an existing table. No schema changes or overwrites.",
@@ -194,12 +219,21 @@ pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
                 .find(|p| p.id == id)
                 .map_or_else(|| id.to_owned(), |p| p.name)
         };
+        let reviewed_table = |endpoint: &datazen_ui_api::native_transfer::TransferEndpoint| {
+            match &endpoint.sql_scope {
+                Some(scope) => match &scope.schema {
+                    Some(schema) => format!("{} / {schema} / {}", scope.database, endpoint.table),
+                    None => format!("{} / {}", scope.database, endpoint.table),
+                },
+                None => endpoint.table.clone(),
+            }
+        };
         let reviewed = format!(
             "From {} / {} to {} / {}",
             caption(&approved.source.connection_id),
-            approved.source.table,
+            reviewed_table(&approved.source),
             caption(&approved.target.connection_id),
-            approved.target.table
+            reviewed_table(&approved.target)
         );
         page = page.child(label("native-transfer-confirm", reviewed, theme));
         for (index, (left, right)) in approved.columns.iter().enumerate() {
@@ -219,6 +253,13 @@ pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
                     s.native_transfer.confirming = None
                 })),
         );
+    }
+    if transfer.reviewing.is_some() {
+        return page.child(label(
+            "native-transfer-reviewing",
+            "Checking column compatibility…",
+            theme,
+        ));
     }
     if transfer.running {
         return page.child(label(
@@ -260,7 +301,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
         "native-transfer-review",
         "Review transfer",
         theme,
-        |s| s.native_transfer.review(),
+        |s| s.review_native_transfer(),
     ));
     if let Some(error) = &transfer.error {
         page = page.child(label("native-transfer-error", error.clone(), theme));

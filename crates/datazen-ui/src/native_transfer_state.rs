@@ -31,6 +31,7 @@ impl EndpointState {
             connection_id: catalog.choice.connection_id.clone(),
             table: catalog.choice.table.clone()?,
             identity: catalog.identity.clone(),
+            sql_scope: catalog.sql_scope.clone(),
         })
     }
 }
@@ -50,6 +51,7 @@ pub(crate) struct NativeTransferState {
     pub pairs: Vec<(String, String)>,
     pub confirming: Option<NativeTransferRequest>,
     pub running: bool,
+    pub reviewing: Option<NativeTransferRequest>,
     pub error: Option<String>,
     pub inserted: Option<u64>,
     pub tool: NativeTool,
@@ -79,7 +81,11 @@ impl NativeTransferState {
     }
 
     pub fn busy(&self) -> bool {
-        self.confirming.is_some() || self.running || self.comparing_schema || self.previewing_sync
+        self.confirming.is_some()
+            || self.reviewing.is_some()
+            || self.running
+            || self.comparing_schema
+            || self.previewing_sync
     }
 
     pub fn read_completed(
@@ -113,6 +119,22 @@ impl NativeTransferState {
         }
     }
 
+    pub fn review_completed(&mut self, epoch: u32, result: Result<String, String>) {
+        if epoch != self.epoch {
+            return;
+        }
+        let Some(mut request) = self.reviewing.take() else {
+            return;
+        };
+        match result {
+            Ok(fingerprint) => {
+                request.reviewed_schema = Some(fingerprint);
+                self.confirming = Some(request);
+            }
+            Err(error) => self.error = Some(error),
+        }
+    }
+
     pub fn schema_completed(&mut self, epoch: u32, result: Result<NativeSchemaDiff, String>) {
         if epoch != self.compare_epoch || !self.comparing_schema {
             return;
@@ -141,6 +163,9 @@ impl NativeTransferState {
         };
         if source.identity == target.identity {
             return Err("Select two different SQLite files.".into());
+        }
+        if source.sql_scope.is_some() || target.sql_scope.is_some() {
+            return Err("Select two SQLite files to compare.".into());
         }
         Ok(SqliteReadComparison { source, target })
     }
@@ -184,7 +209,7 @@ impl NativeTransferState {
         }
     }
 
-    pub fn review(&mut self) {
+    fn review(&mut self) {
         if self.busy() {
             return;
         }
@@ -206,11 +231,17 @@ impl NativeTransferState {
         } else if self.pairs.is_empty() {
             self.error = Some("Add at least one column mapping.".into());
         } else {
-            self.confirming = Some(NativeTransferRequest {
+            let request = NativeTransferRequest {
                 source,
                 target,
                 columns: self.pairs.clone(),
-            });
+                reviewed_schema: None,
+            };
+            if request.source.sql_scope.is_some() || request.target.sql_scope.is_some() {
+                self.reviewing = Some(request);
+            } else {
+                self.confirming = Some(request);
+            }
         }
     }
 }
@@ -240,18 +271,31 @@ impl AppState {
             epoch,
             side,
             choice,
+            allow_sql: state.tool == NativeTool::Transfer,
         }) {
-            state.read_completed(
-                epoch,
-                side,
-                Err("Cannot start the SQLite catalog read.".into()),
-            );
+            state.read_completed(epoch, side, Err("Cannot start the catalog read.".into()));
         }
     }
 
     pub(crate) fn set_native_tool(&mut self, tool: NativeTool) {
         let state = &mut self.native_transfer;
-        if !state.busy() && state.tool != tool {
+        if !state.busy() && !state.source.loading && !state.target.loading && state.tool != tool {
+            if tool != NativeTool::Transfer {
+                for endpoint in [&mut state.source, &mut state.target] {
+                    if endpoint
+                        .catalog
+                        .as_ref()
+                        .is_some_and(|c| c.sql_scope.is_some())
+                    {
+                        let epoch = endpoint.epoch;
+                        *endpoint = EndpointState {
+                            epoch,
+                            ..Default::default()
+                        };
+                        state.pairs.clear();
+                    }
+                }
+            }
             // An intervening transfer can change the same table pair.
             state.sync_preview = None;
             state.sync_error = None;
@@ -310,6 +354,24 @@ impl AppState {
                 state.compare_epoch,
                 Err("Cannot start the data sync preview.".into()),
             );
+        }
+    }
+
+    pub(crate) fn review_native_transfer(&mut self) {
+        let state = &mut self.native_transfer;
+        if state.busy() || state.source.loading || state.target.loading {
+            return;
+        }
+        state.review();
+        let Some(request) = state.reviewing.clone() else {
+            return;
+        };
+        state.epoch = state.epoch.wrapping_add(1);
+        if !self.desktop.begin_job(AdapterJob::ReviewNativeTransfer {
+            epoch: state.epoch,
+            request,
+        }) {
+            state.review_completed(state.epoch, Err("Cannot start the transfer review.".into()));
         }
     }
 

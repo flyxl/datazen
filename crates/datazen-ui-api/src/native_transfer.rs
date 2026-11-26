@@ -1,4 +1,4 @@
-//! Typed vocabulary for live SQLite migration tools.
+//! Typed vocabulary for live native migration tools.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransferSide {
     Source,
@@ -21,6 +21,13 @@ pub struct TransferChoice {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeSqlScope {
+    pub engine: String,
+    pub database: String,
+    pub schema: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransferCatalog {
     pub choice: TransferChoice,
     pub tables: Vec<String>,
@@ -28,6 +35,7 @@ pub struct TransferCatalog {
     /// Opaque physical identity; the worker checks it again before executing.
     pub identity: String,
     pub read_only: bool,
+    pub sql_scope: Option<NativeSqlScope>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,6 +43,7 @@ pub struct TransferEndpoint {
     pub connection_id: String,
     pub table: String,
     pub identity: String,
+    pub sql_scope: Option<NativeSqlScope>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,6 +51,8 @@ pub struct NativeTransferRequest {
     pub source: TransferEndpoint,
     pub target: TransferEndpoint,
     pub columns: Vec<(String, String)>,
+    /// Required for server-to-server writes, supplied by the read-only review.
+    pub reviewed_schema: Option<String>,
 }
 
 /// A read-only request. Unlike transfer, it carries no mappings or write mode.

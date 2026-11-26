@@ -29,12 +29,22 @@ pub(super) async fn profile(
     service: &ConnectionService,
     id: &str,
 ) -> Result<ConnectionConfig, String> {
+    validate_sqlite(read_profile(service, id).await?)
+}
+
+pub(super) async fn read_profile(
+    service: &ConnectionService,
+    id: &str,
+) -> Result<ConnectionConfig, String> {
     let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
-    let config = service
+    service
         .get(&scope, id)
         .await
-        .map_err(|_| "Could not read the saved SQLite profile.")?
-        .ok_or("The saved SQLite profile no longer exists.")?;
+        .map_err(|_| "Could not read the saved connection profile.")?
+        .ok_or_else(|| "The saved connection profile no longer exists.".into())
+}
+
+fn validate_sqlite(config: ConnectionConfig) -> Result<ConnectionConfig, String> {
     if config.database_type != SQLITE {
         return Err("These native tools currently support SQLite files only.".into());
     }
@@ -82,8 +92,17 @@ pub(super) async fn catalog(
     service: &ConnectionService,
     registry: &DriverRegistry,
     mut choice: TransferChoice,
+    allow_sql: bool,
 ) -> Result<TransferCatalog, String> {
-    let mut config = profile(service, &choice.connection_id).await?;
+    let mut config = if allow_sql {
+        let config = read_profile(service, &choice.connection_id).await?;
+        if config.database_type != SQLITE {
+            return super::live_sql_transfer::catalog(registry, config, choice).await;
+        }
+        validate_sqlite(config)?
+    } else {
+        profile(service, &choice.connection_id).await?
+    };
     let read_only = config.read_only;
     config.read_only = true;
     let driver = driver(registry).await?;
@@ -124,6 +143,7 @@ pub(super) async fn catalog(
             columns,
             identity,
             read_only,
+            sql_scope: None,
         })
     }
     .await;
@@ -310,6 +330,9 @@ pub(super) async fn run(
     registry: &DriverRegistry,
     request: NativeTransferRequest,
 ) -> Result<u64, String> {
+    if request.source.sql_scope.is_some() || request.target.sql_scope.is_some() {
+        return super::live_sql_transfer::run(service, registry, request).await;
+    }
     if request.source.connection_id == request.target.connection_id
         || request.source.identity == request.target.identity
     {

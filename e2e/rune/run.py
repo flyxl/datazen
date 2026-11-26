@@ -20,11 +20,12 @@ from schema_diff import SchemaDiffJourney
 from sql_selection import SqlSelectionJourneys
 from tcp_metadata import TcpMetadataJourneys, with_metadata_journeys
 from tcp_sql import TcpSqlJourneys, with_tcp_journeys
+from tcp_transfer import TcpTransferJourneys, with_sql_transfer_journeys
 from transfer import TransferJourneys
 from workflow import WorkflowJourney
 
 
-class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, unittest.TestCase):
+class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="datazen-native-e2e-")
         self.addCleanup(tmp.cleanup)
@@ -199,6 +200,7 @@ if __name__ == "__main__":
     }
     with_tcp_journeys(NativeJourneys, configs)
     with_metadata_journeys(NativeJourneys, configs)
+    with_sql_transfer_journeys(NativeJourneys, configs)
     if parsed.list_tests:
         if remaining:
             parser.error("--list-tests does not take test selectors")

@@ -76,6 +76,8 @@ mod live_table_targets;
 use live_table_targets::LiveTableTargets;
 #[path = "live_transfer.rs"]
 mod live_transfer;
+#[path = "live_sql_transfer.rs"]
+mod live_sql_transfer;
 #[path = "live_sync.rs"]
 mod live_sync;
 #[path = "live_csv_import.rs"]
@@ -88,7 +90,8 @@ use datazen_ui_api::native_transfer::{
 
 /// A job on the worker's channel, with the generation the UI expects back.
 enum HostJob {
-    ReadNativeTransfer { epoch: u32, side: TransferSide, choice: TransferChoice },
+    ReadNativeTransfer { epoch: u32, side: TransferSide, choice: TransferChoice, allow_sql: bool },
+    ReviewNativeTransfer { epoch: u32, request: NativeTransferRequest },
     RunNativeTransfer { epoch: u32, request: NativeTransferRequest },
     CompareNativeSchema { epoch: u32, request: SqliteReadComparison },
     PreviewNativeSync { epoch: u32, request: SqliteReadComparison },
@@ -141,6 +144,7 @@ enum HostJob {
 /// A finished job on the answer channel.
 enum HostAnswer {
     NativeTransferRead { epoch: u32, side: TransferSide, result: Result<TransferCatalog, String> },
+    NativeTransferReviewed { epoch: u32, result: Result<String, String> },
     NativeTransferFinished { epoch: u32, result: Result<u64, String> },
     NativeSchemaCompared { epoch: u32, result: Result<NativeSchemaDiff, String> },
     NativeSyncPreviewed { epoch: u32, result: Result<NativeSyncPreview, String> },
@@ -370,6 +374,7 @@ impl LiveAdapter {
                                 HostJob::ReadNativeTransfer { epoch, side, .. } => HostAnswer::NativeTransferRead {
                                     epoch, side, result: Err("The transfer worker could not start.".into()),
                                 },
+                                HostJob::ReviewNativeTransfer { epoch, .. } => HostAnswer::NativeTransferReviewed { epoch, result: Err("The transfer worker could not start.".into()) },
                                 HostJob::RunNativeTransfer { epoch, .. } => HostAnswer::NativeTransferFinished {
                                     epoch, result: Err("The transfer worker could not start.".into()),
                                 },
@@ -560,8 +565,8 @@ impl LiveAdapter {
                             ));
                             HostAnswer::QueryHistoryRead { generation, result }
                         }
-                        HostJob::ReadNativeTransfer { epoch, side, choice } => {
-                            let result = runtime.block_on(live_transfer::catalog(&worker_service, &worker_registry, choice));
+                        HostJob::ReadNativeTransfer { epoch, side, choice, allow_sql } => {
+                            let result = runtime.block_on(live_transfer::catalog(&worker_service, &worker_registry, choice, allow_sql));
                             HostAnswer::NativeTransferRead { epoch, side, result }
                         }
                         HostJob::ReviewNativeCsv { epoch, choice } => {
@@ -579,6 +584,10 @@ impl LiveAdapter {
                         HostJob::CompareNativeSchema { epoch, request } => {
                             let result = runtime.block_on(live_transfer::compare_schema(&worker_service, &worker_registry, request));
                             HostAnswer::NativeSchemaCompared { epoch, result }
+                        }
+                        HostJob::ReviewNativeTransfer { epoch, request } => {
+                            let result = runtime.block_on(live_sql_transfer::review(&worker_service, &worker_registry, request));
+                            HostAnswer::NativeTransferReviewed { epoch, result }
                         }
                         HostJob::RunNativeTransfer { epoch, request } => {
                             let result = runtime.block_on(live_transfer::run(&worker_service, &worker_registry, request));
@@ -2313,7 +2322,8 @@ impl DesktopAdapter for LiveAdapter {
 
     fn begin_job(&mut self, job: AdapterJob) -> bool {
         let job = match job {
-            AdapterJob::ReadNativeTransfer { epoch, side, choice } => HostJob::ReadNativeTransfer { epoch, side, choice },
+            AdapterJob::ReadNativeTransfer { epoch, side, choice, allow_sql } => HostJob::ReadNativeTransfer { epoch, side, choice, allow_sql },
+            AdapterJob::ReviewNativeTransfer { epoch, request } => HostJob::ReviewNativeTransfer { epoch, request },
             AdapterJob::RunNativeTransfer { epoch, request } => HostJob::RunNativeTransfer { epoch, request },
             AdapterJob::ReviewNativeCsv { epoch, choice } => HostJob::ReviewNativeCsv { epoch, choice },
             AdapterJob::AppendNativeCsv { epoch, review } => HostJob::AppendNativeCsv { epoch, review },
@@ -2357,6 +2367,9 @@ impl DesktopAdapter for LiveAdapter {
             match answer {
                 HostAnswer::NativeTransferRead { epoch, side, result } => {
                     deliveries.push(AdapterDelivery::NativeTransferRead { epoch, side, result });
+                }
+                HostAnswer::NativeTransferReviewed { epoch, result } => {
+                    deliveries.push(AdapterDelivery::NativeTransferReviewed { epoch, result });
                 }
                 HostAnswer::NativeTransferFinished { epoch, result } => {
                     deliveries.push(AdapterDelivery::NativeTransferFinished { epoch, result });
