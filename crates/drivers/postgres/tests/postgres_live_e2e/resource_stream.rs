@@ -214,6 +214,32 @@ async fn live_resource_stream_writes_bounded_artifacts_and_preserves_retained_se
             .rows,
         vec![parameters.clone().into_iter().map(Some).collect::<Vec<_>>()]
     );
+    let empty = Artifact::new(&artifacts, "typed-empty.ndjson", 4096);
+    let typed = stream(
+        &driver,
+        &retained,
+        "SELECT $1 AS active, $2 AS bytes, $3 AS doc WHERE false",
+        None,
+        Some(&parameters),
+        &empty,
+    )
+    .await
+    .expect("same prepared types even with no live rows");
+    assert_eq!(
+        typed[0]
+            .columns
+            .iter()
+            .map(|column| column.data_type.as_str())
+            .collect::<Vec<_>>(),
+        ["BOOL", "BYTEA", "JSONB"]
+    );
+    assert!(typed[0].rows.is_empty());
+    let metadata = empty
+        .records()
+        .into_iter()
+        .find(|row| row["kind"] == "statementMetadata")
+        .expect("persisted blank output metadata");
+    assert_eq!(metadata["columns"][1]["dataType"], "BYTEA");
     let no_multi = Artifact::new(&artifacts, "multi-denied.ndjson", 1024);
     assert!(stream(
         &driver,

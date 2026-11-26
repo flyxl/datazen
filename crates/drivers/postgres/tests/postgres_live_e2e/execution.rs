@@ -737,3 +737,128 @@ async fn retained_registered_transactions_abort_real_postgres_work_on_error_or_c
         .await
         .expect("remove transaction fixture");
 }
+
+#[tokio::test]
+async fn postgres_external_query_interruption_and_expired_execution_target_remain_distinct() {
+    let mut fixture = Fixture::open().await;
+    let driver = Arc::new(PostgresDriver::new());
+    let pooled = driver
+        .connect(&fixture.config)
+        .await
+        .expect("live query target");
+    let target = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("second retained target");
+    let id = QueryExecutionId::new("external-worker-cancel");
+    driver
+        .prepare_query_execution(&pooled, &id)
+        .await
+        .expect("register expected query");
+    let marker = format!("external_cancel_{}", uuid::Uuid::new_v4().simple());
+    let (events, callback) = record();
+    let task = {
+        let driver = Arc::clone(&driver);
+        let handle = pooled.clone();
+        let id = id.clone();
+        let sql = format!("SELECT 42 FROM pg_sleep(30) /* {marker} */");
+        tokio::spawn(async move {
+            driver
+                .query_stream_with_execution(&handle, &id, &sql, None, callback)
+                .await
+        })
+    };
+    let started_pid=tokio::time::timeout(Duration::from_secs(5),async{
+       loop {
+           let pid=sqlx::query_scalar::<_,i32>(
+              "SELECT pid FROM pg_stat_activity WHERE wait_event='PgSleep' AND strpos(query,$1)>0"
+           ).bind(&marker).fetch_optional(&mut fixture.oracle).await.expect("independent active PostgreSQL PID");
+           if let Some(pid)=pid { break pid; }
+           tokio::time::sleep(Duration::from_millis(20)).await;
+       }
+    }).await.expect("the actual external worker was running");
+    assert!(
+        sqlx::query_scalar::<_, bool>("SELECT pg_cancel_backend($1)")
+            .bind(started_pid)
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .expect("fixture server independently interrupts this statement")
+    );
+    let result = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .expect("remote interruption completes")
+        .expect("worker result");
+    assert!(matches!(result,Err(DriverError::QueryFailed(message)) if message.contains("canceling statement")),
+      "without an accepted execution cancel, PostgreSQL interruptions are real errors, not reported as the user's own cancellation");
+    assert!(!events
+        .lock()
+        .expect("result events")
+        .iter()
+        .any(|e| matches!(e, QueryStreamEvent::Done { .. })));
+    assert_eq!(
+        driver
+            .query(&pooled, "SELECT 11")
+            .await
+            .expect("healthy independent result after cancellation")
+            .rows,
+        vec![vec![Some(Value::Integer(11))]]
+    );
+
+    let live_pid = match driver
+        .query(&target, "SELECT pg_backend_pid()")
+        .await
+        .expect("retained current PID")
+        .rows[0][0]
+    {
+        Some(Value::Integer(pid)) => i32::try_from(pid).expect("int4 pg backend"),
+        _ => panic!("unexpected PostgreSQL PID"),
+    };
+    let lost = QueryExecutionId::new("retained-cancel-target-lost");
+    driver
+        .prepare_query_execution(&target, &lost)
+        .await
+        .expect("register the original retained backend");
+    assert!(
+        sqlx::query_scalar::<_, bool>("SELECT pg_terminate_backend($1)")
+            .bind(live_pid)
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .expect("target-only backend closed externally")
+    );
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let present: bool =
+                sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1)")
+                    .bind(live_pid)
+                    .fetch_one(&mut fixture.oracle)
+                    .await
+                    .expect("independent original PID is retired");
+            if !present {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("terminated PostgreSQL target goes away");
+    assert!(
+        matches!(
+            driver.cancel_query_with_execution(&target, &lost).await,
+            Err(DriverError::QueryExecutionNotFound(_))
+        ),
+        "a vanished PID cannot be acknowledged as an accepted cancellation"
+    );
+    driver
+        .cleanup_query_execution(&target, &lost)
+        .await
+        .expect("discard only its stopped registration");
+    assert!(driver.observe_fixed_session(&target).await.is_err());
+    driver
+        .disconnect(target)
+        .await
+        .expect("drain retained handle");
+    driver
+        .disconnect(pooled)
+        .await
+        .expect("close original pool");
+}

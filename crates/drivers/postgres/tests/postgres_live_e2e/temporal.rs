@@ -237,6 +237,54 @@ async fn postgres_bound_parameters_round_trip_native_catalog_types_and_nullable_
         ]]
     );
     assert_eq!(materialized.columns[0].name, "absent_uuid");
+    // An empty result must describe the same prepared statement's types
+    // rather than letting PostgreSQL infer every otherwise untyped param
+    // as text during a separate metadata query.
+    let typed_parameters = [
+        Value::Integer(37),
+        Value::Bool(true),
+        Value::Bytes(vec![0x00, 0xff]),
+        Value::Float(2.5),
+        Value::Json(json!({"wire":true})),
+        Value::Timestamp("2024-02-29 12:34:56".into()),
+        Value::Null,
+    ];
+    let bind_sql = "SELECT $1 AS key, $2 AS flag, $3 AS bytes, $4 AS number, $5 AS doc, $6 AS clock, $7 AS absent";
+    let types = |result: &datazen_driver_api::QueryResult| {
+        result
+            .columns
+            .iter()
+            .map(|column| (column.name.clone(), column.data_type.clone()))
+            .collect::<Vec<_>>()
+    };
+    let nonempty = driver
+        .query_with_params(&handle, bind_sql, &typed_parameters)
+        .await
+        .expect("actual prepared row");
+    let empty_sql = format!("{bind_sql} WHERE false");
+    let empty = driver
+        .query_with_params(&handle, &empty_sql, &typed_parameters)
+        .await
+        .expect("no physical prepared rows");
+    assert!(empty.rows.is_empty());
+    assert_eq!(
+        types(&empty),
+        types(&nonempty),
+        "prepared metadata must use the same bound types"
+    );
+    let retained = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("fixed query target");
+    let retained_empty = driver
+        .query_with_params(&retained, &empty_sql, &typed_parameters)
+        .await
+        .expect("same result schema on pinned session");
+    assert_eq!(types(&retained_empty), types(&nonempty));
+    driver
+        .disconnect(retained)
+        .await
+        .expect("release retained metadata session");
     sqlx::query(&format!("DROP TABLE {relation}"))
         .execute(&mut fixture.oracle)
         .await

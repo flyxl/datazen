@@ -884,6 +884,48 @@ impl PostgresDriver {
             .await
     }
 
+    /// PostgreSQL infers an unconstrained parameter as text during an
+    /// untyped DESCRIBE, even after the actual execution bound another type.
+    /// Prepare the metadata query with the same hints as bind_values.
+    pub(crate) async fn describe_bound_columns<'e, E>(
+        executor: E,
+        sql: &str,
+        params: &[Value],
+    ) -> Result<Vec<ColumnInfo>, DriverError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        use sqlx::{Column, Postgres, Statement, Type};
+        let types = params
+            .iter()
+            .map(|param| match param {
+                Value::Null | Value::String(_) | Value::Timestamp(_) => {
+                    <String as Type<Postgres>>::type_info()
+                }
+                Value::Bool(_) => <bool as Type<Postgres>>::type_info(),
+                Value::Integer(_) => <i64 as Type<Postgres>>::type_info(),
+                Value::Float(_) => <f64 as Type<Postgres>>::type_info(),
+                Value::Bytes(_) => <Vec<u8> as Type<Postgres>>::type_info(),
+                Value::Json(_) => <serde_json::Value as Type<Postgres>>::type_info(),
+            })
+            .collect::<Vec<_>>();
+        let prepared = executor
+            .prepare_with(sql, &types)
+            .await
+            .map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+        Ok(prepared
+            .columns()
+            .iter()
+            .map(|column| ColumnInfo {
+                name: column.name().to_owned(),
+                data_type: column.type_info().to_string(),
+                // Prepared row columns do not expose nullable metadata. A
+                // conservative value is the same contract as populated rows.
+                nullable: true,
+            })
+            .collect())
+    }
+
     async fn query_with_params_on(
         &self,
         handle: &ConnectionHandle,
@@ -905,7 +947,9 @@ impl PostgresDriver {
                 let elapsed = start.elapsed().as_millis() as u64;
                 let (mut columns, result_rows) = Self::decode_rows(&rows);
                 if columns.is_empty() {
-                    columns = Self::describe_columns(&mut **conn, sql).await;
+                    columns = Self::describe_bound_columns(&mut **conn, sql, params)
+                        .await
+                        .unwrap_or_default();
                 }
                 let row_count = result_rows.len() as u64;
                 return Ok(QueryResult {
@@ -926,7 +970,9 @@ impl PostgresDriver {
 
         let (mut columns, result_rows) = Self::decode_rows(&rows);
         if columns.is_empty() {
-            columns = Self::describe_columns(pool, sql).await;
+            columns = Self::describe_bound_columns(pool, sql, params)
+                .await
+                .unwrap_or_default();
         }
         let row_count = result_rows.len() as u64;
 

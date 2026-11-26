@@ -280,20 +280,25 @@ impl PostgresDriver {
                 .await?;
             }
             if columns.is_empty() && is_pg_result_query(&statement) {
-                let description = (&mut **conn)
-                    .describe(&effective_sql)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                columns = description
-                    .columns()
-                    .iter()
-                    .enumerate()
-                    .map(|(index, column)| ColumnInfo {
-                        name: column.name().into(),
-                        data_type: column.type_info().name().into(),
-                        nullable: description.nullable(index).unwrap_or(true),
-                    })
-                    .collect();
+                if let Some(parameters) = parameters {
+                    columns = Self::describe_bound_columns(&mut **conn, &effective_sql, parameters)
+                        .await?;
+                } else {
+                    let description = (&mut **conn)
+                        .describe(&effective_sql)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                    columns = description
+                        .columns()
+                        .iter()
+                        .enumerate()
+                        .map(|(index, column)| ColumnInfo {
+                            name: column.name().into(),
+                            data_type: column.type_info().name().into(),
+                            nullable: description.nullable(index).unwrap_or(true),
+                        })
+                        .collect();
+                }
             }
             sink.write_statement_summary(StatementSummary {
                 statement_index,
