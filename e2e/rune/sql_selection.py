@@ -1,4 +1,4 @@
-"""Native editor runs only the selected or caret SQLite statement."""
+"""Native SQLite editor: selected/caret runs and explicit SELECT scripts."""
 from contextlib import closing
 import sqlite3
 
@@ -72,3 +72,52 @@ class SqlSelectionJourneys:
         ))
         self.assertFalse(visible(tree, key="result-workspace"))
         self.assertEqual(self.sql_customer_rows(), original)
+
+
+    def test_legacy_sqlite_script_shows_separate_result_sets(self):
+        """Migrate sqlite.ts multiple statements and verify both result tabs."""
+        fixture(self.store, self.db)
+        with closing(sqlite3.connect(self.db)) as db:
+            with db:
+                db.executescript("CREATE TABLE users(name TEXT); "
+                                 "CREATE TABLE posts(title TEXT); "
+                                 "INSERT INTO users VALUES ('Ada'), ('Lin'); "
+                                 "INSERT INTO posts VALUES ('One'), ('Two'), ('Three');")
+        statements = ("SELECT COUNT(*) AS users_total FROM users",
+                      "/* ; not a separator */ SELECT COUNT(*) AS posts_total FROM posts")
+
+        def counts():
+            with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as db:
+                return tuple(db.execute(sql).fetchone()[0] for sql in statements)
+
+        expected = counts()
+        self.assertNotEqual(*expected)
+        script = ";\n".join(statements) + ";"
+
+        def replay_into_editor(sql):
+            steps = query_steps(sql)[:-1]
+            steps[-1] = {"t": 5, "type": "paste", "text": sql}
+            return steps
+
+        actions = [*replay_into_editor(script), tap(7, "sql-run-script")]
+
+        def expect_tab(tree, chosen):
+            for ident in (1, 2):
+                self.expect_rendered(tree, key=f"query-result-tab-{ident}")
+            names = ("users_total", "posts_total")
+            self.expect_rendered(tree, text=names[chosen], within="result-data-grid-header")
+            self.assertFalse(visible(tree, text=names[1-chosen], within="result-data-grid-header"))
+            self.expect_rendered(tree, text=str(expected[chosen]), within="result-cell-0-0")
+            self.expect_rendered(tree, key="result-grid-status", text="result · 1 rows × 1 cols")
+
+        expect_tab(self.replay(actions, until=9.5), 0)
+        second = [*actions, tap(9.8, "query-result-label-2")]
+        expect_tab(self.replay(second, until=11), 1)
+        expect_tab(self.replay([*second, tap(11.3, "query-result-label-1")], until=12.6), 0)
+
+        mixed = statements[0] + "; DELETE FROM posts;"
+        blocked = self.replay([*replay_into_editor(mixed), tap(7, "sql-run-script")], until=9.5)
+        self.expect_rendered(blocked, text="The SQLite script may contain only SELECT statements.",
+                             within="query-notice")
+        self.assertFalse(visible(blocked, key="result-workspace"))
+        self.assertEqual(counts(), expected)

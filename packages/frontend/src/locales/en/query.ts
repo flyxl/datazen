@@ -13,6 +13,7 @@ const pack = {
   'tableView.shortcut.tabLeavesGrid': 'Tab leaves the grid',
   'query.execute': 'Execute',
   'query.run': 'Run',
+  'query.runSelectScript': 'Run SELECT Script',
   'query.runSelection': 'Run Selection',
   'query.stop': 'Stop',
   'query.totalTime': 'Total Time',

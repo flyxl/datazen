@@ -12,6 +12,7 @@ const pack = {
   'tableView.shortcut.tabLeavesGrid': 'Tab 离开网格',
   'query.execute': '执行',
   'query.run': '运行',
+  'query.runSelectScript': '运行 SELECT 脚本',
   'query.runSelection': '运行选中',
   'query.stop': '停止',
   'query.totalTime': '总耗时',

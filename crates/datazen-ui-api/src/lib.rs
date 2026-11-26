@@ -2103,6 +2103,15 @@ pub trait DesktopAdapter {
         false
     }
 
+    /// Native SQLite can explicitly run a bounded script of read-only SELECTs.
+    fn supports_native_query_script(&self) -> bool {
+        false
+    }
+
+    fn begin_native_query_script(&mut self, _generation: u32, _sql: String) -> bool {
+        false
+    }
+
     fn request_native_query_stop(&mut self, _generation: u32) -> bool {
         false
     }
@@ -2592,6 +2601,11 @@ pub enum AdapterDelivery {
     QueryPage {
         generation: u32,
         page: Result<TablePage, String>,
+    },
+    /// Ordered result pages from one explicitly submitted SQLite script.
+    QueryScriptPages {
+        generation: u32,
+        pages: Result<Vec<TablePage>, String>,
     },
     /// A workflow run's step report (or its failure sentence) (T8).
     WorkflowRun {

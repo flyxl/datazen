@@ -209,13 +209,17 @@ impl AppState {
         {
             return id;
         }
+        self.add_query_result_tab(Some(generation))
+    }
+
+    fn add_query_result_tab(&mut self, generation: Option<u32>) -> u32 {
         let id = self.next_query_result_id;
         self.next_query_result_id += 1;
         let label = format!("Result {}", self.query_result_tabs.len() + 1);
         self.query_result_tabs.push(QueryResultTab {
             id,
             label,
-            generation: Some(generation),
+            generation,
             grid: None,
             pinned: false,
         });
@@ -336,6 +340,59 @@ impl AppState {
         }
         self.next_query_generation();
         self.query_loading = None;
+    }
+
+    /// Run the entire document explicitly. Plain Run and its keyboard
+    /// shortcut still use only the selected/caret statement.
+    pub fn run_query_script(&mut self) {
+        if !self.desktop.supports_native_query_script() {
+            return;
+        }
+        if self.native_query.is_some() || self.query_loading.is_some() {
+            self.query_action_notice("A query is still running.");
+            return;
+        }
+        let Some(tab_id) = self.tabs.selected().map(|tab| tab.id) else {
+            return;
+        };
+        let sql = self.sql.doc().to_owned();
+        let generation = self.next_query_generation();
+        if self.desktop.begin_native_query_script(generation, sql.clone()) {
+            self.query_notice = None;
+            self.query_loading = Some(generation);
+            self.native_query = Some(crate::native_query_close::NativeQuery::new(generation, tab_id, sql));
+        } else {
+            self.query_action_notice("The SQLite script could not start.");
+        }
+    }
+
+    fn deliver_query_script(&mut self, generation: u32, pages: Result<Vec<TablePage>, String>) {
+        self.finish_running_query(generation, false);
+        if self.query_loading == Some(generation) {
+            self.query_loading = None;
+        }
+        if generation != self.query_generation {
+            return;
+        }
+        let pages = match pages {
+            Ok(pages) => pages,
+            Err(error) => {
+                self.query_action_notice(error);
+                return;
+            }
+        };
+        let mut pages = pages.into_iter();
+        let Some(first) = pages.next() else { return };
+        self.deliver_query_result(generation, first);
+        let first_id = self.selected_query_result;
+        for page in pages {
+            self.park_selected_query_result_grid();
+            self.selected_query_result = Some(self.add_query_result_tab(None));
+            self.load_result_page(page.columns, page.rows);
+        }
+        if let Some(first_id) = first_id {
+            self.select_query_result_tab(first_id);
+        }
     }
 
     /// Run the statement at the cursor. A failed execution changes nothing; a
@@ -793,6 +850,10 @@ impl AppState {
             }
             AdapterDelivery::QueryStopRejected { generation } => {
                 self.note_query_stop_rejected(generation);
+            }
+            AdapterDelivery::QueryScriptPages { generation, pages } => {
+                self.deliver_query_script(generation, pages);
+                self.refresh_query_history_if_open();
             }
             AdapterDelivery::QueryPage { generation, page } => {
                 self.finish_running_query(generation, false);

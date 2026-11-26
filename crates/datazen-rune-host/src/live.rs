@@ -78,6 +78,8 @@ use live_table_targets::LiveTableTargets;
 mod live_csv_import;
 #[path = "live_sql_transfer.rs"]
 mod live_sql_transfer;
+#[path = "live_sqlite_script.rs"]
+mod live_sqlite_script;
 #[path = "live_sync.rs"]
 mod live_sync;
 #[path = "live_transfer.rs"]
@@ -187,6 +189,7 @@ enum HostJob {
         generation: u32,
         sql: String,
         stop: Arc<std::sync::atomic::AtomicBool>,
+        script: bool,
     },
 }
 
@@ -285,6 +288,10 @@ enum HostAnswer {
     QueryPage {
         generation: u32,
         page: Result<TablePage, String>,
+    },
+    QueryScriptPages {
+        generation: u32,
+        pages: Result<Vec<TablePage>, String>,
     },
 }
 
@@ -573,7 +580,11 @@ impl LiveAdapter {
                                         generation,
                                         result: Err("The query history worker did not start.".into()),
                                     },
-                                HostJob::RunQuery { generation, .. } => HostAnswer::QueryPage {
+                                HostJob::RunQuery { generation, script: true, .. } => HostAnswer::QueryScriptPages {
+                                    generation,
+                                    pages: Err("the query worker did not start".into()),
+                                },
+                                HostJob::RunQuery { generation, script: false, .. } => HostAnswer::QueryPage {
                                     generation,
                                     page: Err(format!("the job runtime did not start: {error}")),
                                 },
@@ -744,13 +755,14 @@ impl LiveAdapter {
                             let result = runtime.block_on(live_transfer::run(&worker_service, &worker_registry, request));
                             HostAnswer::NativeTransferFinished { epoch, result }
                         }
-                        HostJob::RunQuery { generation, sql, stop } => {
+                        HostJob::RunQuery { generation, sql, stop, script } => {
                             let started = std::time::Instant::now();
-                            let page = runtime.block_on(run_query_observed(
+                            let pages = runtime.block_on(run_query_observed(
                                 &worker_runtime,
                                 &worker_profiles,
                                 &worker_session,
                                 &sql,
+                                script,
                                 &stop,
                                 |terminal| {
                                     let answer = if terminal {
@@ -786,11 +798,15 @@ impl LiveAdapter {
                                         .as_millis()
                                         .min(u64::MAX as u128) as u64,
                                     rows_affected: None,
-                                    success: page.is_ok(),
-                                    error_message: page.as_ref().err().map(|error| error.clone()),
+                                    success: pages.is_ok(),
+                                    error_message: pages.as_ref().err().cloned(),
                                 },
                             ));
-                            HostAnswer::QueryPage { generation, page }
+                            if script {
+                                HostAnswer::QueryScriptPages { generation, pages }
+                            } else {
+                                HostAnswer::QueryPage { generation, page: first_query_page(pages) }
+                            }
                         }
                     };
                     if answer_tx.send(answer).is_err() {
@@ -2247,7 +2263,11 @@ async fn run_query(
     sql: &str,
 ) -> Result<TablePage, String> {
     let stop = std::sync::atomic::AtomicBool::new(false);
-    run_query_observed(runtime, profiles, session, sql, &stop, |_| {}).await
+    first_query_page(run_query_observed(runtime, profiles, session, sql, false, &stop, |_| {}).await)
+}
+
+fn first_query_page(result: Result<Vec<TablePage>, String>) -> Result<TablePage, String> {
+    result?.into_iter().next().ok_or_else(|| "no query result page".into())
 }
 
 async fn run_query_observed(
@@ -2255,9 +2275,10 @@ async fn run_query_observed(
     profiles: &Arc<crate::backend::HostProfiles>,
     session: &Arc<Mutex<LiveSession>>,
     sql: &str,
+    script: bool,
     stop: &std::sync::atomic::AtomicBool,
     note_execution: impl Fn(bool),
-) -> Result<TablePage, String> {
+) -> Result<Vec<TablePage>, String> {
     let (connection, database) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
@@ -2266,10 +2287,18 @@ async fn run_query_observed(
         if session.kv.is_some() {
             return Err("SQL queries are not available in the KV workbench.".into());
         }
+        if script && !session.driver.as_ref().is_some_and(|driver| driver.driver_type() == "sqlite") {
+            return Err("Running a SELECT script is only supported for SQLite.".into());
+        }
         (
             session.connection.clone().unwrap_or_default(),
             session.database.clone(),
         )
+    };
+    let page_count = if script {
+        live_sqlite_script::select_statement_count(sql)?
+    } else {
+        1
     };
     let ctx = crate::host_request_context().clone();
     let token = runtime
@@ -2335,10 +2364,8 @@ async fn run_query_observed(
             None => "the statement failed".to_string(),
         });
     }
-    // Collect the artifacts: the statement metadata names the columns, the
-    // row chunks carry the rows.
-    let mut columns: Vec<String> = Vec::new();
-    let mut rows: Vec<Vec<String>> = Vec::new();
+    // Match result batches and terminal metadata by the provider's statement ordinal.
+    let mut pages = live_sqlite_script::ResultPages::new(page_count, script);
     for artifact in &view.artifact_ids {
         let first = runtime
             .read_artifact_chunk(&ctx, artifact.clone(), Counter::ZERO)
@@ -2353,47 +2380,12 @@ async fn run_query_observed(
                     .await
                     .map_err(|error| error.to_string())?
             };
-            let Some(output) = chunk.output else { continue };
-            if output.get("kind").and_then(|kind| kind.as_str()) == Some("statementMetadata") {
-                if let Some(names) = output.get("columns").and_then(|cols| cols.as_array()) {
-                    if columns.is_empty() {
-                        columns = names
-                            .iter()
-                            .filter_map(|column| column.get("name").and_then(|n| n.as_str()))
-                            .map(str::to_owned)
-                            .collect();
-                    }
-                }
-                continue;
-            }
-            // A row chunk: the provider's ResultChunk shape (the same type
-            // the sink published, `dr::ResultChunk`).
-            let Ok(chunk) =
-                serde_json::from_value::<datazen_driver_api::resource::ResultChunk>(output.clone())
-            else {
-                continue;
-            };
-            if chunk.statement_index != 0 {
-                continue; // the grid shows the first statement's page
-            }
-            for row in chunk.rows {
-                rows.push(row.into_iter().map(cell_to_text).collect());
+            if let Some(output) = chunk.output {
+                pages.push(output)?;
             }
         }
     }
-    let total = rows.len() as u32;
-    Ok(TablePage {
-        table: "result".into(),
-        columns,
-        rows,
-        page: 0,
-        page_size: total.max(1),
-        total_rows: total,
-        sort: None,
-        filter: None,
-        primary_key: Vec::new(),
-        read_only: Some("query result".into()),
-    })
+    pages.finish()
 }
 
 /// What one setting write does to the document's ui object (L1): the
@@ -2496,6 +2488,16 @@ fn connection_draft_record(
 }
 
 impl LiveAdapter {
+    fn enqueue_query(&mut self, generation: u32, sql: String, script: bool) -> bool {
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let job = HostJob::RunQuery { generation, sql, stop: Arc::clone(&stop), script };
+        let sent = self.jobs.lock().is_ok_and(|jobs| jobs.send(job).is_ok());
+        if sent {
+            self.query_stops.insert(generation, stop);
+        }
+        sent
+    }
+
     fn save_connection_with_options(
         &mut self,
         draft: &ConnectionDraft,
@@ -2689,6 +2691,20 @@ impl DesktopAdapter for LiveAdapter {
         true
     }
 
+    fn supports_native_query_script(&self) -> bool {
+        self.session.lock().is_ok_and(|session| {
+            session.is_open()
+                && session.driver.as_ref().is_some_and(|driver| driver.driver_type() == "sqlite")
+        })
+    }
+
+    fn begin_native_query_script(&mut self, generation: u32, sql: String) -> bool {
+        if !self.supports_native_query_script() {
+            return false;
+        }
+        self.enqueue_query(generation, sql, true)
+    }
+
     fn request_native_query_stop(&mut self, generation: u32) -> bool {
         let Some(stop) = self.query_stops.get(&generation) else {
             return false;
@@ -2776,13 +2792,7 @@ impl DesktopAdapter for LiveAdapter {
                 connection_id,
             },
             AdapterJob::RunQuery { generation, sql } => {
-                let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-                let job = HostJob::RunQuery { generation, sql, stop: Arc::clone(&stop) };
-                let sent = self.jobs.lock().expect("the job channel").send(job).is_ok();
-                if sent {
-                    self.query_stops.insert(generation, stop);
-                }
-                return sent;
+                return self.enqueue_query(generation, sql, false);
             }
             AdapterJob::ValueSearch {
                 generation,
@@ -2916,6 +2926,10 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::QueryStopRejected { generation } => {
                     deliveries.push(AdapterDelivery::QueryStopRejected { generation });
+                }
+                HostAnswer::QueryScriptPages { generation, pages } => {
+                    self.query_stops.remove(&generation);
+                    deliveries.push(AdapterDelivery::QueryScriptPages { generation, pages });
                 }
                 HostAnswer::QueryPage { generation, page } => {
                     self.query_stops.remove(&generation);

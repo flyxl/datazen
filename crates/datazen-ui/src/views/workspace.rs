@@ -354,6 +354,12 @@ pub fn query_toolbar(state: &AppState, theme: tok::Theme) -> El {
         .gap(6.0)
         .center_y()
         .child(toolbar_button("sql-run", t("query.run"), theme).on_press(|s: &mut AppState| s.run_query()));
+    if state.desktop.supports_native_query_script() {
+        bar = bar.child(
+            toolbar_button("sql-run-script", t("query.runSelectScript"), theme)
+                .on_press(|s: &mut AppState| s.run_query_script()),
+        );
+    }
     if !state.desktop.supports_native_query_stop() || state.native_query_selected() {
         bar = bar.child(
             toolbar_button("sql-cancel", t("common.cancel"), theme)
@@ -427,7 +433,7 @@ fn query_result_tabs_bar(state: &AppState, theme: tok::Theme) -> El {
                 } else {
                     theme.control_off
                 })
-                .child(text(label).font(type_::LABEL).color(theme.text))
+                .child(text(label).key(format!("query-result-label-{id}")).font(type_::LABEL).color(theme.text))
                 .child(
                     text(if tab.pinned { "Unpin" } else { "Pin" })
                         .key(format!("query-result-pin-{id}"))
