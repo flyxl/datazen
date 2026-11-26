@@ -8,12 +8,12 @@
 //! catalog contract — and the connection list still answers through the
 //! file store's use case, whose futures are always ready.
 
-use datazen_ui_api::native_kv::{native_kv_driver, KvRead, KvReply, NativeKvDriver};
 use datazen::connection::application::ConnectionService;
-use datazen::connection::domain::{ConnectionRepository, ConnectionScope};
+use datazen::connection::domain::ConnectionRepository;
 use datazen::dashboard::application::create::create_widget_from_sql;
-use datazen::dashboard::domain::repository::DashboardRepositoryError;
 use datazen::dashboard::domain::repository as dashboard_rules;
+use datazen::dashboard::domain::repository::DashboardRepositoryError;
+use datazen::dashboard::domain::types::ViewMode;
 use datazen::execution::application::orchestration::RuntimeConnectionUseCases;
 use datazen::execution::application::ConnectionUseCases as _;
 use datazen::execution::runtime::driver_registry::DriverRegistry;
@@ -23,7 +23,7 @@ use datazen::shared::context::RequestContext;
 use datazen::shared::error::{ApiError, ApiErrorCode};
 use datazen::shared::id::{ConnectionId, Counter};
 use datazen::table_browsing::api::{
-    read_table_page, TargetBinding, TargetCommandRunner, TableReadRequest,
+    read_table_page, TableReadRequest, TargetBinding, TargetCommandRunner,
 };
 use datazen::table_editing::change_set::{
     CommitPendingChangesRequest, PendingRowChange, RowChangeTableContext,
@@ -31,20 +31,20 @@ use datazen::table_editing::change_set::{
 use datazen::table_editing::ports::ArtifactChunkReader;
 use datazen::table_editing::{commit_changes, preview_changes, ConnectionFacts, TableColumnSource};
 use datazen::workflow::application::registry::WorkflowRegistry;
+use datazen::workflow::domain::error::WorkflowError;
 use datazen::workflow::domain::model::{WorkflowDefinition, WorkflowStep, WorkflowVisibility};
-use datazen::dashboard::domain::types::ViewMode;
 use datazen_driver_api::filters::{FilterCondition, FilterOperator, SortCondition};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, Value as Cell};
+use datazen_ui_api::native_kv::{native_kv_driver, KvRead, KvReply, NativeKvDriver};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionDraft,
-    ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot,
-    SchemaNode, Snippet, TablePage, TableStructure, ValueSearchHit, Workflow,
-    WorkflowStepResult, DESKTOP_NOT_IMPLEMENTED,
+    ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter, ProgressSnapshot, SchemaNode,
+    Snippet, TablePage, TableStructure, ValueSearchHit, Workflow, WorkflowStepResult,
+    DESKTOP_NOT_IMPLEMENTED,
 };
 use datazen_ui_api::{
     FavoriteSpec, ImportPreview, ImportedConnectionSpec, InboundRef, QueryHistorySnapshot,
 };
-use datazen::workflow::domain::error::WorkflowError;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -69,40 +69,79 @@ pub(crate) fn host_registry() -> DriverRegistry {
     .expect("the basic driver factories admit at construction")
 }
 
-#[path = "native_kv.rs"]
-mod native_kv;
 #[path = "live_table_targets.rs"]
 mod live_table_targets;
+#[path = "native_kv.rs"]
+mod native_kv;
 use live_table_targets::LiveTableTargets;
-#[path = "live_transfer.rs"]
-mod live_transfer;
+#[path = "live_csv_import.rs"]
+mod live_csv_import;
 #[path = "live_sql_transfer.rs"]
 mod live_sql_transfer;
 #[path = "live_sync.rs"]
 mod live_sync;
-#[path = "live_csv_import.rs"]
-mod live_csv_import;
+#[path = "live_transfer.rs"]
+mod live_transfer;
 use datazen_ui_api::native_csv_import::{CsvImportChoice, CsvImportReview};
 use datazen_ui_api::native_transfer::{
-    NativeSchemaDiff, NativeSyncPreview, NativeTransferRequest, SqliteReadComparison, TransferCatalog,
-    TransferChoice, TransferSide,
+    NativeSchemaDiff, NativeSyncPreview, NativeTransferRequest, SqliteReadComparison,
+    TransferCatalog, TransferChoice, TransferSide,
 };
 
 /// A job on the worker's channel, with the generation the UI expects back.
 enum HostJob {
-    ReadNativeTransfer { epoch: u32, side: TransferSide, choice: TransferChoice, allow_sql: bool },
-    ReviewNativeTransfer { epoch: u32, request: NativeTransferRequest },
-    RunNativeTransfer { epoch: u32, request: NativeTransferRequest },
-    CompareNativeSchema { epoch: u32, request: SqliteReadComparison },
-    PreviewNativeSync { epoch: u32, request: SqliteReadComparison },
-    ReviewNativeCsv { epoch: u32, choice: CsvImportChoice },
-    AppendNativeCsv { epoch: u32, review: CsvImportReview },
-    ProbeRedis { epoch: u64, config: datazen_driver_api::ConnectionConfig },
+    ReadNativeTransfer {
+        epoch: u32,
+        side: TransferSide,
+        choice: TransferChoice,
+        allow_sql: bool,
+    },
+    ReviewNativeTransfer {
+        epoch: u32,
+        request: NativeTransferRequest,
+    },
+    RunNativeTransfer {
+        epoch: u32,
+        request: NativeTransferRequest,
+    },
+    CompareNativeSchema {
+        epoch: u32,
+        request: SqliteReadComparison,
+    },
+    PreviewNativeSync {
+        epoch: u32,
+        request: SqliteReadComparison,
+    },
+    ReviewNativeCsv {
+        epoch: u32,
+        choice: CsvImportChoice,
+    },
+    AppendNativeCsv {
+        epoch: u32,
+        review: CsvImportReview,
+    },
+    ProbeRedis {
+        epoch: u64,
+        config: datazen_driver_api::ConnectionConfig,
+    },
     ReadKv(KvRead),
-    CloseKv { connection_id: String, session_generation: u32 },
-    OpenConnection { generation: u32, id: String },
-    ValueSearch { generation: u32, value: String, mode: String },
-    RunWorkflow { generation: u32, name: String },
+    CloseKv {
+        connection_id: String,
+        session_generation: u32,
+    },
+    OpenConnection {
+        generation: u32,
+        id: String,
+    },
+    ValueSearch {
+        generation: u32,
+        value: String,
+        mode: String,
+    },
+    RunWorkflow {
+        generation: u32,
+        name: String,
+    },
     ReadTable {
         generation: u32,
         table: String,
@@ -134,7 +173,10 @@ enum HostJob {
         generation: u32,
         batch: datazen_ui_api::CellEditBatch,
     },
-    ReadQueryHistory { generation: u32, connection_id: String },
+    ReadQueryHistory {
+        generation: u32,
+        connection_id: String,
+    },
     RunQuery {
         generation: u32,
         sql: String,
@@ -143,31 +185,90 @@ enum HostJob {
 
 /// A finished job on the answer channel.
 enum HostAnswer {
-    NativeTransferRead { epoch: u32, side: TransferSide, result: Result<TransferCatalog, String> },
-    NativeTransferReviewed { epoch: u32, result: Result<String, String> },
-    NativeTransferFinished { epoch: u32, result: Result<u64, String> },
-    NativeSchemaCompared { epoch: u32, result: Result<NativeSchemaDiff, String> },
-    NativeSyncPreviewed { epoch: u32, result: Result<NativeSyncPreview, String> },
-    NativeCsvReviewed { epoch: u32, result: Result<CsvImportReview, String> },
-    NativeCsvAppended { epoch: u32, result: Result<usize, String> },
-    RedisProbed { epoch: u64, result: Result<(), String> },
-    KvRead { request: KvRead, result: Result<KvReply, String> },
-    Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
-    ValueSearched { generation: u32, hits: Result<Vec<ValueSearchHit>, String> },
+    NativeTransferRead {
+        epoch: u32,
+        side: TransferSide,
+        result: Result<TransferCatalog, String>,
+    },
+    NativeTransferReviewed {
+        epoch: u32,
+        result: Result<String, String>,
+    },
+    NativeTransferFinished {
+        epoch: u32,
+        result: Result<u64, String>,
+    },
+    NativeSchemaCompared {
+        epoch: u32,
+        result: Result<NativeSchemaDiff, String>,
+    },
+    NativeSyncPreviewed {
+        epoch: u32,
+        result: Result<NativeSyncPreview, String>,
+    },
+    NativeCsvReviewed {
+        epoch: u32,
+        result: Result<CsvImportReview, String>,
+    },
+    NativeCsvAppended {
+        epoch: u32,
+        result: Result<usize, String>,
+    },
+    RedisProbed {
+        epoch: u64,
+        result: Result<(), String>,
+    },
+    KvRead {
+        request: KvRead,
+        result: Result<KvReply, String>,
+    },
+    Connection {
+        generation: u32,
+        id: String,
+        catalog: Result<Catalog, String>,
+    },
+    ValueSearched {
+        generation: u32,
+        hits: Result<Vec<ValueSearchHit>, String>,
+    },
     WorkflowRun {
         generation: u32,
         results: Result<Vec<WorkflowStepResult>, String>,
     },
-    TablePage { generation: u32, page: Result<TablePage, String> },
+    TablePage {
+        generation: u32,
+        page: Result<TablePage, String>,
+    },
     /// One table's four-part structure (or its failure sentence) (E1).
-    Structure { generation: u32, table: String, structure: Result<TableStructure, String> },
+    Structure {
+        generation: u32,
+        table: String,
+        structure: Result<TableStructure, String>,
+    },
     /// One widget's chart bars (or its failure sentence) (E2).
-    WidgetBars { generation: u32, id: u64, bars: Result<Vec<(String, u32)>, String> },
+    WidgetBars {
+        generation: u32,
+        id: u64,
+        bars: Result<Vec<(String, u32)>, String>,
+    },
     /// One table's inbound references (or its failure sentence) (E3).
-    InboundRefs { generation: u32, table: String, refs: Result<Vec<InboundRef>, String> },
-    CommitCount { generation: u32, count: Result<u32, String> },
-    QueryHistoryRead { generation: u32, result: Result<QueryHistorySnapshot, String> },
-    QueryPage { generation: u32, page: Result<TablePage, String> },
+    InboundRefs {
+        generation: u32,
+        table: String,
+        refs: Result<Vec<InboundRef>, String>,
+    },
+    CommitCount {
+        generation: u32,
+        count: Result<u32, String>,
+    },
+    QueryHistoryRead {
+        generation: u32,
+        result: Result<QueryHistorySnapshot, String>,
+    },
+    QueryPage {
+        generation: u32,
+        page: Result<TablePage, String>,
+    },
 }
 
 /// The open live session, shared between the adapter and the worker. N4's
@@ -197,9 +298,7 @@ pub struct LiveAdapter {
     jobs: Mutex<tokio::sync::mpsc::UnboundedSender<HostJob>>,
     /// Answers from the worker, drained on the poll path.
     answers: Mutex<std::sync::mpsc::Receiver<HostAnswer>>,
-    /// The connection use case over the host's file store. `list` touches
-    /// only the loaded store (its futures are always ready); the plaintext
-    /// `get` the worker calls runs on the worker's runtime.
+    /// Lists redacted profiles and resolves credentials for the connection worker.
     service: ConnectionService,
     /// The shared live session.
     session: Arc<Mutex<LiveSession>>,
@@ -276,10 +375,7 @@ impl LiveAdapter {
 
     /// The same adapter with an explicit data directory: the runtime's
     /// result artifacts land under `data_dir/result-artifacts`.
-    pub fn with_data_dir(
-        repository: Arc<dyn ConnectionRepository>,
-        data_dir: &Path,
-    ) -> Self {
+    pub fn with_data_dir(repository: Arc<dyn ConnectionRepository>, data_dir: &Path) -> Self {
         let (job_tx, mut job_rx) = tokio::sync::mpsc::unbounded_channel::<HostJob>();
         let (answer_tx, answer_rx) = std::sync::mpsc::channel::<HostAnswer>();
         let registry = Arc::new(host_registry());
@@ -298,8 +394,9 @@ impl LiveAdapter {
         let service = ConnectionService::new(repository.clone());
         // N8: the settings use case over the settings file, with the
         // document cached for memory-speed reads.
-        let settings_repository =
-            Arc::new(crate::settings::FileSettingsRepository::open(&data_dir.join("settings.json")));
+        let settings_repository = Arc::new(crate::settings::FileSettingsRepository::open(
+            &data_dir.join("settings.json"),
+        ));
         let settings = datazen::settings::application::SettingsService::new(settings_repository);
         let settings_document = Arc::new(Mutex::new(
             futures_executor::block_on(settings.read_app_settings())
@@ -709,8 +806,10 @@ impl LiveAdapter {
             connection: Some(source_connection.to_owned()),
             read_only: source_config.read_only,
         }));
-        let runner = SessionRunner { session: Arc::clone(&source_session) };
-        let context = host_request_context();
+        let runner = SessionRunner {
+            session: Arc::clone(&source_session),
+        };
+        let context = crate::host_request_context().clone();
         let binding = TargetBinding {
             target: ExecutionTarget::new(
                 ConnectionId::new(source_connection.to_owned()),
@@ -750,15 +849,23 @@ impl LiveAdapter {
                 require_keyset: None,
                 cursor_depth: None,
             };
-            let read =
-                read_table_page(source_driver.as_ref(), request, Counter::new(1), context.clone(), &runner)
-                    .await
-                    .map_err(|error| error.to_string())?;
+            let read = read_table_page(
+                source_driver.as_ref(),
+                request,
+                Counter::new(1),
+                context.clone(),
+                &runner,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
             if read.rows.is_empty() {
                 break;
             }
-            let column_names: Vec<String> =
-                read.columns.iter().map(|column| column.name.clone()).collect();
+            let column_names: Vec<String> = read
+                .columns
+                .iter()
+                .map(|column| column.name.clone())
+                .collect();
             let target_binding = TargetBinding {
                 target: ExecutionTarget::new(
                     ConnectionId::new(target_connection.to_owned()),
@@ -779,14 +886,13 @@ impl LiveAdapter {
                     .zip(row.iter())
                     .map(|(name, cell)| (name.as_str(), cell.clone()))
                     .collect();
-                let statement =
-                    datazen_driver_api::sql_builder::build_insert_statement(
-                        &dialect,
-                        target_driver.max_bound_parameters(),
-                        table,
-                        &cells,
-                    )
-                    .map_err(|error| error.to_string())?;
+                let statement = datazen_driver_api::sql_builder::build_insert_statement(
+                    &dialect,
+                    target_driver.max_bound_parameters(),
+                    table,
+                    &cells,
+                )
+                .map_err(|error| error.to_string())?;
                 let token = runtime
                     .issue_submission_token(
                         &context,
@@ -894,8 +1000,11 @@ impl LiveAdapter {
     }
 
     /// The connection's plaintext config from the file store.
-    fn plain_config(&self, connection: &str) -> Result<datazen_driver_api::ConnectionConfig, String> {
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+    fn plain_config(
+        &self,
+        connection: &str,
+    ) -> Result<datazen_driver_api::ConnectionConfig, String> {
+        let scope = crate::host_connection_scope();
         futures_executor::block_on(self.service.get(&scope, connection))
             .map_err(|error| error.to_string())?
             .ok_or_else(|| format!("no connection '{connection}' in the store"))
@@ -906,10 +1015,7 @@ impl LiveAdapter {
     /// miss is an honest sentence. The synchronous fetch that used to live
     /// here went away with the sync session: a remote schema read is
     /// unbounded IO and never the frame loop's to wait for.
-    fn cached(
-        &self,
-        table: &str,
-    ) -> Result<datazen_driver_api::TableSchema, String> {
+    fn cached(&self, table: &str) -> Result<datazen_driver_api::TableSchema, String> {
         self.schemas
             .lock()
             .expect("the schema lock")
@@ -938,7 +1044,7 @@ async fn open_connection(
     id: &str,
     generation: u32,
 ) -> Result<Catalog, String> {
-    let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+    let scope = crate::host_connection_scope();
     let config = service
         .get(&scope, id)
         .await
@@ -949,34 +1055,57 @@ async fn open_connection(
         .await
         .ok_or_else(|| format!("no driver for '{}'", config.database_type))?;
     let kv = native_kv_driver(&config.database_type);
-    let kv_route = kv.map(|_| native_kv::configured_route(&config)).transpose()?;
-    let handle = driver.connect(&config).await.map_err(|error| error.to_string())?;
+    let kv_route = kv
+        .map(|_| native_kv::configured_route(&config))
+        .transpose()?;
+    let handle = driver
+        .connect(&config)
+        .await
+        .map_err(|error| error.to_string())?;
     if let Some((kind, (cluster, db))) = kv.zip(kv_route) {
         let databases = if cluster {
             vec![0]
         } else {
-            let mut indexes: Vec<u32> = driver.get_databases(&handle).await.unwrap_or_default()
-                .iter().filter_map(|s| s.strip_prefix("db")?.parse().ok()).take(256).collect();
+            let mut indexes: Vec<u32> = driver
+                .get_databases(&handle)
+                .await
+                .unwrap_or_default()
+                .iter()
+                .filter_map(|s| s.strip_prefix("db")?.parse().ok())
+                .take(256)
+                .collect();
             indexes.push(db);
             indexes.sort_unstable();
             indexes.dedup();
             indexes
         };
-        replace_live_session(session, LiveSession {
-            kv: Some((kind, generation)),
-            kv_state: native_kv::KvSessionState::new(db, databases, cluster),
-            driver: Some(driver),
-            handle: Some(handle),
-            database: Some(format!("db{db}")),
-            table_targets: Default::default(),
-            connection: Some(id.to_owned()),
-            read_only: config.read_only,
-        }).await?;
-        schemas.lock().map_err(|_| "the schema cache is unavailable")?.clear();
+        replace_live_session(
+            session,
+            LiveSession {
+                kv: Some((kind, generation)),
+                kv_state: native_kv::KvSessionState::new(db, databases, cluster),
+                driver: Some(driver),
+                handle: Some(handle),
+                database: Some(format!("db{db}")),
+                table_targets: Default::default(),
+                connection: Some(id.to_owned()),
+                read_only: config.read_only,
+            },
+        )
+        .await?;
+        schemas
+            .lock()
+            .map_err(|_| "the schema cache is unavailable")?
+            .clear();
         // Redis keys are discovered lazily, never through the SQL catalog.
-        return Ok(Catalog { databases: Vec::new() });
+        return Ok(Catalog {
+            databases: Vec::new(),
+        });
     }
-    let databases = driver.get_databases(&handle).await.map_err(|error| error.to_string())?;
+    let databases = driver
+        .get_databases(&handle)
+        .await
+        .map_err(|error| error.to_string())?;
 
     let mut nodes = Vec::new();
     let mut table_targets = LiveTableTargets::default();
@@ -994,8 +1123,10 @@ async fn open_connection(
             .ok()
             .flatten()
             .unwrap_or_else(|| {
-                let mut names: Vec<String> =
-                    tables.iter().filter_map(|table| table.schema.clone()).collect();
+                let mut names: Vec<String> = tables
+                    .iter()
+                    .filter_map(|table| table.schema.clone())
+                    .collect();
                 names.sort();
                 names.dedup();
                 names
@@ -1018,27 +1149,39 @@ async fn open_connection(
                     })
                     .map(|table| table.name.clone())
                     .collect();
-                SchemaNode { name: schema, tables: tables_of }
+                SchemaNode {
+                    name: schema,
+                    tables: tables_of,
+                }
             })
             .collect();
-        nodes.push(DatabaseNode { name: database.clone(), schemas: schema_nodes });
+        nodes.push(DatabaseNode {
+            name: database.clone(),
+            schemas: schema_nodes,
+        });
     }
 
     // A new session invalidates the old one's cached schemas.
     schemas.lock().expect("the schema lock").clear();
     // The session is the adapter's for the reads and commits that follow:
     // swap it in whole, replacing any earlier one.
-    replace_live_session(session, LiveSession {
-        kv: None,
-        kv_state: Default::default(),
-        driver: Some(driver),
-        handle: Some(handle),
-        database: config.database.filter(|name| databases.contains(name))
-            .or_else(|| databases.first().cloned()),
-        table_targets,
-        connection: Some(id.to_owned()),
-        read_only: config.read_only,
-    }).await?;
+    replace_live_session(
+        session,
+        LiveSession {
+            kv: None,
+            kv_state: Default::default(),
+            driver: Some(driver),
+            handle: Some(handle),
+            database: config
+                .database
+                .filter(|name| databases.contains(name))
+                .or_else(|| databases.first().cloned()),
+            table_targets,
+            connection: Some(id.to_owned()),
+            read_only: config.read_only,
+        },
+    )
+    .await?;
     Ok(Catalog { databases: nodes })
 }
 
@@ -1047,7 +1190,9 @@ async fn replace_live_session(
     replacement: LiveSession,
 ) -> Result<(), String> {
     let previous = {
-        let mut live = session.lock().map_err(|_| "the live session is unavailable")?;
+        let mut live = session
+            .lock()
+            .map_err(|_| "the live session is unavailable")?;
         std::mem::replace(&mut *live, replacement)
     };
     native_kv::release(previous).await;
@@ -1065,7 +1210,9 @@ impl datazen::migration::schema_diff::api::SchemaDiffAdapterHost for NoAdapters 
         source_type: &str,
         target_type: &str,
     ) -> Result<datazen::migration::schema_diff::api::PlanSyncAdapters, String> {
-        Err(format!("no cross-dialect plan adapters in the native host: {source_type} -> {target_type}"))
+        Err(format!(
+            "no cross-dialect plan adapters in the native host: {source_type} -> {target_type}"
+        ))
     }
 
     fn comparison_adapters(
@@ -1147,20 +1294,6 @@ fn session_closed() -> ApiError {
     )
 }
 
-/// The host's request context: the single-tenant desktop organization and a
-/// synthetic principal for the host process — the read's authorization
-/// vocabulary, filled the only way a local single-user host can.
-fn host_request_context() -> RequestContext {
-    RequestContext::new(
-        datazen::shared::id::OrganizationId::new(datazen_ui_api::DESKTOP_ORGANIZATION),
-        datazen::shared::id::PrincipalId::new("datazen-native"),
-        None,
-        datazen::shared::id::ClientInstanceId::new("datazen-native"),
-        datazen::shared::id::RequestId::new("datazen-native"),
-        None,
-    )
-}
-
 /// One page of a table through the existing read use case, over the live
 /// session (N4). The paging, sorting and filtering are served by the SQL the
 /// use case assembles — nothing here re-implements a read. The `Contains`
@@ -1190,8 +1323,10 @@ async fn read_table(
         )
     };
     let driver_type = driver.driver_type();
-    let runner = SessionRunner { session: Arc::clone(session) };
-    let context = host_request_context();
+    let runner = SessionRunner {
+        session: Arc::clone(session),
+    };
+    let context = crate::host_request_context().clone();
     let binding = TargetBinding {
         target: ExecutionTarget::new(
             ConnectionId::new(connection),
@@ -1208,7 +1343,10 @@ async fn read_table(
         manual_handle: None,
     };
     let sorts = sort.clone().map(|sort| {
-        vec![SortCondition { column: sort.column, descending: sort.descending }]
+        vec![SortCondition {
+            column: sort.column,
+            descending: sort.descending,
+        }]
     });
     let filters = filter.clone().map(|filter| {
         vec![FilterCondition {
@@ -1257,7 +1395,9 @@ async fn read_table(
     }
     // The count the driver could not give is the absence of a fact: fall
     // back to the best lower bound (the page's own end), never to zero.
-    let known = read.total_rows.unwrap_or(page as i64 * page_size as i64 + read.rows.len() as i64);
+    let known = read
+        .total_rows
+        .unwrap_or(page as i64 * page_size as i64 + read.rows.len() as i64);
     // The driver's primary-key answer (N6): the commit batch addresses rows
     // by these names.
     let primary_key: Vec<String> = read
@@ -1345,7 +1485,13 @@ async fn read_structure(
         )
         .await
         .ok()
-        .and_then(|result| result.data.get("ddl").and_then(|ddl| ddl.as_str()).map(str::to_owned))
+        .and_then(|result| {
+            result
+                .data
+                .get("ddl")
+                .and_then(|ddl| ddl.as_str())
+                .map(str::to_owned)
+        })
         .unwrap_or_default();
     Ok(TableStructure {
         ddl,
@@ -1482,7 +1628,11 @@ async fn inbound_references(
         }
     }
 
-    let source = LiveNavigationSource { driver, handle, database };
+    let source = LiveNavigationSource {
+        driver,
+        handle,
+        database,
+    };
     let request = datazen::services::referenced_by::ListInboundForeignKeysRequest {
         // The envelope requires a session label; the host's one session
         // is the live one.
@@ -1535,7 +1685,10 @@ struct SessionColumns {
 
 #[async_trait::async_trait]
 impl TableColumnSource for SessionColumns {
-    async fn table_columns(&self, table: &RowChangeTableContext) -> Result<CachedColumns, datazen::table_editing::TableEditingError> {
+    async fn table_columns(
+        &self,
+        table: &RowChangeTableContext,
+    ) -> Result<CachedColumns, datazen::table_editing::TableEditingError> {
         let (driver, handle) = {
             let session = self.session.lock().expect("the live session lock");
             if !session.is_open() {
@@ -1548,16 +1701,15 @@ impl TableColumnSource for SessionColumns {
                 session.handle.clone().expect("checked"),
             )
         };
-        let database = table
-            .database
-            .clone()
-            .ok_or_else(|| datazen::table_editing::TableEditingError::Validation(
-                "table database required".into(),
-            ))?;
+        let database = table.database.clone().ok_or_else(|| {
+            datazen::table_editing::TableEditingError::Validation("table database required".into())
+        })?;
         let (columns, primary_keys) = driver
             .get_columns(&handle, &table.table, &database, table.schema.as_deref())
             .await
-            .map_err(|error| datazen::table_editing::TableEditingError::Validation(error.to_string()))?;
+            .map_err(|error| {
+                datazen::table_editing::TableEditingError::Validation(error.to_string())
+            })?;
         Ok(CachedColumns {
             table_name: table.table.clone(),
             columns,
@@ -1581,7 +1733,9 @@ impl ArtifactChunkReader for RuntimeChunks {
         artifact: &datazen::shared::id::ArtifactId,
         index: Counter,
     ) -> Result<datazen::execution::ResultChunk, ApiError> {
-        self.runtime.read_artifact_chunk(ctx, artifact.clone(), index).await
+        self.runtime
+            .read_artifact_chunk(ctx, artifact.clone(), index)
+            .await
     }
 }
 
@@ -1627,7 +1781,9 @@ async fn commit_edits(
         schema: context.schema.clone(),
         config_revision: profiles.revision_of(&connection),
     };
-    let columns = SessionColumns { session: Arc::clone(session) };
+    let columns = SessionColumns {
+        session: Arc::clone(session),
+    };
     let changes: Vec<PendingRowChange> = batch
         .rows
         .iter()
@@ -1647,7 +1803,11 @@ async fn commit_edits(
                 .iter()
                 .map(|(column, _, value)| (column.clone(), Some(Cell::String(value.clone()))))
                 .collect(),
-            changed_columns: row.changes.iter().map(|(column, _, _)| column.clone()).collect(),
+            changed_columns: row
+                .changes
+                .iter()
+                .map(|(column, _, _)| column.clone())
+                .collect(),
             delete_marked: false,
             insert_marked: false,
             expression_values: Default::default(),
@@ -1667,9 +1827,12 @@ async fn commit_edits(
         fingerprint: plan.fingerprint.clone(),
         plan,
     };
-    let artifacts = Arc::new(RuntimeChunks { runtime: Arc::clone(runtime) });
-    let use_cases = Arc::clone(runtime) as Arc<dyn datazen::execution::application::ConnectionUseCases>;
-    let ctx = host_request_context();
+    let artifacts = Arc::new(RuntimeChunks {
+        runtime: Arc::clone(runtime),
+    });
+    let use_cases =
+        Arc::clone(runtime) as Arc<dyn datazen::execution::application::ConnectionUseCases>;
+    let ctx = crate::host_request_context().clone();
     let response = commit_changes(
         driver.as_ref(),
         request,
@@ -1710,7 +1873,7 @@ struct LiveWorkflowHost {
 #[async_trait::async_trait]
 impl datazen::workflow::application::host::WorkflowHost for LiveWorkflowHost {
     async fn connection_name(&self, id: &str) -> Result<String, WorkflowError> {
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let scope = crate::host_connection_scope();
         let service = ConnectionService::new(Arc::clone(&self.repository));
         let config = service
             .get(&scope, id)
@@ -1812,19 +1975,15 @@ impl datazen::workflow::application::host::WorkflowHost for LiveWorkflowHost {
                     .input
                     .get("table")
                     .and_then(|value| value.as_str())
-                    .ok_or_else(|| {
-                        not_wired(&step.command)
-                    })?;
+                    .ok_or_else(|| not_wired(&step.command))?;
                 let schema = driver
                     .get_table_schema(&handle, table, &database, None)
                     .await
                     .map_err(|error| WorkflowError::Step(error.to_string()))?;
-                Ok(datazen_driver_api::CommandResult::new(
-                    serde_json::json!({
-                        "table": schema.table_name,
-                        "columns": schema.columns.iter().map(|column| column.name.clone()).collect::<Vec<_>>(),
-                    }),
-                ))
+                Ok(datazen_driver_api::CommandResult::new(serde_json::json!({
+                    "table": schema.table_name,
+                    "columns": schema.columns.iter().map(|column| column.name.clone()).collect::<Vec<_>>(),
+                })))
             }
             other => Err(not_wired(other)),
         }
@@ -1837,10 +1996,7 @@ impl datazen::workflow::application::host::WorkflowHost for LiveWorkflowHost {
         ))
     }
 
-    async fn sql_dialect(
-        &self,
-        _connection_id: &str,
-    ) -> datazen::sql_template::SqlTemplateDialect {
+    async fn sql_dialect(&self, _connection_id: &str) -> datazen::sql_template::SqlTemplateDialect {
         // The host links sqlite this phase; its literals are the standard
         // dialect's.
         datazen::sql_template::SqlTemplateDialect::Standard
@@ -2004,7 +2160,7 @@ async fn run_query(
             session.database.clone(),
         )
     };
-    let ctx = host_request_context();
+    let ctx = crate::host_request_context().clone();
     let token = runtime
         .issue_submission_token(
             &ctx,
@@ -2085,9 +2241,9 @@ async fn run_query(
             }
             // A row chunk: the provider's ResultChunk shape (the same type
             // the sink published, `dr::ResultChunk`).
-            let Ok(chunk) = serde_json::from_value::<datazen_driver_api::resource::ResultChunk>(
-                output.clone(),
-            ) else {
+            let Ok(chunk) =
+                serde_json::from_value::<datazen_driver_api::resource::ResultChunk>(output.clone())
+            else {
                 continue;
             };
             if chunk.statement_index != 0 {
@@ -2186,7 +2342,11 @@ fn connection_draft_record(
 }
 
 impl LiveAdapter {
-    fn save_connection_with_options(&mut self, draft: &ConnectionDraft, redis: Option<&datazen_ui_api::native_kv::RedisConnectionOptions>) -> Result<(), String> {
+    fn save_connection_with_options(
+        &mut self,
+        draft: &ConnectionDraft,
+        redis: Option<&datazen_ui_api::native_kv::RedisConnectionOptions>,
+    ) -> Result<(), String> {
         // E5: the form's six fields land as one config through the
         // connection use case. The store's save seals the password (T10)
         // before the file ever sees it; the engine must be one the host's
@@ -2204,17 +2364,22 @@ impl LiveAdapter {
         }
         // The id: the memory port's slug of the name, deduplicated against
         // the store — the same shape both worlds speak.
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
-        let existing: Vec<String> =
-            futures_executor::block_on(self.service.list_plain(&scope))
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .map(|config| config.id)
-                .collect();
+        let scope = crate::host_connection_scope();
+        let existing: Vec<String> = futures_executor::block_on(self.service.list_plain(&scope))
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .map(|config| config.id)
+            .collect();
         let slug = |name: &str| {
             let mut id: String = name
                 .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() {
+                        c.to_ascii_lowercase()
+                    } else {
+                        '-'
+                    }
+                })
                 .collect();
             while id.contains("--") {
                 id = id.replace("--", "-");
@@ -2235,18 +2400,16 @@ impl LiveAdapter {
         if let Some(redis) = redis {
             native_kv::apply_connection_options(&mut config, redis)?;
         }
-        futures_executor::block_on(self.service.save(&scope, config)).map_err(|error| error.to_string())
+        futures_executor::block_on(self.service.save(&scope, config))
+            .map_err(|error| error.to_string())
     }
-
 }
 
 impl DesktopAdapter for LiveAdapter {
     fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
-        // The file store's list path touches only the loaded store; its
-        // future is always ready, so the blocking poll is memory-speed.
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
-        let configs =
-            futures_executor::block_on(self.service.list_redacted(&scope)).map_err(|e| e.to_string())?;
+        let scope = crate::host_connection_scope();
+        let configs = futures_executor::block_on(self.service.list_redacted(&scope))
+            .map_err(|e| e.to_string())?;
         Ok(configs
             .into_iter()
             .map(|config| ConnectionProfile {
@@ -2287,17 +2450,25 @@ impl DesktopAdapter for LiveAdapter {
         draft: &ConnectionDraft,
         options: &datazen_ui_api::native_kv::RedisConnectionOptions,
     ) -> Result<(), String> {
-        if draft.engine.trim() != "redis" || !self.registry.available_types().iter().any(|e| e == "redis") {
+        if draft.engine.trim() != "redis"
+            || !self.registry.available_types().iter().any(|e| e == "redis")
+        {
             return Err("Redis is not available in this host.".into());
         }
         let mut config = connection_draft_record(draft, String::from("native-redis-probe"), 4)?;
         native_kv::apply_connection_options(&mut config, options)?;
-        self.jobs.lock().map_err(|_| "The Redis connection test is unavailable.")?
+        self.jobs
+            .lock()
+            .map_err(|_| "The Redis connection test is unavailable.")?
             .send(HostJob::ProbeRedis { epoch, config })
             .map_err(|_| "The Redis connection test is unavailable.".into())
     }
 
-    fn save_redis_connection(&mut self, draft: &ConnectionDraft, options: &datazen_ui_api::native_kv::RedisConnectionOptions) -> Result<(), String> {
+    fn save_redis_connection(
+        &mut self,
+        draft: &ConnectionDraft,
+        options: &datazen_ui_api::native_kv::RedisConnectionOptions,
+    ) -> Result<(), String> {
         self.save_connection_with_options(draft, Some(options))
     }
 
@@ -2322,20 +2493,61 @@ impl DesktopAdapter for LiveAdapter {
 
     fn begin_job(&mut self, job: AdapterJob) -> bool {
         let job = match job {
-            AdapterJob::ReadNativeTransfer { epoch, side, choice, allow_sql } => HostJob::ReadNativeTransfer { epoch, side, choice, allow_sql },
-            AdapterJob::ReviewNativeTransfer { epoch, request } => HostJob::ReviewNativeTransfer { epoch, request },
-            AdapterJob::RunNativeTransfer { epoch, request } => HostJob::RunNativeTransfer { epoch, request },
-            AdapterJob::ReviewNativeCsv { epoch, choice } => HostJob::ReviewNativeCsv { epoch, choice },
-            AdapterJob::AppendNativeCsv { epoch, review } => HostJob::AppendNativeCsv { epoch, review },
-            AdapterJob::PreviewNativeSync { epoch, request } => HostJob::PreviewNativeSync { epoch, request },
-            AdapterJob::CompareNativeSchema { epoch, request } => HostJob::CompareNativeSchema { epoch, request },
-            AdapterJob::ReadKv(request) => HostJob::ReadKv(request),
-            AdapterJob::CloseKv { connection_id, session_generation } =>
-                HostJob::CloseKv { connection_id, session_generation },
-            AdapterJob::OpenConnection { generation, id } => HostJob::OpenConnection { generation, id },
-            AdapterJob::ReadTable { generation, table, page, page_size, sort, filter } => {
-                HostJob::ReadTable { generation, table, page, page_size, sort, filter }
+            AdapterJob::ReadNativeTransfer {
+                epoch,
+                side,
+                choice,
+                allow_sql,
+            } => HostJob::ReadNativeTransfer {
+                epoch,
+                side,
+                choice,
+                allow_sql,
+            },
+            AdapterJob::ReviewNativeTransfer { epoch, request } => {
+                HostJob::ReviewNativeTransfer { epoch, request }
             }
+            AdapterJob::RunNativeTransfer { epoch, request } => {
+                HostJob::RunNativeTransfer { epoch, request }
+            }
+            AdapterJob::ReviewNativeCsv { epoch, choice } => {
+                HostJob::ReviewNativeCsv { epoch, choice }
+            }
+            AdapterJob::AppendNativeCsv { epoch, review } => {
+                HostJob::AppendNativeCsv { epoch, review }
+            }
+            AdapterJob::PreviewNativeSync { epoch, request } => {
+                HostJob::PreviewNativeSync { epoch, request }
+            }
+            AdapterJob::CompareNativeSchema { epoch, request } => {
+                HostJob::CompareNativeSchema { epoch, request }
+            }
+            AdapterJob::ReadKv(request) => HostJob::ReadKv(request),
+            AdapterJob::CloseKv {
+                connection_id,
+                session_generation,
+            } => HostJob::CloseKv {
+                connection_id,
+                session_generation,
+            },
+            AdapterJob::OpenConnection { generation, id } => {
+                HostJob::OpenConnection { generation, id }
+            }
+            AdapterJob::ReadTable {
+                generation,
+                table,
+                page,
+                page_size,
+                sort,
+                filter,
+            } => HostJob::ReadTable {
+                generation,
+                table,
+                page,
+                page_size,
+                sort,
+                filter,
+            },
             AdapterJob::ReadStructure { generation, table } => {
                 HostJob::ReadStructure { generation, table }
             }
@@ -2346,13 +2558,23 @@ impl DesktopAdapter for LiveAdapter {
             AdapterJob::CommitCells { generation, batch } => {
                 HostJob::CommitCells { generation, batch }
             }
-            AdapterJob::ReadQueryHistory { generation, connection_id } => {
-                HostJob::ReadQueryHistory { generation, connection_id }
-            }
+            AdapterJob::ReadQueryHistory {
+                generation,
+                connection_id,
+            } => HostJob::ReadQueryHistory {
+                generation,
+                connection_id,
+            },
             AdapterJob::RunQuery { generation, sql } => HostJob::RunQuery { generation, sql },
-            AdapterJob::ValueSearch { generation, value, mode } => {
-                HostJob::ValueSearch { generation, value, mode }
-            }
+            AdapterJob::ValueSearch {
+                generation,
+                value,
+                mode,
+            } => HostJob::ValueSearch {
+                generation,
+                value,
+                mode,
+            },
             AdapterJob::RunWorkflow { generation, name } => {
                 HostJob::RunWorkflow { generation, name }
             }
@@ -2365,8 +2587,16 @@ impl DesktopAdapter for LiveAdapter {
         let mut deliveries = Vec::new();
         while let Ok(answer) = answers.try_recv() {
             match answer {
-                HostAnswer::NativeTransferRead { epoch, side, result } => {
-                    deliveries.push(AdapterDelivery::NativeTransferRead { epoch, side, result });
+                HostAnswer::NativeTransferRead {
+                    epoch,
+                    side,
+                    result,
+                } => {
+                    deliveries.push(AdapterDelivery::NativeTransferRead {
+                        epoch,
+                        side,
+                        result,
+                    });
                 }
                 HostAnswer::NativeTransferReviewed { epoch, result } => {
                     deliveries.push(AdapterDelivery::NativeTransferReviewed { epoch, result });
@@ -2392,26 +2622,64 @@ impl DesktopAdapter for LiveAdapter {
                 HostAnswer::KvRead { request, result } => {
                     deliveries.push(AdapterDelivery::KvRead { request, result });
                 }
-                HostAnswer::Connection { generation, id, catalog } => {
-                    deliveries.push(AdapterDelivery::ConnectionOpened { generation, id, catalog });
+                HostAnswer::Connection {
+                    generation,
+                    id,
+                    catalog,
+                } => {
+                    deliveries.push(AdapterDelivery::ConnectionOpened {
+                        generation,
+                        id,
+                        catalog,
+                    });
                 }
                 HostAnswer::ValueSearched { generation, hits } => {
                     deliveries.push(AdapterDelivery::ValueSearched { generation, hits });
                 }
-                HostAnswer::WorkflowRun { generation, results } => {
-                    deliveries.push(AdapterDelivery::WorkflowRun { generation, results });
+                HostAnswer::WorkflowRun {
+                    generation,
+                    results,
+                } => {
+                    deliveries.push(AdapterDelivery::WorkflowRun {
+                        generation,
+                        results,
+                    });
                 }
                 HostAnswer::TablePage { generation, page } => {
                     deliveries.push(AdapterDelivery::TablePage { generation, page });
                 }
-                HostAnswer::Structure { generation, table, structure } => {
-                    deliveries.push(AdapterDelivery::StructureRead { generation, table, structure });
+                HostAnswer::Structure {
+                    generation,
+                    table,
+                    structure,
+                } => {
+                    deliveries.push(AdapterDelivery::StructureRead {
+                        generation,
+                        table,
+                        structure,
+                    });
                 }
-                HostAnswer::WidgetBars { generation, id, bars } => {
-                    deliveries.push(AdapterDelivery::WidgetBarsRead { generation, id, bars });
+                HostAnswer::WidgetBars {
+                    generation,
+                    id,
+                    bars,
+                } => {
+                    deliveries.push(AdapterDelivery::WidgetBarsRead {
+                        generation,
+                        id,
+                        bars,
+                    });
                 }
-                HostAnswer::InboundRefs { generation, table, refs } => {
-                    deliveries.push(AdapterDelivery::InboundRefsRead { generation, table, refs });
+                HostAnswer::InboundRefs {
+                    generation,
+                    table,
+                    refs,
+                } => {
+                    deliveries.push(AdapterDelivery::InboundRefsRead {
+                        generation,
+                        table,
+                        refs,
+                    });
                 }
                 HostAnswer::CommitCount { generation, count } => {
                     deliveries.push(AdapterDelivery::CommitCount { generation, count });
@@ -2471,7 +2739,11 @@ impl DesktopAdapter for LiveAdapter {
         // The same validation both ports run: the rules are the product's,
         // not the store's (L1 shares them through the port).
         setting.validate()?;
-        let mut document = self.settings_document.lock().expect("the settings lock").clone();
+        let mut document = self
+            .settings_document
+            .lock()
+            .expect("the settings lock")
+            .clone();
         let ui = document
             .as_object_mut()
             .ok_or_else(|| "the settings document is not an object".to_string())?
@@ -2539,7 +2811,10 @@ impl DesktopAdapter for LiveAdapter {
             .collect())
     }
 
-    fn table_foreign_keys(&self, table: &str) -> Result<Vec<datazen_ui_api::ForeignKeySpec>, String> {
+    fn table_foreign_keys(
+        &self,
+        table: &str,
+    ) -> Result<Vec<datazen_ui_api::ForeignKeySpec>, String> {
         let schema = self.cached(table)?;
         Ok(schema
             .foreign_keys
@@ -2711,7 +2986,12 @@ impl DesktopAdapter for LiveAdapter {
         Ok(self.favorites.list())
     }
 
-    fn save_favorite(&mut self, connection: &str, title: &str, sql: &str) -> Result<String, String> {
+    fn save_favorite(
+        &mut self,
+        connection: &str,
+        title: &str,
+        sql: &str,
+    ) -> Result<String, String> {
         self.favorites.add(connection, title, sql)
     }
 
@@ -2732,8 +3012,7 @@ impl DesktopAdapter for LiveAdapter {
         // never cross the adapter boundary, the preview and its handle do.
         // The password serves the encrypted formats; an empty one is the
         // shared layer's None.
-        let bytes = std::fs::read(path)
-            .map_err(|error| format!("read {}: {error}", path))?;
+        let bytes = std::fs::read(path).map_err(|error| format!("read {}: {error}", path))?;
         let password = password.trim();
         let parsed = datazen::connection_import::parse_import_file(
             std::path::Path::new(path),
@@ -2766,7 +3045,12 @@ impl DesktopAdapter for LiveAdapter {
             .lock()
             .expect("the import stash lock")
             .insert(handle, parsed.connections);
-        Ok(ImportPreview { handle, format, connections, skipped: parsed.skipped })
+        Ok(ImportPreview {
+            handle,
+            format,
+            connections,
+            skipped: parsed.skipped,
+        })
     }
 
     fn confirm_import(&mut self, handle: u64) -> Result<u32, String> {
@@ -2778,17 +3062,16 @@ impl DesktopAdapter for LiveAdapter {
             .expect("the import stash lock")
             .remove(&handle)
             .ok_or_else(|| format!("no parsed import {handle}"))?;
-        let scope = datazen::connection::ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let scope = crate::host_connection_scope();
         // The dedup needs names only; the two repository calls are
         // memory-speed (the store's file is loaded), so the blocking poll
         // needs no runtime of its own (E3).
-        let existing: std::collections::HashSet<String> = futures_executor::block_on(
-            self.service.list_plain(&scope),
-        )
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|config| config.name)
-        .collect();
+        let existing: std::collections::HashSet<String> =
+            futures_executor::block_on(self.service.list_plain(&scope))
+                .map_err(|error| error.to_string())?
+                .into_iter()
+                .map(|config| config.name)
+                .collect();
         let mut landed = 0u32;
         for config in configs {
             if existing.contains(&config.name) {
@@ -2805,14 +3088,17 @@ impl DesktopAdapter for LiveAdapter {
         // N13: the registry use case's user-visible definitions — the
         // dashboard's hidden workflows stay out of the user list.
         let scope = crate::dashboards::host_scope();
-        let mut definitions =
-            futures_executor::block_on(self.workflows.list_definitions(&scope));
+        let mut definitions = futures_executor::block_on(self.workflows.list_definitions(&scope));
         definitions.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(definitions
             .into_iter()
             .map(|definition| Workflow {
                 name: definition.name,
-                steps: definition.steps.iter().map(crate::dashboards::step_text).collect(),
+                steps: definition
+                    .steps
+                    .iter()
+                    .map(crate::dashboards::step_text)
+                    .collect(),
             })
             .collect())
     }
@@ -2982,9 +3268,10 @@ mod tests {
 
     /// Save a connection over the file store, through the use case.
     fn save_connection(store_path: &std::path::Path, config: datazen_driver_api::ConnectionConfig) {
-        let service =
-            ConnectionService::new(Arc::new(FileConnectionRepository::open(store_path).unwrap()));
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let service = ConnectionService::new(Arc::new(
+            FileConnectionRepository::open(store_path).unwrap(),
+        ));
+        let scope = crate::host_connection_scope();
         futures_executor::block_on(service.save(&scope, config)).unwrap();
     }
 
@@ -3048,7 +3335,10 @@ mod tests {
         assert_eq!(listed[0].engine, "sqlite");
 
         assert!(
-            adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() }),
+            adapter.begin_job(AdapterJob::OpenConnection {
+                generation: 1,
+                id: "live".into()
+            }),
             "the live host takes the open job"
         );
         let catalog = poll_open(&mut adapter).expect("the session opens");
@@ -3062,11 +3352,18 @@ mod tests {
         assert_eq!(schema.name, "main");
         assert_eq!(
             schema.tables,
-            vec!["events".to_string(), "orders".to_string(), "users".to_string()]
+            vec![
+                "events".to_string(),
+                "orders".to_string(),
+                "users".to_string()
+            ]
         );
 
         // The session stays for the reads and commits that follow (N4/N5).
-        assert!(adapter.session().lock().unwrap().is_open(), "the live session is kept");
+        assert!(
+            adapter.session().lock().unwrap().is_open(),
+            "the live session is kept"
+        );
     }
 
     #[test]
@@ -3077,7 +3374,10 @@ mod tests {
         let good = dir.join("good.db");
         create_sqlite_file(&good);
         let store_path = dir.join("connections.json");
-        save_connection(&store_path, sqlite_config("bad", Some(bad.to_string_lossy().into_owned())));
+        save_connection(
+            &store_path,
+            sqlite_config("bad", Some(bad.to_string_lossy().into_owned())),
+        );
         save_connection(
             &store_path,
             sqlite_config("good", Some(good.to_string_lossy().into_owned())),
@@ -3086,13 +3386,19 @@ mod tests {
         let mut adapter = LiveAdapter::new(Arc::new(
             FileConnectionRepository::open(&store_path).unwrap(),
         ));
-        assert!(adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "bad".into() }));
+        assert!(adapter.begin_job(AdapterJob::OpenConnection {
+            generation: 1,
+            id: "bad".into()
+        }));
         let error = poll_open(&mut adapter).expect_err("the bad file does not open");
         assert!(!error.is_empty(), "the failure carries a sentence: {error}");
 
         // The adapter is not poisoned: the good connection opens after the
         // failure, and the session replaces the never-opened one.
-        assert!(adapter.begin_job(AdapterJob::OpenConnection { generation: 2, id: "good".into() }));
+        assert!(adapter.begin_job(AdapterJob::OpenConnection {
+            generation: 2,
+            id: "good".into()
+        }));
         let catalog = poll_open(&mut adapter).expect("the good connection opens after the failure");
         assert_eq!(catalog.databases[0].schemas[0].tables.len(), 3);
     }
@@ -3104,9 +3410,15 @@ mod tests {
         let mut adapter = LiveAdapter::new(Arc::new(
             FileConnectionRepository::open(&store_path).unwrap(),
         ));
-        assert!(adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "nope".into() }));
+        assert!(adapter.begin_job(AdapterJob::OpenConnection {
+            generation: 1,
+            id: "nope".into()
+        }));
         let error = poll_open(&mut adapter).expect_err("an unknown id is a failure");
-        assert!(error.contains("no connection"), "the sentence names it: {error}");
+        assert!(
+            error.contains("no connection"),
+            "the sentence names it: {error}"
+        );
     }
 
     /// Poll the adapter until its read job answers.
@@ -3126,7 +3438,12 @@ mod tests {
     fn poll_structure(adapter: &mut LiveAdapter, table: &str) -> Result<TableStructure, String> {
         for _ in 0..300 {
             for delivery in adapter.poll_jobs() {
-                if let AdapterDelivery::StructureRead { table: answered, structure, .. } = delivery {
+                if let AdapterDelivery::StructureRead {
+                    table: answered,
+                    structure,
+                    ..
+                } = delivery
+                {
                     if answered == table {
                         return structure;
                     }
@@ -3149,7 +3466,11 @@ mod tests {
         let structure = poll_structure(&mut adapter, "orders").expect("the structure reads");
         // The four segments, one job: the columns, the unique index, the
         // foreign key, and the driver's own DDL render.
-        let names: Vec<&str> = structure.columns.iter().map(|column| column.name.as_str()).collect();
+        let names: Vec<&str> = structure
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect();
         assert_eq!(names, vec!["id", "user_id", "note"]);
         assert!(
             structure
@@ -3159,7 +3480,12 @@ mod tests {
             "the unique index is in the answer: {:?}",
             structure.indexes
         );
-        assert_eq!(structure.foreign_keys.len(), 1, "{:?}", structure.foreign_keys);
+        assert_eq!(
+            structure.foreign_keys.len(),
+            1,
+            "{:?}",
+            structure.foreign_keys
+        );
         let key = &structure.foreign_keys[0];
         assert_eq!(key.columns, vec!["user_id".to_string()]);
         assert_eq!(key.target_table, "users");
@@ -3174,15 +3500,22 @@ mod tests {
             generation: 2,
             table: "nope".into(),
         }));
-        let error = poll_structure(&mut adapter, "nope").expect_err("an unknown table is a failure");
-        assert!(error.contains("no table"), "the sentence names it: {error}");
+        let error =
+            poll_structure(&mut adapter, "nope").expect_err("an unknown table is a failure");
+        assert_eq!(
+            error,
+            "The live catalog does not contain this table. Refresh the catalog and retry."
+        );
     }
 
     /// Poll the adapter until its bars job answers (E2).
     fn poll_bars(adapter: &mut LiveAdapter, id: u64) -> Result<Vec<(String, u32)>, String> {
         for _ in 0..300 {
             for delivery in adapter.poll_jobs() {
-                if let AdapterDelivery::WidgetBarsRead { id: answered, bars, .. } = delivery {
+                if let AdapterDelivery::WidgetBarsRead {
+                    id: answered, bars, ..
+                } = delivery
+                {
                     if answered == id {
                         return bars;
                     }
@@ -3202,22 +3535,34 @@ mod tests {
             .expect("the widget saves");
         assert!(adapter.begin_job(AdapterJob::WidgetBars { generation: 2, id }));
         let bars = poll_bars(&mut adapter, id).expect("the bars read");
-        assert_eq!(bars, vec![("x".to_string(), 42)], "the query's two columns are the chart");
+        assert_eq!(
+            bars,
+            vec![("x".to_string(), 42)],
+            "the query's two columns are the chart"
+        );
 
         // E2: the synchronous bars path stays closed — the query is
         // unbounded IO and never the frame loop's to wait for.
         let refused = adapter.widget_bars(id).expect_err("the sync path refuses");
-        assert!(refused.contains("bars job"), "the sentence names the job path: {refused}");
+        assert!(
+            refused.contains("bars job"),
+            "the sentence names the job path: {refused}"
+        );
     }
 
     #[test]
     fn a_widget_whose_query_has_one_column_answers_a_sentence() {
         let dir = temp_dir("bars-one-column");
         let mut adapter = opened_adapter(&dir);
-        let id = adapter.save_dashboard_widget("Broken", "SELECT 1").expect("the widget saves");
+        let id = adapter
+            .save_dashboard_widget("Broken", "SELECT 1")
+            .expect("the widget saves");
         assert!(adapter.begin_job(AdapterJob::WidgetBars { generation: 2, id }));
         let error = poll_bars(&mut adapter, id).expect_err("a one-column query is not a chart");
-        assert!(error.contains("two columns"), "the sentence names it: {error}");
+        assert!(
+            error.contains("two columns"),
+            "the sentence names it: {error}"
+        );
     }
 
     /// Open the fixture connection through the adapter (the N3 job path) and
@@ -3234,9 +3579,10 @@ mod tests {
             Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
             &dir,
         );
-        assert!(
-            adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() })
-        );
+        assert!(adapter.begin_job(AdapterJob::OpenConnection {
+            generation: 1,
+            id: "live".into()
+        }));
         poll_open(&mut adapter).expect("the session opens");
         adapter
     }
@@ -3271,12 +3617,21 @@ mod tests {
             table: "users".into(),
             page: 1,
             page_size: 25,
-            sort: Some(ColumnSort { column: "id".into(), descending: true }),
+            sort: Some(ColumnSort {
+                column: "id".into(),
+                descending: true
+            }),
             filter: None,
         }));
         let page = poll_read(&mut adapter).expect("the sorted read answers");
-        assert_eq!(page.rows[0][1], "user-34", "descending id: page 2 starts at 34");
-        assert_eq!(page.rows[24][1], "user-10", "descending id: page 2 ends at 10");
+        assert_eq!(
+            page.rows[0][1], "user-34",
+            "descending id: page 2 starts at 34"
+        );
+        assert_eq!(
+            page.rows[24][1], "user-10",
+            "descending id: page 2 ends at 10"
+        );
 
         // A contains filter is served by SQL too: only the matching rows.
         assert!(adapter.begin_job(AdapterJob::ReadTable {
@@ -3285,14 +3640,19 @@ mod tests {
             page: 0,
             page_size: 25,
             sort: None,
-            filter: Some(ColumnFilter { column: "name".into(), contains: "user-5".into() }),
+            filter: Some(ColumnFilter {
+                column: "name".into(),
+                contains: "user-5".into()
+            }),
         }));
         let page = poll_read(&mut adapter).expect("the filtered read answers");
         let names: Vec<&str> = page.rows.iter().map(|row| row[1].as_str()).collect();
         assert_eq!(
             names,
-            vec!["user-50", "user-51", "user-52", "user-53", "user-54", "user-55",
-                "user-56", "user-57", "user-58", "user-59"],
+            vec![
+                "user-50", "user-51", "user-52", "user-53", "user-54", "user-55", "user-56",
+                "user-57", "user-58", "user-59"
+            ],
             "the fixture's user-5x decade (user-05 does not contain 'user-5'), in id order"
         );
         assert_eq!(page.total_rows, 10, "the count follows the filter");
@@ -3314,8 +3674,9 @@ mod tests {
     fn a_read_without_a_session_answers_a_sentence() {
         let dir = temp_dir("read-closed");
         let store_path = dir.join("connections.json");
-        let mut adapter =
-            LiveAdapter::new(Arc::new(FileConnectionRepository::open(&store_path).unwrap()));
+        let mut adapter = LiveAdapter::new(Arc::new(
+            FileConnectionRepository::open(&store_path).unwrap(),
+        ));
         assert!(adapter.begin_job(AdapterJob::ReadTable {
             generation: 1,
             table: "users".into(),
@@ -3325,9 +3686,11 @@ mod tests {
             filter: None,
         }));
         let error = poll_read(&mut adapter).expect_err("no session, no read");
-        assert!(error.contains("session"), "the sentence names the state: {error}");
+        assert!(
+            error.contains("session"),
+            "the sentence names the state: {error}"
+        );
     }
-
 
     /// Poll the adapter until its commit job answers.
     fn poll_commit(adapter: &mut LiveAdapter) -> Result<u32, String> {
@@ -3358,7 +3721,11 @@ mod tests {
             filter: None,
         }));
         let page = poll_read(&mut adapter).expect("the read answers");
-        assert_eq!(page.primary_key, vec!["id".to_string()], "the driver's PK rides the page");
+        assert_eq!(
+            page.primary_key,
+            vec!["id".to_string()],
+            "the driver's PK rides the page"
+        );
 
         // One edited row, as the grid's commit batch would build it: the PK
         // value the page showed, the original the page loaded, the new value.
@@ -3374,7 +3741,10 @@ mod tests {
                 changes: vec![("name".into(), page.rows[0][1].clone(), "renamed".into())],
             }],
         };
-        assert!(adapter.begin_job(AdapterJob::CommitCells { generation: 3, batch }));
+        assert!(adapter.begin_job(AdapterJob::CommitCells {
+            generation: 3,
+            batch
+        }));
         let landed = poll_commit(&mut adapter).expect("the commit lands");
         assert_eq!(landed, 1, "one row landed");
 
@@ -3405,7 +3775,10 @@ mod tests {
                 changes: vec![("no_such_column".into(), String::new(), "x".into())],
             }],
         };
-        assert!(adapter.begin_job(AdapterJob::CommitCells { generation: 5, batch: bad }));
+        assert!(adapter.begin_job(AdapterJob::CommitCells {
+            generation: 5,
+            batch: bad
+        }));
         let error = poll_commit(&mut adapter).expect_err("an unknown column fails");
         assert!(!error.is_empty(), "the failure carries a sentence: {error}");
     }
@@ -3428,14 +3801,16 @@ mod tests {
                 changes: vec![("name".into(), "user-00".into(), "x".into())],
             }],
         };
-        assert!(adapter.begin_job(AdapterJob::CommitCells { generation: 2, batch }));
+        assert!(adapter.begin_job(AdapterJob::CommitCells {
+            generation: 2,
+            batch
+        }));
         let error = poll_commit(&mut adapter).expect_err("a keyless change cannot commit");
         assert!(
             error.contains("noRowIdentity") || error.contains("primary key"),
             "the refusal names the missing identity: {error}"
         );
     }
-
 
     /// Poll the adapter until its query job answers.
     fn poll_query(adapter: &mut LiveAdapter) -> Result<TablePage, String> {
@@ -3499,14 +3874,18 @@ mod tests {
     fn a_query_without_a_session_answers_a_sentence() {
         let dir = temp_dir("query-closed");
         let store_path = dir.join("connections.json");
-        let mut adapter =
-            LiveAdapter::new(Arc::new(FileConnectionRepository::open(&store_path).unwrap()));
+        let mut adapter = LiveAdapter::new(Arc::new(
+            FileConnectionRepository::open(&store_path).unwrap(),
+        ));
         assert!(adapter.begin_job(AdapterJob::RunQuery {
             generation: 1,
             sql: "SELECT 1".into(),
         }));
         let error = poll_query(&mut adapter).expect_err("no session, no query");
-        assert!(error.contains("session"), "the sentence names the state: {error}");
+        assert!(
+            error.contains("session"),
+            "the sentence names the state: {error}"
+        );
     }
 
     #[test]
@@ -3518,15 +3897,23 @@ mod tests {
         // A fresh adapter: no ui settings yet (the memory port's defaults
         // answer the UI), a write lands in the file, a read answers it.
         let mut adapter = LiveAdapter::with_data_dir(repository.clone(), &dir);
-        assert!(adapter.read_ui_settings().is_err(), "a fresh install has no ui settings");
+        assert!(
+            adapter.read_ui_settings().is_err(),
+            "a fresh install has no ui settings"
+        );
         adapter
             .write_ui_setting(datazen_ui_api::Setting::TablePageSize { rows: 50 })
             .unwrap();
-        adapter.write_ui_setting(datazen_ui_api::Setting::Theme { dark: false }).unwrap();
+        adapter
+            .write_ui_setting(datazen_ui_api::Setting::Theme { dark: false })
+            .unwrap();
         let settings = adapter.read_ui_settings().unwrap();
         assert!(settings.contains(&datazen_ui_api::Setting::TablePageSize { rows: 50 }));
         assert!(settings.contains(&datazen_ui_api::Setting::Theme { dark: false }));
-        assert!(dir.join("settings.json").exists(), "the settings file exists");
+        assert!(
+            dir.join("settings.json").exists(),
+            "the settings file exists"
+        );
 
         // A fresh adapter over the same data dir sees them: persistence.
         let mut reopened = LiveAdapter::with_data_dir(repository.clone(), &dir);
@@ -3540,25 +3927,38 @@ mod tests {
         let error = reopened
             .write_ui_setting(datazen_ui_api::Setting::TablePageSize { rows: 999 })
             .unwrap_err();
-        assert!(error.contains("1..=500"), "the refusal names the rule: {error}");
+        assert!(
+            error.contains("1..=500"),
+            "the refusal names the rule: {error}"
+        );
         let after = std::fs::read_to_string(&dir.join("settings.json")).unwrap();
         assert_eq!(before, after, "a refused write changes nothing on disk");
 
         // Layout sizes (L1) land in the ui object's layout sub-object and
         // survive a reopen; a second write to the same region replaces in
         // place, another region coexists.
-        let size = |key: &str, points: u32| {
-            datazen_ui_api::Setting::Layout { key: key.into(), value: points }
+        let size = |key: &str, points: u32| datazen_ui_api::Setting::Layout {
+            key: key.into(),
+            value: points,
         };
-        reopened.write_ui_setting(size("navigator-width", 280)).unwrap();
-        reopened.write_ui_setting(size("navigator-width", 312)).unwrap();
-        reopened.write_ui_setting(size("editor-height", 320)).unwrap();
+        reopened
+            .write_ui_setting(size("navigator-width", 280))
+            .unwrap();
+        reopened
+            .write_ui_setting(size("navigator-width", 312))
+            .unwrap();
+        reopened
+            .write_ui_setting(size("editor-height", 320))
+            .unwrap();
         let settings = reopened.read_ui_settings().unwrap();
         assert!(settings.contains(&size("navigator-width", 312)));
         assert!(settings.contains(&size("editor-height", 320)));
         let mut fresh = LiveAdapter::with_data_dir(repository, &dir);
         assert!(
-            fresh.read_ui_settings().unwrap().contains(&size("navigator-width", 312)),
+            fresh
+                .read_ui_settings()
+                .unwrap()
+                .contains(&size("navigator-width", 312)),
             "the layout size survives a reopen"
         );
 
@@ -3566,11 +3966,22 @@ mod tests {
         // the file stays as it was.
         let before = std::fs::read_to_string(&dir.join("settings.json")).unwrap();
         let error = fresh.write_ui_setting(size("Navigator", 280)).unwrap_err();
-        assert!(error.contains("layout key"), "the refusal names the rule: {error}");
-        let error = fresh.write_ui_setting(size("navigator-width", 0)).unwrap_err();
-        assert!(error.contains("1..=10000"), "the refusal names the rule: {error}");
+        assert!(
+            error.contains("layout key"),
+            "the refusal names the rule: {error}"
+        );
+        let error = fresh
+            .write_ui_setting(size("navigator-width", 0))
+            .unwrap_err();
+        assert!(
+            error.contains("1..=10000"),
+            "the refusal names the rule: {error}"
+        );
         let after = std::fs::read_to_string(&dir.join("settings.json")).unwrap();
-        assert_eq!(before, after, "a refused layout write changes nothing on disk");
+        assert_eq!(
+            before, after,
+            "a refused layout write changes nothing on disk"
+        );
     }
 
     #[test]
@@ -3597,12 +4008,24 @@ mod tests {
             serde_json::from_str(&raw).expect("the history parses");
         assert_eq!(entries.len(), 2, "both statements are recorded");
         assert!(entries.iter().all(|entry| entry.connection_id == "live"));
-        let good = entries.iter().find(|entry| entry.sql.contains("id = 0")).unwrap();
+        let good = entries
+            .iter()
+            .find(|entry| entry.sql.contains("id = 0"))
+            .unwrap();
         assert!(good.success, "the successful query is marked");
-        let bad = entries.iter().find(|entry| entry.sql.contains("no_such_column")).unwrap();
+        let bad = entries
+            .iter()
+            .find(|entry| entry.sql.contains("no_such_column"))
+            .unwrap();
         assert!(!bad.success, "the failed query is marked");
-        assert!(bad.error_message.is_some(), "the failure carries its sentence");
-        assert!(good.execution_time_ms > 0 || bad.execution_time_ms > 0, "the timing was measured");
+        assert!(
+            bad.error_message.is_some(),
+            "the failure carries its sentence"
+        );
+        assert!(
+            good.execution_time_ms > 0 || bad.execution_time_ms > 0,
+            "the timing was measured"
+        );
     }
 
     #[test]
@@ -3640,8 +4063,12 @@ mod tests {
         assert_eq!(unique.columns, vec!["note".to_string()]);
 
         // The foreign key list keeps the reference whole.
-        let keys = adapter.table_foreign_keys("orders").expect("the keys answer");
-        let fk = keys.iter().find(|key| key.columns == vec!["user_id".to_string()])
+        let keys = adapter
+            .table_foreign_keys("orders")
+            .expect("the keys answer");
+        let fk = keys
+            .iter()
+            .find(|key| key.columns == vec!["user_id".to_string()])
             .expect("the FK is listed");
         assert_eq!(fk.target_table, "users");
         assert_eq!(fk.target_columns, vec!["id".to_string()]);
@@ -3654,7 +4081,10 @@ mod tests {
         }));
         let structure = poll_structure(&mut adapter, "orders").expect("the structure answers");
         let ddl = &structure.ddl;
-        assert!(ddl.to_lowercase().contains("create table"), "the DDL names the object: {ddl}");
+        assert!(
+            ddl.to_lowercase().contains("create table"),
+            "the DDL names the object: {ddl}"
+        );
         assert!(ddl.contains("orders"), "the DDL is about this table: {ddl}");
 
         // A table the catalog does not know is a failure sentence — the
@@ -3670,7 +4100,11 @@ mod tests {
     ) -> Option<Result<Vec<WorkflowStepResult>, String>> {
         for _ in 0..300 {
             for delivery in adapter.poll_jobs() {
-                if let AdapterDelivery::WorkflowRun { generation: g, results } = delivery {
+                if let AdapterDelivery::WorkflowRun {
+                    generation: g,
+                    results,
+                } = delivery
+                {
                     if g == generation {
                         return Some(results);
                     }
@@ -3682,10 +4116,17 @@ mod tests {
     }
 
     /// Wait for a value search job's delivery (T4).
-    fn poll_value_search(adapter: &mut LiveAdapter, generation: u32) -> Option<Vec<ValueSearchHit>> {
+    fn poll_value_search(
+        adapter: &mut LiveAdapter,
+        generation: u32,
+    ) -> Option<Vec<ValueSearchHit>> {
         for _ in 0..300 {
             for delivery in adapter.poll_jobs() {
-                if let AdapterDelivery::ValueSearched { generation: g, hits } = delivery {
+                if let AdapterDelivery::ValueSearched {
+                    generation: g,
+                    hits,
+                } = delivery
+                {
                     if g == generation {
                         return Some(hits.expect("the scan succeeded"));
                     }
@@ -3715,7 +4156,9 @@ mod tests {
         let mut adapter = opened_adapter(&dir);
 
         // CSV: the whole table, header and every row, quoted where needed.
-        let job = adapter.start_export("users", "csv", "", None).expect("the export starts");
+        let job = adapter
+            .start_export("users", "csv", "", None)
+            .expect("the export starts");
         let snapshot = wait_job(&adapter, job);
         assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
         let exports = std::fs::read_dir(dir.join("exports")).expect("the exports dir exists");
@@ -3731,14 +4174,26 @@ mod tests {
         assert_eq!(lines[60], "59,user-59", "the last row");
 
         // A range the host cannot serve is refused honestly.
-        let job = adapter.start_export("users", "csv", "rows 1-5", None).expect("the job starts");
+        let job = adapter
+            .start_export("users", "csv", "rows 1-5", None)
+            .expect("the job starts");
         let snapshot = wait_job(&adapter, job);
-        assert_eq!(snapshot.status, "failed", "an unsupported range fails: {:?}", snapshot.log);
+        assert_eq!(
+            snapshot.status, "failed",
+            "an unsupported range fails: {:?}",
+            snapshot.log
+        );
 
         // A format the host has not wired is refused honestly.
-        let job = adapter.start_export("users", "sql", "", None).expect("the job starts");
+        let job = adapter
+            .start_export("users", "sql", "", None)
+            .expect("the job starts");
         let snapshot = wait_job(&adapter, job);
-        assert_eq!(snapshot.status, "failed", "sql export is not wired: {:?}", snapshot.log);
+        assert_eq!(
+            snapshot.status, "failed",
+            "sql export is not wired: {:?}",
+            snapshot.log
+        );
 
         // T2: a picked save path wins over the default directory naming.
         let picked = dir.join("picked-exports").join("users.csv");
@@ -3748,7 +4203,11 @@ mod tests {
         let snapshot = wait_job(&adapter, job);
         assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
         let body = std::fs::read_to_string(&picked).expect("the picked file was written");
-        assert_eq!(body.lines().count(), 61, "the same whole-table export lands at the picked path");
+        assert_eq!(
+            body.lines().count(),
+            61,
+            "the same whole-table export lands at the picked path"
+        );
     }
 
     #[test]
@@ -3791,20 +4250,24 @@ mod tests {
         let store_path = dir.join("connections.json");
         save_connection(
             &store_path,
-            sqlite_config("live", Some(dir.join("live.db").to_string_lossy().into_owned())),
+            sqlite_config(
+                "live",
+                Some(dir.join("live.db").to_string_lossy().into_owned()),
+            ),
         );
 
         // A real-format export file: the TablePlus builder is the same
         // code path the desktop export uses.
         let export_configs = vec![
             sqlite_config("warehouse", Some("/data/warehouse.db".into())),
-            sqlite_config("live", Some(dir.join("live.db").to_string_lossy().into_owned())),
+            sqlite_config(
+                "live",
+                Some(dir.join("live.db").to_string_lossy().into_owned()),
+            ),
         ];
-        let bytes = datazen::connection_import::build_tableplus_export(
-            &export_configs,
-            "import-password",
-        )
-        .expect("the export builds");
+        let bytes =
+            datazen::connection_import::build_tableplus_export(&export_configs, "import-password")
+                .expect("the export builds");
         let export_path = dir.join("connections.tableplusconnection");
         std::fs::write(&export_path, bytes).unwrap();
 
@@ -3818,18 +4281,30 @@ mod tests {
             .parse_connections_import(export_path.to_str().unwrap(), "import-password")
             .expect("the export parses");
         assert_eq!(preview.format, "TablePlus");
-        assert_eq!(preview.connections.len(), 2, "both connections are in the preview");
+        assert_eq!(
+            preview.connections.len(),
+            2,
+            "both connections are in the preview"
+        );
         assert!(
-            preview.connections.iter().any(|c| c.name == "warehouse" && c.engine == "sqlite"),
+            preview
+                .connections
+                .iter()
+                .any(|c| c.name == "warehouse" && c.engine == "sqlite"),
             "the sqlite engine is named: {:?}",
             preview.connections
         );
 
         // Nothing lands before the confirm.
-        assert!(adapter.confirm_import(9999).is_err(), "an unknown handle is refused");
+        assert!(
+            adapter.confirm_import(9999).is_err(),
+            "an unknown handle is refused"
+        );
 
         // Confirm: "warehouse" lands, "live" already exists and is skipped.
-        let landed = adapter.confirm_import(preview.handle).expect("the confirm saves");
+        let landed = adapter
+            .confirm_import(preview.handle)
+            .expect("the confirm saves");
         assert_eq!(landed, 1, "the duplicate name is skipped: {landed}");
         let listed = adapter.list_connections().expect("the store lists");
         assert_eq!(listed.len(), 2, "live + warehouse: {:?}", listed);
@@ -3839,8 +4314,13 @@ mod tests {
         let preview = adapter
             .parse_connections_import(export_path.to_str().unwrap(), "import-password")
             .expect("the export parses again");
-        let landed = adapter.confirm_import(preview.handle).expect("the confirm saves");
-        assert_eq!(landed, 0, "a second import of the same file duplicates nothing");
+        let landed = adapter
+            .confirm_import(preview.handle)
+            .expect("the confirm saves");
+        assert_eq!(
+            landed, 0,
+            "a second import of the same file duplicates nothing"
+        );
         let listed = adapter.list_connections().expect("the store lists");
         assert_eq!(listed.len(), 2, "still two: {:?}", listed);
     }
@@ -3966,7 +4446,10 @@ mod tests {
         assert_eq!(results.len(), 8, "{results:?}");
         assert!(results.iter().all(|result| result.ok), "{results:?}");
         assert_eq!(results[0].step, "SELECT id, name FROM users LIMIT 3");
-        assert_eq!(results[0].summary, "3 rows", "the query step reports its rows");
+        assert_eq!(
+            results[0].summary, "3 rows",
+            "the query step reports its rows"
+        );
         assert!(
             results[1].summary.contains("users"),
             "the list_tables command answered the real catalog: {}",
@@ -3977,7 +4460,10 @@ mod tests {
             "the condition matched: {}",
             results[2].summary
         );
-        assert_eq!(results[3].summary, "1 rows", "the condition's then branch ran");
+        assert_eq!(
+            results[3].summary, "1 rows",
+            "the condition's then branch ran"
+        );
         assert!(
             results[7].summary.contains("iterations_completed"),
             "the foreach reports its iterations: {}",
@@ -4068,7 +4554,12 @@ mod tests {
     fn poll_inbound(adapter: &mut LiveAdapter, table: &str) -> Result<Vec<InboundRef>, String> {
         for _ in 0..300 {
             for delivery in adapter.poll_jobs() {
-                if let AdapterDelivery::InboundRefsRead { table: answered, refs, .. } = delivery {
+                if let AdapterDelivery::InboundRefsRead {
+                    table: answered,
+                    refs,
+                    ..
+                } = delivery
+                {
                     if answered == table {
                         return refs;
                     }
@@ -4108,7 +4599,10 @@ mod tests {
         let refused = adapter
             .table_inbound_references("users")
             .expect_err("the sync path refuses");
-        assert!(refused.contains("inbound job"), "the sentence names the job path: {refused}");
+        assert!(
+            refused.contains("inbound job"),
+            "the sentence names the job path: {refused}"
+        );
     }
 
     #[test]
@@ -4118,8 +4612,13 @@ mod tests {
 
         // Before any job: a cache miss is an honest sentence, never a
         // synchronous fetch.
-        let missing = adapter.table_columns("orders").expect_err("the cache is empty");
-        assert!(missing.contains("not loaded"), "the sentence names the cache: {missing}");
+        let missing = adapter
+            .table_columns("orders")
+            .expect_err("the cache is empty");
+        assert!(
+            missing.contains("not loaded"),
+            "the sentence names the cache: {missing}"
+        );
 
         // One structure job fills the worker-maintained cache; the sync
         // reads answer from it afterwards.
@@ -4128,13 +4627,23 @@ mod tests {
             table: "orders".into(),
         }));
         poll_structure(&mut adapter, "orders").expect("the structure reads");
-        let columns = adapter.table_columns("orders").expect("the cache serves the read");
+        let columns = adapter
+            .table_columns("orders")
+            .expect("the cache serves the read");
         assert_eq!(columns.len(), 3, "{columns:?}");
-        assert!(adapter.table_indexes("orders").is_ok(), "the same cache serves the indexes");
+        assert!(
+            adapter.table_indexes("orders").is_ok(),
+            "the same cache serves the indexes"
+        );
 
         // The DDL read is part of the structure job; its sync path refuses.
-        let ddl = adapter.table_ddl("orders").expect_err("the sync DDL path refuses");
-        assert!(ddl.contains("structure job"), "the sentence names the job: {ddl}");
+        let ddl = adapter
+            .table_ddl("orders")
+            .expect_err("the sync DDL path refuses");
+        assert!(
+            ddl.contains("structure job"),
+            "the sentence names the job: {ddl}"
+        );
     }
 
     #[test]
@@ -4164,11 +4673,17 @@ mod tests {
         assert!(raw.contains("postgresql"), "the engine lands: {raw}");
         assert!(raw.contains("db.example.com"), "the host lands: {raw}");
         assert!(raw.contains("analytics"), "the database lands: {raw}");
-        assert!(!raw.contains("s3cret"), "the password never lands in plaintext: {raw}");
+        assert!(
+            !raw.contains("s3cret"),
+            "the password never lands in plaintext: {raw}"
+        );
 
         // The list serves it back under the slug the name mints.
         let listed = adapter.list_connections().unwrap();
-        let saved = listed.iter().find(|profile| profile.id == "warehouse").expect("the slug id");
+        let saved = listed
+            .iter()
+            .find(|profile| profile.id == "warehouse")
+            .expect("the slug id");
         assert_eq!(saved.engine, "postgresql");
         assert_eq!(saved.name, "Warehouse");
     }
@@ -4190,8 +4705,13 @@ mod tests {
             address: "db.example.com".into(),
             ..ConnectionDraft::default()
         };
-        let refused = adapter.save_connection(&draft).expect_err("oracle is not linked");
-        assert!(refused.contains("not among them"), "the sentence names it: {refused}");
+        let refused = adapter
+            .save_connection(&draft)
+            .expect_err("oracle is not linked");
+        assert!(
+            refused.contains("not among them"),
+            "the sentence names it: {refused}"
+        );
         // The empty engine has no default on the live host — the registry
         // admits types, not guesses.
         let empty = ConnectionDraft {
@@ -4201,7 +4721,10 @@ mod tests {
         let refused = adapter
             .save_connection(&empty)
             .expect_err("an empty engine is not a linked type");
-        assert!(refused.contains("not among them"), "the empty engine refuses: {refused}");
+        assert!(
+            refused.contains("not among them"),
+            "the empty engine refuses: {refused}"
+        );
         // A malformed port is a sentence, not a panic.
         let bad_port = ConnectionDraft {
             engine: "postgresql".into(),
@@ -4211,13 +4734,21 @@ mod tests {
         let refused = adapter
             .save_connection(&bad_port)
             .expect_err("a malformed port refuses");
-        assert!(refused.contains("not a port"), "the sentence names it: {refused}");
-        assert!(adapter.list_connections().unwrap().is_empty(), "nothing landed");
+        assert_eq!(
+            refused,
+            "the address must be host or host:port with a numeric port"
+        );
+        assert!(
+            adapter.list_connections().unwrap().is_empty(),
+            "nothing landed"
+        );
 
         // The whitelist answers the linked set — the same eleven the
         // registry admits (E4).
         assert!(adapter.available_engines().contains(&"sqlite".to_string()));
-        assert!(adapter.available_engines().contains(&"postgresql".to_string()));
+        assert!(adapter
+            .available_engines()
+            .contains(&"postgresql".to_string()));
         assert_eq!(adapter.available_engines().len(), 11);
     }
 
@@ -4252,7 +4783,10 @@ mod tests {
                 &dir,
             );
             assert!(
-                adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: id.into() }),
+                adapter.begin_job(AdapterJob::OpenConnection {
+                    generation: 1,
+                    id: id.into()
+                }),
                 "the host takes the open job"
             );
             let error = poll_open(&mut adapter).expect_err("a closed port cannot open");
@@ -4285,7 +4819,11 @@ mod tests {
             .iter()
             .find(|hit| hit.table == "users" && hit.column == "name")
             .expect("users.name is a hit");
-        assert_eq!(users_name.matches, 10, "user-40 through user-49: {:?}", hits);
+        assert_eq!(
+            users_name.matches, 10,
+            "user-40 through user-49: {:?}",
+            hits
+        );
         assert!(
             !hits.iter().any(|hit| hit.table == "events"),
             "events carries no matching value: {:?}",
@@ -4331,9 +4869,13 @@ mod tests {
         let mut adapter = opened_adapter(&dir);
 
         // Create, refuse a duplicate, update, delete — through the adapter.
-        adapter.save_snippet("top customers", "SELECT * FROM users").unwrap();
+        adapter
+            .save_snippet("top customers", "SELECT * FROM users")
+            .unwrap();
         assert!(adapter.save_snippet("top customers", "SELECT 1").is_err());
-        adapter.save_snippet("by name", "SELECT * FROM users ORDER BY name").unwrap();
+        adapter
+            .save_snippet("by name", "SELECT * FROM users ORDER BY name")
+            .unwrap();
         adapter.update_snippet("by name", "SELECT 1").unwrap();
         let listed = adapter.snippets().unwrap();
         assert_eq!(listed.len(), 2);
@@ -4349,7 +4891,10 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].name, "by name");
         let on_disk = std::fs::read_to_string(dir.join("snippets.json")).unwrap();
-        assert!(on_disk.contains("by name"), "the file carries the snippet: {on_disk}");
+        assert!(
+            on_disk.contains("by name"),
+            "the file carries the snippet: {on_disk}"
+        );
     }
 
     #[test]
@@ -4378,11 +4923,17 @@ mod tests {
                 let config = sqlite_config("target", Some(value.clone()));
                 let handle = driver.connect(&config).await.expect("the target opens");
                 driver
-                    .execute(&handle, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+                    .execute(
+                        &handle,
+                        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)",
+                    )
                     .await
                     .expect("the target users table is created");
                 driver
-                    .execute(&handle, "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER)")
+                    .execute(
+                        &handle,
+                        "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER)",
+                    )
                     .await
                     .expect("the target orders table is created without the note column");
             });
@@ -4392,12 +4943,12 @@ mod tests {
         let repository = Arc::new(FileConnectionRepository::open(&store_path).unwrap());
         let service = ConnectionService::new(repository.clone());
         futures_executor::block_on(service.save(
-            &ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION),
+            &crate::host_connection_scope(),
             sqlite_config("source", Some(source_path.clone())),
         ))
         .unwrap();
         futures_executor::block_on(service.save(
-            &ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION),
+            &crate::host_connection_scope(),
             sqlite_config("target", Some(target_path.clone())),
         ))
         .unwrap();
@@ -4434,7 +4985,9 @@ mod tests {
                     Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
                     &dir,
                 );
-                adapter.sync_table(&runtime, "source", "users", "target").await
+                adapter
+                    .sync_table(&runtime, "source", "users", "target")
+                    .await
             })
             .expect("the sync lands");
         assert_eq!(landed, 60, "every source row landed");
@@ -4500,7 +5053,9 @@ mod tests {
         );
 
         // An edit replaces the stored steps; the list stays one workflow.
-        adapter.save_workflow("nightly etl", &["SELECT 3".into()]).unwrap();
+        adapter
+            .save_workflow("nightly etl", &["SELECT 3".into()])
+            .unwrap();
         let listed = adapter.workflows().unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(
@@ -4528,7 +5083,10 @@ mod tests {
             Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
             &dir,
         );
-        adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() });
+        adapter.begin_job(AdapterJob::OpenConnection {
+            generation: 1,
+            id: "live".into(),
+        });
         poll_open(&mut adapter).expect("the session opens");
 
         // A fresh install answers no widgets; the port's title contract
@@ -4537,18 +5095,27 @@ mod tests {
         assert!(adapter.save_dashboard_widget("  ", "SELECT 1").is_err());
 
         let id = adapter
-            .save_dashboard_widget("First four", "SELECT name, id FROM users ORDER BY id LIMIT 4")
+            .save_dashboard_widget(
+                "First four",
+                "SELECT name, id FROM users ORDER BY id LIMIT 4",
+            )
             .unwrap();
         let widgets = adapter.dashboard_widgets().unwrap();
         assert_eq!(widgets.len(), 1);
-        assert_eq!(widgets[0].id, id, "the saved widget lists under the returned id");
+        assert_eq!(
+            widgets[0].id, id,
+            "the saved widget lists under the returned id"
+        );
         assert_eq!(widgets[0].title, "First four");
         assert_eq!(widgets[0].kind, "bar");
 
         // The bars are the live query's rows: the first column is the
         // label, the second the value — through the bars job (E2); the
         // synchronous path stays closed for good.
-        assert!(adapter.widget_bars(id).is_err(), "the sync bars path refuses (E2)");
+        assert!(
+            adapter.widget_bars(id).is_err(),
+            "the sync bars path refuses (E2)"
+        );
         assert!(adapter.begin_job(AdapterJob::WidgetBars { generation: 2, id }));
         let bars = poll_bars(&mut adapter, id).unwrap();
         assert_eq!(
@@ -4567,15 +5134,24 @@ mod tests {
             Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
             &dir,
         );
-        adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() });
+        adapter.begin_job(AdapterJob::OpenConnection {
+            generation: 1,
+            id: "live".into(),
+        });
         poll_open(&mut adapter).expect("the session opens again");
         let widgets = adapter.dashboard_widgets().unwrap();
         assert_eq!(widgets.len(), 1, "the widget survived the restart");
         assert_eq!(widgets[0].title, "First four");
-        assert!(adapter.begin_job(AdapterJob::WidgetBars { generation: 2, id: widgets[0].id }));
+        assert!(adapter.begin_job(AdapterJob::WidgetBars {
+            generation: 2,
+            id: widgets[0].id
+        }));
         let bars = poll_bars(&mut adapter, widgets[0].id).unwrap();
         assert_eq!(bars.len(), 4, "the chart answers after the restart");
-        assert_eq!(bars.first().map(|(label, _)| label.clone()), Some("user-00".into()));
+        assert_eq!(
+            bars.first().map(|(label, _)| label.clone()),
+            Some("user-00".into())
+        );
     }
 
     #[test]
@@ -4592,7 +5168,10 @@ mod tests {
             Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
             &dir,
         );
-        adapter.begin_job(AdapterJob::OpenConnection { generation: 1, id: "live".into() });
+        adapter.begin_job(AdapterJob::OpenConnection {
+            generation: 1,
+            id: "live".into(),
+        });
         poll_open(&mut adapter).expect("the session opens");
 
         adapter
@@ -4613,7 +5192,10 @@ mod tests {
             results[0].summary
         );
         assert!(!results[1].ok, "the broken statement failed");
-        assert!(!results[1].summary.is_empty(), "the failure carries a sentence");
+        assert!(
+            !results[1].summary.is_empty(),
+            "the failure carries a sentence"
+        );
 
         // The port's contract: an unknown workflow is an error.
         assert!(adapter.run_workflow("no-such").is_err());

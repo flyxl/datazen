@@ -1,25 +1,23 @@
 //! AppState method implementations.
 
 #![allow(unused_imports)]
-use crate::state_def::*;
-use crate::views::{next_connection, workflow_yaml};
 use crate::constants::*;
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
+use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
+use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot,
-    QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow,
-    WorkflowStepResult, WorkspaceApi,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
+    SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
+    WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Color, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent,
-    TextEdit, Titlebar, Tx, col, oklch, row, text, text_input,
+    col, oklch, row, text, text_input, App, AppSpec, Color, Cx, El, FileDialogOptions,
+    FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
 impl AppState {
@@ -116,7 +114,9 @@ impl AppState {
 
     /// Open a favorite into a query tab (T6).
     pub fn open_favorite(&mut self, index: usize) {
-        let Some(favorite) = self.host_favorites().get(index).cloned() else { return };
+        let Some(favorite) = self.host_favorites().get(index).cloned() else {
+            return;
+        };
         self.active = Section::Workspace;
         if self.open_query_tab(&favorite.title).is_some() {
             self.sql = crate::sql_editor::SqlEditor::from_doc(favorite.sql);
@@ -126,7 +126,9 @@ impl AppState {
     /// Rename a favorite to the form's title (T6): the title moves, the file
     /// does not — that is the host store's own semantics.
     pub fn rename_favorite_row(&mut self, index: usize) {
-        let Some(favorite) = self.host_favorites().get(index).cloned() else { return };
+        let Some(favorite) = self.host_favorites().get(index).cloned() else {
+            return;
+        };
         let title = self.favorite_title.text.trim().to_owned();
         if title.is_empty() {
             self.favorite_error = Some("a favorite needs a title".into());
@@ -147,7 +149,9 @@ impl AppState {
 
     /// Delete a favorite (T6).
     pub fn delete_favorite_row(&mut self, index: usize) {
-        let Some(favorite) = self.host_favorites().get(index).cloned() else { return };
+        let Some(favorite) = self.host_favorites().get(index).cloned() else {
+            return;
+        };
         let deleted = match self.desktop.delete_favorite(&favorite.id) {
             Ok(()) => Ok(()),
             Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {

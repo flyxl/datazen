@@ -98,6 +98,11 @@ const CORE = [
   { name: 'datazen', dir: 'crates/datazen' },
   { name: 'datazen-server', dir: 'crates/datazen-server' },
   { name: 'datazen-ui', dir: 'crates/datazen-ui' },
+  { name: 'datazen-ui-api', dir: 'crates/datazen-ui-api' },
+  { name: 'datazen-rune-host', dir: 'crates/datazen-rune-host' },
+  { name: 'datazen-sql', dir: 'crates/datazen-sql' },
+  { name: 'rune', dir: 'vendor/rune/crates/rune' },
+  { name: 'opencode', dir: 'vendor/rune/themes/opencode' },
   { name: 'datazen-driver-redis', dir: 'crates/drivers/redis' },
 ];
 
@@ -163,6 +168,12 @@ describe('classifyMemberDir', () => {
     }
     expect(layerIdOf('crates/datazen')).toBe('modules');
     expect(layerIdOf('crates/datazen-ui')).toBe('ui');
+    expect(layerIdOf('crates/datazen-rune-host')).toBe('host');
+    expect(layerIdOf('crates/datazen-ui-api')).toBe('ui-api');
+    expect(layerIdOf('crates/datazen-sql')).toBe('sql');
+    expect(layerIdOf('vendor/rune/crates/rune')).toBe('ui-runtime');
+    expect(layerIdOf('vendor/rune/themes/opencode')).toBe('ui-runtime');
+    expect(classifyMemberDir('vendor/rune/tools/example')).toHaveProperty('unclassified');
     expect(layerIdOf('crates/drivers/redis')).toBe('driver');
   });
 
@@ -314,11 +325,50 @@ describe('checkPlatformCrateBoundaries', () => {
     expect(result.violations.join('\n')).toMatch(/F-14.*datazen.*datazen_desktop/);
   });
 
-  it('F-15: Rune UI reaching a host crate is rejected', () => {
-    const result = run(fixture(CORE, { ...clean, 'datazen-ui': ['datazen_desktop'] }), SPEC, {
-      requireLayers: ['ui'],
-    });
-    expect(result.violations.join('\\n')).toMatch(/F-15.*datazen-ui.*datazen_desktop/);
+  it.each(['datazen-driver-api', 'datazen', 'datazen-rune-host'])(
+    'F-15 rejects the UI reaching %s through its port crate',
+    (backend) => {
+      const result = run(
+        fixture(CORE, {
+          ...clean,
+          'datazen-ui': ['datazen-ui-api'],
+          'datazen-ui-api': [backend],
+        }),
+      );
+      expect(result.violations).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining(`F-15  datazen-ui (crates/datazen-ui/Cargo.toml) → ${backend}`),
+          expect.stringContaining(
+            `F-15  datazen-ui-api (crates/datazen-ui-api/Cargo.toml) → ${backend}`,
+          ),
+        ]),
+      );
+    },
+  );
+
+  it('checks vendored Rune members and keeps the shared SQL crate a leaf', () => {
+    const result = run(
+      fixture(CORE, {
+        ...clean,
+        opencode: ['datazen-rune-host'],
+        'datazen-sql': ['datazen-driver-api'],
+      }),
+    );
+    expect(result.violations.join('\n')).toMatch(/F-15.*opencode.*datazen-rune-host/);
+    expect(result.violations.join('\n')).toMatch(/F-16.*datazen-sql.*datazen-driver-api/);
+  });
+
+  it('allows both UI and drivers to use the shared SQL contract', () => {
+    const result = run(
+      fixture(CORE, {
+        ...clean,
+        'datazen-ui': ['datazen-sql', 'rune'],
+        'datazen-driver-api': ['datazen-sql'],
+        'datazen-driver-redis': ['datazen-driver-api'],
+      }),
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.violations).toEqual([]);
   });
 
   it('F-01: a driver reaching datazen is a violation', () => {

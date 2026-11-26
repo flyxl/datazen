@@ -24,14 +24,14 @@ fn repository_root() -> PathBuf {
 ///
 /// `crates/datazen-desktop/tests` 是**集成测试目标**（`cargo check -p datazen --all-targets`
 /// 会编译它），因此它和 `crates/datazen-desktop/src` 一样属于「会被编译、因而可能写错」
-/// 的代码，必须一并扫。共享 crate（infra、driver-api、driver-support 与全部 drivers）
-/// 在 W7-A 结构重构后从 `packages/` 迁入 `crates/`，逐个列出以保持原扫描范围不变。
+/// 的代码，必须一并扫。共享 crate 逐个列出，SQL 契约和分句器随其所在目录一起扫描。
 const SCANNED_ROOTS: &[&str] = &[
     "crates/datazen-desktop/src",
     "crates/datazen-desktop/tests",
     "crates/datazen-infra",
     "crates/datazen-driver-api",
     "crates/datazen-driver-support",
+    "crates/datazen-sql",
     "crates/drivers",
 ];
 

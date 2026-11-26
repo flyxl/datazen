@@ -47,8 +47,11 @@ class CsvImportJourneys:
 
     def test_native_csv_import_reviews_cancels_and_appends_real_sqlite_rows(self):
         self.csv_import_fixture()
+        with closing(sqlite3.connect(self.db)) as db:
+            db.execute('ALTER TABLE "q.records" ADD COLUMN "Ä" TEXT')
+            db.execute('ALTER TABLE "q.records" ADD COLUMN "ä" TEXT')
         source = self.root / "new.csv"
-        incoming = 'id,note,tag\r\n1,"O\'Brien said ""你好"", and left",""\r\n2,"café, 東京",\r\n'
+        incoming = 'id,note,tag,Ä,ä\r\n1,"O\'Brien said ""你好"", and left","",first,second\r\n2,"café, 東京",,third,fourth\r\n'
         source.write_bytes(incoming.encode("utf-8"))
         before = [(9, "already here", "retained", "text", "old memo")]
         original = self.db.read_bytes()
@@ -58,7 +61,7 @@ class CsvImportJourneys:
         pending = self.replay(initial, until=10)
         self.expect_rendered(pending, key="native-csv-review", text="new.csv → Writable fixture / q.records")
         self.expect_rendered(pending, key="native-csv-count", text="Rows to append: 2")
-        for index, heading in enumerate(("id", "note", "tag")):
+        for index, heading in enumerate(("id", "note", "tag", "Ä", "ä")):
             self.expect_rendered(pending, key=f"native-csv-column-{index}", text=f"{heading} → {heading}")
         self.expect_csv_unchanged(before, original)
 
@@ -80,6 +83,10 @@ class CsvImportJourneys:
             (2, "café, 東京", None, "null", "original default"),
             *before,
         ])
+        with closing(sqlite3.connect(self.db)) as db:
+            self.assertEqual(db.execute(
+                'SELECT "Ä", "ä" FROM "q.records" WHERE id < 9 ORDER BY id'
+            ).fetchall(), [("first", "second"), ("third", "fourth")])
         self.assertEqual(source.read_bytes(), incoming.encode("utf-8"))
 
     def test_native_csv_import_refuses_malformed_and_rolls_back_later_conflict(self):

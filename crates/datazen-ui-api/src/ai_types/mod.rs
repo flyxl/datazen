@@ -60,14 +60,9 @@
 //! legacy wire aliases like `minimax`/`open-code` this mirror does not take,
 //! `AiSafetyGateConfig`, `AiModelProfile`, `PromptTemplate`,
 //! `AiMemorySettings`, `AiSettingsConfig`, `ModelInfo`, `DiagnosisResult`,
-//! `ExplainAnalysis`, `Bottleneck`). But `datazen` is a
-//! `cfg(not(target_arch = "wasm32"))`-only dependency of this crate while
-//! the wasm host compiles these pure modules — the same trade
-//! [`crate::metadata`] and [`crate::connection_views`] made (T080/T029).
-//! So this module keeps **UI contract mirrors** pinned to React's wire
-//! spellings; the adapter task that wires kernel DTOs to the UI should
-//! convert *into* these types and leave the wire spellings single-sourced
-//! here.
+//! `ExplainAnalysis`, `Bottleneck`). The native host adapts kernel DTOs to
+//! the UI contract. Both native and wasm UI builds use the React wire spellings
+//! defined here.
 //!
 //! ## Ownership of the halves not in this file
 //!
@@ -90,10 +85,9 @@ pub use analysis::{
 pub use chat::{
     AiChatAttribution, AiChatContextSnapshot, AiChatInjectionEvent, AiChatInjectionSnapshot,
     AiChatMessage, AiChatResultPreview, AiChatSession, AiLoadedSkill, AiMemoryCandidatesEvent,
-    AiMessageRole, AiMessageStatus, AiPreviewCell, AiQuestion, AiQuestionOption,
-    AiSessionDetail, AiSessionMessage, AiSessionMessageInput, AiSessionSummary,
-    AiSessionUpsertInput, AiToolCall, AiToolResult, StreamChunkPayload, StreamChunkUsage,
-    StreamErrorPayload,
+    AiMessageRole, AiMessageStatus, AiPreviewCell, AiQuestion, AiQuestionOption, AiSessionDetail,
+    AiSessionMessage, AiSessionMessageInput, AiSessionSummary, AiSessionUpsertInput, AiToolCall,
+    AiToolResult, StreamChunkPayload, StreamChunkUsage, StreamErrorPayload,
 };
 pub use memory::{
     AiMemoryCloudPolicy, AiMemoryCorrectionInput, AiMemoryCreateInput, AiMemoryEntry,
@@ -104,11 +98,12 @@ pub use memory::{
 };
 pub use providers::{
     AiAgentMode, AiDataEgressLevel, AiModelProfile, AiProviderConfig, AiProviderType,
-    AiSafetyGateConfig, AiSettingsConfig, AiToolPermissionPolicy, ModelInfo, ProviderListItem,
-    PromptTemplate,
+    AiSafetyGateConfig, AiSettingsConfig, AiToolPermissionPolicy, ModelInfo, PromptTemplate,
+    ProviderListItem,
 };
-pub use skills::{normalize_ai_skills_settings, normalize_loaded_skills, 
-    AiSkillContent, AiSkillSource, AiSkillSummary, AiSkillsSettings, DEFAULT_AI_SKILLS_SETTINGS,
+pub use skills::{
+    normalize_ai_skills_settings, normalize_loaded_skills, AiSkillContent, AiSkillSource,
+    AiSkillSummary, AiSkillsSettings, DEFAULT_AI_SKILLS_SETTINGS,
 };
 pub use write::{
     AiWriteApplyReceipt, AiWriteAuditDecision, AiWriteAuditDecisionKind, AiWriteAuditRecord,

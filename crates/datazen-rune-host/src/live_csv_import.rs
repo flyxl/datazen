@@ -109,7 +109,7 @@ async fn prepare(service: &ConnectionService, choice: CsvImportChoice) -> Result
         })
         .collect::<Option<Vec<_>>>()
         .ok_or("CSV headers must not be blank.")?;
-    let names: HashSet<_> = columns.iter().map(|name| name.to_lowercase()).collect();
+    let names: HashSet<_> = columns.iter().collect();
     if names.len() != columns.len() {
         return Err("The CSV has duplicate headers.".into());
     }

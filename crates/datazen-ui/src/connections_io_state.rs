@@ -8,8 +8,6 @@ use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
 use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
-#[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
     DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
@@ -79,15 +77,25 @@ impl AppState {
     }
 
     pub(crate) fn test_redis_connection_form(&mut self) {
-        if !self.connection_dialog_open || self.redis_probe_pending || self.connection_engine.text.trim() != "redis" {
+        if !self.connection_dialog_open
+            || self.redis_probe_pending
+            || self.connection_engine.text.trim() != "redis"
+        {
             return;
         }
         let draft = self.connection_form_draft("redis".into());
         let options = self.redis_connection_form_options();
         self.redis_probe_result = None;
-        match self.desktop.begin_redis_probe(self.connection_dialog_epoch, &draft, &options) {
+        match self
+            .desktop
+            .begin_redis_probe(self.connection_dialog_epoch, &draft, &options)
+        {
             Ok(()) => self.redis_probe_pending = true,
-            Err(_) => self.redis_probe_result = Some(Err("Unable to test Redis. Check the address, topology and TLS fields.".into())),
+            Err(_) => {
+                self.redis_probe_result = Some(Err(
+                    "Unable to test Redis. Check the address, topology and TLS fields.".into(),
+                ))
+            }
         }
     }
 

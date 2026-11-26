@@ -80,7 +80,10 @@ fn fresh_vm_has_untitled_file_name_and_empty_state() {
     assert_eq!(vm.search_db, "");
     assert!(!vm.prefill_applied);
     assert!(!vm.can_start());
-    assert_eq!(vm.backup_options(), &[] as &[datazen_ui::views::BackupOption]);
+    assert_eq!(
+        vm.backup_options(),
+        &[] as &[datazen_ui::views::BackupOption]
+    );
     assert_eq!(vm.db_type_display_label(), "");
     assert_eq!(vm.grouped(), vec![]);
     assert!(vm.filtered_dbs().is_empty());
@@ -514,12 +517,11 @@ fn rank_connections_parses_date_only_fractional_and_negative_offsets() {
             Some("2026-08-30T05:00:00-05:00"),
         ),
     ];
-    // 05:00 at -05:00 is 10:00Z (newest); the date-only and fractional
-    // stamps are the same midnight instant (fraction ignored) and tie
-    // on name; the three invalid stamps sort last, by name.
+    // 05:00 at -05:00 is 10:00Z. The fractional timestamp follows it,
+    // 500 milliseconds later than the date-only midnight. Invalids sort by name.
     assert_eq!(
         ids(&rank_connections(&conns, "")),
-        ["negoff", "dateonly", "fra", "badday", "badHour", "badmonth"]
+        ["negoff", "fra", "dateonly", "badday", "badHour", "badmonth"]
     );
 }
 

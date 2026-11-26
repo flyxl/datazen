@@ -33,12 +33,7 @@ pub enum KeyBackend {
 /// Resolve the backend from the environment once. Unset and unrecognized
 /// values select the keyring — the desktop's default on Linux.
 pub fn resolve_key_backend() -> KeyBackend {
-    match std::env::var("DATAZEN_NATIVE_KEYRING").as_deref() {
-        Ok("file") => KeyBackend::File,
-        _ => KeyBackend::Keyring,
-    }
-
-    // (kept as a statement block so the match reads as the whole rule)
+    backend_from_env_value(std::env::var("DATAZEN_NATIVE_KEYRING").as_deref().ok())
 }
 
 /// The pure mapping, so the rule itself is pinnable by a test.
@@ -50,13 +45,23 @@ pub fn backend_from_env_value(value: Option<&str>) -> KeyBackend {
 }
 
 /// Load or create the 32-byte master key from the given backend.
-pub fn load_or_create_master_key(
+pub fn load_or_create_master_key(data_dir: &Path, backend: KeyBackend) -> Result<[u8; 32], String> {
+    load_master_key(data_dir, backend, true)
+}
+
+/// When a profile may already contain ciphertext, only an existing key may be used.
+pub(crate) fn load_master_key(
     data_dir: &Path,
     backend: KeyBackend,
+    allow_create: bool,
 ) -> Result<[u8; 32], String> {
     match backend {
-        KeyBackend::File => load_or_create_from_file(data_dir),
-        KeyBackend::Keyring => load_or_create_via_keyring(data_dir),
+        KeyBackend::File => load_from_file(data_dir, allow_create),
+        KeyBackend::Keyring => load_or_create_via_keyring(
+            data_dir,
+            keyring::v1::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT),
+            allow_create,
+        ),
     }
 }
 
@@ -65,23 +70,31 @@ fn key_file_path(data_dir: &Path) -> PathBuf {
 }
 
 fn read_key_file(data_dir: &Path) -> Result<Option<[u8; 32]>, String> {
-    let Ok(key_b64) = std::fs::read_to_string(key_file_path(data_dir)) else {
-        return Ok(None);
-    };
-    decode_key_b64(&key_b64).map(Some)
+    match std::fs::read_to_string(key_file_path(data_dir)) {
+        Ok(key) => decode_key_b64(&key).map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err("the password key file is unreadable".into()),
+    }
 }
 
-fn write_key_file(data_dir: &Path, key: &[u8; 32]) -> Result<(), String> {
-    use base64::Engine;
-    let path = key_file_path(data_dir);
-    std::fs::write(&path, base64::engine::general_purpose::STANDARD.encode(key))
-        .map_err(|error| format!("write {}: {error}", path.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+fn create_key_file(data_dir: &Path) -> Result<[u8; 32], String> {
+    use std::io::Write;
+    let key = generate_key();
+    let write_error = |_| "could not create the password key file".to_string();
+    std::fs::create_dir_all(data_dir).map_err(write_error)?;
+    // A NamedTempFile starts owner-only on Unix. Publish a fully written key
+    // without replacing a key another process may have installed meanwhile.
+    let mut tmp = tempfile::NamedTempFile::new_in(data_dir).map_err(write_error)?;
+    tmp.write_all(encode_key_b64(&key).as_bytes())
+        .map_err(write_error)?;
+    tmp.as_file().sync_all().map_err(write_error)?;
+    match tmp.persist_noclobber(key_file_path(data_dir)) {
+        Ok(_) => Ok(key),
+        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
+            read_key_file(data_dir)?.ok_or_else(|| "the password key file disappeared".into())
+        }
+        Err(_) => Err("could not create the password key file".into()),
     }
-    Ok(())
 }
 
 fn remove_key_file(data_dir: &Path) {
@@ -102,56 +115,70 @@ fn decode_key_b64(value: &str) -> Result<[u8; 32], String> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(value.trim())
-        .map_err(|error| format!("the stored key is not valid base64: {error}"))?;
-    bytes.try_into().map_err(|bytes: Vec<u8>| {
-        format!("the stored key is {} bytes, not 32", bytes.len())
+        .map_err(|_| "the stored password key is invalid")?;
+    bytes
+        .try_into()
+        .map_err(|_| "the stored password key is invalid".into())
+}
+
+const MISSING_KEY: &str = "restore the original password encryption key";
+
+fn load_from_file(data_dir: &Path, allow_create: bool) -> Result<[u8; 32], String> {
+    match read_key_file(data_dir)? {
+        Some(key) => Ok(key),
+        None if allow_create => create_key_file(data_dir),
+        None => Err(MISSING_KEY.into()),
+    }
+}
+
+fn load_or_create_via_keyring(
+    data_dir: &Path,
+    entry: keyring::v1::Result<keyring::v1::Entry>,
+    allow_create: bool,
+) -> Result<[u8; 32], String> {
+    let entry = match entry {
+        Ok(entry) => entry,
+        Err(_) => return legacy_key_or_fail(data_dir),
+    };
+    resolve_keyring_key(data_dir, entry.get_password(), allow_create, |key| {
+        entry.set_password(key)
     })
 }
 
-fn load_or_create_from_file(data_dir: &Path) -> Result<[u8; 32], String> {
-    if let Some(key) = read_key_file(data_dir)? {
-        return Ok(key);
-    }
-    let key = generate_key();
-    write_key_file(data_dir, &key)?;
-    Ok(key)
-}
-
-fn load_or_create_via_keyring(data_dir: &Path) -> Result<[u8; 32], String> {
-    let entry = match keyring::v1::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT) {
-        Ok(entry) => entry,
-        Err(error) => {
-            return legacy_key_or_fail(data_dir, &format!("the OS keychain is unavailable ({error})"))
-        }
-    };
-    match entry.get_password() {
+fn resolve_keyring_key(
+    data_dir: &Path,
+    read: keyring::v1::Result<String>,
+    allow_create: bool,
+    store: impl FnOnce(&str) -> keyring::v1::Result<()>,
+) -> Result<[u8; 32], String> {
+    match read {
         Ok(key_b64) => {
             let key = decode_key_b64(&key_b64)?;
-            // The keyring answered: a legacy file key is no longer needed.
-            remove_key_file(data_dir);
+            // A different legacy file key may still be needed for recovery.
+            if matches!(read_key_file(data_dir), Ok(Some(file_key)) if file_key == key) {
+                remove_key_file(data_dir);
+            }
             Ok(key)
         }
         Err(keyring::v1::Error::NoEntry) => {
             if let Some(key) = read_key_file(data_dir)? {
                 // Migrate the legacy file key into the keyring best-effort;
                 // the file stays when the keyring will not take it.
-                if entry.set_password(&encode_key_b64(&key)).is_ok() {
+                if store(&encode_key_b64(&key)).is_ok() {
                     remove_key_file(data_dir);
                 }
                 return Ok(key);
             }
-            let key = generate_key();
-            if entry.set_password(&encode_key_b64(&key)).is_err() {
-                // A keyring that cannot be written falls to the file, so a
-                // fresh install still works headless with the escape hatch.
-                write_key_file(data_dir, &key)?;
+            if !allow_create {
+                return Err(MISSING_KEY.into());
             }
+            let key = generate_key();
+            store(&encode_key_b64(&key)).map_err(|_| {
+                "could not store the password encryption key in the OS keychain; configure DATAZEN_NATIVE_KEYRING=file to opt into a key file".to_string()
+            })?;
             Ok(key)
         }
-        Err(error) => legacy_key_or_fail(
-            data_dir,
-            &format!("the OS keychain read failed ({error})"),
-        ),
+        Err(_) => legacy_key_or_fail(data_dir),
     }
 }
 
@@ -163,14 +190,20 @@ fn encode_key_b64(key: &[u8; 32]) -> String {
 /// The keyring failed: a legacy `.key` file is the documented escape hatch;
 /// with neither, fail closed — a new key would leave existing encrypted
 /// passwords unreadable.
-fn legacy_key_or_fail(data_dir: &Path, context: &str) -> Result<[u8; 32], String> {
+fn legacy_key_or_fail(data_dir: &Path) -> Result<[u8; 32], String> {
     if let Some(key) = read_key_file(data_dir)? {
         return Ok(key);
     }
-    Err(format!(
-        "the password encryption key is unavailable: {context}; \
-         set DATAZEN_NATIVE_KEYRING=file to use a key file"
-    ))
+    Err("the OS keychain is unavailable; restore the keychain or use the original .key with DATAZEN_NATIVE_KEYRING=file".into())
+}
+
+#[cfg(test)]
+pub(crate) fn unavailable_keyring(data_dir: &Path, allow_create: bool) -> Result<[u8; 32], String> {
+    load_or_create_via_keyring(
+        data_dir,
+        Err(keyring::v1::Error::NoDefaultStore),
+        allow_create,
+    )
 }
 
 #[cfg(test)]
@@ -178,8 +211,8 @@ mod tests {
     use super::*;
 
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("datazen-rune-secrets-{tag}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("datazen-rune-secrets-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -190,7 +223,10 @@ mod tests {
         assert_eq!(backend_from_env_value(Some("file")), KeyBackend::File);
         assert_eq!(backend_from_env_value(Some("keyring")), KeyBackend::Keyring);
         assert_eq!(backend_from_env_value(None), KeyBackend::Keyring);
-        assert_eq!(backend_from_env_value(Some("nonsense")), KeyBackend::Keyring);
+        assert_eq!(
+            backend_from_env_value(Some("nonsense")),
+            KeyBackend::Keyring
+        );
     }
 
     #[test]
@@ -199,11 +235,7 @@ mod tests {
         let key = load_or_create_master_key(&dir, KeyBackend::File).unwrap();
         assert_eq!(key.len(), 32);
         // The same key comes back on the next load.
-        assert_eq!(
-            load_or_create_master_key(&dir, KeyBackend::File).unwrap(),
-            key,
-            "the key file is stable"
-        );
+        assert!(load_or_create_master_key(&dir, KeyBackend::File).unwrap() == key);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -216,13 +248,41 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_keychain_cannot_silently_replace_a_missing_key_or_opt_in_to_a_file() {
+        use keyring::v1::Error;
+        let dir = tempfile::tempdir().unwrap();
+        let missing = resolve_keyring_key(dir.path(), Err(Error::NoEntry), false, |_| {
+            panic!("an existing protected store must not create a key")
+        });
+        assert!(missing.is_err());
+        let unwritable = resolve_keyring_key(dir.path(), Err(Error::NoEntry), true, |_| {
+            Err(Error::NoDefaultStore)
+        });
+        assert!(unwritable.is_err());
+        assert!(!key_file_path(dir.path()).exists());
+
+        // An actual rescue file survives a failed keychain write or a conflicting key.
+        let original = load_from_file(dir.path(), true).unwrap();
+        let rescued = resolve_keyring_key(dir.path(), Err(Error::NoEntry), false, |_| {
+            Err(Error::NoDefaultStore)
+        })
+        .unwrap();
+        assert!(rescued == original);
+        let different = generate_key();
+        let loaded = resolve_keyring_key(dir.path(), Ok(encode_key_b64(&different)), false, |_| {
+            panic!("the keychain already has a key")
+        })
+        .unwrap();
+        assert!(loaded == different);
+        assert!(read_key_file(dir.path()).unwrap() == Some(original));
+    }
+
+    #[test]
     fn a_keyring_that_cannot_be_reached_fails_closed_without_a_legacy_key() {
-        // This sandbox runs no session bus: the keyring backend cannot be
-        // reached. Without a legacy .key file the load must fail closed —
-        // an honest sentence, never a silently fresh key.
         let dir = temp_dir("keyring-closed");
-        let error = load_or_create_master_key(&dir, KeyBackend::Keyring)
-            .expect_err("no bus and no key file is a closed failure");
+        let error = unavailable_keyring(&dir, false)
+            .err()
+            .expect("missing key must be reported");
         assert!(
             error.contains("DATAZEN_NATIVE_KEYRING=file"),
             "the sentence names the escape hatch: {error}"
@@ -232,7 +292,10 @@ mod tests {
         // The legacy .key file is the escape hatch: with one, the keyring
         // backend loads it.
         let key = load_or_create_master_key(&dir, KeyBackend::File).unwrap();
-        let rescued = load_or_create_master_key(&dir, KeyBackend::Keyring).unwrap();
-        assert_eq!(rescued, key, "the legacy key file answers when the keyring cannot");
+        let rescued = unavailable_keyring(&dir, false).unwrap();
+        assert!(
+            rescued == key,
+            "the legacy key file answers when the keyring cannot"
+        );
     }
 }

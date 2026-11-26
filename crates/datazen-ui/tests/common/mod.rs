@@ -35,8 +35,10 @@ impl DesktopAdapter for SnippetHostAdapter {
     }
 
     fn save_snippet(&mut self, name: &str, sql: &str) -> Result<(), String> {
-        self.snippets
-            .push(datazen_ui_api::Snippet { name: name.to_owned(), sql: sql.to_owned() });
+        self.snippets.push(datazen_ui_api::Snippet {
+            name: name.to_owned(),
+            sql: sql.to_owned(),
+        });
         Ok(())
     }
 
@@ -71,7 +73,10 @@ impl PathAskingAdapter {
         let exports = Rc::new(RefCell::new(Vec::new()));
         let backups = Rc::new(RefCell::new(Vec::new()));
         (
-            Self { exports: Rc::clone(&exports), backups: Rc::clone(&backups) },
+            Self {
+                exports: Rc::clone(&exports),
+                backups: Rc::clone(&backups),
+            },
             exports,
             backups,
         )
@@ -152,7 +157,10 @@ impl DesktopAdapter for InboundAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
-    fn table_inbound_references(&self, table: &str) -> Result<Vec<datazen_ui_api::InboundRef>, String> {
+    fn table_inbound_references(
+        &self,
+        table: &str,
+    ) -> Result<Vec<datazen_ui_api::InboundRef>, String> {
         if table == "customers" {
             Ok(vec![datazen_ui_api::InboundRef {
                 table: "orders".into(),
@@ -195,7 +203,12 @@ impl DesktopAdapter for FavoritesHostAdapter {
         Ok(self.favorites.clone())
     }
 
-    fn save_favorite(&mut self, connection: &str, title: &str, sql: &str) -> Result<String, String> {
+    fn save_favorite(
+        &mut self,
+        connection: &str,
+        title: &str,
+        sql: &str,
+    ) -> Result<String, String> {
         let id = format!("id-{}", self.favorites.len() + 1);
         self.favorites.push(datazen_ui_api::FavoriteSpec {
             id: id.clone(),
@@ -233,7 +246,10 @@ impl ImportHostAdapter {
         let parsed_paths = Rc::new(RefCell::new(Vec::new()));
         let confirmed = Rc::new(RefCell::new(Vec::new()));
         (
-            Self { parsed_paths: Rc::clone(&parsed_paths), confirmed: Rc::clone(&confirmed) },
+            Self {
+                parsed_paths: Rc::clone(&parsed_paths),
+                confirmed: Rc::clone(&confirmed),
+            },
             parsed_paths,
             confirmed,
         )
@@ -315,12 +331,20 @@ impl DesktopAdapter for AdapterServingWorkflows {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
-    fn commit_cells(&mut self, _table: &str, _edits: &[(u32, String, String)]) -> Result<u32, String> {
+    fn commit_cells(
+        &mut self,
+        _table: &str,
+        _edits: &[(u32, String, String)],
+    ) -> Result<u32, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
     fn dashboard_widgets(&self) -> Result<Vec<DashboardWidget>, String> {
-        Ok(vec![DashboardWidget { id: 7, title: "Host Widget".into(), kind: "bar".into() }])
+        Ok(vec![DashboardWidget {
+            id: 7,
+            title: "Host Widget".into(),
+            kind: "bar".into(),
+        }])
     }
 
     fn save_dashboard_widget(&mut self, title: &str, query: &str) -> Result<u64, String> {
@@ -393,7 +417,11 @@ impl DesktopAdapter for AdapterServingOneRow {
         })
     }
 
-    fn commit_cells(&mut self, _table: &str, _edits: &[(u32, String, String)]) -> Result<u32, String> {
+    fn commit_cells(
+        &mut self,
+        _table: &str,
+        _edits: &[(u32, String, String)],
+    ) -> Result<u32, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 }
@@ -431,14 +459,18 @@ impl DesktopAdapter for AdapterFailingCommits {
         })
     }
 
-    fn commit_cells(&mut self, _table: &str, _edits: &[(u32, String, String)]) -> Result<u32, String> {
+    fn commit_cells(
+        &mut self,
+        _table: &str,
+        _edits: &[(u32, String, String)],
+    ) -> Result<u32, String> {
         Err("the desktop rejected the commit".into())
     }
 }
 
-/// N1's test host: takes every job and answers each on the poll after the next one.
+/// Relational test host that delivers its supported jobs on every second poll.
 pub(crate) struct JobAdapter {
-    pub accepted: Vec<AdapterJob>,
+    pending: Vec<AdapterDelivery>,
     pub polls: u32,
     pub fail_commit: bool,
     pub fail_open: bool,
@@ -446,15 +478,26 @@ pub(crate) struct JobAdapter {
 
 impl JobAdapter {
     pub fn new() -> Self {
-        Self { accepted: Vec::new(), polls: 0, fail_commit: false, fail_open: false }
+        Self {
+            pending: Vec::new(),
+            polls: 0,
+            fail_commit: false,
+            fail_open: false,
+        }
     }
 
     pub fn failing_commit() -> Self {
-        Self { fail_commit: true, ..Self::new() }
+        Self {
+            fail_commit: true,
+            ..Self::new()
+        }
     }
 
     pub fn failing_open() -> Self {
-        Self { fail_open: true, ..Self::new() }
+        Self {
+            fail_open: true,
+            ..Self::new()
+        }
     }
 }
 
@@ -479,7 +522,139 @@ impl DesktopAdapter for JobAdapter {
     }
 
     fn begin_job(&mut self, job: AdapterJob) -> bool {
-        self.accepted.push(job);
+        let delivery = match job {
+            AdapterJob::ReadNativeTransfer { .. }
+            | AdapterJob::ReviewNativeTransfer { .. }
+            | AdapterJob::ReviewNativeCsv { .. }
+            | AdapterJob::AppendNativeCsv { .. }
+            | AdapterJob::PreviewNativeSync { .. }
+            | AdapterJob::CompareNativeSchema { .. }
+            | AdapterJob::RunNativeTransfer { .. }
+            | AdapterJob::ReadQueryHistory { .. }
+            | AdapterJob::ReadKv(_)
+            | AdapterJob::CloseKv { .. } => return false,
+            AdapterJob::RunWorkflow { generation, .. } => AdapterDelivery::WorkflowRun {
+                generation,
+                results: Ok(vec![datazen_ui_api::WorkflowStepResult {
+                    step: "SELECT 1".into(),
+                    ok: true,
+                    summary: "1 rows".into(),
+                }]),
+            },
+            AdapterJob::ValueSearch { generation, .. } => AdapterDelivery::ValueSearched {
+                generation,
+                hits: Ok(vec![
+                    datazen_ui_api::ValueSearchHit {
+                        table: "events".into(),
+                        column: "label".into(),
+                        matches: 2,
+                    },
+                    datazen_ui_api::ValueSearchHit {
+                        table: "users".into(),
+                        column: "name".into(),
+                        matches: 1,
+                    },
+                ]),
+            },
+            AdapterJob::OpenConnection { generation, id } => AdapterDelivery::ConnectionOpened {
+                generation,
+                id: id.clone(),
+                catalog: if self.fail_open {
+                    Err(format!("cannot open '{id}'"))
+                } else {
+                    Ok(Catalog {
+                        databases: vec![DatabaseNode {
+                            name: "main".into(),
+                            schemas: vec![SchemaNode {
+                                name: "main".into(),
+                                tables: vec!["events".into(), "users".into()],
+                            }],
+                        }],
+                    })
+                },
+            },
+            AdapterJob::ReadTable {
+                generation,
+                table,
+                page,
+                page_size,
+                ..
+            } => AdapterDelivery::TablePage {
+                generation,
+                page: Ok(TablePage {
+                    table,
+                    columns: vec!["job".into()],
+                    rows: vec![vec![format!("read-{generation}")]],
+                    page,
+                    page_size,
+                    total_rows: 1,
+                    sort: None,
+                    filter: None,
+                    primary_key: Vec::new(),
+                    read_only: None,
+                }),
+            },
+            AdapterJob::ReadStructure { generation, table } => {
+                let ddl = format!("CREATE TABLE {table} (job text);");
+                AdapterDelivery::StructureRead {
+                    generation,
+                    table,
+                    structure: Ok(datazen_ui_api::TableStructure {
+                        ddl,
+                        columns: vec![datazen_ui_api::ColumnSpec {
+                            name: "job".into(),
+                            sql_type: "text".into(),
+                            nullable: true,
+                        }],
+                        indexes: vec![datazen_ui_api::IndexSpec {
+                            name: "idx_job".into(),
+                            columns: vec!["job".into()],
+                            unique: true,
+                        }],
+                        foreign_keys: Vec::new(),
+                    }),
+                }
+            }
+            AdapterJob::WidgetBars { generation, id } => AdapterDelivery::WidgetBarsRead {
+                generation,
+                id,
+                bars: Ok(vec![("mon".into(), 1)]),
+            },
+            AdapterJob::InboundRefs { generation, table } => AdapterDelivery::InboundRefsRead {
+                generation,
+                table,
+                refs: Ok(vec![datazen_ui_api::InboundRef {
+                    table: "orders".into(),
+                    column: "user_id".into(),
+                    referenced_column: "id".into(),
+                    constraint: "fk".into(),
+                }]),
+            },
+            AdapterJob::CommitCells { generation, .. } => AdapterDelivery::CommitCount {
+                generation,
+                count: if self.fail_commit {
+                    Err("rejected by the host".into())
+                } else {
+                    Ok(1)
+                },
+            },
+            AdapterJob::RunQuery { generation, .. } => AdapterDelivery::QueryPage {
+                generation,
+                page: Ok(TablePage {
+                    table: "result".into(),
+                    columns: vec!["job".into()],
+                    rows: vec![vec![format!("query-{generation}")]],
+                    page: 0,
+                    page_size: 1,
+                    total_rows: 1,
+                    sort: None,
+                    filter: None,
+                    primary_key: Vec::new(),
+                    read_only: None,
+                }),
+            },
+        };
+        self.pending.push(delivery);
         true
     }
 
@@ -489,128 +664,7 @@ impl DesktopAdapter for JobAdapter {
             return Vec::new();
         }
         self.polls = 0;
-        let fail_commit = self.fail_commit;
-        let fail_open = self.fail_open;
-        std::mem::take(&mut self.accepted)
-            .into_iter()
-            .map(|job| match job {
-                AdapterJob::ReadKv(_) | AdapterJob::CloseKv { .. } => {
-                    unreachable!("the relational fixture does not accept KV jobs")
-                }
-                AdapterJob::RunWorkflow { generation, .. } => AdapterDelivery::WorkflowRun {
-                    generation,
-                    results: Ok(vec![datazen_ui_api::WorkflowStepResult {
-                        step: "SELECT 1".into(),
-                        ok: true,
-                        summary: "1 rows".into(),
-                    }]),
-                },
-                AdapterJob::ValueSearch { generation, .. } => AdapterDelivery::ValueSearched {
-                    generation,
-                    hits: Ok(vec![
-                        datazen_ui_api::ValueSearchHit {
-                            table: "events".into(),
-                            column: "label".into(),
-                            matches: 2,
-                        },
-                        datazen_ui_api::ValueSearchHit {
-                            table: "users".into(),
-                            column: "name".into(),
-                            matches: 1,
-                        },
-                    ]),
-                },
-                AdapterJob::OpenConnection { generation, id } => AdapterDelivery::ConnectionOpened {
-                    generation,
-                    id: id.clone(),
-                    catalog: if fail_open {
-                        Err(format!("cannot open '{id}'"))
-                    } else {
-                        Ok(Catalog {
-                            databases: vec![DatabaseNode {
-                                name: "main".into(),
-                                schemas: vec![SchemaNode {
-                                    name: "main".into(),
-                                    tables: vec!["events".into(), "users".into()],
-                                }],
-                            }],
-                        })
-                    },
-                },
-                AdapterJob::ReadTable { generation, table, page, page_size, .. } => {
-                    AdapterDelivery::TablePage {
-                        generation,
-                        page: Ok(TablePage {
-                            table,
-                            columns: vec!["job".into()],
-                            rows: vec![vec![format!("read-{generation}")]],
-                            page,
-                            page_size,
-                            total_rows: 1,
-                            sort: None,
-                            filter: None,
-                            primary_key: Vec::new(),
-                            read_only: None,
-                        }),
-                    }
-                }
-                AdapterJob::ReadStructure { generation, table } => {
-                    let ddl = format!("CREATE TABLE {table} (job text);");
-                    AdapterDelivery::StructureRead {
-                        generation,
-                        table,
-                        structure: Ok(datazen_ui_api::TableStructure {
-                            ddl,
-                            columns: vec![datazen_ui_api::ColumnSpec {
-                                name: "job".into(),
-                                sql_type: "text".into(),
-                                nullable: true,
-                            }],
-                            indexes: vec![datazen_ui_api::IndexSpec {
-                                name: "idx_job".into(),
-                                columns: vec!["job".into()],
-                                unique: true,
-                            }],
-                            foreign_keys: Vec::new(),
-                        }),
-                    }
-                }
-                AdapterJob::WidgetBars { generation, id } => AdapterDelivery::WidgetBarsRead {
-                    generation,
-                    id,
-                    bars: Ok(vec![("mon".into(), 1)]),
-                },
-                AdapterJob::InboundRefs { generation, table } => AdapterDelivery::InboundRefsRead {
-                    generation,
-                    table,
-                    refs: Ok(vec![datazen_ui_api::InboundRef {
-                        table: "orders".into(),
-                        column: "user_id".into(),
-                        referenced_column: "id".into(),
-                        constraint: "fk".into(),
-                    }]),
-                },
-                AdapterJob::CommitCells { generation, .. } => AdapterDelivery::CommitCount {
-                    generation,
-                    count: if fail_commit { Err("rejected by the host".into()) } else { Ok(1) },
-                },
-                AdapterJob::RunQuery { generation, .. } => AdapterDelivery::QueryPage {
-                    generation,
-                    page: Ok(TablePage {
-                        table: "result".into(),
-                        columns: vec!["job".into()],
-                        rows: vec![vec![format!("query-{generation}")]],
-                        page: 0,
-                        page_size: 1,
-                        total_rows: 1,
-                        sort: None,
-                        filter: None,
-                        primary_key: Vec::new(),
-                        read_only: None,
-                    }),
-                },
-            })
-            .collect()
+        std::mem::take(&mut self.pending)
     }
 }
 
@@ -621,7 +675,9 @@ pub(crate) struct StructureStrictHost {
 
 impl StructureStrictHost {
     pub fn new() -> Self {
-        Self { accepted: Vec::new() }
+        Self {
+            accepted: Vec::new(),
+        }
     }
 }
 
@@ -687,23 +743,27 @@ impl DesktopAdapter for StructureStrictHost {
                         }),
                     }
                 }
-                AdapterJob::ReadTable { generation, table, page, page_size, .. } => {
-                    AdapterDelivery::TablePage {
-                        generation,
-                        page: Ok(TablePage {
-                            table,
-                            columns: vec!["id".into()],
-                            rows: vec![vec!["row".into()]],
-                            page,
-                            page_size,
-                            total_rows: 1,
-                            sort: None,
-                            filter: None,
-                            primary_key: Vec::new(),
-                            read_only: None,
-                        }),
-                    }
-                }
+                AdapterJob::ReadTable {
+                    generation,
+                    table,
+                    page,
+                    page_size,
+                    ..
+                } => AdapterDelivery::TablePage {
+                    generation,
+                    page: Ok(TablePage {
+                        table,
+                        columns: vec!["id".into()],
+                        rows: vec![vec!["row".into()]],
+                        page,
+                        page_size,
+                        total_rows: 1,
+                        sort: None,
+                        filter: None,
+                        primary_key: Vec::new(),
+                        read_only: None,
+                    }),
+                },
                 _ => unreachable!("the test only sends structure and read jobs"),
             })
             .collect()
@@ -718,7 +778,10 @@ pub(crate) struct DashboardsJobHost {
 
 impl DashboardsJobHost {
     pub fn new() -> Self {
-        Self { accepted: Vec::new(), polls: 0 }
+        Self {
+            accepted: Vec::new(),
+            polls: 0,
+        }
     }
 }
 
@@ -743,7 +806,11 @@ impl DesktopAdapter for DashboardsJobHost {
     }
 
     fn dashboard_widgets(&self) -> Result<Vec<DashboardWidget>, String> {
-        Ok(vec![DashboardWidget { id: 7, title: "Counts".into(), kind: "bar".into() }])
+        Ok(vec![DashboardWidget {
+            id: 7,
+            title: "Counts".into(),
+            kind: "bar".into(),
+        }])
     }
 
     fn widget_bars(&self, _: u64) -> Result<Vec<(String, u32)>, String> {

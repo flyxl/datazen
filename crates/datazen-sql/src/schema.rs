@@ -1,4 +1,4 @@
-//! Structure editor types (drafts, plans, risk).
+//! Catalog objects and table structure changes exchanged by clients and drivers.
 
 use serde::{Deserialize, Serialize};
 
@@ -85,4 +85,22 @@ pub struct StructureChangePlan {
     pub statements: Vec<PlanStatement>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseObject {
+    pub kind: String,
+    pub schema: Option<String>,
+    pub name: String,
+    /// PostgreSQL routine identity arguments. This disambiguates overloaded
+    /// functions/procedures without putting SQL syntax into `name`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    /// Schema/name of the relation a trigger is attached to. A trigger name
+    /// is only unique within its relation on some supported engines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_schema: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_name: Option<String>,
 }

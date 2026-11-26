@@ -77,7 +77,7 @@
 //!   ASCII data this window ranks; the `id` tie-break uses plain `Ord`,
 //!   matching `localeCompare` on ASCII ids.
 //! * **`lastConnectedAt` parsing is ISO-8601 only.** React's
-//!   `Date.parse` accepts any date string; `parse_iso_timestamp` (in `backup_grouping`)
+//!   `Date.parse` accepts any date string; the shared connection timestamp parser
 //!   accepts `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM:SS` with an optional
 //!   fractional part and a `Z` or `±HH:MM` offset — the shapes the app
 //!   stores — and returns `None` (sorts last, like React's `null`) for
@@ -361,10 +361,7 @@ impl BackupWindowVm {
     /// `t('backup.unsupportedType')`, and the host must not connect.
     /// Otherwise the host must connect and feed the session back
     /// through [`BackupWindowVm::apply_session_connected`].
-    pub fn begin_select_connection(
-        &mut self,
-        conn: &BackupConnection,
-    ) -> SelectConnectionOutcome {
+    pub fn begin_select_connection(&mut self, conn: &BackupConnection) -> SelectConnectionOutcome {
         self.selected_conn_id = Some(conn.id.clone());
         self.selected_db = None;
         self.databases.clear();

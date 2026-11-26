@@ -1,28 +1,26 @@
 //! AppState method implementations.
 
 #![allow(unused_imports)]
-use crate::state_def::*;
-use crate::views::next_connection;
-use crate::views::WorkflowExecutionResult;
-use crate::views::WorkflowFormSlots;
-use crate::views::workflow_yaml;
 use crate::constants::*;
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
+use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
+use crate::views::next_connection;
+use crate::views::workflow_yaml;
+use crate::views::WorkflowExecutionResult;
+use crate::views::WorkflowFormSlots;
 use crate::{icons, splitter};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot,
-    QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow,
-    WorkflowStepResult, WorkspaceApi,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
+    SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
+    WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Color, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent,
-    TextEdit, Titlebar, Tx, col, oklch, row, text, text_input,
+    col, oklch, row, text, text_input, App, AppSpec, Color, Cx, El, FileDialogOptions,
+    FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
 impl AppState {
@@ -58,7 +56,10 @@ impl AppState {
             .table_ddl(table)
             .or_else(|_| self.workspace.table_ddl(table))
     }
-    pub fn structure_columns(&self, table: &str) -> Result<Vec<datazen_ui_api::ColumnSpec>, String> {
+    pub fn structure_columns(
+        &self,
+        table: &str,
+    ) -> Result<Vec<datazen_ui_api::ColumnSpec>, String> {
         self.desktop
             .table_columns(table)
             .or_else(|_| self.workspace.table_columns(table))
@@ -126,7 +127,9 @@ impl AppState {
 
     /// Queue an add-column draft from the draft inputs.
     pub fn add_column_draft(&mut self) {
-        let Some(table) = self.selected_table() else { return };
+        let Some(table) = self.selected_table() else {
+            return;
+        };
         let name = self.draft_name.text.trim().to_owned();
         if name.is_empty() {
             return;
@@ -136,19 +139,30 @@ impl AppState {
         } else {
             self.draft_type.text.trim().to_owned()
         };
-        self.column_drafts.entry(table).or_default().push(ColumnDraft::AddColumn { name, sql_type });
+        self.column_drafts
+            .entry(table)
+            .or_default()
+            .push(ColumnDraft::AddColumn { name, sql_type });
         self.draft_name = TextEdit::new(String::new());
         self.draft_type = TextEdit::new(String::new());
     }
 
     /// Apply the table's drafts through the port. A failure keeps the drafts.
     pub fn apply_column_drafts(&mut self) {
-        let Some(table) = self.selected_table() else { return };
-        let Some(drafts) = self.column_drafts.get(&table) else { return };
+        let Some(table) = self.selected_table() else {
+            return;
+        };
+        let Some(drafts) = self.column_drafts.get(&table) else {
+            return;
+        };
         if drafts.is_empty() {
             return;
         }
-        let sql = drafts.iter().map(|draft| draft.sql(&table)).collect::<Vec<_>>().join("\n");
+        let sql = drafts
+            .iter()
+            .map(|draft| draft.sql(&table))
+            .collect::<Vec<_>>()
+            .join("\n");
         if self.workspace.apply_ddl(&table, &sql).is_ok() {
             self.column_drafts.remove(&table);
             // E1: the applied DDL changed the table's structure — the cache
@@ -159,7 +173,9 @@ impl AppState {
 
     /// Queue a retype draft for the column named in the draft inputs.
     pub fn add_retype_draft(&mut self) {
-        let Some(table) = self.selected_table() else { return };
+        let Some(table) = self.selected_table() else {
+            return;
+        };
         let column = self.draft_name.text.trim().to_owned();
         if column.is_empty() {
             return;
@@ -255,20 +271,21 @@ impl AppState {
         self.workflow_results = results;
         let order = self.workflow_step_order;
         let answer = self.workflow_execution.clone();
-        if let Some(panel) = self.workflow_panels.iter_mut().find_map(|panel| match panel {
-            crate::views::workflow_page::WorkflowPanel::Run(run) if run.is_executing => {
-                Some(run)
-            }
-            _ => None,
-        }) {
+        if let Some(panel) = self
+            .workflow_panels
+            .iter_mut()
+            .find_map(|panel| match panel {
+                crate::views::workflow_page::WorkflowPanel::Run(run) if run.is_executing => {
+                    Some(run)
+                }
+                _ => None,
+            })
+        {
             panel.is_executing = false;
             panel.result = answer;
-            self.workflow_active_step = self
-                .workflow_execution
-                .as_ref()
-                .and_then(|result| {
-                    crate::views::workflow_page::first_shown_index(result.steps.len(), order)
-                });
+            self.workflow_active_step = self.workflow_execution.as_ref().and_then(|result| {
+                crate::views::workflow_page::first_shown_index(result.steps.len(), order)
+            });
         }
     }
 

@@ -1,25 +1,23 @@
 //! AppState method implementations.
 
 #![allow(unused_imports)]
-use crate::state_def::*;
-use crate::views::{next_connection, workflow_yaml};
 use crate::constants::*;
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
+use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
+use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot,
-    QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow,
-    WorkflowStepResult, WorkspaceApi,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
+    SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
+    WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Color, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent,
-    TextEdit, Titlebar, Tx, col, oklch, row, text, text_input,
+    col, oklch, row, text, text_input, App, AppSpec, Color, Cx, El, FileDialogOptions,
+    FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
 impl AppState {
@@ -46,7 +44,9 @@ impl AppState {
             None | Some(StructureState { loading: true, .. }) => {
                 Some("the table's structure is still loading — try again once it lands".to_owned())
             }
-            Some(StructureState { error: Some(error), .. }) => Some(error.clone()),
+            Some(StructureState {
+                error: Some(error), ..
+            }) => Some(error.clone()),
             Some(StructureState { data: None, .. }) => Some(
                 "the table's structure is not loaded — switch the view or reopen the table"
                     .to_owned(),
@@ -58,8 +58,12 @@ impl AppState {
             return;
         }
         self.fk_error = None;
-        let Some((key, index)) = self.outbound_fk_of_focus() else { return };
-        let Some(target_column) = key.target_columns.get(index).cloned() else { return };
+        let Some((key, index)) = self.outbound_fk_of_focus() else {
+            return;
+        };
+        let Some(target_column) = key.target_columns.get(index).cloned() else {
+            return;
+        };
         let value = self.grid.cell(self.grid.focus().0, self.grid.focus().1);
         let target_table = key.target_table.clone();
         let label = format!("{table} → {target_table}");
@@ -74,7 +78,10 @@ impl AppState {
     pub fn load_inbound_refs(&mut self) {
         let table = self.grid.table_label().to_owned();
         let generation = self.next_inbound_generation();
-        let job = AdapterJob::InboundRefs { generation, table: table.clone() };
+        let job = AdapterJob::InboundRefs {
+            generation,
+            table: table.clone(),
+        };
         if self.desktop.begin_job(job) {
             self.inbound_loading = Some(generation);
             self.inbound_refs = None;
@@ -113,8 +120,12 @@ impl AppState {
     /// Open a referencing table filtered on the focused row's value of the
     /// referenced column (T5). A4: pushes an FK breadcrumb.
     pub fn locate_inbound_ref(&mut self, index: usize) {
-        let Some(list) = self.inbound_refs.as_ref() else { return };
-        let Some(reference) = list.get(index).cloned() else { return };
+        let Some(list) = self.inbound_refs.as_ref() else {
+            return;
+        };
+        let Some(reference) = list.get(index).cloned() else {
+            return;
+        };
         let Some(referenced_index) = (0..self.grid.cols)
             .find(|col| self.grid.column_name(*col) == Some(reference.referenced_column.as_str()))
         else {
@@ -167,7 +178,10 @@ impl AppState {
     pub fn open_table_with_filter(&mut self, table: &str, column: &str, value: &str) {
         self.active = Section::Workspace;
         self.open_table_tab(table);
-        self.filter = Some(ColumnFilter { column: column.to_owned(), contains: value.to_owned() });
+        self.filter = Some(ColumnFilter {
+            column: column.to_owned(),
+            contains: value.to_owned(),
+        });
         self.sort = None;
         self.table_page = 0;
         self.reload_table_page();
@@ -178,8 +192,7 @@ impl AppState {
     const VALUE_SEARCH_MODES: [&'static str; 5] =
         ["contains", "notContains", "exact", "prefix", "suffix"];
     pub fn value_search_mode(&self) -> &'static str {
-        Self::VALUE_SEARCH_MODES
-            [(self.value_search_mode as usize) % Self::VALUE_SEARCH_MODES.len()]
+        Self::VALUE_SEARCH_MODES[(self.value_search_mode as usize) % Self::VALUE_SEARCH_MODES.len()]
     }
     pub fn cycle_value_search_mode(&mut self) {
         self.value_search_mode =
@@ -196,8 +209,7 @@ impl AppState {
             return;
         }
         if !self.session_open() {
-            self.value_search_error =
-                Some("value search needs an open connection".into());
+            self.value_search_error = Some("value search needs an open connection".into());
             return;
         }
         let generation = self.next_value_search_generation();
@@ -212,8 +224,7 @@ impl AppState {
             self.value_search_hits.clear();
             self.value_search_query = self.value_search_value.text.trim().to_owned();
         } else {
-            self.value_search_error =
-                Some("value search needs the live host".into());
+            self.value_search_error = Some("value search needs the live host".into());
         }
     }
 
@@ -234,9 +245,10 @@ impl AppState {
     /// Open the hit's table with a filter on the hit's column (T4): the
     /// locate intent the React dialog answers with.
     pub fn locate_value_search_hit(&mut self, index: usize) {
-        let Some(hit) = self.value_search_hits.get(index).cloned() else { return };
+        let Some(hit) = self.value_search_hits.get(index).cloned() else {
+            return;
+        };
         let value = self.value_search_query.clone();
         self.open_table_with_filter(&hit.table, &hit.column, &value);
     }
-
 }

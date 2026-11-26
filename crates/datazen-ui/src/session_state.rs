@@ -1,30 +1,30 @@
 //! AppState method implementations.
 
 #![allow(unused_imports)]
-use crate::state_def::*;
-use crate::views::{next_connection, workflow_yaml};
 use crate::constants::*;
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
+use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
+use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot,
-    QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow,
-    WorkflowStepResult, WorkspaceApi,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
+    SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
+    WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Color, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent,
-    TextEdit, Titlebar, Tx, col, oklch, row, text, text_input,
+    col, oklch, row, text, text_input, App, AppSpec, Color, Cx, El, FileDialogOptions,
+    FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
 impl AppState {
     pub fn select(&mut self, section: Section) {
-        if self.active != section && !self.kv_can_leave() { return; }
+        if self.active != section && !self.kv_can_leave() {
+            return;
+        }
         self.active = section;
         if section == Section::Connections
             || (section == Section::Tools && self.desktop.supports_native_transfer())
@@ -154,17 +154,19 @@ impl AppState {
     /// memory port's while it does not. The adapter's read is memory-speed —
     /// the host caches its document.
     pub fn open_connection(&mut self, id: &str) {
-        if !self.kv_can_leave() { return; }
+        if !self.kv_can_leave() {
+            return;
+        }
         // N3: a live host opens the connection as a job — real driver IO off
         // the frame loop. Until the catalog (or the failure sentence) lands
         // the page stays put and says the connect is in flight; the memory
         // port's instant path answers when the host declines.
         self.record_recent_connection(id);
         let generation = self.next_read_generation();
-        if self
-            .desktop
-            .begin_job(AdapterJob::OpenConnection { generation, id: id.to_owned() })
-        {
+        if self.desktop.begin_job(AdapterJob::OpenConnection {
+            generation,
+            id: id.to_owned(),
+        }) {
             self.connect_loading = Some(generation);
             return;
         }
@@ -201,7 +203,9 @@ impl AppState {
             .unwrap_or_else(|| self.workspace.connections().to_vec())
     }
     pub fn disconnect(&mut self) {
-        if !self.kv_can_leave() { return; }
+        if !self.kv_can_leave() {
+            return;
+        }
         self.close_kv_workbench();
         self.workspace.disconnect();
         self.tabs = Tabs::new();

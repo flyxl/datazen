@@ -1,19 +1,22 @@
 //! Application state definitions.
 
-use crate::data_grid::DataGrid;
 use crate::components::ai::{AiChatPanelState, AiPendingDraft, AiWriteProposalHostState};
+use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::types::{QuerySidebarPanel, ResultView, Section, TableView, Tool};
-use crate::views::{InstallWappStep, RunningExecutionCloseRequest, WappFilter, WappPackagePreview, WappRemoveRequest, WappSummaryVm};
-use crate::views::WorkflowExecutionResult;
-use crate::views::HistoryListItem;
-use crate::views::{
-    WorkflowCommandDefinition, WorkflowConnectionOption, WorkflowDraft, WorkflowFormSelect,
-};
-use crate::views::ConnectionHomeSlotVm;
 use crate::views::workflow_page::{
     WorkflowConfirmRequest, WorkflowContextMenuRequest, WorkflowEditorMode, WorkflowListItem,
     WorkflowPanel, WorkflowSideTab, WorkflowStepOrder,
+};
+use crate::views::ConnectionHomeSlotVm;
+use crate::views::HistoryListItem;
+use crate::views::WorkflowExecutionResult;
+use crate::views::{
+    InstallWappStep, RunningExecutionCloseRequest, WappFilter, WappPackagePreview,
+    WappRemoveRequest, WappSummaryVm,
+};
+use crate::views::{
+    WorkflowCommandDefinition, WorkflowConnectionOption, WorkflowDraft, WorkflowFormSelect,
 };
 use std::cell::Cell;
 
@@ -28,8 +31,6 @@ pub struct QueryResultTab {
     pub pinned: bool,
 }
 use crate::{icons, splitter};
-#[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
     DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
@@ -382,8 +383,7 @@ pub struct AppState {
     pub workflow_form_connections: Vec<WorkflowConnectionOption>,
     /// T070: the loaded command definitions per connection (React's
     /// `commandsByConnection` — the loader itself is a host-side seam).
-    pub workflow_form_commands:
-        std::collections::BTreeMap<String, Vec<WorkflowCommandDefinition>>,
+    pub workflow_form_commands: std::collections::BTreeMap<String, Vec<WorkflowCommandDefinition>>,
     /// T070: the connections whose command list is in flight (React's
     /// `loadingCommands`).
     pub workflow_form_commands_loading: std::collections::BTreeSet<String>,

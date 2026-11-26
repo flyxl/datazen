@@ -1,11 +1,55 @@
-use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, row, text, text_input};
+use datazen_sql::sql_split::{is_comment_only_or_empty, split_sql_statements};
+use rune::{col, row, text, text_input, El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx};
 
 pub(super) const KEYWORDS: &[&str] = &[
-    "ALL", "ALTER", "AND", "AS", "AVG", "BY", "CASE", "COUNT", "CREATE", "DELETE", "DISTINCT",
-    "DROP", "ELSE", "END", "FOREIGN", "FROM", "GROUP", "IN", "INDEX", "INNER", "INSERT", "INTO",
-    "IS", "JOIN", "KEY", "LEFT", "LIMIT", "MAX", "MIN", "NOT", "NULL", "OFFSET", "ON", "OR",
-    "ORDER", "PRIMARY", "REFERENCES", "RIGHT", "SELECT", "SET", "SUM", "TABLE", "THEN", "UPDATE",
-    "VALUES", "WHEN", "WHERE", "WITH",
+    "ALL",
+    "ALTER",
+    "AND",
+    "AS",
+    "AVG",
+    "BY",
+    "CASE",
+    "COUNT",
+    "CREATE",
+    "DELETE",
+    "DISTINCT",
+    "DROP",
+    "ELSE",
+    "END",
+    "FOREIGN",
+    "FROM",
+    "GROUP",
+    "IN",
+    "INDEX",
+    "INNER",
+    "INSERT",
+    "INTO",
+    "IS",
+    "JOIN",
+    "KEY",
+    "LEFT",
+    "LIMIT",
+    "MAX",
+    "MIN",
+    "NOT",
+    "NULL",
+    "OFFSET",
+    "ON",
+    "OR",
+    "ORDER",
+    "PRIMARY",
+    "REFERENCES",
+    "RIGHT",
+    "SELECT",
+    "SET",
+    "SUM",
+    "TABLE",
+    "THEN",
+    "UPDATE",
+    "VALUES",
+    "WHEN",
+    "WHERE",
+    "WITH",
 ];
 
 /// One selection range. `head` is the caret. `anchor` is the other end. Equal means a caret.
@@ -17,7 +61,10 @@ pub struct Sel {
 
 impl Sel {
     pub fn caret(at: usize) -> Self {
-        Self { anchor: at, head: at }
+        Self {
+            anchor: at,
+            head: at,
+        }
     }
 
     pub fn from(&self) -> usize {
@@ -38,7 +85,10 @@ pub struct Selection {
 
 impl Selection {
     pub fn single(at: usize) -> Self {
-        Self { ranges: vec![Sel::caret(at)], main: 0 }
+        Self {
+            ranges: vec![Sel::caret(at)],
+            main: 0,
+        }
     }
 
     pub fn main(&self) -> Sel {
@@ -149,7 +199,11 @@ impl SqlEditor {
     /// selections are a no-op, so a plain Command-X never bites.
     pub fn cut_selection(&mut self) {
         if self.composition.is_some()
-            || self.selection.ranges.iter().all(|range| range.from() == range.to())
+            || self
+                .selection
+                .ranges
+                .iter()
+                .all(|range| range.from() == range.to())
         {
             return;
         }
@@ -190,14 +244,16 @@ impl SqlEditor {
 
     /// The completion candidates, newest refresh; empty when closed.
     pub fn completion_items(&self) -> &[&'static str] {
-        self.completion.as_ref().map(|c| c.items.as_slice()).unwrap_or(&[])
+        self.completion
+            .as_ref()
+            .map(|c| c.items.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Which completion item is highlighted.
     pub fn completion_selected(&self) -> usize {
         self.completion.as_ref().map(|c| c.selected).unwrap_or(0)
     }
-
 
     pub fn has_completion(&self) -> bool {
         self.completion.is_some()
@@ -210,7 +266,8 @@ impl SqlEditor {
 
     pub fn completion_up(&mut self) {
         if let Some(completion) = &mut self.completion {
-            completion.selected = (completion.selected + completion.items.len() - 1) % completion.items.len();
+            completion.selected =
+                (completion.selected + completion.items.len() - 1) % completion.items.len();
         }
     }
 
@@ -226,8 +283,12 @@ impl SqlEditor {
 
     /// Insert completion item `index` over the prefix (the canvas list's click).
     pub fn completion_accept_index(&mut self, index: usize) {
-        let Some(completion) = self.completion.clone() else { return };
-        let Some(word) = completion.items.get(index) else { return };
+        let Some(completion) = self.completion.clone() else {
+            return;
+        };
+        let Some(word) = completion.items.get(index) else {
+            return;
+        };
         let head = self.selection.main().head;
         let start = head - completion.prefix.len();
         self.push_history();
@@ -253,7 +314,11 @@ impl SqlEditor {
         self.completion = if items.is_empty() {
             None
         } else {
-            Some(Completion { prefix: prefix.to_owned(), items, selected: 0 })
+            Some(Completion {
+                prefix: prefix.to_owned(),
+                items,
+                selected: 0,
+            })
         };
     }
 
@@ -269,7 +334,10 @@ impl SqlEditor {
     pub fn set_main_selection(&mut self, anchor: usize, head: usize) {
         let anchor = boundary(&self.doc, anchor);
         let head = boundary(&self.doc, head);
-        self.selection = Selection { ranges: vec![Sel { anchor, head }], main: 0 };
+        self.selection = Selection {
+            ranges: vec![Sel { anchor, head }],
+            main: 0,
+        };
     }
 
     /// Replace `from..to` with `text` (clamped to char boundaries, remapping
@@ -282,7 +350,12 @@ impl SqlEditor {
     /// CodeMirror `addCursor`: a new caret, and it becomes the main range.
     pub fn add_cursor(&mut self, byte: usize) {
         let at = boundary(&self.doc, byte);
-        if let Some(i) = self.selection.ranges.iter().position(|r| r.anchor == at && r.head == at) {
+        if let Some(i) = self
+            .selection
+            .ranges
+            .iter()
+            .position(|r| r.anchor == at && r.head == at)
+        {
             self.selection.main = i;
             return;
         }
@@ -391,7 +464,11 @@ impl SqlEditor {
         &self,
         resolve: impl FnOnce(&str) -> Option<Result<Vec<std::ops::Range<usize>>, String>>,
     ) -> Result<Option<String>, String> {
-        let mut selected = self.selection.ranges().iter().filter(|range| range.from() < range.to());
+        let mut selected = self
+            .selection
+            .ranges()
+            .iter()
+            .filter(|range| range.from() < range.to());
         if let Some(range) = selected.next() {
             if selected.next().is_some() {
                 return Err("Select one SQL statement before running.".into());
@@ -404,9 +481,9 @@ impl SqlEditor {
                     _ => Err("Select one SQL statement before running.".into()),
                 };
             }
-            let count = datazen_driver_api::sql_split::split_sql_statements(sql)
+            let count = split_sql_statements(sql)
                 .iter()
-                .filter(|statement| !datazen_driver_api::sql_split::is_comment_only_or_empty(statement))
+                .filter(|statement| !is_comment_only_or_empty(statement))
                 .count();
             return if count == 1 {
                 Ok(Some(sql.to_owned()))
@@ -425,7 +502,9 @@ impl SqlEditor {
             // semicolon typed by the user. Do not jump back across a later
             // comment or other non-whitespace text.
             ranges.last().filter(|range| {
-                self.doc[range.end..].strip_prefix(';').is_some_and(|rest| rest.trim().is_empty())
+                self.doc[range.end..]
+                    .strip_prefix(';')
+                    .is_some_and(|rest| rest.trim().is_empty())
             })
         });
         Ok(statement.map(|range| self.doc[range.clone()].trim().to_owned()))
@@ -438,11 +517,12 @@ impl SqlEditor {
             return false;
         }
         let main = self.selection.main();
-        let start = if main.from() != main.to() && self.doc.get(main.from()..main.to()) == Some(needle) {
-            main.to()
-        } else {
-            main.head
-        };
+        let start =
+            if main.from() != main.to() && self.doc.get(main.from()..main.to()) == Some(needle) {
+                main.to()
+            } else {
+                main.head
+            };
         let found = self.doc[start..]
             .find(needle)
             .map(|i| start + i)
@@ -450,7 +530,10 @@ impl SqlEditor {
         match found {
             Some(at) => {
                 self.selection = Selection {
-                    ranges: vec![Sel { anchor: at, head: at + needle.len() }],
+                    ranges: vec![Sel {
+                        anchor: at,
+                        head: at + needle.len(),
+                    }],
                     main: 0,
                 };
                 true
@@ -520,14 +603,20 @@ impl SqlEditor {
         if self.undo_stack.len() >= HISTORY_LIMIT {
             self.undo_stack.remove(0);
         }
-        self.undo_stack
-            .push(Snapshot { doc: self.doc.clone(), selection: self.selection.clone() });
+        self.undo_stack.push(Snapshot {
+            doc: self.doc.clone(),
+            selection: self.selection.clone(),
+        });
         self.redo_stack.clear();
     }
 
     /// `Ime::Preedit`. Empty ends the composition and leaves the document alone.
     pub fn preedit(&mut self, text: &str) {
-        self.composition = if text.is_empty() { None } else { Some(text.to_owned()) };
+        self.composition = if text.is_empty() {
+            None
+        } else {
+            Some(text.to_owned())
+        };
     }
 
     /// `Ime::Commit`: the composed string replaces the main range only. Other ranges are mapped
@@ -605,7 +694,9 @@ impl SqlEditor {
 }
 
 pub(super) fn is_keyword(word: &str) -> bool {
-    KEYWORDS.binary_search_by(|k| cmp_ignore_ascii_case(k, word)).is_ok()
+    KEYWORDS
+        .binary_search_by(|k| cmp_ignore_ascii_case(k, word))
+        .is_ok()
 }
 
 pub(super) fn cmp_ignore_ascii_case(a: &str, b: &str) -> std::cmp::Ordering {

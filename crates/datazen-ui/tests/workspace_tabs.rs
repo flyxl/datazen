@@ -164,7 +164,10 @@ fn the_workflow_yaml_edits_and_undoes_through_the_document_model() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-    assert!(runtime.find("workflow-edit-panel").is_some(), "the edit pane");
+    assert!(
+        runtime.find("workflow-edit-panel").is_some(),
+        "the edit pane"
+    );
     assert!(
         runtime.find("workflow-yaml-editor").is_none(),
         "the visual mode mounts no yaml surface yet"
@@ -227,7 +230,10 @@ fn workflow_run_results_separate_failures_from_successes() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-    assert!(runtime.find("workflow-tab-wf-1").is_some(), "the run panel tab");
+    assert!(
+        runtime.find("workflow-tab-wf-1").is_some(),
+        "the run panel tab"
+    );
 
     let (x, y) = runtime.find("workflow-execute-button").expect("run button");
     runtime.pointer_down(x, y);
@@ -249,8 +255,12 @@ fn workflow_run_results_separate_failures_from_successes() {
     assert!(runtime.find("workflow-step-apply plan").is_some());
     assert!(runtime.find("workflow-step-compare structures").is_some());
     assert!(runtime.find("workflow-execution-result").is_some());
-    assert!(runtime.find("workflow-execution-result-step-0-row").is_some());
-    assert!(runtime.find("workflow-execution-result-step-1-row").is_some());
+    assert!(runtime
+        .find("workflow-execution-result-step-0-row")
+        .is_some());
+    assert!(runtime
+        .find("workflow-execution-result-step-1-row")
+        .is_some());
     let results = &runtime.state.workflow_results;
     assert_eq!(results[0].summary, "ok: 12 rows");
     assert_eq!(results[1].summary, "the replica refused the plan");
@@ -292,7 +302,10 @@ fn clicking_a_session_table_opens_a_table_tab() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(1.0);
-    assert!(runtime.find("object-tree").is_some(), "object tree appears after connecting");
+    assert!(
+        runtime.find("object-tree").is_some(),
+        "object tree appears after connecting"
+    );
 
     let (x, y) = runtime
         .find("tree-table-customers")
@@ -499,12 +512,12 @@ fn the_desktop_adapter_message_leaves_the_connections_page_with_the_section() {
 
 #[test]
 fn a_wired_adapter_replaces_the_demo_list_with_the_use_case_answer() {
-    use datazen_ui_api::{ConnectionProfile, UseCaseAdapter};
+    use datazen_ui_api::{ConnectionProfile, DemoAdapter};
 
     let mut runtime = runtime();
     // H3: the desktop process lists connections through the adapter; the
     // port's demo list is only the fallback.
-    runtime.state.desktop = Box::new(UseCaseAdapter::new(vec![ConnectionProfile {
+    runtime.state.desktop = Box::new(DemoAdapter::with_connections(vec![ConnectionProfile {
         id: "warehouse".into(),
         name: "Warehouse".into(),
         engine: "postgres".into(),
@@ -631,10 +644,10 @@ fn a_failed_commit_keeps_the_dirty_marks() {
 
 #[test]
 fn a_wired_commit_lands_in_the_adapters_use_case_world() {
-    use datazen_ui_api::{UseCaseAdapter, WorkspaceApi};
+    use datazen_ui_api::{DemoAdapter, WorkspaceApi};
 
     let mut runtime = runtime();
-    runtime.state.desktop = Box::new(UseCaseAdapter::with_demo_connections());
+    runtime.state.desktop = Box::new(DemoAdapter::default());
     runtime.state.workspace.connect("local").unwrap();
     runtime.state.open_table_tab("customers").unwrap();
     runtime.frame(0.0);
@@ -724,75 +737,70 @@ fn settings_nav_groups_render_all_twelve_sections() {
     }
 }
 
-
-    #[test]
-    fn settings_navigation_switches_rendered_section() {
-        for (id, marker) in [
-            ("appearance", "settings-theme"),
-            ("dataBrowsing", "settings-page-size-set"),
-            ("editor", "settings-snippets"),
-            ("mcpServer", "settings-section-mcpServer"),
-        ] {
-            let mut runtime = runtime();
-            runtime.state.active = Section::Settings;
-            runtime.frame(0.0);
-
-            assert_eq!(runtime.state.settings_section(), "general");
-            assert!(runtime.find("settings-section-general").is_some());
-            assert!(
-                runtime.find(&format!("settings-section-{id}")).is_none(),
-                "section {id} hidden before switch"
-            );
-
-            runtime.state.set_settings_section(id);
-            runtime.settle_all();
-            runtime.frame(0.0);
-            assert_eq!(runtime.state.settings_section(), id, "active section {id}");
-            assert!(
-                runtime.find(&format!("settings-section-{id}")).is_some(),
-                "section {id} rendered"
-            );
-            assert!(runtime.find(marker).is_some(), "marker {marker} for {id}");
-            assert!(runtime.find("settings-section-general").is_none());
-        }
-    }
-
-    #[test]
-    fn settings_section_is_deep_link_addressable_by_key() {
-        let ids = [
-            "general",
-            "appearance",
-            "dataBrowsing",
-            "editor",
-            "behavior",
-            "logging",
-            "ai",
-            "prompts",
-            "mcpServer",
-            "mcpClient",
-            "tunnels",
-            "extensions",
-        ];
-        for id in ids {
-            let mut runtime = runtime();
-            runtime.state.active = Section::Settings;
-            runtime.state.set_settings_section(id);
-            runtime.frame(0.0);
-            assert_eq!(
-                runtime.state.settings_section(),
-                id,
-                "deep-link key {id}"
-            );
-            assert!(
-                runtime.find(&format!("settings-section-{id}")).is_some(),
-                "section {id} should render"
-            );
-        }
-
+#[test]
+fn settings_navigation_switches_rendered_section() {
+    for (id, marker) in [
+        ("appearance", "settings-theme"),
+        ("dataBrowsing", "settings-page-size-set"),
+        ("editor", "settings-snippets"),
+        ("mcpServer", "settings-section-mcpServer"),
+    ] {
         let mut runtime = runtime();
         runtime.state.active = Section::Settings;
-        runtime.state.set_settings_section("does-not-exist");
         runtime.frame(0.0);
+
         assert_eq!(runtime.state.settings_section(), "general");
         assert!(runtime.find("settings-section-general").is_some());
+        assert!(
+            runtime.find(&format!("settings-section-{id}")).is_none(),
+            "section {id} hidden before switch"
+        );
+
+        runtime.state.set_settings_section(id);
+        runtime.settle_all();
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.settings_section(), id, "active section {id}");
+        assert!(
+            runtime.find(&format!("settings-section-{id}")).is_some(),
+            "section {id} rendered"
+        );
+        assert!(runtime.find(marker).is_some(), "marker {marker} for {id}");
+        assert!(runtime.find("settings-section-general").is_none());
     }
+}
+
+#[test]
+fn settings_section_is_deep_link_addressable_by_key() {
+    let ids = [
+        "general",
+        "appearance",
+        "dataBrowsing",
+        "editor",
+        "behavior",
+        "logging",
+        "ai",
+        "prompts",
+        "mcpServer",
+        "mcpClient",
+        "tunnels",
+        "extensions",
+    ];
+    for id in ids {
+        let mut runtime = runtime();
+        runtime.state.active = Section::Settings;
+        runtime.state.set_settings_section(id);
+        runtime.frame(0.0);
+        assert_eq!(runtime.state.settings_section(), id, "deep-link key {id}");
+        assert!(
+            runtime.find(&format!("settings-section-{id}")).is_some(),
+            "section {id} should render"
+        );
+    }
+
+    let mut runtime = runtime();
+    runtime.state.active = Section::Settings;
+    runtime.state.set_settings_section("does-not-exist");
+    runtime.frame(0.0);
+    assert_eq!(runtime.state.settings_section(), "general");
+    assert!(runtime.find("settings-section-general").is_some());
+}

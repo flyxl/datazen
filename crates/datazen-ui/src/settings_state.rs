@@ -8,8 +8,6 @@ use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
 use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
-#[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
     DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
@@ -258,12 +256,19 @@ impl AppState {
     }
 
     /// A4: set and persist one table column width (points).
-    pub fn set_table_column_width(&mut self, table: &str, column: &str, width: u32) -> Result<(), String> {
+    pub fn set_table_column_width(
+        &mut self,
+        table: &str,
+        column: &str,
+        width: u32,
+    ) -> Result<(), String> {
         let key = self.colw_key(table, column);
         let width = width.max(40);
         self.set_layout_size(&key, width)?;
         if self.grid.has_page() && self.grid.table_label() == table {
-            if let Some(col) = (0..self.grid.cols).find(|c| self.grid.column_name(*c) == Some(column)) {
+            if let Some(col) =
+                (0..self.grid.cols).find(|c| self.grid.column_name(*c) == Some(column))
+            {
                 self.grid.set_col_w(col, width);
             }
         }
@@ -338,9 +343,7 @@ pub fn all_settings_sections() -> Vec<&'static str> {
 /// settings page may show, given the form's section set (F5's
 /// `PlatformCapabilities.settingsSections` plugs in directly;
 /// callers without capabilities pass the full set).
-pub fn settings_sections_for_backend(
-    sections: &[&str],
-) -> Vec<&'static SettingsSectionDef> {
+pub fn settings_sections_for_backend(sections: &[&str]) -> Vec<&'static SettingsSectionDef> {
     SETTINGS_SECTIONS
         .iter()
         .filter(|section| sections.contains(&section.id))
@@ -361,14 +364,34 @@ mod tests {
         // The native-host seven.
         assert_eq!(
             DESKTOP_SETTINGS_SECTIONS,
-            ["logging", "ai", "prompts", "mcpServer", "mcpClient", "tunnels", "extensions"]
+            [
+                "logging",
+                "ai",
+                "prompts",
+                "mcpServer",
+                "mcpClient",
+                "tunnels",
+                "extensions"
+            ]
         );
         // The filter keeps the page's order, not the input's.
-        let web = ["behavior", "general", "editor", "dataBrowsing", "appearance"];
+        let web = [
+            "behavior",
+            "general",
+            "editor",
+            "dataBrowsing",
+            "appearance",
+        ];
         let filtered = settings_sections_for_backend(&web);
         assert_eq!(
             filtered.iter().map(|s| s.id).collect::<Vec<_>>(),
-            ["general", "appearance", "dataBrowsing", "editor", "behavior"],
+            [
+                "general",
+                "appearance",
+                "dataBrowsing",
+                "editor",
+                "behavior"
+            ],
             "the page order rules"
         );
         // An empty set shows nothing.

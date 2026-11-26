@@ -1,25 +1,23 @@
 //! AppState method implementations.
 
 #![allow(unused_imports)]
-use crate::state_def::*;
-use crate::views::{next_connection, workflow_yaml};
 use crate::constants::*;
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
+use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
+use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot,
-    QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow,
-    WorkflowStepResult, WorkspaceApi,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
+    SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
+    WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Color, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent,
-    TextEdit, Titlebar, Tx, col, oklch, row, text, text_input,
+    col, oklch, row, text, text_input, App, AppSpec, Color, Cx, El, FileDialogOptions,
+    FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
 impl AppState {
@@ -103,11 +101,15 @@ impl AppState {
             return;
         };
         let next = match &self.sort {
-            Some(sort) if sort.column == name && !sort.descending => {
-                Some(ColumnSort { column: name, descending: true })
-            }
+            Some(sort) if sort.column == name && !sort.descending => Some(ColumnSort {
+                column: name,
+                descending: true,
+            }),
             Some(sort) if sort.column == name => None,
-            _ => Some(ColumnSort { column: name, descending: false }),
+            _ => Some(ColumnSort {
+                column: name,
+                descending: false,
+            }),
         };
         self.sort = next;
         self.table_page = 0;
@@ -119,7 +121,10 @@ impl AppState {
         let column = self.grid.column_name(self.filter_column).map(str::to_owned);
         let text = self.filter_editor.text.trim().to_owned();
         self.filter = match (column, text.is_empty()) {
-            (Some(column), false) => Some(ColumnFilter { column, contains: text }),
+            (Some(column), false) => Some(ColumnFilter {
+                column,
+                contains: text,
+            }),
             _ => None,
         };
         self.table_page = 0;
@@ -142,7 +147,10 @@ impl AppState {
         // failure keeps them.
         if let Some(batch) = self.grid.commit_batch() {
             let generation = self.read_generation;
-            if self.desktop.begin_job(AdapterJob::CommitCells { generation, batch }) {
+            if self
+                .desktop
+                .begin_job(AdapterJob::CommitCells { generation, batch })
+            {
                 self.commit_loading = Some(generation);
                 return;
             }
@@ -330,7 +338,10 @@ impl AppState {
     /// remain; unpinned prior tabs are kept for switching). A synchronous
     /// failure restores the previously selected result so the UI stays as it was.
     pub fn run_query(&mut self) {
-        let sql = match self.sql.query_execution_text(|sql| self.desktop.editor_statement_ranges(sql)) {
+        let sql = match self
+            .sql
+            .query_execution_text(|sql| self.desktop.editor_statement_ranges(sql))
+        {
             Ok(Some(sql)) => sql,
             Ok(None) => return,
             Err(error) => {
@@ -349,7 +360,10 @@ impl AppState {
         // N1: a live host runs the statement as a job; the editor keeps its
         // document and the result area says the query is in flight until the
         // delivery lands (dropped when its generation went stale, as in Q5).
-        let job = AdapterJob::RunQuery { generation, sql: sql.clone() };
+        let job = AdapterJob::RunQuery {
+            generation,
+            sql: sql.clone(),
+        };
         if self.desktop.begin_job(job) {
             self.query_loading = Some(generation);
             return;
@@ -394,11 +408,19 @@ impl AppState {
     /// spot and the render path stays adapter-free either way.
     pub fn begin_structure_read(&mut self, table: &str) {
         let generation = self.next_structure_generation();
-        let job = AdapterJob::ReadStructure { generation, table: table.to_owned() };
+        let job = AdapterJob::ReadStructure {
+            generation,
+            table: table.to_owned(),
+        };
         if self.desktop.begin_job(job) {
             self.structures.insert(
                 table.to_owned(),
-                StructureState { generation, loading: true, error: None, data: None },
+                StructureState {
+                    generation,
+                    loading: true,
+                    error: None,
+                    data: None,
+                },
             );
             return;
         }
@@ -410,7 +432,12 @@ impl AppState {
         };
         self.structures.insert(
             table.to_owned(),
-            StructureState { generation, loading: false, error: None, data: Some(data) },
+            StructureState {
+                generation,
+                loading: false,
+                error: None,
+                data: Some(data),
+            },
         );
     }
 
@@ -433,14 +460,24 @@ impl AppState {
         if self.desktop.begin_job(job) {
             self.widget_bars.insert(
                 id,
-                WidgetBarsState { generation, loading: true, error: None, bars: None },
+                WidgetBarsState {
+                    generation,
+                    loading: true,
+                    error: None,
+                    bars: None,
+                },
             );
             return;
         }
         let bars = self.host_widget_bars(id);
         self.widget_bars.insert(
             id,
-            WidgetBarsState { generation, loading: false, error: None, bars: Some(bars) },
+            WidgetBarsState {
+                generation,
+                loading: false,
+                error: None,
+                bars: Some(bars),
+            },
         );
     }
 
@@ -485,7 +522,11 @@ impl AppState {
     /// when the delivery's generation is still the current one.
     pub fn deliver_host_job(&mut self, delivery: AdapterDelivery) {
         match delivery {
-            AdapterDelivery::NativeTransferRead { epoch, side, result } => {
+            AdapterDelivery::NativeTransferRead {
+                epoch,
+                side,
+                result,
+            } => {
                 self.native_transfer.read_completed(epoch, side, result);
             }
             AdapterDelivery::NativeTransferReviewed { epoch, result } => {
@@ -513,7 +554,11 @@ impl AppState {
                 }
             }
             AdapterDelivery::KvRead { request, result } => self.receive_kv(request, result),
-            AdapterDelivery::ConnectionOpened { generation, id, catalog } => {
+            AdapterDelivery::ConnectionOpened {
+                generation,
+                id,
+                catalog,
+            } => {
                 if self.connect_loading == Some(generation) {
                     self.connect_loading = None;
                 }
@@ -542,12 +587,16 @@ impl AppState {
                         self.filter = None;
                         self.filter_column = 0;
                         self.filter_editor = TextEdit::new(String::new());
-                        let kv = self.visible_connections().into_iter()
+                        let kv = self
+                            .visible_connections()
+                            .into_iter()
                             .find(|profile| profile.id == id)
-                            .and_then(|profile| datazen_ui_api::native_kv::native_kv_driver(&profile.engine));
-                        self.native_kv = kv.map(|kind| crate::views::native_kv::KvWorkbench::new(
-                            kind, id.clone(), generation,
-                        ));
+                            .and_then(|profile| {
+                                datazen_ui_api::native_kv::native_kv_driver(&profile.engine)
+                            });
+                        self.native_kv = kv.map(|kind| {
+                            crate::views::native_kv::KvWorkbench::new(kind, id.clone(), generation)
+                        });
                         self.desktop_catalog = Some(catalog.clone());
                         self.desktop_connection = Some(id);
                         self.grid = DataGrid::new();
@@ -617,7 +666,11 @@ impl AppState {
                     }
                 }
             }
-            AdapterDelivery::StructureRead { generation, table, structure } => {
+            AdapterDelivery::StructureRead {
+                generation,
+                table,
+                structure,
+            } => {
                 // E1: the answer lands only on the entry still waiting for
                 // this generation — a newer read (a view switch, a reopen,
                 // the DDL drafts' apply) replaced the entry and the late
@@ -640,7 +693,11 @@ impl AppState {
                     }
                 }
             }
-            AdapterDelivery::WidgetBarsRead { generation, id, bars } => {
+            AdapterDelivery::WidgetBarsRead {
+                generation,
+                id,
+                bars,
+            } => {
                 // E2: the answer lands only on the entry still waiting for
                 // this generation — a newer request (a reopen, a save, the
                 // refresh button) replaced the entry and the late answer
@@ -663,7 +720,11 @@ impl AppState {
                     }
                 }
             }
-            AdapterDelivery::InboundRefsRead { generation, table, refs } => {
+            AdapterDelivery::InboundRefsRead {
+                generation,
+                table,
+                refs,
+            } => {
                 // E3: the scan's answer lands on the current generation and
                 // the loaded table only — a newer ask replaced the request,
                 // and a table the grid has moved past keeps its list to
@@ -706,7 +767,10 @@ impl AppState {
                 }
                 self.refresh_query_history_if_open();
             }
-            AdapterDelivery::WorkflowRun { generation, results } => {
+            AdapterDelivery::WorkflowRun {
+                generation,
+                results,
+            } => {
                 if self.workflow_loading == Some(generation) {
                     self.workflow_loading = None;
                 }
@@ -732,7 +796,10 @@ impl AppState {
         self.filter = None;
         self.filter_column = 0;
         self.filter_editor = TextEdit::new(String::new());
-        let selected = self.tabs.selected().map(|tab| (tab.kind, tab.title.clone()));
+        let selected = self
+            .tabs
+            .selected()
+            .map(|tab| (tab.kind, tab.title.clone()));
         match selected {
             Some((TabKind::Table, title)) => {
                 self.show_table(&title);

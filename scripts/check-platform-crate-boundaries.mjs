@@ -127,7 +127,7 @@ export const RULES = Object.freeze([
     // until somebody remembered to add it here — the exact silent-pass failure
     // this guard exists to prevent. Written this way, a new layer is forbidden
     // for drivers the day it is declared, and relaxing it is a deliberate edit.
-    allowedLayers: ['driver', 'driver-api'],
+    allowedLayers: ['driver', 'driver-api', 'sql'],
     // The `tauri*` half, armed. §2.4's row says `tauri*`; `matchesCrateFamily`
     // turns that into `tauri-plugin` / `tauri-utils` / `tauri-build` (measured:
     // `tauri` matches `tauri-plugin`, `tauri-build`, `tauri_utils`; `taurium`
@@ -138,7 +138,7 @@ export const RULES = Object.freeze([
     // Both halves of the row are pinned: the subject path and the forbidden
     // family. Drop either from §2.4 and the guard says so instead of quietly
     // enforcing a rule the document no longer states.
-    specTokens: ['crates/drivers/*', 'tauri'],
+    specTokens: ['crates/drivers/*', 'datazen-sql', 'tauri'],
     // F-01's scope covers **both** sides — the resolved closure and the
     // manifest's declaration edges. See the note under §2.4's table: the
     // resolve graph is feature-resolved, so an optional edge behind a feature
@@ -241,12 +241,28 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-15',
-    subjects: ['ui'],
+    subjects: ['ui', 'ui-api', 'ui-runtime'],
     subjectsFromSpec: true,
-    forbiddenLayers: ['host', 'server', 'modules', 'infra', 'driver', 'driver-api'],
-    forbiddenCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
-    specTokens: ['crates/datazen-ui', 'tauri*', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
-    note: 'the Rune UI is a presentation layer and cannot reach hosts, the domain core, drivers, or server transports',
+    allowedLayers: ['ui', 'ui-api', 'ui-runtime', 'sql'],
+    forbiddenCrates: 'spec',
+    specTokens: [
+      'crates/datazen-ui',
+      'crates/datazen-ui-api',
+      'vendor/rune/crates/*',
+      'vendor/rune/themes/*',
+    ],
+    specCrates: ['tauri*', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
+    note: 'Rune presentation stays independent of the native host, core, and drivers',
+  },
+  {
+    id: 'F-16',
+    subjects: ['sql'],
+    subjectsFromSpec: true,
+    allowedLayers: ['sql'],
+    forbiddenCrates: 'spec',
+    specTokens: ['crates/datazen-sql'],
+    specCrates: ['tauri*', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
+    note: 'shared SQL types and text utilities have no other workspace dependency',
   },
 ]);
 
@@ -266,7 +282,15 @@ export const RULES = Object.freeze([
  * (2026-10-31): F-06 now has a real subject, and this entry is what makes the
  * server crate's disappearance an error rather than a silently vacuous rule.
  */
-export const DEFAULT_REQUIRED_LAYERS = ['backend-client', 'modules', 'server', 'ui'];
+export const DEFAULT_REQUIRED_LAYERS = [
+  'backend-client',
+  'modules',
+  'server',
+  'ui',
+  'ui-api',
+  'ui-runtime',
+  'sql',
+];
 
 function specLayerId(pathToken) {
   const normalised = pathToken.replace(/\/\*$/, '/*');
@@ -298,7 +322,8 @@ export function parseSpecRow(row) {
   for (const match of row.matchAll(/`([^`]+)`/g)) {
     const token = match[1].trim();
     if (token === '') continue;
-    if (/^(packages\/|apps\/|crates\/|src-tauri$|server$|modules$)/.test(token)) paths.push(token);
+    if (/^(packages\/|apps\/|crates\/|vendor\/|src-tauri$|server$|modules$)/.test(token))
+      paths.push(token);
     else if (token.includes('@') || token.includes('(') || token.includes('.'))
       frontend.push(token);
     else crates.push(token);

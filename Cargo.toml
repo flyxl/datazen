@@ -5,6 +5,7 @@ members = [
     "crates/datazen-cli",
     "crates/datazen-driver-api",
     "crates/datazen-driver-support",
+    "crates/datazen-sql",
     "crates/datazen-infra",
     "crates/datazen",
     "crates/datazen-rune-host",
@@ -29,6 +30,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 # Path crates — the only place a member's relative path is spelled out.
 datazen-ui-api = { path = "crates/datazen-ui-api" }
+datazen-sql = { path = "crates/datazen-sql", version = "0.0.1" }
 datazen-driver-api = { path = "crates/datazen-driver-api" }
 datazen = { path = "crates/datazen", default-features = false }
 datazen-infra = { path = "crates/datazen-infra" }

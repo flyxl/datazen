@@ -8,11 +8,8 @@
 //!   `types/dashboard.ts` (contract §6.15; the Rust native shapes are
 //!   `datazen::dashboard::domain::types` and
 //!   `datazen::monitor::domain::grant`, serialized camelCase). The React
-//!   facade re-exports those names; this module mirrors them as thin
-//!   wasm-safe mirrors — the `datazen` crate is a native-only dependency
-//!   of this crate, the same constraint `connection_types` documents
-//!   (each mirror keeps the native twin's wire shape and field widths so
-//!   a native adapter converts losslessly).
+//!   facade re-exports those names. The shared UI types preserve the kernel
+//!   wire shapes and field widths for conversion by the native host.
 //! - The **display** vocabulary stays local, exactly as the React file
 //!   keeps it: `Dashboard`/`DashboardWidget` are overridden so
 //!   `chartConfig` is the display [`ChartConfig`] (`chart_types`, T090) —
@@ -653,7 +650,9 @@ pub fn normalize_refresh_policy(refresh: RefreshPolicy) -> RefreshPolicy {
     if refresh.mode == RefreshMode::Interval {
         RefreshPolicy {
             mode: RefreshMode::Interval,
-            refresh_sec: Some(clamp_refresh_sec(refresh.refresh_sec.unwrap_or(MIN_REFRESH_SEC))),
+            refresh_sec: Some(clamp_refresh_sec(
+                refresh.refresh_sec.unwrap_or(MIN_REFRESH_SEC),
+            )),
         }
     } else {
         RefreshPolicy {
@@ -668,7 +667,9 @@ pub fn normalize_refresh_policy(refresh: RefreshPolicy) -> RefreshPolicy {
 /// [`REFRESH_WARN_BELOW_SEC`].
 pub fn should_warn_refresh_sec(refresh: RefreshPolicy) -> bool {
     refresh.mode == RefreshMode::Interval
-        && refresh.refresh_sec.is_some_and(|sec| sec < REFRESH_WARN_BELOW_SEC)
+        && refresh
+            .refresh_sec
+            .is_some_and(|sec| sec < REFRESH_WARN_BELOW_SEC)
 }
 
 /// React `DEFAULT_MONITOR_SETTINGS` — the exact literal object. The
@@ -703,21 +704,16 @@ mod tests {
     // split in motion, and the required-key contract.
 
     fn decode<T: serde::de::DeserializeOwned>(wire: serde_json::Value) -> T {
-        serde_json::from_value(wire)
-            .unwrap_or_else(|error| panic!("wire decode failed: {error}"))
+        serde_json::from_value(wire).unwrap_or_else(|error| panic!("wire decode failed: {error}"))
     }
 
     fn encode<T: serde::Serialize>(value: &T) -> serde_json::Value {
-        serde_json::to_value(value)
-            .unwrap_or_else(|error| panic!("wire encode failed: {error}"))
+        serde_json::to_value(value).unwrap_or_else(|error| panic!("wire encode failed: {error}"))
     }
 
     #[test]
     fn view_modes_keep_the_react_literals() {
-        let table = [
-            (ViewMode::Chart, "chart"),
-            (ViewMode::Table, "table"),
-        ];
+        let table = [(ViewMode::Chart, "chart"), (ViewMode::Table, "table")];
         for (value, literal) in table {
             assert_eq!(value.as_str(), literal);
             let parsed: ViewMode = decode(serde_json::json!(literal));
@@ -853,7 +849,8 @@ mod tests {
         let bare_back: RefreshPolicy = decode(serde_json::json!({ "mode": "onOpen" }));
         assert_eq!(bare_back, bare);
         // A day-long interval decodes (the u32 width in motion).
-        let day: RefreshPolicy = decode(serde_json::json!({ "mode": "interval", "refreshSec": 86_400 }));
+        let day: RefreshPolicy =
+            decode(serde_json::json!({ "mode": "interval", "refreshSec": 86_400 }));
         assert_eq!(day.refresh_sec, Some(86_400));
     }
 
@@ -868,7 +865,11 @@ mod tests {
             op: AlertOperator::Gte,
             threshold: 0.75,
             cooldown_sec: 300,
-            channels: vec![AlertChannel::App, AlertChannel::Webhook, AlertChannel::Email],
+            channels: vec![
+                AlertChannel::App,
+                AlertChannel::Webhook,
+                AlertChannel::Email,
+            ],
         };
         let wire = serde_json::json!({
             "metric": { "kind": "aggregation", "column": "v", "agg": "avg" },
@@ -917,7 +918,12 @@ mod tests {
                 time_domain: Some((1_767_225_600_000.0, 1_767_225_660_000.0)),
                 time_ticks: Some(vec![0.0, 30_000.0, 60_000.0]),
             }),
-            layout: WidgetLayout { x: 0, y: 0, w: 6, h: 4 },
+            layout: WidgetLayout {
+                x: 0,
+                y: 0,
+                w: 6,
+                h: 4,
+            },
             refresh: RefreshPolicy {
                 mode: RefreshMode::Interval,
                 refresh_sec: Some(60),
@@ -976,7 +982,12 @@ mod tests {
             workflow_id: String::from("wf-2"),
             view_mode: ViewMode::Table,
             chart_config: None,
-            layout: WidgetLayout { x: 6, y: 0, w: 6, h: 8 },
+            layout: WidgetLayout {
+                x: 6,
+                y: 0,
+                w: 6,
+                h: 8,
+            },
             refresh: RefreshPolicy {
                 mode: RefreshMode::Manual,
                 refresh_sec: None,
@@ -1011,7 +1022,12 @@ mod tests {
                     time_domain: Some((0.0, 60_000.0)),
                     ..ChartConfig::default()
                 }),
-                layout: WidgetLayout { x: 0, y: 0, w: 12, h: 4 },
+                layout: WidgetLayout {
+                    x: 0,
+                    y: 0,
+                    w: 12,
+                    h: 4,
+                },
                 refresh: RefreshPolicy {
                     mode: RefreshMode::OnOpen,
                     refresh_sec: None,
@@ -1110,8 +1126,9 @@ mod tests {
                 "viewMode": "chart"
             })
         );
-        let back: CreateWidgetFromWorkflowParams =
-            decode(serde_json::json!({ "dashboardId": "dash-1", "workflowId": "wf-1", "viewMode": "chart" }));
+        let back: CreateWidgetFromWorkflowParams = decode(
+            serde_json::json!({ "dashboardId": "dash-1", "workflowId": "wf-1", "viewMode": "chart" }),
+        );
         assert_eq!(back, workflow_params);
 
         let hidden_sql = UpdateHiddenWidgetSqlParams {
@@ -1139,7 +1156,10 @@ mod tests {
                 name: String::from("Ops"),
                 created_at: String::from("2026-01-01T00:00:00Z"),
                 updated_at: String::from("2026-02-01T00:00:00Z"),
-                layout: DashboardLayout { cols: 12, row_height: 8 },
+                layout: DashboardLayout {
+                    cols: 12,
+                    row_height: 8,
+                },
                 widgets: Vec::new(),
                 enabled: true,
                 refresh_paused: None,
@@ -1153,7 +1173,12 @@ mod tests {
                     time_ticks: Some(vec![0.0, 1.0]),
                     ..ChartConfig::default()
                 }),
-                layout: WidgetLayout { x: 0, y: 0, w: 6, h: 4 },
+                layout: WidgetLayout {
+                    x: 0,
+                    y: 0,
+                    w: 6,
+                    h: 4,
+                },
                 refresh: RefreshPolicy {
                     mode: RefreshMode::Manual,
                     refresh_sec: None,
@@ -1164,7 +1189,10 @@ mod tests {
         };
         let wire = encode(&result);
         assert_eq!(wire["dashboard"]["id"], "dash-1");
-        assert_eq!(wire["widget"]["chartConfig"]["timeTicks"], serde_json::json!([0.0, 1.0]));
+        assert_eq!(
+            wire["widget"]["chartConfig"]["timeTicks"],
+            serde_json::json!([0.0, 1.0])
+        );
         let back: CreateWidgetResult = decode(wire);
         assert_eq!(back, result);
     }
@@ -1454,10 +1482,10 @@ mod tests {
             })
         );
         // The SMTP port is u16: 65536 is out of range.
-        assert!(
-            serde_json::from_value::<MonitorEmailSettings>(serde_json::json!({ "port": 65536 }))
-                .is_err()
-        );
+        assert!(serde_json::from_value::<MonitorEmailSettings>(
+            serde_json::json!({ "port": 65536 })
+        )
+        .is_err());
     }
 
     #[test]
@@ -1549,7 +1577,10 @@ mod tests {
         assert_eq!(DEFAULT_REFRESH.refresh_sec, None);
         // The exact React literal object: `{"mode": "manual"}` — no
         // refreshSec key.
-        assert_eq!(encode(&DEFAULT_REFRESH), serde_json::json!({ "mode": "manual" }));
+        assert_eq!(
+            encode(&DEFAULT_REFRESH),
+            serde_json::json!({ "mode": "manual" })
+        );
     }
 
     #[test]
@@ -1681,7 +1712,8 @@ mod tests {
         // them) — pinned by the round-trip tests above; one explicit
         // witness here keeps the pair honest.
         assert!(
-            serde_json::from_value::<RefreshPolicy>(serde_json::json!({ "mode": "manual" })).is_ok()
+            serde_json::from_value::<RefreshPolicy>(serde_json::json!({ "mode": "manual" }))
+                .is_ok()
         );
     }
 

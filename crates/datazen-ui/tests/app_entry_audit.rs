@@ -4,7 +4,7 @@
 //! headless construction with an unwired adapter (test 2), and the *demo*
 //! path's first-frame state via `init_state()` (test 3). Test 3's gap: it
 //! calls `init_state()` directly, which on native always installs the demo
-//! `UseCaseAdapter::with_demo_connections()` — it never exercises the host
+//! `DemoAdapter::default()` — it never exercises the host
 //! half the barrel's doc claims (`configureHost` → the host builds a
 //! `DesktopAdapter` and hands it to `run_with_adapter` /
 //! `app_with_adapter`, whose `.init` closure then assigns it and calls
@@ -19,7 +19,7 @@
 //! 3. the launch surface accepts a wired host adapter at construction
 //!    (the `configureHost` half's type shape), still without a window.
 
-use datazen_ui_api::{ConnectionProfile, UseCaseAdapter, DESKTOP_NOT_IMPLEMENTED};
+use datazen_ui_api::{ConnectionProfile, DemoAdapter, DESKTOP_NOT_IMPLEMENTED};
 
 use datazen_ui::{AppState, Section};
 
@@ -29,7 +29,7 @@ use datazen_ui::{AppState, Section};
 #[test]
 fn host_adapter_list_is_what_the_first_frame_shows() {
     let mut state = AppState::default();
-    state.desktop = Box::new(UseCaseAdapter::new(vec![ConnectionProfile {
+    state.desktop = Box::new(DemoAdapter::with_connections(vec![ConnectionProfile {
         id: "audit-one".into(),
         name: "Audit One".into(),
         engine: "postgres".into(),
@@ -67,11 +67,12 @@ fn unwired_adapter_records_its_error_not_a_list() {
 fn app_with_adapter_accepts_a_wired_host_adapter() {
     use rune::App;
 
-    let _app: App<AppState> = datazen_ui::app_with_adapter(Box::new(UseCaseAdapter::new(
-        vec![ConnectionProfile {
-            id: "audit-one".into(),
-            name: "Audit One".into(),
-            engine: "postgres".into(),
-        }],
-    )));
+    let _app: App<AppState> =
+        datazen_ui::app_with_adapter(Box::new(DemoAdapter::with_connections(vec![
+            ConnectionProfile {
+                id: "audit-one".into(),
+                name: "Audit One".into(),
+                engine: "postgres".into(),
+            },
+        ])));
 }

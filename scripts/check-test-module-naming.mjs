@@ -126,6 +126,7 @@ const WORKSPACE_MEMBER_DIRS = [
   'crates/datazen-desktop',
   'crates/datazen-driver-api',
   'crates/datazen-driver-support',
+  'crates/datazen-sql',
   'crates/datazen-infra',
   'crates/datazen',
   'crates/datazen-server',

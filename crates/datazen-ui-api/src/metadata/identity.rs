@@ -32,11 +32,8 @@
 //! (`types/identity.ts` / `types/session.ts`). The kernel has field-for-field
 //! equivalents (`datazen::connection::domain::NamespaceTarget`,
 //! `datazen::execution::target::{ExecutionTarget, ObjectTarget}` and the
-//! `datazen::shared::id` newtypes), but `datazen` is a
-//! `cfg(not(target_arch = "wasm32"))`-only dependency of this crate while the
-//! wasm host compiles these pure modules too — so the wasm-safe definitions
-//! live in `types::query` and this module re-exports them. A task that wires
-//! kernel DTOs to UI contracts should convert *into* those types and leave
+//! `datazen::shared::id` newtypes). The native host converts kernel DTOs into the
+//! shared UI contracts in `types::query`. This module re-exports them and keeps
 //! the key derivation single-sourced here. `Id` mirrors as `String` and
 //! `Counter` as the newtype above (see the number-form note above).
 //!
@@ -147,9 +144,7 @@ pub fn metadata_batch_bucket(input: &MetadataIdentityInput) -> String {
 /// about which half of the union they read.
 fn split_target(target: &MetadataTarget) -> (&NamespaceTarget, Option<&ObjectTarget>) {
     match target {
-        MetadataTarget::Execution(execution) => {
-            (&execution.namespace, execution.object.as_ref())
-        }
+        MetadataTarget::Execution(execution) => (&execution.namespace, execution.object.as_ref()),
         MetadataTarget::Namespace(namespace) => (namespace, None),
     }
 }
@@ -304,7 +299,10 @@ mod tests {
             r#"["conn-1",7,"sess-9","app",null,"public",["a","b"],null]"#
         );
         assert_eq!(metadata_cache_key(&bare), metadata_cache_key(&execution));
-        assert_eq!(metadata_batch_bucket(&bare), metadata_batch_bucket(&execution));
+        assert_eq!(
+            metadata_batch_bucket(&bare),
+            metadata_batch_bucket(&execution)
+        );
     }
 
     #[test]
@@ -347,7 +345,10 @@ mod tests {
                 object.name = "events".to_string();
             }
         }
-        assert_eq!(metadata_batch_bucket(&first), metadata_batch_bucket(&second));
+        assert_eq!(
+            metadata_batch_bucket(&first),
+            metadata_batch_bucket(&second)
+        );
         assert_ne!(metadata_cache_key(&first), metadata_cache_key(&second));
     }
 

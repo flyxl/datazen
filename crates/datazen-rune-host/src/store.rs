@@ -7,6 +7,13 @@
 //! that exists but does not parse refuses to open, so user data is never
 //! silently replaced by an empty store.
 
+#[cfg(test)]
+mod credential_tests;
+mod credentials;
+mod disk;
+mod record;
+use record::StoredConnection;
+
 use async_trait::async_trait;
 use datazen::connection::domain::{
     ConnectionRepository, ConnectionRepositoryError, ConnectionScope,
@@ -16,35 +23,32 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// The file's shape. Field names follow `ConnectionConfig`'s camelCase.
-#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 struct StoreFile {
     #[serde(default)]
-    connections: Vec<ConnectionConfig>,
-    #[serde(default)]
-    groups: Vec<String>,
+    connections: Vec<StoredConnection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    groups: Option<Vec<String>>,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
-/// The single-tenant scope every method of this host serves; a scope with
-/// another organization sees nothing, as the boundary semantics say.
 #[cfg(test)]
-fn desktop_scope() -> ConnectionScope {
-    ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION)
-}
+use crate::host_connection_scope as desktop_scope;
 
 pub struct FileConnectionRepository {
     path: PathBuf,
-    /// The loaded store. One lock guards the file and the loaded list, so
-    /// the two cannot part ways between a read and its write-back.
-    state: Mutex<StoreFile>,
     /// T10: the password encryption key, loaded on the first password that
     /// needs one. A store without passwords never touches the keychain.
     key: Mutex<Option<[u8; 32]>>,
+    load_key: fn(&Path, bool) -> Result<[u8; 32], String>,
 }
 
 impl std::fmt::Debug for FileConnectionRepository {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FileConnectionRepository").field("path", &self.path).finish()
+        f.debug_struct("FileConnectionRepository")
+            .finish_non_exhaustive()
     }
 }
 
@@ -54,96 +58,46 @@ impl FileConnectionRepository {
     /// exists but cannot be read or parsed is an error: opening it would
     /// have the next save replace the user's data with an empty store.
     pub fn open(path: &Path) -> Result<Self, String> {
-        let state = match std::fs::read_to_string(path) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => StoreFile::default(),
-            Err(error) => return Err(format!("read {}: {error}", path.display())),
-            Ok(text) => serde_json::from_str(&text)
-                .map_err(|error| format!("parse {}: {error}", path.display()))?,
-        };
-        Ok(Self { path: path.to_owned(), state: Mutex::new(state), key: Mutex::new(None) })
+        StoreFile::read(path).map_err(|error| error.to_string())?;
+        Ok(Self {
+            path: path.to_owned(),
+            key: Mutex::new(None),
+            load_key: |dir, allow_create| {
+                crate::secrets::load_master_key(
+                    dir,
+                    crate::secrets::resolve_key_backend(),
+                    allow_create,
+                )
+            },
+        })
     }
 
-    /// Write the store atomically: a sibling temporary file, then rename.
-    /// T10: the password encryption key, loaded on first use. The store's
-    /// directory is the key file's home (the file backend) and the source
-    /// of a legacy rescue key (the keyring backend).
-    fn master_key(&self) -> Result<[u8; 32], ConnectionRepositoryError> {
-        let mut cached = self.key.lock().expect("the key lock");
-        if let Some(key) = *cached {
-            return Ok(key);
-        }
-        let data_dir = self.path.parent().unwrap_or_else(|| Path::new("."));
-        let loaded = crate::secrets::load_or_create_master_key(data_dir, crate::secrets::resolve_key_backend())
-            .map_err(ConnectionRepositoryError::BackendUnavailable)?;
-        *cached = Some(loaded);
-        Ok(loaded)
+    fn update(
+        &self,
+        change: impl FnOnce(&mut StoreFile) -> Result<bool, ConnectionRepositoryError>,
+    ) -> Result<(), ConnectionRepositoryError> {
+        self.transaction(|store| Ok(((), change(store)?)))
     }
+}
 
-    /// Encrypt a password for the file (T10). An empty password is stored
-    /// as-is — there is nothing to protect.
-    fn seal_password(&self, password: &str) -> Result<String, ConnectionRepositoryError> {
-        let key = self.master_key()?;
-        datazen::connection_import::encrypt_field(password, &key)
-            .map_err(|error| ConnectionRepositoryError::BackendUnavailable(error.to_string()))
-    }
-
-    /// Reveal a stored password (T10): a value that decrypts is the
-    /// plaintext; one that does not is a legacy plaintext from before the
-    /// key, kept working as the migration path. `None` key means the key
-    /// could not be loaded — the caller decides what that means.
-    fn open_password(&self, stored: &str) -> Option<String> {
-        let key = self.master_key().ok()?;
-        datazen::connection_import::decrypt_field(stored, &key).ok()
-    }
-
-    fn persist(path: &Path, store: &StoreFile) -> Result<(), ConnectionRepositoryError> {
-        let text = serde_json::to_string_pretty(store).map_err(|error| {
-            ConnectionRepositoryError::BackendUnavailable(format!("serialize the store: {error}"))
-        })?;
-        let temp = path.with_extension("json.tmp");
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(io_error)?;
-        }
-        std::fs::write(&temp, text).map_err(io_error)?;
-        std::fs::rename(&temp, path).map_err(io_error)?;
+fn check_scope(scope: &ConnectionScope) -> Result<(), ConnectionRepositoryError> {
+    if scope.organization_id() == crate::host_request_context().organization_id.as_str() {
         Ok(())
+    } else {
+        Err(ConnectionRepositoryError::BackendUnavailable(
+            "out of the desktop scope".into(),
+        ))
     }
-}
-
-fn io_error(error: std::io::Error) -> ConnectionRepositoryError {
-    ConnectionRepositoryError::BackendUnavailable(error.to_string())
-}
-
-fn scope_error() -> ConnectionRepositoryError {
-    ConnectionRepositoryError::BackendUnavailable("out of the desktop scope".into())
 }
 
 #[async_trait]
 impl ConnectionRepository for FileConnectionRepository {
-    async fn list(&self, scope: &ConnectionScope) -> Result<Vec<ConnectionConfig>, ConnectionRepositoryError> {
-        if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
-            return Err(scope_error());
-        }
-        let mut connections = self.state.lock().expect("the store lock").connections.clone();
-        // T10: passwords reveal best-effort here — the listing page shows
-        // names, and the connect path's `get` carries the honest
-        // unavailability sentence when a password cannot be opened. A
-        // password the key cannot open becomes None in the listing, never a
-        // leaked ciphertext.
-        for config in &mut connections {
-            if let Some(password) = config.password.take() {
-                config.password = if password.is_empty() {
-                    Some(password)
-                } else if self.master_key().is_ok() {
-                    // A decrypting value is the plaintext; one that does not
-                    // is a legacy plaintext (the migration path).
-                    Some(self.open_password(&password).unwrap_or(password))
-                } else {
-                    None
-                };
-            }
-        }
-        Ok(connections)
+    async fn list(
+        &self,
+        scope: &ConnectionScope,
+    ) -> Result<Vec<ConnectionConfig>, ConnectionRepositoryError> {
+        check_scope(scope)?;
+        self.read_connections(None)
     }
 
     async fn get(
@@ -151,43 +105,11 @@ impl ConnectionRepository for FileConnectionRepository {
         scope: &ConnectionScope,
         connection_id: &str,
     ) -> Result<Option<ConnectionConfig>, ConnectionRepositoryError> {
-        if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
-            return Err(scope_error());
-        }
-        let stored = self
-            .state
-            .lock()
-            .expect("the store lock")
-            .connections
-            .iter()
-            .find(|config| config.id == connection_id)
-            .cloned();
-        let Some(mut config) = stored else { return Ok(None) };
-        if let Some(password) = config.password.take() {
-            if password.is_empty() {
-                config.password = Some(password);
-            } else {
-                match self.master_key() {
-                    Ok(_) => {
-                        // A decrypting value is the plaintext; one that does
-                        // not is a legacy plaintext (the migration path).
-                        config.password = Some(
-                            self.open_password(&password).unwrap_or(password),
-                        );
-                    }
-                    // T10: no key, no honest plaintext — the connection
-                    // names its unavailability rather than passing the
-                    // ciphertext through as a password.
-                    Err(error) => {
-                        return Err(ConnectionRepositoryError::BackendUnavailable(format!(
-                            "the password of '{}' is unavailable ({error})",
-                            config.name
-                        )))
-                    }
-                }
-            }
-        }
-        Ok(Some(config))
+        check_scope(scope)?;
+        Ok(self
+            .read_connections(Some(connection_id))?
+            .into_iter()
+            .next())
     }
 
     async fn save(
@@ -195,21 +117,8 @@ impl ConnectionRepository for FileConnectionRepository {
         scope: &ConnectionScope,
         config: ConnectionConfig,
     ) -> Result<(), ConnectionRepositoryError> {
-        if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
-            return Err(scope_error());
-        }
-        // T10: the password is sealed before it reaches the file; the file
-        // never carries a plaintext password again.
-        let mut config = config;
-        if config.password.as_deref().is_some_and(|password| !password.is_empty()) {
-            config.password = Some(self.seal_password(config.password.as_deref().unwrap())?);
-        }
-        let mut state = self.state.lock().expect("the store lock");
-        match state.connections.iter_mut().find(|saved| saved.id == config.id) {
-            Some(saved) => *saved = config,
-            None => state.connections.push(config),
-        }
-        Self::persist(&self.path, &state)
+        check_scope(scope)?;
+        self.save_config(config)
     }
 
     async fn delete(
@@ -217,16 +126,14 @@ impl ConnectionRepository for FileConnectionRepository {
         scope: &ConnectionScope,
         connection_id: &str,
     ) -> Result<(), ConnectionRepositoryError> {
-        if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
-            return Err(scope_error());
-        }
-        let mut state = self.state.lock().expect("the store lock");
-        let before = state.connections.len();
-        state.connections.retain(|config| config.id != connection_id);
-        if state.connections.len() == before {
-            return Ok(()); // an absent id is already gone
-        }
-        Self::persist(&self.path, &state)
+        check_scope(scope)?;
+        self.update(|state| {
+            let before = state.connections.len();
+            state
+                .connections
+                .retain(|row| row.config().id != connection_id);
+            Ok(state.connections.len() != before)
+        })
     }
 
     async fn reorder(
@@ -234,19 +141,22 @@ impl ConnectionRepository for FileConnectionRepository {
         scope: &ConnectionScope,
         ordered_ids: Vec<String>,
     ) -> Result<(), ConnectionRepositoryError> {
-        if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
-            return Err(scope_error());
-        }
-        let mut state = self.state.lock().expect("the store lock");
-        let mut ordered = Vec::with_capacity(state.connections.len());
-        for id in &ordered_ids {
-            if let Some(index) = state.connections.iter().position(|config| &config.id == id) {
-                ordered.push(state.connections.remove(index));
+        check_scope(scope)?;
+        self.update(|state| {
+            let mut ordered = Vec::with_capacity(state.connections.len());
+            for id in &ordered_ids {
+                if let Some(index) = state
+                    .connections
+                    .iter()
+                    .position(|row| &row.config().id == id)
+                {
+                    ordered.push(state.connections.remove(index));
+                }
             }
-        }
-        ordered.append(&mut state.connections);
-        state.connections = ordered;
-        Self::persist(&self.path, &state)
+            ordered.append(&mut state.connections);
+            state.connections = ordered;
+            Ok(true)
+        })
     }
 
     async fn touch_last_connected_at(
@@ -254,26 +164,29 @@ impl ConnectionRepository for FileConnectionRepository {
         scope: &ConnectionScope,
         connection_id: &str,
     ) -> Result<(), ConnectionRepositoryError> {
-        if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
-            return Err(scope_error());
-        }
-        let mut state = self.state.lock().expect("the store lock");
-        let stamp = chrono::Utc::now().to_rfc3339();
-        match state.connections.iter_mut().find(|config| config.id == connection_id) {
-            Some(config) => config.last_connected_at = Some(stamp),
-            None => return Ok(()), // nothing to stamp
-        }
-        Self::persist(&self.path, &state)
+        check_scope(scope)?;
+        self.update(|state| {
+            let Some(row) = state
+                .connections
+                .iter_mut()
+                .find(|row| row.config().id == connection_id)
+            else {
+                return Ok(false);
+            };
+            row.set_last_connected_at(chrono::Utc::now().to_rfc3339());
+            Ok(true)
+        })
     }
 
-    async fn groups(&self, scope: &ConnectionScope) -> Result<Vec<String>, ConnectionRepositoryError> {
-        if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
-            return Err(scope_error());
-        }
-        let state = self.state.lock().expect("the store lock");
-        let mut groups = state.groups.clone();
-        for config in &state.connections {
-            if let Some(group) = &config.group {
+    async fn groups(
+        &self,
+        scope: &ConnectionScope,
+    ) -> Result<Vec<String>, ConnectionRepositoryError> {
+        check_scope(scope)?;
+        let state = StoreFile::read(&self.path)?;
+        let mut groups = state.groups.unwrap_or_default();
+        for row in &state.connections {
+            if let Some(group) = &row.config().group {
                 if !groups.contains(group) {
                     groups.push(group.clone());
                 }
@@ -287,12 +200,11 @@ impl ConnectionRepository for FileConnectionRepository {
         scope: &ConnectionScope,
         groups: Vec<String>,
     ) -> Result<(), ConnectionRepositoryError> {
-        if scope.organization_id() != datazen_ui_api::DESKTOP_ORGANIZATION {
-            return Err(scope_error());
-        }
-        let mut state = self.state.lock().expect("the store lock");
-        state.groups = groups;
-        Self::persist(&self.path, &state)
+        check_scope(scope)?;
+        self.update(|state| {
+            state.groups = Some(groups);
+            Ok(true)
+        })
     }
 }
 
@@ -342,9 +254,7 @@ mod tests {
     use datazen_ui_api::DesktopAdapter;
     use std::sync::Arc;
 
-    /// A config with the fields the round trips exercise; the rest at their
-    /// defaults, spelled out the way the adapter's `config_from_profile`
-    /// fills them (the struct has no `Default`).
+    /// A stored profile with credentials for round-trip and redaction tests.
     fn config(id: &str, name: &str) -> ConnectionConfig {
         use datazen_driver_api::SslMode;
         ConnectionConfig {
@@ -384,7 +294,8 @@ mod tests {
         // unreachable from a test environment without a session bus (the
         // desktop's own CI discipline, ).
         std::env::set_var("DATAZEN_NATIVE_KEYRING", "file");
-        let dir = std::env::temp_dir().join(format!("datazen-rune-host-{tag}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("datazen-rune-host-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("connections.json");
@@ -412,14 +323,21 @@ mod tests {
         // The file holds the config, and a fresh process over the same file
         // sees it: the store's whole point.
         let raw = std::fs::read_to_string(&path).unwrap();
-        assert!(raw.contains("\"warehouse\""), "the id is in the file: {raw}");
+        assert!(
+            raw.contains("\"warehouse\""),
+            "the id is in the file: {raw}"
+        );
         let reopened = FileConnectionRepository::open(&path).unwrap();
         let listed =
             futures_executor::block_on(service(reopened).list_redacted(&desktop_scope())).unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].id, "warehouse");
         assert_eq!(listed[0].name, "Warehouse");
-        assert_ne!(listed[0].password.as_deref(), Some("secret"), "the list is redacted");
+        assert_ne!(
+            listed[0].password.as_deref(),
+            Some("secret"),
+            "the list is redacted"
+        );
     }
 
     #[test]
@@ -434,9 +352,8 @@ mod tests {
             .unwrap();
         futures_executor::block_on(service.delete(&scope, "beta")).unwrap();
 
-        let service = ConnectionService::new(Arc::new(
-            FileConnectionRepository::open(&path).unwrap(),
-        ));
+        let service =
+            ConnectionService::new(Arc::new(FileConnectionRepository::open(&path).unwrap()));
         let listed = futures_executor::block_on(service.list_plain(&scope)).unwrap();
         let ids: Vec<&str> = listed.iter().map(|config| config.id.as_str()).collect();
         assert_eq!(ids, vec!["gamma", "alpha"], "reorder kept, delete removed");
@@ -450,37 +367,82 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_delete_can_be_retried_without_losing_the_saved_connection() {
+        let (path, store) = temp_store("delete-retry");
+        let scope = desktop_scope();
+        let config = test_support::sqlite_config("local", None);
+        futures_executor::block_on(async {
+            store.save(&scope, config).await.unwrap();
+            let obstruction = path.with_added_extension("lock");
+            std::fs::remove_file(&obstruction).unwrap();
+            std::fs::create_dir(&obstruction).unwrap();
+            assert!(store.delete(&scope, "local").await.is_err());
+            assert!(store.get(&scope, "local").await.unwrap().is_some());
+
+            std::fs::remove_dir(obstruction).unwrap();
+            store.delete(&scope, "local").await.unwrap();
+            let reopened = FileConnectionRepository::open(&path).unwrap();
+            assert!(reopened.get(&scope, "local").await.unwrap().is_none());
+        });
+    }
+
+    #[test]
     fn a_corrupt_file_refuses_to_open() {
         let (path, _store) = temp_store("corrupt");
         std::fs::write(&path, "{ not json").unwrap();
         let error = FileConnectionRepository::open(&path).unwrap_err();
-        assert!(error.contains("parse"), "the sentence names the failure: {error}");
+        assert!(
+            error.contains("parse"),
+            "the sentence names the failure: {error}"
+        );
     }
 
     #[test]
     fn the_adapter_lists_the_file_store_through_the_desktop_seam() {
-        // The seam N2 exists for: the adapter the live host injects lists
-        // what the file holds, not the demo seeds.
         let (path, store) = temp_store("seam");
         let service = service(store);
-        futures_executor::block_on(service.save(&desktop_scope(), config("warehouse", "Warehouse")))
-            .unwrap();
+        let scope = desktop_scope();
+        futures_executor::block_on(async {
+            service
+                .save(&scope, config("warehouse", "Warehouse"))
+                .await
+                .unwrap();
+            service
+                .save(&scope, config("reports", "Reports"))
+                .await
+                .unwrap();
+            service
+                .reorder(&scope, vec!["reports".into(), "warehouse".into()])
+                .await
+                .unwrap();
+        });
 
         let repository = Arc::new(FileConnectionRepository::open(&path).unwrap());
-        let mut adapter = datazen_ui_api::UseCaseAdapter::from_repository(repository);
+        let mut adapter = crate::LiveAdapter::with_data_dir(repository, path.parent().unwrap());
         let listed = adapter.list_connections().unwrap();
-        assert_eq!(listed.len(), 1, "the file's connection, not the demo list");
-        assert_eq!(listed[0].id, "warehouse");
-        assert_eq!(listed[0].name, "Warehouse");
-        assert_eq!(listed[0].engine, "sqlite");
+        let profiles: Vec<_> = listed
+            .iter()
+            .map(|profile| {
+                (
+                    profile.id.as_str(),
+                    profile.name.as_str(),
+                    profile.engine.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            profiles,
+            [
+                ("reports", "Reports", "sqlite"),
+                ("warehouse", "Warehouse", "sqlite")
+            ]
+        );
     }
 
     #[test]
     fn passwords_seal_on_save_and_reveal_on_get() {
-        let dir = std::env::temp_dir().join(format!(
-            "datazen-rune-store-seal-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("datazen-rune-store-seal-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("connections.json");
@@ -494,7 +456,10 @@ mod tests {
 
         // The file on disk carries no plaintext password.
         let on_disk = std::fs::read_to_string(&path).unwrap();
-        assert!(!on_disk.contains("hunter2"), "the plaintext never lands: {on_disk}");
+        assert!(
+            !on_disk.contains("hunter2"),
+            "the plaintext never lands: {on_disk}"
+        );
         assert!(
             on_disk.contains("password"),
             "the field is there, sealed: {on_disk}"
@@ -510,7 +475,10 @@ mod tests {
         // The listing reveals it too (best-effort path, key available).
         let listed = futures_executor::block_on(store.list(&scope)).unwrap();
         assert_eq!(
-            listed.iter().find(|c| c.id == "secret").and_then(|c| c.password.clone()),
+            listed
+                .iter()
+                .find(|c| c.id == "secret")
+                .and_then(|c| c.password.clone()),
             Some("hunter2".into())
         );
         std::env::remove_var("DATAZEN_NATIVE_KEYRING");
@@ -519,25 +487,24 @@ mod tests {
     #[test]
     fn an_encrypted_password_without_a_key_is_an_honest_unavailability() {
         // Write a sealed password with the file backend in one directory,
-        // then move only the store to another: no key file, no keyring (this
-        // sandbox has no session bus) — the reveal must fail closed with the
-        // honest sentence, never pass the ciphertext through as a password.
-        let dir = std::env::temp_dir().join(format!(
-            "datazen-rune-store-closed-{}",
-            std::process::id()
-        ));
+        // then move only the store to another with an unavailable keyring.
+        // The reveal must report a missing key and keep the ciphertext private.
+        let dir =
+            std::env::temp_dir().join(format!("datazen-rune-store-closed-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        std::env::set_var("DATAZEN_NATIVE_KEYRING", "file");
         let write_dir = dir.join("write");
         std::fs::create_dir_all(&write_dir).unwrap();
         let scope = desktop_scope();
-        let store = FileConnectionRepository::open(&write_dir.join("connections.json")).unwrap();
+        let mut store =
+            FileConnectionRepository::open(&write_dir.join("connections.json")).unwrap();
+        store.load_key = |dir, allow_create| {
+            crate::secrets::load_master_key(dir, crate::secrets::KeyBackend::File, allow_create)
+        };
         let mut config = test_support::sqlite_config("sealed", None);
         config.password = Some("open-sesame".into());
         futures_executor::block_on(store.save(&scope, config)).unwrap();
-        std::env::remove_var("DATAZEN_NATIVE_KEYRING");
 
         // Only the store moves; the key file stays behind.
         let read_dir = dir.join("read");
@@ -548,13 +515,17 @@ mod tests {
         )
         .unwrap();
 
-        let store = FileConnectionRepository::open(&read_dir.join("connections.json")).unwrap();
+        let mut store = FileConnectionRepository::open(&read_dir.join("connections.json")).unwrap();
+        store.load_key = crate::secrets::unavailable_keyring;
         // The keyring backend cannot be reached and no key file exists: the
         // reveal fails closed.
         let error = futures_executor::block_on(store.get(&scope, "sealed"))
-            .expect_err("no key, no honest plaintext");
+            .err()
+            .expect("missing key must be reported");
         assert!(
-            error.to_string().contains("password of 'sealed' is unavailable"),
+            error
+                .to_string()
+                .contains("saved connection password is unavailable"),
             "the sentence names the unavailability: {error}"
         );
         assert!(
@@ -564,6 +535,6 @@ mod tests {
         // The listing stays whole: the password is absent, not leaked.
         let listed = futures_executor::block_on(store.list(&scope)).unwrap();
         let listed = listed.iter().find(|c| c.id == "sealed").unwrap();
-        assert_eq!(listed.password, None, "no ciphertext in the listing");
+        assert!(listed.password.is_none(), "no ciphertext in the listing");
     }
 }

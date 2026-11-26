@@ -48,10 +48,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// The wire `ColumnInfo` (`../types` re-exports backend-client's; the
-/// Rust face is the driver-api crate's) — one shape, not a second
-/// mirror.
-pub use datazen_driver_api::ColumnInfo;
+pub use datazen_ui_api::types::ColumnInfo;
 
 /// One shaped legacy command: the `legacyInvoke` name plus its payload
 /// (the `backup.rs` / `driver.rs` shaper shape).
@@ -146,10 +143,7 @@ pub fn open_base64_with_dialog_request(
 
 /// `fileCommands.openTextWithDialog(filterName, extensions)`: open a
 /// text file; the receipt is [`OpenedTextFile`] or `null`.
-pub fn open_text_with_dialog_request(
-    filter_name: &str,
-    extensions: &[&str],
-) -> FileCommandRequest {
+pub fn open_text_with_dialog_request(filter_name: &str, extensions: &[&str]) -> FileCommandRequest {
     FileCommandRequest::native(
         "open_text_with_dialog",
         serde_json::json!({ "filterName": filter_name, "extensions": extensions }),
@@ -259,7 +253,10 @@ pub enum ExportTableSource {
     Sql { sql: String },
     /// Rows the caller already holds, with their schema — never
     /// touches the backend (consumed by the web-shaped exporter).
-    Provided { columns: Vec<ColumnInfo>, rows: Vec<Vec<Option<Value>>> },
+    Provided {
+        columns: Vec<ColumnInfo>,
+        rows: Vec<Vec<Option<Value>>>,
+    },
 }
 
 /// `ExportTableInput`: one table in an export request.
@@ -345,11 +342,14 @@ impl<'de> Deserialize<'de> for ExportTablesResult {
             return Ok(Self::Cancelled);
         }
         if let Some(serde_json::Value::Object(aborted)) = object.get("Aborted") {
-            let partial_deleted = aborted.get("partialDeleted").and_then(Value::as_bool).ok_or_else(|| {
-                serde::de::Error::custom(
-                    "ExportTablesResult::Aborted: expected { partialDeleted: boolean }",
-                )
-            })?;
+            let partial_deleted = aborted
+                .get("partialDeleted")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| {
+                    serde::de::Error::custom(
+                        "ExportTablesResult::Aborted: expected { partialDeleted: boolean }",
+                    )
+                })?;
             return Ok(Self::Aborted { partial_deleted });
         }
         Err(serde::de::Error::custom(
@@ -436,9 +436,11 @@ pub mod tests {
                 .expect("binary decodes");
         assert_eq!(binary.data_base64, "UEs=");
         // The shapes carry basename + payload only — never a path.
-        assert!(
-            serde_json::to_value(&binary).unwrap_or_default().to_string().find("path").is_none()
-        );
+        assert!(serde_json::to_value(&binary)
+            .unwrap_or_default()
+            .to_string()
+            .find("path")
+            .is_none());
     }
 
     // ---- the streaming save session ----
@@ -465,11 +467,17 @@ pub mod tests {
         );
         assert_eq!(
             finish_save_request("token-1"),
-            FileCommandRequest { command: "finish_save", value: json!({ "token": "token-1" }) }
+            FileCommandRequest {
+                command: "finish_save",
+                value: json!({ "token": "token-1" })
+            }
         );
         assert_eq!(
             abort_save_request("token-2"),
-            FileCommandRequest { command: "abort_save", value: json!({ "token": "token-2" }) }
+            FileCommandRequest {
+                command: "abort_save",
+                value: json!({ "token": "token-2" })
+            }
         );
     }
 
@@ -508,14 +516,19 @@ pub mod tests {
         assert_eq!(shaped.value["request"]["mode"], json!("data_and_structure"));
         assert_eq!(shaped.value["request"]["dataFormat"], json!("sql_insert"));
         assert_eq!(shaped.value["request"]["outputMode"], json!("zip"));
-        assert_eq!(shaped.value["request"]["tables"][0]["tableName"], json!("users"));
+        assert_eq!(
+            shaped.value["request"]["tables"][0]["tableName"],
+            json!("users")
+        );
         // Optional halves are absent, not null.
         let request_object = shaped.value["request"].as_object().expect("an object");
         assert!(!request_object.contains_key("cancelToken"));
         assert!(!request_object.contains_key("database"));
         assert!(!request_object.contains_key("schema"));
         assert!(!request_object.contains_key("source"));
-        let table = shaped.value["request"]["tables"][0].as_object().expect("an object");
+        let table = shaped.value["request"]["tables"][0]
+            .as_object()
+            .expect("an object");
         assert!(!table.contains_key("schema"));
         assert!(!table.contains_key("ddl"));
         assert!(!table.contains_key("primaryKey"));
@@ -537,17 +550,25 @@ pub mod tests {
                 schema: Some("sales".to_owned()),
                 columns: Vec::new(),
                 ddl: Some("CREATE TABLE orders (id int);".to_owned()),
-                source: Some(ExportTableSource::Sql { sql: "SELECT * FROM orders".to_owned() }),
+                source: Some(ExportTableSource::Sql {
+                    sql: "SELECT * FROM orders".to_owned(),
+                }),
                 primary_key: Some("id".to_owned()),
             }],
         };
         let shaped = export_tables_stream_request(&request);
         assert_eq!(shaped.value["request"]["cancelToken"], json!("run-42"));
-        assert_eq!(shaped.value["request"]["tables"][0]["source"], json!({
-            "type": "sql",
-            "sql": "SELECT * FROM orders",
-        }));
-        assert_eq!(shaped.value["request"]["tables"][0]["primaryKey"], json!("id"));
+        assert_eq!(
+            shaped.value["request"]["tables"][0]["source"],
+            json!({
+                "type": "sql",
+                "sql": "SELECT * FROM orders",
+            })
+        );
+        assert_eq!(
+            shaped.value["request"]["tables"][0]["primaryKey"],
+            json!("id")
+        );
         // Round-trip: the wire decodes back into the same request.
         let decoded: ExportTablesWire =
             serde_json::from_value(shaped.value["request"].clone()).expect("round-trips");
@@ -604,12 +625,22 @@ pub mod tests {
             "Aborted": { "partialDeleted": true }
         }))
         .expect("aborted decodes");
-        assert_eq!(aborted, ExportTablesResult::Aborted { partial_deleted: true });
+        assert_eq!(
+            aborted,
+            ExportTablesResult::Aborted {
+                partial_deleted: true
+            }
+        );
         let kept: ExportTablesResult = serde_json::from_value(json!({
             "Aborted": { "partialDeleted": false }
         }))
         .expect("an honest abort decodes");
-        assert_eq!(kept, ExportTablesResult::Aborted { partial_deleted: false });
+        assert_eq!(
+            kept,
+            ExportTablesResult::Aborted {
+                partial_deleted: false
+            }
+        );
 
         // serde's default external tag for a unit variant is a bare
         // string — the receipt this port decodes is the object form.

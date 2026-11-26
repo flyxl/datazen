@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use datazen::connection::application::ConnectionService;
-use datazen::connection::domain::ConnectionScope;
 use datazen::execution::runtime::driver_registry::DriverRegistry;
 use datazen::migration::data_transfer::model::{
     ColumnMapping, Endpoint, TableExecutionOutcome, TableMappingStatus, TransferOptions,
@@ -19,7 +18,7 @@ use datazen_driver_api::{
 };
 use datazen_ui_api::native_transfer::{
     NativeNamedDefinitionDiff, NativeSchemaDiff, NativeSchemaObjects, NativeTransferRequest,
-    SqliteReadComparison, TransferCatalog, TransferChoice,
+    SqliteReadComparison, TransferCatalog, TransferChoice, TransferEndpoint,
 };
 
 const MAIN: &str = "main";
@@ -36,7 +35,7 @@ pub(super) async fn read_profile(
     service: &ConnectionService,
     id: &str,
 ) -> Result<ConnectionConfig, String> {
-    let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+    let scope = crate::host_connection_scope();
     service
         .get(&scope, id)
         .await
@@ -151,13 +150,49 @@ pub(super) async fn catalog(
     result
 }
 
-/// Both handles are opened read-only, even for otherwise writable profiles.
-/// The shared comparison returns metadata differences, not a deploy plan.
-pub(super) async fn compare_schema(
+pub(super) struct ReadTable<'a> {
+    pub handle: &'a ConnectionHandle,
+    pub schema: TableSchema,
+}
+
+async fn selected_table<'a>(
+    driver: &dyn DatabaseDriver,
+    handle: &'a ConnectionHandle,
+    endpoint: &TransferEndpoint,
+    side: &str,
+) -> Result<ReadTable<'a>, String> {
+    if identity(driver, handle).await? != endpoint.identity {
+        return Err("A selected SQLite file changed. Select it again.".into());
+    }
+    // SQLite resolves views and case variants in PRAGMA table_xinfo. Only a
+    // base table with the exact catalog name is still the user's selection.
+    if !tables(driver, handle)
+        .await?
+        .iter()
+        .any(|t| t.name == endpoint.table)
+    {
+        return Err("Both selected base tables must still exist.".into());
+    }
+    let schema = driver
+        .get_table_schema(handle, &endpoint.table, MAIN, None)
+        .await
+        .map_err(|_| format!("Could not read the selected {side} table."))?;
+    if schema.columns.is_empty() {
+        return Err("Both selected base tables must still exist.".into());
+    }
+    Ok(ReadTable { handle, schema })
+}
+
+pub(super) async fn with_read_tables<T>(
     service: &ConnectionService,
     registry: &DriverRegistry,
     request: SqliteReadComparison,
-) -> Result<NativeSchemaDiff, String> {
+    compare: impl AsyncFnOnce(
+        &Arc<dyn DatabaseDriver>,
+        ReadTable<'_>,
+        ReadTable<'_>,
+    ) -> Result<T, String>,
+) -> Result<T, String> {
     if request.source.connection_id == request.target.connection_id
         || request.source.identity == request.target.identity
     {
@@ -178,101 +213,11 @@ pub(super) async fn compare_schema(
             .await
             .map_err(|_| "Could not reopen the target SQLite file read-only.")?;
         let comparison = async {
-            for (handle, selected) in [
-                (&source_handle, &request.source),
-                (&target_handle, &request.target),
-            ] {
-                if identity(driver.as_ref(), handle).await? != selected.identity {
-                    return Err("A selected SQLite file changed. Select it again.".into());
-                }
-            }
-            // Catalog picks are exact SQLite names. Do not apply a generic
-            // dotted-schema resolver that can reinterpret e.g. "a.orders".
-            let mut source = driver
-                .get_table_schema(&source_handle, &request.source.table, MAIN, None)
-                .await
-                .map_err(|_| "Could not read the selected source table.")?;
-            let mut target = driver
-                .get_table_schema(&target_handle, &request.target.table, MAIN, None)
-                .await
-                .map_err(|_| "Could not read the selected target table.")?;
-            if source.columns.is_empty() || target.columns.is_empty() {
-                return Err("Both selected tables must still exist.".into());
-            }
-            let normalizer = driver.type_normalizer();
-            let diff = diff_table_schemas(
-                &request.source.table,
-                &source,
-                &target,
-                normalizer.as_deref(),
-            );
-            let unresolved = [
-                ("Source", schema_comparison_limits(&source)),
-                ("Target", schema_comparison_limits(&target)),
-            ]
-            .into_iter()
-            .flat_map(|(side, limits)| {
-                limits
-                    .into_iter()
-                    .map(move |limit| format!("{side}: {limit}"))
-            })
-            .collect::<Vec<_>>();
-            let objects = unresolved.is_empty().then(|| {
-                // SQLite reserves this prefix for implicit UNIQUE and PK
-                // backing indexes, which are outside the secondary-index scope.
-                for schema in [&mut source, &mut target] {
-                    schema.indexes.retain(|index| {
-                        !index.is_primary && !index.name.starts_with("sqlite_autoindex_")
-                    });
-                }
-                let indexes = diff_indexes(&source, &target);
-                NativeSchemaObjects {
-                    checks: NativeNamedDefinitionDiff {
-                        expected_on_target: diff
-                            .missing_check_constraints
-                            .into_iter()
-                            .map(|check| (check.name, check.expression))
-                            .collect(),
-                        unexpected_on_target: diff
-                            .extra_check_constraints
-                            .into_iter()
-                            .map(|check| (check.name, check.expression))
-                            .collect(),
-                    },
-                    indexes: NativeNamedDefinitionDiff {
-                        expected_on_target: describe_indexes(indexes.missing_on_target),
-                        unexpected_on_target: describe_indexes(indexes.extra_on_target),
-                    },
-                }
-            });
-            Ok(NativeSchemaDiff {
-                objects,
-                unresolved,
-                missing_on_target: diff.missing_on_target.into_iter().map(|c| c.name).collect(),
-                extra_on_target: diff.extra_on_target.into_iter().map(|c| c.name).collect(),
-                changed: diff
-                    .changed
-                    .into_iter()
-                    .map(|column| {
-                        let attributes = column
-                            .changes
-                            .into_iter()
-                            .map(|change| match change {
-                                ColumnChange::DataType => format!(
-                                    "type: source {}, target {}",
-                                    column.source.data_type, column.target.data_type
-                                ),
-                                ColumnChange::Nullable => "nullability".into(),
-                                ColumnChange::Default => "default".into(),
-                                ColumnChange::Comment => "comment".into(),
-                                ColumnChange::AutoIncrement => "auto increment".into(),
-                                ColumnChange::PrimaryKey => "primary key".into(),
-                            })
-                            .collect();
-                        (column.name, attributes)
-                    })
-                    .collect(),
-            })
+            let source =
+                selected_table(driver.as_ref(), &source_handle, &request.source, "source").await?;
+            let target =
+                selected_table(driver.as_ref(), &target_handle, &request.target, "target").await?;
+            compare(&driver, source, target).await
         }
         .await;
         let _ = driver.disconnect(target_handle).await;
@@ -281,6 +226,98 @@ pub(super) async fn compare_schema(
     .await;
     let _ = driver.disconnect(source_handle).await;
     result
+}
+
+pub(super) async fn compare_schema(
+    service: &ConnectionService,
+    registry: &DriverRegistry,
+    request: SqliteReadComparison,
+) -> Result<NativeSchemaDiff, String> {
+    with_read_tables(
+        service,
+        registry,
+        request,
+        async |driver, source, target| {
+            Ok(schema_diff(driver.as_ref(), source.schema, target.schema))
+        },
+    )
+    .await
+}
+
+fn schema_diff(
+    driver: &dyn DatabaseDriver,
+    mut source: TableSchema,
+    mut target: TableSchema,
+) -> NativeSchemaDiff {
+    let normalizer = driver.type_normalizer();
+    let diff = diff_table_schemas(&source.table_name, &source, &target, normalizer.as_deref());
+    let unresolved = [
+        ("Source", schema_comparison_limits(&source)),
+        ("Target", schema_comparison_limits(&target)),
+    ]
+    .into_iter()
+    .flat_map(|(side, limits)| {
+        limits
+            .into_iter()
+            .map(move |limit| format!("{side}: {limit}"))
+    })
+    .collect::<Vec<_>>();
+    let objects = unresolved.is_empty().then(|| {
+        // SQLite reserves this prefix for implicit UNIQUE and PK
+        // backing indexes, which are outside the secondary-index scope.
+        for schema in [&mut source, &mut target] {
+            schema
+                .indexes
+                .retain(|index| !index.is_primary && !index.name.starts_with("sqlite_autoindex_"));
+        }
+        let indexes = diff_indexes(&source, &target);
+        NativeSchemaObjects {
+            checks: NativeNamedDefinitionDiff {
+                expected_on_target: diff
+                    .missing_check_constraints
+                    .into_iter()
+                    .map(|check| (check.name, check.expression))
+                    .collect(),
+                unexpected_on_target: diff
+                    .extra_check_constraints
+                    .into_iter()
+                    .map(|check| (check.name, check.expression))
+                    .collect(),
+            },
+            indexes: NativeNamedDefinitionDiff {
+                expected_on_target: describe_indexes(indexes.missing_on_target),
+                unexpected_on_target: describe_indexes(indexes.extra_on_target),
+            },
+        }
+    });
+    NativeSchemaDiff {
+        objects,
+        unresolved,
+        missing_on_target: diff.missing_on_target.into_iter().map(|c| c.name).collect(),
+        extra_on_target: diff.extra_on_target.into_iter().map(|c| c.name).collect(),
+        changed: diff
+            .changed
+            .into_iter()
+            .map(|column| {
+                let attributes = column
+                    .changes
+                    .into_iter()
+                    .map(|change| match change {
+                        ColumnChange::DataType => format!(
+                            "type: source {}, target {}",
+                            column.source.data_type, column.target.data_type
+                        ),
+                        ColumnChange::Nullable => "nullability".into(),
+                        ColumnChange::Default => "default".into(),
+                        ColumnChange::Comment => "comment".into(),
+                        ColumnChange::AutoIncrement => "auto increment".into(),
+                        ColumnChange::PrimaryKey => "primary key".into(),
+                    })
+                    .collect();
+                (column.name, attributes)
+            })
+            .collect(),
+    }
 }
 
 fn schema_comparison_limits(schema: &TableSchema) -> Vec<String> {
@@ -510,5 +547,64 @@ async fn execute(
         Err("The commit outcome is unknown. Check the target before retrying.".into())
     } else {
         Err("The transfer did not commit. Check the mappings and table constraints.".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::live::host_registry;
+    use crate::store::test_support::sqlite_config;
+
+    #[test]
+    fn a_catalog_pick_must_still_name_the_same_kind_of_base_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.sqlite");
+        std::fs::File::create(&path).unwrap();
+        let config = sqlite_config("fixture", Some(path.to_str().unwrap().into()));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let registry = host_registry();
+            let driver = driver(&registry).await.unwrap();
+            let handle = driver.connect(&config).await.unwrap();
+            driver
+                .execute(&handle, "CREATE TABLE records (id INTEGER)")
+                .await
+                .unwrap();
+            let selected = TransferEndpoint {
+                connection_id: config.id.clone(),
+                identity: identity(driver.as_ref(), &handle).await.unwrap(),
+                table: "records".into(),
+                sql_scope: None,
+            };
+            assert!(
+                selected_table(driver.as_ref(), &handle, &selected, "source")
+                    .await
+                    .is_ok()
+            );
+            driver.execute(&handle, "DROP TABLE records").await.unwrap();
+            driver
+                .execute(&handle, "CREATE VIEW records AS SELECT 1 AS id")
+                .await
+                .unwrap();
+            assert!(
+                matches!(selected_table(driver.as_ref(), &handle, &selected, "source").await,
+                Err(error) if error == "Both selected base tables must still exist.")
+            );
+            driver.execute(&handle, "DROP VIEW records").await.unwrap();
+            driver
+                .execute(&handle, "CREATE TABLE RECORDS (id INTEGER)")
+                .await
+                .unwrap();
+            assert!(
+                selected_table(driver.as_ref(), &handle, &selected, "source")
+                    .await
+                    .is_err()
+            );
+            driver.disconnect(handle).await.unwrap();
+        });
     }
 }

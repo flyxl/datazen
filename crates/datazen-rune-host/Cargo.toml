@@ -48,6 +48,7 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+tempfile = "3"
 # `touch_last_connected_at` writes an RFC 3339 timestamp; the job worker owns
 # a current-thread tokio runtime for the drivers' async use cases.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

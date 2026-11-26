@@ -18,7 +18,7 @@
 //!
 //! | React dependency | Rust side found | decision here |
 //! |---|---|---|
-//! | `FilterOperator` ← `@datazen/extension-points` (a re-export) | `datazen-driver-api::filters::FilterOperator`: the same 22 variants, the same camelCase wire spelling, the same `as_str` table | thin mirror. This crate's `datazen-driver-api` dependency is `cfg(not(target_arch = "wasm32"))`-only (the T128 ruling: the wasm host compiles these contract modules without the driver stack), and this module must compile for wasm32 like its siblings — a `use` would break the wasm half. The mirror keeps driver-api's surface (variant set, order, serde representation, `as_str` literals), so the two enums stay interchangeable on the wire; tests pin all 22 literals so they cannot drift silently. |
+//! | `FilterOperator` ← `@datazen/extension-points` (a re-export) | `datazen-driver-api::filters::FilterOperator`: the same 22 variants, the same camelCase wire spelling, the same `as_str` table | thin mirror. The UI shares one contract across native and wasm builds. The mirror keeps driver-api's surface (variant set, order, serde representation, `as_str` literals), so the two enums stay interchangeable on the wire; tests pin all 22 literals so they cannot drift silently. |
 //! | `Value` ← `./connection` | `crate::connection_types::Value`, the T128 facade alias of `serde_json::Value` | direct `use` — same crate, wasm-safe, exactly the `./connection` import the React file makes |
 //!
 //! ## Mirror rules applied
@@ -229,8 +229,7 @@ mod tests {
     // serialization states.
 
     fn decode<T: serde::de::DeserializeOwned>(wire: serde_json::Value) -> T {
-        serde_json::from_value(wire)
-            .unwrap_or_else(|error| panic!("wire decode failed: {error}"))
+        serde_json::from_value(wire).unwrap_or_else(|error| panic!("wire decode failed: {error}"))
     }
 
     /// The full 22-variant vocabulary in wire order — the coverage pin's
@@ -369,8 +368,10 @@ mod tests {
 
     #[test]
     fn the_operator_lists_are_the_ones_the_rust_enum_declares() {
-        let existing: Vec<&str> =
-            EXISTING_FILTER_OPERATORS.iter().map(|op| op.as_str()).collect();
+        let existing: Vec<&str> = EXISTING_FILTER_OPERATORS
+            .iter()
+            .map(|op| op.as_str())
+            .collect();
         assert_eq!(
             existing,
             vec![
@@ -387,8 +388,10 @@ mod tests {
             ]
         );
         assert_eq!(SHARED_FILTER_OPERATORS.len(), 19);
-        let dialect: Vec<&str> =
-            DIALECT_FILTER_OPERATORS.iter().map(|op| op.as_str()).collect();
+        let dialect: Vec<&str> = DIALECT_FILTER_OPERATORS
+            .iter()
+            .map(|op| op.as_str())
+            .collect();
         assert_eq!(dialect, vec!["regex", "notRegex", "jsonContains"]);
         // The two groups are disjoint and together they cover every
         // operator.
@@ -455,7 +458,14 @@ mod tests {
         }
         // The union is closed: near-miss spellings reject (the T159 audit
         // rule — a widened variant would otherwise pass silently).
-        for near_miss in ["Eq", "isNulls", "notregex", "not_regex", "json_contains", ""] {
+        for near_miss in [
+            "Eq",
+            "isNulls",
+            "notregex",
+            "not_regex",
+            "json_contains",
+            "",
+        ] {
             assert!(
                 serde_json::from_value::<FilterOperator>(serde_json::json!(near_miss)).is_err(),
                 "near-miss operator literal {near_miss:?} must not parse"
@@ -467,8 +477,11 @@ mod tests {
     fn as_str_maps_over_the_whole_vocabulary_as_a_closure() {
         // `as_str` is a zero-capture fn item: it must stay usable where a
         // closure is expected (`map(FilterOperator::as_str)`).
-        let spellings: Vec<&'static str> =
-            ALL_OPERATORS.iter().copied().map(FilterOperator::as_str).collect();
+        let spellings: Vec<&'static str> = ALL_OPERATORS
+            .iter()
+            .copied()
+            .map(FilterOperator::as_str)
+            .collect();
         assert_eq!(spellings.len(), 22);
         assert_eq!(spellings.first(), Some(&"eq"));
         assert_eq!(spellings[9], "isNotNull");

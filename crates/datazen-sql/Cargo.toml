@@ -1,0 +1,15 @@
+[package]
+name = "datazen-sql"
+version = "0.0.1"
+edition = "2021"
+license = "MIT"
+description = "SQL statement scanning and schema contracts shared by DataZen clients and drivers"
+
+[features]
+schema = ["dep:serde"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[lints]
+workspace = true

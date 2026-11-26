@@ -14,19 +14,14 @@
 use async_trait::async_trait;
 use datazen::dashboard::application::create::WidgetCreationHost;
 use datazen::dashboard::domain::records::{DashboardRecord, WidgetRecord};
-use datazen::dashboard::domain::repository::{
-    DashboardRepository, DashboardRepositoryError,
-};
 use datazen::dashboard::domain::repository as dashboard_rules;
+use datazen::dashboard::domain::repository::{DashboardRepository, DashboardRepositoryError};
 use datazen::dashboard::domain::types::{
     Dashboard, DashboardLayout, DashboardWorkflowRef, ViewMode,
 };
-use datazen::shared::id::OrganizationId;
 use datazen::shared::scope::OrganizationScope;
 use datazen::workflow::application::registry::WorkflowRegistry;
-use datazen::workflow::domain::model::{
-    WorkflowDefinition, WorkflowStep, WorkflowVisibility,
-};
+use datazen::workflow::domain::model::{WorkflowDefinition, WorkflowStep, WorkflowVisibility};
 use datazen::workflow::domain::repository::{
     WorkflowDefinitionRecord, WorkflowDefinitionRepository,
 };
@@ -39,7 +34,7 @@ pub(crate) const DEFAULT_DASHBOARD_ID: &str = "default";
 
 /// The one organization a desktop process recognizes.
 pub(crate) fn host_scope() -> OrganizationScope {
-    OrganizationScope::new(OrganizationId::new(datazen_ui_api::DESKTOP_ORGANIZATION))
+    OrganizationScope::from_context(crate::host_request_context())
 }
 
 /// The UI's widget ids (N13): the first 16 hex characters of the widget's
@@ -61,7 +56,13 @@ pub(crate) fn workflow_id_for(name: &str, taken: &[String]) -> String {
         .trim()
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     let base = slug.trim_matches('-').to_owned();
     let mut id = if base.is_empty() {
@@ -116,7 +117,10 @@ impl FileWorkflowStore {
             Ok(text) => serde_json::from_str(&text)
                 .map_err(|error| format!("parse {}: {error}", path.display()))?,
         };
-        Ok(Self { path: path.to_owned(), state: Mutex::new(records) })
+        Ok(Self {
+            path: path.to_owned(),
+            state: Mutex::new(records),
+        })
     }
 
     fn persist(&self, records: &[WorkflowDefinitionRecord]) -> Result<(), String> {
@@ -204,7 +208,10 @@ impl FileDashboardStore {
             Ok(text) => serde_json::from_str(&text)
                 .map_err(|error| format!("parse {}: {error}", path.display()))?,
         };
-        Ok(Self { path: path.to_owned(), state: Mutex::new(document) })
+        Ok(Self {
+            path: path.to_owned(),
+            state: Mutex::new(document),
+        })
     }
 
     fn persist(&self, document: &DashboardDocument) -> Result<(), DashboardRepositoryError> {
@@ -403,7 +410,10 @@ impl WidgetCreationHost for HostWidgets {
                     name: "Dashboard".into(),
                     created_at: now.clone(),
                     updated_at: now,
-                    layout: DashboardLayout { cols: 12, row_height: 4 },
+                    layout: DashboardLayout {
+                        cols: 12,
+                        row_height: 4,
+                    },
                     widgets: Vec::new(),
                     enabled: true,
                     refresh_paused: false,
@@ -416,7 +426,11 @@ impl WidgetCreationHost for HostWidgets {
         }
     }
 
-    fn save_dashboard(&self, scope: &OrganizationScope, dashboard: Dashboard) -> Result<(), String> {
+    fn save_dashboard(
+        &self,
+        scope: &OrganizationScope,
+        dashboard: Dashboard,
+    ) -> Result<(), String> {
         dashboard_rules::save_dashboard(scope, self.store.as_ref(), dashboard)
             .map_err(|error| error.to_string())
     }
@@ -462,8 +476,10 @@ mod tests {
     use datazen::workflow::domain::repository::encode_definition;
 
     fn temp_path(tag: &str, file: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("datazen-rune-dashboards-{tag}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "datazen-rune-dashboards-{tag}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir.join(file)
@@ -499,16 +515,20 @@ mod tests {
     #[test]
     fn a_workflow_round_trips_through_the_registry_over_the_file() {
         let path = temp_path("workflows", "workflows.json");
-        let registry =
-            WorkflowRegistry::new(Arc::new(FileWorkflowStore::open(&path).unwrap()), Vec::new());
+        let registry = WorkflowRegistry::new(
+            Arc::new(FileWorkflowStore::open(&path).unwrap()),
+            Vec::new(),
+        );
         let scope = host_scope();
         futures_executor::block_on(registry.save(&scope, &definition("etl", "SELECT 1")))
             .expect("the save lands");
 
         // A fresh registry over the same file reads it back: persistence,
         // not a session cache.
-        let registry =
-            WorkflowRegistry::new(Arc::new(FileWorkflowStore::open(&path).unwrap()), Vec::new());
+        let registry = WorkflowRegistry::new(
+            Arc::new(FileWorkflowStore::open(&path).unwrap()),
+            Vec::new(),
+        );
         let listed = futures_executor::block_on(registry.list_definitions(&scope));
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].name, "etl");
@@ -565,10 +585,9 @@ mod tests {
             Arc::new(FileWorkflowStore::open(&workflows).unwrap()),
             Vec::new(),
         );
-        let hidden = futures_executor::block_on(
-            reopened_registry.get(&scope, &result.widget.workflow_id),
-        )
-        .expect("the hidden workflow survived");
+        let hidden =
+            futures_executor::block_on(reopened_registry.get(&scope, &result.widget.workflow_id))
+                .expect("the hidden workflow survived");
         assert_eq!(hidden.visibility, WorkflowVisibility::DashboardHidden);
         assert!(encode_definition(&hidden)
             .expect("the definition encodes")
@@ -577,12 +596,22 @@ mod tests {
 
     #[test]
     fn widget_ui_ids_are_stable_and_workflow_ids_slug_cleanly() {
-        assert_eq!(widget_ui_id("6f2c1b4a-9d3e-4f5a-8b7c-1d2e3f4a5b6c"), 0x6f2c1b4a9d3e4f5a);
-        assert_eq!(widget_ui_id("short"), 0, "an id without 16 hex characters reads 0");
+        assert_eq!(
+            widget_ui_id("6f2c1b4a-9d3e-4f5a-8b7c-1d2e3f4a5b6c"),
+            0x6f2c1b4a9d3e4f5a
+        );
+        assert_eq!(
+            widget_ui_id("short"),
+            0,
+            "an id without 16 hex characters reads 0"
+        );
         assert_eq!(workflow_id_for("Nightly Backup", &[]), "nightly-backup");
         // A name with no slug characters falls back to the hash spelling.
         let hashed = workflow_id_for("  数据同步  ", &[]);
-        assert!(hashed.starts_with("wf-"), "the hashed id spells wf-…, got {hashed}");
+        assert!(
+            hashed.starts_with("wf-"),
+            "the hashed id spells wf-…, got {hashed}"
+        );
         // A slug another workflow owns gets the hash suffix.
         let taken = vec!["nightly-backup".to_owned()];
         assert_ne!(workflow_id_for("nightly backup", &taken), "nightly-backup");

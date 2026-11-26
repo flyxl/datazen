@@ -14,10 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 datazen-ui-api = { workspace = true }
-# commands/file.ts (T298): `ColumnInfo` is the wire crate's own shape
-# (backend-client's Rust face) — reuse the one definition, don't mirror
-# it a second time. Already in the build graph via datazen-ui-api.
-datazen-driver-api = { workspace = true }
+datazen-sql = { workspace = true, features = ["schema"] }
 rune = { workspace = true }
 rune-kit = { workspace = true }
 serde_json = { workspace = true }

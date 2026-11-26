@@ -172,6 +172,19 @@ pub fn format_last_connected_with_offset(iso: Option<&str>, offset_seconds: i32)
     }
 }
 
+/// Sort saved connections by a calendar date (midnight UTC) or a full zoned timestamp.
+pub(crate) fn connection_timestamp_millis(text: &str) -> Option<i64> {
+    if text.len() == 10 && text.get(4..5) == Some("-") && text.get(7..8) == Some("-") {
+        let date = text.parse::<chrono::NaiveDate>().ok()?;
+        return Some(date.and_hms_opt(0, 0, 0)?.and_utc().timestamp_millis());
+    }
+    if text.as_bytes().get(10) != Some(&b'T') || text.ends_with('z') {
+        return None;
+    }
+    let time = chrono::DateTime::parse_from_rfc3339(text).ok()?;
+    (time.timestamp_subsec_nanos() < 1_000_000_000).then(|| time.timestamp_millis())
+}
+
 /// Milliseconds since the Unix epoch for a zoned ISO-8601-ish string.
 ///
 /// Accepts `YYYY-MM-DD` with an optional `T`/space time, optional seconds and

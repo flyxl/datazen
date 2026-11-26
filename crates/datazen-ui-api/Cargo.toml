@@ -3,37 +3,19 @@ name = "datazen-ui-api"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "UI ports and the desktop adapter for the DataZen Rune interface"
+description = "UI contracts and in-memory workspace for the DataZen Rune interface"
 
 [dependencies]
 # The metadata identity keys are `JSON.stringify`-canonical strings;
 # `serde_json::Value`'s compact `Display` is the byte-exact serializer for
 # them (see src/metadata/identity.rs). Same workspace pin the rest of the
-# graph already uses, and wasm-safe, unlike the kernel below.
+# graph already uses.
 serde_json = { workspace = true }
 # ai_sessions (T040) mirrors React's stored/IPC DTOs (localStorage blob and
 # the `aiCommands.sessions*` payloads) as camelCase serde shapes, with the
 # order-preserving SessionMap hand-implementing the JS object-key contract
 # on top of serde_json's stream. Workspace pin (`derive` feature), wasm-safe.
 serde = { workspace = true }
-# The unified driver-command seam speaks the drivers' JSON payload shapes.
-
-# H3/H6: the desktop adapter — the native host's use cases. Everything here is
-# native-only: the wasm host compiles the same ports over the memory workspace
-# and brings its own adapter later, and datazen's `execution` feature carries
-# tokio's net stack (mio), which does not exist on wasm32.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-async-trait = { workspace = true }
-# Only the connection module is needed; `execution` rides along because the
-# connection DTO surface re-exports its vocabulary (`connection` alone does
-# not compile). The rest of the `application` umbrella (dashboard/schema_diff/
-# tunnel, and with them the whole russh crypto stack) stays out.
-datazen = { workspace = true, features = ["connection", "execution"] }
-# The adapter's repository boundary and the form payload's own types.
-datazen-driver-api = { workspace = true }
-# The use case is async; the UI event loop is sync. The adapter bridges with a
-# blocking poll over the in-memory repository (its futures are always ready).
-futures-executor = "0.3"
 
 [lints]
 workspace = true

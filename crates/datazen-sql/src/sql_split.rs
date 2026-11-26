@@ -31,7 +31,7 @@ impl Utf8ChunkDecoder {
                     return Err("invalid UTF-8 in SQL file".into());
                 }
                 let out = std::str::from_utf8(&self.pending[..valid])
-                    .expect("valid_up_to is valid UTF-8")
+                    .map_err(|_| "invalid UTF-8 in SQL file".to_owned())?
                     .to_owned();
                 self.pending.drain(..valid);
                 Ok(out)

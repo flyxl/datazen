@@ -36,10 +36,7 @@
 //!
 //! Known deltas: `chartConfig` / `publishedArtifacts` (the optional
 //! presentation fields) ride the T352 store port — the chart tile
-//! owns its config type; `results` reuses the driver api's
-//! [`datazen_driver_api::StatementResult`] (the frontend type's
-//! `source`/`runtimeBinding`/`provenance`/`pinned` extensions are
-//! the same T352 seam).
+//! owns its config type. Results carry the UI API's query provenance.
 
 // No production consumer yet (the query panel track wires the
 // reads); this crate's tests are the callers meanwhile.
@@ -48,7 +45,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use datazen_driver_api::StatementResult;
+use datazen_ui_api::types::StatementResult;
 
 /// `DEFAULT_PANE_ID` — the pane a query panel owns before any split.
 pub const DEFAULT_PANE_ID: &str = "main";
@@ -104,9 +101,7 @@ pub enum QueryResultViewMode {
     Chart,
 }
 
-/// The execution state of one pane (the T352 seam type). Not
-/// `PartialEq`: `results` is the driver api's `StatementResult`
-/// (an opaque wire type); tests compare the scalar fields.
+/// The execution state of one pane.
 #[derive(Clone, Debug)]
 pub struct QueryExecState {
     pub sql: String,
@@ -157,9 +152,7 @@ impl QueryExecState {
             }
             QueryExecField::CancelState => QueryExecFieldValue::Cancel(self.cancel_state),
             QueryExecField::CancelError => QueryExecFieldValue::OptText(self.cancel_error.clone()),
-            QueryExecField::TerminalState => {
-                QueryExecFieldValue::Terminal(self.terminal_state)
-            }
+            QueryExecField::TerminalState => QueryExecFieldValue::Terminal(self.terminal_state),
             QueryExecField::ResultViewMode => {
                 QueryExecFieldValue::OptViewMode(self.result_view_mode)
             }
@@ -352,15 +345,30 @@ mod tests {
         map.insert(pane_key("panel-q-1", None), entry);
 
         assert_eq!(
-            use_query_exec_field(Some(&map), "panel-q-1", QueryExecField::ExecutionTimeMs, None),
+            use_query_exec_field(
+                Some(&map),
+                "panel-q-1",
+                QueryExecField::ExecutionTimeMs,
+                None
+            ),
             QueryExecFieldValue::OptNumber(Some(120))
         );
         assert_eq!(
-            use_query_exec_field(Some(&map), "panel-q-1", QueryExecField::ActiveResultIdx, None),
+            use_query_exec_field(
+                Some(&map),
+                "panel-q-1",
+                QueryExecField::ActiveResultIdx,
+                None
+            ),
             QueryExecFieldValue::Index(2)
         );
         assert_eq!(
-            use_query_exec_field(Some(&map), "panel-q-1", QueryExecField::ResultViewMode, None),
+            use_query_exec_field(
+                Some(&map),
+                "panel-q-1",
+                QueryExecField::ResultViewMode,
+                None
+            ),
             QueryExecFieldValue::OptViewMode(Some(QueryResultViewMode::Chart))
         );
         assert_eq!(

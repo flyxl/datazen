@@ -23,14 +23,9 @@
 //! | `Value` ← `@datazen/backend-client` | driver-api's `Value` is the richer untagged enum (`Null/Bool/Integer/Float/String/Bytes/Timestamp/Json`); the TS name is exactly its untagged JSON image (`string | number | boolean | null | object | array`) | thin mirror: alias of `serde_json::Value` |
 //! | `ColumnInfo`, `QueryResult`, `MultiQueryResult`, `StatementResult`, `QueryStreamEvent` ← `@datazen/backend-client` | driver-api carries close shapes, but the TS set interlocks around `StatementResult`'s provenance/binding legs (`ResultProvenance`, `SessionContext`, `ExecutionTarget`, …) and `QueryStreamEvent`'s artifact legs | deferred — not referenced by any own interface below; the backend-client query domain ports land as their own module and the facade re-exports them then |
 //!
-//! Everything Rust-side was found but is still mirrored here — not `use`-d —
-//! because `datazen-driver-api` is a **native-only** dependency of this crate
-//! (`[target.'cfg(not(target_arch = "wasm32"))']`) while the facade itself
-//! must compile for wasm32 (`scripts/build-rune-ui-web.sh` checks
-//! `-p datazen-ui --target wasm32-unknown-unknown --lib`). Each mirror
-//! therefore documents its native twin and keeps the same wire shape, so a
-//! native adapter can convert losslessly — and if the mirrors drift, the
-//! doc trails are the audit path.
+//! The UI's native and wasm builds share these wire shapes. The native host
+//! owns the conversion to driver types. Each UI mirror documents its driver
+//! counterpart so changes to the wire contract can be checked in both places.
 //!
 //! `DatabaseType` specifically: React's union is **build-injected** (the
 //! resolve-drivers codegen emits `export type DatabaseType = 'postgres' |
@@ -139,9 +134,7 @@ pub type DatabaseType = String;
 /// React `SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' |
 /// 'verifyFull'` — the TLS posture a connection asks for.
 ///
-/// Thin mirror of driver-api's root-exported `SslMode` (same five literals,
-/// same camelCase wire); mirrored here because that crate is a native-only
-/// dependency and this module compiles for wasm32.
+/// The shared UI uses the same five camelCase literals as the driver's `SslMode`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SslMode {
@@ -901,13 +894,11 @@ mod tests {
     // constants (see module docs).
 
     fn decode<T: serde::de::DeserializeOwned>(wire: serde_json::Value) -> T {
-        serde_json::from_value(wire)
-            .unwrap_or_else(|error| panic!("wire decode failed: {error}"))
+        serde_json::from_value(wire).unwrap_or_else(|error| panic!("wire decode failed: {error}"))
     }
 
     fn encode<T: serde::Serialize>(value: &T) -> serde_json::Value {
-        serde_json::to_value(value)
-            .unwrap_or_else(|error| panic!("wire encode failed: {error}"))
+        serde_json::to_value(value).unwrap_or_else(|error| panic!("wire encode failed: {error}"))
     }
 
     #[test]
@@ -1188,7 +1179,10 @@ mod tests {
     fn connection_options_carry_opaque_driver_settings() {
         let mut options = serde_json::Map::new();
         options.insert("topology".into(), serde_json::json!({ "mode": "cluster" }));
-        let config = ConnectionConfig { options: Some(options), ..minimal_connection_config() };
+        let config = ConnectionConfig {
+            options: Some(options),
+            ..minimal_connection_config()
+        };
         let wire = encode(&config);
         assert_eq!(wire["options"]["topology"]["mode"], "cluster");
         let back: ConnectionConfig = decode(wire);
@@ -1197,7 +1191,9 @@ mod tests {
             Some(&serde_json::json!({ "mode": "cluster" }))
         );
         // Absent options stay absent.
-        assert!(encode(&minimal_connection_config()).get("options").is_none());
+        assert!(encode(&minimal_connection_config())
+            .get("options")
+            .is_none());
     }
 
     fn ssh_tunnel(jump: Option<Box<SshTunnelConfig>>) -> SshTunnelConfig {
@@ -1228,8 +1224,10 @@ mod tests {
         let back: SshTunnelConfig = decode(wire);
         assert_eq!(back, tunnel);
         // The password union member still round-trips when present.
-        let with_password =
-            SshTunnelConfig { password: Some("hunter2".into()), ..ssh_tunnel(None) };
+        let with_password = SshTunnelConfig {
+            password: Some("hunter2".into()),
+            ..ssh_tunnel(None)
+        };
         assert_eq!(encode(&with_password)["password"], "hunter2");
     }
 
@@ -1255,7 +1253,10 @@ mod tests {
 
     #[test]
     fn server_info_and_driver_capabilities_pin_their_fields() {
-        let info = ServerInfo { server_version: "16.2".into(), server_type: "PostgreSQL".into() };
+        let info = ServerInfo {
+            server_version: "16.2".into(),
+            server_type: "PostgreSQL".into(),
+        };
         assert_eq!(
             encode(&info),
             serde_json::json!({ "serverVersion": "16.2", "serverType": "PostgreSQL" })
@@ -1338,8 +1339,7 @@ mod tests {
         assert_eq!(full.row_count, Some(1_234_567));
         assert_eq!(full.table_type, TableType::MaterializedView);
         // An absent key deserializes too (serde Option default).
-        let sparse: TableInfo =
-            decode(serde_json::json!({ "name": "t", "tableType": "table" }));
+        let sparse: TableInfo = decode(serde_json::json!({ "name": "t", "tableType": "table" }));
         assert_eq!(sparse.schema, None);
         assert_eq!(sparse.row_count, None);
     }
@@ -1357,7 +1357,10 @@ mod tests {
         let wire = encode(&object);
         // `schema` keeps its explicit null; the three legs the index.ts copy
         // added keep the twin's own skip — absent stays absent.
-        assert_eq!(wire, serde_json::json!({ "kind": "function", "schema": null, "name": "now" }));
+        assert_eq!(
+            wire,
+            serde_json::json!({ "kind": "function", "schema": null, "name": "now" })
+        );
         let back: DatabaseObject = decode(wire);
         assert_eq!(back, object);
 
@@ -1467,7 +1470,10 @@ mod tests {
                 "isPrimary": true,
             })
         );
-        let typed = IndexInfo { index_type: Some("btree".into()), ..index };
+        let typed = IndexInfo {
+            index_type: Some("btree".into()),
+            ..index
+        };
         assert_eq!(encode(&typed)["indexType"], "btree");
         let back: IndexInfo = decode(encode(&typed));
         assert_eq!(back, typed);
@@ -1488,15 +1494,18 @@ mod tests {
             "isAutoIncrement": null,
             "comment": null,
         }));
-        assert_eq!(column, ColumnSchema {
-            name: "id".into(),
-            data_type: "integer".into(),
-            nullable: false,
-            default_value: None,
-            is_primary_key: None,
-            is_auto_increment: None,
-            comment: None,
-        });
+        assert_eq!(
+            column,
+            ColumnSchema {
+                name: "id".into(),
+                data_type: "integer".into(),
+                nullable: false,
+                default_value: None,
+                is_primary_key: None,
+                is_auto_increment: None,
+                comment: None,
+            }
+        );
         // And the wire the facade itself re-emits is the absent-key one.
         assert!(encode(&column).get("comment").is_none());
         assert!(encode(&column).get("isPrimaryKey").is_none());
@@ -1609,8 +1618,10 @@ mod tests {
         let back: ResolveForeignKeyTargetsRequest = decode(wire);
         assert_eq!(back, request);
         // …and rides along when set.
-        let with_limit =
-            ResolveForeignKeyTargetsRequest { limit: Some(25), ..request.clone() };
+        let with_limit = ResolveForeignKeyTargetsRequest {
+            limit: Some(25),
+            ..request.clone()
+        };
         assert_eq!(encode(&with_limit)["limit"], 25);
     }
 
@@ -1621,7 +1632,10 @@ mod tests {
             label: "Seq Scan".into(),
             cost: None,
             rows: Some(12),
-            details: vec![ExplainPlanDetail { key: "rows".into(), value: "12".into() }],
+            details: vec![ExplainPlanDetail {
+                key: "rows".into(),
+                value: "12".into(),
+            }],
             children: Vec::new(),
         };
         let root = ExplainPlanNode {
@@ -1881,7 +1895,10 @@ mod tests {
         };
         let wire = encode(&relay);
         assert_eq!(wire["kind"], "websocket");
-        assert_eq!(wire["websocket"]["url"], "wss://relay.example.com/v1/tunnel");
+        assert_eq!(
+            wire["websocket"]["url"],
+            "wss://relay.example.com/v1/tunnel"
+        );
         assert_eq!(wire["websocket"]["mode"], "raw_binary");
         let back: SavedTunnel = decode(wire);
         assert_eq!(back, relay);

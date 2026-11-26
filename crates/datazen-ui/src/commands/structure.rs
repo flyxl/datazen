@@ -15,13 +15,7 @@
 //!   (`request.schema ?? null`), not a separate argument — the
 //!   React source's own doc comment records both decisions.
 //!
-//! The wire `StructureChangeRequest`/`StructureChangePlan` are the
-//! driver-api crate's (camelCase, `schema` omitted when absent —
-//! the backend decodes the same type, so there is no second mirror).
-//! The UI-side editor draft type
-//! (`structure_editor::StructureChangeRequest`) is the view's
-//! shape; the conversion to this wire form is the future
-//! structure-editor view's seam, not the command layer's.
+//! The UI and backend share the SQL schema contract for the request.
 //!
 //! `metadataTarget`'s store-lookup half (resolve the connection by
 //! `dbSessionId` when `connectionId` is absent) stays the host's
@@ -31,9 +25,9 @@
 
 use serde_json::json;
 
-pub use datazen_driver_api::StructureChangeRequest;
+pub use datazen_sql::schema::StructureChangeRequest;
 
-use crate::commands::database::{DatabaseTarget, TargetCommandRequest, metadata_target};
+use crate::commands::database::{metadata_target, DatabaseTarget, TargetCommandRequest};
 
 /// `getStructureCapabilities`' target: the session's catalog position,
 /// no object half (the React call passes `undefined` for the table).
@@ -84,10 +78,8 @@ mod tests {
     use super::*;
 
     fn request() -> StructureChangeRequest {
-        serde_json::from_value(
-            json!({ "mode": "create", "table": "users", "currentColumns": [] }),
-        )
-        .expect("wire request decodes")
+        serde_json::from_value(json!({ "mode": "create", "table": "users", "currentColumns": [] }))
+            .expect("wire request decodes")
     }
 
     #[test]

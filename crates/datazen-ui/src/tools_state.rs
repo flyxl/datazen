@@ -1,25 +1,23 @@
 //! AppState method implementations.
 
 #![allow(unused_imports)]
-use crate::state_def::*;
-use crate::views::{next_connection, workflow_yaml};
 use crate::constants::*;
 use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
+use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
+use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, MemoryWorkspace, ProgressSnapshot,
-    QueryApi, Setting, SettingsApi, TabKind, Tabs, TablePage, UnimplementedAdapter, Workflow,
-    WorkflowStepResult, WorkspaceApi,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
+    SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
+    WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
 use rune::tok::{self, type_};
 use rune::{
-    App, AppSpec, Color, Cx, El, FileDialogOptions, FileDialogResult, Ime, Key, KeyEvent,
-    TextEdit, Titlebar, Tx, col, oklch, row, text, text_input,
+    col, oklch, row, text, text_input, App, AppSpec, Color, Cx, El, FileDialogOptions,
+    FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
 impl AppState {
@@ -138,7 +136,10 @@ impl AppState {
     /// D8: apply the plan through the port. A failure keeps the plan (the
     /// difference is still there), and so does the error.
     pub fn apply_compare_plan(&mut self) {
-        let plan = match self.workspace.compare_plan(&self.compare_source, &self.compare_target) {
+        let plan = match self
+            .workspace
+            .compare_plan(&self.compare_source, &self.compare_target)
+        {
             Ok(plan) => plan,
             Err(error) => {
                 self.compare_error = Some(error);
@@ -174,7 +175,11 @@ impl AppState {
     }
     pub fn cycle_transfer_table(&mut self, side: bool) {
         let tables = self.workspace.connection_tables("local");
-        let current = if side { &self.transfer_left } else { &self.transfer_right };
+        let current = if side {
+            &self.transfer_left
+        } else {
+            &self.transfer_right
+        };
         let next = match tables.iter().position(|name| name == current) {
             Some(index) => tables[(index + 1) % tables.len()].clone(),
             None => tables.first().cloned().unwrap_or_default(),
@@ -184,8 +189,16 @@ impl AppState {
         } else {
             self.transfer_right = next;
         }
-        self.transfer_pair_left = self.table_columns_of(&self.transfer_left).first().cloned().unwrap_or_default();
-        self.transfer_pair_right = self.table_columns_of(&self.transfer_right).first().cloned().unwrap_or_default();
+        self.transfer_pair_left = self
+            .table_columns_of(&self.transfer_left)
+            .first()
+            .cloned()
+            .unwrap_or_default();
+        self.transfer_pair_right = self
+            .table_columns_of(&self.transfer_right)
+            .first()
+            .cloned()
+            .unwrap_or_default();
     }
     pub fn cycle_transfer_pair_column(&mut self, side: bool) {
         let (table, current) = if side {
@@ -214,9 +227,14 @@ impl AppState {
             self.transfer_error = Some("pick a column on both ends".into());
             return;
         }
-        if self.transfer_pairs.iter().any(|(l, r)| *l == left || *r == right) {
-            self.transfer_error =
-                Some(format!("{left} or {right} is already paired — a column pairs once"));
+        if self
+            .transfer_pairs
+            .iter()
+            .any(|(l, r)| *l == left || *r == right)
+        {
+            self.transfer_error = Some(format!(
+                "{left} or {right} is already paired — a column pairs once"
+            ));
             return;
         }
         self.transfer_pairs.push((left, right));
@@ -253,9 +271,15 @@ impl AppState {
     /// The left table's columns not yet paired.
     pub fn transfer_unmapped(&self, side: bool) -> Vec<String> {
         let (table, used_left): (String, Vec<String>) = if side {
-            (self.transfer_left.clone(), self.transfer_pairs.iter().map(|(l, _)| l.clone()).collect())
+            (
+                self.transfer_left.clone(),
+                self.transfer_pairs.iter().map(|(l, _)| l.clone()).collect(),
+            )
         } else {
-            (self.transfer_right.clone(), self.transfer_pairs.iter().map(|(_, r)| r.clone()).collect())
+            (
+                self.transfer_right.clone(),
+                self.transfer_pairs.iter().map(|(_, r)| r.clone()).collect(),
+            )
         };
         self.table_columns_of(&table)
             .into_iter()

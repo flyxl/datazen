@@ -6,10 +6,11 @@ The shared Rune UI crate for DataZen native desktop and WebAssembly.
 
 The same Rust view tree is used by:
 
-- the native desktop binary named datazen-rune;
+- the native desktop host `datazen-native`, which supplies the database adapter;
+- the in-memory demo binary `datazen-rune`;
 - the WebAssembly entrypoint selected by the Web host with the query parameter ui=rune.
 
-The shell has interactive navigation for Connections, SQL Editor, Data Browser, Schema, Workflows and Settings. These are migration placeholders, not yet wired to database use cases. Existing React and Tauri entrypoints remain the default.
+The shell has interactive navigation for Connections, SQL Editor, Data Browser, Schema, Workflows and Settings. The native host connects the views to database use cases through the ports in `datazen-ui-api`.
 
 ## Pinned Rune source
 
@@ -27,7 +28,7 @@ git submodule update --init --recursive vendor/rune
 
 ## Toolchain
 
-Rune pins Rust 1.99.1 in its upstream `rust-toolchain.toml`. The submodule is a dependency rather than a workspace member, so Rust does not automatically inherit that file. Install and select the pinned toolchain explicitly:
+Rune pins Rust 1.99.1 in its upstream `rust-toolchain.toml`. Commands run from the DataZen workspace root use its selected toolchain. Install and select the pinned toolchain explicitly:
 
 ~~~sh
 rustup toolchain install 1.99.1
@@ -61,10 +62,6 @@ python3 -m http.server -d crates/datazen-ui/web 8137
 the page boots the same wasm the desktop runs, and the React host's index
 and routes stay untouched. A browser without WebGPU shows rune's own
 "WebGPU adapter unavailable" panel.
-
-## Next slice
-
-Add typed DataZen UI ports and connect Connections → connect → Schema → read-only table data to existing application use cases. Do not duplicate Driver, Runtime, credentials, permission policy or the HTTP MethodMap in this crate.
 
 ## The desktop process (H1)
 

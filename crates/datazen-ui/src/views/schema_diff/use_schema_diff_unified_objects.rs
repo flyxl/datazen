@@ -39,11 +39,11 @@
 //! per failed kind).
 
 use crate::views::schema_diff::schema_diff_object_identity::{
-    SchemaDiffObjectIdentityVm, SchemaDiffObjectKindVm, schema_diff_object_identity_key,
+    schema_diff_object_identity_key, SchemaDiffObjectIdentityVm, SchemaDiffObjectKindVm,
 };
 use crate::views::schema_diff::schema_diff_unified_objects_picker::ObjectLoadErrors;
 
-pub use datazen_driver_api::DatabaseObject;
+pub use datazen_sql::schema::DatabaseObject;
 
 /// The kind walk order (`OBJECT_KINDS`).
 pub const OBJECT_KINDS: [SchemaDiffObjectKindVm; 6] = [
@@ -185,7 +185,10 @@ impl UseSchemaDiffUnifiedObjects {
     pub fn selected_source_objects(&self) -> Vec<SchemaDiffObjectIdentityVm> {
         self.source_objects
             .iter()
-            .filter(|object| self.selected_source_keys.contains(&schema_diff_object_identity_key(object)))
+            .filter(|object| {
+                self.selected_source_keys
+                    .contains(&schema_diff_object_identity_key(object))
+            })
             .cloned()
             .collect()
     }
@@ -193,7 +196,10 @@ impl UseSchemaDiffUnifiedObjects {
     pub fn selected_target_objects(&self) -> Vec<SchemaDiffObjectIdentityVm> {
         self.target_objects
             .iter()
-            .filter(|object| self.selected_target_keys.contains(&schema_diff_object_identity_key(object)))
+            .filter(|object| {
+                self.selected_target_keys
+                    .contains(&schema_diff_object_identity_key(object))
+            })
             .cloned()
             .collect()
     }
@@ -231,7 +237,10 @@ impl UseSchemaDiffUnifiedObjects {
         self.target_objects = target.0.clone();
         self.selected_source_keys.clear();
         self.selected_target_keys.clear();
-        self.errors = SchemaDiffObjectLoadErrors { source: source.1, target: target.1 };
+        self.errors = SchemaDiffObjectLoadErrors {
+            source: source.1,
+            target: target.1,
+        };
         Some(SchemaDiffObjectCatalog {
             source_objects: source.0,
             target_objects: target.0,
@@ -263,9 +272,13 @@ impl UseSchemaDiffUnifiedObjects {
         desired_source: &[SchemaDiffObjectIdentityVm],
         desired_target: &[SchemaDiffObjectIdentityVm],
     ) -> SchemaDiffObjectSelectionRestore {
-        let restore_side = |desired: &[SchemaDiffObjectIdentityVm], catalog: &[SchemaDiffObjectIdentityVm]| -> (Vec<String>, usize) {
-            let known: std::collections::HashSet<String> =
-                catalog.iter().map(schema_diff_object_identity_key).collect();
+        let restore_side = |desired: &[SchemaDiffObjectIdentityVm],
+                            catalog: &[SchemaDiffObjectIdentityVm]|
+         -> (Vec<String>, usize) {
+            let known: std::collections::HashSet<String> = catalog
+                .iter()
+                .map(schema_diff_object_identity_key)
+                .collect();
             let mut selected: Vec<String> = Vec::new();
             for object in desired {
                 let key = schema_diff_object_identity_key(object);
@@ -280,7 +293,10 @@ impl UseSchemaDiffUnifiedObjects {
         let (target_keys, missing_target) = restore_side(desired_target, &catalog.target_objects);
         self.selected_source_keys = source_keys;
         self.selected_target_keys = target_keys;
-        SchemaDiffObjectSelectionRestore { missing_source, missing_target }
+        SchemaDiffObjectSelectionRestore {
+            missing_source,
+            missing_target,
+        }
     }
 
     /// `toggle(side, object)`: insert or remove the identity key,
@@ -306,7 +322,10 @@ impl UseSchemaDiffUnifiedObjects {
             ObjectSide::Target => (&self.target_objects, &mut self.selected_target_keys),
         };
         *keys = if selected {
-            objects.iter().map(schema_diff_object_identity_key).collect()
+            objects
+                .iter()
+                .map(schema_diff_object_identity_key)
+                .collect()
         } else {
             Vec::new()
         };
@@ -328,7 +347,11 @@ mod tests {
         }
     }
 
-    fn identity(kind: SchemaDiffObjectKindVm, name: &str, schema: Option<&str>) -> SchemaDiffObjectIdentityVm {
+    fn identity(
+        kind: SchemaDiffObjectKindVm,
+        name: &str,
+        schema: Option<&str>,
+    ) -> SchemaDiffObjectIdentityVm {
         SchemaDiffObjectIdentityVm {
             kind,
             schema: schema.map(str::to_owned),
@@ -343,7 +366,14 @@ mod tests {
     fn the_kind_walk_is_the_react_order() {
         assert_eq!(
             OBJECT_KINDS.map(|kind| kind.wire_str()),
-            ["view", "type", "sequence", "function", "procedure", "trigger"]
+            [
+                "view",
+                "type",
+                "sequence",
+                "function",
+                "procedure",
+                "trigger"
+            ]
         );
     }
 
@@ -368,31 +398,55 @@ mod tests {
     #[test]
     fn the_fold_collects_rows_and_captures_per_kind_errors() {
         let answers = vec![
-            (SchemaDiffObjectKindVm::View, Ok(vec![object(SchemaDiffObjectKindVm::View, "v1", None)])),
-            (SchemaDiffObjectKindVm::Type, Err("no permission".to_owned())),
-            (SchemaDiffObjectKindVm::Function, Ok(vec![object(SchemaDiffObjectKindVm::Function, "f1", Some("public"))])),
+            (
+                SchemaDiffObjectKindVm::View,
+                Ok(vec![object(SchemaDiffObjectKindVm::View, "v1", None)]),
+            ),
+            (
+                SchemaDiffObjectKindVm::Type,
+                Err("no permission".to_owned()),
+            ),
+            (
+                SchemaDiffObjectKindVm::Function,
+                Ok(vec![object(
+                    SchemaDiffObjectKindVm::Function,
+                    "f1",
+                    Some("public"),
+                )]),
+            ),
         ];
         let (objects, errors) = list_objects_fold(&answers);
         assert_eq!(objects.len(), 2);
         assert_eq!(objects[0].name, "v1");
         assert_eq!(objects[1].name, "f1");
         // A failed kind is one error entry; its rows are simply absent.
-        assert_eq!(errors, vec![(SchemaDiffObjectKindVm::Type, "no permission".to_owned())]);
+        assert_eq!(
+            errors,
+            vec![(SchemaDiffObjectKindVm::Type, "no permission".to_owned())]
+        );
     }
 
     #[test]
     fn a_load_completes_the_lifecycle_and_resets_the_selection() {
         let mut hook = UseSchemaDiffUnifiedObjects::new();
         assert_eq!(hook.catalog_load_state(), CatalogLoadState::NeverStarted);
-        hook.toggle(ObjectSide::Source, &identity(SchemaDiffObjectKindVm::View, "stale", None));
+        hook.toggle(
+            ObjectSide::Source,
+            &identity(SchemaDiffObjectKindVm::View, "stale", None),
+        );
         let request = hook.begin_load();
         assert_eq!(hook.catalog_load_state(), CatalogLoadState::Loading);
         let source = (
             vec![identity(SchemaDiffObjectKindVm::View, "v1", None)],
             vec![(SchemaDiffObjectKindVm::Type, "boom".to_owned())],
         );
-        let target = (vec![identity(SchemaDiffObjectKindVm::Sequence, "s1", None)], Vec::new());
-        let catalog = hook.on_load_answer(request, source, target).expect("publishes");
+        let target = (
+            vec![identity(SchemaDiffObjectKindVm::Sequence, "s1", None)],
+            Vec::new(),
+        );
+        let catalog = hook
+            .on_load_answer(request, source, target)
+            .expect("publishes");
         assert_eq!(catalog.source_objects.len(), 1);
         assert_eq!(hook.catalog_load_state(), CatalogLoadState::Completed);
         assert_eq!(hook.source_objects().len(), 1);
@@ -406,11 +460,21 @@ mod tests {
         let mut hook = UseSchemaDiffUnifiedObjects::new();
         let first = hook.begin_load();
         let second = hook.begin_load();
-        let payload = (vec![identity(SchemaDiffObjectKindVm::View, "v", None)], Vec::new());
-        assert!(hook.on_load_answer(first, payload.clone(), payload.clone()).is_none());
+        let payload = (
+            vec![identity(SchemaDiffObjectKindVm::View, "v", None)],
+            Vec::new(),
+        );
+        assert!(hook
+            .on_load_answer(first, payload.clone(), payload.clone())
+            .is_none());
         assert_eq!(hook.catalog_load_state(), CatalogLoadState::Loading);
-        assert!(hook.source_objects().is_empty(), "the stale answer published nothing");
-        assert!(hook.on_load_answer(second, payload.clone(), payload).is_some());
+        assert!(
+            hook.source_objects().is_empty(),
+            "the stale answer published nothing"
+        );
+        assert!(hook
+            .on_load_answer(second, payload.clone(), payload)
+            .is_some());
         assert_eq!(hook.catalog_load_state(), CatalogLoadState::Completed);
     }
 
@@ -422,8 +486,12 @@ mod tests {
         assert_eq!(hook.catalog_load_state(), CatalogLoadState::NeverStarted);
         // After a load: invalidated, everything emptied.
         let request = hook.begin_load();
-        let payload = (vec![identity(SchemaDiffObjectKindVm::View, "v", None)], Vec::new());
-        hook.on_load_answer(request, payload.clone(), payload).expect("publishes");
+        let payload = (
+            vec![identity(SchemaDiffObjectKindVm::View, "v", None)],
+            Vec::new(),
+        );
+        hook.on_load_answer(request, payload.clone(), payload)
+            .expect("publishes");
         hook.select_all(ObjectSide::Source, true);
         hook.clear();
         assert_eq!(hook.catalog_load_state(), CatalogLoadState::Invalidated);
@@ -432,8 +500,13 @@ mod tests {
         assert!(hook.errors().source.is_empty());
         // And the in-flight load can no longer publish (its id is
         // superseded by the clear's bump).
-        let replay = (vec![identity(SchemaDiffObjectKindVm::View, "v", None)], Vec::new());
-        assert!(hook.on_load_answer(request, replay, (Vec::new(), Vec::new())).is_none());
+        let replay = (
+            vec![identity(SchemaDiffObjectKindVm::View, "v", None)],
+            Vec::new(),
+        );
+        assert!(hook
+            .on_load_answer(request, replay, (Vec::new(), Vec::new()))
+            .is_none());
         let _ = payload;
     }
 
@@ -504,7 +577,8 @@ mod tests {
             ],
             Vec::new(),
         );
-        hook.on_load_answer(request, payload.clone(), payload).expect("publishes");
+        hook.on_load_answer(request, payload.clone(), payload)
+            .expect("publishes");
         hook.select_all(ObjectSide::Source, true);
         assert_eq!(hook.selected_source_keys().len(), 2);
         assert_eq!(hook.selected_source_objects().len(), 2);

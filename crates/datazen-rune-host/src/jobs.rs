@@ -5,113 +5,197 @@
 //! the adapter reads.
 
 use datazen::execution::runtime::driver_registry::DriverRegistry;
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver, Value};
+use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DatabaseDriver, Value};
 use datazen_ui_api::ProgressSnapshot;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
+use tempfile::NamedTempFile;
 
-/// One running or finished host job.
-struct JobState {
-    snapshot: ProgressSnapshot,
-    /// Set by `stop`; the worker checks it between its steps.
-    stop_requested: bool,
+struct FileJob(Mutex<ProgressSnapshot>);
+
+impl FileJob {
+    fn snapshot(&self) -> MutexGuard<'_, ProgressSnapshot> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn progress(&self, percent: u32, message: String) -> Result<(), String> {
+        let mut snapshot = self.snapshot();
+        if snapshot.status != "running" {
+            return Err("stopped".into());
+        }
+        snapshot.percent = percent;
+        snapshot.log.push(message);
+        Ok(())
+    }
+
+    fn fail(&self, error: String) {
+        let mut snapshot = self.snapshot();
+        if snapshot.status == "running" {
+            snapshot.status = "failed".into();
+            snapshot.log.push(error);
+        }
+    }
+
+    fn stop(&self) {
+        let mut snapshot = self.snapshot();
+        if snapshot.status == "running" {
+            snapshot.status = "stopped".into();
+            snapshot.log.push("stopped".into());
+        }
+    }
+
+    fn write(&self, path: &Path, body: &str) -> Result<(), String> {
+        if self.snapshot().status != "running" {
+            return Ok(());
+        }
+        let (destination, staged) = stage_output(path, body).map_err(|e| e.to_string())?;
+        self.publish(&destination, staged)
+    }
+
+    fn publish(&self, destination: &Path, staged: NamedTempFile) -> Result<(), String> {
+        // Only publication and the terminal state share the lock with Stop.
+        // A stopped job drops its temporary file and leaves the destination intact.
+        let mut snapshot = self.snapshot();
+        if snapshot.status == "running" {
+            staged
+                .persist(destination)
+                .map_err(|e| e.error.to_string())?;
+            snapshot.status = "completed".into();
+            snapshot.percent = 100;
+            let name = destination
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            snapshot.log.push(format!("wrote {name}"));
+        }
+        Ok(())
+    }
+}
+
+fn stage_output(path: &Path, body: &str) -> io::Result<(PathBuf, NamedTempFile)> {
+    // A save to an existing link still targets its file. Check write access
+    // before staging: rename alone only requires access to the directory.
+    let mut destination = path.to_owned();
+    let permissions = match std::fs::symlink_metadata(path) {
+        Ok(_) => {
+            destination = path.canonicalize()?;
+            let metadata = std::fs::metadata(&destination)?;
+            if !metadata.is_file() || metadata.permissions().readonly() {
+                return Err(io::Error::other("Choose a writable file for this job."));
+            }
+            std::fs::OpenOptions::new().write(true).open(&destination)?;
+            Some(metadata.permissions())
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let parent = destination
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let mut staged = NamedTempFile::new_in(parent)?;
+    staged.write_all(body.as_bytes())?;
+    if let Some(permissions) = permissions {
+        staged.as_file().set_permissions(permissions)?;
+    }
+
+    Ok((destination, staged))
 }
 
 pub struct HostJobs {
     next: AtomicU64,
-    states: Arc<Mutex<HashMap<u64, JobState>>>,
+    states: Mutex<HashMap<u64, Arc<FileJob>>>,
 }
 
 impl HostJobs {
     pub fn new() -> Self {
-        Self { next: AtomicU64::new(1), states: Arc::new(Mutex::new(HashMap::new())) }
+        Self {
+            next: AtomicU64::new(1),
+            states: Mutex::default(),
+        }
     }
 
-    fn begin(&self, first_log: String) -> u64 {
-        let job = self.next.fetch_add(1, Ordering::SeqCst);
-        self.states.lock().expect("the job lock").insert(
-            job,
-            JobState {
-                snapshot: ProgressSnapshot {
-                    job,
-                    status: "running".into(),
-                    percent: 0,
-                    log: vec![first_log],
-                },
-                stop_requested: false,
-            },
-        );
-        job
-    }
-
-    /// The job's current snapshot, if it exists.
-    pub fn progress(&self, job: u64) -> Option<ProgressSnapshot> {
+    fn job(&self, id: u64) -> Option<Arc<FileJob>> {
         self.states
             .lock()
-            .expect("the job lock")
-            .get(&job)
-            .map(|state| state.snapshot.clone())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&id)
+            .cloned()
     }
 
-    /// Ask a job to stop. A job that already finished answers what it did;
-    /// one between steps stops before its next write.
-    pub fn stop(&self, job: u64) -> Result<(), String> {
-        let mut states = self.states.lock().expect("the job lock");
-        match states.get_mut(&job) {
-            None => Err(format!("no job {job}")),
-            Some(state) => {
-                if state.snapshot.status == "running" {
-                    state.stop_requested = true;
+    pub fn progress(&self, id: u64) -> Option<ProgressSnapshot> {
+        Some(self.job(id)?.snapshot().clone())
+    }
+
+    pub fn stop(&self, id: u64) -> Result<(), String> {
+        self.job(id).ok_or_else(|| format!("no job {id}"))?.stop();
+        Ok(())
+    }
+
+    fn spawn(
+        &self,
+        registry: Arc<DriverRegistry>,
+        config: ConnectionConfig,
+        name: &'static str,
+        first_log: String,
+        read: impl AsyncFnOnce(
+                &dyn DatabaseDriver,
+                &ConnectionHandle,
+                &FileJob,
+            ) -> Result<(PathBuf, String), String>
+            + Send
+            + 'static,
+    ) -> u64 {
+        let id = self.next.fetch_add(1, Ordering::Relaxed);
+        let job = Arc::new(FileJob(Mutex::new(ProgressSnapshot {
+            job: id,
+            status: "running".into(),
+            percent: 0,
+            log: vec![first_log],
+        })));
+        self.states
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(id, Arc::clone(&job));
+        let worker = Arc::clone(&job);
+        let thread = std::thread::Builder::new()
+            .name(format!("datazen-{name}"))
+            .spawn(move || {
+                let run = || -> Result<(), String> {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .map_err(|error| format!("the {name} runtime did not start: {error}"))?;
+                    let (path, body) = runtime.block_on(async {
+                        let driver = registry
+                            .get(&config.database_type)
+                            .await
+                            .ok_or_else(|| format!("no driver for '{}'", config.database_type))?;
+                        let handle = driver.connect(&config).await.map_err(|e| e.to_string())?;
+                        let result = read(driver.as_ref(), &handle, &worker).await;
+                        let closed = driver.disconnect(handle).await;
+                        let output = result?;
+                        closed.map_err(|e| e.to_string())?;
+                        Ok::<_, String>(output)
+                    })?;
+                    worker.write(&path, &body)
+                };
+                if let Err(error) = run() {
+                    worker.fail(error);
                 }
-                Ok(())
-            }
+            });
+        if let Err(error) = thread {
+            job.fail(format!("the {name} thread did not start: {error}"));
         }
+        id
     }
 
-    fn update(&self, job: u64, percent: u32, log: String) -> Option<bool> {
-        let mut states = self.states.lock().expect("the job lock");
-        let state = states.get_mut(&job)?;
-        Some(if state.stop_requested {
-            state.snapshot.status = "stopped".into();
-            state.snapshot.log.push("stopped".into());
-            false
-        } else {
-            state.snapshot.percent = percent;
-            state.snapshot.log.push(log);
-            true
-        })
-    }
-
-    fn finish(&self, job: u64, log: String) {
-        let mut states = self.states.lock().expect("the job lock");
-        if let Some(state) = states.get_mut(&job) {
-            if state.snapshot.status == "stopped" {
-                return;
-            }
-            state.snapshot.status = "completed".into();
-            state.snapshot.percent = 100;
-            state.snapshot.log.push(log);
-        }
-    }
-
-    fn fail(&self, job: u64, error: String) {
-        let mut states = self.states.lock().expect("the job lock");
-        if let Some(state) = states.get_mut(&job) {
-            if state.snapshot.status == "stopped" {
-                return;
-            }
-            state.snapshot.status = "failed".into();
-            state.snapshot.log.push(error);
-        }
-    }
-
-    /// Start an export of one table. `dir` is the default directory; `picked`
-    /// (T2) is the user's chosen exact file, which wins over the default
-    /// naming. The range is the dialog's free text; the honest native
-    /// semantics are "the whole table" — anything else is refused rather
-    /// than guessed.
     pub fn spawn_export(
         &self,
         registry: Arc<DriverRegistry>,
@@ -122,78 +206,39 @@ impl HostJobs {
         dir: PathBuf,
         picked: Option<PathBuf>,
     ) -> u64 {
-        let job = self.begin(format!("export {table} as {format}"));
-        let states = Arc::clone(&self.states);
-        let _ = &self.next; // the counter lives on; the thread owns the rest
-        std::thread::Builder::new()
-            .name("datazen-export".into())
-            .spawn(move || {
-                let states_after = Arc::clone(&states);
-                let run = move || -> Result<String, String> {
-                    let states = states_after;
-                    if !range.trim().is_empty() && range.trim() != "all" {
-                        return Err(format!(
-                            "the native host exports the whole table; '{range}' is not a range it can serve"
-                        ));
-                    }
-                    let runtime = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .map_err(|error| format!("the export runtime did not start: {error}"))?;
-                    runtime.block_on(async move {
-                        let driver = registry
-                            .get(&config.database_type)
-                            .await
-                            .ok_or_else(|| format!("no driver for '{}'", config.database_type))?;
-                        update_states(&states, job, 10, "connected".into());
-                        let handle = driver
-                            .connect(&config)
-                            .await
-                            .map_err(|error| error.to_string())?;
-                        let sql = format!(
-                            "SELECT * FROM {}",
-                            driver.quote_ident(&table)
-                        );
-                        let result = driver.query(&handle, &sql).await.map_err(|e| e.to_string())?;
-                        update_states(&states, job, 50, format!("{} rows read", result.rows.len()));
-
-                        let extension = match format.as_str() {
-                            "csv" => "csv",
-                            "json" => "json",
-                            other => {
-                                return Err(format!(
-                                    "the native host exports csv and json; '{other}' is not wired"
-                                ))
-                            }
-                        };
-                        let path = picked.clone().unwrap_or_else(|| {
-                            dir.join(format!(
-                                "export-{table}-{}.{extension}",
-                                chrono::Utc::now().format("%Y%m%d-%H%M%S")
-                            ))
-                        });
-                        if let Some(parent) = path.parent() {
-                            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-                        }
-                        let body = match extension {
-                            "csv" => rows_to_csv(&result.columns, &result.rows),
-                            _ => rows_to_json(&result.columns, &result.rows),
-                        };
-                        std::fs::write(&path, body).map_err(|e| e.to_string())?;
-                        Ok(format!("wrote {}", path.display()))
-                    })
-                };
-                match run() {
-                    Ok(log) => finish_states(&states, job, log),
-                    Err(error) => fail_states(&states, job, error),
+        let first_log = format!("export {table} as {format}");
+        self.spawn(
+            registry,
+            config,
+            "export",
+            first_log,
+            async move |driver, handle, job| {
+                job.progress(10, "connected".into())?;
+                if !range.trim().is_empty() && range.trim() != "all" {
+                    return Err(format!(
+                        "the native host exports the whole table; '{range}' is not a range it can serve"
+                    ));
                 }
-            })
-            .expect("the export thread starts");
-        job
+                if !matches!(format.as_str(), "csv" | "json") {
+                    return Err(format!("the native host exports csv and json; '{format}' is not wired"));
+                }
+                let sql = format!("SELECT * FROM {}", driver.quote_ident(&table));
+                let result = driver.query(handle, &sql).await.map_err(|e| e.to_string())?;
+                job.progress(50, format!("{} rows read", result.rows.len()))?;
+                let body = if format == "csv" {
+                    rows_to_csv(&result.columns, &result.rows)
+                } else {
+                    rows_to_json(&result.columns, &result.rows)
+                };
+                let path = picked.unwrap_or_else(|| {
+                    let table = table.replace(['/', '\\'], "-");
+                    dir.join(format!("export-{table}-{}.{format}", chrono::Utc::now().format("%Y%m%d-%H%M%S")))
+                });
+                Ok((path, body))
+            },
+        )
     }
 
-    /// Start a backup of the live connection's database to a file under the
-    /// data directory. The driver's own dump renders the SQL.
     pub fn spawn_backup(
         &self,
         registry: Arc<DriverRegistry>,
@@ -202,109 +247,42 @@ impl HostJobs {
         picked: Option<PathBuf>,
     ) -> u64 {
         let database = config.database.clone().unwrap_or_default();
-        let job = self.begin(format!("backup {database}"));
-        let states = Arc::clone(&self.states);
-        let states_after = Arc::clone(&states);
-        std::thread::Builder::new()
-            .name("datazen-backup".into())
-            .spawn(move || {
-                let run = move || -> Result<String, String> {
-                    let states = states_after;
-                    let runtime = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .map_err(|error| format!("the backup runtime did not start: {error}"))?;
-                    runtime.block_on(async move {
-                        let driver = registry
-                            .get(&config.database_type)
-                            .await
-                            .ok_or_else(|| format!("no driver for '{}'", config.database_type))?;
-                        let handle = driver
-                            .connect(&config)
-                            .await
-                            .map_err(|error| error.to_string())?;
-                        update_states(&states, job, 30, "connected".into());
-                        let options = datazen_driver_api::BackupDumpOptions::default();
-                        let dump = driver
-                            .dump_database(&handle, &database, &options)
-                            .await
-                            .map_err(|error| error.to_string())?;
-                        update_states(&states, job, 70, "dumped".into());
-                        // The database name can be a file path (sqlite): only
-                        // its safe characters may name the backup file.
-                        let safe = if database.is_empty() {
-                            "main".to_string()
+        let first_log = format!("backup {}", config.name);
+        self.spawn(
+            registry,
+            config,
+            "backup",
+            first_log,
+            async move |driver, handle, job| {
+                job.progress(30, "connected".into())?;
+                let dump = driver
+                    .dump_database(handle, &database, &Default::default())
+                    .await
+                    .map_err(|e| e.to_string())?;
+                job.progress(70, "dumped".into())?;
+                let path = picked.unwrap_or_else(|| {
+                    let safe: String = if database.is_empty() {
+                        "main"
+                    } else {
+                        &database
+                    }
+                    .chars()
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                            c
                         } else {
-                            database
-                                .chars()
-                                .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
-                                .collect::<String>()
-                        };
-                        let path = picked.clone().unwrap_or_else(|| {
-                            dir.join(format!(
-                                "backup-{}-{}.sql",
-                                safe,
-                                chrono::Utc::now().format("%Y%m%d-%H%M%S")
-                            ))
-                        });
-                        if let Some(parent) = path.parent() {
-                            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                            '-'
                         }
-                        std::fs::write(&path, dump).map_err(|e| e.to_string())?;
-                        Ok(format!("wrote {}", path.display()))
                     })
-                };
-                match run() {
-                    Ok(log) => finish_states(&states, job, log),
-                    Err(error) => fail_states(&states, job, error),
-                }
-            })
-            .expect("the backup thread starts");
-        job
-    }
-}
-
-// The thread closures cannot borrow `self` (the adapter owns it); they take
-// the states map directly. These helpers are the same operations as the
-// methods above, on a bare map.
-fn update_states(states: &Arc<Mutex<HashMap<u64, JobState>>>, job: u64, percent: u32, log: String) -> bool {
-    let mut states = states.lock().expect("the job lock");
-    match states.get_mut(&job) {
-        None => false,
-        Some(state) => {
-            if state.stop_requested {
-                state.snapshot.status = "stopped".into();
-                state.snapshot.log.push("stopped".into());
-                false
-            } else {
-                state.snapshot.percent = percent;
-                state.snapshot.log.push(log);
-                true
-            }
-        }
-    }
-}
-
-fn finish_states(states: &Arc<Mutex<HashMap<u64, JobState>>>, job: u64, log: String) {
-    let mut states = states.lock().expect("the job lock");
-    if let Some(state) = states.get_mut(&job) {
-        if state.snapshot.status == "stopped" {
-            return;
-        }
-        state.snapshot.status = "completed".into();
-        state.snapshot.percent = 100;
-        state.snapshot.log.push(log);
-    }
-}
-
-fn fail_states(states: &Arc<Mutex<HashMap<u64, JobState>>>, job: u64, error: String) {
-    let mut states = states.lock().expect("the job lock");
-    if let Some(state) = states.get_mut(&job) {
-        if state.snapshot.status == "stopped" {
-            return;
-        }
-        state.snapshot.status = "failed".into();
-        state.snapshot.log.push(error);
+                    .collect();
+                    dir.join(format!(
+                        "backup-{safe}-{}.sql",
+                        chrono::Utc::now().format("%Y%m%d-%H%M%S")
+                    ))
+                });
+                Ok((path, dump))
+            },
+        )
     }
 }
 
@@ -327,10 +305,7 @@ fn csv_cell(cell: &Option<Value>) -> String {
     }
 }
 
-fn rows_to_csv(
-    columns: &[datazen_driver_api::ColumnInfo],
-    rows: &[Vec<Option<Value>>],
-) -> String {
+fn rows_to_csv(columns: &[datazen_driver_api::ColumnInfo], rows: &[Vec<Option<Value>>]) -> String {
     let mut out = String::new();
     out.push_str(
         &columns
@@ -347,10 +322,7 @@ fn rows_to_csv(
     out
 }
 
-fn rows_to_json(
-    columns: &[datazen_driver_api::ColumnInfo],
-    rows: &[Vec<Option<Value>>],
-) -> String {
+fn rows_to_json(columns: &[datazen_driver_api::ColumnInfo], rows: &[Vec<Option<Value>>]) -> String {
     let entries: Vec<serde_json::Value> = rows
         .iter()
         .map(|row| {
@@ -378,5 +350,64 @@ fn cell_json(cell: &Option<Value>) -> serde_json::Value {
         }
         Some(Value::Timestamp(value)) => value.clone().into(),
         Some(Value::Json(value)) => value.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn running() -> FileJob {
+        FileJob(Mutex::new(ProgressSnapshot {
+            job: 1,
+            status: "running".into(),
+            percent: 70,
+            log: vec!["read".into()],
+        }))
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn overwriting_a_picked_link_respects_its_destination_and_permissions() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let link = dir.path().join("picked");
+        std::fs::write(&target, "original").unwrap();
+        symlink(&target, &link).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o400)).unwrap();
+        assert!(running().write(&link, "rejected").is_err());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "original");
+
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+        running().write(&link, "saved").unwrap();
+        assert!(link.is_symlink());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "saved");
+        assert_eq!(
+            target.metadata().unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+    }
+
+    #[test]
+    fn stopping_before_or_after_publication_preserves_the_winning_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("chosen.csv");
+        std::fs::write(&file, "original").unwrap();
+
+        let stopped = running();
+        let (path, staged) = stage_output(&file, "discarded").unwrap();
+        stopped.stop();
+        stopped.publish(&path, staged).unwrap();
+        stopped.fail("late failure".into());
+        assert_eq!(stopped.snapshot().status, "stopped");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "original");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+
+        let completed = running();
+        completed.write(&file, "published").unwrap();
+        completed.stop();
+        assert_eq!(completed.snapshot().status, "completed");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "published");
     }
 }

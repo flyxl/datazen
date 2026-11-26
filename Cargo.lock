@@ -2408,6 +2408,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "datazen-driver-support",
+ "datazen-sql",
  "inventory",
  "serde",
  "serde_json",
@@ -2640,6 +2641,9 @@ dependencies = [
 [[package]]
 name = "datazen-driver-support"
 version = "0.0.1"
+dependencies = [
+ "datazen-sql",
+]
 
 [[package]]
 name = "datazen-driver-turso"
@@ -2716,6 +2720,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "tokio",
  "uuid",
  "zip 2.4.2",
@@ -2769,13 +2774,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "datazen-sql"
+version = "0.0.1"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "datazen-ui"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
  "chrono-tz",
- "datazen-driver-api",
+ "datazen-sql",
  "datazen-ui-api",
  "futures",
  "iana-time-zone",
@@ -2794,10 +2806,6 @@ dependencies = [
 name = "datazen-ui-api"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "datazen",
- "datazen-driver-api",
- "futures-executor",
  "serde",
  "serde_json",
 ]

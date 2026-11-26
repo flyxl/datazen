@@ -69,16 +69,16 @@ export const LAYERS = Object.freeze([
   // execution ports without Tauri, so it belongs to the host layer rather than
   // inventing a layer that no boundary rule covers.
   { id: 'host', path: 'crates/datazen-cli', kind: 'rust' },
+  { id: 'host', path: 'crates/datazen-rune-host', kind: 'rust' },
   { id: 'modules', path: 'crates/datazen', kind: 'rust' },
   { id: 'infra', path: 'crates/datazen-infra', kind: 'rust' },
   { id: 'server', path: 'crates/datazen-server', kind: 'rust' },
   // Shared Rune presentation layer; it must remain independent of hosts and core.
   { id: 'ui', path: 'crates/datazen-ui', kind: 'rust' },
-  // `crates/datazen-driver-support`（F3 下沉的零依赖文本工具）与 driver-api 同层：
-  // 同一「驱动契约」地层的两个 crate。归入既有层而不是新开一层，是让
-  // F-01 的 allowedLayers ['driver','driver-api'] 当天就对它生效——驱动
-  // 插件作者可以单独取用文本工具（F3 实施记录的既定意图），而新开一层
-  // 会把这条边变成违规，直到有人显式放宽。
+  { id: 'ui-api', path: 'crates/datazen-ui-api', kind: 'rust' },
+  { id: 'ui-runtime', path: 'vendor/rune/crates/*', kind: 'rust' },
+  { id: 'ui-runtime', path: 'vendor/rune/themes/*', kind: 'rust' },
+  { id: 'sql', path: 'crates/datazen-sql', kind: 'rust' },
   { id: 'driver-api', path: 'crates/datazen-driver-api', kind: 'rust' },
   { id: 'driver-api', path: 'crates/datazen-driver-support', kind: 'rust' },
   { id: 'driver', path: 'crates/drivers/*', kind: 'rust' },

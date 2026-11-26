@@ -171,7 +171,7 @@ flowchart TD
 
 | 编号 | 断言 | 违背后果 |
 | --- | --- | --- |
-| F-01 | `crates/drivers/*` 的 crate 依赖闭包不含内核 crate `datazen` 及其任何命名空间（`datazen::application`、曾有的 `datazen::platform_api` 垫层等；AI 契约自 D1.5 起住在内核 crate，位于 crates/datazen/），且不含任何 `tauri*` crate；闭包侧与声明边侧任一出现即违规，**已武装为阻断门禁** | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
+| F-01 | `crates/drivers/*` 的工作区依赖只允许驱动、驱动契约层和共享 SQL 契约 `datazen-sql`。依赖闭包不含内核 crate `datazen` 及其任何命名空间（`datazen::application`、曾有的 `datazen::platform_api` 垫层等；AI 契约自 D1.5 起住在内核 crate，位于 crates/datazen/），且不含任何 `tauri*` crate；闭包侧与声明边侧任一出现即违规，**已武装为阻断门禁** | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
 | F-02 | `modules` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含宿主 crate `datazen`（W7-A 改名后为 datazen-desktop，门禁按 host 层禁令执行） | 内核无法在没有 Tauri 的进程（测试、server worker）中编译 |
 | F-03 | `modules` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 传输策略渗入业务内核 |
 | F-04 | ~~已退役（2026-10-27，D8）~~：platform-api 契约已归入 `datazen::platform_api`，不再存在独立 crate 边界；内核 crate 内部模块不形成 Cargo 依赖边 | ports 与用例循环依赖 |
@@ -182,7 +182,9 @@ flowchart TD
 | F-11 | `crates/datazen-infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`。改名与定位扩展见 §2.5.1 | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
 | F-13 | ~~已退役（2026-10-26，D6 Tunnel）~~：隧道机制已并入 `datazen::tunnel`；其形态中立依赖由 F-14 的内核 crate 闭包统一检查 | 避免为内核 crate 内部 feature 保留一套与它重复的 crate 级边界规则 |
 | F-14 | `modules` 的 normal + build 依赖闭包不含桌面宿主 crates/datazen-desktop（crate 名 datazen-desktop；本行原列的旧 `datazen` 运行时 crate 已随 D8 单 crate 化消解——现内核 crate 即 `datazen`，不存在自含），也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`；`reqwest` 自 D1.5 起豁免——AI Provider 适配（出站 HTTP 客户端）随 ai feature 住在 `datazen::ai::providers`，这是 2026-10-26 的用户决策，不是传输框架渗入 | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
-| F-15 | `crates/datazen-ui` 的 normal + build 依赖闭包不得进入 `crates/datazen-desktop`、`crates/datazen-server`、`crates/datazen`、`crates/datazen-infra`、驱动 crates 或 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`、`react`；Rune UI 只能通过独立 UI ports 与平台 adapter 接入，不直接链接业务内核或宿主 | UI 运行时与后端/宿主耦合，破坏 Native 与 Web 共用 UI 的目标 |
+| F-15 | `crates/datazen-ui`、`crates/datazen-ui-api` 和 Rune 运行时（`vendor/rune/crates/*`、`vendor/rune/themes/*`）的 normal + build 工作区依赖闭包仅允许这三层和共享 SQL 契约。禁止引入宿主、服务端、内核、基础设施、驱动及驱动契约，也禁止 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`、`react` | Native 与 Web 必须能独立组装同一套 UI |
+| F-16 | `crates/datazen-sql` 存放 SQL 文本工具与结构变更契约。其 normal + build 依赖闭包不含其他工作区成员或 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`、`react` | UI 与驱动共用这些类型和工具时会同时引入其传递依赖 |
+
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
 **F-01 两侧都已是阻断判定；主体是 `crates/drivers/*`，两侧都按主体范围判定。** 宿主 `datazen-desktop` 自己声明 `tauri-plugin-webdriver`（Tauri 自己的 webdriver 插件，宿主本来就该有）是**合法的**：它不在 `crates/drivers/*` 里，因此声明边那一侧只把它报成 advisory，不判 violation。驱动的豁免必须是**显式**的：规则表里的 `exemptions` 列表（成员 + 家族 + 理由）为空即无豁免，且过期条目（成员不是本规则主体、或家族不是本规则禁的）直接报 **error**——它什么也没保护，却看起来像在保护。
@@ -204,13 +206,9 @@ flowchart TD
 其 `specCrates` 同样点名 `axum`、`actix-web`、`warp`、`tonic`，覆盖范围比原 F-10 更宽
 （连带 `tauri`、`react` 与桌面宿主层）。因此 F-10 整条删除，其断言不被削弱。
 
-**`crates/datazen-driver-support` 归入 driver-api 层（2026-10-30，F3 下沉注册）。** 该 crate 是
-`sql_split` 与 `sql_identifiers` 的零依赖文本工具（刻意连 serde 都不带），单一消费者是
-`crates/datazen-driver-api`。守卫侧的 `LAYERS`（`scripts/lib/cargoWorkspace.mjs`）给它的是**既有
-`driver-api` 层**，不是新开一层：F-01 的 `allowedLayers: ['driver','driver-api']` 因此当天就
-覆盖它——驱动插件作者可以单独取用文本工具（这是 F3 的既定意图），而新开一层会让这条边变成
-违规、直到有人显式放宽。本段是分类决定的登记处，不新增 F 行：该 crate 零依赖，没有需要
-F-xx 断言的依赖面。
+**Rune 宿主与共享契约。** `crates/datazen-rune-host` 属于 host 层，负责把连接用例接入 UI 端口。Rune 的作用域白名单仅含 `rune-composition-root`，由宿主在构造单租户请求上下文时确定组织身份。
+`crates/datazen-ui-api` 定义端口与 DTO。`crates/datazen-sql` 提供前端和驱动共用的 SQL 拆分及结构变更契约。
+`crates/datazen-driver-api` 和 `crates/datazen-driver-support` 属于 driver-api 层，保留驱动侧原有导出。
 
 **`crates/datazen-cli` 归入 host 层（2026-11-06，T18）。** CLI 是第二个组装根：
 它通过 `datazen::connection` 的仓储端口读取桌面连接档案，通过
@@ -229,6 +227,10 @@ F-xx 断言的依赖面。
 members = [
     "crates/datazen-desktop",
     "crates/datazen-cli",
+    "crates/datazen-rune-host",
+    "crates/datazen-ui",
+    "crates/datazen-ui-api",
+    "crates/datazen-sql",
     "crates/datazen-driver-api",
     "crates/datazen-driver-support",
     "crates/datazen-infra",
@@ -242,9 +244,7 @@ members = [
 datazen = { path = "crates/datazen", default-features = false }
 ```
 
-其中 `crates/datazen-cli` 是无 Tauri 的第二组装根（host 层，见 §2.4 末段），
-`crates/datazen-driver-support` 是 F3 下沉的零依赖文本工具 crate（`sql_split` +
-`sql_identifiers`），单一消费者 `crates/datazen-driver-api`；层归属与边界登记见 §2.4 末段。
+Cargo 会将路径依赖下的 Rune 运行时和主题自动纳入 workspace。其分类与约束见 §2.4 的 F-15。
 
 与本文早期草案的差异：`crates/datazen-server/` 已随 W8 落地并加入 `members`（axum HTTP 宿主，F-06 因此不再真空，见 §8.2 注 1）；`packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`。`crates/drivers/*` 的通配与两个
 `exclude`（kiwi / superset）保持原样，驱动注入仍由 `scripts/resolve-drivers.mjs` 写入占位段。

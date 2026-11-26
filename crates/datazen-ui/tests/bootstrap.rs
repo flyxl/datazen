@@ -22,15 +22,18 @@ use datazen_ui::support::value_presentation::timestamp_contribution::TIMESTAMP_C
 /// The demo adapter the unwired entry uses (not available on wasm).
 #[cfg(not(target_arch = "wasm32"))]
 fn demo_adapter() -> Box<dyn datazen_ui_api::DesktopAdapter> {
-    use datazen_ui_api::UseCaseAdapter;
-    Box::new(UseCaseAdapter::with_demo_connections())
+    use datazen_ui_api::DemoAdapter;
+    Box::new(DemoAdapter::default())
 }
 
 #[test]
 fn bootstrap_registers_the_bundled_contribution() {
     let state = start_shared_app_state(None);
     assert!(
-        state.value_presentation_registry.get(TIMESTAMP_CONTRIBUTION_ID).is_some(),
+        state
+            .value_presentation_registry
+            .get(TIMESTAMP_CONTRIBUTION_ID)
+            .is_some(),
         "the timestamp contribution must be active after the shared chain"
     );
     assert_eq!(state.value_presentation_registry.list().len(), 1);
@@ -56,7 +59,10 @@ fn bootstrap_without_adapter_keeps_the_unwired_fallback() {
     // The chain still consulted the adapter before the first frame (the
     // first-paint guarantee): the unwired adapter answered its fixed
     // error, which is on the state — not deferred to after the frame.
-    assert!(state.desktop_connections.is_none(), "no connections without a host");
+    assert!(
+        state.desktop_connections.is_none(),
+        "no connections without a host"
+    );
     assert!(
         state.desktop_error.is_some(),
         "the unimplemented adapter's fixed error must be recorded by the sync"
@@ -83,5 +89,8 @@ fn demo_entry_state_matches_the_shared_chain() {
         chain.value_presentation_registry.list().len(),
         entry.value_presentation_registry.list().len()
     );
-    assert_eq!(chain.desktop_connections.is_some(), entry.desktop_connections.is_some());
+    assert_eq!(
+        chain.desktop_connections.is_some(),
+        entry.desktop_connections.is_some()
+    );
 }

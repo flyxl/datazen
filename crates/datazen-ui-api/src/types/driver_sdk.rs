@@ -18,7 +18,7 @@
 //! | `TunnelSource` | none (driver-sdk declares it; no Rust mirror anywhere) | port: closed enum |
 //! | `SavedTunnelSummary` | none (secret-free projection, G9) | port |
 //! | `TunnelUsage` | none | port |
-//! | `TableOptionsSnapshot` | none in this crate — the driver-api twin exists (`schema_metadata.rs`, with `skip_serializing_if` on all three legs) but driver-api is a native-only dependency while this family compiles for wasm32 | wasm-safe local mirror, same wire shape |
+//! | `TableOptionsSnapshot` | none in this crate — the driver-api twin exists (`schema_metadata.rs`, with `skip_serializing_if` on all three legs) | wasm-safe local mirror, same wire shape |
 //! | `SavedTunnelSshConfig` | `connection_types::SshTunnelConfig` — T128's documented fold (field-identical; the TS split existed for a package boundary this crate does not have) | alias re-export from the aggregate, no second definition |
 //!
 //! `SavedTunnelSummary.kind` reuses `connection_types::SavedTunnelKind` — the
@@ -89,7 +89,7 @@ pub struct TunnelUsage {
 /// panels diff.
 ///
 /// Wasm-safe local mirror of driver-api's `schema_metadata::TableOptionsSnapshot`
-/// (native-only dependency, the `DatabaseType` trade): all three legs are
+/// with the same wire shape. All three fields are
 /// `?: string | null` in TS, and the twin declares them
 /// `skip_serializing_if` — so absent stays absent on the wire (the twin's
 /// own emission), while `null` and absent both decode (serde `Option`).
@@ -109,13 +109,11 @@ mod tests {
     use super::*;
 
     fn decode<T: serde::de::DeserializeOwned>(wire: serde_json::Value) -> T {
-        serde_json::from_value(wire)
-            .unwrap_or_else(|error| panic!("wire decode failed: {error}"))
+        serde_json::from_value(wire).unwrap_or_else(|error| panic!("wire decode failed: {error}"))
     }
 
     fn encode<T: serde::Serialize>(value: &T) -> serde_json::Value {
-        serde_json::to_value(value)
-            .unwrap_or_else(|error| panic!("wire encode failed: {error}"))
+        serde_json::to_value(value).unwrap_or_else(|error| panic!("wire encode failed: {error}"))
     }
 
     #[test]
@@ -157,7 +155,10 @@ mod tests {
         };
         let wire = encode(&usage);
         assert_eq!(wire["connectionIds"], serde_json::json!(["c1", "c2"]));
-        assert_eq!(wire["connectionNames"], serde_json::json!(["Analytics", "Billing"]));
+        assert_eq!(
+            wire["connectionNames"],
+            serde_json::json!(["Analytics", "Billing"])
+        );
         let back: TunnelUsage = decode(wire);
         assert_eq!(back, usage);
     }

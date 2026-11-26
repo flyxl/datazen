@@ -1,15 +1,24 @@
 //! Ports the Rune UI is allowed to call.
 //!
-//! Hosts implement [`WorkspaceApi`]. The memory workspace is only a stand-in so the
-//! interface can run before the desktop and HTTP adapters exist.
+//! Hosts provide the [`DesktopAdapter`] implementation. The demo uses
+//! [`MemoryWorkspace`] for its in-memory data.
 
 mod ai_memory_correction;
+mod app_root_surface;
+mod bootstrap_icon_resolver;
+mod build_connection_url;
+mod build_editor_schema;
 mod cell_editor_candidates;
+mod cell_editors;
+mod chart_colors;
+mod chart_empty_state;
+mod chart_toolbar;
 mod connection_editor;
 mod connection_share;
 mod cross_window_bus;
 mod data_fetcher;
 mod default_sort;
+mod demo_adapter;
 mod docs_urls;
 mod document_scroll_lock;
 mod ensure_namespace;
@@ -32,20 +41,12 @@ mod result_find_replace;
 mod row_count_strategy;
 mod schema_diff_confirm;
 mod schema_resource_cache;
-mod chart_colors;
-mod chart_empty_state;
-mod chart_toolbar;
-mod bootstrap_icon_resolver;
-mod build_connection_url;
-mod build_editor_schema;
-mod app_root_surface;
-mod cell_editors;
 // T228: the memory-settings normalizers and the message-block parser —
 // pure functions over the persistence JSON and chat markdown.
 mod ai_memory_settings;
 // T228: the fenced-block splitter and the SQL probe.
-mod ai_message_blocks;
 mod ai_memory_patterns;
+mod ai_message_blocks;
 // T251: the provider preset table, its PRD order and the backend normalizer.
 mod ai_providers;
 // T291: the three safety-gate presets and their identity/locality predicates.
@@ -63,11 +64,12 @@ mod ai_sessions;
 mod ai_store_types;
 mod ai_streaming;
 mod ai_types;
-mod batch_export_job;
 mod backup_progress;
 mod base64;
+mod batch_export_job;
 mod chart_types;
 mod command_schema;
+mod compare_report;
 mod connection_clipboard;
 mod connection_config;
 mod connection_form_model;
@@ -75,30 +77,29 @@ mod connection_groups;
 mod connection_locator;
 mod connection_share_error;
 mod connection_tab_context_menu;
-mod compare_report;
 mod connection_types;
 mod connection_view_registry;
 mod connection_views;
 mod context_items;
+mod context_menu_position;
+mod dangerous_sql;
+mod data_sync_bars;
 mod data_sync_comparison;
 mod data_sync_endpoints;
 mod data_sync_execution;
-mod data_sync_refs;
-mod data_sync_wizard_navigation;
 mod data_sync_explain;
 mod data_sync_job_lifecycle;
-mod data_sync_run_state;
 mod data_sync_options;
 mod data_sync_profiles;
+mod data_sync_refs;
+mod data_sync_run_state;
 mod data_sync_selection;
 mod data_sync_selection_state;
-mod diff_detail;
-mod data_sync_bars;
+mod data_sync_wizard_navigation;
+mod data_table_bits;
 mod data_table_clipboard_dom;
 mod data_table_context_menu;
-mod context_menu_position;
-mod dangerous_sql;
-mod data_table_bits;
+mod diff_detail;
 mod grid_cell;
 mod quick_look_dialog;
 mod tunnel_store;
@@ -110,7 +111,9 @@ mod workflow_chat_panel;
 // mirror's root name belongs to `metadata`'s serde-less family — so those
 // names reach the outside world through the module path while everything
 // else re-exports at the root (see `dashboard_types`' docs).
+mod column_layout_prefs;
 pub mod dashboard_types;
+mod database_object_identity;
 mod database_types;
 mod dedicated_db_session;
 mod dismiss_prefs;
@@ -126,7 +129,6 @@ mod extract_questions;
 mod fetch_relation_ddl;
 mod filter_db_types;
 mod filter_operators;
-mod database_object_identity;
 mod filter_types;
 mod fk_navigation;
 mod fk_referenced_by;
@@ -147,19 +149,19 @@ mod import_execution;
 mod keyset_paging;
 mod keyset_types;
 mod kv_ai_context;
-mod locale_sync;
 mod kv_slot_state;
 mod kv_workspace;
-pub mod native_kv;
-pub mod native_csv_import;
-pub mod native_transfer;
 mod load_batch_export_table;
+mod locale_sync;
 mod main_window_context_menu;
 mod metadata;
 mod migration_job_hydration;
 mod migration_job_verdict;
 mod named_views;
 mod native_context_menu;
+pub mod native_csv_import;
+pub mod native_kv;
+pub mod native_transfer;
 mod object_browser_context_menu;
 mod object_filter;
 mod panel_context_path;
@@ -171,21 +173,31 @@ mod panel_types;
 mod platform_shared;
 mod process_list_result;
 mod product_features;
+mod query_exec_actions;
 mod query_execution_view_model;
 mod query_sidebar_context_menu;
 mod query_stream;
 mod relation_identity;
 mod relation_prediction;
-mod query_exec_actions;
 mod relative_time;
-mod result_editability;
 mod resolve_ui_language;
+mod result_editability;
 mod row_to_record;
 mod run_predefined_edit;
+mod run_to_chart;
+mod run_to_result;
+mod running_execution_close;
+mod scalar_cell_editors;
 mod schema_cache;
 mod schema_changing_sql;
+mod schema_column_loading;
 mod schema_diff_limitations_prefs;
+mod schema_store;
+mod schema_store_selectors;
 mod schema_tree_context_menu;
+mod selection_actions;
+mod selection_scope;
+mod settings_store;
 mod splash;
 mod sql_bind_params;
 mod sql_completion_context;
@@ -195,33 +207,23 @@ mod sql_format;
 mod sql_function_registry;
 mod sql_generator;
 mod sql_namespace_ops;
-mod run_to_chart;
-mod run_to_result;
-mod running_execution_close;
-mod scalar_cell_editors;
-mod schema_column_loading;
-mod schema_store;
-mod schema_store_selectors;
-mod selection_actions;
-mod selection_scope;
-mod settings_store;
-mod stage_cell_value;
-mod stage_edit_actions;
-mod stage_paste_writes;
-mod column_layout_prefs;
 mod sql_path_prefix;
-mod workflow_panel;
 mod sql_schema_drop_targets;
 mod sql_statement_range;
 mod sql_transaction_guard;
+mod stage_cell_value;
+mod stage_edit_actions;
+mod stage_paste_writes;
 mod startup_timer;
 mod surface_bg_cache;
 mod sync_pairing;
 mod sync_taxonomy;
-mod table_schema_for_sql;
-mod table_sql_actions;
+mod table_data_state;
+mod table_data_store;
 mod table_list_panel;
+mod table_schema_for_sql;
 mod table_sort_preferences;
+mod table_sql_actions;
 mod tabs;
 mod theme_editor_colors;
 mod theme_tokens;
@@ -230,22 +232,21 @@ mod transfer_limitations_prefs;
 mod transfer_pairing;
 mod tunnel_deletion;
 mod tunnel_draft;
-mod value_search;
 mod update_reminder_schedule;
+mod update_reminder_store;
 mod updater;
+mod value_search;
+mod virtual_body;
 mod wapp_asset_origin;
-mod window_kind;
 mod wapp_bridge;
 mod wapp_i18n;
+mod wapp_store;
+mod window_kind;
 mod window_manager;
 mod workflow_draft_yaml;
 mod workflow_list_context_menu;
+mod workflow_panel;
 mod workflow_yaml;
-mod table_data_state;
-mod table_data_store;
-mod update_reminder_store;
-mod virtual_body;
-mod wapp_store;
 // `pub mod` — the second public module: the T211 types aggregate (the
 // `types/index.ts` port) is the family's ONE import surface, so its module
 // path `datazen_ui_api::types::…` is the Rust twin of React's `'../types'`
@@ -253,191 +254,214 @@ mod wapp_store;
 // list exactly; the new vocabulary also rides the crate root through the
 // `pub use types::{…}` block below, the family convention (see the module's
 // docs for the full ownership map and the surface law).
-pub mod types;
-pub mod schema_object_search;
-pub mod server_status_trends;
-pub mod sql_editor_defaults;
-pub mod table_changes;
-pub mod theme_pack_apply;
 mod ai_draft_bridge;
 mod connection_page_utils;
 mod connection_shared;
+mod content_view_helpers;
 mod expanded_db_cache_refresh;
 mod open_history_query;
 mod query_contracts;
 mod query_drop_handler;
 mod query_error_chat_prompt;
-mod content_view_helpers;
 mod query_execution_risk;
 mod query_execution_target;
-mod result_workspace;
 mod query_toolbar_width;
+mod result_workspace;
 mod result_workspace_index;
+pub mod schema_object_search;
 mod schema_tree;
-mod workspace_mode_sidebar;
+pub mod server_status_trends;
+pub mod sql_editor_defaults;
+pub mod table_changes;
+pub mod theme_pack_apply;
+pub mod types;
 mod use_query_builder_contribution;
 mod validate_bind_params;
+mod workspace_mode_sidebar;
 
 use std::collections::HashMap;
 
-#[cfg(not(target_arch = "wasm32"))]
-// The adapter hands these to `datazen`'s connection domain, which owns the
-// backend's own `ConnectionConfig` — not the frontend facade shape
-// `connection_types::ConnectionConfig` exports at the crate root.
-use datazen_driver_api::{ConnectionConfig as DriverConnectionConfig, SslMode as DriverSslMode};
+pub use demo_adapter::DemoAdapter;
 
 pub use ai_memory_correction::{
-    AiMemoryCommands, MemoryCorrectionSubmission, SchemaStaleSubmission, mark_stale_for_schema_drops, submit_memory_correction_if_needed,
+    mark_stale_for_schema_drops, submit_memory_correction_if_needed, AiMemoryCommands,
+    MemoryCorrectionSubmission, SchemaStaleSubmission,
+};
+pub use ai_memory_patterns::{
+    extract_memory_patterns_if_needed, extract_once, HistorySort, MemoryPatternCommands,
+    MemoryPatternExtractionInput, MemoryPatternScheduler, QueryHistoryPage, QueryHistoryPageParams,
+    SubmitDecision, MEMORY_PATTERN_MIN_OCCURRENCES, MEMORY_PATTERN_WINDOW_DAYS,
+};
+pub use app_root_surface::{
+    app_module_mark, resolve_window_component, should_hide_splash, AppWindowRoute,
+    APP_CHUNK_LOAD_MARKS, APP_DEFAULT_COMPONENT, APP_DEFAULT_WINDOW_KIND, APP_DOM_GAP,
+    APP_GLOBAL_HOSTS, APP_MOUNT_MARK, APP_SELECTION_INSTALLERS, APP_SHELL_WRAPPERS,
+    APP_WINDOW_ROUTES,
+};
+pub use bootstrap_icon_resolver::{
+    default_icon_resolver_seed, resolve_icon, DbIcon, IconResolverSeed, ResolvedIcon,
+};
+pub use build_connection_url::{build_connection_url, ConnectionMode, ConnectionUrlDriverMeta};
+pub use build_editor_schema::{
+    build_editor_schema, flat_from_tables, hoist_namespace_child, hoist_namespace_path,
+    hoist_nested_table_leaves, is_leaf, is_namespace_empty, merge_unqualified_tables,
+    overlay_column_map, BuildEditorSchemaInput,
 };
 pub use cell_editor_candidates::{
-    CANDIDATE_VALUE_LIMIT, FETCH_FIRST_ROW_LIMIT, LIMIT_ROW_LIMIT, TOP_ROW_LIMIT, CandidateDialect, DistinctCandidatesArgs, IdentifierQuote, RowLimitPlacement,
-    RowLimitShape, build_distinct_candidates_sql, build_row_limited_select, normalized_limit,
+    build_distinct_candidates_sql, build_row_limited_select, normalized_limit, CandidateDialect,
+    DistinctCandidatesArgs, IdentifierQuote, RowLimitPlacement, RowLimitShape,
+    CANDIDATE_VALUE_LIMIT, FETCH_FIRST_ROW_LIMIT, LIMIT_ROW_LIMIT, TOP_ROW_LIMIT,
+};
+pub use cell_editors::{
+    build_enum_view, build_json_view, build_long_text_view, enum_key_decision, json_indent_of,
+    reformat_json, text_area, EnumEditorInput, EnumEditorMode, JsonAction, JsonEditorInput,
+    JsonEditorView, KeyDecision, LoadButtonView, LongTextEditorInput, SelectOption, TextAreaView,
+    CELL_EDITORS_GAP, CELL_EDITORS_SURFACE,
+};
+pub use chart_colors::{
+    built_in_palette, get_color_palette, read_css_color, COLOR_PALETTES, STROKE_DASH_PATTERNS,
+};
+pub use chart_empty_state::{
+    build_chart_empty_state, ChartEmptyReason, ChartEmptyStateView, EMPTY_CONTAINER_CLASS,
+    EMPTY_ICON_CLASS, EMPTY_KEY_NO_CONFIG, EMPTY_KEY_NO_DATA, EMPTY_KEY_NO_NUMERIC_FIELD,
+    EMPTY_TEXT_CLASS,
+};
+pub use chart_toolbar::{
+    chart_type_class, chart_type_label_key, chart_type_test_id, reduce_toolbar,
+    resolve_toolbar_labels, split_available, split_class, visible_controls, ChartExportFormat,
+    ChartToolbarState, ToolbarContext, ToolbarControl, ToolbarEffect, ToolbarLabels,
+    ToolbarOutcome, ACTIVE_CLASS, CHART_TYPES, INACTIVE_CLASS, KEY_EXPAND, KEY_EXPORT, KEY_GRID,
+    KEY_LEGEND, KEY_SPLIT_VIEW, KEY_VALUES, TOOLBAR_SHELL_CLASS,
 };
 pub use connection_editor::{
-    ConnectionEditorState, close_new_connection_dialog, open_new_connection_dialog,
+    close_new_connection_dialog, open_new_connection_dialog, ConnectionEditorState,
 };
 pub use connection_share::{
-    ConnectionImportSource, ConnectionShareMode, ConnectionShareState, close_connection_share_dialog, open_connection_share_dialog,
+    close_connection_share_dialog, open_connection_share_dialog, ConnectionImportSource,
+    ConnectionShareMode, ConnectionShareState,
 };
 pub use cross_window_bus::{
-    CHANNEL_NAME, CrossWindowMessage, CrossWindowRail, cross_window_rail, make_message, matches_event, payload_of,
+    cross_window_rail, make_message, matches_event, payload_of, CrossWindowMessage,
+    CrossWindowRail, CHANNEL_NAME,
 };
 pub use data_fetcher::{
-    DataFetcherKind, ExportContext, ExportProgress, ExportScope, FetchColumn, FetchOutcome, FetchRequest, FetchResult,
-    FetchTableInput, FetchTableSource, ProvidedFormatPlan, resolve_fetcher,
+    resolve_fetcher, DataFetcherKind, ExportContext, ExportProgress, ExportScope, FetchColumn,
+    FetchOutcome, FetchRequest, FetchResult, FetchTableInput, FetchTableSource, ProvidedFormatPlan,
 };
 pub use docs_urls::{
-    DOCS_BASE_EN, DOCS_BASE_ZH, DocsSectionId, build_docs_url, is_chinese_ui_language,
+    build_docs_url, is_chinese_ui_language, DocsSectionId, DOCS_BASE_EN, DOCS_BASE_ZH,
 };
 pub use document_scroll_lock::{
-    ScrollAxis, ScrollLockRail, ScrollLockState, ScrollPosition, apply_snap, scroll_lock_rail, snap_targets,
+    apply_snap, scroll_lock_rail, snap_targets, ScrollAxis, ScrollLockRail, ScrollLockState,
+    ScrollPosition,
 };
 pub use ensure_namespace::{
-    CatalogResult, EnsureDeps, EnsureStrategy, MergeCall, MergeKind, build_slash_fetch_path, inflight_key,
-    is_path_nav, namespace_ensure_pending, namespace_has_child, namespace_path_loaded, path_key, path_nav_segment, plan_default_sql,
-    plan_path_hierarchy, plan_postgresql, resolve_ensure_strategy, resolve_for_ensure, resolve_path_root, run_ensure_plan, table_names, uses_current_database_root,
+    build_slash_fetch_path, inflight_key, is_path_nav, namespace_ensure_pending,
+    namespace_has_child, namespace_path_loaded, path_key, path_nav_segment, plan_default_sql,
+    plan_path_hierarchy, plan_postgresql, resolve_ensure_strategy, resolve_for_ensure,
+    resolve_path_root, run_ensure_plan, table_names, uses_current_database_root, CatalogResult,
+    EnsureDeps, EnsureStrategy, MergeCall, MergeKind,
 };
 pub use er_node_context_menu::{
-    ErMenuAction, ErMenuItem, ErNodeContextMenuHandlers, ErNodeContextMenuLabels, build_er_node_context_menu_items,
+    build_er_node_context_menu_items, ErMenuAction, ErMenuItem, ErNodeContextMenuHandlers,
+    ErNodeContextMenuLabels,
 };
 pub use export_dialog_shared::{
-    ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS, SHARED_EXPORT_FORMAT_OPTIONS, BuildExportFormatOptions, BuildExportScopeOptions, DisabledReasonKey, EntireTableAvailability, ExportFormatOption,
-    ExportScopeOption, FormatOptionSpec, ScopeLabels, build_export_format_options, build_export_scope_options,
+    build_export_format_options, build_export_scope_options, BuildExportFormatOptions,
+    BuildExportScopeOptions, DisabledReasonKey, EntireTableAvailability, ExportFormatOption,
+    ExportScopeOption, FormatOptionSpec, ScopeLabels, ARRAY_EXPORT_FORMAT_OPTIONS,
+    OBJECT_EXPORT_FORMAT_OPTIONS, SHARED_EXPORT_FORMAT_OPTIONS,
 };
 pub use extract_sql::{
     extract_sql_from_response, extract_sql_streaming, looks_like_sql, starts_sql_statement,
 };
 pub use filter_expression::{
-    FilterExpression, FilterExpressionLogic, FilterExpressionOperator, FilterExpressionValue, FlattenedFilterCondition, ParseFailure, ParsedFilterApplication, filter_expression_to_conditions,
-    flatten_parts, flatten_to_connectors, has_or_group_under_and, parse_filter_expression, parse_filter_for_apply, token_positions,
+    filter_expression_to_conditions, flatten_parts, flatten_to_connectors, has_or_group_under_and,
+    parse_filter_expression, parse_filter_for_apply, token_positions, FilterExpression,
+    FilterExpressionLogic, FilterExpressionOperator, FilterExpressionValue,
+    FlattenedFilterCondition, ParseFailure, ParsedFilterApplication,
 };
 pub use fk_navigation_actions::{
-    FkActionDeps, FkActionEffects, FkJumpError, FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState, OpenForeignKeyTargetInput,
-    PanelKind, TableChangeContext, TableIdentity, host_error_message, open_foreign_key_target,
+    host_error_message, open_foreign_key_target, FkActionDeps, FkActionEffects, FkJumpError,
+    FkJumpOutcome, FkNavEntry, FkNavOrigin, FkNavState, OpenForeignKeyTargetInput, PanelKind,
+    TableChangeContext, TableIdentity,
 };
 pub use grid_keyboard::{
-    EMPTY_ROW_MODE_SELECTION, GridEdge, GridKeyCommand, GridKeyEventLike, GridKeyIntent, GridKeyboardContext,
-    GridNativeKeyEventLike, GridPageDirection, cell_coord_equals, clamp_cell_coord, clamp_grid_cursor, coord_at,
-    grid_cursor_equals, is_ime_composing_key, move_cell_focus, read_grid_key_intent, resolve_grid_key_command, resolve_keyboard_cursor, resolve_page_delta, selection_from_anchor_focus,
-    to_grid_key_event_like,
+    cell_coord_equals, clamp_cell_coord, clamp_grid_cursor, coord_at, grid_cursor_equals,
+    is_ime_composing_key, move_cell_focus, read_grid_key_intent, resolve_grid_key_command,
+    resolve_keyboard_cursor, resolve_page_delta, selection_from_anchor_focus,
+    to_grid_key_event_like, GridEdge, GridKeyCommand, GridKeyEventLike, GridKeyIntent,
+    GridKeyboardContext, GridNativeKeyEventLike, GridPageDirection, EMPTY_ROW_MODE_SELECTION,
 };
 pub use html_sanitizer::{
-    HtmlNode, STRIP_TAGS, VOID_TAGS, decode_entities, get_attr, is_event_attr, is_javascript_href, is_strip_tag,
-    is_void_tag, parse_html, regex_sanitize, sanitize_html, serialize_html, set_attr,
+    decode_entities, get_attr, is_event_attr, is_javascript_href, is_strip_tag, is_void_tag,
+    parse_html, regex_sanitize, sanitize_html, serialize_html, set_attr, HtmlNode, STRIP_TAGS,
+    VOID_TAGS,
 };
 pub use import_mapping::{
-    ImportMappingConflict, ImportMappingEntry, ImportMappingMode, ImportMappingPlan, ImportMatchKind, PlanImportMappingInput, mapping_is_executable, plan_import_mapping,
+    mapping_is_executable, plan_import_mapping, ImportMappingConflict, ImportMappingEntry,
+    ImportMappingMode, ImportMappingPlan, ImportMatchKind, PlanImportMappingInput,
 };
 pub use keymap::{
-    KEYMAP_ACTIONS, KEYMAP_PRESETS, KeymapAction, KeymapPreset, format_mod_key, format_shortcut_for_display, get_action_shortcut, normalize_shortcut_input,
-    to_code_mirror_key_format, to_shortcut_hook_format,
+    format_mod_key, format_shortcut_for_display, get_action_shortcut, normalize_shortcut_input,
+    to_code_mirror_key_format, to_shortcut_hook_format, KeymapAction, KeymapPreset, KEYMAP_ACTIONS,
+    KEYMAP_PRESETS,
 };
 pub use language_pack_runtime::{
-    BUILTIN_LOCALES, EnsureOutcome, LanguagePackDeps, LanguagePackMessages, LanguagePackRuntime, ensure_language_pack_messages, is_builtin_locale, reset_language_pack_runtime_for_tests,
-    unload_language_pack,
+    ensure_language_pack_messages, is_builtin_locale, reset_language_pack_runtime_for_tests,
+    unload_language_pack, EnsureOutcome, LanguagePackDeps, LanguagePackMessages,
+    LanguagePackRuntime, BUILTIN_LOCALES,
 };
 pub use mcp_agent_config::{
-    AppExecutablePathResolver, McpAgentSnippet, McpAgentTarget, McpServerEntry, build_mcp_agent_snippet, build_mcp_agent_snippet_default, build_mcp_server_entry, format_mcp_cli_command,
-    initial_app_executable_path,
+    build_mcp_agent_snippet, build_mcp_agent_snippet_default, build_mcp_server_entry,
+    format_mcp_cli_command, initial_app_executable_path, AppExecutablePathResolver,
+    McpAgentSnippet, McpAgentTarget, McpServerEntry,
 };
 pub use migration_window_prefill::{
-    EndpointPrefillEffect, MigrationEndpointConnection, MigrationWindowKind, MigrationWindowPrefill, PREFILL_KEYS, apply_migration_endpoint_prefill, build_migration_window_url_params,
-    read_migration_prefill_from_url,
+    apply_migration_endpoint_prefill, build_migration_window_url_params,
+    read_migration_prefill_from_url, EndpointPrefillEffect, MigrationEndpointConnection,
+    MigrationWindowKind, MigrationWindowPrefill, PREFILL_KEYS,
 };
 pub use path_picker::{
-    PathPicker, PathPickerFileFilter, PickPathInput, pick_path, web_path_picker,
+    pick_path, web_path_picker, PathPicker, PathPickerFileFilter, PickPathInput,
 };
 pub use query_context_path::{
-    PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS, NamespaceNode, PathHierarchySelectorSegment, QueryContextResolveOpts, SplitDatabasePin, auto_complete_path_hierarchy_path, build_path_hierarchy_database_pin, build_path_hierarchy_selector_segments,
-    infer_sql_relation_path, namespace_roots_from, path_hierarchy_connection_root, path_hierarchy_relative_namespace_path, path_hierarchy_selector_segments_for_ui, paths_equal, resolve_query_context_path, split_path_hierarchy_database_pin,
-    unquote_ident,
+    auto_complete_path_hierarchy_path, build_path_hierarchy_database_pin,
+    build_path_hierarchy_selector_segments, infer_sql_relation_path, namespace_roots_from,
+    path_hierarchy_connection_root, path_hierarchy_relative_namespace_path,
+    path_hierarchy_selector_segments_for_ui, paths_equal, resolve_query_context_path,
+    split_path_hierarchy_database_pin, unquote_ident, NamespaceNode, PathHierarchySelectorSegment,
+    QueryContextResolveOpts, SplitDatabasePin, PATH_HIERARCHY_PLACEHOLDER_SELECTOR_SEGMENTS,
 };
 pub use result_find_replace::{
-    EMPTY_RESULT_FIND_QUERY, ResultFindOperator, ResultFindQuery, ResultReplacePlanItem, cell_matches, cell_text, filter_result_rows, next_plan_item,
-    plan_result_replacements, replace_text, row_matches,
+    cell_matches, cell_text, filter_result_rows, next_plan_item, plan_result_replacements,
+    replace_text, row_matches, ResultFindOperator, ResultFindQuery, ResultReplacePlanItem,
+    EMPTY_RESULT_FIND_QUERY,
 };
-pub use row_count_strategy::{
-    CountStrategyInput, resolve_count_strategy,
-};
+pub use row_count_strategy::{resolve_count_strategy, CountStrategyInput};
 pub use schema_diff_confirm::{
-    DESTRUCTIVE_CONFIRM_TOKEN, CanRunDeployOptions, can_confirm_destructive_deploy, can_run_deploy,
+    can_confirm_destructive_deploy, can_run_deploy, CanRunDeployOptions, DESTRUCTIVE_CONFIRM_TOKEN,
 };
-pub use schema_resource_cache::{
-    ERROR_TTL_MS, VALUE_TTL_MS, LoadStart, SchemaResourceCache,
-};
-pub use chart_colors::{
-    COLOR_PALETTES, STROKE_DASH_PATTERNS, built_in_palette, get_color_palette, read_css_color,
-};
-pub use chart_empty_state::{
-    build_chart_empty_state, ChartEmptyReason, ChartEmptyStateView, EMPTY_CONTAINER_CLASS, EMPTY_ICON_CLASS, EMPTY_KEY_NO_CONFIG, EMPTY_KEY_NO_DATA, EMPTY_KEY_NO_NUMERIC_FIELD,
-    EMPTY_TEXT_CLASS,
-};
-pub use chart_toolbar::{
-    chart_type_class, chart_type_label_key, chart_type_test_id, reduce_toolbar, resolve_toolbar_labels, split_available, split_class, visible_controls,
-    ChartExportFormat, ChartToolbarState, CHART_TYPES, KEY_EXPAND, KEY_EXPORT, KEY_GRID, KEY_LEGEND, KEY_SPLIT_VIEW,
-    KEY_VALUES, TOOLBAR_SHELL_CLASS, ToolbarControl, ToolbarContext, ToolbarEffect, ToolbarLabels, ToolbarOutcome, ACTIVE_CLASS,
-    INACTIVE_CLASS,
-};
-pub use bootstrap_icon_resolver::{
-    DbIcon, IconResolverSeed, ResolvedIcon, default_icon_resolver_seed, resolve_icon,
-};
-pub use build_connection_url::{
-    ConnectionMode, ConnectionUrlDriverMeta, build_connection_url,
-};
-pub use build_editor_schema::{
-    BuildEditorSchemaInput, build_editor_schema, flat_from_tables, hoist_namespace_child, hoist_namespace_path, hoist_nested_table_leaves, is_leaf,
-    is_namespace_empty, merge_unqualified_tables, overlay_column_map,
-};
-pub use app_root_surface::{
-    app_module_mark, resolve_window_component, should_hide_splash, AppWindowRoute, APP_CHUNK_LOAD_MARKS, APP_DEFAULT_COMPONENT, APP_DEFAULT_WINDOW_KIND, APP_DOM_GAP,
-    APP_GLOBAL_HOSTS, APP_MOUNT_MARK, APP_SELECTION_INSTALLERS, APP_SHELL_WRAPPERS, APP_WINDOW_ROUTES,
-};
-pub use cell_editors::{
-    build_enum_view, build_json_view, build_long_text_view, enum_key_decision, json_indent_of, reformat_json, text_area, EnumEditorInput,
-    EnumEditorMode, JsonAction, JsonEditorInput, JsonEditorView, KeyDecision, LoadButtonView, LongTextEditorInput, SelectOption,
-    TextAreaView, CELL_EDITORS_GAP, CELL_EDITORS_SURFACE,
-};
-pub use ai_memory_patterns::{
-    HistorySort, MemoryPatternCommands, MemoryPatternExtractionInput, MemoryPatternScheduler, QueryHistoryPage, QueryHistoryPageParams, SubmitDecision, extract_memory_patterns_if_needed,
-    extract_once, MEMORY_PATTERN_MIN_OCCURRENCES, MEMORY_PATTERN_WINDOW_DAYS,
-};
+pub use schema_resource_cache::{LoadStart, SchemaResourceCache, ERROR_TTL_MS, VALUE_TTL_MS};
 // T228's two lib halves ride the crate root the family way.
 pub use ai_memory_settings::{
-    normalize_ai_settings_config, normalize_memory_settings, memory_mode_for,
+    memory_mode_for, normalize_ai_settings_config, normalize_memory_settings,
 };
 pub use ai_message_blocks::{
-    CodeBlockSegment, MessageSegment, TextSegment, is_sql_code_block, parse_message_segments,
+    is_sql_code_block, parse_message_segments, CodeBlockSegment, MessageSegment, TextSegment,
 };
 // T251: the React lib/aiProviders.ts surface — the lookup, the two ordered
 // lists, the const aliases and the three pure helpers.
 pub use ai_providers::{
-    DEEP_SEEK_PROVIDER, LOCAL_CLI_PROVIDER_TYPES, OLLAMA_PROVIDER, PROVIDER_ORDER, is_known_provider_type, is_local_cli_provider, normalize_ai_providers, provider_preset,
+    is_known_provider_type, is_local_cli_provider, normalize_ai_providers, provider_preset,
+    DEEP_SEEK_PROVIDER, LOCAL_CLI_PROVIDER_TYPES, OLLAMA_PROVIDER, PROVIDER_ORDER,
 };
 // T291: the React `lib/aiSafetyPresets.ts` surface — the three named gates,
 // the default/detection helpers and the local-endpoint predicate.
 pub use ai_safety_presets::{
-    CLOUD_STRICT_PRESET, ENTERPRISE_BALANCED_PRESET, LOCAL_TRUST_PRESET, AiSafetyPresetType, detect_safety_preset, get_default_safety_gate, is_local_endpoint, preset_from_str,
-    safety_preset,
+    detect_safety_preset, get_default_safety_gate, is_local_endpoint, preset_from_str,
+    safety_preset, AiSafetyPresetType, CLOUD_STRICT_PRESET, ENTERPRISE_BALANCED_PRESET,
+    LOCAL_TRUST_PRESET,
 };
 // T291: the React `lib/aiSkills.ts` surface. `normalize_loaded_skills` is
 // already rooted through `ai_sessions` (T230), so only the settings
@@ -446,804 +470,1044 @@ pub use ai_skills::normalize_ai_skills_settings;
 // T291: the React `lib/anyColumnFilter.ts` surface — the expansion, its
 // options/result and the type-resolution vocabulary it speaks.
 pub use any_column_filter::{
-    DEFAULT_CELL_TYPE_RULES, AnyColumnExpansion, AnyColumnFilterOptions, CellType, CellTypeHints, CellTypeMatch, CellTypeRule, ValueSearchTypeGroup,
-    ValueSearchTypeScope, expand_any_column_filter, resolve_cell_type,
+    expand_any_column_filter, resolve_cell_type, AnyColumnExpansion, AnyColumnFilterOptions,
+    CellType, CellTypeHints, CellTypeMatch, CellTypeRule, ValueSearchTypeGroup,
+    ValueSearchTypeScope, DEFAULT_CELL_TYPE_RULES,
 };
 // T272: the React `lib/aiQueryActions.ts` surface — the guarded context
 // builder, the three action descriptors and their param helpers.
 pub use ai_query_actions::{
-    bound_params_from_json, build_explain_action, build_fix_sql_action, build_query_diagnosis_context, build_retry_action, equal_bound_params, BoundParamValue, BoundParams,
-    ExplainActionDescriptor, FixSqlActionDescriptor, PromptConnectionContext, QueryActionBuildFailure, QueryActionBuildResult, QueryActionBuildSuccess, QueryActionError, QueryActionErrorCode,
-    QueryDiagnosisContext, QueryDiagnosisContextLike, QueryDiagnosisParams, QueryPromptContext, RetryActionDescriptor, RetryRequest, RetryValidation, RetryValidationFailure,
-    RetryValidationInput, RetryValidationSuccess, SanitizedConnectionContext, SanitizedJson, SqlDiff, SqlEditorDraft,
+    bound_params_from_json, build_explain_action, build_fix_sql_action,
+    build_query_diagnosis_context, build_retry_action, equal_bound_params, BoundParamValue,
+    BoundParams, ExplainActionDescriptor, FixSqlActionDescriptor, PromptConnectionContext,
+    QueryActionBuildFailure, QueryActionBuildResult, QueryActionBuildSuccess, QueryActionError,
+    QueryActionErrorCode, QueryDiagnosisContext, QueryDiagnosisContextLike, QueryDiagnosisParams,
+    QueryPromptContext, RetryActionDescriptor, RetryRequest, RetryValidation,
+    RetryValidationFailure, RetryValidationInput, RetryValidationSuccess,
+    SanitizedConnectionContext, SanitizedJson, SqlDiff, SqlEditorDraft,
 };
 pub use ai_sessions::{
-    ActiveConnectionEntry, ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat, MigrationOutcome, NewId, SessionClock,
-    SessionDeleteResult, SessionExport, SessionKey, SessionListParams, SessionLocalStorage, SessionMap, SessionPersistResult, SessionRestoreResult,
-    SessionScope, StoredSession, chat_session_from_detail, chat_session_from_stored, chat_session_to_upsert_input, compute_session_key, export_filename, iso_from_epoch_ms,
-    local_detail, markdown_for, message_from_stored, message_metadata, message_status, new_chat_session, normalize_loaded_skills, split_legacy_key,
-    title_for, truncate_bytes, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS, MIGRATION_MARKER_KEY, STORAGE_KEY,
+    chat_session_from_detail, chat_session_from_stored, chat_session_to_upsert_input,
+    compute_session_key, export_filename, iso_from_epoch_ms, local_detail, markdown_for,
+    message_from_stored, message_metadata, message_status, new_chat_session,
+    normalize_loaded_skills, split_legacy_key, title_for, truncate_bytes, ActiveConnectionEntry,
+    ActiveConnections, AiSessionBackend, AiSessionStore, ExportFormat, MigrationOutcome, NewId,
+    SessionClock, SessionDeleteResult, SessionExport, SessionKey, SessionListParams,
+    SessionLocalStorage, SessionMap, SessionPersistResult, SessionRestoreResult, SessionScope,
+    StoredSession, MAX_MESSAGES_PER_SESSION, MAX_MESSAGE_BYTES, MAX_SESSIONS, MIGRATION_MARKER_KEY,
+    STORAGE_KEY,
 };
 // The T126 AiStore contract: the zustand store's state struct and action
 // trait (the aiStore port, T128, is the implementer), the NL2SQL slice with
 // its initial literal, and the field-complete lean mirrors of the
 // `types/index.ts` shapes the store holds (T213 owns the real ports).
 pub use ai_store_types::{
-    AiMemoryMode, AiMemoryScope, AiStoreActions, AiStoreState, AnalyzeExplainParams, AnalyzeQueriesParams, CallMcpToolParams, ConnectionDiagnosis,
-    ConnectionSolution, DiagnoseConnectionParams, DiagnoseErrorParams, EventListenerTeardown, ExecuteWorkflowParams, GenerateSchemaDocParams, GenerateSqlParams, McpClientStatus,
-    McpServerConfig, McpServerTransport, McpToolInfo, MemoryCandidateNotice, Nl2SqlState, ParseFilterParams, QueryAnalysis, QueryCategory,
-    SendChatMessageParams, SendWorkflowChatMessageParams, StepExecutionResult, StepStatus, WorkflowExecutionResult, WorkflowListItem, WorkflowVariable, initial_nl2sql,
+    initial_nl2sql, AiMemoryMode, AiMemoryScope, AiStoreActions, AiStoreState,
+    AnalyzeExplainParams, AnalyzeQueriesParams, CallMcpToolParams, ConnectionDiagnosis,
+    ConnectionSolution, DiagnoseConnectionParams, DiagnoseErrorParams, EventListenerTeardown,
+    ExecuteWorkflowParams, GenerateSchemaDocParams, GenerateSqlParams, McpClientStatus,
+    McpServerConfig, McpServerTransport, McpToolInfo, MemoryCandidateNotice, Nl2SqlState,
+    ParseFilterParams, QueryAnalysis, QueryCategory, SendChatMessageParams,
+    SendWorkflowChatMessageParams, StepExecutionResult, StepStatus, WorkflowExecutionResult,
+    WorkflowListItem, WorkflowVariable,
 };
 // The T088 streaming adapter: the module's own types plus the seam
 // vocabulary the future sibling tasks (streamRegistry/sessionCancel/
 // targetClaim/commands-ai, T503/T505, T126/T128) will implement or wire.
 pub use ai_streaming::{
-    AiCancelCommand, AiStoreView, AiStreaming, AiTargetClaim, ApplyChunkGate, ApplyGateResult, CancelReceipt, ChatSessionPersister,
-    ExtractionSeams, ExtractQuestionsOutcome, Nl2sqlStreamingSlice, SessionCancellerOps, StreamRegistryOps, StreamingClock, find_mcp_tool_name,
+    find_mcp_tool_name, AiCancelCommand, AiStoreView, AiStreaming, AiTargetClaim, ApplyChunkGate,
+    ApplyGateResult, CancelReceipt, ChatSessionPersister, ExtractQuestionsOutcome, ExtractionSeams,
+    Nl2sqlStreamingSlice, SessionCancellerOps, StreamRegistryOps, StreamingClock,
 };
 pub use ai_types::{
-    AiAgentMode, AiChatAttribution, AiChatContextSnapshot, AiChatInjectionEvent, AiChatInjectionSnapshot, AiChatMessage, AiChatResultPreview, AiChatSession,
-    AiDataEgressLevel, AiLoadedSkill, AiMemoryCandidatesEvent, AiMemoryCloudPolicy, AiMemoryCorrectionInput, AiMemoryCreateInput, AiMemoryEntry, AiMemoryExtractionInput,
-    AiMemoryKind, AiMemoryListParams, AiMemoryPage, AiMemoryReference, AiMemoryScopeKind, AiMemorySensitivity, AiMemorySettings, AiMemorySource,
-    AiMemorySqlSample, AiMemoryStaleInput, AiMemoryStats, AiMemoryStatus, AiMemoryUpdateInput, AiMessageRole, AiMessageStatus, AiModelProfile,
-    AiPreviewCell, AiProviderConfig, AiProviderType, AiQuestion, AiQuestionOption, AiSafetyGateConfig, AiSessionDetail, AiSessionMessage,
-    AiSessionMessageInput, AiSessionSummary, AiSessionUpsertInput, AiSettingsConfig, AiSkillContent, AiSkillSource, AiSkillSummary, AiSkillsSettings,
-    AiToolCall, AiToolPermissionPolicy, AiToolResult, AiWriteApplyReceipt, AiWriteAuditDecision, AiWriteAuditDecisionKind, AiWriteAuditRecord, AiWriteImpact,
-    AiWriteProposal, AiWriteStatement, Bottleneck, BottleneckSeverity, DiagnosisResult, ExplainAnalysis, ExplainSuggestion, ModelInfo,
-    PromptTemplate, ProviderListItem, StreamChunkPayload, StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS, DEFAULT_AI_SKILLS_SETTINGS,
-};
-pub use batch_export_job::{
-    export_single_table_structure_via_rust, export_single_table_via_rust, run_batch_export_job, BatchExportColumn, BatchExportDataFormat, BatchExportMode, BatchExportOutputMode, BatchExportProgress,
-    BatchExportTableInput, CancelHandle, ExportTableInput, ExportTablesRequest, ExportTablesResult, LoadedTableExportData, RunBatchExportJobOptions, RunBatchExportJobResult,
-    SingleFetchOutcome, SingleTableExportOptions, SingleTableExportResult, SingleTableFetchConfig, SingleTableFetchScope, SingleTableStructureExportOptions, SingleTableStructureExportResult,
+    AiAgentMode, AiChatAttribution, AiChatContextSnapshot, AiChatInjectionEvent,
+    AiChatInjectionSnapshot, AiChatMessage, AiChatResultPreview, AiChatSession, AiDataEgressLevel,
+    AiLoadedSkill, AiMemoryCandidatesEvent, AiMemoryCloudPolicy, AiMemoryCorrectionInput,
+    AiMemoryCreateInput, AiMemoryEntry, AiMemoryExtractionInput, AiMemoryKind, AiMemoryListParams,
+    AiMemoryPage, AiMemoryReference, AiMemoryScopeKind, AiMemorySensitivity, AiMemorySettings,
+    AiMemorySource, AiMemorySqlSample, AiMemoryStaleInput, AiMemoryStats, AiMemoryStatus,
+    AiMemoryUpdateInput, AiMessageRole, AiMessageStatus, AiModelProfile, AiPreviewCell,
+    AiProviderConfig, AiProviderType, AiQuestion, AiQuestionOption, AiSafetyGateConfig,
+    AiSessionDetail, AiSessionMessage, AiSessionMessageInput, AiSessionSummary,
+    AiSessionUpsertInput, AiSettingsConfig, AiSkillContent, AiSkillSource, AiSkillSummary,
+    AiSkillsSettings, AiToolCall, AiToolPermissionPolicy, AiToolResult, AiWriteApplyReceipt,
+    AiWriteAuditDecision, AiWriteAuditDecisionKind, AiWriteAuditRecord, AiWriteImpact,
+    AiWriteProposal, AiWriteStatement, Bottleneck, BottleneckSeverity, DiagnosisResult,
+    ExplainAnalysis, ExplainSuggestion, ModelInfo, PromptTemplate, ProviderListItem,
+    StreamChunkPayload, StreamChunkUsage, StreamErrorPayload, DEFAULT_AI_MEMORY_SETTINGS,
+    DEFAULT_AI_SKILLS_SETTINGS,
 };
 pub use backup_progress::{
-    append_progress_log, backup_progress_ratio, format_backup_progress, format_restore_progress, BackupDumpPhase, BackupProgressPayload, ProgressLogPump, Translate,
-    KEY_LOG_OMITTED, KEY_PROGRESS_OBJECT, KEY_PROGRESS_PREPARING, KEY_PROGRESS_WRITING, KEY_RESTORE_PREPARING, KEY_RESTORE_PROGRESS, KEY_RESTORE_SUCCESS, KEY_RESTORING,
-    KEY_SUCCESS, MAX_PROGRESS_LOG_CHARS, MAX_PROGRESS_LOG_LINES,
+    append_progress_log, backup_progress_ratio, format_backup_progress, format_restore_progress,
+    BackupDumpPhase, BackupProgressPayload, ProgressLogPump, Translate, KEY_LOG_OMITTED,
+    KEY_PROGRESS_OBJECT, KEY_PROGRESS_PREPARING, KEY_PROGRESS_WRITING, KEY_RESTORE_PREPARING,
+    KEY_RESTORE_PROGRESS, KEY_RESTORE_SUCCESS, KEY_RESTORING, KEY_SUCCESS, MAX_PROGRESS_LOG_CHARS,
+    MAX_PROGRESS_LOG_LINES,
 };
-pub use base64::{
-    base64_to_bytes, Base64DecodeError,
+pub use base64::{base64_to_bytes, Base64DecodeError};
+pub use batch_export_job::{
+    export_single_table_structure_via_rust, export_single_table_via_rust, run_batch_export_job,
+    BatchExportColumn, BatchExportDataFormat, BatchExportMode, BatchExportOutputMode,
+    BatchExportProgress, BatchExportTableInput, CancelHandle, ExportTableInput,
+    ExportTablesRequest, ExportTablesResult, LoadedTableExportData, RunBatchExportJobOptions,
+    RunBatchExportJobResult, SingleFetchOutcome, SingleTableExportOptions, SingleTableExportResult,
+    SingleTableFetchConfig, SingleTableFetchScope, SingleTableStructureExportOptions,
+    SingleTableStructureExportResult,
 };
 pub use chart_types::{
-    AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField, ChartRecommendation, ChartSortBy, ChartType,
-    InferredFieldType,
+    AggregationType, ChartConfig, ChartDataPoint, ChartDataPointValue, ChartField,
+    ChartRecommendation, ChartSortBy, ChartType, InferredFieldType,
 };
 pub use command_schema::{
-    all_privileges, field_label, field_placeholder, get_schema_field, has_command, has_schema_field, privilege_groups, schema_properties,
-    PrivilegeGroup, SchemaField,
+    all_privileges, field_label, field_placeholder, get_schema_field, has_command,
+    has_schema_field, privilege_groups, schema_properties, PrivilegeGroup, SchemaField,
+};
+pub use compare_report::{
+    build_compare_report_json, build_compare_report_text, summarize_compare, CompareReportRow,
+    CompareSummaryStats,
 };
 pub use connection_clipboard::{
-    apply_connection_clipboard_fill, apply_matched_clipboard, match_connection_clipboard, parse_generic_connection_url, ClipboardDriverMeta, ConnectionClipboardFill, ConnectionClipboardParser, ConnectionFormOps,
-    MatchedConnectionClipboard,
+    apply_connection_clipboard_fill, apply_matched_clipboard, match_connection_clipboard,
+    parse_generic_connection_url, ClipboardDriverMeta, ConnectionClipboardFill,
+    ConnectionClipboardParser, ConnectionFormOps, MatchedConnectionClipboard,
 };
 pub use connection_config::{
     clone_connection_config_for_ipc, to_ipc_connection_config, PlainConfigAssertion,
 };
 pub use connection_form_model::{
-    assert_plain_connection_config, build_connection_config, clone_plain_json, coerce_connection_group, normalize_index_database_field, plain_config_assertion, sanitize_connection_options, BuildConnectionConfigInput,
-    ConnectionFormDriverMeta, ConnectionFormSnapshot, DatabaseFieldType,
+    assert_plain_connection_config, build_connection_config, clone_plain_json,
+    coerce_connection_group, normalize_index_database_field, plain_config_assertion,
+    sanitize_connection_options, BuildConnectionConfigInput, ConnectionFormDriverMeta,
+    ConnectionFormSnapshot, DatabaseFieldType,
 };
 pub use connection_groups::{
-    format_group_label, KEY_GROUP_DEV, KEY_GROUP_PROD, KEY_GROUP_TEST, PRESET_DEVELOPMENT, PRESET_GROUP_OPTIONS, PRESET_PRODUCTION, PRESET_TESTING,
+    format_group_label, KEY_GROUP_DEV, KEY_GROUP_PROD, KEY_GROUP_TEST, PRESET_DEVELOPMENT,
+    PRESET_GROUP_OPTIONS, PRESET_PRODUCTION, PRESET_TESTING,
 };
 pub use connection_locator::{
-    connection_expand_key, group_connections_with_recent_sections, normalize, order_connections_for_display, parse_connection_expand_key, rank_connections, ActiveConnectionSlice, ActiveStatus,
-    Candidate, ConnectionLocatorResult, ConnectionLocatorUsageState, ConnectionMatch, ConnectionMatchReason, ConnectionSection, ExpandKey, SchemaSlice,
-    PINNED_GROUP_KEY, RECENT_CONNECTION_LIMIT, RECENT_GROUP_KEY,
+    connection_expand_key, group_connections_with_recent_sections, normalize,
+    order_connections_for_display, parse_connection_expand_key, rank_connections,
+    ActiveConnectionSlice, ActiveStatus, Candidate, ConnectionLocatorResult,
+    ConnectionLocatorUsageState, ConnectionMatch, ConnectionMatchReason, ConnectionSection,
+    ExpandKey, SchemaSlice, PINNED_GROUP_KEY, RECENT_CONNECTION_LIMIT, RECENT_GROUP_KEY,
 };
 pub use connection_share_error::{
-    format_connection_import_success, ipc_connection_share_error, translate_connection_share_error, ConnectionImportResult, ShareErrorSource,
+    format_connection_import_success, ipc_connection_share_error, translate_connection_share_error,
+    ConnectionImportResult, ShareErrorSource,
 };
 pub use connection_tab_context_menu::{
-    build_connection_tab_context_menu_items, BuildConnectionTabContextMenuArgs, ConnectionTabAction, ConnectionTabContextMenuHandlers, ConnectionTabContextMenuLabels, ConnectionTabMenuItem,
-};
-pub use compare_report::{
-    build_compare_report_json, build_compare_report_text, summarize_compare, CompareReportRow, CompareSummaryStats,
+    build_connection_tab_context_menu_items, BuildConnectionTabContextMenuArgs,
+    ConnectionTabAction, ConnectionTabContextMenuHandlers, ConnectionTabContextMenuLabels,
+    ConnectionTabMenuItem,
 };
 pub use connection_types::{
-    ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType, DriverCapabilities, ExplainPlanDetail, ExplainPlanNode,
-    ExplainResult, ForeignKeyDeferrability, ForeignKeyInfo, ForeignKeyTargetRef, ForeignKeyTargetResolution, HttpProxyScheme, HttpProxyTunnelConfig, IndexInfo,
-    PrivilegeGrant, QueryHistoryEntry, ResolveForeignKeyTargetsRequest, SavedTunnel, SavedTunnelKind, ServerInfo, SshAuthMethod, SshTunnelConfig,
-    SslMode, TableInfo, TableSchema, TableType, TunnelKind, Value, WebSocketMode, WebSocketTunnelConfig,
+    ConnectionConfig, ContextEntry, DatabaseObject, DatabaseObjectKind, DatabaseType,
+    DriverCapabilities, ExplainPlanDetail, ExplainPlanNode, ExplainResult, ForeignKeyDeferrability,
+    ForeignKeyInfo, ForeignKeyTargetRef, ForeignKeyTargetResolution, HttpProxyScheme,
+    HttpProxyTunnelConfig, IndexInfo, PrivilegeGrant, QueryHistoryEntry,
+    ResolveForeignKeyTargetsRequest, SavedTunnel, SavedTunnelKind, ServerInfo, SshAuthMethod,
+    SshTunnelConfig, SslMode, TableInfo, TableSchema, TableType, TunnelKind, Value, WebSocketMode,
+    WebSocketTunnelConfig,
 };
 pub use connection_view_registry::{
     get_connection_view, is_builtin_document_mode, ConnectionViewSelection, BUILTIN_DOCUMENT_MODE,
 };
 pub use connection_views::{
-    ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext, NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
+    ConnectionOpenTarget, ConnectionViewActions, ConnectionViewProps, NewQueryContext,
+    NodeContextMenuPayload, ObjectKind, TableContextInput, TableSqlActionKind,
 };
-pub use context_items::{
-    ContextItem, ContextKind, SplitContextItems, split_context_items,
-};
-pub use workflow_chat_panel::{
-    answer_questions_params, build_send_request, connection_options, copied_block_index, extract_workflow_yaml, handle_new_chat_reset, handle_stop, is_configured_gate,
-    is_last_assistant, is_user, questions_visible, save_yaml, selected_database, selected_db_session_id, streaming_bubble_visible, thinking_visible,
-    validation_connections, yaml_actions_visible, ActiveSessionSnapshot, MultiDbProvider, NewChatReset, SaveSuccess, SendRequest, WorkflowChatPanelPorts,
-    WorkflowChatState, ParsedWorkflowDefinition, WorkflowPanelConnection, WorkflowSaveError, WorkflowValidationConnection, COPIED_FEEDBACK_MS, SAVE_OK_RESET_MS, WORKFLOW_CHAT_PANEL_GAP,
+pub use context_items::{split_context_items, ContextItem, ContextKind, SplitContextItems};
+pub use context_menu_position::{
+    position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
+    Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport, CONTEXT_MENU_PAD,
 };
 pub use diff_detail::{
-    cell_view, clear_all_op, diff_rows, footer_visible, format_cell, is_changed, is_empty_state, key_label,
-    max_cols, next_disabled, operation_allowed, operation_badge_class, page_count, page_rows, prev_disabled, row_key_string,
-    row_selectable, safe_page, select_all_op, server_paged, toggle_row, CellView, DataSyncOperation, DataSyncRowChange,
-    DataSyncTableResult, SyncOptions, DIFF_DETAIL_DOM_GAP, PAGE_SIZE,
+    cell_view, clear_all_op, diff_rows, footer_visible, format_cell, is_changed, is_empty_state,
+    key_label, max_cols, next_disabled, operation_allowed, operation_badge_class, page_count,
+    page_rows, prev_disabled, row_key_string, row_selectable, safe_page, select_all_op,
+    server_paged, toggle_row, CellView, DataSyncOperation, DataSyncRowChange, DataSyncTableResult,
+    SyncOptions, DIFF_DETAIL_DOM_GAP, PAGE_SIZE,
 };
-pub use context_menu_position::{
-    CONTEXT_MENU_PAD, Point, Rect, RootMenuPosition, Size, SubmenuPosition, SubmenuSide, Viewport,
-    position_root_menu, position_root_menu_with_pad, position_submenu, position_submenu_with_pad,
+pub use workflow_chat_panel::{
+    answer_questions_params, build_send_request, connection_options, copied_block_index,
+    extract_workflow_yaml, handle_new_chat_reset, handle_stop, is_configured_gate,
+    is_last_assistant, is_user, questions_visible, save_yaml, selected_database,
+    selected_db_session_id, streaming_bubble_visible, thinking_visible, validation_connections,
+    yaml_actions_visible, ActiveSessionSnapshot, MultiDbProvider, NewChatReset,
+    ParsedWorkflowDefinition, SaveSuccess, SendRequest, WorkflowChatPanelPorts, WorkflowChatState,
+    WorkflowPanelConnection, WorkflowSaveError, WorkflowValidationConnection, COPIED_FEEDBACK_MS,
+    SAVE_OK_RESET_MS, WORKFLOW_CHAT_PANEL_GAP,
 };
 // The T159 dashboard vocabulary (see `dashboard_types`' docs): every
 // name the React facade re-exports rides the crate root, but the display
 // `DashboardWidget` (the N13 stub above owns the root name) and the
 // module-local serde `ExecutionTarget` family stay module-path only —
 // the mounting note there rules the split.
-pub use dashboard_types::{
-    AlertChannel, AlertMetric, AlertMetricAgg, AlertMetricKind, AlertOperator, AlertRule, CreateWidgetFromSqlParams, CreateWidgetFromWorkflowParams,
-    CreateWidgetResult, Dashboard, DashboardLayout, DashboardWorkflowRef, MonitorEmailSettings, MonitorGrant, MonitorScheduleGrantSummary, MonitorSettings,
-    MonitorScope, RefreshMode, RefreshPolicy, RunIndexEntry, UpdateHiddenWidgetSqlParams, ViewMode, WidgetLayout, WidgetRun,
-    WidgetRunStatus, DEFAULT_MONITOR_SETTINGS, DEFAULT_REFRESH, MIN_REFRESH_SEC, REFRESH_WARN_BELOW_SEC, clamp_refresh_sec, normalize_refresh_policy, should_warn_refresh_sec,
-};
 pub use dangerous_sql::{
-    classify_risk, is_dangerous_write_statement, normalize_fullwidth, scan_sql, sql_contains_dangerous_write, SigKind, SigTok, SqlRiskAssessment,
-    SqlRiskClassification, SqlRiskFinding, SqlRiskFindingType, SqlStatementRange, SqlStatementRisk, SqlToken, SqlTokenKind, DESTRUCTIVE_VERBS,
-    FALSE_SQL_VALUES, MAIN_VERBS, READ_VERBS, WHERE_NEEDS_VERBS, WRITE_VERBS,
+    classify_risk, is_dangerous_write_statement, normalize_fullwidth, scan_sql,
+    sql_contains_dangerous_write, SigKind, SigTok, SqlRiskAssessment, SqlRiskClassification,
+    SqlRiskFinding, SqlRiskFindingType, SqlStatementRange, SqlStatementRisk, SqlToken,
+    SqlTokenKind, DESTRUCTIVE_VERBS, FALSE_SQL_VALUES, MAIN_VERBS, READ_VERBS, WHERE_NEEDS_VERBS,
+    WRITE_VERBS,
 };
-pub use database_object_identity::database_object_identity_key;
+pub use dashboard_types::{
+    clamp_refresh_sec, normalize_refresh_policy, should_warn_refresh_sec, AlertChannel,
+    AlertMetric, AlertMetricAgg, AlertMetricKind, AlertOperator, AlertRule,
+    CreateWidgetFromSqlParams, CreateWidgetFromWorkflowParams, CreateWidgetResult, Dashboard,
+    DashboardLayout, DashboardWorkflowRef, MonitorEmailSettings, MonitorGrant,
+    MonitorScheduleGrantSummary, MonitorScope, MonitorSettings, RefreshMode, RefreshPolicy,
+    RunIndexEntry, UpdateHiddenWidgetSqlParams, ViewMode, WidgetLayout, WidgetRun, WidgetRunStatus,
+    DEFAULT_MONITOR_SETTINGS, DEFAULT_REFRESH, MIN_REFRESH_SEC, REFRESH_WARN_BELOW_SEC,
+};
 pub use data_sync_bars::{
-    build_endpoints_bar_config, build_execute_bar_view, can_fire, resolve_action_note, ActionNote, ActivePairing, CancelVariant, EndpointsBarConfig,
-    EndpointsLayout, ExecuteBarEvent, ExecuteBarInput, ExecuteBarView, RunVariant, SyncPairingPath, TranslateFn, ACTION_NOTE_CLASS,
-    CANCEL_TEST_ID, COMPARE_LABEL_KEY, CONTAINER_CLASS, DELETE_CLASS, ENDPOINTS_I18N_PREFIX, ENDPOINTS_TEST_ID_PREFIX, EXECUTE_TEST_ID, EXPERIMENTAL_HINT_KEY,
-    EXPERIMENTAL_PAIR_KEY, KEY_CANCEL, KEY_DELETE_WILL_APPLY, KEY_EXECUTE, KEY_EXECUTING, KEY_EXECUTE_UNAVAILABLE, KEY_SELECTED_ROWS, KEY_TARGET_READ_ONLY,
-    PATH_DIRECT_KEY, PATH_IR_KEY, PATH_TEST_ID, READ_ONLY_CLASS, START_DISABLED_TEST_ID, START_TEST_ID, SUPPORTED_CLASS, UNSUPPORTED_CLASS,
+    build_endpoints_bar_config, build_execute_bar_view, can_fire, resolve_action_note, ActionNote,
+    ActivePairing, CancelVariant, EndpointsBarConfig, EndpointsLayout, ExecuteBarEvent,
+    ExecuteBarInput, ExecuteBarView, RunVariant, SyncPairingPath, TranslateFn, ACTION_NOTE_CLASS,
+    CANCEL_TEST_ID, COMPARE_LABEL_KEY, CONTAINER_CLASS, DELETE_CLASS, ENDPOINTS_I18N_PREFIX,
+    ENDPOINTS_TEST_ID_PREFIX, EXECUTE_TEST_ID, EXPERIMENTAL_HINT_KEY, EXPERIMENTAL_PAIR_KEY,
+    KEY_CANCEL, KEY_DELETE_WILL_APPLY, KEY_EXECUTE, KEY_EXECUTE_UNAVAILABLE, KEY_EXECUTING,
+    KEY_SELECTED_ROWS, KEY_TARGET_READ_ONLY, PATH_DIRECT_KEY, PATH_IR_KEY, PATH_TEST_ID,
+    READ_ONLY_CLASS, START_DISABLED_TEST_ID, START_TEST_ID, SUPPORTED_CLASS, UNSUPPORTED_CLASS,
     USE_TRANSFER_HINT_KEY,
 };
 pub use data_sync_comparison::{
-    apply_options_to_rows, cancel_actions, clear_job_refs, first_diff_key, is_compared_sync_state, is_current_generation, is_paged_comparison, mark_disabled_tables,
-    merge_compare_into_mappings, next_generation, selected_rows_from_merged, should_keep_cancelled_result, tables_for_compare, toggle_disabled_status, update_source_filter, validate_endpoints,
-    CancelActions, ClearJobRefsInput, ComparisonRow, ComparisonTableRow, ComparisonTableStatus, DataSyncJobKind, DataSyncSyncState, EndpointInput,
-    MappedRow, SelectedComparisonRow, ValidationFailure, DATA_SYNC_COMPARISON_GAP, DATA_SYNC_COMPARISON_SURFACE, DATA_SYNC_DB_REQUIRED_KEY, DATA_SYNC_SAME_DB_KEY, DATA_SYNC_SELECT_BOTH_KEY,
-    DATA_SYNC_TRANSFER_HINT_KEY, SYNC_CANCELLING_EXECUTION_KEY, SYNC_COMPARE_CANCELLED_KEY,
+    apply_options_to_rows, cancel_actions, clear_job_refs, first_diff_key, is_compared_sync_state,
+    is_current_generation, is_paged_comparison, mark_disabled_tables, merge_compare_into_mappings,
+    next_generation, selected_rows_from_merged, should_keep_cancelled_result, tables_for_compare,
+    toggle_disabled_status, update_source_filter, validate_endpoints, CancelActions,
+    ClearJobRefsInput, ComparisonRow, ComparisonTableRow, ComparisonTableStatus, DataSyncJobKind,
+    DataSyncSyncState, EndpointInput, MappedRow, SelectedComparisonRow, ValidationFailure,
+    DATA_SYNC_COMPARISON_GAP, DATA_SYNC_COMPARISON_SURFACE, DATA_SYNC_DB_REQUIRED_KEY,
+    DATA_SYNC_SAME_DB_KEY, DATA_SYNC_SELECT_BOTH_KEY, DATA_SYNC_TRANSFER_HINT_KEY,
+    SYNC_CANCELLING_EXECUTION_KEY, SYNC_COMPARE_CANCELLED_KEY,
 };
 pub use data_sync_endpoints::{
-    apply_endpoint_change, build_conn_options, build_target_options, can_refresh_sessions, clear_endpoint_selection, connect_failed_message, connection_label, is_experimental,
-    is_same_endpoint_identity, is_target_read_only, is_verified_migration_pair, load_databases_failed_message, pick_default_schema, pick_prefill_database, pick_prefill_schema, resolve_default_database,
-    schema_load_allowed, session_failed_message, swap_scope, unique_schemas_from_tables, ChangeEffect, ConnectionLike, ConnectionOption, DedicatedSideSession,
-    EndpointField, EndpointIdentity, EndpointPrefill, EndpointScope, PrefillSide, TargetOption, CONNECTIONS_CHANGED_EVENT, CONNECTIONS_CLOSED_EVENT,
-    CONNECT_FAILED_KEY, DATA_SYNC_ENDPOINTS_GAP, DATA_SYNC_ENDPOINTS_SURFACE, EXPERIMENTAL_PAIR_KEY as ENDPOINTS_EXPERIMENTAL_PAIR_KEY, LOAD_DATABASES_FAILED_KEY, SESSION_FAILED_KEY, UNSUPPORTED_PAIR_KEY, VERIFIED_MIGRATION_TYPES,
+    apply_endpoint_change, build_conn_options, build_target_options, can_refresh_sessions,
+    clear_endpoint_selection, connect_failed_message, connection_label, is_experimental,
+    is_same_endpoint_identity, is_target_read_only, is_verified_migration_pair,
+    load_databases_failed_message, pick_default_schema, pick_prefill_database, pick_prefill_schema,
+    resolve_default_database, schema_load_allowed, session_failed_message, swap_scope,
+    unique_schemas_from_tables, ChangeEffect, ConnectionLike, ConnectionOption,
+    DedicatedSideSession, EndpointField, EndpointIdentity, EndpointPrefill, EndpointScope,
+    PrefillSide, TargetOption, CONNECTIONS_CHANGED_EVENT, CONNECTIONS_CLOSED_EVENT,
+    CONNECT_FAILED_KEY, DATA_SYNC_ENDPOINTS_GAP, DATA_SYNC_ENDPOINTS_SURFACE,
+    EXPERIMENTAL_PAIR_KEY as ENDPOINTS_EXPERIMENTAL_PAIR_KEY, LOAD_DATABASES_FAILED_KEY,
+    SESSION_FAILED_KEY, UNSUPPORTED_PAIR_KEY, VERIFIED_MIGRATION_TYPES,
 };
 pub use data_sync_execution::{
-    can_execute, handle_execute, plan_execution, plan_finalize, run_execute_guard, CompareResult, ExecuteGuard, ExecuteResult,
-    ExecutionEffect, ExecutionInput, ExecutionPlan, ExecutionResponses, FinalizeInput, FinalizePlan, GuardOutcome, SessionRefresh,
-    TableSelection, DATA_SYNC_EXECUTION_GAP, DATA_SYNC_EXECUTION_SURFACE,
+    can_execute, handle_execute, plan_execution, plan_finalize, run_execute_guard, CompareResult,
+    ExecuteGuard, ExecuteResult, ExecutionEffect, ExecutionInput, ExecutionPlan,
+    ExecutionResponses, FinalizeInput, FinalizePlan, GuardOutcome, SessionRefresh, TableSelection,
+    DATA_SYNC_EXECUTION_GAP, DATA_SYNC_EXECUTION_SURFACE,
+};
+pub use data_sync_explain::{
+    begin_explain, build_explain_prompt, build_explain_report, explain_gate, explain_request,
+    failure_explain, success_explain, ExplainEffects, ExplainInput, ExplainRequest,
+    DATA_SYNC_EXPLAIN_GAP, DATA_SYNC_EXPLAIN_SURFACE, EXPLAIN_DIFF_FAILED_KEY,
+    EXPLAIN_DIFF_NO_AI_KEY, EXPLAIN_DIFF_PROMPT_KEY,
+};
+pub use data_sync_job_lifecycle::{
+    CancelOutcome, DataSyncJobDetails, DataSyncJobLifecycle, EndpointSession, Endpoints,
+    FeedbackSink, JobLifecycleHost, JobRecoveryVerdict, LifecycleState, RecoveryTarget,
+    VerifyOutcome, VerifyRequest, VerifyResponse, DATA_SYNC_JOB_LIFECYCLE_GAP,
+    DATA_SYNC_JOB_LIFECYCLE_SURFACE, JOB_POLL_INTERVAL_MS, RECOVERY_ENDPOINT_MISMATCH_KEY,
+    RECOVERY_MANUAL_REVIEW_KEY, RECOVERY_RECORDED_KEY, RECOVERY_SELECT_ENDPOINTS_KEY,
+};
+pub use data_sync_options::{
+    apply_options_change, clear_mapping_rows, confirm_delete, invalidates_comparison,
+    scopes_after_options, selected_rows_after_options, OptionsChangeEffects, OptionsChangeInput,
+    ScopeExclusion, TableScopeWithExclusions, DATA_SYNC_OPTIONS_GAP, DATA_SYNC_OPTIONS_SURFACE,
+    DEFAULT_CONFLICT_POLICY, SYNC_STEP_PREVIEW, SYNC_STEP_RESULT, SYNC_STEP_SETUP,
+};
+pub use data_sync_profiles::{
+    current_profile_tables, delete_selected_profile, load_selected_profile, load_sync_profiles,
+    parse_timestamp, reconcile_unknown_run, save_current_profile, DataSyncTableMapping,
+    MappingRowLike, MigrationRunRecordLike, ProfileConnection, ProfileEffect, ProfileEndpointState,
+    ProfilesHost, ProfilesState, ReconcileInput, SyncProfile, DATA_SYNC_PROFILES_GAP,
+    DATA_SYNC_PROFILES_SURFACE, PROFILE_DELETED_KEY, PROFILE_LOADED_KEY,
+    PROFILE_MISSING_CONNECTION_KEY, PROFILE_MISSING_FIELDS_KEY, PROFILE_SAVED_KEY,
+    RECONCILE_BUSY_KEY, RECONCILE_MISSING_CONNECTION_KEY, RECONCILE_NEEDS_SCOPE_KEY,
+    RECONCILE_PROFILE_CHANGED_KEY, RECONCILE_PROFILE_READY_KEY, RECONCILE_SCOPE_UNAVAILABLE_KEY,
 };
 pub use data_sync_refs::{
     create_data_sync_refs, DataSyncSharedRefs, DATA_SYNC_REFS_GAP, DATA_SYNC_REFS_SURFACE,
 };
-pub use data_sync_wizard_navigation::{
-    can_go_next, compare_disabled, is_busy, next_step, plan_go_back, plan_go_next, previous_step, step_index,
-    NavigationEffect, NavigationInput, WizardStep, DATA_SYNC_WIZARD_NAVIGATION_GAP, WIZARD_STEPS,
-};
-pub use data_sync_job_lifecycle::{
-    DataSyncJobLifecycle, DataSyncJobDetails, EndpointSession, Endpoints, FeedbackSink, JobLifecycleHost, JobRecoveryVerdict, LifecycleState,
-    RecoveryTarget, VerifyOutcome, VerifyRequest, VerifyResponse, CancelOutcome, DATA_SYNC_JOB_LIFECYCLE_GAP, DATA_SYNC_JOB_LIFECYCLE_SURFACE, JOB_POLL_INTERVAL_MS,
-    RECOVERY_ENDPOINT_MISMATCH_KEY, RECOVERY_MANUAL_REVIEW_KEY, RECOVERY_RECORDED_KEY, RECOVERY_SELECT_ENDPOINTS_KEY,
-};
 pub use data_sync_run_state::{
-    DataSyncRunState, DataSyncConflict, DataSyncExecutionOutcome, DataSyncExecutionResult, SetAction, DATA_SYNC_RUN_STATE_GAP, DATA_SYNC_RUN_STATE_SURFACE,
-};
-pub use data_sync_explain::{
-    begin_explain, build_explain_prompt, build_explain_report, explain_gate, explain_request, failure_explain, success_explain, ExplainEffects,
-    ExplainInput, ExplainRequest, DATA_SYNC_EXPLAIN_GAP, DATA_SYNC_EXPLAIN_SURFACE, EXPLAIN_DIFF_FAILED_KEY, EXPLAIN_DIFF_NO_AI_KEY, EXPLAIN_DIFF_PROMPT_KEY,
-};
-pub use data_sync_options::{
-    apply_options_change, clear_mapping_rows, confirm_delete, invalidates_comparison, scopes_after_options, selected_rows_after_options, DATA_SYNC_OPTIONS_GAP, DATA_SYNC_OPTIONS_SURFACE,
-    DEFAULT_CONFLICT_POLICY, OptionsChangeEffects, OptionsChangeInput, ScopeExclusion, SYNC_STEP_PREVIEW, SYNC_STEP_RESULT, SYNC_STEP_SETUP, TableScopeWithExclusions,
-};
-pub use data_sync_profiles::{
-    current_profile_tables, delete_selected_profile, load_selected_profile, load_sync_profiles, parse_timestamp, reconcile_unknown_run, save_current_profile, DataSyncTableMapping,
-    MappingRowLike, MigrationRunRecordLike, ProfileConnection, ProfileEffect, ProfileEndpointState, ProfilesHost, ProfilesState, ReconcileInput,
-    SyncProfile, DATA_SYNC_PROFILES_GAP, DATA_SYNC_PROFILES_SURFACE, PROFILE_DELETED_KEY, PROFILE_LOADED_KEY, PROFILE_MISSING_CONNECTION_KEY, PROFILE_MISSING_FIELDS_KEY, PROFILE_SAVED_KEY,
-    RECONCILE_BUSY_KEY, RECONCILE_MISSING_CONNECTION_KEY, RECONCILE_NEEDS_SCOPE_KEY, RECONCILE_PROFILE_CHANGED_KEY, RECONCILE_PROFILE_READY_KEY, RECONCILE_SCOPE_UNAVAILABLE_KEY,
+    DataSyncConflict, DataSyncExecutionOutcome, DataSyncExecutionResult, DataSyncRunState,
+    SetAction, DATA_SYNC_RUN_STATE_GAP, DATA_SYNC_RUN_STATE_SURFACE,
 };
 pub use data_sync_selection::{
-    clear_table_operation_scope, has_selected_deletes, is_table_operation_scoped, loaded_page_token, next_page_cursors, next_page_index, page_selection_decision, reconcile_selected_rows,
-    resolve_cursor, row_counts, set_table_operation_scope, table_page_key, total_selected_rows, update_exclusions, CursorOutcome, PageCursor,
-    PageDirection, RowChange, RowCounts, SelectionStateView, SelectionTable, TableSelectionScope, DATA_SYNC_SELECTION_GAP, DATA_SYNC_SELECTION_SURFACE,
-    PAGE_DIRECTION_INITIAL, PAGE_DIRECTION_NEXT, PAGE_DIRECTION_PREVIOUS,
+    clear_table_operation_scope, has_selected_deletes, is_table_operation_scoped,
+    loaded_page_token, next_page_cursors, next_page_index, page_selection_decision,
+    reconcile_selected_rows, resolve_cursor, row_counts, set_table_operation_scope, table_page_key,
+    total_selected_rows, update_exclusions, CursorOutcome, PageCursor, PageDirection, RowChange,
+    RowCounts, SelectionStateView, SelectionTable, TableSelectionScope, DATA_SYNC_SELECTION_GAP,
+    DATA_SYNC_SELECTION_SURFACE, PAGE_DIRECTION_INITIAL, PAGE_DIRECTION_NEXT,
+    PAGE_DIRECTION_PREVIOUS,
 };
 pub use data_sync_selection_state::{
-    DataSyncPageCursor, DataSyncSelectionState, SelectionRefs, SelectionScopeKey, SelectionState, DATA_SYNC_SELECTION_STATE_GAP, DATA_SYNC_SELECTION_STATE_SURFACE,
+    DataSyncPageCursor, DataSyncSelectionState, SelectionRefs, SelectionScopeKey, SelectionState,
+    DATA_SYNC_SELECTION_STATE_GAP, DATA_SYNC_SELECTION_STATE_SURFACE,
+};
+pub use data_sync_wizard_navigation::{
+    can_go_next, compare_disabled, is_busy, next_step, plan_go_back, plan_go_next, previous_step,
+    step_index, NavigationEffect, NavigationInput, WizardStep, DATA_SYNC_WIZARD_NAVIGATION_GAP,
+    WIZARD_STEPS,
 };
 pub use data_table_clipboard_dom::{
-    bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target, resolve_paste_anchor, ClipboardBinding, ClipboardBridge,
-    ClipboardDomInput, ClipboardEvent, CopyOutcome, DomTarget, GridCopyTarget, PasteAnchor, PasteEvent, PasteOutcome,
+    bind_clipboard_dom, handle_copy, handle_paste, is_editable_target, resolve_copy_target,
+    resolve_paste_anchor, ClipboardBinding, ClipboardBridge, ClipboardDomInput, ClipboardEvent,
+    CopyOutcome, DomTarget, GridCopyTarget, PasteAnchor, PasteEvent, PasteOutcome,
     CLIPBOARD_DOM_GAP,
 };
+pub use database_object_identity::database_object_identity_key;
 // The T188 filter vocabulary: the aggregate (`types/index`) re-exports
 // everything `types/filters.ts` declares, so the crate root carries the
 // same names.
-pub use database_types::{
-    default_escape_sql_value, escape_ident, format_connection_addr, get_db_icon, get_db_label, get_driver_icon_map, get_driver_icon_parents, get_escape_sql_value,
-    normalize_index_database_field_default, sort_db_types_by_popularity, ConnectionAddrInput, DatabaseRegistry, DatabaseTypeMeta, DbIconInfo, PopularityValue, EscapeSqlValue,
-    SqlValueEscaper, SshTunnelAddr, DB_TYPE_POPULARITY_ORDER, DEFAULT_MAX_DATABASE_INDEX,
+pub use data_table_bits::{
+    bridge_availability, density_row_height_delta, fk_selector_label, fk_text_with_selector,
+    row_height_for_density, ClipboardCellCoord, FkSelectorTranslator, GridClipboardHandlers,
+    DATA_TABLE_BITS_GAP, DATA_TABLE_BITS_SURFACE, DATA_TABLE_ROW_HEIGHT, FK_SELECTOR_PICK_FROM_KEY,
 };
 pub use data_table_context_menu::{
-    build_data_table_context_menu_items, format_row_as_sql_delete, format_row_as_sql_insert, format_row_as_sql_update, format_rows_as_sql_insert, format_rows_as_sql_update, invoke, resolve_data_table_cell_from_event,
-    resolve_data_table_header_col_from_event, resolve_set_value_actions, row_to_named_record, serialize_cells, serialize_data_table_column_values, serialize_data_table_rows_as_csv, serialize_data_table_rows_as_json, serialize_data_table_rows_as_tsv,
-    set_value_action_label, BuildDataTableContextMenuArgs, CellContext, CopyFormat, DataTableContextMenuHandlers, DataTableContextMenuLabels, DomElement, HeaderFreeze,
-    HeaderPresentation, HeaderSort, HeaderStats, MenuAction, NativeMenuItemDef, RowKind, SerializeFormat, SetValueAction,
+    build_data_table_context_menu_items, format_row_as_sql_delete, format_row_as_sql_insert,
+    format_row_as_sql_update, format_rows_as_sql_insert, format_rows_as_sql_update, invoke,
+    resolve_data_table_cell_from_event, resolve_data_table_header_col_from_event,
+    resolve_set_value_actions, row_to_named_record, serialize_cells,
+    serialize_data_table_column_values, serialize_data_table_rows_as_csv,
+    serialize_data_table_rows_as_json, serialize_data_table_rows_as_tsv, set_value_action_label,
+    BuildDataTableContextMenuArgs, CellContext, CopyFormat, DataTableContextMenuHandlers,
+    DataTableContextMenuLabels, DomElement, HeaderFreeze, HeaderPresentation, HeaderSort,
+    HeaderStats, MenuAction, NativeMenuItemDef, RowKind, SerializeFormat, SetValueAction,
     SetValueActionId, SetValueState, LOAD_CANDIDATES_LABEL_KEY,
 };
+pub use database_types::{
+    default_escape_sql_value, escape_ident, format_connection_addr, get_db_icon, get_db_label,
+    get_driver_icon_map, get_driver_icon_parents, get_escape_sql_value,
+    normalize_index_database_field_default, sort_db_types_by_popularity, ConnectionAddrInput,
+    DatabaseRegistry, DatabaseTypeMeta, DbIconInfo, EscapeSqlValue, PopularityValue,
+    SqlValueEscaper, SshTunnelAddr, DB_TYPE_POPULARITY_ORDER, DEFAULT_MAX_DATABASE_INDEX,
+};
 pub use dedicated_db_session::{
-    DatabaseOverride, DedicatedConnectResult, DedicatedSessionPorts, DedicatedSessionService, ListDatabasesResult,
+    DatabaseOverride, DedicatedConnectResult, DedicatedSessionPorts, DedicatedSessionService,
+    ListDatabasesResult,
 };
-pub use dismiss_prefs::{
-    create_dismiss_prefs, DismissPrefs,
-};
+pub use dismiss_prefs::{create_dismiss_prefs, DismissPrefs};
 pub use driver_capabilities::{
-    capabilities_for_db_session, has_schema_level, relation_schema_for, supports_offset, CapabilityAnswer, SessionCapabilitiesEntry,
+    capabilities_for_db_session, has_schema_level, relation_schema_for, supports_offset,
+    CapabilityAnswer, SessionCapabilitiesEntry,
 };
 pub use driver_command_ids::{
     ESTIMATE_TABLE_ROWS_COMMAND, LIST_PROCESSES_COMMAND, SERVER_STATUS_SNAPSHOT_COMMAND,
 };
-pub use error_message::{
-    ErrorLike,
-};
+pub use error_message::ErrorLike;
 pub use export_capability::{
-    driver_export_scope, min_scope, resolve_export_scope, supports_any_export, supports_full_table_export, DataExportCapability, ExportDriverMeta,
+    driver_export_scope, min_scope, resolve_export_scope, supports_any_export,
+    supports_full_table_export, DataExportCapability, ExportDriverMeta,
 };
-pub use export_data::{
-    ExportDataFormat, ExportDataScope,
-};
+pub use export_data::{ExportDataFormat, ExportDataScope};
 pub use export_format::{
-    apply_csv_formula_guard, build_provided_export_filename, bytes_to_xlsx_cell, default_escape_sql_literal, escape_sql_ident, escape_sql_literal, format_extension, format_rows_as_text,
-    format_rows_as_xlsx, format_sql_insert_script, format_sql_update_script, mysql_escape_sql_literal, sql_quote_char, text_mime_type, to_xlsx_cell, update_key_column,
-    xlsx_sheet_rows, BinaryExportResult, ExportColumn, ExportFormatError, FormatRowsOptions, TextExportResult, XlsxCellValue, SQL_INSERT_BATCH_SIZE,
-    XLSX_MIME_TYPE,
+    apply_csv_formula_guard, build_provided_export_filename, bytes_to_xlsx_cell,
+    default_escape_sql_literal, escape_sql_ident, escape_sql_literal, format_extension,
+    format_rows_as_text, format_rows_as_xlsx, format_sql_insert_script, format_sql_update_script,
+    mysql_escape_sql_literal, sql_quote_char, text_mime_type, to_xlsx_cell, update_key_column,
+    xlsx_sheet_rows, BinaryExportResult, ExportColumn, ExportFormatError, FormatRowsOptions,
+    TextExportResult, XlsxCellValue, SQL_INSERT_BATCH_SIZE, XLSX_MIME_TYPE,
 };
 pub use export_table_structure::{
-    export_table_structure_to_file, DdlDialect, DdlQuery, DdlRowExtractor, DdlFetcher, ExportTableStructureResult, SqlDialectProvider, StructureExportInput,
-    StructureExporter,
+    export_table_structure_to_file, DdlDialect, DdlFetcher, DdlQuery, DdlRowExtractor,
+    ExportTableStructureResult, SqlDialectProvider, StructureExportInput, StructureExporter,
 };
-pub use extract_questions::{
-    extract_questions, parse_tool_call_questions, ExtractQuestionsResult,
-};
+pub use extract_questions::{extract_questions, parse_tool_call_questions, ExtractQuestionsResult};
 pub use fetch_relation_ddl::{
-    copy_rich_text_to_clipboard, copy_to_clipboard, fetch_relation_ddl, CachedDdlFetcher, ClipboardSteps, DdlRowValueExtractor, ObjectDdlFetcher, RelationDdlDialect,
+    copy_rich_text_to_clipboard, copy_to_clipboard, fetch_relation_ddl, CachedDdlFetcher,
+    ClipboardSteps, DdlRowValueExtractor, ObjectDdlFetcher, RelationDdlDialect,
     RelationDialectProvider, RichClipboardSteps,
 };
-pub use filter_db_types::{
-    filter_db_types_by_query, DbTypeOption,
-};
+pub use filter_db_types::{filter_db_types_by_query, DbTypeOption};
 pub use filter_operators::{
-    cell_types_for_operator, convert_filter_value, default_operator_for_column, dialect_operators_by_cell_type, filter_operator_metas, like_case_insensitive_for_meta, normalize_operator_for_column, operator_meta,
-    operators_by_cell_type, operators_for_column, operators_for_driver, supported_operators_for_meta, value_input_for, value_input_for_literal, ALL_CELL_TYPES, ALL_OPERATORS,
+    cell_types_for_operator, convert_filter_value, default_operator_for_column,
+    dialect_operators_by_cell_type, filter_operator_metas, like_case_insensitive_for_meta,
+    normalize_operator_for_column, operator_meta, operators_by_cell_type, operators_for_column,
+    operators_for_driver, supported_operators_for_meta, value_input_for, value_input_for_literal,
     FilterDriverMeta, FilterOperatorGroup, FilterOperatorMeta, FilterValue, FilterValueInputKind,
+    ALL_CELL_TYPES, ALL_OPERATORS,
+};
+pub use filter_types::{
+    FilterCondition, FilterConnector, FilterOperator, DIALECT_FILTER_OPERATORS,
+    EXISTING_FILTER_OPERATORS, SHARED_FILTER_OPERATORS,
 };
 pub use fk_navigation::{
-    build_fk_filters, find_foreign_key, fk_nav_key, index_foreign_keys, pick_anchor_row, scroll_top_for_anchor_row, AnchorInput,
-    AnchorResult, FkBreadcrumbModel, FkFilterTarget, FkGroupAffordance, FkIndex, FkNavInput, FkNavTargetIdentity, GridViewport,
-    NavValue, FK_NAV_MAX_DEPTH,
+    build_fk_filters, find_foreign_key, fk_nav_key, index_foreign_keys, pick_anchor_row,
+    scroll_top_for_anchor_row, AnchorInput, AnchorResult, FkBreadcrumbModel, FkFilterTarget,
+    FkGroupAffordance, FkIndex, FkNavInput, FkNavTargetIdentity, GridViewport, NavValue,
+    FK_NAV_MAX_DEPTH,
 };
 pub use fk_referenced_by::{
-    build_inbound_filters, catalog_key, inbound_catalog, open_referencing_rows, referenced_values_of_row, CatalogScope, CreatedPanel,
-    GridErrorClassifier, InboundCatalogCache, InboundCatalogFetcher, InboundForeignKeyCatalog, InboundForeignKeyRef, NavEntry, NavOrigin, OpenReferencingRowsInput,
-    OutcomeError, OutcomeErrorCode, ReferencedByOutcome, ReferencingRowsHost, SourcePanelInfo, TableChangeContext as InboundTableChangeContext, MAX_REFERENCING_TABS, NO_REFERENCES_EMPTY,
-    PROBE_FAILED_MESSAGE,
+    build_inbound_filters, catalog_key, inbound_catalog, open_referencing_rows,
+    referenced_values_of_row, CatalogScope, CreatedPanel, GridErrorClassifier, InboundCatalogCache,
+    InboundCatalogFetcher, InboundForeignKeyCatalog, InboundForeignKeyRef, NavEntry, NavOrigin,
+    OpenReferencingRowsInput, OutcomeError, OutcomeErrorCode, ReferencedByOutcome,
+    ReferencingRowsHost, SourcePanelInfo, TableChangeContext as InboundTableChangeContext,
+    MAX_REFERENCING_TABS, NO_REFERENCES_EMPTY, PROBE_FAILED_MESSAGE,
 };
 pub use fk_selector::{
-    candidates_to_picker_options, fk_group_is_pickable, format_fk_candidate, index_fk_candidate_sources, FkCandidateGroup, FkCandidateSource, FkCandidateSourceIndex, FK_SELECTOR_CANDIDATE_LIMIT,
+    candidates_to_picker_options, fk_group_is_pickable, format_fk_candidate,
+    index_fk_candidate_sources, FkCandidateGroup, FkCandidateSource, FkCandidateSourceIndex,
+    FK_SELECTOR_CANDIDATE_LIMIT,
 };
 pub use global_text_selection::{
-    is_interactive_control, is_native_selectable, is_selectable, is_selectable_hint, should_prevent_select_all, ContextMenuSuppressor, DragMouseDownInput, DragSelectionGuard,
-    RightDragSuppressor, SelectAllTarget, SelectionSnapshot, DOM_GAP_SURFACES, INTERACTIVE_CONTROL_SELECTOR, NATIVE_SELECTABLE_SELECTOR, SELECTABLE_HINT_SELECTOR,
+    is_interactive_control, is_native_selectable, is_selectable, is_selectable_hint,
+    should_prevent_select_all, ContextMenuSuppressor, DragMouseDownInput, DragSelectionGuard,
+    RightDragSuppressor, SelectAllTarget, SelectionSnapshot, DOM_GAP_SURFACES,
+    INTERACTIVE_CONTROL_SELECTOR, NATIVE_SELECTABLE_SELECTOR, SELECTABLE_HINT_SELECTOR,
+};
+pub use grid_cell::{
+    build_grid_cell_view, cell_command, dispatch_cell_event, CellChild, CellCommand, CellEvent,
+    CellRendererView, CellWriteTarget, ColumnCellFacts, DispatchOutcome, EditorCellFacts,
+    FkButtonView, FkCellAffordance, FkTextFn, FkTextKind, GridCellInput, GridCellView, StickyInfo,
+    StickyStyle, CELL_TEST_ID, CLASS_BASE, CLASS_DIRTY_BG, CLASS_DIRTY_BORDER, CLASS_DIRTY_MARK,
+    CLASS_FK_JUMP, CLASS_FK_PICK, CLASS_STICKY, CLASS_STICKY_OVERLAY, EDITOR_KIND_ENUM,
+    ROLE_GRIDCELL,
+};
+pub use grid_clipboard::{
+    build_rows_matrix, build_selection_matrix, escape_csv_field, escape_html_cell_text,
+    escape_markdown_cell_text_value, escape_markdown_field, parse_clipboard_matrix,
+    serialize_clipboard_cells, sniff_clipboard_delimiter, to_clipboard_range, utf8_byte_length,
+    ClipboardDelimiter, ClipboardFormat, ClipboardMatrix, ClipboardParseResult,
+    GridClipboardAnchor, GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem,
+    PasteProblemCode, SerializeCellsOptions, GRID_PASTE_CHUNK_CELLS, GRID_PASTE_CONFIRM_CELLS,
+    GRID_PASTE_MAX_BYTES, GRID_PASTE_MAX_CELLS,
 };
 pub use grid_errors::{
     classify_grid_error, GRID_ERROR_CODES, GRID_ERROR_NAMESPACE, REGISTERED_PREFIXES,
 };
-pub use grid_event_guards::{
-    is_composing_event, ComposingEventLike, EDITABLE_TARGET_SELECTOR,
+pub use grid_event_guards::{is_composing_event, ComposingEventLike, EDITABLE_TARGET_SELECTOR};
+pub use grid_paste_plan::{
+    clear_clipboard_source, clear_row_copy, column_writability, normalize_clipboard_text,
+    peek_clipboard_source, peek_row_copy, pending_cell_key, plan_paste, record_clipboard_source,
+    record_row_copy, row_copy_for_clipboard_text, source_for_clipboard_text, table_change_key,
+    ClipboardSource, ColumnWritability, ColumnWritabilityReason, PasteAlignment, PasteOverflow,
+    PastePlan, PastePlanOptions, RowCopyPayload,
 };
 pub use history_groups::{
-    find_group_for_database, group_query_history, HistoryGroupEntry, HistoryScope, QueryHistoryGroup, HISTORY_UNKNOWN_DB_KEY,
+    find_group_for_database, group_query_history, HistoryGroupEntry, HistoryScope,
+    QueryHistoryGroup, HISTORY_UNKNOWN_DB_KEY,
 };
-pub use host_error_message::{
-    extract_host_error_message, HostError,
-};
+pub use host_error_message::{extract_host_error_message, HostError};
 pub use host_lucide_map::{
-    build_host_lucide_by_id, host_lucide_seed, settings_section_icon_id, HOST_LUCIDE_MAP, SETTINGS_SECTION_LUCIDE_MAP,
+    build_host_lucide_by_id, host_lucide_seed, settings_section_icon_id, HOST_LUCIDE_MAP,
+    SETTINGS_SECTION_LUCIDE_MAP,
 };
-pub use icon_ids::{
-    UI_ICON_IDS, UiIconId,
-};
+pub use icon_ids::{UiIconId, UI_ICON_IDS};
 pub use icon_resolver_api::{
-    default_placeholder_for_db, get_active_icon_resolver, resolve_with_active, set_active_icon_resolver, ui_placeholder, ICON_KIND_LUCIDE, ICON_KIND_PLACEHOLDER, ICON_KIND_URL,
+    default_placeholder_for_db, get_active_icon_resolver, resolve_with_active,
+    set_active_icon_resolver, ui_placeholder, ICON_KIND_LUCIDE, ICON_KIND_PLACEHOLDER,
+    ICON_KIND_URL,
 };
 pub use import_connection_file::{
     import_file_display_name, import_file_password_policy, ImportPasswordPolicy,
 };
+pub use import_data::{
+    decode_import_base64, decode_import_text, dedupe_columns, detect_csv_delimiter,
+    detect_import_format, generate_insert_sql, is_supported_encoding, parse_csv_import,
+    parse_import_data, parse_json_import, parse_xlsx, parse_xlsx_import, CsvParseOptions,
+    ImportDiagnostic, ImportEmptyFieldPolicy, ImportFormat, ImportParseError, ImportParseErrorKind,
+    ImportParseResult, ImportTextDecoder, JsonParseOptions, ParsedData, Utf8TextDecoder,
+    XlsxBookReader, XlsxParseOptions, XlsxParseResult, XlsxWorkbook, IMPORT_ENCODINGS,
+};
 pub use import_execution::{
-    build_multi_row_insert_sql, execute_import, plan_import_chunks, AbortSignal, ImportBatch, ImportChunk, ImportColumnPair, ImportCommitMode,
-    ImportErrorStrategy, ImportFinalStatus, ImportProgress, ImportProgressStatus, ImportRowFailure, ImportRunResult, ImportSqlDialect, ImportSqlOptions,
-    ImportStreamEvent, ImportStreamProgress, ImportTransport, PlanImportChunksOptions, IMPORT_DEFAULT_MAX_BATCHES_PER_CHUNK, IMPORT_DEFAULT_MAX_ROWS_PER_BATCH, IMPORT_DEFAULT_MAX_SQL_BYTES, IMPORT_STREAM_GAP,
+    build_multi_row_insert_sql, execute_import, plan_import_chunks, AbortSignal, ImportBatch,
+    ImportChunk, ImportColumnPair, ImportCommitMode, ImportErrorStrategy, ImportFinalStatus,
+    ImportProgress, ImportProgressStatus, ImportRowFailure, ImportRunResult, ImportSqlDialect,
+    ImportSqlOptions, ImportStreamEvent, ImportStreamProgress, ImportTransport,
+    PlanImportChunksOptions, IMPORT_DEFAULT_MAX_BATCHES_PER_CHUNK,
+    IMPORT_DEFAULT_MAX_ROWS_PER_BATCH, IMPORT_DEFAULT_MAX_SQL_BYTES, IMPORT_STREAM_GAP,
 };
 pub use kv_ai_context::{
     build_kv_ai_context, compose_kv_ai_message, has_kv_ai_facts, KvAiContext, KvAiFacts,
 };
 pub use kv_slot_state::{
-    create_kv_slot_state, get_kv_slot_state, prune_kv_slot_states, reset_kv_slot_states_for_tests, KvSlotSnapshot, KvSlotState,
+    create_kv_slot_state, get_kv_slot_state, prune_kv_slot_states, reset_kv_slot_states_for_tests,
+    KvSlotSnapshot, KvSlotState,
 };
 pub use locale_sync::{
-    apply_language, current_language, start_locale_sync, Defer, Deferred, LocaleEnginePorts, SettingsLanguageStore, DEFAULT_LOCALE,
+    apply_language, current_language, start_locale_sync, Defer, Deferred, LocaleEnginePorts,
+    SettingsLanguageStore, DEFAULT_LOCALE,
 };
 pub use migration_job_verdict::{
-    derive_cancel_disposition, derive_migration_job_verdict, derive_uncertainty, is_backend_scope_rejection, is_migration_job_in_flight, is_pipeline_budget_interception, is_plan_consumed_rejection, read_job_counter,
-    sum_job_counters, CancelDisposition, CommitBoundaryFacts, JobCounterValue, MigrationJobVerdict, MigrationJobVerdictInput, UncertaintyReason, VerdictSeverity,
-    PIPELINE_BUDGET_BYTES,
+    derive_cancel_disposition, derive_migration_job_verdict, derive_uncertainty,
+    is_backend_scope_rejection, is_migration_job_in_flight, is_pipeline_budget_interception,
+    is_plan_consumed_rejection, read_job_counter, sum_job_counters, CancelDisposition,
+    CommitBoundaryFacts, JobCounterValue, MigrationJobVerdict, MigrationJobVerdictInput,
+    UncertaintyReason, VerdictSeverity, PIPELINE_BUDGET_BYTES,
 };
-pub use native_context_menu::{
-    DRIVER_SDK_MENU_GAP, NATIVE_CONTEXT_MENU_SURFACE,
-};
-pub use query_sidebar_context_menu::{
-    build_favorite_sidebar_context_menu_items, build_history_sidebar_context_menu_items, build_history_sidebar_header_context_menu_items, BuildFavoriteSidebarContextMenuArgs, BuildHistorySidebarContextMenuArgs, BuildHistorySidebarHeaderContextMenuArgs, QuerySidebarFavoriteHandlers, QuerySidebarFavoriteLabels,
-    QuerySidebarHistoryHandlers, QuerySidebarHistoryHeaderHandlers, QuerySidebarHistoryHeaderLabels, QuerySidebarHistoryLabels, QuerySidebarMenuItem,
-};
-pub use query_stream::{
-    apply_query_stream_event, StreamableQueryTab,
-};
-pub use relation_identity::{
-    build_editor_relation_key, fold_segment, has_namespace, qualified_name_text, relation_base_name, relation_identity_key,
-};
+pub use native_context_menu::{DRIVER_SDK_MENU_GAP, NATIVE_CONTEXT_MENU_SURFACE};
 pub use object_browser_context_menu::{
-    build_object_browser_editor_menu_items, build_object_browser_list_menu_items, native_edit_menu_items, NativeEditItem, ObjectBrowserEditorMenuHandlers, ObjectBrowserEditorMenuLabels, ObjectBrowserListMenuHandlers, ObjectBrowserListMenuLabels,
+    build_object_browser_editor_menu_items, build_object_browser_list_menu_items,
+    native_edit_menu_items, NativeEditItem, ObjectBrowserEditorMenuHandlers,
+    ObjectBrowserEditorMenuLabels, ObjectBrowserListMenuHandlers, ObjectBrowserListMenuLabels,
     ObjectBrowserMenuAction, ObjectBrowserMenuItem,
 };
 pub use object_filter::{
-    filter_table_items, get_object_filter, is_system_schema_name, match_name_pattern, matches_table_name_filter, should_show_database, should_show_schema,
+    filter_table_items, get_object_filter, is_system_schema_name, match_name_pattern,
+    matches_table_name_filter, should_show_database, should_show_schema,
     with_object_filter_options, ObjectFilterPrefs,
 };
 pub use query_execution_view_model::{
-    get_cancel_action_state, get_cancel_capability, to_query_execution_view_model, CancelActionState, CancelCapability,
-    QueryExecutionViewModel, QueryPhase,
+    get_cancel_action_state, get_cancel_capability, to_query_execution_view_model,
+    CancelActionState, CancelCapability, QueryExecutionViewModel, QueryPhase,
+};
+pub use query_sidebar_context_menu::{
+    build_favorite_sidebar_context_menu_items, build_history_sidebar_context_menu_items,
+    build_history_sidebar_header_context_menu_items, BuildFavoriteSidebarContextMenuArgs,
+    BuildHistorySidebarContextMenuArgs, BuildHistorySidebarHeaderContextMenuArgs,
+    QuerySidebarFavoriteHandlers, QuerySidebarFavoriteLabels, QuerySidebarHistoryHandlers,
+    QuerySidebarHistoryHeaderHandlers, QuerySidebarHistoryHeaderLabels, QuerySidebarHistoryLabels,
+    QuerySidebarMenuItem,
+};
+pub use query_stream::{apply_query_stream_event, StreamableQueryTab};
+pub use quick_look_dialog::{
+    binary_value_bytes, build_quick_look, bytes_to_base64, is_blob_type, is_json_value,
+    is_quick_lookable_value, pretty_json, raw_json_text, resolve_event, resolve_save,
+    save_blob_request, to_edit_string, BlobSaveRequest, CommitValue, QuickLookBody,
+    QuickLookEffect, QuickLookEvent, QuickLookInput, QuickLookModel, QuickLookView, SaveOutcome,
+    BINARY_TEST_ID, BLOB_TYPE_KEYWORDS, DIALOG_CLASS, JSON_TEST_ID, PRE_CLASS, TEXTAREA_CLASS,
+    TEXTAREA_ROWS, TEXTAREA_WRAP,
+};
+pub use relation_identity::{
+    build_editor_relation_key, fold_segment, has_namespace, qualified_name_text,
+    relation_base_name, relation_identity_key,
 };
 pub use result_editability::{
-    grid_read_only_message_key, is_column_editable, origin_channel_writable, resolve_grid_editability, resolve_result_editability, resolve_result_write_back, resolve_row_addressability, GridColumn,
-    GridEditability, GridReadOnlyReason, IdentityColumn, ResultTableRef, ServerEditability, RESULT_ORIGIN_WRITE_BACK_ENABLED,
+    grid_read_only_message_key, is_column_editable, origin_channel_writable,
+    resolve_grid_editability, resolve_result_editability, resolve_result_write_back,
+    resolve_row_addressability, GridColumn, GridEditability, GridReadOnlyReason, IdentityColumn,
+    ResultTableRef, ServerEditability, RESULT_ORIGIN_WRITE_BACK_ENABLED,
 };
 pub use schema_cache::{
-    cache_key, composite_cache_key, ddl_cache_key, DdlCacheIdentity, DdlCacheInvalidateScope, SchemaCacheFacade, SchemaObjectKind,
+    cache_key, composite_cache_key, ddl_cache_key, DdlCacheIdentity, DdlCacheInvalidateScope,
+    SchemaCacheFacade, SchemaObjectKind,
 };
 pub use schema_changing_sql::{
-    is_data_modifying_statement, is_schema_changing_statement, is_schema_mutating_statement, mask_semicolons_in_literals, split_sql_statements, sql_contains_data_modifying, sql_contains_schema_changing_ddl, sql_may_mutate_schema,
+    is_data_modifying_statement, is_schema_changing_statement, is_schema_mutating_statement,
+    mask_semicolons_in_literals, split_sql_statements, sql_contains_data_modifying,
+    sql_contains_schema_changing_ddl, sql_may_mutate_schema,
 };
 pub use schema_tree_context_menu::{
-    build_schema_tree_context_menu_items, BuildSchemaTreeContextMenuArgs, SchemaTreeAction, SchemaTreeContextMenuHandlers, SchemaTreeContextMenuLabels, SchemaTreeMenuItem, SchemaTreeNodeContextMenuPayload, SchemaTreeNodeKind,
-};
-pub use filter_types::{
-    DIALECT_FILTER_OPERATORS, EXISTING_FILTER_OPERATORS, FilterCondition, FilterConnector, FilterOperator, SHARED_FILTER_OPERATORS,
-};
-pub use grid_clipboard::{
-    build_rows_matrix, build_selection_matrix, escape_csv_field, escape_html_cell_text, escape_markdown_cell_text_value, escape_markdown_field, parse_clipboard_matrix, serialize_clipboard_cells,
-    sniff_clipboard_delimiter, to_clipboard_range, utf8_byte_length, ClipboardDelimiter, ClipboardFormat, ClipboardMatrix, ClipboardParseResult,
-    GridClipboardAnchor, GridClipboardRange, PasteParseErrorCode, PasteParseRefusal, PasteProblem, PasteProblemCode, SerializeCellsOptions, GRID_PASTE_CHUNK_CELLS,
-    GRID_PASTE_CONFIRM_CELLS, GRID_PASTE_MAX_BYTES, GRID_PASTE_MAX_CELLS,
-};
-pub use grid_paste_plan::{
-    clear_clipboard_source, clear_row_copy, column_writability, normalize_clipboard_text, peek_clipboard_source, peek_row_copy, pending_cell_key, plan_paste,
-    record_clipboard_source, record_row_copy, row_copy_for_clipboard_text, source_for_clipboard_text, table_change_key, ClipboardSource, ColumnWritability,
-    ColumnWritabilityReason, PasteAlignment, PasteOverflow, PastePlan, PastePlanOptions, RowCopyPayload,
-};
-pub use import_data::{
-    decode_import_base64, decode_import_text, dedupe_columns, detect_csv_delimiter, detect_import_format, generate_insert_sql, is_supported_encoding, parse_csv_import,
-    parse_import_data, parse_json_import, parse_xlsx, parse_xlsx_import, CsvParseOptions, ImportDiagnostic, ImportEmptyFieldPolicy, ImportFormat,
-    ImportParseError, ImportParseErrorKind, ImportParseResult, ImportTextDecoder, JsonParseOptions, ParsedData, Utf8TextDecoder, XlsxBookReader,
-    XlsxParseOptions, XlsxParseResult, XlsxWorkbook, IMPORT_ENCODINGS,
-};
-pub use grid_cell::{
-    build_grid_cell_view, cell_command, dispatch_cell_event, CellChild, CellCommand, CellEvent, CellRendererView, CellWriteTarget,
-    ColumnCellFacts, DispatchOutcome, EditorCellFacts, FkButtonView, FkCellAffordance, FkTextKind, GridCellInput, GridCellView,
-    StickyInfo, StickyStyle, CLASS_BASE, CLASS_DIRTY_BG, CLASS_DIRTY_BORDER, CLASS_DIRTY_MARK, CLASS_FK_JUMP, CLASS_FK_PICK,
-    CLASS_STICKY, CLASS_STICKY_OVERLAY, CELL_TEST_ID, EDITOR_KIND_ENUM, FkTextFn, ROLE_GRIDCELL,
-};
-pub use data_table_bits::{
-    bridge_availability, density_row_height_delta, fk_selector_label, fk_text_with_selector, row_height_for_density, ClipboardCellCoord, FkSelectorTranslator, GridClipboardHandlers,
-    DATA_TABLE_BITS_GAP, DATA_TABLE_BITS_SURFACE, DATA_TABLE_ROW_HEIGHT, FK_SELECTOR_PICK_FROM_KEY,
-};
-pub use quick_look_dialog::{
-    build_quick_look, binary_value_bytes, bytes_to_base64, is_blob_type, is_json_value, is_quick_lookable_value, pretty_json, raw_json_text,
-    resolve_event, resolve_save, save_blob_request, to_edit_string, BlobSaveRequest, CommitValue, QuickLookBody, QuickLookEffect,
-    QuickLookEvent, QuickLookInput, QuickLookModel, QuickLookView, SaveOutcome, BINARY_TEST_ID, BLOB_TYPE_KEYWORDS, DIALOG_CLASS,
-    JSON_TEST_ID, PRE_CLASS, TEXTAREA_CLASS, TEXTAREA_ROWS, TEXTAREA_WRAP,
+    build_schema_tree_context_menu_items, BuildSchemaTreeContextMenuArgs, SchemaTreeAction,
+    SchemaTreeContextMenuHandlers, SchemaTreeContextMenuLabels, SchemaTreeMenuItem,
+    SchemaTreeNodeContextMenuPayload, SchemaTreeNodeKind,
 };
 // The T234 keyset paging vocabulary: the aggregate (`types/index`)
 // re-exports everything `types/keyset.ts` declares, so the crate root
 // carries the same names.
 pub use keyset_paging::{
-    apply_paging_info, cursor_for_page, empty_keyset_paging_state, filter_signature, is_usable_boundary, next_request_cursor, order_signature, paging_signature,
-    push_cursor, reanchor, KeysetCursor, KeysetPagingState, KeysetRequestPlan, PushedCursor, KEYSET_STACK_LIMIT,
+    apply_paging_info, cursor_for_page, empty_keyset_paging_state, filter_signature,
+    is_usable_boundary, next_request_cursor, order_signature, paging_signature, push_cursor,
+    reanchor, KeysetCursor, KeysetPagingState, KeysetRequestPlan, PushedCursor, KEYSET_STACK_LIMIT,
 };
 pub use keyset_types::{
     CursorValue, KeysetUnavailableReason, OrderColumn, PagePagingInfo, PagingMode,
 };
 pub use kv_workspace::{
-    capability_key_for_slot, get_kv_slot_component, has_kv_slot_capability, KvDriverMeta, KvSlotComponent, KvSlotComponentProvider, KvSlotMetaProvider, KvSlotName,
+    capability_key_for_slot, get_kv_slot_component, has_kv_slot_capability, KvDriverMeta,
+    KvSlotComponent, KvSlotComponentProvider, KvSlotMetaProvider, KvSlotName,
     KvWorkspaceCapabilities, KV_SLOT_NAMES,
 };
 pub use load_batch_export_table::{
-    load_batch_export_table_data, BatchDdlFetcher, BatchDdlRowExtractor, LoadBatchExportDeps, LoadBatchExportTableParams, RelationSchemaProvider, SchemaFetcher,
-    TableDataFetcher, TableDataRequest, DEFAULT_MAX_ROWS, DEFAULT_PAGE_SIZE,
+    load_batch_export_table_data, BatchDdlFetcher, BatchDdlRowExtractor, LoadBatchExportDeps,
+    LoadBatchExportTableParams, RelationSchemaProvider, SchemaFetcher, TableDataFetcher,
+    TableDataRequest, DEFAULT_MAX_ROWS, DEFAULT_PAGE_SIZE,
 };
 pub use main_window_context_menu::{
-    build_main_blank_context_menu_items, build_main_connection_context_menu_items, build_main_group_context_menu_items, invoke as invoke_main_window, MainWindowAction, MainWindowConnectionHandlers, MainWindowContextMenuLabels, MainWindowMenuItem,
-    MoveTarget,
-};
-pub use migration_job_hydration::{
-    bind_backend_client, bound_backend_client, classify_job_view, hydrate_migration_jobs, is_stale_plan_error, job_kinds, latest_apply_job, update_migration_job_projection,
-    ErrorLike as MigrationErrorLike, GetJobFn, JobClassification, JobState, JobView, ListJobsFn, MigrationJobClient, MigrationWindow,
-    MigrationJobHydration, STALE_PLAN_ERROR_CODES,
-};
-pub use named_views::{
-    build_named_view_export, is_host_filter_operator, named_view_scope_key, named_views_available, normalize_view_name, normalized_name_key, parse_named_view_export, read_view_filters,
-    resolve_import_name, sort_named_views, view_from_table_state, view_names_equal, views_for_scope, BackendClientCapabilities, NamedView, NamedViewExportFile,
-    NamedViewScope, PortFilterCondition, TableStateForView, ViewFilterReadout, ViewFromTableStateOptions, NAMED_VIEW_EXPORT_VERSION,
-};
-pub use panel_context_path::{
-    format_panel_context_path, PanelContextPathArgs,
-};
-pub use process_list_result::{
-    command_result_columns, command_result_rows, default_process_columns, process_column_label_key, process_record_to_row, ProcessColumnDef,
-};
-pub use product_features::{
-    is_product_feature_enabled, ProductFeatureKey, PRODUCT_FEATURE_KEYS,
+    build_main_blank_context_menu_items, build_main_connection_context_menu_items,
+    build_main_group_context_menu_items, invoke as invoke_main_window, MainWindowAction,
+    MainWindowConnectionHandlers, MainWindowContextMenuLabels, MainWindowMenuItem, MoveTarget,
 };
 pub use metadata::{
-    BatchFlush, CurrentCallContext, CurrentProvenanceContext, ExecutionTarget, InvalidationDecision, InvalidationReason, MetadataBatcher, MetadataBatcherOptions,
-    MetadataClock, MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget, ObjectTarget, ResultProvenance, SessionHandle,
-    TemporaryResult, check_temporary_result, is_provenance_current, metadata_batch_bucket, metadata_cache_key, metadata_config_bucket, metadata_session_key, read_temporary_result,
+    check_temporary_result, is_provenance_current, metadata_batch_bucket, metadata_cache_key,
+    metadata_config_bucket, metadata_session_key, read_temporary_result, BatchFlush,
+    CurrentCallContext, CurrentProvenanceContext, ExecutionTarget, InvalidationDecision,
+    InvalidationReason, MetadataBatcher, MetadataBatcherOptions, MetadataClock,
+    MetadataIdentityInput, MetadataSessionIdentity, MetadataTarget, NamespaceTarget, ObjectTarget,
+    ResultProvenance, SessionHandle, TemporaryResult,
 };
+pub use migration_job_hydration::{
+    bind_backend_client, bound_backend_client, classify_job_view, hydrate_migration_jobs,
+    is_stale_plan_error, job_kinds, latest_apply_job, update_migration_job_projection,
+    ErrorLike as MigrationErrorLike, GetJobFn, JobClassification, JobState, JobView, ListJobsFn,
+    MigrationJobClient, MigrationJobHydration, MigrationWindow, STALE_PLAN_ERROR_CODES,
+};
+pub use named_views::{
+    build_named_view_export, is_host_filter_operator, named_view_scope_key, named_views_available,
+    normalize_view_name, normalized_name_key, parse_named_view_export, read_view_filters,
+    resolve_import_name, sort_named_views, view_from_table_state, view_names_equal,
+    views_for_scope, BackendClientCapabilities, NamedView, NamedViewExportFile, NamedViewScope,
+    PortFilterCondition, TableStateForView, ViewFilterReadout, ViewFromTableStateOptions,
+    NAMED_VIEW_EXPORT_VERSION,
+};
+pub use panel_context_path::{format_panel_context_path, PanelContextPathArgs};
+pub use process_list_result::{
+    command_result_columns, command_result_rows, default_process_columns, process_column_label_key,
+    process_record_to_row, ProcessColumnDef,
+};
+pub use product_features::{is_product_feature_enabled, ProductFeatureKey, PRODUCT_FEATURE_KEYS};
 // seg3's panel modules re-export several names already present at the root
 // (from the parent's established facades); only their unique names are listed
 // here so the root keeps one binding per name.
 pub use panel_exec_cleanup::{
-    can_cancel_pane, cancel_and_cleanup_exec, cancel_and_cleanup_pane_exec, request_pane_cancel, session_keys_of_panel, ExecMap, PaneCancelStore, PanelExecDeps,
-    PanelType, SessionController, PANEL_EXEC_CLEANUP_ASYNC_GAP, PANEL_EXEC_CLEANUP_GAP, PANEL_EXEC_CLEANUP_SURFACE, Panel,
+    can_cancel_pane, cancel_and_cleanup_exec, cancel_and_cleanup_pane_exec, request_pane_cancel,
+    session_keys_of_panel, ExecMap, PaneCancelStore, Panel, PanelExecDeps, PanelType,
+    SessionController, PANEL_EXEC_CLEANUP_ASYNC_GAP, PANEL_EXEC_CLEANUP_GAP,
+    PANEL_EXEC_CLEANUP_SURFACE,
 };
 pub use panel_query_context::{
-    panel_target_database, panel_target_schema, QueryPanelContext, SchemaStateForPanel, SqlNamespace,
+    panel_target_database, panel_target_schema, QueryPanelContext, SchemaStateForPanel,
+    SqlNamespace,
 };
 pub use panel_result_edit::{
-    assert_result_writable, columns_from_key, columns_key, effect_dependency_key, effect_request, result_edit_key, start_effect, verdict_view,
-    PanelResultEditStore, ResolveTicket, ResultEditabilityOptions, ResultOriginRequest, ResultWritableError, VerdictView, PANEL_RESULT_EDIT_GAP,
+    assert_result_writable, columns_from_key, columns_key, effect_dependency_key, effect_request,
+    result_edit_key, start_effect, verdict_view, PanelResultEditStore, ResolveTicket,
+    ResultEditabilityOptions, ResultOriginRequest, ResultWritableError, VerdictView,
+    PANEL_RESULT_EDIT_GAP,
 };
 pub use panel_store::{
-    is_pane_key_of_panel, pane_args, pane_id_of_pane_key, pane_key, pane_keys_of_panel, panel_id_of_pane_key, resolve_focused_pane_id, resolve_next_active,
-    sync_pane_focus, validate_batch, BindParams, CommitCellRequest, ExecTable, FocusPatch, PanelExecState, PanelPatch,
-    PanelState, PanelStore, PanelStoreHost, PendingHistoryQuery, ResultColumn, ResultEdit, ResultView, RunQueryRequest,
-    StorePanel, StorePanelType, DEFAULT_PANE_ID, PANE_SEPARATOR, PANEL_STORE_GAP, PANEL_STORE_SURFACE,
+    is_pane_key_of_panel, pane_args, pane_id_of_pane_key, pane_key, pane_keys_of_panel,
+    panel_id_of_pane_key, resolve_focused_pane_id, resolve_next_active, sync_pane_focus,
+    validate_batch, BindParams, CommitCellRequest, ExecTable, FocusPatch, PanelExecState,
+    PanelPatch, PanelState, PanelStore, PanelStoreHost, PendingHistoryQuery, ResultColumn,
+    ResultEdit, ResultView, RunQueryRequest, StorePanel, StorePanelType, DEFAULT_PANE_ID,
+    PANEL_STORE_GAP, PANEL_STORE_SURFACE, PANE_SEPARATOR,
 };
 pub use panel_types::{
-    next_panel_id, panel_schema, reset_panel_id_counter, typed_resolve_next_active, ConnectionContext, CreateTablePanel, DatabaseObjectPanel, DbObjectKind,
-    ErDiagramPanel, FkOrigin, MonitorSubPage, ObjectsPanel, PanelBase, ProcessListCacheData, ProcessesPanel, PrivilegesPanel,
-    QueryPanel, RedisDbPanel, RedisPendingAction, RedisTab, ServerStatusCache, ServerStatusPanel, SubTabId, TablePanel,
-    TypedPanel, ViewPanel, PANEL_TYPES_GAP, PANEL_TYPES_SURFACE,
+    next_panel_id, panel_schema, reset_panel_id_counter, typed_resolve_next_active,
+    ConnectionContext, CreateTablePanel, DatabaseObjectPanel, DbObjectKind, ErDiagramPanel,
+    FkOrigin, MonitorSubPage, ObjectsPanel, PanelBase, PrivilegesPanel, ProcessListCacheData,
+    ProcessesPanel, QueryPanel, RedisDbPanel, RedisPendingAction, RedisTab, ServerStatusCache,
+    ServerStatusPanel, SubTabId, TablePanel, TypedPanel, ViewPanel, PANEL_TYPES_GAP,
+    PANEL_TYPES_SURFACE,
 };
 pub use platform_shared::{
-    McpContentBlock, McpError, McpFetch, McpHttpResponse, McpJsonRpcError, McpRequestInit, McpToolCallResult, WebMcpClient,
-    WebMcpClientManager, WebMcpConnectedServer, WebMcpServerConfig, WebMcpToolInfo, format_call_tool_result, mcp_qualified_name,
+    format_call_tool_result, mcp_qualified_name, McpContentBlock, McpError, McpFetch,
+    McpHttpResponse, McpJsonRpcError, McpRequestInit, McpToolCallResult, WebMcpClient,
+    WebMcpClientManager, WebMcpConnectedServer, WebMcpServerConfig, WebMcpToolInfo,
 };
 // `ColumnSchema`/`IndexInfo`/`ForeignKeyInfo`/`TableSchema` keep a single
 // canonical definition in `connection_types`; `ColumnSchema` reaches the root
 // once through the `types` aggregate. `from_table_schema` now imports those
 // facade shapes, so there are no prediction slices to re-export here.
-pub use relation_prediction::{
-    ColumnPair, DECLARED_RELATION_BOOST, DEFAULT_AMBIGUITY_MARGIN, DEFAULT_HIGH_THRESHOLD, DEFAULT_MEDIUM_THRESHOLD, DeclaredForeignKey, EVIDENCE_WEIGHTS, EvidenceWeights,
-    PREDICTED_RELATION_BOOST, PredictionColumn, PredictionEvidence, PredictionEvidenceCode, PredictionOptions, PredictionTable, PredictionTier, RelatedTableHint,
-    RelatedTableOrigin, RelationCandidate, TypeFamily, is_generic_key_name, normalize_data_type, normalize_identifier, predict_relations, related_table_boost_map,
-    related_table_hints, singularize, split_identifier_words, to_prediction_table_from_schema, to_prediction_tables_from_schemas, type_family,
-};
 pub use query_exec_actions::{
-    extract_error, is_cancellation_error, notify_schema_actions, patch_exec, post_success_view_mode, query_error_transition, reduce_query_execution_state, run_start_state,
-    should_apply_event, transition_exec, ExecutionError, QueryCancelState, QueryExecState, QueryExecTable, QueryExecutionTransition, QueryTerminalState,
-    SchemaAction, GENERIC_FAILURE_KEY, QUERY_ERROR_QUOTA_CODE, QUERY_EXEC_ACTIONS_GAP, QUERY_EXEC_ACTIONS_SURFACE, QUOTA_MESSAGE_KEY, REFRESH_CONNECTION_EVENT,
+    extract_error, is_cancellation_error, notify_schema_actions, patch_exec,
+    post_success_view_mode, query_error_transition, reduce_query_execution_state, run_start_state,
+    should_apply_event, transition_exec, ExecutionError, QueryCancelState, QueryExecState,
+    QueryExecTable, QueryExecutionTransition, QueryTerminalState, SchemaAction,
+    GENERIC_FAILURE_KEY, QUERY_ERROR_QUOTA_CODE, QUERY_EXEC_ACTIONS_GAP,
+    QUERY_EXEC_ACTIONS_SURFACE, QUOTA_MESSAGE_KEY, REFRESH_CONNECTION_EVENT,
+};
+pub use relation_prediction::{
+    is_generic_key_name, normalize_data_type, normalize_identifier, predict_relations,
+    related_table_boost_map, related_table_hints, singularize, split_identifier_words,
+    to_prediction_table_from_schema, to_prediction_tables_from_schemas, type_family, ColumnPair,
+    DeclaredForeignKey, EvidenceWeights, PredictionColumn, PredictionEvidence,
+    PredictionEvidenceCode, PredictionOptions, PredictionTable, PredictionTier, RelatedTableHint,
+    RelatedTableOrigin, RelationCandidate, TypeFamily, DECLARED_RELATION_BOOST,
+    DEFAULT_AMBIGUITY_MARGIN, DEFAULT_HIGH_THRESHOLD, DEFAULT_MEDIUM_THRESHOLD, EVIDENCE_WEIGHTS,
+    PREDICTED_RELATION_BOOST,
 };
 pub use relative_time::{
-    RELATIVE_WINDOW_MS, RelativeTimeParts, RelativeTimeUnit, format_relative_time, get_relative_time_parts,
+    format_relative_time, get_relative_time_parts, RelativeTimeParts, RelativeTimeUnit,
+    RELATIVE_WINDOW_MS,
 };
-pub use resolve_ui_language::{
-    SupportedUiLanguage, SUPPORTED_UI_LANGUAGES,
-};
+pub use resolve_ui_language::{SupportedUiLanguage, SUPPORTED_UI_LANGUAGES};
 pub use row_to_record::row_to_record;
-pub use run_predefined_edit::{
-    predefined_edit_command, run_predefined_edit, NativeMenuPredefined,
-};
-pub use schema_diff_limitations_prefs::{
-    clear_schema_diff_limitations_dismissed, create_schema_diff_limitations_dismiss_prefs, is_schema_diff_limitations_dismissed, set_schema_diff_limitations_dismissed, SCHEMA_DIFF_LIMITATIONS_DISMISSED_KEY,
-};
-pub use schema_object_search::{
-    filter_object_search_results_by_type, filter_schema_objects_by_type, group_object_search_results, group_schema_objects, matching_columns, object_type_order, search_schema_objects, table_matches_object_search,
-    ObjectSearchFilters, ObjectSearchMatchField, ObjectSearchObjectType, ObjectSearchResult, ObjectSearchResultGroup, ObjectSearchSourceKind, SchemaObjectIndex, SchemaObjectIndexEntry,
-    SchemaObjectSearchIndex,
-};
-pub use server_status_trends::{
-    align_timestamp, card_rate_from_history, compute_trend_time_axis, desired_tick_count, format_byte_rate, format_bytes, format_rate, latest_series_value,
-    number_from, pick_tick_step, update_trend_history, CommandKey, StatusRecord, TrendAxisOptions, TrendKind, TrendPoint,
-    TrendPrevSample, TrendSeries, TrendSeriesDef, TrendTimeAxis, TrendUpdateInput, TrendUpdateResult, COMMAND_KEYS, DEFAULT_MIN_WINDOW_MS,
-    DEFAULT_REFRESH_PERIOD_MS, HISTORY_MAX, HISTORY_WINDOW_MS, TICK_STEP_CANDIDATES_MS, TREND_SERIES,
-};
-pub use splash::{
-    hide_splash_plan, run_startup_wait_task, HideSplashPlan, StartupSettlement, StartupWaitResult, HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
-};
-pub use sync_taxonomy::normalize_driver_id;
-pub use tunnel_draft::{
-    copy_tunnel_name, draft_to_saved_tunnel, empty_tunnel_draft, is_positive_port, is_tunnel_draft_valid, positive_port, saved_tunnel_to_draft, timeout_seconds,
-    tunnel_draft_problem, HttpProxyDraft, SshDraft, SshJumpDraft, TunnelDraft, TunnelDraftProblem, WebSocketDraft, DEFAULT_HTTP_PROXY_PORT,
-    DEFAULT_SSH_PORT, DEFAULT_TUNNEL_TIMEOUT, SAVED_TUNNEL_KINDS,
-};
-pub use value_search::{
-    base_cell_types, cell_types_for, filter_operator_for_mode, locate_conditions, locate_filter_logic, rank_tables, searchable_columns, target_key,
-    type_scopes_for_driver, value_search_targets, value_search_type_groups_for, Clock, DriverExtraTypes, ExtraTypesProvider, SchemaReader, SearchTableValuesRequest,
-    SearchTableValuesResponse, TableValueSearcher, ValueSearchDriver, ValueSearchDriverParams, ValueSearchLocateIntent, ValueSearchMode, ValueSearchProgress, ValueSearchStatus,
-    ValueSearchTableResult, ValueSearchTarget,
-};
-pub use theme_editor_colors::{
-    apply_sql_syntax_preset, build_editor_highlight_rules, default_editor_colors, editor_colors_from_json, editor_colors_with_pack_overlay, find_sql_property_names, is_sql_syntax_theme_id, parse_pack_editor_overlay,
-    read_editor_colors, set_pack_editor_color_overlay, EditorColorContract, EditorColors, ExtendedHighlightColors, HighlightRule, Palette, SqlSyntaxPreset,
-    StyleColors, SyntaxNodeSpan, CM_VARS, CODEMIRROR_COLOR_GAP, CODEMIRROR_HIGHLIGHT_GAP, SQL_SYNTAX_PRESETS,
-};
-pub use sql_bind_params::{
-    DEFAULT_ENABLE_AT, DEFAULT_ENABLE_DOLLAR_NAMED, DEFAULT_ENABLE_DOLLAR_POSITIONAL, DEFAULT_ENABLE_QUESTION, DEFAULT_ENABLE_TEMPLATE, ParamValue, SqlBindPayloadV2, SqlParam,
-    SqlParamDialectPolicy, SqlParamFilter, SqlParamKind, SqlParamOccurrence, SqlParamOccurrenceV2, SqlParamStableId, SqlParamSyntax, build_bind_payload_v2,
-    coerce_param_value, default_dialect_policy, get_param_label, is_sensitive_param_name, param_fingerprint, params_to_payload, parse_sql_param_occurrences, parse_sql_params,
-    sensitive_param_names, substitute_sql_params,
-};
-pub use sql_completion_context::{
-    contextual_keyword_completion, contextual_schema_completion, detect_alias_dot_context, extract_qualifier_parts, filter_completions_by_kind, filter_keywords_by_kind, infer_sql_completion_kind, is_table_context,
-    last_bare_sql_keyword, last_bare_sql_keyword_with_offset, CompletionContextInput, CompletionOption, CompletionOutcome, CompletionResult, CompletionSourceFn, SqlCompletionKind,
-    COLUMN_CONTEXT_ALLOWED_KEYWORDS, TABLE_CONTEXT_ALLOWED_KEYWORDS,
-};
-pub use sql_completions::{
-    keyword_completions, sql_function_completions, SqlFunctionCompletion, DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
-};
-pub use sql_format::{
-    LANGUAGE_MAP, SqlDialectLookup, SqlFormatConfig, SqlFormatRequest, SqlFormatter, SqlIndent, default_sql_format_options, format_sql,
-    sql_format_indentation, sql_format_language, DEFAULT_BREAK_BEFORE_BOOLEAN_OPERATORS, DEFAULT_INDENT_STYLE, DEFAULT_KEYWORD_CASE, DEFAULT_LINES_BETWEEN_QUERIES,
-};
-pub use sql_function_registry::{
-    DIALECT_ALIASES, DriverFunctionMeta, DriverFunctionRegistry, FunctionCompletion, FunctionEntry, FunctionParam, build_function_completions, common_functions,
-    get_driver_functions, get_function_entries, resolve_dialect_family, to_sql_function_completions, COMMON_FUNCTION_NAMES,
-};
-pub use sql_generator::{
-    format_table_identifier, generate_table_sql, BaseTableSqlGenerator, GeneratedSqlType, TableSqlDialect,
-};
-pub use sql_namespace_ops::{
-    namespace_branch_child_names, namespace_child_names, namespace_has_child as namespace_tree_has_child, overlay_column_map_owned,
-};
-pub use sql_editor_defaults::{
-    infer_default_schema, infer_default_table, table_clause_fingerprint, tables_referenced_in_sql, ReferencedRelation, RelationSourceKind, ScopeRelations, StatementRange,
-};
-pub use sql_file_execution::{
-    execution_error_message, sql_file_execution_plan, ConfirmationMode, ExecutionFailure, InvokeOutcome, SqlFileExecutionOutcome, SqlFileExecutionPlan, OVERWRITE_OPTION,
-    RESTORE_PROGRESS_EVENT, RESTORE_SQL_FILE_COMMAND, SQL_FILE_EXECUTION_GAP,
-};
-pub use run_to_chart::{
-    ChartTransformResult, has_renderable_chart, widget_run_to_chart_data,
-};
+pub use run_predefined_edit::{predefined_edit_command, run_predefined_edit, NativeMenuPredefined};
+pub use run_to_chart::{has_renderable_chart, widget_run_to_chart_data, ChartTransformResult};
 pub use run_to_result::widget_run_to_statement_result;
 pub use running_execution_close::{
-    ask_now_resolution, deadline_from, effective_retry_ms, gate_change_effects, guard_decision, guard_result, host_error_answer, initial_settle_state,
-    no_gate_answer, running_close_request, running_panes_of, settle_running_panes_step, settled_once, stoppable_panes, AskResolution, GateChangeEffects,
-    GuardDecision, RunningCloseDecision, RunningExecutionRequest, RunningPane, SettleOutcome, SettleState, RUNNING_CLOSE_POLL_MS, RUNNING_CLOSE_RETRY_MS,
+    ask_now_resolution, deadline_from, effective_retry_ms, gate_change_effects, guard_decision,
+    guard_result, host_error_answer, initial_settle_state, no_gate_answer, running_close_request,
+    running_panes_of, settle_running_panes_step, settled_once, stoppable_panes, AskResolution,
+    GateChangeEffects, GuardDecision, RunningCloseDecision, RunningExecutionRequest, RunningPane,
+    SettleOutcome, SettleState, RUNNING_CLOSE_POLL_MS, RUNNING_CLOSE_RETRY_MS,
     RUNNING_CLOSE_TIMEOUT_MS, RUNNING_EXECUTION_CLOSE_GAP, RUNNING_EXECUTION_CLOSE_SURFACE,
 };
 pub use scalar_cell_editors::{
-    build_number_view, build_temporal_view, build_text_view, common_flags, CommonEditorFlags, FocusStrategy, NumberEditorView, ScalarEditorInput,
-    TemporalEditorView, TemporalKindValue, TextEditorView, DEFAULT_TEMPORAL_KIND, SCALAR_CELL_EDITORS_GAP, SCALAR_CELL_EDITORS_SURFACE,
+    build_number_view, build_temporal_view, build_text_view, common_flags, CommonEditorFlags,
+    FocusStrategy, NumberEditorView, ScalarEditorInput, TemporalEditorView, TemporalKindValue,
+    TextEditorView, DEFAULT_TEMPORAL_KIND, SCALAR_CELL_EDITORS_GAP, SCALAR_CELL_EDITORS_SURFACE,
+};
+pub use schema_diff_limitations_prefs::{
+    clear_schema_diff_limitations_dismissed, create_schema_diff_limitations_dismiss_prefs,
+    is_schema_diff_limitations_dismissed, set_schema_diff_limitations_dismissed,
+    SCHEMA_DIFF_LIMITATIONS_DISMISSED_KEY,
+};
+pub use schema_object_search::{
+    filter_object_search_results_by_type, filter_schema_objects_by_type,
+    group_object_search_results, group_schema_objects, matching_columns, object_type_order,
+    search_schema_objects, table_matches_object_search, ObjectSearchFilters,
+    ObjectSearchMatchField, ObjectSearchObjectType, ObjectSearchResult, ObjectSearchResultGroup,
+    ObjectSearchSourceKind, SchemaObjectIndex, SchemaObjectIndexEntry, SchemaObjectSearchIndex,
+};
+pub use server_status_trends::{
+    align_timestamp, card_rate_from_history, compute_trend_time_axis, desired_tick_count,
+    format_byte_rate, format_bytes, format_rate, latest_series_value, number_from, pick_tick_step,
+    update_trend_history, CommandKey, StatusRecord, TrendAxisOptions, TrendKind, TrendPoint,
+    TrendPrevSample, TrendSeries, TrendSeriesDef, TrendTimeAxis, TrendUpdateInput,
+    TrendUpdateResult, COMMAND_KEYS, DEFAULT_MIN_WINDOW_MS, DEFAULT_REFRESH_PERIOD_MS, HISTORY_MAX,
+    HISTORY_WINDOW_MS, TICK_STEP_CANDIDATES_MS, TREND_SERIES,
+};
+pub use splash::{
+    hide_splash_plan, run_startup_wait_task, HideSplashPlan, StartupSettlement, StartupWaitResult,
+    HIDE_SPLASH_DELAY_MS, SPLASH_DOM_GAP, STARTUP_TASK_GAP,
+};
+pub use sql_bind_params::{
+    build_bind_payload_v2, coerce_param_value, default_dialect_policy, get_param_label,
+    is_sensitive_param_name, param_fingerprint, params_to_payload, parse_sql_param_occurrences,
+    parse_sql_params, sensitive_param_names, substitute_sql_params, ParamValue, SqlBindPayloadV2,
+    SqlParam, SqlParamDialectPolicy, SqlParamFilter, SqlParamKind, SqlParamOccurrence,
+    SqlParamOccurrenceV2, SqlParamStableId, SqlParamSyntax, DEFAULT_ENABLE_AT,
+    DEFAULT_ENABLE_DOLLAR_NAMED, DEFAULT_ENABLE_DOLLAR_POSITIONAL, DEFAULT_ENABLE_QUESTION,
+    DEFAULT_ENABLE_TEMPLATE,
+};
+pub use sql_completion_context::{
+    contextual_keyword_completion, contextual_schema_completion, detect_alias_dot_context,
+    extract_qualifier_parts, filter_completions_by_kind, filter_keywords_by_kind,
+    infer_sql_completion_kind, is_table_context, last_bare_sql_keyword,
+    last_bare_sql_keyword_with_offset, CompletionContextInput, CompletionOption, CompletionOutcome,
+    CompletionResult, CompletionSourceFn, SqlCompletionKind, COLUMN_CONTEXT_ALLOWED_KEYWORDS,
+    TABLE_CONTEXT_ALLOWED_KEYWORDS,
+};
+pub use sql_completions::{
+    keyword_completions, sql_function_completions, SqlFunctionCompletion,
+    DEFAULT_SQL_COMPLETION_DIALECT, SQL_COMPLETION_KEYWORDS,
+};
+pub use sql_editor_defaults::{
+    infer_default_schema, infer_default_table, table_clause_fingerprint, tables_referenced_in_sql,
+    ReferencedRelation, RelationSourceKind, ScopeRelations, StatementRange,
+};
+pub use sql_file_execution::{
+    execution_error_message, sql_file_execution_plan, ConfirmationMode, ExecutionFailure,
+    InvokeOutcome, SqlFileExecutionOutcome, SqlFileExecutionPlan, OVERWRITE_OPTION,
+    RESTORE_PROGRESS_EVENT, RESTORE_SQL_FILE_COMMAND, SQL_FILE_EXECUTION_GAP,
+};
+pub use sql_format::{
+    default_sql_format_options, format_sql, sql_format_indentation, sql_format_language,
+    SqlDialectLookup, SqlFormatConfig, SqlFormatRequest, SqlFormatter, SqlIndent,
+    DEFAULT_BREAK_BEFORE_BOOLEAN_OPERATORS, DEFAULT_INDENT_STYLE, DEFAULT_KEYWORD_CASE,
+    DEFAULT_LINES_BETWEEN_QUERIES, LANGUAGE_MAP,
+};
+pub use sql_function_registry::{
+    build_function_completions, common_functions, get_driver_functions, get_function_entries,
+    resolve_dialect_family, to_sql_function_completions, DriverFunctionMeta,
+    DriverFunctionRegistry, FunctionCompletion, FunctionEntry, FunctionParam,
+    COMMON_FUNCTION_NAMES, DIALECT_ALIASES,
+};
+pub use sql_generator::{
+    format_table_identifier, generate_table_sql, BaseTableSqlGenerator, GeneratedSqlType,
+    TableSqlDialect,
+};
+pub use sql_namespace_ops::{
+    namespace_branch_child_names, namespace_child_names,
+    namespace_has_child as namespace_tree_has_child, overlay_column_map_owned,
+};
+pub use sync_taxonomy::normalize_driver_id;
+pub use theme_editor_colors::{
+    apply_sql_syntax_preset, build_editor_highlight_rules, default_editor_colors,
+    editor_colors_from_json, editor_colors_with_pack_overlay, find_sql_property_names,
+    is_sql_syntax_theme_id, parse_pack_editor_overlay, read_editor_colors,
+    set_pack_editor_color_overlay, EditorColorContract, EditorColors, ExtendedHighlightColors,
+    HighlightRule, Palette, SqlSyntaxPreset, StyleColors, SyntaxNodeSpan, CM_VARS,
+    CODEMIRROR_COLOR_GAP, CODEMIRROR_HIGHLIGHT_GAP, SQL_SYNTAX_PRESETS,
+};
+pub use tunnel_draft::{
+    copy_tunnel_name, draft_to_saved_tunnel, empty_tunnel_draft, is_positive_port,
+    is_tunnel_draft_valid, positive_port, saved_tunnel_to_draft, timeout_seconds,
+    tunnel_draft_problem, HttpProxyDraft, SshDraft, SshJumpDraft, TunnelDraft, TunnelDraftProblem,
+    WebSocketDraft, DEFAULT_HTTP_PROXY_PORT, DEFAULT_SSH_PORT, DEFAULT_TUNNEL_TIMEOUT,
+    SAVED_TUNNEL_KINDS,
+};
+pub use value_search::{
+    base_cell_types, cell_types_for, filter_operator_for_mode, locate_conditions,
+    locate_filter_logic, rank_tables, searchable_columns, target_key, type_scopes_for_driver,
+    value_search_targets, value_search_type_groups_for, Clock, DriverExtraTypes,
+    ExtraTypesProvider, SchemaReader, SearchTableValuesRequest, SearchTableValuesResponse,
+    TableValueSearcher, ValueSearchDriver, ValueSearchDriverParams, ValueSearchLocateIntent,
+    ValueSearchMode, ValueSearchProgress, ValueSearchStatus, ValueSearchTableResult,
+    ValueSearchTarget,
 };
 // Duplicate grid/selection type names already re-exported by the parent's
 // grid_keyboard / table_changes facades are intentionally omitted here.
+pub use column_layout_prefs::{
+    column_layout_storage_key, persist_column_order, persist_column_widths,
+    read_persisted_column_layout, valid_order, valid_widths, ColumnLayoutStorage,
+    LayoutTableContext, PersistedColumnLayout, COLUMN_LAYOUT_GAP, COLUMN_LAYOUT_STORAGE_PREFIX,
+};
 pub use schema_column_loading::{
-    build_ensure_plan, column, invalidate_plan, load_relation_columns_step, project_relation_columns, read_bucket, read_identity, relation_batch_chunks,
-    relation_columns_cache_key, resolve_column_relations, BucketPlan, ConnectionSchemaState, EnsurePlan, ReadColumnsRow, RelationColumn, RelationColumns,
-    RelationRef, SchemaItem, SessionMetadataIdentity, DEFAULT_BATCH_DEBOUNCE_MS, RELATION_COLUMN_BATCH_SIZE, SCHEMA_COLUMN_LOADING_GAP, SCHEMA_COLUMN_LOADING_SURFACE,
+    build_ensure_plan, column, invalidate_plan, load_relation_columns_step,
+    project_relation_columns, read_bucket, read_identity, relation_batch_chunks,
+    relation_columns_cache_key, resolve_column_relations, BucketPlan, ConnectionSchemaState,
+    EnsurePlan, ReadColumnsRow, RelationColumn, RelationColumns, RelationRef, SchemaItem,
+    SessionMetadataIdentity, DEFAULT_BATCH_DEBOUNCE_MS, RELATION_COLUMN_BATCH_SIZE,
+    SCHEMA_COLUMN_LOADING_GAP, SCHEMA_COLUMN_LOADING_SURFACE,
 };
 pub use schema_store::{
-    apply_patch, bind_metadata_identity, cache_path_items, collect_table_leaf_names, commit_connection_patch, compute_is_multi_database, connection_field, create_empty_connection_schema,
-    empty_snapshot_field, is_schema_grouping_schema, is_system_database_name, known_table_names, latest_identity, load_databases_decision, merge_namespace, merge_namespace_path,
-    namespace_tree_of, omit_table_leaf, parse_path_hierarchy_database_entry, patch_connection_schema, record_session_error, register_path_aliases, remove_connection,
-    remove_relation, reset_store, resolve_preferred_database, resolve_visible_databases, schema_of_relation, set_active_connection, set_current_database, set_current_schema,
-    set_loaded_tables, set_selected, toggle_expand, LoadDatabasesDecision, LoadForConnectionOptions, NamespaceMergeKind, PathDatabaseEntry,
-    SchemaPatch, SchemaSessionState, SchemaStoreSnapshot, SchemaTableInfo, SetLoadedTablesOptions, VisibleDatabases, EMPTY_NAMESPACE, SCHEMA_STORE_GAP,
+    apply_patch, bind_metadata_identity, cache_path_items, collect_table_leaf_names,
+    commit_connection_patch, compute_is_multi_database, connection_field,
+    create_empty_connection_schema, empty_snapshot_field, is_schema_grouping_schema,
+    is_system_database_name, known_table_names, latest_identity, load_databases_decision,
+    merge_namespace, merge_namespace_path, namespace_tree_of, omit_table_leaf,
+    parse_path_hierarchy_database_entry, patch_connection_schema, record_session_error,
+    register_path_aliases, remove_connection, remove_relation, reset_store,
+    resolve_preferred_database, resolve_visible_databases, schema_of_relation,
+    set_active_connection, set_current_database, set_current_schema, set_loaded_tables,
+    set_selected, toggle_expand, LoadDatabasesDecision, LoadForConnectionOptions,
+    NamespaceMergeKind, PathDatabaseEntry, SchemaPatch, SchemaSessionState, SchemaStoreSnapshot,
+    SchemaTableInfo, SetLoadedTablesOptions, VisibleDatabases, EMPTY_NAMESPACE, SCHEMA_STORE_GAP,
     SCHEMA_STORE_HELPERS_SURFACE, SCHEMA_STORE_STATE_SURFACE, SCHEMA_STORE_SURFACE,
 };
 pub use schema_store_selectors::{
-    active_session_metadata_snapshot, binding_to_relation_requests, editor_relation_key, ensure_metadata_relations, get_metadata_relation, read_metadata_snapshot, relation_cache_key, relation_lookup_key,
-    resolve_editor_dialect_id, snapshot_key, DialectRegistryLookup, EditorMetadataCacheLike, EditorRelationKey, EditorRelationRequest, IdentifierFolder, QualifiedRelationId,
-    RelationBindingLike, SqlIdentifierSegment, SqlRelationSourceKind, SCHEMA_STORE_SELECTORS_GAP, SCHEMA_STORE_SELECTORS_SURFACE,
+    active_session_metadata_snapshot, binding_to_relation_requests, editor_relation_key,
+    ensure_metadata_relations, get_metadata_relation, read_metadata_snapshot, relation_cache_key,
+    relation_lookup_key, resolve_editor_dialect_id, snapshot_key, DialectRegistryLookup,
+    EditorMetadataCacheLike, EditorRelationKey, EditorRelationRequest, IdentifierFolder,
+    QualifiedRelationId, RelationBindingLike, SqlIdentifierSegment, SqlRelationSourceKind,
+    SCHEMA_STORE_SELECTORS_GAP, SCHEMA_STORE_SELECTORS_SURFACE,
 };
 pub use selection_actions::{
-    apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection, apply_reconcile_selection, apply_row_mode_transition, apply_row_select, apply_toggle_select_all, displayed_column_names,
-    normalize_cell_range, panel_column_order, reconcile_grid_selection, resolve_selection_patch, row_index_selection_reset, SelectionAction, SelectionOpts, SelectionPatch,
-    TableStateForSelection, CellCoord, CellRange, GridSelection, GridSelectionMode,
+    apply_begin_cell_selection, apply_clear_grid_selection, apply_grid_selection,
+    apply_reconcile_selection, apply_row_mode_transition, apply_row_select,
+    apply_toggle_select_all, displayed_column_names, normalize_cell_range, panel_column_order,
+    reconcile_grid_selection, resolve_selection_patch, row_index_selection_reset, CellCoord,
+    CellRange, GridSelection, GridSelectionMode, SelectionAction, SelectionOpts, SelectionPatch,
+    TableStateForSelection,
 };
 pub use selection_scope::{
-    default_row_selected, scope_for_operation, scope_selects_operation, selected_row_token, DataSyncSelectedRow, DataSyncSelectionScopeMode, DataSyncTableSelection, SELECTED_ROW_TOKEN_SEPARATOR,
-    SELECTION_SCOPE_GAP, SELECTION_SCOPE_SURFACE,
+    default_row_selected, scope_for_operation, scope_selects_operation, selected_row_token,
+    DataSyncSelectedRow, DataSyncSelectionScopeMode, DataSyncTableSelection,
+    SELECTED_ROW_TOKEN_SEPARATOR, SELECTION_SCOPE_GAP, SELECTION_SCOPE_SURFACE,
 };
 pub use settings_store::{
-    authoritative_read, is_unknown_version_value_presentation, load_fence, load_fence_current, next_value_presentation_revision, normalize_loaded_settings, normalize_settings_language, parse_stored_value_presentation,
-    persist_merge, resolve_ui_language, settings_changed, theme_recovery, update_settings_merge, value_presentation_fresh, LoadRecovery, SETTINGS_CHANGED_EVENT,
-    SETTINGS_STORE_GAP, SETTINGS_STORE_SURFACE, SETTINGS_THEME_STORAGE_KEY, THEME_CHANGED_EVENT, VALUE_PRESENTATION_VERSION,
+    authoritative_read, is_unknown_version_value_presentation, load_fence, load_fence_current,
+    next_value_presentation_revision, normalize_loaded_settings, normalize_settings_language,
+    parse_stored_value_presentation, persist_merge, resolve_ui_language, settings_changed,
+    theme_recovery, update_settings_merge, value_presentation_fresh, LoadRecovery,
+    SETTINGS_CHANGED_EVENT, SETTINGS_STORE_GAP, SETTINGS_STORE_SURFACE, SETTINGS_THEME_STORAGE_KEY,
+    THEME_CHANGED_EVENT, VALUE_PRESENTATION_VERSION,
+};
+pub use sql_path_prefix::{
+    extract_qualified_token, is_inside_quotes, parse_qualified_path_parents,
+    resolve_ensure_segments, QualifiedToken, ResolveEnsureOptions,
+};
+pub use sql_schema_drop_targets::{parse_schema_drop_targets, SqlSchemaDropTarget};
+pub use sql_statement_range::{get_statement_at_cursor, StatementAtCursorFn, STATEMENT_RANGE_GAP};
+pub use sql_transaction_guard::{
+    analyze_transaction_sql, is_aborted_transaction_error, strip_sql_noise, TransactionSqlAnalysis,
 };
 pub use stage_cell_value::{
-    compute_stage_cell_value_result, compute_stage_expression_value_result, compute_stage_result, has_pending_column_change, restored_cell_value, StageCellValueInput, StageCellValueResult, StageEditInput,
-    StageEditResult, StageExpressionValueInput, ValueMap, PendingRowChange, RowIdentity, WriteExpressionId, STAGE_CELL_VALUE_GAP, STAGE_CELL_VALUE_SURFACE,
+    compute_stage_cell_value_result, compute_stage_expression_value_result, compute_stage_result,
+    has_pending_column_change, restored_cell_value, PendingRowChange, RowIdentity,
+    StageCellValueInput, StageCellValueResult, StageEditInput, StageEditResult,
+    StageExpressionValueInput, ValueMap, WriteExpressionId, STAGE_CELL_VALUE_GAP,
+    STAGE_CELL_VALUE_SURFACE,
 };
 pub use stage_edit_actions::{
     compute_unstage_delete_result, STAGE_EDIT_ACTIONS_GAP, STAGE_EDIT_ACTIONS_SURFACE,
 };
 pub use stage_paste_writes::{
-    build_row_identity, effective_pending_identity, find_pending_for_row, has_pending_identity_collision, row_identity_is_unique, row_identity_key, stage_paste_writes_into, CellPasteWrite,
-    GridErrorCode, PasteCellProblem, StagePasteWritesOutcome, StagedTableState, STAGE_PASTE_WRITES_GAP,
-};
-pub use column_layout_prefs::{
-    column_layout_storage_key, persist_column_order, persist_column_widths, read_persisted_column_layout, valid_order, valid_widths, ColumnLayoutStorage, LayoutTableContext,
-    PersistedColumnLayout, COLUMN_LAYOUT_GAP, COLUMN_LAYOUT_STORAGE_PREFIX,
-};
-pub use workflow_panel::{
-    connection_options as panel_connection_options, error_text, feedback_tone, is_connection_variable, is_loading, variable_defaults, variable_input, ConfirmKind,
-    ConnectionSummary, ExecuteParams, FeedbackTone, PanelTab, VariableInput, WorkflowPanel, WorkflowPanelEffect, WorkflowPanelHost,
-    WorkflowPanelLabels, WorkflowPanelOptions, WorkflowPanelState, WorkflowSelectOption, WorkflowStoreView, WORKFLOW_PANEL_GAP, WORKFLOW_PANEL_SURFACE,
-};
-pub use sql_path_prefix::{
-    QualifiedToken, ResolveEnsureOptions, extract_qualified_token, is_inside_quotes, parse_qualified_path_parents, resolve_ensure_segments,
-};
-pub use sql_schema_drop_targets::{
-    SqlSchemaDropTarget, parse_schema_drop_targets,
-};
-pub use sql_statement_range::{
-    get_statement_at_cursor, StatementAtCursorFn, STATEMENT_RANGE_GAP,
-};
-pub use sql_transaction_guard::{
-    analyze_transaction_sql, is_aborted_transaction_error, strip_sql_noise, TransactionSqlAnalysis,
+    build_row_identity, effective_pending_identity, find_pending_for_row,
+    has_pending_identity_collision, row_identity_is_unique, row_identity_key,
+    stage_paste_writes_into, CellPasteWrite, GridErrorCode, PasteCellProblem,
+    StagePasteWritesOutcome, StagedTableState, STAGE_PASTE_WRITES_GAP,
 };
 pub use startup_timer::{
-    format_wall_clock, StartupMark, StartupTimer, STARTUP_TIMER_GAP, WallClockParts,
+    format_wall_clock, StartupMark, StartupTimer, WallClockParts, STARTUP_TIMER_GAP,
 };
 pub use surface_bg_cache::{
-    css_color_to_hex, is_safe_css_hex, persist_surface_background, DEFAULT_SURFACE_DARK, DEFAULT_SURFACE_LIGHT, SURFACE_BG_CACHE_GAP,
+    css_color_to_hex, is_safe_css_hex, persist_surface_background, DEFAULT_SURFACE_DARK,
+    DEFAULT_SURFACE_LIGHT, SURFACE_BG_CACHE_GAP,
 };
 pub use sync_pairing::{
-    compute_sync_pairing_state, normalize_sync_family, sync_category, sync_path_from_str, view_to_result, PairingView, SyncCategory, SyncConnection,
-    SyncPairingCache, SyncPairingResult, SyncPairingState, SyncPath, SyncRegistryMeta, SYNC_PAIRING_CACHE_DELIMITER,
+    compute_sync_pairing_state, normalize_sync_family, sync_category, sync_path_from_str,
+    view_to_result, PairingView, SyncCategory, SyncConnection, SyncPairingCache, SyncPairingResult,
+    SyncPairingState, SyncPath, SyncRegistryMeta, SYNC_PAIRING_CACHE_DELIMITER,
 };
 pub use table_changes::{
-    clone_pending_row_change, draft_write_columns, duplicate_row_identity_keys, is_complete_table_change_context, normalize_edit_value, stable_serialize,
-    table_change_context_key, values_equal, ChangeSeverity, ChangeWarning, ColumnValues, CommitOperation, CommitPendingChangesResponse, CommitPendingChangesResult,
-    CommitStatementResult, CommitStatus, InsertLocation, PendingInsert, PlannedStatement, RefreshStatus,
-    RowChangePlan, TableChangeContext as TableChangesContext,
-};
-pub use table_schema_for_sql::{
-    build_pseudo_table_schema, fetch_table_schema_for_sql_generation, generate_table_sql_with_fallbacks, FetchTableSchemaInput, GenerateFallbackOptions, ReadCachedSchema, ReadColumnsValue,
-    ReadRelationColumns,
-};
-pub use table_sql_actions::{
-    build_no_primary_key_edit_template, build_query_open_context, build_safe_table_sql_template, build_table_context, build_table_sql_action, build_table_sql_actions, no_primary_key_edit_spec, quote_table_identifier,
-    QueryOpenContext, QueryOpenFocus, QueryOpenSource, SqlActionExecution, TableActionInput, TableContext, TableSqlAction, TableSqlActionSpec,
-    TABLE_SQL_ACTION_KINDS,
-};
-pub use theme_pack_apply::{
-    classify_theme_pack, encode_wapp_theme_pack_id, invalid_wapp_theme_id_error, join_relative_path, mime_for_path, parse_charts_json, parse_wapp_theme_pack_id, probe_icon,
-    rewrite_css_urls, unknown_theme_pack_error, plan_theme_pack_apply, ThemePackApplyPlan, ThemePackApplyResult, ThemePackSelection, THEME_PACK_APPLY_GAP, THEME_PACK_CHANGED_EVENT,
-    THEME_PACK_STYLE_ID, WAPP_THEME_PACK_PREFIX,
+    clone_pending_row_change, draft_write_columns, duplicate_row_identity_keys,
+    is_complete_table_change_context, normalize_edit_value, stable_serialize,
+    table_change_context_key, values_equal, ChangeSeverity, ChangeWarning, ColumnValues,
+    CommitOperation, CommitPendingChangesResponse, CommitPendingChangesResult,
+    CommitStatementResult, CommitStatus, InsertLocation, PendingInsert, PlannedStatement,
+    RefreshStatus, RowChangePlan, TableChangeContext as TableChangesContext,
 };
 pub use table_list_panel::{
-    build_table_list_view, display_table_name, filter_label_key, filter_table_rows, filter_test_id, row_diff_counts, table_has_row_diffs, table_is_unchanged,
-    table_key, FilterButtonView, RowDiffCounts, TableDiffFilter, TableItemBadge, TableListItemView, TableListRow, TableListView,
-    TableSyncStatus, DATA_SYNC_FILTERS, IDENTICAL_KEY, MAPPING_INCOMPATIBLE_KEY, NO_TABLES_MATCH_KEY, ROW_DIFFS_KEY, SEARCH_PLACEHOLDER_KEY, TABLE_ITEM_TEST_ID,
+    build_table_list_view, display_table_name, filter_label_key, filter_table_rows, filter_test_id,
+    row_diff_counts, table_has_row_diffs, table_is_unchanged, table_key, FilterButtonView,
+    RowDiffCounts, TableDiffFilter, TableItemBadge, TableListItemView, TableListRow, TableListView,
+    TableSyncStatus, DATA_SYNC_FILTERS, IDENTICAL_KEY, MAPPING_INCOMPATIBLE_KEY,
+    NO_TABLES_MATCH_KEY, ROW_DIFFS_KEY, SEARCH_PLACEHOLDER_KEY, TABLE_ITEM_TEST_ID,
     TABLE_LIST_PANEL_GAP, TABLE_LIST_PANEL_SURFACE,
 };
-pub use tabs::{
-    Tab, TabKind, Tabs,
+pub use table_schema_for_sql::{
+    build_pseudo_table_schema, fetch_table_schema_for_sql_generation,
+    generate_table_sql_with_fallbacks, FetchTableSchemaInput, GenerateFallbackOptions,
+    ReadCachedSchema, ReadColumnsValue, ReadRelationColumns,
+};
+pub use table_sql_actions::{
+    build_no_primary_key_edit_template, build_query_open_context, build_safe_table_sql_template,
+    build_table_context, build_table_sql_action, build_table_sql_actions, no_primary_key_edit_spec,
+    quote_table_identifier, QueryOpenContext, QueryOpenFocus, QueryOpenSource, SqlActionExecution,
+    TableActionInput, TableContext, TableSqlAction, TableSqlActionSpec, TABLE_SQL_ACTION_KINDS,
+};
+pub use tabs::{Tab, TabKind, Tabs};
+pub use theme_pack_apply::{
+    classify_theme_pack, encode_wapp_theme_pack_id, invalid_wapp_theme_id_error,
+    join_relative_path, mime_for_path, parse_charts_json, parse_wapp_theme_pack_id,
+    plan_theme_pack_apply, probe_icon, rewrite_css_urls, unknown_theme_pack_error,
+    ThemePackApplyPlan, ThemePackApplyResult, ThemePackSelection, THEME_PACK_APPLY_GAP,
+    THEME_PACK_CHANGED_EVENT, THEME_PACK_STYLE_ID, WAPP_THEME_PACK_PREFIX,
 };
 pub use transfer_limitations_prefs::{
-    clear_transfer_limitations_dismissed, create_transfer_limitations_dismiss_prefs, is_transfer_limitations_dismissed, set_transfer_limitations_dismissed, TRANSFER_LIMITATIONS_DISMISSED_KEY,
+    clear_transfer_limitations_dismissed, create_transfer_limitations_dismiss_prefs,
+    is_transfer_limitations_dismissed, set_transfer_limitations_dismissed,
+    TRANSFER_LIMITATIONS_DISMISSED_KEY,
 };
 pub use transfer_pairing::{
-    is_transfer_target_supported, resolve_transfer_pairing, TransferPairingResult, TransferPath, TransferRegistry,
+    is_transfer_target_supported, resolve_transfer_pairing, TransferPairingResult, TransferPath,
+    TransferRegistry,
 };
 pub use tunnel_deletion::{
-    delete_tunnel_and_unbind, unbind_connection_patch, DeleteTunnel, DeleteTunnelDeps, DeleteTunnelOutcome, GetConnections, SaveConnection, KEY_DELETE_FAILED,
-    KEY_UNBIND_FAILED,
+    delete_tunnel_and_unbind, unbind_connection_patch, DeleteTunnel, DeleteTunnelDeps,
+    DeleteTunnelOutcome, GetConnections, SaveConnection, KEY_DELETE_FAILED, KEY_UNBIND_FAILED,
 };
 pub use update_reminder_schedule::{
-    dispatch_event, on_interval_tick, start_update_reminder_schedule, stop_update_reminder_schedule, ScheduleDeps, ScheduleHandle, CHECK_INTERVAL_MS, CHANNEL_AUTO,
+    dispatch_event, on_interval_tick, start_update_reminder_schedule,
+    stop_update_reminder_schedule, ScheduleDeps, ScheduleHandle, CHANNEL_AUTO, CHECK_INTERVAL_MS,
     EVENT_FOCUS, EVENT_ONLINE, EVENT_VISIBILITY_CHANGE, VISIBILITY_VISIBLE,
 };
 pub use updater::{
-    check_for_updates, current_variant, download_and_install_update, get_update_channel, has_updater_channel, is_updater_supported, manifest_belongs_to_build, maybe_check_on_startup,
-    normalize_sku, read_manifest_variant, relaunch_to_apply_update, UpdateChannel, UpdaterBuildConfig, UpdaterLog, UpdaterLogLevel,
-    StartupCheckPlan,
+    check_for_updates, current_variant, download_and_install_update, get_update_channel,
+    has_updater_channel, is_updater_supported, manifest_belongs_to_build, maybe_check_on_startup,
+    normalize_sku, read_manifest_variant, relaunch_to_apply_update, StartupCheckPlan,
+    UpdateChannel, UpdaterBuildConfig, UpdaterLog, UpdaterLogLevel,
 };
 pub use wapp_asset_origin::{
-    build_wapp_asset_src, build_wapp_icon_src, configure_wapp_asset_resolver, is_safe_wapp_asset_path, is_valid_wapp_id, parse_wapp_asset_target, reset_wapp_asset_resolver, DESKTOP_WAPP_ASSET_RESOLVER,
-    WappAssetQueryMap, WappAssetResolver, WappAssetTarget, WEB_WAPP_ASSET_RESOLVER, WAPP_ASSET_CSP, WAPP_ASSET_PATH_PREFIX,
+    build_wapp_asset_src, build_wapp_icon_src, configure_wapp_asset_resolver,
+    is_safe_wapp_asset_path, is_valid_wapp_id, parse_wapp_asset_target, reset_wapp_asset_resolver,
+    WappAssetQueryMap, WappAssetResolver, WappAssetTarget, DESKTOP_WAPP_ASSET_RESOLVER,
+    WAPP_ASSET_CSP, WAPP_ASSET_PATH_PREFIX, WEB_WAPP_ASSET_RESOLVER,
 };
 pub use window_kind::{
-    get_url_param, get_window_kind, reset_window_kind_cache, resolve_window_kind, WindowKind, LEGACY_MAIN_ALIASES,
+    get_url_param, get_window_kind, reset_window_kind_cache, resolve_window_kind, WindowKind,
+    LEGACY_MAIN_ALIASES,
 };
 pub use window_manager::{
-    backup_window_options, connection_payload, connection_window_plan, dashboard_window_plan, data_sync_window_options, data_transfer_window_options, docs_window_plan, emit_menu_action_plan,
-    is_main_shell_menu_id, schema_diff_window_options, settings_window_plan, workflow_window_plan, BackupMode, BackupPrefill, ConnectionWindowOpts, ConnectionWindowPlan,
-    DashboardWindowPlan, DocsWindowPlan, MenuActionPlan, PostOnboardingSample, SingletonWindowPlan, MAIN_SHELL_MENU_IDS, PENDING_CONNECTION_KEY, POST_ONBOARDING_SAMPLE_KEY,
+    backup_window_options, connection_payload, connection_window_plan, dashboard_window_plan,
+    data_sync_window_options, data_transfer_window_options, docs_window_plan,
+    emit_menu_action_plan, is_main_shell_menu_id, schema_diff_window_options, settings_window_plan,
+    workflow_window_plan, BackupMode, BackupPrefill, ConnectionWindowOpts, ConnectionWindowPlan,
+    DashboardWindowPlan, DocsWindowPlan, MenuActionPlan, PostOnboardingSample, SingletonWindowPlan,
+    MAIN_SHELL_MENU_IDS, PENDING_CONNECTION_KEY, POST_ONBOARDING_SAMPLE_KEY,
     WINDOW_CAPABILITY_LABEL_SAMPLES, WINDOW_MANAGER_GAP,
+};
+pub use workflow_panel::{
+    connection_options as panel_connection_options, error_text, feedback_tone,
+    is_connection_variable, is_loading, variable_defaults, variable_input, ConfirmKind,
+    ConnectionSummary, ExecuteParams, FeedbackTone, PanelTab, VariableInput, WorkflowPanel,
+    WorkflowPanelEffect, WorkflowPanelHost, WorkflowPanelLabels, WorkflowPanelOptions,
+    WorkflowPanelState, WorkflowSelectOption, WorkflowStoreView, WORKFLOW_PANEL_GAP,
+    WORKFLOW_PANEL_SURFACE,
 };
 // extract_workflow_yaml / WorkflowValidationConnection are already re-exported
 // by the parent's ai-chat facade; only seg3's unique yaml helpers are listed.
-pub use workflow_yaml::{
-    looks_like_workflow, parse_validated_workflow_definition, parse_workflow_blocks, parse_workflow_yaml, validate_workflow_fields,
+pub use table_data_state::{
+    AppliedFilter, CellEditLocation, DefaultOrderOverride, FilterLogic, FilterMode, TableState,
+    TABLE_DATA_STATE_GAP, TABLE_DATA_STATE_SURFACE,
+};
+pub use table_data_store::{
+    add_filter, add_sort, apply_any_column, apply_filters, apply_filters_decision, apply_raw_where,
+    begin_load, cancel_edit, clear_filters, clear_highlighted_new_row, clear_pending_state,
+    clear_sorts, commit_fetched_page, duplicate_identity_keys, filter_draft_equals_applied,
+    invalidate_cached_data, is_complete_filter, load_failed, order_request, overlay_pending_rows,
+    patch_panel, patch_panel_for_reload, remove_filter, remove_panel_state, remove_sort,
+    resolve_default_table_sort, rows_to_records, sanitize_visibility, set_any_column_draft,
+    set_column_order, set_default_order_override, set_detail_row, set_filter_logic,
+    set_filter_mode, set_filter_panel_open, set_filters, set_frozen_column_count, set_page,
+    set_page_size, set_panel_state, set_pending_status, set_raw_where_draft, set_sort,
+    set_visible_columns, start_edit, target_of, update_filter, upsert_sort, FetchedPage,
+    LoadTableDataParams, OrderRequest, PageCommit, PendingStatus, ReloadRequest, TableContextData,
+    TableDataStoreSnapshot, TableTargetData, AMBIGUOUS_ROW_IDENTITY_ERROR, TABLE_DATA_STORE_GAP,
+    TABLE_DATA_STORE_SURFACE,
+};
+pub use table_sort_preferences::{
+    is_sort_condition, persist_table_sorts, read_persisted_table_sorts, table_sort_storage_key,
+    TableSortContext, TABLE_SORT_PREFS_GAP, TABLE_SORT_PREFS_SURFACE, TABLE_SORT_STORAGE_PREFIX,
+};
+pub use theme_tokens::{
+    build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS,
+    THEME_TOKENS_DOM_GAP,
+};
+pub use total_rows_display::{can_page_forward, format_row_count, total_rows_view, TotalRowsView};
+pub use update_reminder_store::{
+    begin_check, begin_install, finish_check, install_result_patch, install_start_patch,
+    is_check_due, progress_patch, restart_allowed, restart_error_patch, StatePatch,
+    UpdateCheckResult, UpdateOutcome, UpdateProgress, UpdateReminderState,
+    UPDATE_CHECK_INTERVAL_MS, UPDATE_REMINDER_GAP, UPDATE_REMINDER_SURFACE,
+};
+pub use virtual_body::{
+    build_cell_input, build_column_editor_info_from_defs, build_row_cell_views, cell_id,
+    column_names, container_height, dirty_cell_aria_label, dirty_cell_tooltip, dirty_cells,
+    display_rows, editor_info, error_columns_by_row, error_key, fk_affordances,
+    fk_navigable_by_row, format_dirty_expression, format_dirty_value, frozen_lefts,
+    gutter_click_action, is_fk_cell_navigable, is_integer_cell_type, modifiers_from_flags,
+    row_click_action, row_deleted, row_dirty, row_double_click_action, row_key_down_action,
+    row_kind, row_state, row_tint_class, sticky_info, virtual_table, CellEditingData,
+    CellRowContext, CellTypeHintsData, ColumnDefData, ColumnEditorInfoData, DirtyCellData,
+    DirtyRowEntryData, DirtyRowState, DisplayRow, DraftRowViewModel, FkGroupAffordanceData,
+    FkNavigationData, GutterClickAction, PresentationPlan, RowClickAction, RowKeyAction,
+    RowModifiers, VirtualBodyConfig, VirtualRowData, VirtualTableResult, DEFAULT_COLUMN_WIDTH,
+    GUTTER_WIDTH, OVERSCAN, VIRTUAL_BODY_GAP,
 };
 pub use wapp_bridge::{
-    err_envelope, host_ready_envelope, is_request_envelope, is_wapp_command_allowed, ok_envelope, parse_command_invoke, parse_i18n_key, parse_notify,
-    parse_request, parse_storage, response_type_of, route_for, theme_apply_envelope, theme_snapshot_value, timeout_disposition, to_public_connection,
-    as_nonempty_string, looks_like_not_found, AttachBridgeOptions, BridgeApiError, BridgeConnectionSummary, BridgeEffect, BridgeErrorPayload, BridgeErrorCode,
-    BridgeState, BridgeTarget, CommandInvokeInput, ConnectionConfigLike, NotifyInput, StorageInput, TimeoutDisposition, WappBridge,
-    WappBridgeHost, WappErrEnvelope, WappOkEnvelope, WappRequestEnvelope, WappResponseEnvelope, API_ROUTES, BRIDGE_CHANNEL, BRIDGE_ERROR_CODES,
-    ERROR_MESSAGE_LIMIT_CHARS, MAX_INFLIGHT_REQUESTS, MAX_REQUEST_ID_CHARS, NOTIFY_MIN_INTERVAL_MS, REQUEST_TIMEOUT_MS, SESSION_REQUEST_LIMIT, WAPP_BRIDGE_DOM_GAP, WAPP_BRIDGE_EVENT_GAP,
-    WAPP_BRIDGE_HANDLER_GAP, WAPP_BRIDGE_IPC_GAP, WAPP_BRIDGE_SURFACE, WAPP_COMMAND_DENYLIST,
+    as_nonempty_string, err_envelope, host_ready_envelope, is_request_envelope,
+    is_wapp_command_allowed, looks_like_not_found, ok_envelope, parse_command_invoke,
+    parse_i18n_key, parse_notify, parse_request, parse_storage, response_type_of, route_for,
+    theme_apply_envelope, theme_snapshot_value, timeout_disposition, to_public_connection,
+    AttachBridgeOptions, BridgeApiError, BridgeConnectionSummary, BridgeEffect, BridgeErrorCode,
+    BridgeErrorPayload, BridgeState, BridgeTarget, CommandInvokeInput, ConnectionConfigLike,
+    NotifyInput, StorageInput, TimeoutDisposition, WappBridge, WappBridgeHost, WappErrEnvelope,
+    WappOkEnvelope, WappRequestEnvelope, WappResponseEnvelope, API_ROUTES, BRIDGE_CHANNEL,
+    BRIDGE_ERROR_CODES, ERROR_MESSAGE_LIMIT_CHARS, MAX_INFLIGHT_REQUESTS, MAX_REQUEST_ID_CHARS,
+    NOTIFY_MIN_INTERVAL_MS, REQUEST_TIMEOUT_MS, SESSION_REQUEST_LIMIT, WAPP_BRIDGE_DOM_GAP,
+    WAPP_BRIDGE_EVENT_GAP, WAPP_BRIDGE_HANDLER_GAP, WAPP_BRIDGE_IPC_GAP, WAPP_BRIDGE_SURFACE,
+    WAPP_COMMAND_DENYLIST,
 };
 pub use wapp_i18n::{
-    is_wapp_i18n_key_valid, is_wapp_i18n_locale_valid, resolve_wapp_string, wapp_i18n_candidates, wapp_i18n_dictionary_path, WappDictionary, WappI18n, WappI18nDeps,
-    WAPP_I18N_GAP, WAPP_I18N_SURFACE,
+    is_wapp_i18n_key_valid, is_wapp_i18n_locale_valid, resolve_wapp_string, wapp_i18n_candidates,
+    wapp_i18n_dictionary_path, WappDictionary, WappI18n, WappI18nDeps, WAPP_I18N_GAP,
+    WAPP_I18N_SURFACE,
+};
+pub use wapp_store::{
+    by_id, fetch_patch, listener_decision, optimistic_toggle, remove_effects, set_enabled_effects,
+    should_refetch_on_event, to_error_message, FetchPatch, ListenerDecision, ListenerResult,
+    MutationEffects, WappError, WappStoreState, WAPPS_CHANGED_EVENT, WAPP_STORE_GAP,
+    WAPP_STORE_SURFACE,
 };
 pub use workflow_draft_yaml::{
-    draft_to_yaml_object, draft_to_yaml_value, yaml_object_to_draft, yaml_value_to_draft, WorkflowDraft, WorkflowDraftVariable, WorkflowStepDraft, WORKFLOW_DRAFT_YAML_GAP,
+    draft_to_yaml_object, draft_to_yaml_value, yaml_object_to_draft, yaml_value_to_draft,
+    WorkflowDraft, WorkflowDraftVariable, WorkflowStepDraft, WORKFLOW_DRAFT_YAML_GAP,
     WORKFLOW_DRAFT_YAML_SURFACE,
 };
 pub use workflow_list_context_menu::{
-    build_workflow_history_context_menu_items, build_workflow_list_context_menu_items, BuildWorkflowHistoryContextMenuArgs, BuildWorkflowListContextMenuArgs, WorkflowHistoryContextMenuHandlers, WorkflowHistoryContextMenuLabels, WorkflowMenuItem, WorkflowListContextMenuHandlers,
-    WorkflowListContextMenuLabels, WORKFLOW_LIST_MENU_GAP, WORKFLOW_LIST_MENU_SURFACE,
+    build_workflow_history_context_menu_items, build_workflow_list_context_menu_items,
+    BuildWorkflowHistoryContextMenuArgs, BuildWorkflowListContextMenuArgs,
+    WorkflowHistoryContextMenuHandlers, WorkflowHistoryContextMenuLabels,
+    WorkflowListContextMenuHandlers, WorkflowListContextMenuLabels, WorkflowMenuItem,
+    WORKFLOW_LIST_MENU_GAP, WORKFLOW_LIST_MENU_SURFACE,
 };
-pub use theme_tokens::{
-    build_theme_snapshot, ThemeSnapshot, ThemeSnapshotInput, THEME_SNAPSHOT_VERSION, THEME_TOKENS, THEME_TOKENS_DOM_GAP,
-};
-pub use total_rows_display::{
-    can_page_forward, format_row_count, total_rows_view, TotalRowsView,
-};
-pub use table_sort_preferences::{
-    is_sort_condition, persist_table_sorts, read_persisted_table_sorts, table_sort_storage_key, TableSortContext, TABLE_SORT_PREFS_GAP, TABLE_SORT_PREFS_SURFACE, TABLE_SORT_STORAGE_PREFIX,
-};
-pub use table_data_state::{
-    AppliedFilter, CellEditLocation, DefaultOrderOverride, FilterLogic, FilterMode, TableState, TABLE_DATA_STATE_GAP, TABLE_DATA_STATE_SURFACE,
-};
-pub use table_data_store::{
-    add_filter, add_sort, apply_any_column, apply_filters, apply_filters_decision, apply_raw_where, begin_load, cancel_edit,
-    clear_filters, clear_highlighted_new_row, clear_pending_state, clear_sorts, commit_fetched_page, duplicate_identity_keys, filter_draft_equals_applied, invalidate_cached_data,
-    is_complete_filter, load_failed, order_request, overlay_pending_rows, patch_panel, patch_panel_for_reload, remove_filter, remove_panel_state,
-    remove_sort, resolve_default_table_sort, rows_to_records, sanitize_visibility, set_any_column_draft, set_column_order, set_default_order_override, set_detail_row,
-    set_filter_logic, set_filter_mode, set_filter_panel_open, set_filters, set_frozen_column_count, set_page, set_page_size, set_panel_state,
-    set_pending_status, set_raw_where_draft, set_sort, set_visible_columns, start_edit, target_of, update_filter, upsert_sort,
-    FetchedPage, LoadTableDataParams, OrderRequest, PageCommit, PendingStatus, ReloadRequest, TableContextData,
-    TableDataStoreSnapshot, TableTargetData, AMBIGUOUS_ROW_IDENTITY_ERROR, TABLE_DATA_STORE_GAP, TABLE_DATA_STORE_SURFACE,
-};
-pub use update_reminder_store::{
-    begin_check, begin_install, finish_check, install_result_patch, install_start_patch, is_check_due, progress_patch, restart_allowed,
-    restart_error_patch, StatePatch, UpdateCheckResult, UpdateOutcome, UpdateProgress, UpdateReminderState, UPDATE_CHECK_INTERVAL_MS, UPDATE_REMINDER_GAP,
-    UPDATE_REMINDER_SURFACE,
-};
-pub use wapp_store::{
-    by_id, fetch_patch, listener_decision, optimistic_toggle, remove_effects, set_enabled_effects, should_refetch_on_event, to_error_message,
-    FetchPatch, ListenerDecision, ListenerResult, MutationEffects, WappError, WappStoreState, WAPP_STORE_GAP, WAPP_STORE_SURFACE,
-    WAPPS_CHANGED_EVENT,
-};
-pub use virtual_body::{
-    build_cell_input, build_column_editor_info_from_defs, build_row_cell_views, cell_id, column_names, container_height, dirty_cell_aria_label, dirty_cell_tooltip,
-    dirty_cells, display_rows, editor_info, error_columns_by_row, error_key, fk_affordances, fk_navigable_by_row, format_dirty_expression,
-    format_dirty_value, frozen_lefts, gutter_click_action, is_fk_cell_navigable, is_integer_cell_type, modifiers_from_flags, row_click_action,
-    row_deleted, row_dirty, row_double_click_action, row_key_down_action, row_kind, row_state, row_tint_class, sticky_info,
-    virtual_table, CellEditingData, CellRowContext, CellTypeHintsData, ColumnDefData, ColumnEditorInfoData, DisplayRow, DraftRowViewModel,
-    DirtyCellData, DirtyRowEntryData, DirtyRowState, FkGroupAffordanceData, FkNavigationData, GutterClickAction, PresentationPlan, RowClickAction,
-    RowKeyAction, RowModifiers, VirtualBodyConfig, VirtualRowData, VirtualTableResult, VIRTUAL_BODY_GAP, DEFAULT_COLUMN_WIDTH, GUTTER_WIDTH,
-    OVERSCAN,
+pub use workflow_yaml::{
+    looks_like_workflow, parse_validated_workflow_definition, parse_workflow_blocks,
+    parse_workflow_yaml, validate_workflow_fields,
 };
 // The T211 types aggregate: the members React's `types/index.ts` declares or
 // re-exports that no earlier family module had already landed at the root
@@ -1256,98 +1520,130 @@ pub use virtual_body::{
 // `ExecutionSettings`, `StoredValuePresentationSettings`) stay reachable
 // only inside `types::client_settings`/`types::value_presentation` — the
 // aggregate surface mirrors React's own import-only reachability.
-pub use tunnel_store::{
-    begin_load as begin_tunnel_load, error_message, new_tunnel_id, plan_create, plan_remove, plan_update, plan_usage, settle_load,
-    usage_from_lists, TunnelCreatePlan, TunnelInput, TunnelStoreEffect, TunnelStoreState, TUNNEL_STORE_GAP, TUNNEL_STORE_SURFACE,
-};
-pub use types::{
-    AppSettings, ChangedColumnDiff, CheckConstraintDiffEntry, ColumnDiffEntry, ColumnInfo, CommandAccessLevel, CommandCategory, Counter,
-    DefaultTableSort, DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec, ErrorHandlingConfig, ErrorHandlingStrategy, FavoriteQuery, GridDensity,
-    HistoryEntry, HistoryListItem, Id, KeyDetail, KeyEntry, KeyScanResult, LogLevel, McpApprovalDecision,
-    McpApprovalRequest, McpAuditDecision, McpAuditRecord, McpHttpTransport, McpHttpStatus, McpPermissionMode, MergeSource, MultiQueryResult,
-    OnboardingState, QueryResult, QueryStreamEvent, ResultCompleteness, RuntimeResultBinding, SessionContext, SessionContextConfidence, SortCondition,
-    SqlExecutionStrategy, SqlFormatOptions, StatementResult, SyncObjectKind, TableCompareStatus, TableComparison, TableDataResult, TableOptionsDiff,
-    TableOptionsSnapshot, TableSchemaDiff, Timestamp, TransactionState, TransformColumn, TunnelSource, TunnelUsage, WritableMapping,
-    WorkflowBlock, WorkflowBlockRetry, WorkflowBlockType, WorkflowDefinition, WorkflowExecuteRequest, WorkflowIdRequest, WorkflowOutput, WorkflowRunGetRequest,
-    WorkflowRunListItem, WorkflowRunRecord, WorkflowRunsListRequest, WorkflowSaveRequest, WorkflowSchedule, WorkflowStep, WorkflowStepType, WorkflowVisibility,
-    WorkflowYamlSaveRequest, is_valid_mcp_server_id,
-};
 pub use connection_shared::SavedConnection;
+pub use content_view_helpers::{
+    get_panel_icon, get_panel_label, get_panel_short_label, get_panel_tab_label, get_sub_tabs,
+    get_view_sub_tabs, resolve_connection_context, resolve_connection_context_by_connection,
+    resolve_panel_tab_database, ContentViewConnectionContext, ContentViewPanel, PanelIcon, SubTab,
+    CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE, ICON_CLASS,
+};
 pub use open_history_query::{
-    open_history_query, ActiveConnection, HistoryQueryEntry, OpenHistoryOutcome, OpenHistoryQueryOptions, OpenHistoryQueryHost, PathHierarchySplit,
-    QueryPanelState, OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
+    open_history_query, ActiveConnection, HistoryQueryEntry, OpenHistoryOutcome,
+    OpenHistoryQueryHost, OpenHistoryQueryOptions, PathHierarchySplit, QueryPanelState,
+    OPEN_HISTORY_QUERY_GAP, OPEN_HISTORY_QUERY_SURFACE,
 };
 pub use query_contracts::{
-    build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal, read_current_query_panel_retry_validation_input, ActiveConnectionView, DiagnosisContext, DiagnosisContextInput, ExecuteKind,
-    PendingExecute, PanelView, QueryContractsHost, QueryDiagnosisExecution, QueryDiagnosisSchemaState, QueryExecutionGateRefs, QueryPanelCallbacks, QueryPanelDiagnosisContextInput,
-    QueryPanelProps, SchemaContext, QUERY_CONTRACTS_GAP, QUERY_CONTRACTS_SURFACE,
+    build_query_panel_diagnosis_context, has_suspicious_postgres_double_quoted_literal,
+    read_current_query_panel_retry_validation_input, ActiveConnectionView, DiagnosisContext,
+    DiagnosisContextInput, ExecuteKind, PanelView, PendingExecute, QueryContractsHost,
+    QueryDiagnosisExecution, QueryDiagnosisSchemaState, QueryExecutionGateRefs,
+    QueryPanelCallbacks, QueryPanelDiagnosisContextInput, QueryPanelProps, SchemaContext,
+    QUERY_CONTRACTS_GAP, QUERY_CONTRACTS_SURFACE,
 };
 pub use query_drop_handler::{
-    create_query_drop_handler, detect_drop_context, ChartConfigLike, DashboardWidgetRequest, DroppedTable, DropEffect, DropOptions, ExplainResultLike,
-    QueryPanelWorkflows, RetryValidationInputLike, WorkflowEffect, WorkflowHost, WorkflowOptions, WorkflowState, QUERY_DROP_HANDLER_GAP, QUERY_DROP_HANDLER_SURFACE,
+    create_query_drop_handler, detect_drop_context, ChartConfigLike, DashboardWidgetRequest,
+    DropEffect, DropOptions, DroppedTable, ExplainResultLike, QueryPanelWorkflows,
+    RetryValidationInputLike, WorkflowEffect, WorkflowHost, WorkflowOptions, WorkflowState,
+    QUERY_DROP_HANDLER_GAP, QUERY_DROP_HANDLER_SURFACE,
 };
 pub use query_execution_target::{
-    estimate_query_result_pane_height, offset_to_line, query_result_pane_sizing, resolve_execution_target, statement_target_info, strategy_as_str, view_is_chart, effective_strategy,
-    ExecutionTargetInput, QueryResultPaneHeightInput, ResolveExecutionTargetResult, ResultPaneSizing, StatementTargetInfo, RESULT_PANE_MIN_HEIGHT, QUERY_EXECUTION_TARGET_GAP, QUERY_EXECUTION_TARGET_SURFACE,
+    effective_strategy, estimate_query_result_pane_height, offset_to_line,
+    query_result_pane_sizing, resolve_execution_target, statement_target_info, strategy_as_str,
+    view_is_chart, ExecutionTargetInput, QueryResultPaneHeightInput, ResolveExecutionTargetResult,
+    ResultPaneSizing, StatementTargetInfo, QUERY_EXECUTION_TARGET_GAP,
+    QUERY_EXECUTION_TARGET_SURFACE, RESULT_PANE_MIN_HEIGHT,
 };
 pub use result_workspace::{
-    can_render_result_chart, get_top_level_sql_verb, infer_field_type, is_chartable_result, is_mutation_execution, resolve_result_workspace_view, strip_leading_sql_comments,
-    ResultValue, ResultWorkspaceFallbackReason, ResultWorkspaceView, ResultWorkspaceViewResolution, StatementResultView, MUTATION_VERBS, QUERY_VERBS, RESULT_WORKSPACE_GAP,
+    can_render_result_chart, get_top_level_sql_verb, infer_field_type, is_chartable_result,
+    is_mutation_execution, resolve_result_workspace_view, strip_leading_sql_comments, ResultValue,
+    ResultWorkspaceFallbackReason, ResultWorkspaceView, ResultWorkspaceViewResolution,
+    StatementResultView, MUTATION_VERBS, QUERY_VERBS, RESULT_WORKSPACE_GAP,
     RESULT_WORKSPACE_SURFACE,
 };
-pub use content_view_helpers::{
-    get_panel_icon, get_panel_label, get_panel_short_label, get_panel_tab_label, get_sub_tabs, get_view_sub_tabs, resolve_connection_context, resolve_connection_context_by_connection,
-    resolve_panel_tab_database, ContentViewConnectionContext, ContentViewPanel, PanelIcon, SubTab, CONTENT_VIEW_HELPERS_GAP, CONTENT_VIEW_HELPERS_SURFACE,
-    ICON_CLASS,
+pub use tunnel_store::{
+    begin_load as begin_tunnel_load, error_message, new_tunnel_id, plan_create, plan_remove,
+    plan_update, plan_usage, settle_load, usage_from_lists, TunnelCreatePlan, TunnelInput,
+    TunnelStoreEffect, TunnelStoreState, TUNNEL_STORE_GAP, TUNNEL_STORE_SURFACE,
+};
+pub use types::{
+    is_valid_mcp_server_id, AppSettings, ChangedColumnDiff, CheckConstraintDiffEntry,
+    ColumnDiffEntry, ColumnInfo, CommandAccessLevel, CommandCategory, Counter, DefaultTableSort,
+    DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec, ErrorHandlingConfig,
+    ErrorHandlingStrategy, FavoriteQuery, GridDensity, HistoryEntry, HistoryListItem, Id,
+    KeyDetail, KeyEntry, KeyScanResult, LogLevel, McpApprovalDecision, McpApprovalRequest,
+    McpAuditDecision, McpAuditRecord, McpHttpStatus, McpHttpTransport, McpPermissionMode,
+    MergeSource, MultiQueryResult, OnboardingState, QueryResult, QueryStreamEvent,
+    ResultCompleteness, RuntimeResultBinding, SessionContext, SessionContextConfidence,
+    SortCondition, SqlExecutionStrategy, SqlFormatOptions, StatementResult, SyncObjectKind,
+    TableCompareStatus, TableComparison, TableDataResult, TableOptionsDiff, TableOptionsSnapshot,
+    TableSchemaDiff, Timestamp, TransactionState, TransformColumn, TunnelSource, TunnelUsage,
+    WorkflowBlock, WorkflowBlockRetry, WorkflowBlockType, WorkflowDefinition,
+    WorkflowExecuteRequest, WorkflowIdRequest, WorkflowOutput, WorkflowRunGetRequest,
+    WorkflowRunListItem, WorkflowRunRecord, WorkflowRunsListRequest, WorkflowSaveRequest,
+    WorkflowSchedule, WorkflowStep, WorkflowStepType, WorkflowVisibility, WorkflowYamlSaveRequest,
+    WritableMapping,
 };
 // `resolve_connection_context` takes content_view_helpers' structurally-identical
 // ActiveConnectionEntry, while the root `ActiveConnectionEntry` name is held by
 // ai_sessions. Expose the content-view one under an explicit alias so callers
 // can build the map the resolver expects without colliding at the root.
-pub use content_view_helpers::ActiveConnectionEntry as ContentViewActiveConnectionEntry;
-pub use query_toolbar_width::{
-    path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width, PathSelectorSegment, SelectorSegmentKind, ToolbarWidthOptions, PATH_HIERARCHY_LABEL_MAX, PATH_HIERARCHY_SELECT_CHROME,
-    PATH_HIERARCHY_SELECT_MAX, PATH_HIERARCHY_SELECT_MIN, PATH_HIERARCHY_SEGMENT_GAP, QUERY_TOOLBAR_ICON_BUTTON_WIDTH, QUERY_TOOLBAR_STATUS_WIDTH, QUERY_TOOLBAR_WIDTH_GAP, QUERY_TOOLBAR_WIDTH_SURFACE, TOOLBAR_GAP,
-    TOOLBAR_HORIZONTAL_PADDING,
-};
-pub use result_workspace_index::{
-    RESULT_WORKSPACE_INDEX_GAP, RESULT_WORKSPACE_INDEX_SURFACE,
-};
-pub use schema_tree::{
-    build_legacy_table_payload, build_schema_object_payload, get_categories_for_driver, leaf_kind_icon, object_kind_category, set_drag_payload, BASE_CATEGORIES, DragMimeEntry,
-    DragMimeValue, DragPayloadOptions, DragPayloadPlan, LEAF_KIND_ICONS, LegacyTableDragPayload, LegacyTableEntry, OBJECT_KIND_CATEGORIES, SCHEMA_OBJECT_MIME,
-    SCHEMA_PAYLOAD_VERSION, SCHEMA_TREE_GAP, SCHEMA_TREE_SURFACE, SchemaObjectDragKind, SchemaObjectDragPayloadV1, SchemaObjectNamespace, LEGACY_TABLE_MIME, TEXT_PLAIN_MIME,
-};
 pub use connection_page_utils::{
-    consume_pending_connection, enrich_open_connection_payload, make_tab_from_payload, pending_open_query_sql, remove_connection_from_stores, sync_stores_active_connection, ConnectionLookup, ConnectionStatus,
-    ConnectionStoreAction, ConnectionTab, ConsumedConnection, MainView, PendingOpenQuery, WorkspaceMode, CONNECTION_PAGE_UTILS_GAP, CONNECTION_PAGE_UTILS_SURFACE,
-    DEFAULT_DATABASE_TYPE,
+    consume_pending_connection, enrich_open_connection_payload, make_tab_from_payload,
+    pending_open_query_sql, remove_connection_from_stores, sync_stores_active_connection,
+    ConnectionLookup, ConnectionStatus, ConnectionStoreAction, ConnectionTab, ConsumedConnection,
+    MainView, PendingOpenQuery, WorkspaceMode, CONNECTION_PAGE_UTILS_GAP,
+    CONNECTION_PAGE_UTILS_SURFACE, DEFAULT_DATABASE_TYPE,
 };
+pub use content_view_helpers::ActiveConnectionEntry as ContentViewActiveConnectionEntry;
 pub use expanded_db_cache_refresh::{
-    schema_fingerprint, ConnectionRef, ExpandedDbCacheRefresh, RefreshDeps, RefreshEffect, RefreshInput, SchemaSnapshot, EXPANDED_DB_CACHE_REFRESH_GAP,
-    EXPANDED_DB_CACHE_REFRESH_SURFACE,
+    schema_fingerprint, ConnectionRef, ExpandedDbCacheRefresh, RefreshDeps, RefreshEffect,
+    RefreshInput, SchemaSnapshot, EXPANDED_DB_CACHE_REFRESH_GAP, EXPANDED_DB_CACHE_REFRESH_SURFACE,
+};
+pub use query_toolbar_width::{
+    path_hierarchy_label_width, query_context_select_width, query_toolbar_expanded_min_width,
+    PathSelectorSegment, SelectorSegmentKind, ToolbarWidthOptions, PATH_HIERARCHY_LABEL_MAX,
+    PATH_HIERARCHY_SEGMENT_GAP, PATH_HIERARCHY_SELECT_CHROME, PATH_HIERARCHY_SELECT_MAX,
+    PATH_HIERARCHY_SELECT_MIN, QUERY_TOOLBAR_ICON_BUTTON_WIDTH, QUERY_TOOLBAR_STATUS_WIDTH,
+    QUERY_TOOLBAR_WIDTH_GAP, QUERY_TOOLBAR_WIDTH_SURFACE, TOOLBAR_GAP, TOOLBAR_HORIZONTAL_PADDING,
+};
+pub use result_workspace_index::{RESULT_WORKSPACE_INDEX_GAP, RESULT_WORKSPACE_INDEX_SURFACE};
+pub use schema_tree::{
+    build_legacy_table_payload, build_schema_object_payload, get_categories_for_driver,
+    leaf_kind_icon, object_kind_category, set_drag_payload, DragMimeEntry, DragMimeValue,
+    DragPayloadOptions, DragPayloadPlan, LegacyTableDragPayload, LegacyTableEntry,
+    SchemaObjectDragKind, SchemaObjectDragPayloadV1, SchemaObjectNamespace, BASE_CATEGORIES,
+    LEAF_KIND_ICONS, LEGACY_TABLE_MIME, OBJECT_KIND_CATEGORIES, SCHEMA_OBJECT_MIME,
+    SCHEMA_PAYLOAD_VERSION, SCHEMA_TREE_GAP, SCHEMA_TREE_SURFACE, TEXT_PLAIN_MIME,
 };
 // (all names already rooted above)
 pub use ai_draft_bridge::{
-    AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab, AI_CHAT_DRAFT_FOCUS, AI_DRAFT_BRIDGE_GAP, AI_DRAFT_BRIDGE_SURFACE,
+    AiChatDraftRequest, AiChatDraftSource, ContentViewCallbacks, OpenRelationSubTab,
+    AI_CHAT_DRAFT_FOCUS, AI_DRAFT_BRIDGE_GAP, AI_DRAFT_BRIDGE_SURFACE,
 };
 pub use query_error_chat_prompt::{
-    build_query_error_chat_prompt, send_query_error_chat_draft, QueryErrorChatContext, QueryErrorDraftInput, MAX_PROMPT_ERROR_LENGTH, MAX_PROMPT_SQL_LENGTH, QUERY_ERROR_CHAT_PROMPT_GAP, QUERY_ERROR_CHAT_PROMPT_SURFACE,
+    build_query_error_chat_prompt, send_query_error_chat_draft, QueryErrorChatContext,
+    QueryErrorDraftInput, MAX_PROMPT_ERROR_LENGTH, MAX_PROMPT_SQL_LENGTH,
+    QUERY_ERROR_CHAT_PROMPT_GAP, QUERY_ERROR_CHAT_PROMPT_SURFACE,
 };
 pub use query_execution_risk::{
-    assess_execution_risk, host_guard_would_block, ExecutionRiskDecision, ExecutionRiskMode, HardBlockReason, HostGuardMode, QUERY_EXECUTION_RISK_GAP,
+    assess_execution_risk, host_guard_would_block, ExecutionRiskDecision, ExecutionRiskMode,
+    HardBlockReason, HostGuardMode, QUERY_EXECUTION_RISK_GAP,
 };
 pub use use_query_builder_contribution::{
-    client_snapshot, get_closed_snapshot, subscribe_falls_back_to_noop, QueryBuilderContribution, QueryBuilderRunState, USE_QUERY_BUILDER_CONTRIBUTION_GAP, USE_QUERY_BUILDER_CONTRIBUTION_SURFACE,
+    client_snapshot, get_closed_snapshot, subscribe_falls_back_to_noop, QueryBuilderContribution,
+    QueryBuilderRunState, USE_QUERY_BUILDER_CONTRIBUTION_GAP,
+    USE_QUERY_BUILDER_CONTRIBUTION_SURFACE,
 };
 pub use validate_bind_params::{
     find_missing_params, MissingParam, VALIDATE_BIND_PARAMS_GAP, VALIDATE_BIND_PARAMS_SURFACE,
 };
 pub use workspace_mode_sidebar::{
-    build_sidebar_view, build_update_view, dispatch_nav_action, progress_label, progress_ring, resolve_confirm_result, resolve_restart_prompt, update_label,
-    NavAction, NavButton, NavButtonId, ProgressRing, RestartPrompt, SidebarView, UpdateAction, UpdateButtonView,
-    UpdateIconKind, UpdateProgressPhase, UpdateState, BUTTON_ACTIVE, BUTTON_BASE, BUTTON_COLLAPSED, BUTTON_EXPANDED, BUTTON_INACTIVE,
-    SIDEBAR_BASE, WORKSPACE_MODE_SIDEBAR_GAP, WORKSPACE_MODE_SIDEBAR_SURFACE,
+    build_sidebar_view, build_update_view, dispatch_nav_action, progress_label, progress_ring,
+    resolve_confirm_result, resolve_restart_prompt, update_label, NavAction, NavButton,
+    NavButtonId, ProgressRing, RestartPrompt, SidebarView, UpdateAction, UpdateButtonView,
+    UpdateIconKind, UpdateProgressPhase, UpdateState, BUTTON_ACTIVE, BUTTON_BASE, BUTTON_COLLAPSED,
+    BUTTON_EXPANDED, BUTTON_INACTIVE, SIDEBAR_BASE, WORKSPACE_MODE_SIDEBAR_GAP,
+    WORKSPACE_MODE_SIDEBAR_SURFACE,
 };
 
 /// One foreign key: this table's columns (a compound key stays together), the
@@ -1613,14 +1909,23 @@ pub struct Snippet {
 /// leaves every entry at its old value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Setting {
-    Theme { dark: bool },
-    TablePageSize { rows: u32 },
-    QueryMaxRows { rows: u32 },
+    Theme {
+        dark: bool,
+    },
+    TablePageSize {
+        rows: u32,
+    },
+    QueryMaxRows {
+        rows: u32,
+    },
     /// One layout size in integer points (L1): `key` names the resizable
     /// region (for example `navigator-width`), `value` its persisted size.
     /// Points, not floats: the entry stays `Eq` and the file stays readable,
     /// and every React-side layout number is an integer anyway.
-    Layout { key: String, value: u32 },
+    Layout {
+        key: String,
+        value: u32,
+    },
 }
 
 impl Setting {
@@ -1666,7 +1971,9 @@ fn valid_layout_key(key: &str) -> bool {
         _ => return false,
     }
     key.len() <= 48
-        && key.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && key
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// Reads and writes settings, one entry at a time.
@@ -1712,7 +2019,8 @@ pub trait DesktopAdapter {
     ) -> Result<TablePage, String>;
     /// Apply one batch of cell edits through the desktop use case and report
     /// how many landed. One edit is (row, column name, new value).
-    fn commit_cells(&mut self, table: &str, edits: &[(u32, String, String)]) -> Result<u32, String>;
+    fn commit_cells(&mut self, table: &str, edits: &[(u32, String, String)])
+        -> Result<u32, String>;
 
     /// The unified unbound driver-command entry (the frontend's
     /// `execute_driver_command(driverType, …)` IPC): runs a driver command
@@ -1818,7 +2126,11 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
-    fn save_redis_connection(&mut self, _draft: &ConnectionDraft, _options: &native_kv::RedisConnectionOptions) -> Result<(), String> {
+    fn save_redis_connection(
+        &mut self,
+        _draft: &ConnectionDraft,
+        _options: &native_kv::RedisConnectionOptions,
+    ) -> Result<(), String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
@@ -2017,7 +2329,10 @@ pub enum AdapterJob {
         request: native_transfer::NativeTransferRequest,
     },
     ReadKv(native_kv::KvRead),
-    CloseKv { connection_id: String, session_generation: u32 },
+    CloseKv {
+        connection_id: String,
+        session_generation: u32,
+    },
     /// Open a connection in the host and read its catalog (N3): the live
     /// driver's databases, schemas and tables. The memory port's instant
     /// connect stays the declined path.
@@ -2095,8 +2410,14 @@ pub enum AdapterDelivery {
         side: native_transfer::TransferSide,
         result: Result<native_transfer::TransferCatalog, String>,
     },
-    NativeTransferReviewed { epoch: u32, result: Result<String, String> },
-    NativeTransferFinished { epoch: u32, result: Result<u64, String> },
+    NativeTransferReviewed {
+        epoch: u32,
+        result: Result<String, String>,
+    },
+    NativeTransferFinished {
+        epoch: u32,
+        result: Result<u64, String>,
+    },
     NativeCsvReviewed {
         epoch: u32,
         result: Result<native_csv_import::CsvImportReview, String>,
@@ -2113,16 +2434,32 @@ pub enum AdapterDelivery {
         epoch: u32,
         result: Result<native_transfer::NativeSchemaDiff, String>,
     },
-    RedisProbed { epoch: u64, result: Result<(), String> },
-    KvRead { request: native_kv::KvRead, result: Result<native_kv::KvReply, String> },
+    RedisProbed {
+        epoch: u64,
+        result: Result<(), String>,
+    },
+    KvRead {
+        request: native_kv::KvRead,
+        result: Result<native_kv::KvReply, String>,
+    },
     /// An open job's catalog (or its failure sentence). The connection id
     /// rides along so the UI can name the live session — the refresh path
     /// re-opens it.
-    ConnectionOpened { generation: u32, id: String, catalog: Result<Catalog, String> },
+    ConnectionOpened {
+        generation: u32,
+        id: String,
+        catalog: Result<Catalog, String>,
+    },
     /// A value search's hits (or its failure sentence) (T4).
-    ValueSearched { generation: u32, hits: Result<Vec<ValueSearchHit>, String> },
+    ValueSearched {
+        generation: u32,
+        hits: Result<Vec<ValueSearchHit>, String>,
+    },
     /// A read job's page (or its failure sentence).
-    TablePage { generation: u32, page: Result<TablePage, String> },
+    TablePage {
+        generation: u32,
+        page: Result<TablePage, String>,
+    },
     /// A structure job's four-part answer (or its failure sentence) (E1).
     /// The table rides along: the cache is per table, and a delivery for a
     /// table whose entry moved to a newer generation is dropped.
@@ -2147,10 +2484,19 @@ pub enum AdapterDelivery {
         refs: Result<Vec<InboundRef>, String>,
     },
     /// A commit job's landed edit count (or its failure sentence).
-    CommitCount { generation: u32, count: Result<u32, String> },
-    QueryHistoryRead { generation: u32, result: Result<QueryHistorySnapshot, String> },
+    CommitCount {
+        generation: u32,
+        count: Result<u32, String>,
+    },
+    QueryHistoryRead {
+        generation: u32,
+        result: Result<QueryHistorySnapshot, String>,
+    },
     /// A query job's result page (or its failure sentence).
-    QueryPage { generation: u32, page: Result<TablePage, String> },
+    QueryPage {
+        generation: u32,
+        page: Result<TablePage, String>,
+    },
     /// A workflow run's step report (or its failure sentence) (T8).
     WorkflowRun {
         generation: u32,
@@ -2238,247 +2584,6 @@ impl DesktopAdapter for UnimplementedAdapter {
         _edits: &[(u32, String, String)],
     ) -> Result<u32, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
-    }
-}
-
-/// The one organization a desktop process recognizes (single-tenant). The
-/// native host's repositories pair with it: a scope with another
-/// organization sees nothing.
-#[cfg(not(target_arch = "wasm32"))]
-pub const DESKTOP_ORGANIZATION: &str = "desktop";
-
-/// The adapter's in-memory connection store, seeded at construction. The
-/// desktop host swaps in its real store later; the use case above it is
-/// unchanged. Out-of-scope access answers empty, the way the boundary
-/// defines it.
-#[cfg(not(target_arch = "wasm32"))]
-struct MemoryConnectionRepository {
-    connections: Vec<DriverConnectionConfig>,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[async_trait::async_trait]
-impl datazen::connection::domain::ConnectionRepository for MemoryConnectionRepository {
-    async fn list(
-        &self,
-        scope: &datazen::connection::domain::ConnectionScope,
-    ) -> Result<Vec<DriverConnectionConfig>, datazen::connection::domain::ConnectionRepositoryError>
-    {
-        if scope.organization_id() != DESKTOP_ORGANIZATION {
-            return Ok(Vec::new());
-        }
-        Ok(self.connections.clone())
-    }
-
-    async fn get(
-        &self,
-        scope: &datazen::connection::domain::ConnectionScope,
-        connection_id: &str,
-    ) -> Result<Option<DriverConnectionConfig>, datazen::connection::domain::ConnectionRepositoryError>
-    {
-        if scope.organization_id() != DESKTOP_ORGANIZATION {
-            return Ok(None);
-        }
-        Ok(self
-            .connections
-            .iter()
-            .find(|config| config.id == connection_id)
-            .cloned())
-    }
-
-    async fn save(
-        &self,
-        _scope: &datazen::connection::domain::ConnectionScope,
-        _config: DriverConnectionConfig,
-    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
-        Err(datazen::connection::domain::ConnectionRepositoryError::BackendUnavailable(
-            "the adapter's demo store is read-only".into(),
-        ))
-    }
-
-    async fn delete(
-        &self,
-        _scope: &datazen::connection::domain::ConnectionScope,
-        _connection_id: &str,
-    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
-        Err(datazen::connection::domain::ConnectionRepositoryError::BackendUnavailable(
-            "the adapter's demo store is read-only".into(),
-        ))
-    }
-
-    async fn reorder(
-        &self,
-        _scope: &datazen::connection::domain::ConnectionScope,
-        _ordered_ids: Vec<String>,
-    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
-        Err(datazen::connection::domain::ConnectionRepositoryError::BackendUnavailable(
-            "the adapter's demo store is read-only".into(),
-        ))
-    }
-
-    async fn touch_last_connected_at(
-        &self,
-        _scope: &datazen::connection::domain::ConnectionScope,
-        _connection_id: &str,
-    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
-        Ok(())
-    }
-
-    async fn groups(
-        &self,
-        _scope: &datazen::connection::domain::ConnectionScope,
-    ) -> Result<Vec<String>, datazen::connection::domain::ConnectionRepositoryError> {
-        Ok(Vec::new())
-    }
-
-    async fn save_groups(
-        &self,
-        _scope: &datazen::connection::domain::ConnectionScope,
-        _groups: Vec<String>,
-    ) -> Result<(), datazen::connection::domain::ConnectionRepositoryError> {
-        Err(datazen::connection::domain::ConnectionRepositoryError::BackendUnavailable(
-            "the adapter's demo store is read-only".into(),
-        ))
-    }
-}
-
-/// One connection as the form's IPC payload, from the UI vocabulary. The
-/// adapter's demo seed carries only what the list shows; the desktop host
-/// seeds real configs instead.
-#[cfg(not(target_arch = "wasm32"))]
-fn config_from_profile(profile: &ConnectionProfile) -> DriverConnectionConfig {
-    DriverConnectionConfig {
-        id: profile.id.clone(),
-        name: profile.name.clone(),
-        database_type: profile.engine.clone(),
-        host: None,
-        port: None,
-        database: None,
-        schema: None,
-        username: None,
-        password: None,
-        ssl_mode: DriverSslMode::default(),
-        connection_timeout: 30,
-        max_pool_size: 10,
-        ssh_tunnel: None,
-        tunnel_kind: None,
-        tunnel_id: None,
-        http_proxy_tunnel: None,
-        websocket_tunnel: None,
-        color_tag: None,
-        group: None,
-        last_connected_at: None,
-        server_version: None,
-        options: None,
-        read_only: false,
-        pinned: false,
-    }
-}
-
-/// H3: the adapter with `list_connections` wired to the existing use case —
-/// `ConnectionService::list_redacted` over a connection repository. H4 wired
-/// `read_table_page` and H5 `commit_cells` to the existing in-memory use
-/// cases (`MemoryWorkspace::open_table`, staging plus `commit_staged`).
-///
-/// Native only: this is the desktop host's adapter. The wasm host compiles
-/// the same ports over the memory workspace and brings its own adapter
-/// later.
-#[cfg(not(target_arch = "wasm32"))]
-pub struct UseCaseAdapter {
-    service: datazen::connection::application::ConnectionService,
-    /// The existing in-memory world the read use case runs over. The desktop
-    /// host swaps in the live-driver use case later; the seam stays.
-    workspace: MemoryWorkspace,
-}
-
-/// The existing in-memory world with its session open: the read use case
-/// needs one, and the demo process has no connect call of its own.
-#[cfg(not(target_arch = "wasm32"))]
-fn demo_workspace() -> MemoryWorkspace {
-    let mut workspace = MemoryWorkspace::new();
-    workspace.connect("local").expect("the demo connection exists");
-    workspace
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl UseCaseAdapter {
-    /// The real seam: the desktop host provides its connection store.
-    pub fn from_repository(
-        repository: std::sync::Arc<dyn datazen::connection::domain::ConnectionRepository>,
-    ) -> Self {
-        Self {
-            service: datazen::connection::application::ConnectionService::new(repository),
-            workspace: demo_workspace(),
-        }
-    }
-
-    /// The in-memory store the shared UI's demo process starts from, seeded
-    /// with the memory port's demo connections.
-    pub fn with_demo_connections() -> Self {
-        Self::new(vec![
-            ConnectionProfile {
-                id: "local".into(),
-                name: "Local Postgres".into(),
-                engine: "postgres".into(),
-            },
-            ConnectionProfile {
-                id: "replica".into(),
-                name: "Read Replica".into(),
-                engine: "postgres".into(),
-            },
-        ])
-    }
-
-    /// An in-memory store seeded from the UI vocabulary (tests, demo seeds).
-    pub fn new(connections: Vec<ConnectionProfile>) -> Self {
-        let configs = connections.iter().map(config_from_profile).collect();
-        Self::from_repository(std::sync::Arc::new(MemoryConnectionRepository {
-            connections: configs,
-        }))
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl DesktopAdapter for UseCaseAdapter {
-    fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
-        let scope = datazen::connection::domain::ConnectionScope::new(DESKTOP_ORGANIZATION);
-        let configs =
-            futures_executor::block_on(self.service.list_redacted(&scope))
-                .map_err(|error| error.to_string())?;
-        Ok(configs
-            .iter()
-            .map(|config| ConnectionProfile {
-                id: config.id.clone(),
-                name: config.name.clone(),
-                engine: config.database_type.clone(),
-            })
-            .collect())
-    }
-
-    fn read_table_page(
-        &mut self,
-        table: &str,
-        page: u32,
-        page_size: u32,
-        sort: Option<&ColumnSort>,
-        filter: Option<&ColumnFilter>,
-    ) -> Result<TablePage, String> {
-        // H4: the existing read use case — the memory workspace's paged,
-        // sorted, filtered table read.
-        self.workspace
-            .open_table(table, page, page_size, sort, filter)
-    }
-
-    fn commit_cells(&mut self, table: &str, edits: &[(u32, String, String)]) -> Result<u32, String> {
-        // H5: the existing commit use case — the batch is staged on the open
-        // page the rows refer to (the UI numbers them like the page it last
-        // read, which is the page this workspace has open), then applied as
-        // one commit. A failure leaves the staged batch in place.
-        let _ = table;
-        for (row, column, value) in edits {
-            self.workspace.stage_cell(*row, column, value.clone())?;
-        }
-        self.workspace.commit_staged()
     }
 }
 
@@ -2627,14 +2732,20 @@ impl Default for MemoryWorkspace {
 
 impl MemoryWorkspace {
     pub fn new() -> Self {
-        let columns = vec!["id", "name", "city", "status", "note", "orders", "email", "country"];
+        let columns = vec![
+            "id", "name", "city", "status", "note", "orders", "email", "country",
+        ];
         let mut rows = Vec::new();
         for index in 0..40 {
             rows.push(vec![
                 index.to_string(),
                 format!("customer-{index}"),
                 "Hangzhou".to_owned(),
-                if index % 2 == 0 { "active".to_owned() } else { "paused".to_owned() },
+                if index % 2 == 0 {
+                    "active".to_owned()
+                } else {
+                    "paused".to_owned()
+                },
                 "seed".to_owned(),
                 (index * 3).to_string(),
                 format!("c{index}@example.com"),
@@ -2644,7 +2755,12 @@ impl MemoryWorkspace {
         // A wide demo table for the analytics schema: 30 columns x 60 rows.
         let wide_columns: Vec<String> = (0..30).map(|i| format!("c{i}")).collect();
         let wide_rows: Vec<Vec<String>> = (0..60)
-            .map(|row| wide_columns.iter().map(|col| format!("{col}-{row}")).collect())
+            .map(|row| {
+                wide_columns
+                    .iter()
+                    .map(|col| format!("{col}-{row}"))
+                    .collect()
+            })
             .collect();
         let tables = vec![
             (
@@ -2732,7 +2848,8 @@ impl SettingsApi for MemoryWorkspace {
 
     fn write_setting(&mut self, setting: Setting) -> Result<(), String> {
         setting.validate()?;
-        self.settings.retain(|existing| !replaces_slot(existing, &setting));
+        self.settings
+            .retain(|existing| !replaces_slot(existing, &setting));
         self.settings.push(setting);
         Ok(())
     }
@@ -2794,7 +2911,8 @@ impl QueryApi for MemoryWorkspace {
                 vec![vec!["1".to_owned()]],
             )),
             "SELECT * FROM CUSTOMERS" => {
-                let Some((_, stored)) = self.tables.iter().find(|(name, _)| name == "customers") else {
+                let Some((_, stored)) = self.tables.iter().find(|(name, _)| name == "customers")
+                else {
                     return Err("unknown table customers".into());
                 };
                 let max_rows = self
@@ -2820,14 +2938,19 @@ impl WorkspaceApi for MemoryWorkspace {
 
     fn catalog(&self) -> Catalog {
         let Some(session) = &self.session else {
-            return Catalog { databases: Vec::new() };
+            return Catalog {
+                databases: Vec::new(),
+            };
         };
         let mut schemas: Vec<(String, Vec<String>)> = Vec::new();
         for (name, stored) in &self.tables {
             if !session.tables.contains(name) {
                 continue;
             }
-            match schemas.iter_mut().find(|(schema, _)| *schema == stored.schema) {
+            match schemas
+                .iter_mut()
+                .find(|(schema, _)| *schema == stored.schema)
+            {
                 Some(existing) => existing.1.push(name.clone()),
                 None => schemas.push((stored.schema.clone(), vec![name.clone()])),
             }
@@ -2857,8 +2980,12 @@ impl WorkspaceApi for MemoryWorkspace {
             return Ok(String::new());
         }
         // (table_ddl continues below; the analytics branch is shared with columns)
-        let lines: Vec<String> =
-            stored.1.columns.iter().map(|column| format!("  {column} text")).collect();
+        let lines: Vec<String> = stored
+            .1
+            .columns
+            .iter()
+            .map(|column| format!("  {column} text"))
+            .collect();
         Ok(format!("CREATE TABLE {table} (\n{}\n);", lines.join(",\n")))
     }
 
@@ -2930,12 +3057,19 @@ impl WorkspaceApi for MemoryWorkspace {
         if self.snippets.iter().any(|snippet| snippet.name == name) {
             return Err(format!("a snippet named {name} already exists"));
         }
-        self.snippets.push(Snippet { name: name.to_owned(), sql: sql.to_owned() });
+        self.snippets.push(Snippet {
+            name: name.to_owned(),
+            sql: sql.to_owned(),
+        });
         Ok(())
     }
 
     fn update_snippet(&mut self, name: &str, sql: &str) -> Result<(), String> {
-        match self.snippets.iter_mut().find(|snippet| snippet.name == name) {
+        match self
+            .snippets
+            .iter_mut()
+            .find(|snippet| snippet.name == name)
+        {
             Some(snippet) => {
                 snippet.sql = sql.to_owned();
                 Ok(())
@@ -3010,14 +3144,22 @@ impl WorkspaceApi for MemoryWorkspace {
                         entry.log.push("done".into());
                     }
                 }
-                Some(snapshot(if failed { "failed" } else { "completed" }, 100, entry))
+                Some(snapshot(
+                    if failed { "failed" } else { "completed" },
+                    100,
+                    entry,
+                ))
             }
         }
     }
 
     fn sync_endpoints(&mut self, source: &str, target: &str) -> Result<(), String> {
         for endpoint in [source, target] {
-            if !self.connections.iter().any(|profile| profile.id == endpoint) {
+            if !self
+                .connections
+                .iter()
+                .any(|profile| profile.id == endpoint)
+            {
                 return Err(format!("unknown connection {endpoint}"));
             }
         }
@@ -3031,7 +3173,11 @@ impl WorkspaceApi for MemoryWorkspace {
         if !self.connections.iter().any(|profile| profile.id == source) {
             return Err(format!("unknown connection {source}"));
         }
-        if !self.connection_tables(source).iter().any(|name| name == table) {
+        if !self
+            .connection_tables(source)
+            .iter()
+            .any(|name| name == table)
+        {
             return Err(format!("{source} cannot see {table}"));
         }
         let stored = self
@@ -3068,7 +3214,11 @@ impl WorkspaceApi for MemoryWorkspace {
 
     fn compare_objects(&self, source: &str, target: &str) -> Result<Vec<CompareObject>, String> {
         for endpoint in [source, target] {
-            if !self.connections.iter().any(|profile| profile.id == endpoint) {
+            if !self
+                .connections
+                .iter()
+                .any(|profile| profile.id == endpoint)
+            {
                 return Err(format!("unknown connection {endpoint}"));
             }
         }
@@ -3205,7 +3355,12 @@ impl WorkspaceApi for MemoryWorkspace {
         let lines: Vec<String> = objects
             .iter()
             .filter(|object| !object.present_on_target)
-            .map(|object| format!("CREATE TABLE {} (...); -- missing on {}", object.name, target))
+            .map(|object| {
+                format!(
+                    "CREATE TABLE {} (...); -- missing on {}",
+                    object.name, target
+                )
+            })
             .collect();
         Ok(lines.join("\n"))
     }
@@ -3229,10 +3384,7 @@ impl WorkspaceApi for MemoryWorkspace {
             range: "the database".into(),
             reads: 0,
             stopped: false,
-            log: vec![
-                "queued".to_owned(),
-                "backing up the database".into(),
-            ],
+            log: vec!["queued".to_owned(), "backing up the database".into()],
             fail_line: None,
         });
         Ok(job)
@@ -3256,16 +3408,35 @@ impl WorkspaceApi for MemoryWorkspace {
     }
 
     fn save_connection(&mut self, draft: &ConnectionDraft) -> Result<(), String> {
-        let ConnectionDraft { name, engine, address, .. } = draft;
+        let ConnectionDraft {
+            name,
+            engine,
+            address,
+            ..
+        } = draft;
         if address.trim().is_empty() {
             return Err("address is required".into());
         }
-        let name = if name.trim().is_empty() { "Untitled" } else { name.trim() };
-        let engine = if engine.trim().is_empty() { "postgres" } else { engine.trim() };
+        let name = if name.trim().is_empty() {
+            "Untitled"
+        } else {
+            name.trim()
+        };
+        let engine = if engine.trim().is_empty() {
+            "postgres"
+        } else {
+            engine.trim()
+        };
         let slug = |name: &str| {
             let mut id: String = name
                 .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() {
+                        c.to_ascii_lowercase()
+                    } else {
+                        '-'
+                    }
+                })
                 .collect();
             while id.contains("--") {
                 id = id.replace("--", "-");
@@ -3278,7 +3449,11 @@ impl WorkspaceApi for MemoryWorkspace {
         }
         let mut candidate = id.clone();
         let mut counter = 2;
-        while self.connections.iter().any(|profile| profile.id == candidate) {
+        while self
+            .connections
+            .iter()
+            .any(|profile| profile.id == candidate)
+        {
             candidate = format!("{id}-{counter}");
             counter += 1;
         }
@@ -3475,7 +3650,11 @@ impl WorkspaceApi for MemoryWorkspace {
                 }
             }
         }
-        self.open = Some(OpenTable { name: table.to_owned(), page, page_size });
+        self.open = Some(OpenTable {
+            name: table.to_owned(),
+            page,
+            page_size,
+        });
         Ok(TablePage {
             table: table.to_owned(),
             columns: stored.1.columns.clone(),
@@ -3560,11 +3739,15 @@ mod tests {
         let mut workspace = MemoryWorkspace::new();
         assert!(workspace.connect("missing").is_err());
         workspace.connect("local").unwrap();
-        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        let page = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         assert_eq!(page.columns[1], "name");
         assert_eq!(page.rows[0][1], "customer-0");
         workspace.stage_cell(0, "name", "alice".into()).unwrap();
-        let again = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        let again = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         assert_eq!(again.rows[0][1], "alice");
     }
 
@@ -3572,8 +3755,12 @@ mod tests {
     fn the_second_page_is_not_the_first_page() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        let first = workspace.open_table("customers", 0, 25, None, None).unwrap();
-        let second = workspace.open_table("customers", 1, 25, None, None).unwrap();
+        let first = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
+        let second = workspace
+            .open_table("customers", 1, 25, None, None)
+            .unwrap();
         assert_eq!(first.rows.len(), 25);
         assert_eq!(second.rows.len(), 15);
         assert_eq!(first.rows[0][0], "0");
@@ -3588,7 +3775,9 @@ mod tests {
     fn an_out_of_range_page_clamps_to_the_last_page() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        let page = workspace.open_table("customers", 99, 25, None, None).unwrap();
+        let page = workspace
+            .open_table("customers", 99, 25, None, None)
+            .unwrap();
         assert_eq!(page.page, 1);
         assert_eq!(page.rows.len(), 15);
     }
@@ -3597,15 +3786,31 @@ mod tests {
     fn sorting_orders_the_page_over_the_whole_table() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        let ascending = ColumnSort { column: "name".into(), descending: false };
-        let page = workspace.open_table("customers", 0, 25, Some(&ascending), None).unwrap();
+        let ascending = ColumnSort {
+            column: "name".into(),
+            descending: false,
+        };
+        let page = workspace
+            .open_table("customers", 0, 25, Some(&ascending), None)
+            .unwrap();
         assert_eq!(page.rows[0][1], "customer-0");
-        assert_eq!(page.rows[2][1], "customer-10", "lexicographic ascending order");
+        assert_eq!(
+            page.rows[2][1], "customer-10",
+            "lexicographic ascending order"
+        );
         assert_eq!(page.sort, Some(ascending.clone()));
 
-        let descending = ColumnSort { column: "name".into(), descending: true };
-        let page = workspace.open_table("customers", 0, 25, Some(&descending), None).unwrap();
-        assert_eq!(page.rows[0][1], "customer-9", "descending starts at the lexicographic max");
+        let descending = ColumnSort {
+            column: "name".into(),
+            descending: true,
+        };
+        let page = workspace
+            .open_table("customers", 0, 25, Some(&descending), None)
+            .unwrap();
+        assert_eq!(
+            page.rows[0][1], "customer-9",
+            "descending starts at the lexicographic max"
+        );
         assert_eq!(page.rows[6][1], "customer-39");
         assert_eq!(page.rows.len(), 25);
     }
@@ -3614,16 +3819,26 @@ mod tests {
     fn sorting_by_an_unknown_column_is_an_error() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        let sort = ColumnSort { column: "missing".into(), descending: false };
-        assert!(workspace.open_table("customers", 0, 25, Some(&sort), None).is_err());
+        let sort = ColumnSort {
+            column: "missing".into(),
+            descending: false,
+        };
+        assert!(workspace
+            .open_table("customers", 0, 25, Some(&sort), None)
+            .is_err());
     }
 
     #[test]
     fn a_filter_narrows_the_page_and_the_total() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        let filter = ColumnFilter { column: "name".into(), contains: "customer-3".into() };
-        let page = workspace.open_table("customers", 0, 25, None, Some(&filter)).unwrap();
+        let filter = ColumnFilter {
+            column: "name".into(),
+            contains: "customer-3".into(),
+        };
+        let page = workspace
+            .open_table("customers", 0, 25, None, Some(&filter))
+            .unwrap();
         assert_eq!(page.rows.len(), 11, "customer-3 itself and customer-30..39");
         assert_eq!(page.total_rows, 11);
         assert!(page.rows.iter().all(|row| row[1].contains("customer-3")));
@@ -3634,11 +3849,22 @@ mod tests {
     fn a_filter_with_sort_pages_over_the_matching_rows() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        let filter = ColumnFilter { column: "name".into(), contains: "customer-3".into() };
-        let sort = ColumnSort { column: "name".into(), descending: true };
-        let page = workspace.open_table("customers", 0, 25, Some(&sort), Some(&filter)).unwrap();
+        let filter = ColumnFilter {
+            column: "name".into(),
+            contains: "customer-3".into(),
+        };
+        let sort = ColumnSort {
+            column: "name".into(),
+            descending: true,
+        };
+        let page = workspace
+            .open_table("customers", 0, 25, Some(&sort), Some(&filter))
+            .unwrap();
         assert_eq!(page.rows.len(), 11);
-        assert_eq!(page.rows[0][1], "customer-39", "descending over the filtered set");
+        assert_eq!(
+            page.rows[0][1], "customer-39",
+            "descending over the filtered set"
+        );
         assert_eq!(page.rows[10][1], "customer-3");
     }
 
@@ -3646,20 +3872,31 @@ mod tests {
     fn filtering_an_unknown_column_is_an_error() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        let filter = ColumnFilter { column: "missing".into(), contains: "x".into() };
-        assert!(workspace.open_table("customers", 0, 25, None, Some(&filter)).is_err());
+        let filter = ColumnFilter {
+            column: "missing".into(),
+            contains: "x".into(),
+        };
+        assert!(workspace
+            .open_table("customers", 0, 25, None, Some(&filter))
+            .is_err());
     }
 
     #[test]
     fn rollback_restores_the_original_value() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         workspace.stage_cell(0, "name", "staged".into()).unwrap();
-        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        let page = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         assert_eq!(page.rows[0][1], "staged", "staged values show on the page");
         workspace.rollback_staged();
-        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        let page = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         assert_eq!(page.rows[0][1], "customer-0");
     }
 
@@ -3667,13 +3904,19 @@ mod tests {
     fn commit_keeps_the_new_value_after_reopening() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         workspace.stage_cell(0, "name", "kept".into()).unwrap();
         assert_eq!(workspace.commit_staged().unwrap(), 1);
-        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        let page = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         assert_eq!(page.rows[0][1], "kept");
         workspace.rollback_staged();
-        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        let page = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         assert_eq!(page.rows[0][1], "kept", "rollback cannot undo a commit");
     }
 
@@ -3681,18 +3924,30 @@ mod tests {
     fn staged_values_follow_their_row_through_sorting() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         workspace.stage_cell(0, "name", "aaa-first".into()).unwrap();
-        let sort = ColumnSort { column: "name".into(), descending: false };
-        let page = workspace.open_table("customers", 0, 25, Some(&sort), None).unwrap();
-        assert_eq!(page.rows[0][1], "aaa-first", "the staged name sorts with its row");
+        let sort = ColumnSort {
+            column: "name".into(),
+            descending: false,
+        };
+        let page = workspace
+            .open_table("customers", 0, 25, Some(&sort), None)
+            .unwrap();
+        assert_eq!(
+            page.rows[0][1], "aaa-first",
+            "the staged name sorts with its row"
+        );
     }
 
     #[test]
     fn open_result_is_read_only_and_blocks_staging() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         let page = workspace.open_result(
             vec!["a".into(), "b".into()],
             vec![vec!["1".into(), "2".into()], vec!["3".into(), "4".into()]],
@@ -3705,10 +3960,15 @@ mod tests {
             "staging while a result is open is rejected"
         );
 
-        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         workspace.stage_cell(0, "name", "x".into()).unwrap();
         assert_eq!(
-            workspace.open_table("customers", 0, 25, None, None).unwrap().rows[0][1],
+            workspace
+                .open_table("customers", 0, 25, None, None)
+                .unwrap()
+                .rows[0][1],
             "x",
             "reopening a table releases the result lock"
         );
@@ -3726,10 +3986,16 @@ mod tests {
 
         let page = workspace.execute("SELECT  *  FROM customers;").unwrap();
         assert_eq!(page.columns[1], "name");
-        assert_eq!(page.rows.len(), 40, "under the 100-row cap the whole table returns");
+        assert_eq!(
+            page.rows.len(),
+            40,
+            "under the 100-row cap the whole table returns"
+        );
         assert_eq!(page.rows[0][1], "customer-0");
 
-        workspace.write_setting(Setting::QueryMaxRows { rows: 10 }).unwrap();
+        workspace
+            .write_setting(Setting::QueryMaxRows { rows: 10 })
+            .unwrap();
         let page = workspace.execute("select * from customers").unwrap();
         assert_eq!(page.rows.len(), 10, "the query cap comes from the setting");
     }
@@ -3738,18 +4004,32 @@ mod tests {
     fn unknown_sql_is_an_error_and_changes_nothing() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         workspace.stage_cell(0, "name", "staged".into()).unwrap();
-        let before = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        let before = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
 
         assert!(workspace.execute("drop table customers").is_err());
         assert!(workspace.execute("").is_err());
 
-        let after = workspace.open_table("customers", 0, 25, None, None).unwrap();
-        assert_eq!(after.rows, before.rows, "the table and its staged values are untouched");
+        let after = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
+        assert_eq!(
+            after.rows, before.rows,
+            "the table and its staged values are untouched"
+        );
         workspace.stage_cell(1, "name", "more".into()).unwrap();
-        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
-        assert_eq!(page.rows[1][1], "more", "staging still works after failed executes");
+        let page = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
+        assert_eq!(
+            page.rows[1][1], "more",
+            "staging still works after failed executes"
+        );
     }
 
     #[test]
@@ -3761,7 +4041,10 @@ mod tests {
     #[test]
     fn the_catalog_reports_three_levels_in_a_stable_order() {
         let mut workspace = MemoryWorkspace::new();
-        assert!(workspace.catalog().databases.is_empty(), "no session, no catalog");
+        assert!(
+            workspace.catalog().databases.is_empty(),
+            "no session, no catalog"
+        );
         workspace.connect("local").unwrap();
         let catalog = workspace.catalog();
         assert_eq!(catalog.databases.len(), 1);
@@ -3772,13 +4055,23 @@ mod tests {
         assert_eq!(schemas[0].tables, vec!["customers", "orders"]);
         assert_eq!(schemas[1].name, "analytics");
         assert_eq!(schemas[1].tables, vec!["catalog"]);
-        assert_eq!(workspace.catalog(), catalog, "the order is stable across calls");
+        assert_eq!(
+            workspace.catalog(),
+            catalog,
+            "the order is stable across calls"
+        );
     }
 
     #[test]
     fn column_drafts_are_data_not_state_changes() {
-        let add = ColumnDraft::AddColumn { name: "score".into(), sql_type: "int".into() };
-        let retype = ColumnDraft::ChangeType { column: "name".into(), sql_type: "varchar(80)".into() };
+        let add = ColumnDraft::AddColumn {
+            name: "score".into(),
+            sql_type: "int".into(),
+        };
+        let retype = ColumnDraft::ChangeType {
+            column: "name".into(),
+            sql_type: "varchar(80)".into(),
+        };
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
         let before = workspace.table_columns("customers").unwrap();
@@ -3790,9 +4083,18 @@ mod tests {
 
     #[test]
     fn drafts_preview_as_alter_statements() {
-        let add = ColumnDraft::AddColumn { name: "score".into(), sql_type: "int".into() };
-        assert_eq!(add.sql("customers"), "ALTER TABLE customers ADD COLUMN score int;");
-        let retype = ColumnDraft::ChangeType { column: "name".into(), sql_type: "varchar(80)".into() };
+        let add = ColumnDraft::AddColumn {
+            name: "score".into(),
+            sql_type: "int".into(),
+        };
+        assert_eq!(
+            add.sql("customers"),
+            "ALTER TABLE customers ADD COLUMN score int;"
+        );
+        let retype = ColumnDraft::ChangeType {
+            column: "name".into(),
+            sql_type: "varchar(80)".into(),
+        };
         assert_eq!(
             retype.sql("customers"),
             "ALTER TABLE customers ALTER COLUMN name TYPE varchar(80);",
@@ -3810,33 +4112,70 @@ mod tests {
         assert_eq!(columns.len(), 9);
         assert_eq!(columns[8].name, "score");
         assert_eq!(columns[8].sql_type, "int");
-        let page = workspace.open_table("customers", 0, 25, None, None).unwrap();
-        assert!(page.rows.iter().all(|row| row.len() == 9), "rows grow with the column");
+        let page = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
+        assert!(
+            page.rows.iter().all(|row| row.len() == 9),
+            "rows grow with the column"
+        );
         assert_eq!(page.rows[0][8], "NULL");
-        assert_eq!(workspace.applied_ddl(), vec![sql.to_owned()], "the port records what it applied");
+        assert_eq!(
+            workspace.applied_ddl(),
+            vec![sql.to_owned()],
+            "the port records what it applied"
+        );
 
         workspace
-            .apply_ddl("customers", "ALTER TABLE customers ALTER COLUMN score TYPE bigint;")
+            .apply_ddl(
+                "customers",
+                "ALTER TABLE customers ALTER COLUMN score TYPE bigint;",
+            )
             .unwrap();
-        assert_eq!(workspace.table_columns("customers").unwrap()[8].sql_type, "bigint");
+        assert_eq!(
+            workspace.table_columns("customers").unwrap()[8].sql_type,
+            "bigint"
+        );
     }
 
     #[test]
     fn a_failed_apply_changes_nothing() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        assert!(workspace.apply_ddl("orders", "ALTER TABLE orders ADD COLUMN x int;").is_err());
-        assert_eq!(workspace.table_columns("orders").unwrap().len(), 2, "read-only tables refuse");
-        assert!(workspace.apply_ddl("customers", "DROP TABLE nope;").is_err());
-        assert_eq!(workspace.table_columns("customers").unwrap().len(), 8, "unknown statements refuse");
+        assert!(workspace
+            .apply_ddl("orders", "ALTER TABLE orders ADD COLUMN x int;")
+            .is_err());
+        assert_eq!(
+            workspace.table_columns("orders").unwrap().len(),
+            2,
+            "read-only tables refuse"
+        );
+        assert!(workspace
+            .apply_ddl("customers", "DROP TABLE nope;")
+            .is_err());
+        assert_eq!(
+            workspace.table_columns("customers").unwrap().len(),
+            8,
+            "unknown statements refuse"
+        );
         assert!(
             workspace
-                .apply_ddl("customers", "ALTER TABLE customers ADD COLUMN ok int;\nDROP TABLE nope;")
+                .apply_ddl(
+                    "customers",
+                    "ALTER TABLE customers ADD COLUMN ok int;\nDROP TABLE nope;"
+                )
                 .is_err(),
             "one bad line fails the whole script"
         );
-        assert_eq!(workspace.table_columns("customers").unwrap().len(), 8, "nothing half-applied");
-        assert!(workspace.applied_ddl().is_empty(), "failures are not recorded");
+        assert_eq!(
+            workspace.table_columns("customers").unwrap().len(),
+            8,
+            "nothing half-applied"
+        );
+        assert!(
+            workspace.applied_ddl().is_empty(),
+            "failures are not recorded"
+        );
     }
 
     #[test]
@@ -3846,24 +4185,39 @@ mod tests {
         assert_eq!(before.len(), 3);
         assert!(before.contains(&Setting::TablePageSize { rows: 25 }));
 
-        assert!(workspace.write_setting(Setting::TablePageSize { rows: 0 }).is_err());
-        assert!(workspace.write_setting(Setting::TablePageSize { rows: 501 }).is_err());
-        assert!(workspace.write_setting(Setting::QueryMaxRows { rows: 0 }).is_err());
+        assert!(workspace
+            .write_setting(Setting::TablePageSize { rows: 0 })
+            .is_err());
+        assert!(workspace
+            .write_setting(Setting::TablePageSize { rows: 501 })
+            .is_err());
+        assert!(workspace
+            .write_setting(Setting::QueryMaxRows { rows: 0 })
+            .is_err());
         assert_eq!(
             workspace.read_settings(),
             before,
             "failed writes leave every entry at its old value"
         );
 
-        assert!(workspace.write_setting(Setting::TablePageSize { rows: 50 }).is_ok());
+        assert!(workspace
+            .write_setting(Setting::TablePageSize { rows: 50 })
+            .is_ok());
         let after = workspace.read_settings();
         assert!(after.contains(&Setting::TablePageSize { rows: 50 }));
-        assert!(after.contains(&Setting::Theme { dark: true }), "the other entries survive");
+        assert!(
+            after.contains(&Setting::Theme { dark: true }),
+            "the other entries survive"
+        );
         assert!(after.contains(&Setting::QueryMaxRows { rows: 100 }));
         assert_eq!(after.len(), 3, "one entry per kind, replaced in place");
 
-        assert!(workspace.write_setting(Setting::Theme { dark: false }).is_ok());
-        assert!(workspace.read_settings().contains(&Setting::Theme { dark: false }));
+        assert!(workspace
+            .write_setting(Setting::Theme { dark: false })
+            .is_ok());
+        assert!(workspace
+            .read_settings()
+            .contains(&Setting::Theme { dark: false }));
     }
 
     #[test]
@@ -3872,12 +4226,33 @@ mod tests {
 
         // A valid size lands; the same region key replaces in place, a
         // different region key coexists (L1).
-        workspace.write_setting(Setting::Layout { key: "navigator-width".into(), value: 280 }).unwrap();
-        workspace.write_setting(Setting::Layout { key: "editor-height".into(), value: 320 }).unwrap();
-        workspace.write_setting(Setting::Layout { key: "navigator-width".into(), value: 300 }).unwrap();
+        workspace
+            .write_setting(Setting::Layout {
+                key: "navigator-width".into(),
+                value: 280,
+            })
+            .unwrap();
+        workspace
+            .write_setting(Setting::Layout {
+                key: "editor-height".into(),
+                value: 320,
+            })
+            .unwrap();
+        workspace
+            .write_setting(Setting::Layout {
+                key: "navigator-width".into(),
+                value: 300,
+            })
+            .unwrap();
         let settings = workspace.read_settings();
-        assert!(settings.contains(&Setting::Layout { key: "navigator-width".into(), value: 300 }));
-        assert!(settings.contains(&Setting::Layout { key: "editor-height".into(), value: 320 }));
+        assert!(settings.contains(&Setting::Layout {
+            key: "navigator-width".into(),
+            value: 300
+        }));
+        assert!(settings.contains(&Setting::Layout {
+            key: "editor-height".into(),
+            value: 320
+        }));
         let navigator = settings
             .iter()
             .filter(|s| matches!(s, Setting::Layout { key, .. } if key == "navigator-width"))
@@ -3888,20 +4263,47 @@ mod tests {
         // nothing changes.
         let before = workspace.read_settings();
         for bad in [
-            Setting::Layout { key: "Navigator".into(), value: 280 },
-            Setting::Layout { key: "has space".into(), value: 280 },
-            Setting::Layout { key: "".into(), value: 280 },
-            Setting::Layout { key: "navigator-width".into(), value: 0 },
-            Setting::Layout { key: "navigator-width".into(), value: 10_001 },
+            Setting::Layout {
+                key: "Navigator".into(),
+                value: 280,
+            },
+            Setting::Layout {
+                key: "has space".into(),
+                value: 280,
+            },
+            Setting::Layout {
+                key: "".into(),
+                value: 280,
+            },
+            Setting::Layout {
+                key: "navigator-width".into(),
+                value: 0,
+            },
+            Setting::Layout {
+                key: "navigator-width".into(),
+                value: 10_001,
+            },
         ] {
-            assert!(workspace.write_setting(bad).is_err(), "the bad entry is refused");
+            assert!(
+                workspace.write_setting(bad).is_err(),
+                "the bad entry is refused"
+            );
         }
-        assert_eq!(workspace.read_settings(), before, "failed writes change nothing");
+        assert_eq!(
+            workspace.read_settings(),
+            before,
+            "failed writes change nothing"
+        );
 
         // The shared validation speaks for the scalar settings too.
         assert!(Setting::TablePageSize { rows: 999 }.validate().is_err());
         assert!(Setting::QueryMaxRows { rows: 0 }.validate().is_err());
-        assert!(Setting::Layout { key: "editor-height".into(), value: 456 }.validate().is_ok());
+        assert!(Setting::Layout {
+            key: "editor-height".into(),
+            value: 456
+        }
+        .validate()
+        .is_ok());
     }
 
     #[test]
@@ -3914,8 +4316,12 @@ mod tests {
             address: address.into(),
             ..ConnectionDraft::default()
         };
-        assert!(workspace.save_connection(&draft("Remote", "postgres", "")).is_err());
-        assert!(workspace.save_connection(&draft("Remote", "postgres", "   ")).is_err());
+        assert!(workspace
+            .save_connection(&draft("Remote", "postgres", ""))
+            .is_err());
+        assert!(workspace
+            .save_connection(&draft("Remote", "postgres", "   "))
+            .is_err());
         assert_eq!(workspace.connections().len(), before, "nothing was saved");
 
         // The credential fields ride along without changing the memory
@@ -3931,15 +4337,22 @@ mod tests {
         assert_eq!(workspace.connections().len(), before + 1);
 
         // A duplicate name gets its own id; both are in the port, not the keychain.
-        workspace.save_connection(&draft("Remote Postgres", "mysql", "db2.example.com:3306")).unwrap();
-        assert_eq!(workspace.connections().last().unwrap().id, "remote-postgres-2");
+        workspace
+            .save_connection(&draft("Remote Postgres", "mysql", "db2.example.com:3306"))
+            .unwrap();
+        assert_eq!(
+            workspace.connections().last().unwrap().id,
+            "remote-postgres-2"
+        );
     }
 
     #[test]
     fn snippets_add_update_delete_and_refuse_duplicates() {
         let mut workspace = MemoryWorkspace::new();
         assert!(workspace.snippets().is_empty());
-        workspace.save_snippet("top", "SELECT * FROM customers LIMIT 10").unwrap();
+        workspace
+            .save_snippet("top", "SELECT * FROM customers LIMIT 10")
+            .unwrap();
         assert_eq!(workspace.snippets().len(), 1);
 
         assert!(
@@ -3953,9 +4366,16 @@ mod tests {
         );
 
         workspace.update_snippet("top", "SELECT 1").unwrap();
-        assert_eq!(workspace.snippets()[0].sql, "SELECT 1", "update changes the sql");
+        assert_eq!(
+            workspace.snippets()[0].sql,
+            "SELECT 1",
+            "update changes the sql"
+        );
         assert!(workspace.update_snippet("missing", "SELECT 1").is_err());
-        assert!(workspace.save_snippet("  ", "SELECT 1").is_err(), "a name is required");
+        assert!(
+            workspace.save_snippet("  ", "SELECT 1").is_err(),
+            "a name is required"
+        );
 
         workspace.delete_snippet("top").unwrap();
         assert!(workspace.snippets().is_empty());
@@ -3965,9 +4385,15 @@ mod tests {
     #[test]
     fn an_export_needs_a_range_to_get_a_job() {
         let mut workspace = MemoryWorkspace::new();
-        assert!(workspace.start_export("csv", "").is_err(), "no range, no job");
+        assert!(
+            workspace.start_export("csv", "").is_err(),
+            "no range, no job"
+        );
         assert!(workspace.start_export("csv", "   ").is_err());
-        assert!(workspace.start_export("exe", "customers").is_err(), "unknown format");
+        assert!(
+            workspace.start_export("exe", "customers").is_err(),
+            "unknown format"
+        );
         let job = workspace.start_export("csv", "customers").unwrap();
         assert_eq!(job, 1, "job ids count from one");
         let second = workspace.start_export("json", "orders").unwrap();
@@ -4007,7 +4433,10 @@ mod tests {
         let failed = workspace.job_progress(missing).unwrap();
         assert_eq!(failed.status, "failed");
         assert!(failed.log.last() == Some(&"no such table no-such-table".to_owned()));
-        assert!(workspace.job_progress(999).is_none(), "an unknown job has no snapshot");
+        assert!(
+            workspace.job_progress(999).is_none(),
+            "an unknown job has no snapshot"
+        );
     }
 
     #[test]
@@ -4028,14 +4457,20 @@ mod tests {
         let settled = workspace.job_progress(job).unwrap();
         assert_eq!(settled, stopped, "stopped stays settled");
 
-        assert!(workspace.stop_job(job).is_err(), "stopping twice is refused");
+        assert!(
+            workspace.stop_job(job).is_err(),
+            "stopping twice is refused"
+        );
         assert!(workspace.stop_job(999).is_err());
     }
 
     #[test]
     fn sync_endpoints_refuse_the_same_connection_twice() {
         let mut workspace = MemoryWorkspace::new();
-        assert!(workspace.sync_endpoints("local", "local").is_err(), "the same end twice");
+        assert!(
+            workspace.sync_endpoints("local", "local").is_err(),
+            "the same end twice"
+        );
         assert!(workspace.sync_endpoints("local", "missing").is_err());
         assert!(workspace.sync_endpoints("missing", "local").is_err());
         workspace.sync_endpoints("local", "replica").unwrap();
@@ -4044,7 +4479,10 @@ mod tests {
         workspace.connect("replica").unwrap();
         let session = workspace.session().unwrap();
         assert!(session.tables.contains(&"customers".to_owned()));
-        assert!(!session.tables.contains(&"catalog".to_owned()), "the replica lacks analytics");
+        assert!(
+            !session.tables.contains(&"catalog".to_owned()),
+            "the replica lacks analytics"
+        );
     }
 
     #[test]
@@ -4054,15 +4492,23 @@ mod tests {
         assert_eq!(page.table, "sync preview: customers");
         assert_eq!(page.rows.len(), 40);
         assert_eq!(page.read_only.as_deref(), Some("sync preview"));
-        assert!(workspace.sync_preview("replica", "catalog").is_err(), "the replica cannot preview analytics");
+        assert!(
+            workspace.sync_preview("replica", "catalog").is_err(),
+            "the replica cannot preview analytics"
+        );
         assert!(workspace.sync_preview("local", "missing").is_err());
     }
 
     #[test]
     fn a_sync_without_selected_tables_gets_no_job() {
         let mut workspace = MemoryWorkspace::new();
-        assert!(workspace.run_sync("local", "replica", &[]).is_err(), "no selection, no job");
-        assert!(workspace.run_sync("local", "local", &["customers".to_owned()]).is_err());
+        assert!(
+            workspace.run_sync("local", "replica", &[]).is_err(),
+            "no selection, no job"
+        );
+        assert!(workspace
+            .run_sync("local", "local", &["customers".to_owned()])
+            .is_err());
         let tables = vec!["customers".to_owned(), "orders".to_owned()];
         let job = workspace.run_sync("local", "replica", &tables).unwrap();
         let first = workspace.job_progress(job).unwrap();
@@ -4070,7 +4516,10 @@ mod tests {
         assert_eq!(first.log[1], "syncing local into replica");
         workspace.job_progress(job).unwrap();
         let done = workspace.job_progress(job).unwrap();
-        assert_eq!(done.status, "completed", "a sync job finishes like the others");
+        assert_eq!(
+            done.status, "completed",
+            "a sync job finishes like the others"
+        );
     }
 
     #[test]
@@ -4078,9 +4527,15 @@ mod tests {
         let workspace = MemoryWorkspace::new();
         let objects = workspace.compare_objects("local", "replica").unwrap();
         let find = |name: &str| objects.iter().find(|object| object.name == name).unwrap();
-        assert!(find("customers").present_on_target, "the same name is marked present");
+        assert!(
+            find("customers").present_on_target,
+            "the same name is marked present"
+        );
         assert!(find("orders").present_on_target);
-        assert!(!find("catalog").present_on_target, "the replica lacks analytics");
+        assert!(
+            !find("catalog").present_on_target,
+            "the replica lacks analytics"
+        );
         assert_eq!(objects.len(), 3);
         assert!(workspace.compare_objects("local", "missing").is_err());
         // A connection against itself: every name matches.
@@ -4108,7 +4563,10 @@ mod tests {
     #[test]
     fn a_failed_plan_apply_keeps_the_plan() {
         let mut workspace = MemoryWorkspace::new();
-        assert!(workspace.run_compare_plan("").is_err(), "an empty plan has nothing to apply");
+        assert!(
+            workspace.run_compare_plan("").is_err(),
+            "an empty plan has nothing to apply"
+        );
         assert!(workspace.run_compare_plan("   ").is_err());
 
         let plan = workspace.compare_plan("local", "replica").unwrap();
@@ -4125,7 +4583,9 @@ mod tests {
         assert_eq!(workspace.compare_plan("local", "replica").unwrap(), plan);
 
         // A plan the port can apply finishes.
-        let job = workspace.run_compare_plan("CREATE TABLE other (...);").unwrap();
+        let job = workspace
+            .run_compare_plan("CREATE TABLE other (...);")
+            .unwrap();
         workspace.job_progress(job).unwrap();
         workspace.job_progress(job).unwrap();
         let done = workspace.job_progress(job).unwrap();
@@ -4148,21 +4608,31 @@ mod tests {
     #[test]
     fn a_dashboard_starts_with_no_widgets() {
         let workspace = MemoryWorkspace::new();
-        assert!(workspace.dashboard_widgets().is_empty(), "the widget list starts empty");
+        assert!(
+            workspace.dashboard_widgets().is_empty(),
+            "the widget list starts empty"
+        );
     }
 
     #[test]
     fn a_bar_widget_gets_its_integers_from_the_port() {
         let mut workspace = MemoryWorkspace::new();
-        assert!(workspace.save_dashboard_widget("", "select 1").is_err(), "a title is required");
-        let id = workspace.save_dashboard_widget("Weekly", "select 1").unwrap();
+        assert!(
+            workspace.save_dashboard_widget("", "select 1").is_err(),
+            "a title is required"
+        );
+        let id = workspace
+            .save_dashboard_widget("Weekly", "select 1")
+            .unwrap();
         assert_eq!(id, 1);
         let bars = workspace.widget_bars(id).unwrap();
         assert_eq!(bars.first().map(|(label, _)| label.as_str()), Some("mon"));
         assert_eq!(bars[0].1, 0, "the zero bar is in the data");
         assert_eq!(bars.last().unwrap().1, 12, "the maximum is in the data");
         assert!(workspace.widget_bars(999).is_err());
-        let second = workspace.save_dashboard_widget("Monthly", "select 2").unwrap();
+        let second = workspace
+            .save_dashboard_widget("Monthly", "select 2")
+            .unwrap();
         assert_eq!(second, 2);
         assert_eq!(workspace.dashboard_widgets().len(), 2);
     }
@@ -4172,16 +4642,26 @@ mod tests {
         let workspace = MemoryWorkspace::new();
         let workflows = workspace.workflows();
         let names: Vec<&str> = workflows.iter().map(|flow| flow.name.as_str()).collect();
-        assert_eq!(names, vec!["audit", "nightly-backup", "weekly-report"], "reads sort by name");
+        assert_eq!(
+            names,
+            vec!["audit", "nightly-backup", "weekly-report"],
+            "reads sort by name"
+        );
         assert_eq!(workflows[0].steps, vec!["compare structures", "apply plan"]);
     }
 
     #[test]
     fn saving_a_workflow_replaces_its_steps() {
         let mut workspace = MemoryWorkspace::new();
-        assert!(workspace.save_workflow("", &[]).is_err(), "a name is required");
+        assert!(
+            workspace.save_workflow("", &[]).is_err(),
+            "a name is required"
+        );
         workspace
-            .save_workflow("audit", &["reordered".to_owned(), "compare structures".to_owned()])
+            .save_workflow(
+                "audit",
+                &["reordered".to_owned(), "compare structures".to_owned()],
+            )
             .unwrap();
         let audit = workspace
             .workflows()
@@ -4190,7 +4670,9 @@ mod tests {
             .unwrap();
         assert_eq!(audit.steps, vec!["reordered", "compare structures"]);
         let count = workspace.workflows().len();
-        workspace.save_workflow("fresh", &["one".to_owned()]).unwrap();
+        workspace
+            .save_workflow("fresh", &["one".to_owned()])
+            .unwrap();
         assert_eq!(workspace.workflows().len(), count + 1, "a new name appends");
     }
 
@@ -4207,7 +4689,10 @@ mod tests {
         assert_eq!(results[1].summary, "the replica refused the plan");
         assert!(workspace.run_workflow("missing").is_err());
         let backup = workspace.run_workflow("nightly-backup").unwrap();
-        assert!(backup.iter().all(|step| step.ok), "nothing to apply, all steps pass");
+        assert!(
+            backup.iter().all(|step| step.ok),
+            "nothing to apply, all steps pass"
+        );
     }
 
     #[test]
@@ -4266,9 +4751,17 @@ mod tests {
         let keys = workspace.table_foreign_keys("orders").unwrap();
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].name, "orders_customer_fk");
-        assert_eq!(keys[0].columns, vec!["id", "name"], "this side stays together");
+        assert_eq!(
+            keys[0].columns,
+            vec!["id", "name"],
+            "this side stays together"
+        );
         assert_eq!(keys[0].target_table, "customers");
-        assert_eq!(keys[0].target_columns, vec!["id", "name"], "the target side too");
+        assert_eq!(
+            keys[0].target_columns,
+            vec!["id", "name"],
+            "the target side too"
+        );
         assert!(workspace.table_foreign_keys("catalog").unwrap().is_empty());
         assert!(workspace.table_foreign_keys("missing").is_err());
     }
@@ -4279,23 +4772,41 @@ mod tests {
         workspace.connect("local").unwrap();
         let page = workspace.open_table("orders", 0, 25, None, None).unwrap();
         assert_eq!(page.read_only.as_deref(), Some("no primary key"));
-        assert!(workspace.stage_cell(0, "name", "x".into()).is_err(), "staging on a read-only page is rejected");
-        assert!(workspace.commit_staged().is_err(), "committing while a read-only page is open is rejected");
+        assert!(
+            workspace.stage_cell(0, "name", "x".into()).is_err(),
+            "staging on a read-only page is rejected"
+        );
+        assert!(
+            workspace.commit_staged().is_err(),
+            "committing while a read-only page is open is rejected"
+        );
 
-        workspace.open_table("customers", 0, 25, None, None).unwrap();
+        workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         workspace.stage_cell(0, "name", "ok".into()).unwrap();
-        assert_eq!(workspace.commit_staged().unwrap(), 1, "a writable table is unaffected");
+        assert_eq!(
+            workspace.commit_staged().unwrap(),
+            1,
+            "a writable table is unaffected"
+        );
     }
 
     #[test]
     fn staging_addresses_the_row_behind_the_open_page() {
         let mut workspace = MemoryWorkspace::new();
         workspace.connect("local").unwrap();
-        workspace.open_table("customers", 1, 25, None, None).unwrap();
+        workspace
+            .open_table("customers", 1, 25, None, None)
+            .unwrap();
         workspace.stage_cell(0, "name", "staged".into()).unwrap();
-        let again = workspace.open_table("customers", 1, 25, None, None).unwrap();
+        let again = workspace
+            .open_table("customers", 1, 25, None, None)
+            .unwrap();
         assert_eq!(again.rows[0][1], "staged", "page 2 row 0 is stored row 25");
-        let first = workspace.open_table("customers", 0, 25, None, None).unwrap();
+        let first = workspace
+            .open_table("customers", 0, 25, None, None)
+            .unwrap();
         assert_eq!(first.rows[0][1], "customer-0");
         assert_eq!(first.rows[24][1], "customer-24");
     }
@@ -4329,7 +4840,9 @@ mod tests {
             "dashboard_widgets is not wired yet"
         );
         assert_eq!(
-            adapter.save_dashboard_widget("Users", "SELECT 1").unwrap_err(),
+            adapter
+                .save_dashboard_widget("Users", "SELECT 1")
+                .unwrap_err(),
             DESKTOP_NOT_IMPLEMENTED,
             "save_dashboard_widget is not wired yet"
         );
@@ -4354,158 +4867,6 @@ mod tests {
             adapter.run_workflow("nightly").unwrap_err(),
             DESKTOP_NOT_IMPLEMENTED,
             "run_workflow is not wired yet"
-        );
-    }
-
-    #[test]
-    fn every_adapter_declines_jobs_and_polls_nothing_by_default() {
-        // N1: the job surface is opt-in. The unwired adapter and the wired
-        // use-case adapter both decline `begin_job` and answer no deliveries,
-        // so the synchronous paths of H3–H5 keep serving them unchanged.
-        let job = AdapterJob::ReadTable {
-            generation: 1,
-            table: "customers".into(),
-            page: 0,
-            page_size: 25,
-            sort: None,
-            filter: None,
-        };
-        let mut unwired = UnimplementedAdapter;
-        assert!(!unwired.begin_job(job.clone()), "the unwired adapter declines");
-        assert!(unwired.poll_jobs().is_empty(), "the unwired adapter delivers nothing");
-
-        let mut wired = UseCaseAdapter::new(Vec::new());
-        assert!(!wired.begin_job(job), "the use-case adapter declines");
-        assert!(wired.poll_jobs().is_empty(), "the use-case adapter delivers nothing");
-    }
-
-    #[test]
-    fn the_wired_adapter_lists_the_demo_connections_through_the_use_case() {
-        let mut adapter = UseCaseAdapter::with_demo_connections();
-        let listed = adapter.list_connections().expect("the use case answers");
-        assert_eq!(
-            listed,
-            vec![
-                ConnectionProfile {
-                    id: "local".into(),
-                    name: "Local Postgres".into(),
-                    engine: "postgres".into(),
-                },
-                ConnectionProfile {
-                    id: "replica".into(),
-                    name: "Read Replica".into(),
-                    engine: "postgres".into(),
-                },
-            ],
-            "the use case's redacted list maps onto the UI vocabulary"
-        );
-    }
-
-    #[test]
-    fn a_wired_adapter_over_an_empty_store_lists_no_connections() {
-        let mut adapter = UseCaseAdapter::new(Vec::new());
-        assert_eq!(
-            adapter.list_connections().expect("an empty store is not an error"),
-            Vec::new()
-        );
-    }
-
-    #[test]
-    fn the_wired_adapter_commits_a_batch_through_the_existing_use_case() {
-        let mut adapter = UseCaseAdapter::with_demo_connections();
-        adapter
-            .read_table_page("customers", 0, 25, None, None)
-            .expect("the read opens the page the rows refer to");
-        let edits = vec![
-            (0u32, String::from("name"), String::from("alice")),
-            (1u32, String::from("name"), String::from("bob")),
-        ];
-        assert_eq!(
-            adapter
-                .commit_cells("customers", &edits)
-                .expect("the batch lands"),
-            2,
-            "both edits applied"
-        );
-        let page = adapter
-            .read_table_page("customers", 0, 25, None, None)
-            .expect("the page reads back");
-        assert_eq!(page.rows[0][1], "alice");
-        assert_eq!(page.rows[1][1], "bob");
-    }
-
-    #[test]
-    fn a_failed_batch_keeps_the_edits_that_did_stage() {
-        let mut adapter = UseCaseAdapter::with_demo_connections();
-        adapter
-            .read_table_page("customers", 0, 25, None, None)
-            .expect("the read opens the page");
-        let edits = vec![
-            (0u32, String::from("name"), String::from("alice")),
-            (1u32, String::from("no-such-column"), String::from("x")),
-        ];
-        assert!(
-            adapter.commit_cells("customers", &edits).is_err(),
-            "the batch as a whole fails"
-        );
-        let page = adapter
-            .read_table_page("customers", 0, 25, None, None)
-            .expect("the page reads back");
-        assert_eq!(
-            page.rows[0][1], "alice",
-            "the edit that did stage survives the failure for the next attempt"
-        );
-    }
-
-    #[test]
-    fn the_wired_adapter_reads_pages_through_the_existing_use_case() {
-        let mut adapter = UseCaseAdapter::with_demo_connections();
-        let first = adapter
-            .read_table_page("customers", 0, 25, None, None)
-            .expect("the read use case answers");
-        assert_eq!(first.table, "customers");
-        assert_eq!(first.columns[0], "id");
-        assert_eq!(first.rows[0][0], "0");
-        assert_eq!(first.rows[0][1], "customer-0");
-        assert_eq!(first.total_rows, 40, "the whole table is behind the page");
-
-        let second = adapter
-            .read_table_page("customers", 1, 25, None, None)
-            .expect("the second page reads too");
-        assert_eq!(second.rows[0][0], "25", "page 2 starts at stored row 25");
-    }
-
-    #[test]
-    fn the_wired_adapter_honors_the_sort_and_filter_of_the_read() {
-        let mut adapter = UseCaseAdapter::with_demo_connections();
-        let sort = ColumnSort {
-            column: "name".into(),
-            descending: true,
-        };
-        let page = adapter
-            .read_table_page("customers", 0, 25, Some(&sort), None)
-            .expect("the sorted read answers");
-        assert_eq!(page.rows[0][1], "customer-9", "lexicographic order, descending: 9 beats 39");
-
-        let filter = ColumnFilter {
-            column: "name".into(),
-            contains: "customer-3".into(),
-        };
-        let page = adapter
-            .read_table_page("customers", 0, 25, None, Some(&filter))
-            .expect("the filtered read answers");
-        assert!(
-            page.rows.iter().all(|row| row[1].contains("customer-3")),
-            "the use case's filter reaches the rows"
-        );
-    }
-
-    #[test]
-    fn an_unknown_table_fails_the_wired_read() {
-        let mut adapter = UseCaseAdapter::with_demo_connections();
-        assert!(
-            adapter.read_table_page("ghost", 0, 25, None, None).is_err(),
-            "no use case knows this table"
         );
     }
 }

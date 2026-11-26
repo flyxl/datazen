@@ -12,6 +12,7 @@ keywords = ["datazen", "database", "driver", "plugin"]
 categories = ["database", "api-bindings"]
 
 [dependencies]
+datazen-sql = { workspace = true, features = ["schema"] }
 async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde = { version = "1", features = ["derive"] }
@@ -27,7 +28,7 @@ sqlparser = { version = "0.59", features = ["visitor"] }
 # F3: pure SQL text helpers moved to driver-support; re-exported from lib.rs
 # so downstream paths stay stable. Single consumer — per the P1 policy a
 # single-consumer path dep is not hoisted to the workspace root table.
-datazen-driver-support = { path = "../datazen-driver-support" }
+datazen-driver-support = { path = "../datazen-driver-support", version = "0.0.1" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

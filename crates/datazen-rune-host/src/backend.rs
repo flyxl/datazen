@@ -29,17 +29,16 @@ use datazen::execution::application::policy::{
     AuthorizationAction, AuthorizationDecision, AuthorizationSubject, PolicyChangeStream,
     PolicyService, PolicyVersionChange,
 };
+use datazen::execution::runtime::connection as rc;
 use datazen::execution::runtime::driver_mapping as map;
 use datazen::execution::runtime::driver_registry::DriverRegistry;
 use datazen::execution::runtime::registry::audit::CapabilityVersions;
 use datazen::execution::runtime::registry::backend::*;
-use datazen::execution::runtime::{connection as rc};
 use datazen::execution::target::NamespaceTarget as HostNamespaceTarget;
 use datazen::shared::context::{DelegationRef, RequestContext};
 use datazen::shared::error::PortError;
 use datazen::shared::id::{
-    ConfigRevision, ConnectionId, CredentialRevision, IdempotencyKey, OrganizationId,
-    PolicyIsolationKey, SecretRef,
+    ConfigRevision, ConnectionId, CredentialRevision, IdempotencyKey, PolicyIsolationKey, SecretRef,
 };
 use datazen_driver_api::resource::ResultSink as _;
 use datazen_driver_api::{resource as dr, session as ds, ConnectionConfig, SslMode};
@@ -66,12 +65,15 @@ pub struct HostProfiles {
 
 impl HostProfiles {
     pub fn new(service: ConnectionService) -> Self {
-        Self { service, revisions: Mutex::new(Revisions::default()) }
+        Self {
+            service,
+            revisions: Mutex::new(Revisions::default()),
+        }
     }
 
-    fn record(&self, config: &ConnectionConfig) -> ProfileRecord {
+    fn record(&self, ctx: &RequestContext, config: &ConnectionConfig) -> ProfileRecord {
         let mut record = ProfileRecord::new(
-            OrganizationId::new(datazen_ui_api::DESKTOP_ORGANIZATION),
+            ctx.organization_id.clone(),
             ConnectionId::new(&config.id),
             config.database_type.clone(),
         );
@@ -87,13 +89,18 @@ impl HostProfiles {
             config.schema.clone(),
             Vec::new(),
         );
-        record.secret_ref =
-            config.password.as_ref().map(|_| SecretRef::new(format!("native:{}", config.id)));
+        record.secret_ref = config
+            .password
+            .as_ref()
+            .map(|_| SecretRef::new(format!("native:{}", config.id)));
         record.read_only = config.read_only;
         record.driver_options = [
             ("host", config.host.clone().map(serde_json::Value::String)),
             ("port", config.port.map(|port| serde_json::json!(port))),
-            ("username", config.username.clone().map(serde_json::Value::String)),
+            (
+                "username",
+                config.username.clone().map(serde_json::Value::String),
+            ),
         ]
         .into_iter()
         .filter_map(|(key, value)| value.map(|value| (key.to_string(), value)))
@@ -109,18 +116,21 @@ impl ProfileRepository for HostProfiles {
         ctx: &RequestContext,
         scope: ProfileScope,
     ) -> Result<Vec<ProfileRecord>, PortError> {
-        if ctx.organization_id.as_str() != datazen_ui_api::DESKTOP_ORGANIZATION
+        if ctx.organization_id != crate::host_request_context().organization_id
             || scope.organization_id != ctx.organization_id
         {
             return Ok(Vec::new());
         }
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let scope = ConnectionScope::new(ctx.organization_id.as_str());
         let configs = self
             .service
             .list_plain(&scope)
             .await
             .map_err(|error| PortError::BackendUnavailable(error.to_string()))?;
-        Ok(configs.iter().map(|config| self.record(config)).collect())
+        Ok(configs
+            .iter()
+            .map(|config| self.record(ctx, config))
+            .collect())
     }
 
     async fn get(
@@ -128,16 +138,16 @@ impl ProfileRepository for HostProfiles {
         ctx: &RequestContext,
         id: ConnectionId,
     ) -> Result<Option<ProfileRecord>, PortError> {
-        if ctx.organization_id.as_str() != datazen_ui_api::DESKTOP_ORGANIZATION {
+        if ctx.organization_id != crate::host_request_context().organization_id {
             return Ok(None);
         }
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let scope = ConnectionScope::new(ctx.organization_id.as_str());
         let config = self
             .service
             .get(&scope, id.as_str())
             .await
             .map_err(|error| PortError::BackendUnavailable(error.to_string()))?;
-        Ok(config.map(|config| self.record(&config)))
+        Ok(config.map(|config| self.record(ctx, &config)))
     }
 
     async fn create(
@@ -146,7 +156,7 @@ impl ProfileRepository for HostProfiles {
         draft: datazen::connection::dto::ProfileDraft,
         _idem: &IdempotencyKey,
     ) -> Result<ProfileRecord, PortError> {
-        if ctx.organization_id.as_str() != datazen_ui_api::DESKTOP_ORGANIZATION {
+        if ctx.organization_id != crate::host_request_context().organization_id {
             return Err(PortError::NotFound("profile".into()));
         }
         let config = ConnectionConfig {
@@ -175,12 +185,12 @@ impl ProfileRepository for HostProfiles {
             read_only: false,
             pinned: false,
         };
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let scope = ConnectionScope::new(ctx.organization_id.as_str());
         self.service
             .save(&scope, config.clone())
             .await
             .map_err(|error| PortError::BackendUnavailable(error.to_string()))?;
-        Ok(self.record(&config))
+        Ok(self.record(ctx, &config))
     }
 
     async fn compare_and_set(
@@ -190,10 +200,10 @@ impl ProfileRepository for HostProfiles {
         expected: ConfigRevision,
         patch: datazen::connection::dto::ProfilePatch,
     ) -> Result<ProfileRecord, PortError> {
-        if ctx.organization_id.as_str() != datazen_ui_api::DESKTOP_ORGANIZATION {
+        if ctx.organization_id != crate::host_request_context().organization_id {
             return Err(PortError::NotFound("profile".into()));
         }
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let scope = ConnectionScope::new(ctx.organization_id.as_str());
         let mut config = self
             .service
             .get(&scope, id.as_str())
@@ -209,7 +219,10 @@ impl ProfileRepository for HostProfiles {
             .copied()
             .unwrap_or(1);
         if current != expected.counter().get() {
-            return Err(PortError::CasConflict { entity: "profile", id: id.to_string() });
+            return Err(PortError::CasConflict {
+                entity: "profile",
+                id: id.to_string(),
+            });
         }
         if let Some(name) = patch.name {
             config.name = name;
@@ -226,7 +239,7 @@ impl ProfileRepository for HostProfiles {
         let next = revisions.config.get(id.as_str()).copied().unwrap_or(1) + 1;
         revisions.config.insert(id.to_string(), next);
         drop(revisions);
-        Ok(self.record(&config))
+        Ok(self.record(ctx, &config))
     }
 
     async fn disable(
@@ -237,10 +250,10 @@ impl ProfileRepository for HostProfiles {
         // The file store has no disabled flag; the honest disable under this
         // store is a delete. No UI writes through this port yet — this
         // answers the trait truthfully for the store it has.
-        if ctx.organization_id.as_str() != datazen_ui_api::DESKTOP_ORGANIZATION {
+        if ctx.organization_id != crate::host_request_context().organization_id {
             return Err(PortError::NotFound("profile".into()));
         }
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let scope = ConnectionScope::new(ctx.organization_id.as_str());
         self.service
             .delete(&scope, id.as_str())
             .await
@@ -253,7 +266,7 @@ impl ProfileRepository for HostProfiles {
         ctx: &RequestContext,
         id: ConnectionId,
     ) -> Result<CredentialRevision, PortError> {
-        if ctx.organization_id.as_str() != datazen_ui_api::DESKTOP_ORGANIZATION {
+        if ctx.organization_id != crate::host_request_context().organization_id {
             return Err(PortError::NotFound("profile".into()));
         }
         let mut revisions = self.revisions.lock().expect("the revision lock");
@@ -277,7 +290,7 @@ impl PolicyService for HostPolicy {
         _subject: AuthorizationSubject,
         _action: AuthorizationAction,
     ) -> Result<AuthorizationDecision, PortError> {
-        if ctx.organization_id.as_str() == datazen_ui_api::DESKTOP_ORGANIZATION {
+        if ctx.organization_id == crate::host_request_context().organization_id {
             return Ok(AuthorizationDecision::Allow);
         }
         Err(PortError::NotFound("organization".into()))
@@ -293,7 +306,7 @@ impl PolicyService for HostPolicy {
     }
 
     fn isolation_key(&self, ctx: &RequestContext) -> Result<PolicyIsolationKey, PortError> {
-        if ctx.organization_id.as_str() == datazen_ui_api::DESKTOP_ORGANIZATION {
+        if ctx.organization_id == crate::host_request_context().organization_id {
             return Ok(PolicyIsolationKey::new("native-desktop"));
         }
         Err(PortError::NotFound("organization".into()))
@@ -321,7 +334,10 @@ impl dr::BudgetPort for UnlimitedBudget {
         &self,
         requested: u32,
     ) -> Result<dr::BudgetPermit, dr::ResourceError> {
-        Ok(dr::BudgetPermit { permit_id: "native".into(), physical_connections: requested })
+        Ok(dr::BudgetPermit {
+            permit_id: "native".into(),
+            physical_connections: requested,
+        })
     }
 
     async fn release_physical_connections(
@@ -383,7 +399,7 @@ impl HostSessionBackend {
 
     /// The plaintext config for a connection, straight from the file store.
     async fn config(&self, connection_id: &str) -> Result<ConnectionConfig, rc::ProviderError> {
-        let scope = ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION);
+        let scope = crate::host_connection_scope();
         self.service
             .get(&scope, connection_id)
             .await
@@ -417,9 +433,9 @@ impl SessionBackend for HostSessionBackend {
             .await
             .map_err(map::error)?;
         let cost = match descriptor.connection_cost_policy {
-            dr::ConnectionCostPolicy::PoolBounded { max_physical_connections } => {
-                max_physical_connections.max(1)
-            }
+            dr::ConnectionCostPolicy::PoolBounded {
+                max_physical_connections,
+            } => max_physical_connections.max(1),
             dr::ConnectionCostPolicy::DeclaredConservative { declared_cost, .. } => {
                 declared_cost.max(1)
             }
@@ -447,7 +463,10 @@ impl SessionBackend for HostSessionBackend {
             )
             .await
             .map_err(map::error)?;
-        let observation = provider.observe_session(&handle).await.map_err(map::error)?;
+        let observation = provider
+            .observe_session(&handle)
+            .await
+            .map_err(map::error)?;
         let capabilities = provider.capabilities();
         let resource_id = uuid::Uuid::new_v4().to_string();
         let opened = OpenedResource {
@@ -524,7 +543,10 @@ impl SessionBackend for HostSessionBackend {
             .get()
             .ok_or_else(|| rc::ProviderError::ProtocolError("result sink not installed".into()))?;
         let execution = datazen_driver_api::QueryExecutionId::new(request.execution_id.as_str());
-        let sink_adapter = SinkAdapter { sink: sink.clone(), id: request.execution_id.clone() };
+        let sink_adapter = SinkAdapter {
+            sink: sink.clone(),
+            id: request.execution_id.clone(),
+        };
         let cancel_handle = uuid::Uuid::new_v4().to_string();
         request.cancel_handle_sink.publish(&cancel_handle);
         let call = dr::CommandCall::new(request.command.command.clone(), input);
@@ -683,7 +705,10 @@ impl SessionBackend for HostSessionBackend {
         let state = receipt.state.ok_or_else(|| {
             rc::ProviderError::ProtocolError("cancel receipt lacks execution state".into())
         })?;
-        Ok(ResourceCancel { disposition, state: map::state(state) })
+        Ok(ResourceCancel {
+            disposition,
+            state: map::state(state),
+        })
     }
 
     async fn finalize_handles(
@@ -706,14 +731,21 @@ impl SessionBackend for HostSessionBackend {
         {
             return Err(rc::ProviderError::CapabilityUnsupported);
         }
-        let active = request.handles.iter().filter(|handle| !handle.closed).count();
+        let active = request
+            .handles
+            .iter()
+            .filter(|handle| !handle.closed)
+            .count();
         let effect = if active > 0 {
             let transaction = match request.disposition {
                 HandleDisposition::Commit => {
                     resource.provider.commit_transaction(&resource.handle).await
                 }
                 HandleDisposition::Rollback => {
-                    resource.provider.rollback_transaction(&resource.handle).await
+                    resource
+                        .provider
+                        .rollback_transaction(&resource.handle)
+                        .await
                 }
             }
             .map_err(map::error)?;
@@ -739,7 +771,10 @@ impl SessionBackend for HostSessionBackend {
         })
     }
 
-    async fn close(&self, request: CloseResource) -> Result<CloseResourceOutcome, rc::ProviderError> {
+    async fn close(
+        &self,
+        request: CloseResource,
+    ) -> Result<CloseResourceOutcome, rc::ProviderError> {
         let resource = self.resource(&request.resource_id)?;
         if request.registered_handles != 0 {
             return Err(rc::ProviderError::CleanupFailed(
@@ -750,11 +785,16 @@ impl SessionBackend for HostSessionBackend {
             resource.provider.close_resource(&resource.handle).await,
             Ok(ds::CloseDisposition::Closed)
         );
-        self.resources.write().expect("the resource lock").remove(&request.resource_id);
+        self.resources
+            .write()
+            .expect("the resource lock")
+            .remove(&request.resource_id);
         if confirmed {
             Ok(CloseResourceOutcome::Closed)
         } else {
-            Ok(CloseResourceOutcome::Undecidable { reason: "the driver did not confirm the close" })
+            Ok(CloseResourceOutcome::Undecidable {
+                reason: "the driver did not confirm the close",
+            })
         }
     }
 }
@@ -772,15 +812,17 @@ struct SinkAdapter {
 #[async_trait]
 impl dr::ResultSink for SinkAdapter {
     async fn write(&self, chunk: dr::ResultChunk) -> Result<(), dr::ResourceError> {
-        let output = serde_json::to_value(&chunk).map_err(|_| {
-            dr::ResourceError::SinkRejected { reason: "result chunk encoding failed".into() }
+        let output = serde_json::to_value(&chunk).map_err(|_| dr::ResourceError::SinkRejected {
+            reason: "result chunk encoding failed".into(),
         })?;
         self.write_output(output).await
     }
 
     async fn write_output(&self, output: serde_json::Value) -> Result<(), dr::ResourceError> {
         self.sink.publish_output(&self.id, output).map_err(|error| {
-            dr::ResourceError::SinkRejected { reason: error.to_string() }
+            dr::ResourceError::SinkRejected {
+                reason: error.to_string(),
+            }
         })
     }
 
@@ -824,7 +866,9 @@ pub fn assemble_runtime(
     if let Ok(artifacts) = datazen::execution::runtime::artifact::FileArtifactRepository::open(
         data_dir.join("result-artifacts"),
     ) {
-        let _ = runtime.result_sink().with_artifact_store(Arc::new(artifacts));
+        let _ = runtime
+            .result_sink()
+            .with_artifact_store(Arc::new(artifacts));
     }
     (runtime, backend, profiles)
 }
@@ -850,19 +894,17 @@ mod tests {
     use crate::store::test_support::sqlite_config;
     use crate::store::FileConnectionRepository;
     use datazen::connection::application::ConnectionService;
-    use datazen::connection::domain::{ConnectionRepository as _, ConnectionScope};
+    use datazen::connection::domain::ConnectionRepository as _;
     use datazen::execution::application::requests::{
         CloseSessionRequest, CommandCall, ExecuteInSessionRequest, OpenSessionRequest,
     };
     use datazen::execution::application::{ConnectionUseCases as _, IdempotentOperation};
-    use datazen::execution::target::ExecutionTarget;
     use datazen::execution::requests::CloseMode;
+    use datazen::execution::target::ExecutionTarget;
     use datazen::execution::ExecutionState;
     use datazen::shared::context::OwnerRef;
     use datazen::shared::context::RequestContext;
-    use datazen::shared::id::{
-        ArtifactId, ClientInstanceId, ConnectionId, Counter, OrganizationId, PrincipalId, RequestId,
-    };
+    use datazen::shared::id::{ConnectionId, Counter};
     use std::path::PathBuf;
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -883,16 +925,23 @@ mod tests {
             .expect("the fixture runtime starts");
         runtime.block_on(async move {
             let config = sqlite_config("fixture", Some(path.to_string_lossy().into_owned()));
-            let handle = driver.connect(&config).await.expect("the fixture database opens");
+            let handle = driver
+                .connect(&config)
+                .await
+                .expect("the fixture database opens");
             driver
-                .execute(&handle, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+                .execute(
+                    &handle,
+                    "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)",
+                )
                 .await
                 .expect("the users table is created");
             for index in 0..3 {
                 driver
-                    .execute(&handle, &format!(
-                        "INSERT INTO users (id, name) VALUES ({index}, 'user-{index}')"
-                    ))
+                    .execute(
+                        &handle,
+                        &format!("INSERT INTO users (id, name) VALUES ({index}, 'user-{index}')"),
+                    )
                     .await
                     .expect("the fixture row is inserted");
             }
@@ -900,14 +949,7 @@ mod tests {
     }
 
     fn context() -> RequestContext {
-        RequestContext::new(
-            OrganizationId::new(datazen_ui_api::DESKTOP_ORGANIZATION),
-            PrincipalId::new("datazen-native"),
-            None,
-            ClientInstanceId::new("datazen-native"),
-            RequestId::new("datazen-native"),
-            None,
-        )
+        crate::host_request_context().clone()
     }
 
     /// The N5 keystone, end to end on one worker-shaped runtime: open a real
@@ -923,16 +965,13 @@ mod tests {
         let repository = Arc::new(FileConnectionRepository::open(&store_path).unwrap());
         let service = ConnectionService::new(repository.clone());
         futures_executor::block_on(service.save(
-            &ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION),
+            &crate::host_connection_scope(),
             sqlite_config("live", Some(database.to_string_lossy().into_owned())),
         ))
         .unwrap();
 
-        let (runtime, _backend, _profiles) = assemble_runtime(
-            Arc::new(crate::live::host_registry()),
-            repository,
-            &dir,
-        );
+        let (runtime, _backend, _profiles) =
+            assemble_runtime(Arc::new(crate::live::host_registry()), repository, &dir);
         let ctx = context();
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -966,13 +1005,12 @@ mod tests {
 
             // Execute: a real query through the session, in a transaction the
             // platform commands drive.
-            let session = runtime.get_session(&ctx, handle.clone()).await.expect("the session view");
+            let session = runtime
+                .get_session(&ctx, handle.clone())
+                .await
+                .expect("the session view");
             let token = runtime
-                .issue_submission_token(
-                    &ctx,
-                    IdempotentOperation::ExecuteInSession,
-                    Some(&handle),
-                )
+                .issue_submission_token(&ctx, IdempotentOperation::ExecuteInSession, Some(&handle))
                 .await
                 .expect("the execute token issues");
             let execution = runtime
@@ -1004,11 +1042,19 @@ mod tests {
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             };
-            assert_eq!(view.state, ExecutionState::Succeeded, "error: {:?}", view.error_code);
+            assert_eq!(
+                view.state,
+                ExecutionState::Succeeded,
+                "error: {:?}",
+                view.error_code
+            );
 
             // Read the results back: the driver's rows, published through the
             // sink, answered as artifact chunks.
-            assert!(!view.artifact_ids.is_empty(), "the execution published artifacts");
+            assert!(
+                !view.artifact_ids.is_empty(),
+                "the execution published artifacts"
+            );
             let mut outputs = Vec::new();
             for artifact in &view.artifact_ids {
                 let first = runtime
@@ -1030,12 +1076,18 @@ mod tests {
                 }
             }
             let rendered = serde_json::to_string(&outputs).expect("the outputs render");
-            assert!(rendered.contains("user-0"), "the real rows came back: {rendered}");
+            assert!(
+                rendered.contains("user-0"),
+                "the real rows came back: {rendered}"
+            );
             assert!(rendered.contains("user-2"), "all three rows: {rendered}");
 
             // Close: the resource closes with the session.
             runtime
-                .close_session(&ctx, CloseSessionRequest::new(handle, CloseMode::RollbackAndClose))
+                .close_session(
+                    &ctx,
+                    CloseSessionRequest::new(handle, CloseMode::RollbackAndClose),
+                )
                 .await
                 .expect("the session closes");
         });
@@ -1050,7 +1102,7 @@ mod tests {
         let repository = Arc::new(FileConnectionRepository::open(&store_path).unwrap());
         let service = ConnectionService::new(repository.clone());
         futures_executor::block_on(service.save(
-            &ConnectionScope::new(datazen_ui_api::DESKTOP_ORGANIZATION),
+            &crate::host_connection_scope(),
             sqlite_config("bad", Some(bad.to_string_lossy().into_owned())),
         ))
         .unwrap();
@@ -1087,7 +1139,10 @@ mod tests {
                 .await
                 .expect("the session opens lazily");
             let handle = receipt.session.handle.clone();
-            let session = runtime.get_session(&ctx, handle.clone()).await.expect("the view");
+            let session = runtime
+                .get_session(&ctx, handle.clone())
+                .await
+                .expect("the view");
             let token = runtime
                 .issue_submission_token(&ctx, IdempotentOperation::ExecuteInSession, Some(&handle))
                 .await

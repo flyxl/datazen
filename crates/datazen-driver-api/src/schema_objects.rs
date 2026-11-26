@@ -46,23 +46,7 @@ impl ObjectKind {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct DatabaseObject {
-    pub kind: String,
-    pub schema: Option<String>,
-    pub name: String,
-    /// PostgreSQL routine identity arguments. This disambiguates overloaded
-    /// functions/procedures without putting SQL syntax into `name`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub signature: Option<String>,
-    /// Schema/name of the relation a trigger is attached to. A trigger name
-    /// is only unique within its relation on some supported engines.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target_schema: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target_name: Option<String>,
-}
+pub use datazen_sql::schema::DatabaseObject;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

@@ -24,8 +24,8 @@
 //!    `AppState`, no launch entry and no window in scope.
 
 use datazen_ui_api::{
-    ConnectionProfile, DESKTOP_NOT_IMPLEMENTED, DesktopAdapter, McpHttpResponse, Setting,
-    UnimplementedAdapter, UseCaseAdapter,
+    ConnectionProfile, DemoAdapter, DesktopAdapter, McpHttpResponse, Setting, UnimplementedAdapter,
+    DESKTOP_NOT_IMPLEMENTED,
 };
 use rune::App;
 
@@ -39,11 +39,12 @@ use datazen_ui::AppState;
 fn light_surface_is_one_import_point() {
     // contracts: the two adapters a host assembles around (unwired + host)
     let unwired: Box<dyn DesktopAdapter> = Box::new(UnimplementedAdapter);
-    let host: Box<dyn DesktopAdapter> = Box::new(UseCaseAdapter::new(vec![ConnectionProfile {
-        id: "light-one".into(),
-        name: "Light One".into(),
-        engine: "sqlite".into(),
-    }]));
+    let host: Box<dyn DesktopAdapter> =
+        Box::new(DemoAdapter::with_connections(vec![ConnectionProfile {
+            id: "light-one".into(),
+            name: "Light One".into(),
+            engine: "sqlite".into(),
+        }]));
     let _ = (unwired, host);
 
     // `McpHttpStatus` (types/index): the status channel rides on the
@@ -104,7 +105,8 @@ fn capability_bits_are_the_linked_assembly() {
 
     // The desktop form's table: the launch surface, host-injectable.
     let run: fn() = datazen_ui::run;
-    let app_with_adapter: fn(Box<dyn DesktopAdapter>) -> App<AppState> = datazen_ui::app_with_adapter;
+    let app_with_adapter: fn(Box<dyn DesktopAdapter>) -> App<AppState> =
+        datazen_ui::app_with_adapter;
     let _ = (run, app_with_adapter);
     #[cfg(not(target_arch = "wasm32"))]
     {

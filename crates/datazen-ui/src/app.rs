@@ -31,13 +31,13 @@
 //!   launch surface, kept apart from the light port/contract surface.
 
 use crate::constants::{APP_FONTS, APP_FONT_FAMILIES};
+use crate::sql_editor;
 use crate::state_def::AppState;
 use crate::types::Section;
-use crate::sql_editor;
 use crate::views::query_selected;
 
 #[cfg(not(target_arch = "wasm32"))]
-use datazen_ui_api::UseCaseAdapter;
+use datazen_ui_api::DemoAdapter;
 use datazen_ui_api::DesktopAdapter;
 use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 
@@ -51,7 +51,6 @@ use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 pub fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
     crate::views::app_root(state, cx)
 }
-
 
 /// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size
 /// aligned with the React/Tauri main window.
@@ -102,17 +101,12 @@ pub fn app_with_adapter(adapter: Box<dyn DesktopAdapter>) -> App<AppState> {
     .on_ime(app_ime)
 }
 
-/// The desktop process starts on the connections page, so the adapter is
-/// consulted before the first frame: its answer (or its fixed error) is on
-/// the page from the start. H3: the native process lists connections through
-/// the connection use case, over the adapter's in-memory store; the wasm
-/// host starts on the unwired adapter and the port answers.
+/// The native demo starts with its in-memory adapter. The web build uses
+/// the shared bootstrap's default adapter until a host injects one.
 pub fn init_state() -> AppState {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        crate::bootstrap::start_shared_app_state(Some(Box::new(
-            UseCaseAdapter::with_demo_connections(),
-        )))
+        crate::bootstrap::start_shared_app_state(Some(Box::new(DemoAdapter::default())))
     }
     #[cfg(target_arch = "wasm32")]
     {

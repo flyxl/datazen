@@ -60,21 +60,9 @@
 //! exists yet (`lib/crossWindowBus.ts` is T437, segment 2), so the host
 //! delivers it through whatever bus the windows share.
 //!
-//! # T403 placeholder (must be read before extending)
-//!
-//! The display helpers (`filterConnections`, `sortConnectionsInGroup`,
-//! `groupConnections`, `groupConnectionsWithPinnedSection`) rank and group
-//! through `lib/connectionLocator.ts`, whose real port is **T403 (segment
-//! 2, pending)** — a cross-segment dependency. Following the
-//! `transferMappingView` / `DataTransferTerminalResults` (T561) precedent,
-//! the needed subset is carried here as pure functions transliterated
-//! line for line from the TypeScript source, **with the empty usage
-//! state the store passes**: only the connection's own fields are scored
-//! (name, host, database, database type, the registry label) — the
-//! live-session schema/table/object candidates never run from this store.
-//! The `timestamp`/`compareStrings` helpers ride along. **Do not extend
-//! them with new semantics here**: T403's port replaces the whole subset
-//! at the seams.
+//! The store ranks and groups saved connection profiles using their name,
+//! host, database, and driver label. The navigator also ranks live catalog
+//! objects. Both use the UI API's stable pinned order and section types.
 //!
 //! # Deliberate differences from React
 //!
@@ -97,28 +85,18 @@
 //!   await and hand straight to the caller — no state moves, so nothing
 //!   is modelled beyond the effect.
 
-
-use datazen_ui_api::ConnectionConfig;
+use datazen_ui_api::{order_connections_for_display, ConnectionConfig};
+pub use datazen_ui_api::{
+    ConnectionSection as ConnectionGroupSection, PINNED_GROUP_KEY, RECENT_CONNECTION_LIMIT,
+    RECENT_GROUP_KEY,
+};
 
 use crate::i18n::t;
+use crate::support::formatters::connection_timestamp_millis;
 use crate::views::db_label;
 
 /// React `EVENT_CONNECTIONS_CHANGED` (`stores/connectionStore.ts:10`).
 pub const EVENT_CONNECTIONS_CHANGED: &str = "datazen:connections-changed";
-
-/// React `RECENT_GROUP_KEY` (`lib/connectionLocator.ts:44`): the synthetic
-/// recent section key (not persisted).
-#[allow(dead_code)] // T403 replaces this placeholder; the navigator consumes it
-pub const RECENT_GROUP_KEY: &str = "__recent__";
-
-/// React `PINNED_GROUP_KEY` (`lib/connectionLocator.ts:45`): the synthetic
-/// pinned section key (not persisted).
-#[allow(dead_code)] // T403 replaces this placeholder; the navigator consumes it
-pub const PINNED_GROUP_KEY: &str = "__pinned__";
-
-/// React `RECENT_CONNECTION_LIMIT` (`lib/connectionLocator.ts:43`): how
-/// many recent connections the promoted section holds.
-pub const RECENT_CONNECTION_LIMIT: usize = 5;
 
 // ---------------------------------------------------------------------------
 // T403 placeholder: the `lib/connectionLocator.ts` subset the store uses.
@@ -197,7 +175,12 @@ fn connection_candidates(connection: &ConnectionConfig, query: &str) -> Vec<Conn
     for candidate in [
         match_candidate(Some(&connection.name), query, MatchReason::Name, 0),
         match_candidate(connection.host.as_deref(), query, MatchReason::Host, 10),
-        match_candidate(connection.database.as_deref(), query, MatchReason::Database, 20),
+        match_candidate(
+            connection.database.as_deref(),
+            query,
+            MatchReason::Database,
+            20,
+        ),
         match_candidate(
             Some(&connection.database_type),
             query,
@@ -227,106 +210,6 @@ fn best_candidate(mut candidates: Vec<ConnectionMatch>) -> Option<ConnectionMatc
     candidates.into_iter().next()
 }
 
-/// `timestamp` (`connectionLocator.ts:207-211`): `Date.parse` with an
-/// invalid date as `None`. Only ISO-8601 shapes are accepted, the same
-/// subset the Backup window's locator port accepts (see
-/// `views/backup/backup_grouping.rs`, the shared precedent).
-fn parse_iso_timestamp(value: &str) -> Option<i64> {
-    fn digits(text: &str) -> Option<i64> {
-        if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
-            return None;
-        }
-        text.parse::<i64>().ok()
-    }
-    fn days_in_month(year: i64, month: i64) -> i64 {
-        match month {
-            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-            4 | 6 | 9 | 11 => 30,
-            2 => {
-                if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
-                    29
-                } else {
-                    28
-                }
-            }
-            _ => 0,
-        }
-    }
-    fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-        let y = if month <= 2 { year - 1 } else { year };
-        let era = if y >= 0 { y } else { y - 399 } / 400;
-        let yoe = y - era * 400;
-        let mp = (month + 9) % 12;
-        let doy = (153 * mp + 2) / 5 + day - 1;
-        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-        era * 146_097 + doe - 719_468
-    }
-
-    let bytes = value.as_bytes();
-    if bytes.len() < 10 {
-        return None;
-    }
-    let year = digits(value.get(0..4)?)?;
-    if value.get(4..5)? != "-" {
-        return None;
-    }
-    let month = digits(value.get(5..7)?)?;
-    if value.get(7..8)? != "-" {
-        return None;
-    }
-    let day = digits(value.get(8..10)?)?;
-    if !(1..=12).contains(&month) || day < 1 || day > days_in_month(year, month) {
-        return None;
-    }
-    let mut seconds = days_from_civil(year, month, day) * 86_400;
-    if bytes.len() == 10 {
-        return Some(seconds);
-    }
-    if value.get(10..11)? != "T" || bytes.len() < 19 {
-        return None;
-    }
-    let hour = digits(value.get(11..13)?)?;
-    if value.get(13..14)? != ":" {
-        return None;
-    }
-    let minute = digits(value.get(14..16)?)?;
-    if value.get(16..17)? != ":" {
-        return None;
-    }
-    let second = digits(value.get(17..19)?)?;
-    if hour > 23 || minute > 59 || second > 59 {
-        return None;
-    }
-    seconds += hour * 3_600 + minute * 60 + second;
-    let mut rest = value.get(19..)?;
-    if let Some(frac) = rest.strip_prefix('.') {
-        let end = frac.find(|c: char| !c.is_ascii_digit())?;
-        if end == 0 {
-            return None;
-        }
-        rest = frac.get(end..)?;
-    }
-    match rest {
-        "Z" => Some(seconds),
-        _ => {
-            let sign = match rest.get(0..1)? {
-                "+" => 1,
-                "-" => -1,
-                _ => return None,
-            };
-            let off_hour = digits(rest.get(1..3)?)?;
-            if rest.get(3..4)? != ":" {
-                return None;
-            }
-            let off_minute = digits(rest.get(4..6)?)?;
-            if off_hour > 23 || off_minute > 59 || rest.len() != 6 {
-                return None;
-            }
-            Some(seconds - sign * (off_hour * 3_600 + off_minute * 60))
-        }
-    }
-}
-
 /// `compareStrings` (`connectionLocator.ts:214-216`): `localeCompare`
 /// with base sensitivity, approximated by lowercased byte order (the
 /// Backup locator's documented approximation).
@@ -351,15 +234,16 @@ fn compare_results(
     if a_pinned != b_pinned {
         return b_pinned.cmp(&a_pinned);
     }
-    let a_time = a.0.last_connected_at.as_deref().and_then(parse_iso_timestamp);
-    let b_time = b.0.last_connected_at.as_deref().and_then(parse_iso_timestamp);
+    let a_time =
+        a.0.last_connected_at
+            .as_deref()
+            .and_then(connection_timestamp_millis);
+    let b_time =
+        b.0.last_connected_at
+            .as_deref()
+            .and_then(connection_timestamp_millis);
     if a_time != b_time {
-        return match (a_time, b_time) {
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (Some(x), Some(y)) => y.cmp(&x),
-            (None, None) => std::cmp::Ordering::Equal,
-        };
+        return b_time.cmp(&a_time);
     }
     let group = compare_base(
         a.0.group.as_deref().unwrap_or(""),
@@ -400,36 +284,10 @@ fn rank_connections(connections: &[ConnectionConfig], query: &str) -> Vec<Connec
         .filter(|(_, matched)| normalized.is_empty() || matched.is_some())
         .collect();
     ranked.sort_by(|a, b| compare_results((a.0, a.1), (b.0, b.1)));
-    ranked.into_iter().map(|(connection, _)| connection.clone()).collect()
-}
-
-/// React `orderConnectionsForDisplay` (`connectionLocator.ts:264-268`):
-/// pinned first, stable — the persisted order is kept otherwise.
-fn order_connections_for_display(connections: &[ConnectionConfig]) -> Vec<ConnectionConfig> {
-    let pinned: Vec<ConnectionConfig> = connections
-        .iter()
-        .filter(|c| c.pinned.unwrap_or(false))
-        .cloned()
-        .collect();
-    if pinned.is_empty() {
-        return connections.to_vec();
-    }
-    let mut out = pinned;
-    out.extend(
-        connections
-            .iter()
-            .filter(|c| !c.pinned.unwrap_or(false))
-            .cloned(),
-    );
-    out
-}
-
-/// One `groupConnections` / `groupConnectionsWithRecentSections` result
-/// row: a group key and its connections.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct ConnectionGroupSection {
-    pub group: String,
-    pub connections: Vec<ConnectionConfig>,
+    ranked
+        .into_iter()
+        .map(|(connection, _)| connection.clone())
+        .collect()
 }
 
 /// `groupConnectionsWithRecentSections`
@@ -464,21 +322,18 @@ fn group_connections_with_recent_sections(
         .filter(|c| c.pinned.unwrap_or(false))
         .cloned()
         .collect();
-    let mut recent: Vec<ConnectionConfig> = connections
+    let mut recent: Vec<_> = connections
         .iter()
-        .filter(|c| c.last_connected_at.as_deref().is_some_and(|v| parse_iso_timestamp(v).is_some()))
-        .cloned()
+        .filter_map(|connection| {
+            let time = connection_timestamp_millis(connection.last_connected_at.as_deref()?)?;
+            Some((time, connection))
+        })
         .collect();
-    recent.sort_by(|a, b| {
-        let a_time = a.last_connected_at.as_deref().and_then(parse_iso_timestamp).unwrap_or(0);
-        let b_time = b.last_connected_at.as_deref().and_then(parse_iso_timestamp).unwrap_or(0);
-        if a_time != b_time {
-            return b_time.cmp(&a_time);
-        }
-        match compare_base(&a.name, &b.name) {
-            std::cmp::Ordering::Equal => a.id.cmp(&b.id),
-            other => other,
-        }
+    recent.sort_by(|(a_time, a), (b_time, b)| {
+        b_time
+            .cmp(a_time)
+            .then_with(|| compare_base(&a.name, &b.name))
+            .then_with(|| a.id.cmp(&b.id))
     });
     recent.truncate(RECENT_CONNECTION_LIMIT);
 
@@ -503,7 +358,10 @@ fn group_connections_with_recent_sections(
     if !recent.is_empty() {
         sections.push(ConnectionGroupSection {
             group: RECENT_GROUP_KEY.to_owned(),
-            connections: recent,
+            connections: recent
+                .into_iter()
+                .map(|(_, connection)| connection.clone())
+                .collect(),
         });
     }
     for group in groups {
@@ -828,9 +686,7 @@ impl ConnectionStore {
     pub fn begin_delete_connection(&mut self, id: &str) -> Vec<ConnectionStoreEffect> {
         self.loading = true;
         self.error = None;
-        vec![ConnectionStoreEffect::DeleteConnection {
-            id: id.to_owned(),
-        }]
+        vec![ConnectionStoreEffect::DeleteConnection { id: id.to_owned() }]
     }
 
     /// React's `deleteConnection` settlement: the save-shaped
@@ -847,7 +703,8 @@ impl ConnectionStore {
             ],
             Err(message) => {
                 self.loading = false;
-                self.error = Some(message.unwrap_or_else(|| t("connStore.deleteFailed").to_owned()));
+                self.error =
+                    Some(message.unwrap_or_else(|| t("connStore.deleteFailed").to_owned()));
                 Vec::new()
             }
         }

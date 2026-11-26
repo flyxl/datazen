@@ -50,6 +50,7 @@ const WORKSPACE_MEMBER_DIRS = [
   'crates/datazen-desktop',
   'crates/datazen-driver-api',
   'crates/datazen-driver-support',
+  'crates/datazen-sql',
   'crates/datazen-infra',
   'crates/datazen',
   'crates/datazen-server',
@@ -379,9 +380,7 @@ describe('Rule 4 — wdio spec-tree filenames stay bare', () => {
 
 describe('guard plumbing', () => {
   it('exits 2 when a mirrored workspace member directory has vanished', () => {
-    // All members but `server` exist, so the walk really reaches the sixth
-    // entry: the guard must fail loudly rather than scan five sixths of the
-    // workspace and call the remainder clean.
+    // The guard must report a missing member even when all earlier members exist.
     const root = mkdtempSync(join(tmpdir(), 'check-test-module-naming-'));
     fixtureRoots.push(root);
     for (const dir of WORKSPACE_MEMBER_DIRS) {

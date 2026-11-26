@@ -15,6 +15,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
 use crate::i18n::t;
+use crate::support::formatters::connection_timestamp_millis;
 
 use super::backup_db_meta::db_label;
 use super::backup_window_state::BackupConnection;
@@ -179,105 +180,6 @@ fn compare_base(a: &str, b: &str) -> Ordering {
     a.to_lowercase().cmp(&b.to_lowercase())
 }
 
-/// `timestamp` (`connectionLocator.ts:207-211`): `Date.parse`, with an
-/// invalid date as `None`. Only ISO-8601 shapes are accepted here —
-/// see the module docs.
-fn parse_iso_timestamp(value: &str) -> Option<i64> {
-    fn digits(text: &str) -> Option<i64> {
-        if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
-            return None;
-        }
-        text.parse::<i64>().ok()
-    }
-    fn days_in_month(year: i64, month: i64) -> i64 {
-        match month {
-            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-            4 | 6 | 9 | 11 => 30,
-            2 => {
-                if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
-                    29
-                } else {
-                    28
-                }
-            }
-            _ => 0,
-        }
-    }
-    fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-        let y = if month <= 2 { year - 1 } else { year };
-        let era = if y >= 0 { y } else { y - 399 } / 400;
-        let yoe = y - era * 400;
-        let mp = (month + 9) % 12;
-        let doy = (153 * mp + 2) / 5 + day - 1;
-        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-        era * 146_097 + doe - 719_468
-    }
-
-    let bytes = value.as_bytes();
-    if bytes.len() < 10 {
-        return None;
-    }
-    let year = digits(value.get(0..4)?)?;
-    if value.get(4..5)? != "-" {
-        return None;
-    }
-    let month = digits(value.get(5..7)?)?;
-    if value.get(7..8)? != "-" {
-        return None;
-    }
-    let day = digits(value.get(8..10)?)?;
-    if !(1..=12).contains(&month) || day < 1 || day > days_in_month(year, month) {
-        return None;
-    }
-    let mut seconds = days_from_civil(year, month, day) * 86_400;
-    if bytes.len() == 10 {
-        return Some(seconds);
-    }
-    if value.get(10..11)? != "T" || bytes.len() < 19 {
-        return None;
-    }
-    let hour = digits(value.get(11..13)?)?;
-    if value.get(13..14)? != ":" {
-        return None;
-    }
-    let minute = digits(value.get(14..16)?)?;
-    if value.get(16..17)? != ":" {
-        return None;
-    }
-    let second = digits(value.get(17..19)?)?;
-    if hour > 23 || minute > 59 || second > 59 {
-        return None;
-    }
-    seconds += hour * 3_600 + minute * 60 + second;
-    let mut rest = value.get(19..)?;
-    if let Some(frac) = rest.strip_prefix('.') {
-        let end = frac.find(|c: char| !c.is_ascii_digit())?;
-        if end == 0 {
-            return None;
-        }
-        rest = frac.get(end..)?;
-    }
-    match rest {
-        "Z" => Some(seconds),
-        _ => {
-            let sign = match rest.get(0..1)? {
-                "+" => 1,
-                "-" => -1,
-                _ => return None,
-            };
-            let off_hour = digits(rest.get(1..3)?)?;
-            if rest.get(3..4)? != ":" {
-                return None;
-            }
-            let off_minute = digits(rest.get(4..6)?)?;
-            if off_hour > 23 || off_minute > 59 || rest.len() != 6 {
-                return None;
-            }
-            Some(seconds - sign * (off_hour * 3_600 + off_minute * 60))
-        }
-    }
-}
-
 /// `compareResults` (`connectionLocator.ts:219-242`): match rank
 /// (`null` sorts last), pinned first, `lastConnectedAt` descending
 /// with nulls last, then group, name, and id.
@@ -296,18 +198,13 @@ fn compare_ranked(
     let a_time =
         a.0.last_connected_at
             .as_deref()
-            .and_then(parse_iso_timestamp);
+            .and_then(connection_timestamp_millis);
     let b_time =
         b.0.last_connected_at
             .as_deref()
-            .and_then(parse_iso_timestamp);
+            .and_then(connection_timestamp_millis);
     if a_time != b_time {
-        return match (a_time, b_time) {
-            (None, Some(_)) => Ordering::Greater,
-            (Some(_), None) => Ordering::Less,
-            (Some(a), Some(b)) => b.cmp(&a),
-            (None, None) => Ordering::Equal,
-        };
+        return b_time.cmp(&a_time);
     }
     let group = compare_base(
         a.0.group.as_deref().unwrap_or(""),
@@ -327,10 +224,7 @@ fn compare_ranked(
 /// (first wins), keep only matches for a non-empty query, and sort by
 /// [`compare_ranked`]. An empty query returns every connection with a
 /// null match, still sorted.
-pub fn rank_connections(
-    connections: &[BackupConnection],
-    query: &str,
-) -> Vec<BackupConnection> {
+pub fn rank_connections(connections: &[BackupConnection], query: &str) -> Vec<BackupConnection> {
     let normalized = normalize(query);
     let mut unique: Vec<&BackupConnection> = Vec::new();
     for conn in connections {

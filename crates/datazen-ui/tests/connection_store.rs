@@ -142,19 +142,33 @@ fn group_connections_orders_declared_extra_then_ungrouped() {
     let groups = vec!["work".to_owned(), "team".to_owned()];
     let sections = group_connections(&connections, &groups, "");
     let keys: Vec<&str> = sections.iter().map(|s| s.group.as_str()).collect();
-    assert_eq!(keys, vec!["work", "team", ""], "declared order, ungrouped last");
+    assert_eq!(
+        keys,
+        vec!["work", "team", ""],
+        "declared order, ungrouped last"
+    );
 
     let work = &sections[0];
     assert_eq!(
-        work.connections.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+        work.connections
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
         vec!["b", "c"],
         "b pinned first within the group"
     );
     let team = &sections[1];
-    assert!(team.connections.is_empty(), "an empty declared group still lists");
+    assert!(
+        team.connections.is_empty(),
+        "an empty declared group still lists"
+    );
     let ungrouped = sections.last().expect("the ungrouped section");
     assert_eq!(
-        ungrouped.connections.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+        ungrouped
+            .connections
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
         vec!["a", "d", "e", "f", "g"]
     );
 }
@@ -168,7 +182,14 @@ fn group_connections_searching_keeps_the_ranked_order() {
     // in ranked order without the pinned-first re-sort.
     assert_eq!(sections.len(), 1);
     assert_eq!(sections[0].group, "work");
-    assert_eq!(sections[0].connections.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), vec!["c"]);
+    assert_eq!(
+        sections[0]
+            .connections
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["c"]
+    );
 }
 
 #[test]
@@ -182,7 +203,11 @@ fn pinned_and_recent_sections_promote_over_the_plain_groups() {
         vec![PINNED_GROUP_KEY, RECENT_GROUP_KEY, "work", ""],
         "pinned and recent hoist above the declared groups"
     );
-    assert_eq!(sections[0].connections.len(), 1, "the one pinned connection");
+    assert_eq!(
+        sections[0].connections.len(),
+        1,
+        "the one pinned connection"
+    );
     // The recent section: the three timestamped connections, newest first.
     assert_eq!(
         sections[1]
@@ -195,7 +220,11 @@ fn pinned_and_recent_sections_promote_over_the_plain_groups() {
     );
     // The pinned connection still appears in its persisted group.
     assert_eq!(
-        sections[2].connections.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+        sections[2]
+            .connections
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
         vec!["b", "c"],
         "the promoted shortcuts stay in their group too"
     );
@@ -203,11 +232,18 @@ fn pinned_and_recent_sections_promote_over_the_plain_groups() {
 
 #[test]
 fn without_promoted_connections_the_plain_grouping_applies() {
-    let connections = vec![config("a", "Analytics"), with_group(config("c", "Cache Mirror"), "work")];
+    let connections = vec![
+        config("a", "Analytics"),
+        with_group(config("c", "Cache Mirror"), "work"),
+    ];
     let groups = vec!["work".to_owned()];
     let sections = group_connections_with_pinned_section(&connections, &groups, "");
     let keys: Vec<&str> = sections.iter().map(|s| s.group.as_str()).collect();
-    assert_eq!(keys, vec!["work", ""], "no pinned, no timestamped: no promoted sections");
+    assert_eq!(
+        keys,
+        vec!["work", ""],
+        "no pinned, no timestamped: no promoted sections"
+    );
 }
 
 #[test]
@@ -216,13 +252,34 @@ fn searching_bypasses_the_promoted_sections() {
     let groups = vec!["work".to_owned()];
     let sections = group_connections_with_pinned_section(&connections, &groups, "cache");
     let keys: Vec<&str> = sections.iter().map(|s| s.group.as_str()).collect();
-    assert_eq!(keys, vec!["work"], "a search query routes to the plain grouping");
+    assert_eq!(
+        keys,
+        vec!["work"],
+        "a search query routes to the plain grouping"
+    );
+}
+
+#[test]
+fn recent_connections_use_milliseconds_across_time_zone_offsets() {
+    let older = with_last_connected(config("a", "Alpha"), "2026-11-01T08:00:00.100+08:00");
+    let newer = with_last_connected(config("z", "Zulu"), "2026-11-01T00:00:00.900Z");
+    let connections = [older, newer];
+    let ranked = filter_connections(&connections, None, "");
+    assert_eq!(ranked[0].id, "z");
+    let sections = group_connections_with_pinned_section(&connections, &[], "");
+    assert_eq!(sections[0].group, RECENT_GROUP_KEY);
+    assert_eq!(sections[0].connections[0].id, "z");
 }
 
 #[test]
 fn the_recent_cap_is_five_even_with_more_timestamped_connections() {
     let mut connections: Vec<ConnectionConfig> = (0..7)
-        .map(|i| with_last_connected(config(&format!("c{i}"), &format!("conn {i}")), "2026-11-01T00:00:00Z"))
+        .map(|i| {
+            with_last_connected(
+                config(&format!("c{i}"), &format!("conn {i}")),
+                "2026-11-01T00:00:00Z",
+            )
+        })
         .collect();
     connections.sort_by(|a, b| a.id.cmp(&b.id));
     let sections = group_connections_with_pinned_section(&connections, &[], "");
@@ -230,7 +287,11 @@ fn the_recent_cap_is_five_even_with_more_timestamped_connections() {
         .iter()
         .find(|s| s.group == RECENT_GROUP_KEY)
         .expect("the recent section");
-    assert_eq!(recent.connections.len(), RECENT_CONNECTION_LIMIT, "capped at 5");
+    assert_eq!(
+        recent.connections.len(),
+        RECENT_CONNECTION_LIMIT,
+        "capped at 5"
+    );
 }
 
 // -----------------------------------------------------------------------
@@ -248,12 +309,18 @@ fn fetch_connections_loads_clears_and_marks_the_first_attempt() {
         vec![ConnectionStoreEffect::GetConnections],
         "one IPC effect"
     );
-    assert!(store.loading && store.error.is_none(), "loading raised, error cleared");
+    assert!(
+        store.loading && store.error.is_none(),
+        "loading raised, error cleared"
+    );
 
     let effects = store.finish_fetch_connections(Ok(vec![config("a", "A")]));
     assert!(effects.is_empty(), "the chain ends here");
     assert_eq!(store.connections.len(), 1);
-    assert!(!store.loading && store.connections_loaded, "the attempt is recorded");
+    assert!(
+        !store.loading && store.connections_loaded,
+        "the attempt is recorded"
+    );
 
     // A failing fetch keeps the old list, marks the attempt, and records
     // the host's message verbatim.
@@ -278,10 +345,16 @@ fn fetch_groups_touches_no_state_until_the_answer() {
     assert_eq!(effects, vec![ConnectionStoreEffect::GetGroups]);
     assert_eq!(store, ConnectionStore::default(), "no state moves first");
 
-    store.finish_fetch_groups(Ok(vec!["work".to_owned()])).clear();
+    store
+        .finish_fetch_groups(Ok(vec!["work".to_owned()]))
+        .clear();
     assert_eq!(store.groups, vec!["work".to_owned()]);
     store.finish_fetch_groups(Err(Some("x".to_owned()))).clear();
-    assert_eq!(store.groups, vec!["work".to_owned()], "a failure changes nothing");
+    assert_eq!(
+        store.groups,
+        vec!["work".to_owned()],
+        "a failure changes nothing"
+    );
 }
 
 // -----------------------------------------------------------------------
@@ -315,20 +388,28 @@ fn a_successful_save_returns_the_exact_refetch_continuation() {
     assert!(store.loading, "the refetch chain ends the loading flag");
 
     // The refetch landing clears it.
-    store.finish_fetch_connections(Ok(vec![config.clone()])).clear();
+    store
+        .finish_fetch_connections(Ok(vec![config.clone()]))
+        .clear();
     assert!(!store.loading);
 }
 
 #[test]
 fn a_failed_save_clears_loading_with_the_localized_message() {
     let mut store = ConnectionStore::default();
-    store.begin_save_connection(&config("a", "A"), false).clear();
-    store.finish_save_connection(Err(Some("boom".to_owned()))).clear();
+    store
+        .begin_save_connection(&config("a", "A"), false)
+        .clear();
+    store
+        .finish_save_connection(Err(Some("boom".to_owned())))
+        .clear();
     assert!(!store.loading);
     assert_eq!(store.error.as_deref(), Some("boom"));
 
     let mut store = ConnectionStore::default();
-    store.begin_save_connection(&config("a", "A"), false).clear();
+    store
+        .begin_save_connection(&config("a", "A"), false)
+        .clear();
     store.finish_save_connection(Err(None)).clear();
     assert_eq!(store.error.as_deref(), Some(t("connStore.saveFailed")));
 }
@@ -387,7 +468,9 @@ fn test_connection_is_a_pure_pass_through() {
     let effects = store.test_connection(&config);
     assert_eq!(
         effects,
-        vec![ConnectionStoreEffect::TestConnection { config: config.clone() }]
+        vec![ConnectionStoreEffect::TestConnection {
+            config: config.clone()
+        }]
     );
     assert_eq!(store, before, "no state moves");
 }
@@ -402,19 +485,30 @@ fn add_group_appends_after_trim_and_ignores_blanks_and_duplicates() {
     store.groups = vec!["work".to_owned()];
 
     assert!(store.begin_add_group("   ").is_empty(), "blank is a no-op");
-    assert!(store.begin_add_group("work").is_empty(), "duplicate is a no-op");
+    assert!(
+        store.begin_add_group("work").is_empty(),
+        "duplicate is a no-op"
+    );
 
     let effects = store.begin_add_group("  prod ");
     assert_eq!(
         effects,
-        vec![ConnectionStoreEffect::SaveGroups { groups: vec!["work".to_owned(), "prod".to_owned()] }],
+        vec![ConnectionStoreEffect::SaveGroups {
+            groups: vec!["work".to_owned(), "prod".to_owned()]
+        }],
         "trimmed and appended"
     );
 
-    store.finish_add_group(Ok(vec!["work".to_owned(), "prod".to_owned()])).clear();
+    store
+        .finish_add_group(Ok(vec!["work".to_owned(), "prod".to_owned()]))
+        .clear();
     assert_eq!(store.groups, vec!["work".to_owned(), "prod".to_owned()]);
     store.finish_add_group(Err(Some("x".to_owned()))).clear();
-    assert_eq!(store.groups, vec!["work".to_owned(), "prod".to_owned()], "a failure changes nothing");
+    assert_eq!(
+        store.groups,
+        vec!["work".to_owned(), "prod".to_owned()],
+        "a failure changes nothing"
+    );
 }
 
 #[test]
@@ -426,23 +520,27 @@ fn rename_group_regroups_the_members_and_lands_the_list() {
         with_group(config("b", "B"), "team"),
     ];
 
-    assert!(store.begin_rename_group("work", "  ").is_empty(), "blank is a no-op");
-    assert!(store.begin_rename_group("work", "work").is_empty(), "same name is a no-op");
+    assert!(
+        store.begin_rename_group("work", "  ").is_empty(),
+        "blank is a no-op"
+    );
+    assert!(
+        store.begin_rename_group("work", "work").is_empty(),
+        "same name is a no-op"
+    );
 
     // The rename dedupes: renaming work onto team collapses the list.
     let effects = store.begin_rename_group("work", "team");
     assert_eq!(
         effects,
-        vec![ConnectionStoreEffect::SaveGroups { groups: vec!["team".to_owned()] }],
+        vec![ConnectionStoreEffect::SaveGroups {
+            groups: vec!["team".to_owned()]
+        }],
         "Set-dedupe collapses the renamed list"
     );
 
     // The settlement regroups the members and refetches.
-    let effects = store.finish_rename_group(
-        Ok(vec!["team".to_owned()]),
-        "work",
-        "team",
-    );
+    let effects = store.finish_rename_group(Ok(vec!["team".to_owned()]), "work", "team");
     assert_eq!(
         effects,
         vec![
@@ -468,7 +566,10 @@ fn delete_group_ungroups_the_members_and_clears_the_selection() {
     ];
 
     let effects = store.begin_delete_group("work");
-    assert_eq!(effects, vec![ConnectionStoreEffect::SaveGroups { groups: vec![] }]);
+    assert_eq!(
+        effects,
+        vec![ConnectionStoreEffect::SaveGroups { groups: vec![] }]
+    );
 
     let effects = store.finish_delete_group(Ok(vec![]), "work");
     assert_eq!(
@@ -499,7 +600,9 @@ fn move_connection_saves_the_regrouped_config_and_refetches_without_groups() {
     let mut store = ConnectionStore::default();
     store.connections = vec![with_group(config("a", "A"), "work")];
 
-    assert!(store.begin_move_connection_to_group("nope", Some("team")).is_empty());
+    assert!(store
+        .begin_move_connection_to_group("nope", Some("team"))
+        .is_empty());
 
     let effects = store.begin_move_connection_to_group("a", Some("team"));
     assert_eq!(

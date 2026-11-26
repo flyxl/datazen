@@ -42,7 +42,7 @@
 
 use std::collections::HashMap;
 
-use datazen_driver_api::{ForeignKeyInfo, TableSchema};
+use datazen_ui_api::{ForeignKeyInfo, TableSchema};
 
 /// `FkGroupAffordance` (`lib/fkNavigation.ts`, carried — T515): one
 /// foreign-key group as the grid sees it. Every member column of the
@@ -85,9 +85,7 @@ fn target_label_of(reference_table: &str, target_columns: &[String]) -> String {
 /// ordered-columns match" rule of the request path. (The React map
 /// shares one group object per constraint; the port's entries are
 /// value-equal — the same group, read twice.)
-pub fn index_foreign_keys(
-    foreign_keys: &[ForeignKeyInfo],
-) -> HashMap<String, FkGroupAffordance> {
+pub fn index_foreign_keys(foreign_keys: &[ForeignKeyInfo]) -> HashMap<String, FkGroupAffordance> {
     let mut index: HashMap<String, FkGroupAffordance> = HashMap::new();
     for foreign_key in foreign_keys {
         let group = FkGroupAffordance {
@@ -151,7 +149,13 @@ impl UseTableForeignKeys {
     /// `useTableForeignKeys(params)` — the hook's initial state
     /// (empty index, not loading, no error).
     pub fn new(params: UseTableForeignKeysParams) -> Self {
-        Self { params, index: HashMap::new(), loading: false, error: None, cancelled: false }
+        Self {
+            params,
+            index: HashMap::new(),
+            loading: false,
+            error: None,
+            cancelled: false,
+        }
     }
 
     /// The effect: ask the schema cache for this table's schema. The
@@ -231,21 +235,15 @@ mod tests {
             columns: columns.iter().map(|s| s.to_string()).collect(),
             referenced_table: table.to_owned(),
             referenced_columns: referenced.iter().map(|s| s.to_string()).collect(),
-            on_update: String::new(),
-            on_delete: String::new(),
-            deferrability: Default::default(),
+            ..Default::default()
         }
     }
 
     fn schema_with(foreign_keys: Vec<ForeignKeyInfo>) -> TableSchema {
         TableSchema {
             table_name: "orders".to_owned(),
-            columns: Vec::new(),
-            primary_keys: Vec::new(),
-            indexes: Vec::new(),
             foreign_keys,
-            check_constraints: Vec::new(),
-            table_options: Default::default(),
+            ..Default::default()
         }
     }
 
@@ -255,7 +253,12 @@ mod tests {
         hook.mount();
         hook.on_schema(&schema_with(vec![
             fk("orders_customer_fk", &["customer_id"], "customers", &["id"]),
-            fk("orders_parent_fk", &["parent_a", "parent_b"], "parents", &["x", "y"]),
+            fk(
+                "orders_parent_fk",
+                &["parent_a", "parent_b"],
+                "parents",
+                &["x", "y"],
+            ),
         ]));
         assert!(!hook.loading());
         assert_eq!(hook.error(), None);
@@ -267,7 +270,10 @@ mod tests {
             hook.index().get("customer_id").expect("group").target_label,
             "customers.id"
         );
-        assert_eq!(hook.index().get("parent_a").expect("group").target_label, "parents.(x, y)");
+        assert_eq!(
+            hook.index().get("parent_a").expect("group").target_label,
+            "parents.(x, y)"
+        );
     }
 
     #[test]
@@ -277,7 +283,10 @@ mod tests {
         hook.on_error("no permission for table orders".to_owned());
         assert!(!hook.loading());
         assert!(hook.index().is_empty());
-        assert!(hook.error().expect("degradation message").contains("no permission"));
+        assert!(hook
+            .error()
+            .expect("degradation message")
+            .contains("no permission"));
     }
 
     #[test]
@@ -320,7 +329,10 @@ mod tests {
             fk("second_fk", &["shared"], "second", &["id"]),
         ]);
         assert_eq!(index.len(), 1);
-        assert_eq!(index.get("shared").expect("group").constraint_name, "first_fk");
+        assert_eq!(
+            index.get("shared").expect("group").constraint_name,
+            "first_fk"
+        );
         assert_eq!(index.get("shared").expect("group").reference_table, "first");
     }
 
@@ -331,11 +343,20 @@ mod tests {
         // the failure arm must degrade back to EMPTY_INDEX.
         let mut hook = UseTableForeignKeys::new(params());
         hook.mount();
-        hook.on_schema(&schema_with(vec![fk("fk", &["customer_id"], "customers", &["id"])]));
+        hook.on_schema(&schema_with(vec![fk(
+            "fk",
+            &["customer_id"],
+            "customers",
+            &["id"],
+        )]));
         assert_eq!(hook.index().len(), 1);
         hook.mount();
         assert!(hook.loading());
-        assert_eq!(hook.index().len(), 1, "the old index stays until the read answers");
+        assert_eq!(
+            hook.index().len(),
+            1,
+            "the old index stays until the read answers"
+        );
         hook.on_error("table vanished".to_owned());
         assert!(hook.index().is_empty(), "degradation means no arrows");
         assert_eq!(hook.error(), Some("table vanished"));
@@ -343,9 +364,12 @@ mod tests {
 
     #[test]
     fn the_group_carries_the_aligned_member_lists() {
-        let index = index_foreign_keys(&[
-            fk("orders_parent_fk", &["parent_a", "parent_b"], "parents", &["x", "y"]),
-        ]);
+        let index = index_foreign_keys(&[fk(
+            "orders_parent_fk",
+            &["parent_a", "parent_b"],
+            "parents",
+            &["x", "y"],
+        )]);
         let group = index.get("parent_b").expect("group");
         assert_eq!(group.local_columns, ["parent_a", "parent_b"]);
         assert_eq!(group.target_columns, ["x", "y"]);
