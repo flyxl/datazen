@@ -4,7 +4,9 @@ use crate::structure;
 
 #[path = "parameter_limit.rs"]
 mod parameter_limit;
+mod csv_import;
 mod schema;
+pub use csv_import::CsvImportTarget;
 use async_trait::async_trait;
 use datazen_driver_api::*;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};

@@ -30,6 +30,9 @@ impl AppState {
             return;
         }
         self.import_error = None;
+        if self.desktop.supports_native_transfer() {
+            self.sync_desktop_connections();
+        }
         self.import_step = 1;
     }
 
@@ -40,7 +43,11 @@ impl AppState {
             return;
         }
         self.import_error = None;
-        self.import_step = 2;
+        if self.desktop.supports_native_transfer() {
+            self.start_csv_review();
+        } else {
+            self.import_step = 2;
+        }
     }
     pub fn import_back(&mut self) {
         self.import_step = 0;

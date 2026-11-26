@@ -780,6 +780,9 @@ pub fn backup_section(state: &AppState, theme: tok::Theme) -> El {
 /// The import wizard's first two steps: source, then target table. No target,
 /// no next step.
 pub fn import_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    if state.desktop.supports_native_transfer() && state.import_step != 0 {
+        return super::native_csv_import::view(state, theme, dark);
+    }
     let mut section = col().key("import-section").w_full().gap(6.0).child(
         text(t("import.import").to_owned())
             .font(type_::TITLE)

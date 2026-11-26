@@ -305,6 +305,7 @@ pub struct AppState {
     pub import_source: TextEdit,
     pub import_target: TextEdit,
     pub import_error: Option<String>,
+    pub(crate) native_csv: crate::native_csv_state::NativeCsvState,
     /// The backup job and its last snapshot.
     pub backup_job: Option<u64>,
     pub backup_snapshot: Option<ProgressSnapshot>,
@@ -672,6 +673,7 @@ impl Default for AppState {
             import_source: TextEdit::new(String::new()),
             import_target: TextEdit::new(String::new()),
             import_error: None,
+            native_csv: Default::default(),
             backup_job: None,
             backup_snapshot: None,
             backup_error: None,

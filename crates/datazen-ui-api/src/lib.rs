@@ -151,6 +151,7 @@ mod locale_sync;
 mod kv_slot_state;
 mod kv_workspace;
 pub mod native_kv;
+pub mod native_csv_import;
 pub mod native_transfer;
 mod load_batch_export_table;
 mod main_window_context_menu;
@@ -1981,6 +1982,14 @@ pub enum AdapterJob {
         side: native_transfer::TransferSide,
         choice: native_transfer::TransferChoice,
     },
+    ReviewNativeCsv {
+        epoch: u32,
+        choice: native_csv_import::CsvImportChoice,
+    },
+    AppendNativeCsv {
+        epoch: u32,
+        review: native_csv_import::CsvImportReview,
+    },
     PreviewNativeSync {
         epoch: u32,
         request: native_transfer::SqliteReadComparison,
@@ -2073,6 +2082,14 @@ pub enum AdapterDelivery {
         result: Result<native_transfer::TransferCatalog, String>,
     },
     NativeTransferFinished { epoch: u32, result: Result<u64, String> },
+    NativeCsvReviewed {
+        epoch: u32,
+        result: Result<native_csv_import::CsvImportReview, String>,
+    },
+    NativeCsvAppended {
+        epoch: u32,
+        result: Result<usize, String>,
+    },
     NativeSyncPreviewed {
         epoch: u32,
         result: Result<native_transfer::NativeSyncPreview, String>,

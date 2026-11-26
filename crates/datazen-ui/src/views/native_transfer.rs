@@ -4,7 +4,7 @@ use datazen_ui_api::native_transfer::{TransferChoice, TransferSide, NATIVE_SYNC_
 use rune::tok::{self, type_};
 use rune::{col, row, text, El, ScrollSpec};
 
-fn button(
+pub(super) fn button(
     key: impl Into<String>,
     label: impl Into<String>,
     theme: tok::Theme,
@@ -26,7 +26,7 @@ fn button(
         .on_press(on_press)
 }
 
-fn label(key: &str, value: impl Into<String>, theme: tok::Theme) -> El {
+pub(super) fn label(key: &str, value: impl Into<String>, theme: tok::Theme) -> El {
     text(value.into())
         .key(key)
         .font(type_::LABEL)

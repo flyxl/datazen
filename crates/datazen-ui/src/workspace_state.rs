@@ -486,6 +486,12 @@ impl AppState {
             AdapterDelivery::NativeTransferFinished { epoch, result } => {
                 self.native_transfer.run_completed(epoch, result);
             }
+            AdapterDelivery::NativeCsvReviewed { epoch, result } => {
+                self.csv_reviewed(epoch, result);
+            }
+            AdapterDelivery::NativeCsvAppended { epoch, result } => {
+                self.csv_appended(epoch, result);
+            }
             AdapterDelivery::NativeSyncPreviewed { epoch, result } => {
                 self.native_transfer.sync_completed(epoch, result);
             }

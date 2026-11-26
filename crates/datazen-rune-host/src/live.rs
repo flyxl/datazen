@@ -78,6 +78,9 @@ use live_table_targets::LiveTableTargets;
 mod live_transfer;
 #[path = "live_sync.rs"]
 mod live_sync;
+#[path = "live_csv_import.rs"]
+mod live_csv_import;
+use datazen_ui_api::native_csv_import::{CsvImportChoice, CsvImportReview};
 use datazen_ui_api::native_transfer::{
     NativeSchemaDiff, NativeSyncPreview, NativeTransferRequest, SqliteReadComparison, TransferCatalog,
     TransferChoice, TransferSide,
@@ -89,6 +92,8 @@ enum HostJob {
     RunNativeTransfer { epoch: u32, request: NativeTransferRequest },
     CompareNativeSchema { epoch: u32, request: SqliteReadComparison },
     PreviewNativeSync { epoch: u32, request: SqliteReadComparison },
+    ReviewNativeCsv { epoch: u32, choice: CsvImportChoice },
+    AppendNativeCsv { epoch: u32, review: CsvImportReview },
     ProbeRedis { epoch: u64, config: datazen_driver_api::ConnectionConfig },
     ReadKv(KvRead),
     CloseKv { connection_id: String, session_generation: u32 },
@@ -139,6 +144,8 @@ enum HostAnswer {
     NativeTransferFinished { epoch: u32, result: Result<u64, String> },
     NativeSchemaCompared { epoch: u32, result: Result<NativeSchemaDiff, String> },
     NativeSyncPreviewed { epoch: u32, result: Result<NativeSyncPreview, String> },
+    NativeCsvReviewed { epoch: u32, result: Result<CsvImportReview, String> },
+    NativeCsvAppended { epoch: u32, result: Result<usize, String> },
     RedisProbed { epoch: u64, result: Result<(), String> },
     KvRead { request: KvRead, result: Result<KvReply, String> },
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
@@ -366,6 +373,12 @@ impl LiveAdapter {
                                 HostJob::RunNativeTransfer { epoch, .. } => HostAnswer::NativeTransferFinished {
                                     epoch, result: Err("The transfer worker could not start.".into()),
                                 },
+                                HostJob::ReviewNativeCsv { epoch, .. } => HostAnswer::NativeCsvReviewed {
+                                    epoch, result: Err("The CSV preview worker could not start.".into()),
+                                },
+                                HostJob::AppendNativeCsv { epoch, .. } => HostAnswer::NativeCsvAppended {
+                                    epoch, result: Err("The CSV import worker could not start.".into()),
+                                },
                                 HostJob::PreviewNativeSync { epoch, .. } => HostAnswer::NativeSyncPreviewed {
                                     epoch, result: Err("The data sync preview worker could not start.".into()),
                                 },
@@ -550,6 +563,14 @@ impl LiveAdapter {
                         HostJob::ReadNativeTransfer { epoch, side, choice } => {
                             let result = runtime.block_on(live_transfer::catalog(&worker_service, &worker_registry, choice));
                             HostAnswer::NativeTransferRead { epoch, side, result }
+                        }
+                        HostJob::ReviewNativeCsv { epoch, choice } => {
+                            let result = runtime.block_on(live_csv_import::review(&worker_service, choice));
+                            HostAnswer::NativeCsvReviewed { epoch, result }
+                        }
+                        HostJob::AppendNativeCsv { epoch, review } => {
+                            let result = runtime.block_on(live_csv_import::append(&worker_service, review));
+                            HostAnswer::NativeCsvAppended { epoch, result }
                         }
                         HostJob::PreviewNativeSync { epoch, request } => {
                             let result = runtime.block_on(live_sync::preview(&worker_service, &worker_registry, request));
@@ -2283,6 +2304,8 @@ impl DesktopAdapter for LiveAdapter {
         let job = match job {
             AdapterJob::ReadNativeTransfer { epoch, side, choice } => HostJob::ReadNativeTransfer { epoch, side, choice },
             AdapterJob::RunNativeTransfer { epoch, request } => HostJob::RunNativeTransfer { epoch, request },
+            AdapterJob::ReviewNativeCsv { epoch, choice } => HostJob::ReviewNativeCsv { epoch, choice },
+            AdapterJob::AppendNativeCsv { epoch, review } => HostJob::AppendNativeCsv { epoch, review },
             AdapterJob::PreviewNativeSync { epoch, request } => HostJob::PreviewNativeSync { epoch, request },
             AdapterJob::CompareNativeSchema { epoch, request } => HostJob::CompareNativeSchema { epoch, request },
             AdapterJob::ReadKv(request) => HostJob::ReadKv(request),
@@ -2326,6 +2349,12 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::NativeTransferFinished { epoch, result } => {
                     deliveries.push(AdapterDelivery::NativeTransferFinished { epoch, result });
+                }
+                HostAnswer::NativeCsvReviewed { epoch, result } => {
+                    deliveries.push(AdapterDelivery::NativeCsvReviewed { epoch, result });
+                }
+                HostAnswer::NativeCsvAppended { epoch, result } => {
+                    deliveries.push(AdapterDelivery::NativeCsvAppended { epoch, result });
                 }
                 HostAnswer::NativeSyncPreviewed { epoch, result } => {
                     deliveries.push(AdapterDelivery::NativeSyncPreviewed { epoch, result });
