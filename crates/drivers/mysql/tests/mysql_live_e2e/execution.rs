@@ -239,3 +239,117 @@ async fn mysql_pending_cancel_does_not_kill_the_other_checkout_under_real_pool_c
         .await
         .expect("close actual original pool and advisory lock");
 }
+
+#[tokio::test]
+async fn mysql_registered_batch_native_failure_does_not_steal_session_or_run_remaining_write() {
+    use datazen_driver_api::Value;
+    let mut f = Fixture::open().await;
+    let driver = datazen_driver_mysql::MysqlDriver::new(false);
+    let foreign = driver.connect(&f.cfg).await.unwrap();
+    let table = format!("dz_batch_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY,label VARCHAR(20))"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let persisted = async |oracle: &mut sqlx::MySqlConnection| {
+        sqlx::query_scalar::<_, i32>(&format!("SELECT id FROM {table} ORDER BY id"))
+            .fetch_all(oracle)
+            .await
+            .unwrap()
+    };
+    for (retained, first, last) in [(false, 1, 2), (true, 3, 4)] {
+        let h = if retained {
+            driver.connect_fixed_session(&f.cfg).await.unwrap()
+        } else {
+            driver.connect(&f.cfg).await.unwrap()
+        };
+        let id = QueryExecutionId::new(format!("native-batch-{}", uuid::Uuid::new_v4()));
+        let observation = Arc::new(Mutex::new(Vec::new()));
+        let callback: datazen_driver_api::QueryStreamCallback = Arc::new({
+            let observation = observation.clone();
+            move |event| observation.lock().unwrap().push(event)
+        });
+        driver.prepare_query_execution(&h, &id).await.unwrap();
+        assert!(
+            matches!(driver.prepare_query_execution(&foreign,&id).await,Err(DriverError::QueryFailed(m)) if m.contains("already registered"))
+        );
+        assert!(matches!(
+            driver
+                .query_stream_with_execution(
+                    &foreign,
+                    &id,
+                    "SELECT CONNECTION_ID()",
+                    None,
+                    callback.clone()
+                )
+                .await,
+            Err(DriverError::QueryExecutionSessionMismatch)
+        ));
+        assert!(matches!(
+            driver.cancel_query_with_execution(&foreign, &id).await,
+            Err(DriverError::QueryExecutionSessionMismatch)
+        ));
+        let script = format!(
+            "INSERT INTO {table} VALUES ({first},'real'); SELECT missing_column FROM {table}; INSERT INTO {table} VALUES ({last}, 'must not run')"
+        );
+        let failure = driver
+            .query_stream_with_execution(&h, &id, &script, None, callback.clone())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(failure,DriverError::QueryFailed(m) if m.contains("Unknown column")&&m.contains("missing_column"))
+        );
+        assert!(
+            !observation
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, QueryStreamEvent::Done { .. }))
+        );
+        assert!(matches!(
+            driver
+                .query_stream_with_execution(&h, &id, "SELECT 1", None, callback.clone())
+                .await,
+            Err(DriverError::QueryExecutionNotFound(_))
+        ));
+        let state = persisted(&mut f.oracle).await;
+        assert!(
+            state.contains(&first) && !state.contains(&last),
+            "only writes before the real SQL error may persist"
+        );
+        assert!(
+            driver
+                .query_multi(&h, "; ;", None)
+                .await
+                .unwrap()
+                .results
+                .is_empty()
+        );
+        driver.prepare_query_execution(&h, &id).await.unwrap();
+        driver
+            .query_stream_with_execution(&h, &id, " ;; ", None, callback.clone())
+            .await
+            .unwrap();
+        assert!(matches!(
+            observation.lock().unwrap().last(),
+            Some(QueryStreamEvent::Done { total_time_ms: 0 })
+        ));
+        if retained {
+            driver.execute(&h, "START TRANSACTION").await.unwrap();
+            let script = format!(
+                "INSERT INTO {table} VALUES (99,'rollback'); SELECT id FROM {table} WHERE id=99;"
+            );
+            let result = driver.query_multi(&h, &script, None).await.unwrap();
+            assert_eq!(result.results[0].rows_affected, Some(1));
+            assert_eq!(result.results[1].rows[0][0], Some(Value::Integer(99)));
+            assert!(!persisted(&mut f.oracle).await.contains(&99));
+            driver.execute(&h, "ROLLBACK").await.unwrap();
+            assert!(!persisted(&mut f.oracle).await.contains(&99));
+        }
+        driver.disconnect(h).await.unwrap();
+    }
+    assert_eq!(persisted(&mut f.oracle).await, [1, 3]);
+    driver.disconnect(foreign).await.unwrap();
+}

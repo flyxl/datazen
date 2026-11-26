@@ -211,7 +211,9 @@ async fn mysql_migration_replays_native_foreign_check_index_defaults_and_rollbac
             rollbacks.push(sql);
         }
     }
-    let query=format!("INSERT INTO {parent} VALUES (7); INSERT INTO {child}(parent_id,label) VALUES (7,'live'); UPDATE {parent} SET id=9 WHERE id=7;");
+    let query = format!(
+        "INSERT INTO {parent} VALUES (7); INSERT INTO {child}(parent_id,label) VALUES (7,'live'); UPDATE {parent} SET id=9 WHERE id=7;"
+    );
     sqlx::raw_sql(&query)
         .execute(&mut f.oracle)
         .await
@@ -227,16 +229,20 @@ async fn mysql_migration_replays_native_foreign_check_index_defaults_and_rollbac
         .execute(&mut f.oracle)
         .await
         .expect_err("FK enforced by actual engine");
-    assert!(bad_fk
-        .as_database_error()
-        .is_some_and(|e| e.message().contains("foreign key")));
+    assert!(
+        bad_fk
+            .as_database_error()
+            .is_some_and(|e| e.message().contains("foreign key"))
+    );
     let bad_check = sqlx::query(&format!("INSERT INTO {child}(amount) VALUES (-1)"))
         .execute(&mut f.oracle)
         .await
         .expect_err("CHECK enforced by actual engine");
-    assert!(bad_check
-        .as_database_error()
-        .is_some_and(|e| e.message().contains("Check constraint")));
+    assert!(
+        bad_check
+            .as_database_error()
+            .is_some_and(|e| e.message().contains("Check constraint"))
+    );
     sqlx::query(&format!("DELETE FROM {parent} WHERE id=9"))
         .execute(&mut f.oracle)
         .await
@@ -259,4 +265,319 @@ async fn mysql_migration_replays_native_foreign_check_index_defaults_and_rollbac
         .disconnect(handle)
         .await
         .expect("release actual driver");
+}
+
+#[tokio::test]
+async fn mysql_structure_editor_rejects_unrepresentable_edits_without_modifying_live_table() {
+    use datazen_driver_api::DriverError;
+    let mut f = Fixture::open().await;
+    let (driver, handle) = f.connect().await;
+    let table = format!("dz_structure_review_{}", uuid::Uuid::new_v4().simple());
+    let id = draft(
+        json!({"id":"key","name":"id","dataType":"INT","nullable":false,"isPrimaryKey":true,"isAutoIncrement":true}),
+    );
+    let code = draft(
+        json!({"id":"code","name":"code","dataType":"VARCHAR(16)","nullable":true,"defaultValue":"NULL","isUnique":true}),
+    );
+    let counter = draft(
+        json!({"id":"count","name":"points","dataType":"INT","nullable":false,"defaultValue":"0"}),
+    );
+    let pk = index(
+        json!({"id":"pk","name":"PRIMARY","columns":["id"],"isUnique":true,"isPrimary":true,"indexType":"BTREE"}),
+    );
+    let lookup = index(
+        json!({"id":"lookup","name":"by_points","columns":["points"],"isUnique":false,"indexType":"","comment":"live index's note"}),
+    );
+    let base = StructureChangeRequest {
+        mode: StructureChangeMode::Create,
+        schema: None,
+        table: table.clone(),
+        original_columns: vec![],
+        current_columns: vec![id.clone(), code.clone(), counter.clone()],
+        original_indexes: vec![],
+        current_indexes: vec![pk.clone(), lookup.clone()],
+    };
+    let plan = driver.plan_structure_changes(&handle, &base).await.unwrap();
+    for statement in plan.statements {
+        driver
+            .execute(&handle, &statement.sql)
+            .await
+            .expect("apply reviewed unqualified native create");
+    }
+    sqlx::raw_sql(&format!(
+        "INSERT INTO {table}(code,points) VALUES ('actual',4);"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .expect("independent seed after applying plan");
+    let show = async |oracle: &mut sqlx::MySqlConnection| {
+        sqlx::query_as::<_, (String, String)>(&format!("SHOW CREATE TABLE {table}"))
+            .fetch_one(oracle)
+            .await
+            .expect("native table unchanged for refused edits")
+            .1
+    };
+    let unchanged = show(&mut f.oracle).await;
+    assert!(unchanged.contains("UNIQUE KEY `code`"));
+    let comment: String = sqlx::query_scalar("SELECT CAST(INDEX_COMMENT AS CHAR) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME='by_points'")
+        .bind(&table).fetch_one(&mut f.oracle).await.unwrap();
+    assert_eq!(comment, "live index's note");
+    let stable = StructureChangeRequest {
+        mode: StructureChangeMode::Alter,
+        schema: Some(f.database.clone()),
+        table: table.clone(),
+        original_columns: vec![id.clone(), code.clone(), counter.clone()],
+        current_columns: vec![id.clone(), code.clone(), counter.clone()],
+        original_indexes: vec![pk.clone(), lookup.clone()],
+        current_indexes: vec![pk.clone(), lookup.clone()],
+    };
+    let mut cases = vec![(stable.clone(), "no structure changes")];
+    let mut attempt = stable.clone();
+    attempt.current_indexes.remove(0);
+    cases.push((attempt, "dropping the primary key"));
+    let mut attempt = stable.clone();
+    attempt.original_indexes.remove(0);
+    cases.push((attempt, "adding a primary key index"));
+    let mut attempt = stable.clone();
+    attempt.current_columns[0].is_primary_key = false;
+    cases.push((attempt, "alter_primary_key"));
+    let mut attempt = stable.clone();
+    attempt.current_columns[0].is_auto_increment = false;
+    cases.push((attempt, "changing AUTO_INCREMENT"));
+    let mut attempt = stable.clone();
+    attempt.current_indexes[1].is_unique = true;
+    cases.push((attempt, "drop and recreate"));
+    let mut attempt = stable.clone();
+    let mut candidate = lookup.clone();
+    candidate.id = "new".into();
+    candidate.name = "by_new_points".into();
+    candidate.include_columns = vec!["code".into()];
+    attempt.current_indexes.push(candidate);
+    cases.push((attempt, "index_include"));
+    let mut attempt = stable.clone();
+    let mut candidate = lookup.clone();
+    candidate.id = "new".into();
+    candidate.name = "by_new_points".into();
+    candidate.filter = Some("points > 0".into());
+    attempt.current_indexes.push(candidate);
+    cases.push((attempt, "index_filter"));
+    let mut attempt = stable.clone();
+    let mut candidate = lookup.clone();
+    candidate.id = "new".into();
+    candidate.name = "by_new_points".into();
+    candidate.index_type = "GIN".into();
+    attempt.current_indexes.push(candidate);
+    cases.push((attempt, "index method"));
+    let mut attempt = base.clone();
+    attempt.current_columns.clear();
+    cases.push((attempt, "requires at least one column"));
+    for (request, wanted) in cases {
+        let error = driver
+            .plan_structure_changes(&handle, &request)
+            .await
+            .expect_err(wanted);
+        assert!(
+            matches!(&error, DriverError::Unsupported(detail) if detail.contains(wanted)),
+            "invalid plan for {wanted}: {error}"
+        );
+        assert_eq!(show(&mut f.oracle).await, unchanged);
+    }
+
+    let mut forward = stable;
+    forward.current_columns.swap(0, 1);
+    let plan = driver
+        .plan_structure_changes(&handle, &forward)
+        .await
+        .expect("reorder a real column to first");
+    for statement in plan.statements {
+        driver
+            .execute(&handle, &statement.sql)
+            .await
+            .expect("apply reviewed FIRST");
+    }
+    let native:Vec<String>=sqlx::query_scalar("SELECT CAST(COLUMN_NAME AS CHAR) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY ORDINAL_POSITION")
+       .bind(&table).fetch_all(&mut f.oracle).await.expect("native order after apply");
+    assert_eq!(native, ["code", "id", "points"]);
+    let state: (Option<String>, i32, i32) =
+        sqlx::query_as(&format!("SELECT code,id,points FROM {table}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+    assert_eq!(state, (Some("actual".into()), 1, 4));
+    driver.disconnect(handle).await.unwrap();
+}
+
+#[tokio::test]
+async fn mysql_migration_applies_and_reverts_native_table_options_and_default() {
+    use datazen_driver_api::{MigrationRisk, TableOptions};
+    let mut f = Fixture::open().await;
+    let (driver, handle) = f.connect().await;
+    let table = format!("dz_options_{}", uuid::Uuid::new_v4().simple());
+    let full_name = format!("{}.{table}", f.database);
+    let renderer = driver.migration_renderer().expect("MySQL renderer");
+    let caps = driver
+        .migration_capabilities()
+        .expect("MySQL migration capabilities");
+    let start = TableOptions {
+        engine: Some("InnoDB".into()),
+        charset: Some("utf8mb4".into()),
+        collation: Some("utf8mb4_0900_ai_ci".into()),
+        comment: Some("column owner's original".into()),
+        ..Default::default()
+    };
+    let target = TableOptions {
+        engine: Some("MyISAM".into()),
+        charset: Some("latin1".into()),
+        collation: Some("latin1_swedish_ci".into()),
+        comment: None,
+        ..Default::default()
+    };
+    let mut amount = col("amount", "INT", true);
+    amount.default_value = Some("13".into());
+    amount.comment = Some("amount's note".into());
+    let create = Op::CreateTable {
+        table: full_name.clone(),
+        columns: vec![col("id", "INT", false), amount],
+        primary_keys: vec![],
+    };
+    let plan = renderer
+        .render_create_table_with_options(&create, &start)
+        .unwrap();
+    driver
+        .execute(&handle, &plan.sql)
+        .await
+        .expect("native CREATE with selected table collation");
+    let get = async |oracle: &mut sqlx::MySqlConnection| {
+        sqlx::query_as::<_,(String,String,String)>("SELECT CAST(ENGINE AS CHAR),CAST(TABLE_COLLATION AS CHAR),CAST(TABLE_COMMENT AS CHAR) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?")
+        .bind(&table).fetch_one(oracle).await.expect("independent MySQL information_schema options")
+    };
+    let original = get(&mut f.oracle).await;
+    assert_eq!(
+        original,
+        (
+            "InnoDB".into(),
+            "utf8mb4_0900_ai_ci".into(),
+            "column owner's original".into()
+        )
+    );
+    let catalog = driver
+        .get_table_schema(&handle, &table, &f.database, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        catalog
+            .columns
+            .iter()
+            .find(|c| c.name == "amount")
+            .unwrap()
+            .comment
+            .as_deref(),
+        Some("amount's note")
+    );
+
+    let alter = Op::SetTableOptions {
+        table: full_name.clone(),
+        from: start.clone(),
+        to: target.clone(),
+    };
+    assert!(caps.supports(&alter) && caps.requires_table_rebuild(&alter));
+    let change = renderer
+        .render(&alter)
+        .expect("render native change with exact rollback");
+    assert_eq!(change.risk, MigrationRisk::Rewrite);
+    driver
+        .execute(&handle, &change.sql)
+        .await
+        .expect("apply engine, charset and remove comment");
+    assert_eq!(
+        get(&mut f.oracle).await,
+        ("MyISAM".into(), "latin1_swedish_ci".into(), String::new())
+    );
+    driver
+        .execute(&handle, change.rollback_sql.as_deref().unwrap())
+        .await
+        .expect("restore native prior table options");
+    assert_eq!(get(&mut f.oracle).await, original);
+
+    let default = Op::SetDefault {
+        table: full_name.clone(),
+        column: "amount".into(),
+        from: Some("13".into()),
+        to: None,
+    };
+    let change = renderer.render(&default).unwrap();
+    driver.execute(&handle, &change.sql).await.unwrap();
+    let default_value: Option<String> = sqlx::query_scalar("SELECT CAST(COLUMN_DEFAULT AS CHAR) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='amount'")
+        .bind(&table).fetch_one(&mut f.oracle).await.unwrap();
+    assert!(default_value.is_none(), "drop the actual native default");
+    sqlx::query(&format!("INSERT INTO {table}(id,amount) VALUES (1,NULL)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    driver
+        .execute(&handle, change.rollback_sql.as_deref().unwrap())
+        .await
+        .unwrap();
+    sqlx::query(&format!("INSERT INTO {table}(id) VALUES (2)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let states: Vec<Option<i32>> =
+        sqlx::query_scalar(&format!("SELECT amount FROM {table} ORDER BY id"))
+            .fetch_all(&mut f.oracle)
+            .await
+            .unwrap();
+    assert_eq!(states, [None, Some(13)]);
+    for (from, to, reason) in [
+        (start.clone(), start.clone(), "unchanged"),
+        (
+            start.clone(),
+            TableOptions {
+                engine: None,
+                ..start.clone()
+            },
+            "engine removal",
+        ),
+        (
+            start.clone(),
+            TableOptions {
+                charset: None,
+                ..start.clone()
+            },
+            "charset removal",
+        ),
+        (
+            TableOptions {
+                engine: None,
+                ..start.clone()
+            },
+            target.clone(),
+            "engine rollback",
+        ),
+        (
+            TableOptions {
+                charset: None,
+                ..start.clone()
+            },
+            TableOptions {
+                engine: start.engine.clone(),
+                ..target.clone()
+            },
+            "charset rollback",
+        ),
+    ] {
+        let bad = Op::SetTableOptions {
+            table: full_name.clone(),
+            from,
+            to,
+        };
+        assert!(
+            renderer
+                .render(&bad)
+                .expect_err("unrepresentable native change")
+                .contains(reason)
+        );
+        assert_eq!(get(&mut f.oracle).await, original);
+    }
+    driver.disconnect(handle).await.unwrap();
 }
