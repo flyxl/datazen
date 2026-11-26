@@ -482,7 +482,19 @@ impl PostgresResourceProvider {
                     .await
                     .contains_key(&resource.connection.id) =>
             {
-                let _ = error;
+                // Retained SQL can start a transaction directly, but a fixed
+                // checkout is not itself proof of one. PostgreSQL accepts an
+                // idle COMMIT with a warning; reporting it as a commit would
+                // incorrectly claim that a previously closed transaction ran.
+                if self
+                    .driver
+                    .read_fixed_session(&resource.connection)
+                    .await?
+                    .transaction_state
+                    .is_confirmed_idle()
+                {
+                    return Err(error);
+                }
                 OpenTransaction {
                     id: "fixed_sql_transaction".into(),
                     connection_id: resource.connection.id.clone(),

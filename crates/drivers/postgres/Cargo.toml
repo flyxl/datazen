@@ -21,6 +21,6 @@ futures-util = { workspace = true }
 
 [dev-dependencies]
 flate2 = "1"
-datazen = { workspace = true, features = ["application", "schema_diff", "backup", "services", "workflow"] }
+datazen = { workspace = true, features = ["application", "schema_diff", "backup", "services", "workflow", "monitor"] }
 sha2 = "0.10"
 tempfile = "3"

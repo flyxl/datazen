@@ -162,8 +162,7 @@ impl PolicyService for Policy {
             || action == AuthorizationAction::Query && command != "query"
             || action != AuthorizationAction::Connect
                 && !input["sql"].as_str().is_some_and(|sql| {
-                    let trimmed = sql.trim_start().to_ascii_uppercase();
-                    trimmed.starts_with("SELECT ") || trimmed.starts_with("WITH ")
+                    datazen::monitor::domain::validate_read_only_sql(sql).is_ok()
                 })
         {
             return Err(PortError::TokenInvalid);
@@ -303,27 +302,24 @@ impl ResourceExecutionHost for Host {
         }
         Ok(PreparedExecution {
             use_cases: self.runtime.clone(),
-            artifacts: Arc::new(NoArtifactChunks),
+            artifacts: Arc::new(RuntimeChunks(self.runtime.clone())),
             context: self.context.clone(),
             target,
         })
     }
 }
-/// 监控类测试不读结果制品；端口存在是为了让派发形状成立。
-struct NoArtifactChunks;
+/// Read the real result written by the runtime, as the desktop workflow does.
+struct RuntimeChunks(Arc<datazen::execution::application::RuntimeConnectionUseCases>);
 
 #[async_trait]
-impl datazen::services::ports::ArtifactChunkReader for NoArtifactChunks {
+impl datazen::services::ports::ArtifactChunkReader for RuntimeChunks {
     async fn read_chunk(
         &self,
-        _ctx: &RequestContext,
-        _artifact: &datazen::shared::id::ArtifactId,
-        _index: datazen::shared::id::Counter,
+        ctx: &RequestContext,
+        artifact: &ArtifactId,
+        index: Counter,
     ) -> Result<datazen::execution::ResultChunk, datazen::shared::error::ApiError> {
-        Err(datazen::shared::error::ApiError::new(
-            datazen::shared::error::ApiErrorCode::CapabilityUnsupported,
-            "monitor test does not read result artifacts",
-        ))
+        self.0.read_artifact_chunk(ctx, artifact.clone(), index).await
     }
 }
 
