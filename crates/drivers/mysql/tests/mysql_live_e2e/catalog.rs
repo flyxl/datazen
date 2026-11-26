@@ -681,3 +681,77 @@ async fn mysql_catalog_command_resolves_exact_native_relation_without_guessing_a
     driver.disconnect(connected).await.unwrap();
     driver.disconnect(fixed).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_browse_native_view_and_classic_read_commands_without_treating_view_as_table() {
+    let mut f = Fixture::open().await;
+    let driver = datazen_driver_mysql::MysqlDriver::new(false);
+    let fixed = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let table = format!("dz_meta_base_{tag}");
+    let view = format!("browse.dot_{tag}");
+    let exact = driver.quote_ident(&view);
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY, val BIGINT NOT NULL);
+       INSERT INTO {table} VALUES(1,72);
+       CREATE ALGORITHM=TEMPTABLE VIEW {exact} AS SELECT id, val*2 AS doubled FROM {table};"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let native_type:String=sqlx::query_scalar("SELECT CAST(TABLE_TYPE AS CHAR) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?")
+       .bind(&view).fetch_one(&mut f.oracle).await.unwrap();
+    assert_eq!(native_type, "VIEW");
+    let legacy = format!("{}.{table}", f.database);
+    let legacy_table = driver
+        .get_table_schema(&fixed, &legacy, &f.database, None)
+        .await
+        .unwrap();
+    assert_eq!(legacy_table.table_name, table);
+    let legacy_dump = driver
+        .dump_table_ddl(&fixed, &legacy, &f.database, None)
+        .await
+        .unwrap();
+    assert!(legacy_dump.contains(&driver.quote_ident(&table)));
+    let type_and_count = driver
+        .execute_command(&fixed, "get_table_schema", json!({"relationSql":exact}))
+        .await
+        .expect("native view metadata must never require a base-table index");
+    assert_eq!(type_and_count.data["resolvedTarget"]["table"], view);
+    assert_eq!(
+        type_and_count.data["resolvedTarget"]["sessionScoped"],
+        false
+    );
+    assert_eq!(
+        type_and_count.data["schema"]["columns"][1]["name"],
+        "doubled"
+    );
+    assert_eq!(type_and_count.data["schema"]["indexes"], json!([]));
+    let exported = driver
+        .dump_view_ddl(&fixed, &view, &f.database, None)
+        .await
+        .unwrap();
+    assert!(exported.contains(&exact));
+    let script = format!(
+        "SHOW FULL COLUMNS FROM {exact}; DESCRIBE {exact}; DESC {exact}; EXPLAIN SELECT * FROM {exact}"
+    );
+    let reported = driver.query_multi(&fixed, &script, Some(2)).await.unwrap();
+    assert_eq!(reported.results.len(), 4);
+    assert!(
+        reported.results[..3]
+            .iter()
+            .all(|r| r.rows.len() == 2 && r.columns.first().is_some_and(|c| c.name == "Field"))
+    );
+    assert!(
+        reported.results[3]
+            .columns
+            .iter()
+            .any(|c| c.name == "select_type")
+    );
+    let observed: i64 = sqlx::query_scalar(&format!("SELECT doubled FROM {exact}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(observed, 144);
+    driver.disconnect(fixed).await.unwrap();
+}

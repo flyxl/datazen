@@ -321,6 +321,92 @@ async fn mysql_view_scope_preserves_proven_native_names_and_refuses_cte_ambiguit
             .unwrap_err()
             .contains("omitted an exact")
     );
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::View, &source, &source, &exact, &deps)
+            .unwrap_err()
+            .contains("distinct")
+    );
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::View, &source, "", &exact, &deps)
+            .unwrap_err()
+            .contains("non-empty")
+    );
+    let concatenated = format!("{exact}; SELECT 1");
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::View, &source, &target, &concatenated, &deps)
+            .unwrap_err()
+            .contains("exactly one")
+    );
+    let damaged = format!("{exact} /*");
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::View, &source, &target, &damaged, &deps)
+            .is_err()
+    );
+    let ambiguous_view = format!("dz_ambiguous_{id}");
+    let ambiguous = format!(
+        "SELECT baseline.v+other.v AS val FROM {base} AS baseline JOIN {third}.{base} AS other"
+    );
+    sqlx::raw_sql(&format!(
+        "CREATE VIEW {source}.{ambiguous_view} AS {ambiguous}"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let both = dependencies(&ambiguous_view).await;
+    assert_eq!(both.len(), 2);
+    let mapped = renderer
+        .map_schema_object_scope(ObjectKind::View, &source, &target, &ambiguous, &both)
+        .expect("the actual local database has priority over the same-named external table")
+        .unwrap();
+    let applied = renderer
+        .render(&MigrationOperation::CreateView {
+            view: MigrationView {
+                schema: Some(target.clone()),
+                name: ambiguous_view.clone(),
+                definition: mapped.definition,
+            },
+        })
+        .unwrap();
+    driver.execute(&handle, &applied.sql).await.unwrap();
+    let native: i64 = sqlx::query_scalar(&format!("SELECT val FROM {source}.{ambiguous_view}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    let migrated: i64 = sqlx::query_scalar(&format!("SELECT val FROM {target}.{ambiguous_view}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!((native, migrated), (23, 93));
+    let routine = format!("dz_view_dep_{id}");
+    let routine_view = format!("dz_from_routine_{id}");
+    let routine_body = format!("SELECT {source}.{routine}(v) AS result FROM {source}.{base}");
+    sqlx::raw_sql(&format!(
+        "CREATE FUNCTION {source}.{routine}(v INT) RETURNS INT DETERMINISTIC RETURN v+2;
+        CREATE VIEW {source}.{routine_view} AS {routine_body}"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let arg = dependencies(&routine_view).await;
+    assert!(
+        arg.iter()
+            .any(|dependency| dependency.source.kind == "function")
+    );
+    assert!(
+        renderer
+            .map_schema_object_scope(ObjectKind::View, &source, &target, &routine_body, &arg)
+            .unwrap_err()
+            .contains("only supports exact table/view")
+    );
+    let result: i32 = sqlx::query_scalar(&format!("SELECT result FROM {source}.{routine_view}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(result, 15);
     let real_proc = driver.dump_routines(&handle, &source).await.unwrap();
     assert!(real_proc.contains(&procedure));
     assert!(

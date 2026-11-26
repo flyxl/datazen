@@ -528,6 +528,50 @@ async fn mysql_migration_applies_and_reverts_native_table_options_and_default() 
             .await
             .unwrap();
     assert_eq!(states, [None, Some(13)]);
+    driver
+        .execute(&handle, &change.sql)
+        .await
+        .expect("remove the existing native default before planning from no default");
+    let no_prior = Op::SetDefault {
+        table: full_name.clone(),
+        column: "amount".into(),
+        from: None,
+        to: Some("71".into()),
+    };
+    let installed = renderer.render(&no_prior).unwrap();
+    driver.execute(&handle, &installed.sql).await.unwrap();
+    sqlx::query(&format!("INSERT INTO {table}(id) VALUES(3)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    driver
+        .execute(&handle, installed.rollback_sql.as_deref().unwrap())
+        .await
+        .unwrap();
+    let values: Vec<Option<i32>> =
+        sqlx::query_scalar(&format!("SELECT amount FROM {table} ORDER BY id"))
+            .fetch_all(&mut f.oracle)
+            .await
+            .unwrap();
+    assert_eq!(values, [None, Some(13), Some(71)]);
+    let after_rollback:Option<String>=sqlx::query_scalar("SELECT CAST(COLUMN_DEFAULT AS CHAR) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='amount'")
+        .bind(&table).fetch_one(&mut f.oracle).await.unwrap();
+    assert!(after_rollback.is_none());
+    let invalid = Op::SetTableOptions {
+        table: full_name.clone(),
+        from: start.clone(),
+        to: TableOptions {
+            engine: Some("not a native engine name".into()),
+            ..start.clone()
+        },
+    };
+    assert!(
+        renderer
+            .render(&invalid)
+            .unwrap_err()
+            .contains("not a safe identifier")
+    );
+    assert_eq!(get(&mut f.oracle).await, original);
     for (from, to, reason) in [
         (start.clone(), start.clone(), "unchanged"),
         (

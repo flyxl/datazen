@@ -561,3 +561,144 @@ async fn mysql_undrainable_native_stream_closes_identity_when_control_connection
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn mysql_failed_backup_releases_real_snapshot_or_reports_loss_without_reopening() {
+    use datazen_driver_api::BackupDumpOptions;
+    struct Refuse {
+        oracle: Arc<tokio::sync::Mutex<sqlx::MySqlConnection>>,
+        thread: i64,
+        terminate: bool,
+        attempts: AtomicUsize,
+    }
+    #[async_trait::async_trait]
+    impl ResultSink for Refuse {
+        async fn write(&self, _: ResultChunk) -> Result<(), ResourceError> {
+            panic!("backup text is not a result-row chunk")
+        }
+        async fn write_output(&self, event: Json) -> Result<(), ResourceError> {
+            assert_eq!(event["kind"], "backupChunk");
+            assert!(
+                event["text"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("CREATE DATABASE"))
+            );
+            assert_eq!(self.attempts.fetch_add(1, Ordering::Relaxed), 0);
+            let mut oracle = self.oracle.lock().await;
+            let state:String=sqlx::query_scalar("SELECT CAST(e.STATE AS CHAR) FROM performance_schema.threads t
+             JOIN performance_schema.events_transactions_current e ON e.THREAD_ID=t.THREAD_ID WHERE t.PROCESSLIST_ID=?")
+             .bind(self.thread).fetch_one(&mut *oracle).await.expect("independent wire proves real active backup snapshot");
+            assert_eq!(state, "ACTIVE");
+            if self.terminate {
+                sqlx::query::<sqlx::MySql>(&format!("KILL CONNECTION {}", self.thread))
+                    .execute(&mut *oracle)
+                    .await
+                    .unwrap();
+            }
+            Err(ResourceError::SinkRejected {
+                reason: "artifact delivery limit".into(),
+            })
+        }
+        async fn complete(&self) -> Result<(), ResourceError> {
+            panic!("failed backup cannot publish a success")
+        }
+        async fn fail(&self, _: &str) -> Result<(), ResourceError> {
+            Ok(())
+        }
+    }
+    let f = Fixture::open().await;
+    let cfg = f.cfg.clone();
+    let database = f.database.clone();
+    let oracle = Arc::new(tokio::sync::Mutex::new(f.oracle));
+    sqlx::raw_sql(
+        "UPDATE performance_schema.setup_instruments SET ENABLED='YES' WHERE NAME='transaction';
+       UPDATE performance_schema.setup_consumers SET ENABLED='YES' WHERE NAME IN
+         ('events_transactions_current','thread_instrumentation','global_instrumentation')",
+    )
+    .execute(&mut *oracle.lock().await)
+    .await
+    .unwrap();
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|d| d.driver_id() == "mysql")
+        .unwrap();
+    let driver = factory.create();
+    let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    for terminate in [false, true] {
+        let h = provider
+            .acquire_resource(
+                &AcquireResourceRequest {
+                    connection_config: cfg.clone(),
+                    target: NamespaceTarget::empty().with_database(database.clone()),
+                    identity_scope: IdentityScope::default(),
+                    baseline: Baseline::default(),
+                    scope: ResourceScope {
+                        purpose: ResourcePurpose::InteractiveQuery,
+                        max_physical_connections: 4,
+                        holds_open_transaction: false,
+                        pin_for_streaming: false,
+                    },
+                },
+                &budget,
+            )
+            .await
+            .unwrap();
+        let native = provider.connection_handle(&h).unwrap();
+        let actual = driver
+            .query(&native, "SELECT CONNECTION_ID()")
+            .await
+            .unwrap();
+        let Some(Value::Integer(thread)) = actual.rows[0][0] else {
+            panic!("actual MySQL thread")
+        };
+        let sink = Refuse {
+            oracle: oracle.clone(),
+            thread,
+            terminate,
+            attempts: AtomicUsize::new(0),
+        };
+        let opt = BackupDumpOptions {
+            single_transaction: true,
+            create_database: true,
+            schema_only: true,
+            ..Default::default()
+        };
+        let cmd = CommandCall::new("backup_dump", json!({"database":database,"options":opt}));
+        let id = QueryExecutionId::new(format!("actual-backup-fault-{}", uuid::Uuid::new_v4()));
+        let failure = provider
+            .execute_on_resource(&h, &id, &cmd, &sink)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(failure,ResourceError::SinkRejected{ref reason} if reason=="artifact delivery limit")
+        );
+        assert_eq!(sink.attempts.load(Ordering::Relaxed), 1);
+        if terminate {
+            assert!(
+                provider.observe_session(&h).await.is_err(),
+                "failed rollback never replaces the lost database socket"
+            );
+        } else {
+            let observation = provider.observe_session(&h).await.unwrap();
+            assert_eq!(
+                observation.context.transaction_state,
+                datazen_driver_api::session::TransactionState::Idle
+            );
+            let absent = format!("dz_backup_missing_{}", uuid::Uuid::new_v4().simple());
+            assert!(matches!(driver.dump_database(&native,&absent,&opt).await,
+             Err(DriverError::QueryFailed(ref reason)) if reason.contains("Unknown database")));
+            let next = driver
+                .begin_transaction(&native)
+                .await
+                .expect("failed full dump rolls back its own snapshot");
+            driver.rollback(next).await.unwrap();
+        }
+        assert_eq!(
+            provider.close_resource(&h).await.unwrap(),
+            CloseDisposition::Closed
+        );
+        assert!(ledger.0.lock().unwrap().is_empty());
+    }
+}

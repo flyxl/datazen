@@ -669,5 +669,22 @@ async fn mysql_cancel_receipt_does_not_claim_success_when_native_thread_has_disa
         observed, 0,
         "defunct registered execution cannot replay its write on another socket"
     );
+    assert!(driver.get_server_info(&h).await.is_err());
+    assert!(driver.get_databases(&h).await.is_err());
+    assert!(driver.get_tables(&h, &f.database, None).await.is_err());
+    assert!(
+        driver
+            .get_table_schema(&h, &table, &f.database, None)
+            .await
+            .is_err()
+    );
+    assert!(matches!(
+        driver.begin_transaction(&h).await,
+        Err(DriverError::TransactionError(_))
+    ));
+    assert!(matches!(
+        driver.begin_read_snapshot(&h).await,
+        Err(DriverError::TransactionError(_))
+    ));
     driver.disconnect(h).await.unwrap();
 }

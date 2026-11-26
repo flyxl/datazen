@@ -291,6 +291,25 @@ async fn mysql_native_batch_handles_comments_without_suppressing_server_executio
         .await
         .unwrap();
     assert!(blank.results.is_empty());
+    let (events, callback) = collect();
+    driver
+        .query_stream(&h, "# empty streaming preview", Some(2), callback)
+        .await
+        .unwrap();
+    assert!(matches!(
+        events.lock().unwrap().as_slice(),
+        [QueryStreamEvent::Done { total_time_ms: 0 }]
+    ));
+    assert!(
+        matches!(driver.query_multi(&h,"SELECT 'unterminated",Some(2)).await,
+       Err(datazen_driver_api::DriverError::QueryFailed(ref detail)) if detail.contains("syntax"))
+    );
+    assert!(matches!(
+        driver
+            .query_multi(&h, "/* unterminated comment", Some(2))
+            .await,
+        Err(datazen_driver_api::DriverError::QueryFailed(_))
+    ));
     let oracle: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
         .fetch_one(&mut f.oracle)
         .await
