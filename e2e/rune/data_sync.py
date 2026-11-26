@@ -160,3 +160,41 @@ class DataSyncJourneys:
         self.assertFalse(visible(tree, key="native-sync-error"))
         self.expect_sync_files_unchanged(originals)
         self.assertEqual((records(self.db), records(target)), (source_rows, target_rows))
+
+    def test_sqlite_sync_preview_clears_stale_counts_and_refuses_file_alias(self):
+        target = self.root / "sync-distinct.sqlite"
+        alias = self.root / "source-hardlink.sqlite"
+        for path, row in ((self.db, (1, "from source")), (target, (2, "keep target"))):
+            with closing(sqlite3.connect(path)) as db:
+                db.execute("CREATE TABLE records (id INTEGER PRIMARY KEY, note TEXT)")
+                db.execute("INSERT INTO records VALUES (?, ?)", row)
+                db.commit()
+        alias.hardlink_to(self.db)
+        self.sync_profiles(target)
+        saved = json.loads(self.store.read_text(encoding="utf-8"))
+        saved["connections"].append({
+            "id": "sync-alias", "name": "Source alias", "databaseType": "sqlite",
+            "database": str(alias), "connectionTimeout": 8,
+        })
+        self.store.write_text(json.dumps(saved), encoding="utf-8")
+        originals = {path: path.read_bytes() for path in (self.db, target, alias)}
+        setup = [*self.sync_steps(), tap(4.0, "native-sync-compare")]
+
+        initial = self.replay(setup, until=5.6)
+        self.expect_rendered(initial, key="native-sync-insert", text="Would insert: 1")
+        self.expect_rendered(initial, key="native-sync-target-only", text="Target-only (kept): 1")
+
+        reopened = self.replay([
+            *setup, tap(6.0, "native-tool-transfer"), tap(6.8, "native-tool-data-sync"),
+        ], until=8.0)
+        self.expect_rendered(reopened, key="native-sync-compare")
+        self.assertFalse(visible(reopened, key="native-sync-results"))
+
+        rejected = self.replay([
+            *setup, tap(6.0, "native-transfer-target-profile-sync-alias"),
+            tap(7.65, "native-sync-compare"),
+        ], until=9.0)
+        self.expect_rendered(rejected, key="native-sync-error",
+                             text="Select two different SQLite files.")
+        self.assertFalse(visible(rejected, key="native-sync-results"))
+        self.expect_sync_files_unchanged(originals)
