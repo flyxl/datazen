@@ -251,6 +251,40 @@ class TcpMetadataJourneys:
         self.assertEqual(database.query(f"SELECT decoy_only FROM {decoy};"), "42")
 
 
+
+    def run_postgres_unsupported_ddl(self, config):
+        database = DisposableSql("postgresql", config)
+        tag = uuid.uuid4().hex[:12]
+        schema = f"aaa_rune_unsupported_{tag}"
+        table = f"aaa_rune_identity_{tag}"
+        relation = f"{schema}.{table}"
+        database.query(f"CREATE SCHEMA {schema};")
+        self.addCleanup(database.query, f"DROP SCHEMA {schema};")
+        database.query(f"""
+            CREATE TABLE {relation}(id integer GENERATED ALWAYS AS IDENTITY, marker text);
+        """)
+        self.addCleanup(database.query, f"DROP TABLE {relation};")
+        database.query(f"INSERT INTO {relation} (marker) VALUES ('identity-row');")
+
+        def oracle():
+            kind = database.query(f"""
+                SELECT attidentity FROM pg_catalog.pg_attribute
+                WHERE attrelid='{relation}'::regclass AND attname='id';
+            """)
+            rows = database.query(f"SELECT id::text || '|' || marker FROM {relation};")
+            return kind, rows
+
+        original = oracle()
+        self.assertEqual(original, ("a", "1|identity-row"))
+        database.write_profile(self.store, read_only=True)
+        tree = self.replay([
+            tap(.5, "conn-open-e2e-tcp-sql"), tap(4, f"tree-table-{table}"),
+            tap(5.6, "view-ddl"),
+        ], until=8.1)
+        self.expect_rendered(tree, key="table-ddl-empty")
+        self.assertFalse(visible(tree, key="table-ddl"))
+        self.assertEqual(oracle(), original)
+
 def with_metadata_journeys(suite, configs):
     for engine, config in configs.items():
         def journey(self, engine=engine, config=config):
@@ -262,3 +296,8 @@ def with_metadata_journeys(suite, configs):
                 return self.run_postgres_table_ddl(config)
 
             setattr(suite, "test_postgresql_native_table_ddl_uses_exact_namespace", table_ddl)
+
+            def unsupported_ddl(self, config=config):
+                return self.run_postgres_unsupported_ddl(config)
+
+            setattr(suite, "test_postgresql_native_table_ddl_does_not_fake_identity_definition", unsupported_ddl)
