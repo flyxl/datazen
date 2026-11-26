@@ -137,10 +137,11 @@ impl PostgresDriver {
             )
             .into());
         }
-        if opts.single_transaction {
-            self.execute(handle, "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
-                .await?;
-        }
+        let snapshot = if opts.single_transaction {
+            Some(self.begin_read_snapshot_impl(handle).await?)
+        } else {
+            None
+        };
         let outcome = async {
             if opts.create_database {
                 stream::text(
@@ -180,19 +181,11 @@ impl PostgresDriver {
             .await
         }
         .await;
-        if opts.single_transaction {
-            let end = self
-                .execute(
-                    handle,
-                    if outcome.is_ok() {
-                        "COMMIT"
-                    } else {
-                        "ROLLBACK"
-                    },
-                )
-                .await;
+        if let Some(snapshot) = snapshot {
             if outcome.is_ok() {
-                end?;
+                self.commit(snapshot).await?;
+            } else if let Err(error) = self.rollback(snapshot).await {
+                tracing::warn!(%error, "could not confirm rollback of PostgreSQL backup snapshot");
             }
         }
         outcome

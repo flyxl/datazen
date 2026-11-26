@@ -506,3 +506,91 @@ async fn live_postgres_login_and_table_grants_change_only_the_selected_role() {
         .await
         .expect("retire administrator connection");
 }
+
+#[tokio::test]
+async fn admin_queries_report_real_postgres_errors_and_remain_usable_after_rollback() {
+    use datazen_driver_api::DriverError;
+
+    let mut fixture = Fixture::open().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let table = format!("admin_ledger_{tag}");
+    let role = format!("admin_viewer_{tag}");
+    sqlx::raw_sql(&format!(
+        "CREATE ROLE {role};
+         CREATE TABLE public.{table} (id int PRIMARY KEY);
+         INSERT INTO public.{table} VALUES(1);
+         ANALYZE public.{table};"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("PostgreSQL catalog and analysis fixture");
+
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("retained admin connection");
+    let target_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .expect("independent protected PostgreSQL backend");
+    let restricted = driver
+        .begin_transaction(&handle)
+        .await
+        .expect("admin role context");
+    driver
+        .execute(&handle, &format!("SET LOCAL ROLE {role}"))
+        .await
+        .expect("actual limited PostgreSQL role");
+    assert!(matches!(
+        driver.execute_command(&handle, "kill_process", json!({"pid":target_pid,"force":true})).await,
+        Err(DriverError::QueryFailed(message)) if message.contains("permission") || message.contains("superuser")
+    ));
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>("SELECT pg_backend_pid()")
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .expect("the protected backend was not terminated"),
+        target_pid
+    );
+    let lookup = json!({"schema":"public","table":table});
+    for (name, input) in [
+        ("server_status_snapshot", json!({})),
+        ("list_processes", json!({})),
+        ("estimate_table_rows", lookup.clone()),
+        (
+            "grant_privileges",
+            json!({"username":role,"privileges":["CREATE"]}),
+        ),
+    ] {
+        assert!(
+            matches!(
+                driver.execute_command(&handle, name, input).await,
+                Err(DriverError::QueryFailed(message)) if message.contains("current transaction is aborted")
+            ),
+            "{name} cannot report a success or empty snapshot while PostgreSQL rejected the statement"
+        );
+    }
+    driver
+        .rollback(restricted)
+        .await
+        .expect("recover ordinary administration after aborted transaction");
+    let expected: i64 = sqlx::query_scalar(
+        "SELECT c.reltuples::bigint FROM pg_class c JOIN pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname='public' AND c.relname=$1"
+    ).bind(&table).fetch_one(&mut fixture.oracle).await.expect("independent analyzed row estimate");
+    let estimate = command(&driver, &handle, "estimate_table_rows", lookup).await;
+    assert_eq!(estimate["estimatedRows"], expected);
+    let status = command(&driver, &handle, "server_status_snapshot", json!({})).await;
+    assert_eq!(
+        status["database"],
+        fixture.config.database.as_deref().expect("fixture DB")
+    );
+    assert!(matches!(
+        driver.execute_command(&handle, "drop_database", json!({"name":format!("dz_fixture_absent_{tag}")})).await,
+        Err(DriverError::QueryFailed(message)) if message.contains("does not exist")
+    ));
+    driver
+        .disconnect(handle)
+        .await
+        .expect("close admin session");
+}

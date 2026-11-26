@@ -731,3 +731,195 @@ async fn postgres_resource_commands_reject_unbudgeted_targets_and_ambiguous_boun
         .await
         .expect("scoped cleanup");
 }
+
+#[tokio::test]
+async fn postgres_backup_rejects_nesting_without_committing_user_writes() {
+    use datazen_driver_api::{
+        BackupDumpOptions, DriverError,
+        namespace::NamespaceTarget,
+        resource::{
+            AcquireResourceRequest, Baseline, BudgetPermit, BudgetPort, CommandCall, IdentityScope,
+            ResourceProvider, ResourcePurpose, ResourceScope,
+        },
+    };
+    use datazen_driver_postgres::PostgresResourceProvider;
+    use std::sync::Arc;
+
+    #[derive(Default)]
+    struct BackupBudget(Mutex<std::collections::HashSet<String>>);
+    #[async_trait]
+    impl BudgetPort for BackupBudget {
+        async fn acquire_physical_connections(
+            &self,
+            physical_connections: u32,
+        ) -> Result<BudgetPermit, ResourceError> {
+            let permit = BudgetPermit {
+                permit_id: uuid::Uuid::new_v4().to_string(),
+                physical_connections,
+            };
+            assert!(
+                self.0
+                    .lock()
+                    .expect("admission ledger")
+                    .insert(permit.permit_id.clone())
+            );
+            Ok(permit)
+        }
+        async fn release_physical_connections(
+            &self,
+            permit: &BudgetPermit,
+        ) -> Result<(), ResourceError> {
+            assert!(
+                self.0
+                    .lock()
+                    .expect("admission ledger")
+                    .remove(&permit.permit_id)
+            );
+            Ok(())
+        }
+    }
+
+    let mut fixture = Fixture::open().await;
+    let database = fixture.config.database.clone().expect("fixture catalog");
+    let table = format!("public.backup_tx_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!("CREATE TABLE {table}(id int PRIMARY KEY)"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("disposable backup transaction table");
+    let driver = Arc::new(PostgresDriver::new());
+    let provider = PostgresResourceProvider::new(driver.clone());
+    let budget: Arc<dyn BudgetPort> = Arc::new(BackupBudget::default());
+    let resource = provider
+        .acquire_resource(
+            &AcquireResourceRequest {
+                connection_config: fixture.config.clone(),
+                target: NamespaceTarget::empty().with_database(database.clone()),
+                scope: ResourceScope {
+                    purpose: ResourcePurpose::InteractiveQuery,
+                    max_physical_connections: 16,
+                    holds_open_transaction: false,
+                    pin_for_streaming: false,
+                },
+                identity_scope: IdentityScope::default(),
+                baseline: Baseline::default(),
+            },
+            &budget,
+        )
+        .await
+        .expect("acquire actual retained PostgreSQL");
+    let handle = provider
+        .connection_handle(&resource)
+        .expect("retained handle");
+    let artifacts = tempfile::tempdir().expect("disposable output artifacts");
+    let sink = Artifact::new(&artifacts, "invalid.ndjson", 1024 * 1024);
+    for (input, reason) in [
+        (
+            json!({"options":BackupDumpOptions::default()}),
+            "backup database required",
+        ),
+        (
+            json!({"database":database,"options":"wrong shape"}),
+            "invalid backup options",
+        ),
+        (
+            json!({"database":database,"options":BackupDumpOptions{schema_only:true,data_only:true,..Default::default()}}),
+            "conflicting backup options",
+        ),
+    ] {
+        let result = provider
+            .execute_on_resource(
+                &resource,
+                &QueryExecutionId::new(uuid::Uuid::new_v4().to_string()),
+                &CommandCall::new("backup_dump", input),
+                &sink,
+            )
+            .await;
+        assert!(
+            matches!(result, Err(ResourceError::Driver(DriverError::InvalidConfig(message))) if message.contains(reason))
+        );
+    }
+
+    let tx = driver
+        .begin_transaction(&handle)
+        .await
+        .expect("original writable transaction");
+    driver
+        .execute(&handle, &format!("INSERT INTO {table} VALUES(17)"))
+        .await
+        .expect("row staged");
+    let nested = CommandCall::new(
+        "backup_dump",
+        json!({"database":database, "options":BackupDumpOptions{single_transaction:true,..Default::default()}}),
+    );
+    let result = provider
+        .execute_on_resource(
+            &resource,
+            &QueryExecutionId::new("backup-must-not-nest"),
+            &nested,
+            &sink,
+        )
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(ResourceError::Driver(DriverError::TransactionError(_)))
+        ),
+        "{result:?}"
+    );
+    let staged = driver
+        .query(&handle, &format!("SELECT id FROM {table}"))
+        .await
+        .expect("user transaction remains readable and open");
+    assert_eq!(staged.rows, [vec![Some(Value::Integer(17))]]);
+    assert!(sink.records().iter().all(|record| !matches!(
+        record["kind"].as_str(),
+        Some("rows" | "complete" | "backupText")
+    )));
+    let visible = sqlx::query_scalar::<_, i64>(&format!("SELECT count(*) FROM {table}"))
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .expect("independent visibility before rollback");
+    assert_eq!(visible, 0, "backup must not commit the user's write");
+    driver.rollback(tx).await.expect("user can still roll back");
+    let visible = sqlx::query_scalar::<_, i64>(&format!("SELECT count(*) FROM {table}"))
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .expect("no committed PostgreSQL rows after rollback");
+    assert_eq!(visible, 0);
+    let tiny = Artifact::new(&artifacts, "too-small.ndjson", 0);
+    let output_limited = CommandCall::new(
+        "backup_dump",
+        json!({
+            "database": database,
+            "options": BackupDumpOptions {
+                single_transaction: true, create_database: true, ..Default::default()
+            }
+        }),
+    );
+    let refused = provider
+        .execute_on_resource(
+            &resource,
+            &QueryExecutionId::new("cannot-persist-backup"),
+            &output_limited,
+            &tiny,
+        )
+        .await;
+    assert!(
+        matches!(refused, Err(ResourceError::SinkRejected { .. })),
+        "{refused:?}"
+    );
+    assert!(tiny.records().is_empty());
+    driver
+        .execute(&handle, &format!("INSERT INTO {table} VALUES(23)"))
+        .await
+        .expect("failed artifact rolled back its own snapshot and left a writable session");
+    let committed = sqlx::query_scalar::<_, i32>(&format!("SELECT id FROM {table}"))
+        .fetch_all(&mut fixture.oracle)
+        .await
+        .expect("independent PostgreSQL after artifact failure");
+    assert_eq!(committed, [23]);
+    provider
+        .close_resource(&resource)
+        .await
+        .expect("confirmed backup session cleanup");
+}
