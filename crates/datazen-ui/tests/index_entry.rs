@@ -44,6 +44,7 @@ fn light_surface_is_one_import_point() {
             id: "light-one".into(),
             name: "Light One".into(),
             engine: "sqlite".into(),
+            host: None,
         }]));
     let _ = (unwired, host);
 

@@ -34,6 +34,7 @@ impl DesktopAdapter for ListHostAdapter {
                 id: "live-1".into(),
                 name: "Live one".into(),
                 engine: "postgres".into(),
+                host: None,
             }]),
         }
     }

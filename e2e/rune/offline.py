@@ -350,6 +350,37 @@ class OfflineJourneys:
         self.assertFalse(visible(tree, key="nav-conn-sandbox-local"))
         self.assertEqual(json.loads(self.store.read_text()), store)
 
+    def test_legacy_connection_search_matches_saved_host_without_connecting(self):
+        """Migrate the host-address case from connection-search-group.ts."""
+        before = {"connections": [
+            {"id": "primary", "name": "Reporting", "databaseType": "postgres",
+             "host": "warehouse-a.invalid", "port": 5432},
+            {"id": "secondary", "name": "Billing", "databaseType": "postgres",
+             "host": "warehouse-b.invalid", "port": 5432},
+            {"id": "local-file", "name": "Snapshot", "databaseType": "sqlite",
+             "database": str(self.db)},
+        ]}
+        self.store.write_text(json.dumps(before), encoding="utf-8")
+        keys = ("nav-conn-primary", "nav-conn-secondary", "nav-conn-local-file")
+        initial = self.replay([], until=1)
+        for row in keys:
+            self.expect_rendered(initial, key=row)
+
+        target = "navigator-filter-input"
+        filtered = fill(.5, target, "HOUSE-a.INVALID")
+        tree = self.replay(filtered, until=2)
+        self.expect_rendered(tree, key=keys[0])
+        for row in keys[1:]:
+            self.assertFalse(visible(tree, key=row))
+        self.assertFalse(visible(tree, key="nav-group-all-empty"))
+
+        cleared = [*filtered, tap(2.15, target), key(2.4, "a", cmd=True), key(2.65, "Backspace")]
+        tree = self.replay(cleared, until=3.5)
+        for row in keys:
+            self.expect_rendered(tree, key=row)
+        self.assertEqual(json.loads(self.store.read_text(encoding="utf-8")), before)
+        self.assertFalse(self.db.exists())
+
     def test_connection_dialog_cancel_does_not_save_draft(self):
         actions = [tap(.5, "connections-create-first"),
                    *fill(1.4, "connection-name-input", "Unsaved draft")]
@@ -359,6 +390,22 @@ class OfflineJourneys:
         self.expect_rendered(tree, key="connections-empty")
         self.assertFalse(visible(tree, key="connection-dialog"))
         self.assertFalse(self.store.exists())
+
+    def test_legacy_sqlite_connection_form_requires_only_a_database_file_path(self):
+        """Migrate the SQLite-specific path field from new-connection.ts."""
+        opened = [tap(.5, "connections-create-first"),
+                  tap(1.5, "connection-engine-option-sqlite")]
+        tree = self.replay(opened, until=2.5)
+        self.expect_rendered(tree, key="connection-database-input", within="connection-section-file")
+        for network_field in ("address", "username", "password"):
+            self.assertFalse(visible(tree, key=f"connection-{network_field}-input"))
+
+        tree = self.replay([*opened, tap(2.6, "connection-save")], until=4)
+        self.expect_rendered(tree, text="a database file path is required",
+                             within="connection-form-error")
+        self.expect_rendered(tree, key="connection-dialog")
+        self.assertFalse(self.store.exists())
+        self.assertFalse(self.db.exists())
 
     def test_sqlite_chart_view_uses_numeric_results_and_returns_to_grid(self):
         fixture(self.store, self.db)

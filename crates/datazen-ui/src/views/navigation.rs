@@ -76,6 +76,9 @@ pub fn navigator_connections_tree(state: &AppState, theme: tok::Theme, dark: boo
             || c.name.to_lowercase().contains(&filter)
             || c.engine.to_lowercase().contains(&filter)
             || c.id.to_lowercase().contains(&filter)
+            || c.host
+                .as_deref()
+                .is_some_and(|host| host.to_lowercase().contains(&filter))
     };
 
     let mut recent: Vec<ConnectionProfile> = Vec::new();

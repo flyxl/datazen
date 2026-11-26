@@ -33,6 +33,7 @@ fn host_adapter_list_is_what_the_first_frame_shows() {
         id: "audit-one".into(),
         name: "Audit One".into(),
         engine: "postgres".into(),
+        host: None,
     }]));
     state.sync_desktop_connections();
 
@@ -73,6 +74,7 @@ fn app_with_adapter_accepts_a_wired_host_adapter() {
                 id: "audit-one".into(),
                 name: "Audit One".into(),
                 engine: "postgres".into(),
+                host: None,
             },
         ])));
 }

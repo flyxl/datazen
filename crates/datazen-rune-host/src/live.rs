@@ -304,6 +304,7 @@ impl LiveSession {
 
 pub struct LiveAdapter {
     connection_ports: std::collections::BTreeMap<String, u16>,
+    file_connection_engines: std::collections::BTreeSet<String>,
     query_stops: std::collections::HashMap<u32, Arc<std::sync::atomic::AtomicBool>>,
     /// Jobs to the worker.
     jobs: Mutex<tokio::sync::mpsc::UnboundedSender<HostJob>>,
@@ -391,14 +392,20 @@ impl LiveAdapter {
         let (answer_tx, answer_rx) = std::sync::mpsc::channel::<HostAnswer>();
         let registry = Arc::new(host_registry());
         // Resolve the admitted driver metadata at startup, not on a form press.
-        let connection_ports = futures_executor::block_on(async {
+        let (connection_ports, file_connection_engines) = futures_executor::block_on(async {
             let mut ports = std::collections::BTreeMap::new();
+            let mut file_engines = std::collections::BTreeSet::new();
             for engine in registry.available_types() {
-                if let Some(port) = registry.get(&engine).await.and_then(|driver| driver.default_port()) {
-                    ports.insert(engine, port);
+                if let Some(driver) = registry.get(&engine).await {
+                    if let Some(port) = driver.default_port() {
+                        ports.insert(engine.clone(), port);
+                    }
+                    if driver.database_names_location() {
+                        file_engines.insert(engine);
+                    }
                 }
             }
-            ports
+            (ports, file_engines)
         });
         // N5: the execution runtime over the three host parts, sharing the
         // one repository with the adapter's connection use case.
@@ -779,6 +786,7 @@ impl LiveAdapter {
             .expect("the live job worker starts");
         Self {
             connection_ports,
+            file_connection_engines,
             query_stops: Default::default(),
             jobs: Mutex::new(job_tx),
             answers: Mutex::new(answer_rx),
@@ -2403,33 +2411,41 @@ fn connection_draft_record(
     draft: &ConnectionDraft,
     id: String,
     timeout: u32,
+    uses_file_path: bool,
 ) -> Result<datazen_driver_api::ConnectionConfig, String> {
     let name = draft.name.trim();
     let name = if name.is_empty() { "Untitled" } else { name };
     let engine = draft.engine.trim();
-    let address = draft.address.trim();
-    if address.is_empty() {
-        return Err("address is required".into());
-    }
-    let (host, port) = match address.rsplit_once(':') {
-        Some((host, port)) => (
-            host.to_owned(),
-            Some(port.parse::<u16>().map_err(|_| {
-                String::from("the address must be host or host:port with a numeric port")
-            })?),
-        ),
-        None => (address.to_owned(), None),
+    let (host, port) = if uses_file_path {
+        if draft.database.trim().is_empty() {
+            return Err("a database file path is required".into());
+        }
+        (None, None)
+    } else {
+        let address = draft.address.trim();
+        if address.is_empty() {
+            return Err("address is required".into());
+        }
+        match address.rsplit_once(':') {
+            Some((host, port)) => (
+                Some(host.to_owned()),
+                Some(port.parse::<u16>().map_err(|_| {
+                    String::from("the address must be host or host:port with a numeric port")
+                })?),
+            ),
+            None => (Some(address.to_owned()), None),
+        }
     };
     Ok(datazen_driver_api::ConnectionConfig {
         id,
         name: name.to_owned(),
         database_type: engine.to_owned(),
-        host: Some(host),
+        host,
         port,
         database: (!draft.database.is_empty()).then(|| draft.database.clone()),
         schema: None,
-        username: (!draft.username.is_empty()).then(|| draft.username.clone()),
-        password: (!draft.password.is_empty()).then(|| draft.password.clone()),
+        username: (!uses_file_path && !draft.username.is_empty()).then(|| draft.username.clone()),
+        password: (!uses_file_path && !draft.password.is_empty()).then(|| draft.password.clone()),
         ssl_mode: datazen_driver_api::SslMode::default(),
         connection_timeout: timeout,
         max_pool_size: 10,
@@ -2503,7 +2519,8 @@ impl LiveAdapter {
             id = format!("{base}-{counter}");
             counter += 1;
         }
-        let mut config = connection_draft_record(draft, id, 30)?;
+        let mut config =
+            connection_draft_record(draft, id, 30, self.connection_uses_file_path(engine))?;
         if let Some(redis) = redis {
             native_kv::apply_connection_options(&mut config, redis)?;
         }
@@ -2523,6 +2540,7 @@ impl DesktopAdapter for LiveAdapter {
                 id: config.id,
                 name: config.name,
                 engine: config.database_type,
+                host: config.host,
             })
             .collect())
     }
@@ -2551,6 +2569,10 @@ impl DesktopAdapter for LiveAdapter {
         self.connection_ports.get(engine).copied()
     }
 
+    fn connection_uses_file_path(&self, engine: &str) -> bool {
+        self.file_connection_engines.contains(engine)
+    }
+
     fn save_connection(&mut self, draft: &ConnectionDraft) -> Result<(), String> {
         self.save_connection_with_options(draft, None)
     }
@@ -2566,7 +2588,7 @@ impl DesktopAdapter for LiveAdapter {
         {
             return Err("Redis is not available in this host.".into());
         }
-        let mut config = connection_draft_record(draft, String::from("native-redis-probe"), 4)?;
+        let mut config = connection_draft_record(draft, String::from("native-redis-probe"), 4, false)?;
         native_kv::apply_connection_options(&mut config, options)?;
         self.jobs
             .lock()

@@ -1781,6 +1781,8 @@ pub struct ConnectionProfile {
     pub id: String,
     pub name: String,
     pub engine: String,
+    /// Saved hostname or IP, if present. Not a DSN or tunnel address.
+    pub host: Option<String>,
 }
 
 /// The connection form's one save (E5): the fields both ports speak — the
@@ -2190,6 +2192,11 @@ pub trait DesktopAdapter {
     /// Engine default from the host's actual linked driver.
     fn default_connection_port(&self, _engine: &str) -> Option<u16> {
         None
+    }
+
+    /// Whether the linked driver expects a physical file path instead of a network address.
+    fn connection_uses_file_path(&self, _engine: &str) -> bool {
+        false
     }
 
     /// The saved favorite queries (T6), newest first. The default answers
@@ -2884,11 +2891,13 @@ impl MemoryWorkspace {
                     id: "local".into(),
                     name: "Local Postgres".into(),
                     engine: "postgres".into(),
+                    host: None,
                 },
                 ConnectionProfile {
                     id: "replica".into(),
                     name: "Read Replica".into(),
                     engine: "postgres".into(),
+                    host: None,
                 },
             ],
             session: None,
@@ -3543,6 +3552,7 @@ impl WorkspaceApi for MemoryWorkspace {
             id: candidate,
             name: name.to_owned(),
             engine: engine.to_owned(),
+            host: None,
         });
         Ok(())
     }

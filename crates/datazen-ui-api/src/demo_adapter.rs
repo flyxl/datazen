@@ -106,11 +106,13 @@ mod tests {
                     id: "local".into(),
                     name: "Local Postgres".into(),
                     engine: "postgres".into(),
+                    host: None,
                 },
                 ConnectionProfile {
                     id: "replica".into(),
                     name: "Read Replica".into(),
                     engine: "postgres".into(),
+                    host: None,
                 },
             ],
             "the demo preserves its original profiles and order"

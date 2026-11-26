@@ -329,6 +329,22 @@ pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -
                 ),
         );
 
+    if state.desktop.connection_uses_file_path(state.connection_engine.text.trim()) {
+        let path = col()
+            .key("connection-section-file")
+            .w_full()
+            .gap(6.0)
+            .child(field_label(&format!("{} *", t("newConn.dbFilePath")), theme))
+            .child(form_input(
+                "connection-database-input",
+                &state.connection_database,
+                theme,
+                dark,
+                |state: &mut AppState| &mut state.connection_database,
+            ));
+        return connection_form_body(state, theme, [basic, path]);
+    }
+
     // Connection fields in 2-column grid (React StandardConnectionFields order/layout).
     let row_host_port = row()
         .key("connection-connection-fields")
@@ -523,7 +539,14 @@ pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -
         );
 
     let redis_options = redis_form::view(state, theme, dark);
+    connection_form_body(state, theme, [basic, connection, redis_options, advanced, ssh])
+}
 
+fn connection_form_body(
+    state: &AppState,
+    theme: tok::Theme,
+    fields: impl IntoIterator<Item = El>,
+) -> El {
     let error_text = state.connection_error.clone().unwrap_or_default();
     let error_row = row()
         .key("connection-form-error")
@@ -536,10 +559,14 @@ pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -
                 .wrap(),
         );
 
+    let fields = fields.into_iter().fold(
+        col().key("connection-form-fields").w_full().gap(16.0),
+        |body, field| body.child(field),
+    );
     col()
         .key("connection-form")
         .w_full()
         .gap(16.0)
-        .child(col().key("connection-form-fields").w_full().gap(16.0).child(basic).child(connection).child(redis_options).child(advanced).child(ssh))
+        .child(fields)
         .child(error_row)
 }

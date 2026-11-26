@@ -502,7 +502,12 @@ use rune::{Env, Runtime};
                 engine: "sqlite".into(),
             })
             .collect();
-        many.push(ConnectionProfile { id: "local".into(), name: "Local Postgres".into(), engine: "postgres".into() });
+        many.push(ConnectionProfile {
+            id: "local".into(),
+            name: "Local Postgres".into(),
+            engine: "postgres".into(),
+            host: None,
+        });
         rt.state.desktop_connections = Some(many);
         rt.state.connection_search = rune::TextEdit::new(String::new());
         rt.state.connections_show_all = false;

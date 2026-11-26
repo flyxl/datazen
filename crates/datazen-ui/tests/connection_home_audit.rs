@@ -16,6 +16,7 @@ fn profile(id: &str, name: &str, engine: &str) -> ConnectionProfile {
         id: id.to_owned(),
         name: name.to_owned(),
         engine: engine.to_owned(),
+        host: None,
     }
 }
 

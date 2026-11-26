@@ -521,6 +521,7 @@ fn a_wired_adapter_replaces_the_demo_list_with_the_use_case_answer() {
         id: "warehouse".into(),
         name: "Warehouse".into(),
         engine: "postgres".into(),
+        host: None,
     }]));
     runtime.frame(0.0);
 

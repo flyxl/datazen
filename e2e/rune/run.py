@@ -103,6 +103,7 @@ class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryH
     def test_create_connection_is_saved_and_reappears_after_relaunch(self):
         with sqlite3.connect(self.db) as db:
             db.execute("CREATE TABLE customers (id INTEGER PRIMARY KEY)")
+            db.execute("INSERT INTO customers VALUES (42)")
         name = "E2E saved connection"
         tree = self.replay([
             tap(.5, "connections-create-first"),
@@ -111,15 +112,19 @@ class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryH
             tap(3, "connection-engine-option-sqlite"),
             tap(3.5, "connection-database-input"),
             type_text(3.8, str(self.db)),
-            tap(6.5, "connection-address-input"),
-            type_text(6.8, "localhost"),
             tap(7.5, "connection-save"),
         ], until=9)
         rows = json.loads(self.store.read_text(encoding="utf-8"))["connections"]
         self.assertEqual([(row["name"], row["databaseType"], row["database"]) for row in rows],
                          [(name, "sqlite", str(self.db))])
+        for network_field in ("host", "port", "username", "password"):
+            self.assertIsNone(rows[0].get(network_field), network_field)
         self.assertFalse(visible(tree, key="connection-form-error"))
-        self.expect_rendered(self.replay([]), text=name)
+        saved_id = rows[0]["id"]
+        reopened = self.replay([tap(.5, f"conn-open-{saved_id}"),
+                                tap(3, "tree-table-customers")], until=5)
+        self.expect_rendered(reopened, key="tree-table-customers")
+        self.expect_rendered(reopened, text="42", within="cell-0-0")
 
     def test_connection_browse_reads_sqlite_rows(self):
         fixture(self.store, self.db)

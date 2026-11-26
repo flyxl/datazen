@@ -20,6 +20,7 @@ fn connections(n: usize) -> Vec<ConnectionProfile> {
             id: format!("c{i:02}"),
             name: format!("Local {i:02}"),
             engine: if i % 2 == 0 { "SQLite" } else { "PostgreSQL" }.to_owned(),
+            host: None,
         })
         .collect()
 }
