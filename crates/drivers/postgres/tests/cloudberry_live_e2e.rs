@@ -476,3 +476,189 @@ async fn registered_cloudberry_cancel_reaches_only_its_live_query() {
     driver.disconnect(side).await.unwrap();
     driver.disconnect(main).await.unwrap();
 }
+
+#[tokio::test]
+async fn cloudberry_distributed_schema_change_and_typed_data_transfer_round_trip() {
+    use datazen_driver_api::{
+        inventory, IRDefault, IRType, MigrationColumn, MigrationOperation, SyncAdapterFactory,
+    };
+    let mut fixture = Fixture::open().await;
+    let driver = factory().create();
+    let handle = driver.connect(&fixture.config).await.unwrap();
+    let database = fixture.config.database.as_deref().unwrap();
+    let schema = format!("dz_cb_transfer_{}", uuid::Uuid::new_v4().simple());
+    let source_table = format!("{schema}.origin");
+    let target_table = format!("{schema}.destination");
+    let columns = "id,v,exact,details,blob,active,stamp";
+    sqlx::raw_sql(&format!(
+        "CREATE SCHEMA {schema};
+         CREATE TABLE {source_table}
+            (id int PRIMARY KEY, v varchar(12), exact numeric(38,7), details jsonb,
+             blob bytea, active boolean DEFAULT true, stamp timestamptz)
+            DISTRIBUTED BY (id);
+         CREATE TABLE {target_table} (LIKE {source_table} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES)
+            DISTRIBUTED BY (id);
+         INSERT INTO {source_table} ({columns}) VALUES
+              (1,'',123456789012345678901.0010000,jsonb_build_object('txt','雪'),decode('00ff27','hex'),false,'2024-02-29 11:09:08+02'),
+              (2,NULL,-0.0000001,NULL,NULL,true,NULL);
+         INSERT INTO {target_table} (id,v) VALUES (7,'preserved');"
+    )).execute(&mut fixture.oracle).await.expect("create genuinely distributed source and destination");
+    let adapter_factory = inventory::iter::<SyncAdapterFactory>
+        .into_iter()
+        .find(|ad| ad.db_types.contains(&"cloudberry"))
+        .expect("registered Cloudberry data transfer adapter");
+    let adapters = (adapter_factory.create)();
+    let metadata = driver
+        .get_table_schema(&handle, "origin", database, Some(&schema))
+        .await
+        .expect("physical Cloudberry source metadata");
+    let physical_types = driver
+        .query(
+            &handle,
+            &adapters
+                .source
+                .full_column_types_query(&source_table)
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .rows
+        .into_iter()
+        .map(|row| match row.as_slice() {
+            [Some(Value::String(name)), Some(Value::String(ty))] => (name.clone(), ty.clone()),
+            _ => panic!("expected native format_type row"),
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    let ir = adapters
+        .source
+        .table_to_ir(&metadata, Some(&physical_types));
+    let field = |name| {
+        ir.columns
+            .iter()
+            .find(|col| col.name == name)
+            .expect("IR field")
+    };
+    assert_eq!(
+        field("exact").ir_type,
+        IRType::Decimal {
+            precision: 38,
+            scale: 7
+        }
+    );
+    assert_eq!(field("v").ir_type, IRType::Varchar { length: Some(12) });
+    assert!(matches!(
+        field("active").default_expr,
+        Some(IRDefault::Literal(_))
+    ));
+    assert!(
+        driver
+            .query(
+                &handle,
+                &adapters
+                    .source
+                    .unsupported_transfer_structure_query(database, Some(&schema), "origin")
+                    .unwrap()
+            )
+            .await
+            .unwrap()
+            .rows
+            .is_empty(),
+        "legacy-supported columns, not unsupported distribution metadata migration"
+    );
+
+    let renderer = driver
+        .migration_renderer()
+        .expect("Cloudberry inherited migration renderer");
+    let comment_column = MigrationOperation::AddColumn {
+        table: target_table.clone(),
+        column: MigrationColumn {
+            name: "transfer_note".into(),
+            data_type: "text".into(),
+            nullable: false,
+            default_value: Some("'ready'".into()),
+            comment: Some("Cloudberry transfer checkpoint".into()),
+            is_auto_increment: false,
+        },
+    };
+    assert!(driver
+        .migration_capabilities()
+        .unwrap()
+        .supports(&comment_column));
+    let ddl = renderer
+        .render(&comment_column)
+        .expect("real portable Cloudberry DDL renders");
+    let ddl_handle = driver.connect_fixed_session(&fixture.config).await.unwrap();
+    driver
+        .query_multi(&ddl_handle, &ddl.sql, None)
+        .await
+        .expect("Cloudberry executes generated DDL");
+    driver.disconnect(ddl_handle).await.unwrap();
+
+    let rows = driver
+        .query(
+            &handle,
+            &format!("SELECT {columns} FROM {source_table} ORDER BY id"),
+        )
+        .await
+        .expect("source typed copy rows");
+    let fields = columns.split(',').collect::<Vec<_>>();
+    let tx = driver.begin_transaction(&handle).await.unwrap();
+    for row in rows.rows {
+        let literals = fields
+            .iter()
+            .zip(row)
+            .map(|(name, value)| adapters.target.format_literal(&value, &field(name).ir_type))
+            .collect::<Vec<_>>();
+        let sql = format!(
+            "INSERT INTO {target_table} ({columns}) VALUES ({})",
+            literals.join(",")
+        );
+        assert_eq!(
+            driver
+                .execute(&handle, &sql)
+                .await
+                .expect("real mapped destination write"),
+            1
+        );
+    }
+    driver
+        .commit(tx)
+        .await
+        .expect("actual distributed copy commit");
+    let read =
+        async |oracle: &mut PgConnection, table: &str, filter: &str| -> Vec<serde_json::Value> {
+            sqlx::query_scalar(&format!(
+                "SELECT to_jsonb(r) FROM (SELECT {columns} FROM {table} {filter}) r ORDER BY id"
+            ))
+            .fetch_all(oracle)
+            .await
+            .expect("independent stored values")
+        };
+    assert_eq!(
+        read(&mut fixture.oracle, &source_table, "").await,
+        read(&mut fixture.oracle, &target_table, "WHERE id < 7").await
+    );
+    let untouched: (String, String) = sqlx::query_as(&format!(
+        "SELECT v, transfer_note FROM {target_table} WHERE id=7"
+    ))
+    .fetch_one(&mut fixture.oracle)
+    .await
+    .unwrap();
+    assert_eq!(untouched, ("preserved".into(), "ready".into()));
+    let table_comment: String = sqlx::query_scalar(
+        "SELECT col_description(attrelid, attnum) FROM pg_attribute WHERE attrelid=to_regclass($1) AND attname='transfer_note'"
+    ).bind(&target_table).fetch_one(&mut fixture.oracle).await.unwrap();
+    assert_eq!(table_comment, "Cloudberry transfer checkpoint");
+    let distribution: String =
+        sqlx::query_scalar("SELECT pg_get_table_distributedby($1::regclass::oid)")
+            .bind(&target_table)
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .unwrap();
+    assert_eq!(distribution, "DISTRIBUTED BY (id)");
+    driver.disconnect(handle).await.unwrap();
+    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+        .execute(&mut fixture.oracle)
+        .await
+        .unwrap();
+}
