@@ -2,7 +2,7 @@
 
 use super::sql::{apply_mysql_select_limit, is_mysql_result_query};
 use datazen_driver_api::*;
-use sqlx::{MySqlPool, Row};
+use sqlx::MySqlPool;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -141,130 +141,95 @@ impl super::MysqlDriver {
     ) -> Result<(), DriverError> {
         let (transactional, target_pool) = self.claim_query_execution(handle, execution_id).await?;
 
-        let result: Result<(), DriverError> = async {
-            if transactional {
-                let pinned = self
-                    .transactions
-                    .lock()
-                    .await
-                    .get(&handle.id)
-                    .cloned()
-                    .ok_or_else(|| {
-                        DriverError::Unsupported(
-                            "transaction execution connection is no longer available".into(),
-                        )
-                    })?;
+        let checkout_error = if transactional {
+            let pinned = self.transactions.lock().await.get(&handle.id).cloned();
+            if let Some(pinned) = pinned {
                 let mut conn = pinned.lock().await;
-                if self.is_cancel_requested(handle, execution_id).await? {
-                    Err(DriverError::QueryCancelled)
-                } else {
-                    let id_row = sqlx::query(MYSQL_CONNECTION_ID_SQL)
-                        .fetch_one(&mut **conn)
-                        .await
-                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                    let thread_id = id_row
-                        .try_get::<u64, _>(0)
-                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                    if self.bind_thread_id(handle, execution_id, thread_id).await? {
-                        Err(DriverError::QueryCancelled)
-                    } else {
-                        let total_start = Instant::now();
-                        let mut result = Ok(());
-                        for (index, stmt) in statements.iter().enumerate() {
-                            if self.is_cancel_requested(handle, execution_id).await? {
-                                result = Err(DriverError::QueryCancelled);
-                                break;
-                            }
-                            if let Err(error) = Self::stream_one_statement(
-                                &mut **conn,
-                                stmt,
+                return self
+                    .stream_registered_on(
+                        &mut conn,
+                        handle,
+                        execution_id,
+                        statements,
+                        limit,
+                        on_event,
+                    )
+                    .await;
+            }
+            DriverError::Unsupported(
+                "transaction execution connection is no longer available".into(),
+            )
+        } else if let Some(pool) = target_pool {
+            match pool.acquire().await {
+                Ok(mut conn) => match self.apply_active_database(handle, &mut conn).await {
+                    Ok(()) => {
+                        return self
+                            .stream_registered_on(
+                                &mut conn,
+                                handle,
+                                execution_id,
+                                statements,
                                 limit,
-                                index,
                                 on_event,
                             )
-                            .await
-                            {
-                                result = if self
-                                    .is_cancel_requested(handle, execution_id)
-                                    .await
-                                    .unwrap_or(false)
-                                {
-                                    Err(DriverError::QueryCancelled)
-                                } else {
-                                    Err(error)
-                                };
-                                break;
-                            }
-                        }
-                        if result.is_ok() {
-                            on_event(QueryStreamEvent::Done {
-                                total_time_ms: total_start.elapsed().as_millis() as u64,
-                            });
-                        }
-                        result
+                            .await;
                     }
-                }
-            } else {
-                let pool = target_pool.ok_or_else(|| {
-                    DriverError::ConnectionFailed(
-                        "Connection pool was not available when query execution was registered"
-                            .into(),
-                    )
-                })?;
-                let mut conn = pool
-                    .acquire()
-                    .await
-                    .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-                self.apply_active_database(handle, &mut conn).await?;
-
-                if self.is_cancel_requested(handle, execution_id).await? {
-                    Err(DriverError::QueryCancelled)
-                } else {
-                    let id_row = sqlx::query(MYSQL_CONNECTION_ID_SQL)
-                        .fetch_one(&mut *conn)
-                        .await
-                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                    let thread_id = id_row
-                        .try_get::<u64, _>(0)
-                        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                    if self.bind_thread_id(handle, execution_id, thread_id).await? {
-                        Err(DriverError::QueryCancelled)
-                    } else {
-                        let total_start = Instant::now();
-                        let mut result = Ok(());
-                        for (index, stmt) in statements.iter().enumerate() {
-                            if self.is_cancel_requested(handle, execution_id).await? {
-                                result = Err(DriverError::QueryCancelled);
-                                break;
-                            }
-                            if let Err(error) =
-                                Self::stream_one_statement(&mut *conn, stmt, limit, index, on_event)
-                                    .await
-                            {
-                                result = if self
-                                    .is_cancel_requested(handle, execution_id)
-                                    .await
-                                    .unwrap_or(false)
-                                {
-                                    Err(DriverError::QueryCancelled)
-                                } else {
-                                    Err(error)
-                                };
-                                break;
-                            }
-                        }
-                        if result.is_ok() {
-                            on_event(QueryStreamEvent::Done {
-                                total_time_ms: total_start.elapsed().as_millis() as u64,
-                            });
-                        }
-                        result
-                    }
-                }
+                    Err(error) => error,
+                },
+                Err(error) => DriverError::ConnectionFailed(error.to_string()),
             }
+        } else {
+            DriverError::ConnectionFailed(
+                "Connection pool was not available when query execution was registered".into(),
+            )
+        };
+        let _ = self.finish_query_execution(handle, execution_id).await;
+        Err(checkout_error)
+    }
+
+    async fn stream_registered_on(
+        &self,
+        conn: &mut sqlx::MySqlConnection,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        statements: &[String],
+        limit: Option<u32>,
+        on_event: &QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let result = async {
+            if self.is_cancel_requested(handle, execution_id).await? {
+                return Err(DriverError::QueryCancelled);
+            }
+            let thread_id: u64 = sqlx::query_scalar(MYSQL_CONNECTION_ID_SQL)
+                .fetch_one(&mut *conn)
+                .await
+                .map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+            if self.bind_thread_id(handle, execution_id, thread_id).await? {
+                return Err(DriverError::QueryCancelled);
+            }
+            let total_start = Instant::now();
+            for (index, statement) in statements.iter().enumerate() {
+                if self.is_cancel_requested(handle, execution_id).await? {
+                    return Err(DriverError::QueryCancelled);
+                }
+                let result =
+                    Self::stream_one_statement(conn, statement, limit, index, on_event).await;
+                // A native KILL can yield an ordinary result (for example,
+                // SELECT SLEEP returns 1). Confirm the registered disposition
+                // before advertising success, whether or not SQLx errored.
+                if self.settled_cancel_requested(handle, execution_id).await? {
+                    return Err(DriverError::QueryCancelled);
+                }
+                result?;
+            }
+            on_event(QueryStreamEvent::Done {
+                total_time_ms: total_start.elapsed().as_millis() as u64,
+            });
+            Ok(())
         }
         .await;
-
+        // The caller still owns the physical checkout: a late KILL cannot
+        // target the next connection borrower between execution and cleanup.
         let cleanup = self.finish_query_execution(handle, execution_id).await;
         result.and(cleanup)
     }

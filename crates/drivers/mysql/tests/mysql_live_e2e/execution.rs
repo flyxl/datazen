@@ -353,3 +353,215 @@ async fn mysql_registered_batch_native_failure_does_not_steal_session_or_run_rem
     assert_eq!(persisted(&mut f.oracle).await, [1, 3]);
     driver.disconnect(foreign).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_pending_fixed_execution_cannot_cancel_a_different_native_query_on_the_same_session()
+{
+    use datazen_driver_api::Value;
+    let mut f = Fixture::open().await;
+    let driver = Arc::new(datazen_driver_mysql::MysqlDriver::new(false));
+    let retained = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    let peer = driver.connect(&f.cfg).await.unwrap();
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let table = format!("dz_pinned_cancel_{suffix}");
+    let lock = format!("dz_pending_fixed_{suffix}");
+    sqlx::query(&format!("CREATE TABLE {table}(id INT PRIMARY KEY)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let acquired: i64 = sqlx::query_scalar("SELECT GET_LOCK(?,0)")
+        .bind(&lock)
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(acquired, 1);
+    let physical = driver
+        .query(&retained, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap();
+    let thread = match physical.rows[0][0] {
+        Some(Value::Integer(v)) => u64::try_from(v).unwrap(),
+        ref other => panic!("{other:?}"),
+    };
+    let active = QueryExecutionId::new(format!("native-holder-{suffix}"));
+    let pending = QueryExecutionId::new(format!("native-pending-{suffix}"));
+    let owner_rows = Arc::new(Mutex::new(Vec::new()));
+    driver
+        .prepare_query_execution(&retained, &active)
+        .await
+        .unwrap();
+    let worker = tokio::spawn({
+        let (driver, handle, id, lock, rows) = (
+            driver.clone(),
+            retained.clone(),
+            active.clone(),
+            lock.clone(),
+            owner_rows.clone(),
+        );
+        async move {
+            driver
+                .query_stream_with_execution(
+                    &handle,
+                    &id,
+                    &format!("SELECT GET_LOCK('{lock}',10)"),
+                    None,
+                    Arc::new(move |event| {
+                        if let QueryStreamEvent::Rows { rows: chunk, .. } = event {
+                            rows.lock().unwrap().extend(chunk)
+                        }
+                    }),
+                )
+                .await
+        }
+    });
+    let observation = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let matches: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID=? AND INFO LIKE ?",
+            )
+            .bind(thread)
+            .bind(format!("%{lock}%"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+            if matches > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    if observation.is_err() {
+        let _: Option<i64> = sqlx::query_scalar("SELECT RELEASE_LOCK(?)")
+            .bind(&lock)
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+        let _ = worker.await;
+        panic!("fixture must independently observe the actual native waiting statement");
+    }
+    driver
+        .prepare_query_execution(&retained, &pending)
+        .await
+        .unwrap();
+    assert!(matches!(
+        driver.cleanup_query_execution(&peer, &active).await,
+        Err(DriverError::QueryExecutionSessionMismatch)
+    ));
+    let pending_cancel = driver
+        .cancel_query_with_execution(&retained, &pending)
+        .await;
+    let released: i64 = sqlx::query_scalar("SELECT RELEASE_LOCK(?)")
+        .bind(&lock)
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(released, 1);
+    pending_cancel.expect("pending cancellation should not need any server KILL");
+    tokio::time::timeout(Duration::from_secs(5), worker)
+        .await
+        .unwrap()
+        .unwrap()
+        .expect("unrelated native owner must finish");
+    assert_eq!(
+        *owner_rows.lock().unwrap(),
+        [vec![Some(Value::Integer(1))]],
+        "a pending cancellation cannot kill the active statement"
+    );
+    assert!(matches!(
+        driver
+            .query_stream_with_execution(
+                &retained,
+                &pending,
+                &format!("INSERT INTO {table} VALUES(9)"),
+                None,
+                Arc::new(|_| {})
+            )
+            .await,
+        Err(DriverError::QueryCancelled)
+    ));
+    let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    assert!(matches!(
+        driver
+            .cancel_query_with_execution(&retained, &pending)
+            .await,
+        Err(DriverError::QueryExecutionNotFound(_))
+    ));
+    driver.disconnect(retained).await.unwrap();
+    driver.disconnect(peer).await.unwrap();
+}
+
+#[tokio::test]
+async fn mysql_registered_native_sleep_interrupt_cannot_end_as_a_successful_single_statement() {
+    use datazen_driver_api::Value;
+    let mut f = Fixture::open().await;
+    let driver = Arc::new(datazen_driver_mysql::MysqlDriver::new(false));
+    for fixed in [false, true] {
+        let h = if fixed {
+            driver.connect_fixed_session(&f.cfg).await.unwrap()
+        } else {
+            driver.connect(&f.cfg).await.unwrap()
+        };
+        let token = format!("dz_sleep_{}", uuid::Uuid::new_v4().simple());
+        let id = QueryExecutionId::new(token.clone());
+        driver.prepare_query_execution(&h, &id).await.unwrap();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let worker = tokio::spawn({
+            let (d, h, id, events, token) = (
+                driver.clone(),
+                h.clone(),
+                id.clone(),
+                events.clone(),
+                token.clone(),
+            );
+            async move {
+                d.query_stream_with_execution(
+                    &h,
+                    &id,
+                    &format!("SELECT SLEEP(10) AS {token}"),
+                    None,
+                    Arc::new(move |event| events.lock().unwrap().push(event)),
+                )
+                .await
+            }
+        });
+        let seen=tokio::time::timeout(Duration::from_secs(5),async {
+          loop {
+             let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID<>CONNECTION_ID() AND INFO LIKE ?")
+                 .bind(format!("%{token}%")).fetch_one(&mut f.oracle).await.unwrap();
+             if count>0 {break;}
+             tokio::time::sleep(Duration::from_millis(20)).await;
+          }
+       }).await;
+        assert!(
+            seen.is_ok(),
+            "cancel only after MySQL accepted and is running this exact SQL"
+        );
+        driver.cancel_query_with_execution(&h, &id).await.unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(5), worker)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(result, Err(DriverError::QueryCancelled)),
+            "native canceled statement advertised wrong terminal status: {result:?}"
+        );
+        assert!(
+            !events
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|event| matches!(event, QueryStreamEvent::Done { .. }))
+        );
+        let reuse = driver
+            .query(&h, "SELECT 24 AS native_after_cancel")
+            .await
+            .unwrap();
+        assert_eq!(reuse.rows, [vec![Some(Value::Integer(24))]]);
+        driver.disconnect(h).await.unwrap();
+    }
+}

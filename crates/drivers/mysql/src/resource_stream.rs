@@ -92,13 +92,13 @@ impl MysqlDriver {
         parameters: Option<&[Value]>,
         sink: &dyn ResultSink,
     ) -> Result<Vec<StatementResult>, ResourceError> {
-        if !self.fixed_sessions.read().await.contains_key(&handle.id) {
-            let id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
-                .fetch_one(&mut **conn)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-            self.bind_thread_id(handle, execution_id, id).await?;
-        }
+        // Do not bind on registration: another operation can still own
+        // the retained socket. Bind only after this stream holds its checkout.
+        let id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
+            .fetch_one(&mut **conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        self.bind_thread_id(handle, execution_id, id).await?;
         if parameters.is_some() && sql_dump::split_sql_statements(sql).len() != 1 {
             return Err(DriverError::InvalidConfig(
                 "bound parameters require one statement".into(),

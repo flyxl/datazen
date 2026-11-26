@@ -1,7 +1,7 @@
 //! Query execution: single statements, multi statements, streaming, writes.
 
-use super::*;
 use super::sql::is_mysql_result_query;
+use super::*;
 
 impl MysqlDriver {
     pub(crate) async fn query_inner(
@@ -292,7 +292,9 @@ impl MysqlDriver {
                 session_id: handle.id.clone(),
                 target_pool,
                 control_pool,
-                thread_id: self.fixed_sessions.read().await.get(&handle.id).copied(),
+                // Registration queues a run; it does not own the physical
+                // socket yet, even for a retained session.
+                thread_id: None,
                 cancel_requested: false,
                 running: false,
                 transactional,
@@ -327,13 +329,19 @@ impl MysqlDriver {
         sql: &str,
     ) -> Result<Vec<ColumnInfo>, DriverError> {
         use sqlx::{Column, Executor, Statement};
-        let statement = conn.prepare(sql).await
+        let statement = conn
+            .prepare(sql)
+            .await
             .map_err(|error| DriverError::QueryFailed(error.to_string()))?;
-        Ok(statement.columns().iter().map(|col| ColumnInfo {
-            name: col.name().to_owned(),
-            data_type: col.type_info().to_string(),
-            nullable: true,
-        }).collect())
+        Ok(statement
+            .columns()
+            .iter()
+            .map(|col| ColumnInfo {
+                name: col.name().to_owned(),
+                data_type: col.type_info().to_string(),
+                nullable: true,
+            })
+            .collect())
     }
 
     pub(crate) async fn query_with_params_inner(
