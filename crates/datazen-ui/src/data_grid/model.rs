@@ -314,6 +314,12 @@ impl DataGrid {
         self.editing = true;
     }
 
+    /// Cancel the transient cell editor without changing its staged or source value.
+    pub fn cancel_edit(&mut self) {
+        self.editing = false;
+        self.editor.focused = false;
+    }
+
     pub fn commit_edit(&mut self) {
         if !self.editing {
             return;

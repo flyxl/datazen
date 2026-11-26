@@ -616,7 +616,15 @@ fn cell(
         .fill(fill);
     if slot == GridSlot::Table {
         box_el = box_el
-            .on_press(move |state: &mut crate::AppState| state.grid.select(row_index, col_index));
+            .on_press(move |state: &mut crate::AppState| state.grid.select(row_index, col_index))
+            .on_double_press(move |state: &mut crate::AppState| {
+                if state.grid.focus() != (row_index, col_index) {
+                    state.grid.select(row_index, col_index);
+                }
+                if !state.grid.editing {
+                    state.grid.begin_edit();
+                }
+            });
     } else if slot == GridSlot::Result {
         box_el = box_el.on_press(move |state: &mut crate::AppState| {
             if let Some(grid) = state.result_grid.as_mut() {
@@ -635,6 +643,15 @@ fn cell(
                 .text_style(editor_font())
                 .width((w - 16.0).max(24.0))
                 .on_edit(|state: &mut crate::AppState| &mut state.grid.editor)
+                .on_key(|state: &mut crate::AppState, key, tx| {
+                    if matches!(key.key, rune::Key::Escape) {
+                        state.grid.cancel_edit();
+                        tx.blur();
+                        true
+                    } else {
+                        false
+                    }
+                })
                 .on_submit(|state: &mut crate::AppState, tx| {
                     state.commit_grid_edit();
                     tx.blur();

@@ -654,3 +654,104 @@ class OfflineJourneys:
         self.assertFalse(visible(empty, key="table-workspace"))
         with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
             self.assertEqual(db.execute("SELECT * FROM customers ORDER BY id").fetchall(), original)
+
+    def test_legacy_table_double_click_edits_current_value_and_escape_discards_draft(self):
+        """Migrate table-edit.ts DE-002 and DE-005 on the real SQLite grid."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            initial = db.execute("SELECT * FROM customers ORDER BY id").fetchall()
+        open_editor = [*OPEN, {**tap(5, "cell-0-1"), "type": "double-click"}]
+        shown = self.replay(open_editor, until=6.3)
+        self.expect_rendered(shown, key="grid-editor", within="cell-0-1")
+
+        def find_editor(node, within_editor=False):
+            within_editor = within_editor or node.get("key") == "grid-editor"
+            if within_editor and node.get("role") == "text-input":
+                return node
+            for child in node.get("children", ()):
+                editor = find_editor(child, within_editor)
+                if editor is not None:
+                    return editor
+            return None
+
+        editor = find_editor(shown["accessibility"])
+        self.assertIsNotNone(editor)
+        self.assertEqual(editor.get("value"), "fixture-ada")
+        draft_actions = [*open_editor, key(6.4, "a", cmd=True),
+                         type_text(6.7, "discard-edited-draft")]
+        staged_input = find_editor(self.replay(draft_actions, until=7.9)["accessibility"])
+        self.assertIsNotNone(staged_input)
+        self.assertEqual(staged_input.get("value"), "discard-edited-draft")
+        cancelled = self.replay([
+            *draft_actions, key(8.1, "Escape"), tap(9.1, "commit-staged"),
+        ], until=10.6)
+        self.assertFalse(visible(cancelled, key="grid-editor"))
+        self.expect_rendered(cancelled, text="fixture-ada", within="cell-0-1")
+        self.assertFalse(visible(cancelled, text="discard-edited-draft"))
+        status = next(node["text"] for node in cancelled["elements"]
+                      if node.get("key") == "data-grid-status")
+        self.assertTrue(status.endswith(" · 0 dirty"), status)
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+            self.assertEqual(db.execute("SELECT * FROM customers ORDER BY id").fetchall(), initial)
+
+    def test_legacy_table_numeric_sql_update_survives_reload(self):
+        """Migrate the typed update and readback in table-edit.ts DE-003b."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                ALTER TABLE customers ADD COLUMN score INTEGER DEFAULT 0;
+                UPDATE customers SET score = id * 10;
+            """)
+        changed = "UPDATE customers SET score = 999 WHERE id = 2;"
+        read = "SELECT score, typeof(score) FROM customers WHERE id = 2;"
+        result = self.replay([
+            *query_steps(changed), *fill(10.4, "sql-editor-scroll", read),
+            tap(13.0, "sql-run"),
+        ], until=15.4)
+        self.expect_rendered(result, text="999", within="result-workspace")
+        self.expect_rendered(result, text="integer", within="result-workspace")
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+            self.assertEqual(
+                db.execute("SELECT id, score, typeof(score) FROM customers ORDER BY id").fetchall(),
+                [(1, 10, "integer"), (2, 999, "integer")],
+            )
+        reopened = self.replay(OPEN, until=5.5)
+        self.expect_rendered(reopened, text="10", within="cell-0-2")
+        self.expect_rendered(reopened, text="999", within="cell-1-2")
+
+    def test_legacy_er_opens_real_sqlite_tables_with_nonoverlapping_nodes(self):
+        """Migrate ER-002, ER-003 and the node-layout part of ER-010."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                CREATE TABLE locations (location_id INTEGER PRIMARY KEY, label TEXT);
+                CREATE TABLE visits (visit_id INTEGER PRIMARY KEY, locale TEXT,
+                    location_id INTEGER REFERENCES locations(location_id));
+            """)
+            column_names = {
+                table: [entry[1] for entry in db.execute(f"PRAGMA table_info({table})")]
+                for table in ("customers", "locations", "visits")
+            }
+        connect = [OPEN[0]]
+        connected = self.replay(connect, until=2.5)
+        self.expect_rendered(connected, key="er-button")
+        self.assertFalse(visible(connected, key="er-canvas"))
+
+        show = [*connect, tap(3.0, "er-button")]
+        diagram = self.replay(show, until=6.5)
+        self.expect_rendered(diagram, key="er-page")
+        self.expect_rendered(diagram, key="er-canvas")
+        boxes = []
+        for table, columns in column_names.items():
+            node = f"er-box-{table}"
+            self.expect_rendered(diagram, key=node, within="er-canvas")
+            self.expect_rendered(diagram, key=f"er-title-{table}", text=table, within=node)
+            for index, column in enumerate(columns):
+                self.expect_rendered(diagram, key=f"er-col-{table}-{index}", text=column, within=node)
+            self.assertFalse(visible(diagram, key=f"er-pending-{table}"))
+            boxes.append(next(e["rect"] for e in diagram["elements"] if e.get("key") == node))
+
+        from itertools import combinations
+        for (ax, ay, aw, ah), (bx, by, bw, bh) in combinations(boxes, 2):
+            self.assertTrue(ax + aw <= bx or bx + bw <= ax or ay + ah <= by or by + bh <= ay,
+                            "SQLite ER table nodes overlap")
