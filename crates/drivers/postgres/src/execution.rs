@@ -1072,26 +1072,47 @@ impl PostgresDriver {
         Ok(result.rows_affected())
     }
 
+    async fn begin_fixed_transaction(
+        &self,
+        handle: &ConnectionHandle,
+        pid: i32,
+        pinned: Arc<tokio::sync::Mutex<sqlx::pool::PoolConnection<sqlx::Postgres>>>,
+        begin_sql: &'static str,
+    ) -> Result<TransactionHandle, DriverError> {
+        let mut conn = pinned.lock().await;
+        let state = self
+            .read_fixed_transaction_state(handle, pid, &mut conn)
+            .await?;
+        if state != datazen_driver_api::session::TransactionState::Idle {
+            return Err(DriverError::TransactionError(
+                "A transaction is already open on this connection".into(),
+            ));
+        }
+        sqlx::query(begin_sql)
+            .execute(&mut **conn)
+            .await
+            .map_err(|error| DriverError::TransactionError(error.to_string()))?;
+        Ok(TransactionHandle {
+            id: format!("fixed_tx_{}", uuid::Uuid::new_v4()),
+            connection_id: handle.id.clone(),
+        })
+    }
+
     pub(crate) async fn begin_transaction_impl(
         &self,
         handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
         let txs = self.transactions.lock().await;
-        if self.fixed_sessions.read().await.contains_key(&handle.id) {
+        let fixed_pid = self.fixed_sessions.read().await.get(&handle.id).copied();
+        if let Some(pid) = fixed_pid {
             let pinned = txs
                 .get(&handle.id)
                 .cloned()
-                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+                .ok_or(DriverError::SessionLost)?;
             drop(txs);
-            let mut conn = pinned.lock().await;
-            sqlx::query("BEGIN")
-                .execute(&mut **conn)
-                .await
-                .map_err(|e| DriverError::TransactionError(e.to_string()))?;
-            return Ok(TransactionHandle {
-                id: format!("fixed_tx_{}", uuid::Uuid::new_v4()),
-                connection_id: handle.id.clone(),
-            });
+            return self
+                .begin_fixed_transaction(handle, pid, pinned, "BEGIN")
+                .await;
         }
         if txs.contains_key(&handle.id) {
             return Err(DriverError::TransactionError(
@@ -1131,21 +1152,21 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
         let txs = self.transactions.lock().await;
-        if self.fixed_sessions.read().await.contains_key(&handle.id) {
+        let fixed_pid = self.fixed_sessions.read().await.get(&handle.id).copied();
+        if let Some(pid) = fixed_pid {
             let pinned = txs
                 .get(&handle.id)
                 .cloned()
-                .ok_or_else(|| DriverError::ConnectionFailed("SessionLost".into()))?;
+                .ok_or(DriverError::SessionLost)?;
             drop(txs);
-            let mut conn = pinned.lock().await;
-            sqlx::query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
-                .execute(&mut **conn)
-                .await
-                .map_err(|e| DriverError::TransactionError(e.to_string()))?;
-            return Ok(TransactionHandle {
-                id: format!("fixed_tx_{}", uuid::Uuid::new_v4()),
-                connection_id: handle.id.clone(),
-            });
+            return self
+                .begin_fixed_transaction(
+                    handle,
+                    pid,
+                    pinned,
+                    "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+                )
+                .await;
         }
         if txs.contains_key(&handle.id) {
             return Err(DriverError::TransactionError(

@@ -79,34 +79,9 @@ impl PostgresDriver {
             .cloned()
             .ok_or_else(|| DriverError::SessionLost)?;
         let mut connection = pinned.lock().await;
-        sqlx::Connection::ping(&mut **connection)
-            .await
-            .map_err(fixed_observation_error)?;
-        let control = self.control_pool_for(handle).await.ok_or_else(|| {
-            DriverError::ConnectionFailed("SessionLost: control connection unavailable".into())
-        })?;
-        let mut observer = control
-            .acquire()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        // Explicitly invalidate any statistics snapshot retained by the observer.
-        sqlx::query("SELECT pg_catalog.pg_stat_clear_snapshot()")
-            .execute(&mut *observer)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let state: Option<String> =
-            sqlx::query_scalar("SELECT state FROM pg_catalog.pg_stat_activity WHERE pid = $1")
-                .bind(pid)
-                .fetch_optional(&mut *observer)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let transaction_state = match state.as_deref() {
-            Some("idle") => TransactionState::Idle,
-            Some("idle in transaction") => TransactionState::Active,
-            Some("idle in transaction (aborted)") => TransactionState::Aborted,
-            None => return Err(DriverError::SessionLost),
-            _ => TransactionState::Unknown,
-        };
+        let transaction_state = self
+            .read_fixed_transaction_state(handle, pid, &mut connection)
+            .await?;
         if transaction_state == TransactionState::Aborted {
             // SQL cannot read facts in an aborted transaction. Retain the last
             // observed namespace without representing it as a fresh read.
@@ -146,6 +121,46 @@ impl PostgresDriver {
             .await
             .insert(handle.id.clone(), context.clone());
         Ok(context)
+    }
+
+    /// The caller holds the retained checkout for the whole state check and
+    /// the operation that depends on it. Raw SQL BEGIN/ROLLBACK must count,
+    /// even though they did not use SQLx's transaction-depth bookkeeping.
+    pub(crate) async fn read_fixed_transaction_state(
+        &self,
+        handle: &ConnectionHandle,
+        pid: i32,
+        connection: &mut sqlx::PgConnection,
+    ) -> Result<TransactionState, DriverError> {
+        sqlx::Connection::ping(connection)
+            .await
+            .map_err(fixed_observation_error)?;
+        let control = self.control_pool_for(handle).await.ok_or_else(|| {
+            DriverError::ConnectionFailed("SessionLost: control connection unavailable".into())
+        })?;
+        let mut observer = control
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        // Explicitly invalidate any statistics snapshot retained by the observer.
+        sqlx::query("SELECT pg_catalog.pg_stat_clear_snapshot()")
+            .execute(&mut *observer)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let state: Option<String> =
+            sqlx::query_scalar("SELECT state FROM pg_catalog.pg_stat_activity WHERE pid = $1")
+                .bind(pid)
+                .fetch_optional(&mut *observer)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let transaction_state = match state.as_deref() {
+            Some("idle") => TransactionState::Idle,
+            Some("idle in transaction") => TransactionState::Active,
+            Some("idle in transaction (aborted)") => TransactionState::Aborted,
+            None => return Err(DriverError::SessionLost),
+            _ => TransactionState::Unknown,
+        };
+        Ok(transaction_state)
     }
 }
 fn decode_error(error: sqlx::Error) -> DriverError {

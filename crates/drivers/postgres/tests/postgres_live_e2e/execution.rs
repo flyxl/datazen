@@ -862,3 +862,255 @@ async fn postgres_external_query_interruption_and_expired_execution_target_remai
         .await
         .expect("close original pool");
 }
+
+#[tokio::test]
+async fn fixed_read_snapshot_refuses_nesting_and_protects_repeatable_reads() {
+    let mut fixture = Fixture::open().await;
+    let table = format!("dz_snapshot_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {table}(id int PRIMARY KEY); INSERT INTO {table} VALUES (1)"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("independent snapshot fixture");
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("real retained checkout");
+    driver
+        .execute(&handle, "BEGIN")
+        .await
+        .expect("original transaction opened as raw SQL");
+    driver
+        .execute(&handle, &format!("INSERT INTO {table} VALUES (90)"))
+        .await
+        .expect("write staged in the original transaction");
+    assert!(
+        matches!(
+            driver.begin_read_snapshot(&handle).await,
+            Err(DriverError::TransactionError(_))
+        ),
+        "a writable transaction must never be presented as a read-only snapshot"
+    );
+    assert!(matches!(
+        driver.begin_transaction(&handle).await,
+        Err(DriverError::TransactionError(_))
+    ));
+    let local_count = format!("SELECT count(*) FROM {table}");
+    assert_eq!(
+        driver
+            .query(&handle, &local_count)
+            .await
+            .expect("original transaction remains usable")
+            .rows,
+        vec![vec![Some(Value::Integer(2))]]
+    );
+    driver
+        .execute(&handle, "ROLLBACK")
+        .await
+        .expect("rollback original write");
+    let original: Vec<i32> = sqlx::query_scalar(&format!("SELECT id FROM {table} ORDER BY id"))
+        .fetch_all(&mut fixture.oracle)
+        .await
+        .expect("outside view of rollback");
+    assert_eq!(original, [1]);
+
+    let snapshot = driver
+        .begin_read_snapshot(&handle)
+        .await
+        .expect("physical snapshot");
+    let settings = driver
+        .query(&handle, "SELECT current_setting('transaction_read_only'), current_setting('transaction_isolation')")
+        .await.expect("actual retained PostgreSQL transaction settings");
+    assert_eq!(
+        settings.rows,
+        vec![vec![super::string("on"), super::string("repeatable read")]]
+    );
+    assert_eq!(
+        driver
+            .query(&handle, &local_count)
+            .await
+            .expect("establish repeatable transaction snapshot")
+            .rows,
+        vec![vec![Some(Value::Integer(1))]]
+    );
+    sqlx::query(&format!("INSERT INTO {table} VALUES (2)"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("independent concurrent committed insert");
+    let (events, callback) = record();
+    driver
+        .query_stream(
+            &handle,
+            &format!("SELECT id FROM {table} ORDER BY id"),
+            None,
+            callback,
+        )
+        .await
+        .expect("legacy streaming preserves the fixed snapshot");
+    {
+        let events = events.lock().unwrap();
+        assert!(events.iter().any(|event| matches!(event, QueryStreamEvent::Rows{rows,..} if rows == &vec![vec![Some(Value::Integer(1))]])));
+        assert!(events
+            .iter()
+            .any(|event| matches!(event, QueryStreamEvent::Done { .. })));
+    }
+    let rejected = driver
+        .execute_with_params(
+            &handle,
+            &format!("INSERT INTO {table} VALUES ($1::int)"),
+            &[Value::Integer(3)],
+        )
+        .await
+        .expect_err("actual server forbids writing through a read-only snapshot");
+    assert!(rejected.to_string().contains("read-only"), "{rejected}");
+    assert!(
+        matches!(
+            driver.begin_read_snapshot(&handle).await,
+            Err(DriverError::TransactionError(_))
+        ),
+        "an aborted retained transaction is not a new snapshot"
+    );
+    driver
+        .rollback(snapshot)
+        .await
+        .expect("rollback fixed snapshot");
+    assert_eq!(
+        driver
+            .query(&handle, &local_count)
+            .await
+            .expect("fresh view after rollback")
+            .rows,
+        vec![vec![Some(Value::Integer(2))]]
+    );
+    let outside: Vec<i32> = sqlx::query_scalar(&format!("SELECT id FROM {table} ORDER BY id"))
+        .fetch_all(&mut fixture.oracle)
+        .await
+        .expect("independent persisted contents");
+    assert_eq!(outside, [1, 2]);
+    driver
+        .disconnect(handle)
+        .await
+        .expect("close retained backend");
+    sqlx::query(&format!("DROP TABLE {table}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn postgres_scripts_stop_after_first_server_error_without_claiming_later_writes() {
+    let mut fixture = Fixture::open().await;
+    let table = format!("dz_script_error_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!(
+        "CREATE TABLE {table}(id int PRIMARY KEY, notes text)"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("independent script fixture");
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect(&fixture.config)
+        .await
+        .expect("pooled handle");
+    assert_eq!(
+        driver
+            .execute_with_params(
+                &handle,
+                &format!("INSERT INTO {table} VALUES ($1::int, $2::text)"),
+                &[Value::Integer(1), Value::String("literal '; 🙂".into()),]
+            )
+            .await
+            .expect("pooled prepared write"),
+        1,
+    );
+    let first_error = format!("INSERT INTO {table} VALUES (2,'pre-error'); SELECT 1/0; INSERT INTO {table} VALUES (3,'must not run')");
+    let error = driver
+        .query_multi(&handle, &first_error, None)
+        .await
+        .expect_err("real division by zero stops the script");
+    assert!(
+        error.to_string().contains("SELECT 1/0") && error.to_string().contains("division by zero"),
+        "{error}"
+    );
+    let read_sql = format!("SELECT id, notes FROM {table} ORDER BY id");
+    let outside: Vec<(i32, String)> = sqlx::query_as(&read_sql)
+        .fetch_all(&mut fixture.oracle)
+        .await
+        .unwrap();
+    assert_eq!(
+        outside,
+        [
+            (1, "literal '; 🙂".to_string()),
+            (2, "pre-error".to_string())
+        ]
+    );
+
+    let tx = driver
+        .begin_transaction(&handle)
+        .await
+        .expect("physical transaction");
+    let duplicate = format!("INSERT INTO {table} VALUES (4,'staged'); INSERT INTO {table} VALUES (1,'duplicate'); INSERT INTO {table} VALUES (5,'must not run')");
+    let error = driver
+        .query_multi(&handle, &duplicate, None)
+        .await
+        .expect_err("duplicate key aborts the physical transaction");
+    assert!(
+        error.to_string().contains("duplicate key") && error.to_string().contains("'duplicate'"),
+        "{error}"
+    );
+    driver
+        .rollback(tx)
+        .await
+        .expect("discard aborted script and staged insert");
+    let outside_after: Vec<(i32, String)> = sqlx::query_as(&read_sql)
+        .fetch_all(&mut fixture.oracle)
+        .await
+        .unwrap();
+    assert_eq!(outside_after, outside);
+
+    let empty = driver
+        .query_multi(&handle, "; ;", None)
+        .await
+        .expect("empty batch is a successful no-op");
+    assert!(empty.results.is_empty());
+    assert_eq!(empty.total_time_ms, 0);
+    let (events, callback) = record();
+    driver
+        .query_stream(&handle, " ; ", None, callback)
+        .await
+        .expect("empty stream completes");
+    assert!(matches!(
+        events.lock().unwrap().as_slice(),
+        [QueryStreamEvent::Done { total_time_ms: 0 }]
+    ));
+    let (events, callback) = record();
+    let error = driver
+        .query_stream(
+            &handle,
+            &format!("INSERT INTO {table} VALUES (1,'duplicate'); SELECT 1"),
+            None,
+            callback,
+        )
+        .await
+        .expect_err("stream reports real DML error");
+    assert!(error.to_string().contains("duplicate key"), "{error}");
+    assert!(!events.lock().unwrap().iter().any(|event| matches!(
+        event,
+        QueryStreamEvent::Done { .. } | QueryStreamEvent::Rows { .. }
+    )));
+    let explain = driver
+        .explain(&handle, "SELECT 1; SELECT 2")
+        .await
+        .expect_err("explain cannot silently pick one of two statements");
+    assert!(matches!(explain, DriverError::InvalidConfig(_)));
+    driver
+        .disconnect(handle)
+        .await
+        .expect("close pooled handle");
+    sqlx::query(&format!("DROP TABLE {table}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .unwrap();
+}

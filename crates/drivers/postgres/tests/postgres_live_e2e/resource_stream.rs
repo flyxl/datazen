@@ -523,3 +523,211 @@ async fn postgres_refuses_to_reuse_a_stream_when_server_policy_blocks_cancellati
         .await
         .expect("dispose dedicated role");
 }
+
+#[tokio::test]
+async fn postgres_resource_commands_reject_unbudgeted_targets_and_ambiguous_bound_input() {
+    use datazen_driver_api::{
+        namespace::NamespaceTarget,
+        resource::{
+            AcquireResourceRequest, Baseline, BudgetPermit, BudgetPort, CommandCall, IdentityScope,
+            ResourceProvider, ResourcePurpose, ResourceScope,
+        },
+        session::CloseDisposition,
+        DriverError,
+    };
+    use datazen_driver_postgres::PostgresResourceProvider;
+    use std::sync::Arc;
+
+    #[derive(Default)]
+    struct Budget(Mutex<std::collections::HashSet<String>>);
+    #[async_trait]
+    impl BudgetPort for Budget {
+        async fn acquire_physical_connections(
+            &self,
+            n: u32,
+        ) -> Result<BudgetPermit, ResourceError> {
+            let id = uuid::Uuid::new_v4().to_string();
+            assert!(self
+                .0
+                .lock()
+                .expect("physical admission ledger")
+                .insert(id.clone()));
+            Ok(BudgetPermit {
+                permit_id: id,
+                physical_connections: n,
+            })
+        }
+        async fn release_physical_connections(
+            &self,
+            permit: &BudgetPermit,
+        ) -> Result<(), ResourceError> {
+            assert!(self
+                .0
+                .lock()
+                .expect("physical admission ledger")
+                .remove(&permit.permit_id));
+            Ok(())
+        }
+    }
+
+    let mut fixture = Fixture::open().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let local = fixture.config.database.as_deref().expect("marked source");
+    let foreign = format!("dz_fixture_other_scope_{tag}");
+    let name = format!("dz_scoped_rows_{tag}");
+    let relation = format!("public.{name}");
+    let forbidden_schema = format!("dz_unbudgeted_{tag}");
+    sqlx::query(&format!("CREATE DATABASE {foreign}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("independent actual foreign catalog");
+    let mut secondary = fixture.connect_to(&foreign).await;
+    for (oracle, number) in [(&mut fixture.oracle, 11), (&mut secondary, 22)] {
+        sqlx::raw_sql(&format!(
+            "CREATE TABLE {relation}(n integer); INSERT INTO {relation} VALUES ({number})"
+        ))
+        .execute(oracle)
+        .await
+        .expect("disposable same-name relation in each database");
+    }
+    let driver = Arc::new(PostgresDriver::new());
+    let provider = PostgresResourceProvider::new(driver);
+    let ledger = Arc::new(Budget::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let request = |purpose| AcquireResourceRequest {
+        connection_config: fixture.config.clone(),
+        target: NamespaceTarget::empty().with_database(local.to_owned()),
+        scope: ResourceScope {
+            purpose,
+            max_physical_connections: 16,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    };
+    let leased = provider
+        .acquire_resource(&request(ResourcePurpose::MetadataInspection), &budget)
+        .await
+        .expect("real leased catalog resource");
+    let fixed = provider
+        .acquire_resource(&request(ResourcePurpose::InteractiveQuery), &budget)
+        .await
+        .expect("real retained interactive resource");
+    let files = tempfile::tempdir().expect("temporary real result sink files");
+    let values = Artifact::new(&files, "leased-catalog.ndjson", 1024 * 1024);
+    let listed = provider
+        .execute_on_resource(
+            &leased,
+            &QueryExecutionId::new("actual-list-tables"),
+            &CommandCall::new("list_tables", json!({"database":local,"schema":"public"})),
+            &values,
+        )
+        .await
+        .expect("leased real catalog command works");
+    assert!(listed.completion_status.is_success());
+    let metadata = values.records();
+    assert!(metadata
+        .iter()
+        .any(|record| record["kind"] == "commandResult"
+            && record["data"]["tables"]
+                .as_array()
+                .is_some_and(|tables| tables.iter().any(|entry| entry["name"] == name))));
+
+    let refused = Artifact::new(&files, "scoped-rejections.ndjson", 1024 * 1024);
+    let command = CommandCall::new(
+        "query",
+        json!({"database":foreign,"sql":format!("DELETE FROM {relation}")}),
+    );
+    assert!(
+        matches!(provider.execute_on_resource(&leased,&QueryExecutionId::new("separate-catalog"),&command,&refused).await,
+        Err(ResourceError::OperationNotSupported{reason,..}) if reason.contains("separately budgeted"))
+    );
+    let malformed = CommandCall::new(
+        "query",
+        json!({
+            "database":local, "sql":format!("DELETE FROM {relation}"), "boundParameters":{"not":"a parameter array"}
+        }),
+    );
+    assert!(
+        matches!(provider.execute_on_resource(&fixed,&QueryExecutionId::new("bad-parameter-shape"),&malformed,&refused).await,
+        Err(ResourceError::Driver(DriverError::InvalidConfig(reason))) if reason.contains("invalid bound parameters"))
+    );
+    let backup = CommandCall::new(
+        "backup_dump",
+        json!({
+            "database":local,"options":datazen_driver_api::BackupDumpOptions::default()
+        }),
+    );
+    assert!(
+        matches!(provider.execute_on_resource(&leased,&QueryExecutionId::new("no-leased-backup"),&backup,&refused).await,
+        Err(ResourceError::OperationNotSupported{reason,..}) if reason.contains("retained session required"))
+    );
+    let scope = CommandCall::new(
+        "create_schema",
+        json!({"database":local,"name":forbidden_schema}),
+    );
+    assert!(
+        matches!(provider.execute_on_resource(&fixed,&QueryExecutionId::new("no-retained-admin"),&scope,&refused).await,
+        Err(ResourceError::OperationNotSupported{reason,..}) if reason.contains("catalog/admin command"))
+    );
+    assert!(!refused.records().iter().any(|record| matches!(
+        record["kind"].as_str(),
+        Some("rows" | "commandResult" | "statementSummary" | "complete")
+    )));
+    assert!(
+        provider
+            .observe_session(&fixed)
+            .await
+            .expect("retained original scope still healthy")
+            .context
+            .namespace
+            .database
+            .as_deref()
+            == Some(local)
+    );
+    for (oracle, expected) in [(&mut fixture.oracle, 11), (&mut secondary, 22)] {
+        assert_eq!(
+            sqlx::query_scalar::<_, i32>(&format!("SELECT n FROM {relation}"))
+                .fetch_one(oracle)
+                .await
+                .expect("independent no-change oracle"),
+            expected
+        );
+    }
+    assert!(
+        sqlx::query_scalar::<_, bool>("SELECT to_regnamespace($1) IS NULL")
+            .bind(&forbidden_schema)
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .expect("no unreviewed retained admin action")
+    );
+    assert_eq!(
+        provider
+            .close_resource(&fixed)
+            .await
+            .expect("close actual retained resource"),
+        CloseDisposition::Closed
+    );
+    assert_eq!(
+        provider
+            .close_resource(&leased)
+            .await
+            .expect("close actual leased resource"),
+        CloseDisposition::Closed
+    );
+    assert!(ledger
+        .0
+        .lock()
+        .expect("resource budget released")
+        .is_empty());
+    drop(secondary);
+    sqlx::query(&format!("DROP DATABASE {foreign}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("no automatic foreign sockets survive");
+    sqlx::query(&format!("DROP TABLE {relation}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("scoped cleanup");
+}
