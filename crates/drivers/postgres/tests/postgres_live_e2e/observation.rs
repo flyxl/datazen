@@ -378,3 +378,93 @@ async fn retained_command_summaries_and_aborted_transactions_match_real_postgres
         .await
         .expect("remove isolated schema");
 }
+
+#[tokio::test]
+async fn a_lost_retained_postgres_backend_is_not_silently_replaced() {
+    use datazen_driver_api::{DriverError, Value};
+
+    let mut fixture = Fixture::open().await;
+    let driver = Arc::new(PostgresDriver::new());
+    let provider = PostgresResourceProvider::new(driver.clone());
+    let ledger = Arc::new(Budget::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let request = AcquireResourceRequest {
+        connection_config: fixture.config.clone(),
+        target: NamespaceTarget::empty().with_database(fixture.config.database.clone().unwrap()),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 16,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    };
+    let lost = provider
+        .acquire_resource(&request, &budget)
+        .await
+        .expect("first live resource");
+    let neighbor = provider
+        .acquire_resource(&request, &budget)
+        .await
+        .expect("separate live resource");
+    let pid_for = async |h: &datazen_driver_api::resource::ResourceHandle| -> i32 {
+        let handle = provider.connection_handle(h).expect("underlying PG handle");
+        let result = driver
+            .query(&handle, "SELECT pg_backend_pid()")
+            .await
+            .expect("actual backend PID");
+        match result.rows[0][0] {
+            Some(Value::Integer(value)) => value.try_into().unwrap(),
+            ref other => panic!("expected PostgreSQL PID, got {other:?}"),
+        }
+    };
+    let target_pid = pid_for(&lost).await;
+    let neighbor_pid = pid_for(&neighbor).await;
+    assert_ne!(target_pid, neighbor_pid);
+    let fixture_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .unwrap();
+    assert_ne!(target_pid, fixture_pid);
+    let killed: bool = sqlx::query_scalar("SELECT pg_terminate_backend($1, 4000)")
+        .bind(target_pid)
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .expect("remove only the owned fixture backend");
+    assert!(killed);
+    let remaining: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT FROM pg_stat_activity WHERE pid=$1)")
+            .bind(target_pid)
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .unwrap();
+    assert!(!remaining, "the PostgreSQL backend actually disappeared");
+    assert!(matches!(
+        provider.observe_session(&lost).await,
+        Err(ResourceError::Driver(DriverError::SessionLost))
+    ));
+    assert_eq!(pid_for(&neighbor).await, neighbor_pid);
+    assert_eq!(
+        provider
+            .close_resource(&lost)
+            .await
+            .expect("release lost resource"),
+        CloseDisposition::Closed
+    );
+    assert_eq!(
+        provider
+            .close_resource(&lost)
+            .await
+            .expect("idempotent close"),
+        CloseDisposition::Closed
+    );
+    assert_eq!(
+        provider
+            .close_resource(&neighbor)
+            .await
+            .expect("close independent resource"),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}
