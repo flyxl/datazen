@@ -347,9 +347,14 @@ pub fn result_panel(
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.
 pub fn status_line(grid: &DataGrid) -> String {
-    let (r0, r1, c0, c1) = grid.rect();
+    let selection = if grid.has_selection() {
+        let (r0, r1, c0, c1) = grid.rect();
+        format!("r{r0}c{c0}..r{r1}c{c1}")
+    } else {
+        "none".to_owned()
+    };
     format!(
-        "{}×{} · window at column {} · selection r{r0}c{c0}..r{r1}c{c1} · {} dirty",
+        "{}×{} · window at column {} · selection {selection} · {} dirty",
         grid.rows,
         grid.cols,
         grid.origin_col(),
@@ -599,7 +604,7 @@ fn cell(
     dark: bool,
 ) -> El {
     let selected = grid.covers(row_index, col_index);
-    let active = grid.focus == (row_index, col_index);
+    let active = selected && grid.focus == (row_index, col_index);
     let frozen = col_index == 0;
     let current_hit = grid.is_current_find_hit(row_index, col_index);
     let any_hit = grid.is_find_hit(row_index, col_index);

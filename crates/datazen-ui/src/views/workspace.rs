@@ -794,7 +794,9 @@ fn result_status_bar(
         t("main.ready").to_owned()
     };
     let (r0, r1, c0, c1) = grid.rect();
-    let selection = if grid.focus() == (0, 0)
+    let selection = if !grid.has_selection() {
+        "none".to_owned()
+    } else if grid.focus() == (0, 0)
         && grid.anchor == (0, 0)
         && r0 == 0
         && r1 == 0

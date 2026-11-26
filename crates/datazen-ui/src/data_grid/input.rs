@@ -7,7 +7,9 @@ pub fn on_key(grid: &mut DataGrid, ev: &KeyEvent, tx: &mut Tx) -> bool {
         return false;
     }
     if ev.is_command('c') {
-        tx.copy(grid.copy_tsv());
+        if grid.has_selection() {
+            tx.copy(grid.copy_tsv());
+        }
         return true;
     }
     let extend = ev.mods.shift;
@@ -23,6 +25,7 @@ pub fn on_key(grid: &mut DataGrid, ev: &KeyEvent, tx: &mut Tx) -> bool {
         Key::Home => grid.nudge(0, -(grid.cols as i32), extend),
         Key::End => grid.nudge(0, grid.cols as i32, extend),
         Key::Enter => grid.begin_edit(),
+        Key::Escape if grid.has_selection() => grid.clear_selection(),
         _ => return false,
     }
     true

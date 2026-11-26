@@ -21,6 +21,7 @@ pub struct DataGrid {
     col_widths: Vec<u32>,
     pub anchor: (u32, u32),
     pub focus: (u32, u32),
+    selection_active: bool,
     pub editing: bool,
     editable: bool,
     page: u32,
@@ -78,6 +79,7 @@ impl DataGrid {
             col_widths: Vec::new(),
             anchor: (0, 0),
             focus: (0, 0),
+            selection_active: true,
             editing: false,
             editable: true,
             page: 0,
@@ -287,6 +289,7 @@ impl DataGrid {
         self.edits.clear();
         self.anchor = (0, 0);
         self.focus = (0, 0);
+        self.clear_selection();
         self.origin_col = 0;
         self.scroll_x.set(0.0);
         self.clear_find();
@@ -300,15 +303,27 @@ impl DataGrid {
         let col = col.min(self.cols.saturating_sub(1));
         self.anchor = (row, col);
         self.focus = (row, col);
+        self.selection_active = self.rows > 0 && self.cols > 0;
+    }
+
+    /// Navigation coordinates can exist even though no cells are selected.
+    pub fn has_selection(&self) -> bool {
+        self.selection_active && self.rows > 0 && self.cols > 0
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selection_active = false;
+        self.anchor = self.focus;
     }
 
     pub fn begin_edit(&mut self) {
-        if !self.editable {
+        if !self.editable || self.rows == 0 || self.cols == 0 {
             return;
         }
         if self.editing {
             self.commit_edit();
         }
+        self.selection_active = true;
         self.editor = TextEdit::new(self.cell(self.focus.0, self.focus.1));
         self.editor.focused = true;
         self.editing = true;
@@ -423,6 +438,9 @@ impl DataGrid {
     }
 
     pub fn copy_tsv(&self) -> String {
+        if !self.has_selection() {
+            return String::new();
+        }
         let (r0, r1, c0, c1) = self.rect();
         let mut lines = Vec::new();
         for r in r0..=r1 {
@@ -489,15 +507,16 @@ impl DataGrid {
     }
 
     pub fn nudge(&mut self, dr: i32, dc: i32, extend: bool) {
-        if self.editing {
+        if self.editing || self.rows == 0 || self.cols == 0 {
             return;
         }
         let r = (self.focus.0 as i32 + dr).clamp(0, self.rows as i32 - 1) as u32;
         let c = (self.focus.1 as i32 + dc).clamp(0, self.cols as i32 - 1) as u32;
         self.focus = (r, c);
-        if !extend {
+        if !extend || !self.selection_active {
             self.anchor = (r, c);
         }
+        self.selection_active = true;
         self.reveal_focus();
     }
 
@@ -519,6 +538,9 @@ impl DataGrid {
     }
 
     pub fn covers(&self, row: u32, col: u32) -> bool {
+        if !self.has_selection() {
+            return false;
+        }
         let (r0, r1, c0, c1) = self.rect();
         row >= r0 && row <= r1 && col >= c0 && col <= c1
     }
@@ -621,6 +643,7 @@ impl DataGrid {
         if let Some((r, c)) = self.current_find_hit() {
             self.anchor = (r, c);
             self.focus = (r, c);
+            self.selection_active = true;
             self.reveal_focus();
         }
     }

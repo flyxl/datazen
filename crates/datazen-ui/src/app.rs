@@ -135,7 +135,13 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         // or Escape hands the keys back to the editor, and so does any key
         // the grid does not answer.
         if state.result_focused {
-            if matches!(ev.key, Key::Text(_) | Key::Escape) {
+            if matches!(ev.key, Key::Escape) {
+                if let Some(grid) = state.result_grid.as_mut() {
+                    grid.clear_selection();
+                }
+                state.result_focused = false;
+                return true;
+            } else if matches!(ev.key, Key::Text(_)) {
                 state.result_focused = false;
             } else if state
                 .result_grid

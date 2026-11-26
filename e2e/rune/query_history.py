@@ -108,3 +108,36 @@ class QueryHistoryJourney:
         stored = json.loads(history_file.read_text(encoding="utf-8"))
         self.assertEqual(stored[0]["id"], saved[0]["id"])
         self.assertEqual(len({r["id"] for r in stored}), 3)
+
+
+    def test_legacy_query_library_switches_panels_without_losing_result(self):
+        """Exercise SQ-005 and SQ-015/017/018 with Rune's query-library tabs."""
+        fixture(self.store, self.db)
+        sql = "SELECT customer_name FROM customers WHERE id=2;"
+        with sqlite3.connect(self.db) as db:
+            expected = db.execute(sql).fetchone()[0]
+        execute = query_steps(sql)
+        to_history = tap(10.3, "query-sidebar-tab-history")
+        to_favorites = tap(12, "query-sidebar-tab-favorites")
+        to_snippets = tap(14, "query-sidebar-tab-snippets")
+        back_to_history = tap(16, "query-sidebar-tab-history")
+
+        def check(tree, panel):
+            for kind in ("favorites", "history", "snippets"):
+                key = f"query-{kind}-panel"
+                if kind == panel:
+                    self.expect_rendered(tree, key=key)
+                else:
+                    self.assertFalse(visible(tree, key=key))
+            self.expect_rendered(tree, text=expected, within="result-cell-0-0")
+            self.expect_rendered(tree, key="query-sidebar-tab-favorites")
+
+        favorites = self.replay([*execute, to_history, to_favorites], until=13.2)
+        check(favorites, "favorites")
+        snippets = self.replay([*execute, to_history, to_favorites, to_snippets], until=15.3)
+        check(snippets, "snippets")
+        history = self.replay([
+            *execute, to_history, to_favorites, to_snippets, back_to_history,
+        ], until=18)
+        check(history, "history")
+        self.expect_rendered(history, text=sql.rstrip(";"), within="query-history-entry-0")

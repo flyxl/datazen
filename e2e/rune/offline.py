@@ -214,6 +214,43 @@ class OfflineJourneys:
                 self.expect_rendered(tree, text=f"customer_name{direction}", within="head-1")
                 self.expect_rendered(tree, text=first, within="cell-0-1")
 
+    def test_legacy_table_cell_selection_clears_on_escape_and_page_change(self):
+        """Migrate TC-SEL-001/004/006 on a real paged SQLite table."""
+        fixture(self.store, self.db)
+        self.root.joinpath("settings.json").write_text(
+            json.dumps({"ui": {"tablePageSize": 1}}), encoding="utf-8")
+        with sqlite3.connect(self.db) as db:
+            first, second = [row[0] for row in db.execute(
+                "SELECT customer_name FROM customers ORDER BY id")]
+
+        def fill_color(tree):
+            return next(node["fill"] for node in tree["elements"]
+                        if node.get("key") == "cell-0-1" and node.get("role") == "gridcell")
+
+        no_selection = "1×2 · window at column 0 · selection none · 0 dirty"
+        initial = self.replay(OPEN, until=4.8)
+        self.expect_rendered(initial, key="data-grid-status", text=no_selection)
+        plain_fill = fill_color(initial)
+        chosen = [*OPEN, tap(5, "cell-0-1")]
+        first_tree = self.replay(chosen, until=6.3)
+        self.expect_rendered(first_tree, text=first, within="cell-0-1")
+        self.expect_rendered(first_tree, key="data-grid-status",
+                             text="1×2 · window at column 0 · selection r0c1..r0c1 · 0 dirty")
+        self.assertNotEqual(fill_color(first_tree), plain_fill)
+
+        cleared = self.replay([*chosen, key(6.5, "Escape")], until=7.8)
+        self.expect_rendered(cleared, key="data-grid-status", text=no_selection)
+        self.assertEqual(fill_color(cleared), plain_fill)
+        self.expect_rendered(cleared, text=first, within="cell-0-1")
+        self.assertFalse(visible(cleared, key="grid-editor"))
+
+        next_page = self.replay([*chosen, tap(6.5, "page-next")], until=8.2)
+        self.expect_rendered(next_page, key="grid-page-label", text="Page 2 / 2")
+        self.expect_rendered(next_page, key="data-grid-status", text=no_selection)
+        self.assertEqual(fill_color(next_page), plain_fill)
+        self.expect_rendered(next_page, text=second, within="cell-0-1")
+        self.assertFalse(visible(next_page, text=first, within="data-grid"))
+
     def test_grid_next_and_previous_page_use_saved_page_size(self):
         fixture(self.store, self.db)
         self.root.joinpath("settings.json").write_text(
