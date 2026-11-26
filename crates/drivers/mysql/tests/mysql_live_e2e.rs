@@ -137,8 +137,12 @@ mod catalog;
 mod connection;
 #[path = "mysql_live_e2e/execution.rs"]
 mod execution;
+#[path = "mysql_live_e2e/grid.rs"]
+mod grid;
 #[path = "mysql_live_e2e/migration_objects.rs"]
 mod migration_objects;
+#[path = "mysql_live_e2e/observation.rs"]
+mod observation;
 #[path = "mysql_live_e2e/query_modes.rs"]
 mod query_modes;
 #[path = "mysql_live_e2e/resource.rs"]

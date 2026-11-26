@@ -1,0 +1,231 @@
+use super::{resource::Ledger, Fixture};
+use datazen_driver_api::{
+    namespace::NamespaceTarget,
+    resource::{
+        AcquireResourceRequest, Baseline, BudgetPort, IdentityScope, ResourceError,
+        ResourceProvider, ResourcePurpose, ResourceScope,
+    },
+    session::{
+        CancelDisposition, CloseDisposition, EffectOutcome, ObservationConfidence,
+        TransactionOptions, TransactionState,
+    },
+    ConnectionConfig, DatabaseDriver, QueryExecutionId, Value,
+};
+use std::sync::Arc;
+
+fn factory() -> &'static dyn datazen_driver_api::DatabaseDriverFactory {
+    datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|f| f.driver_id() == "mysql")
+        .unwrap()
+}
+fn request(config: &ConnectionConfig, purpose: ResourcePurpose) -> AcquireResourceRequest {
+    AcquireResourceRequest {
+        connection_config: config.clone(),
+        target: NamespaceTarget::empty().with_database(config.database.clone().unwrap()),
+        scope: ResourceScope {
+            purpose,
+            max_physical_connections: 8,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    }
+}
+fn provider() -> Arc<dyn ResourceProvider> {
+    datazen_driver_api::require_resource_provider(factory()).unwrap()
+}
+
+#[tokio::test]
+async fn mysql_performance_schema_proves_raw_transaction_without_guessing_uninstrumented_state() {
+    let mut f = Fixture::open().await;
+    let driver = factory().create();
+    let provider = provider();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    for definition in [
+        "UPDATE performance_schema.setup_instruments SET ENABLED='YES', TIMED='YES' WHERE NAME='transaction'",
+        "UPDATE performance_schema.setup_consumers SET ENABLED='YES' WHERE NAME IN ('events_transactions_current','thread_instrumentation','global_instrumentation')",
+    ] {sqlx::query(definition).execute(&mut f.oracle).await.expect("authentic disposable runtime instrumentation");}
+
+    let resource = provider
+        .acquire_resource(&request(&f.cfg, ResourcePurpose::InteractiveQuery), &budget)
+        .await
+        .expect("real retained session");
+    let handle = provider.connection_handle(&resource).unwrap();
+    let table = format!("dz_observed_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!("CREATE TABLE {table}(id INT PRIMARY KEY)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let start = provider
+        .observe_session(&resource)
+        .await
+        .expect("idle proven on real control socket");
+    assert_eq!(start.context.transaction_state, TransactionState::Idle);
+    let native_pid = driver
+        .query(&handle, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap()
+        .rows[0][0]
+        .clone();
+    let Some(Value::Integer(pid)) = native_pid else {
+        panic!("native exact CONNECTION_ID()")
+    };
+    driver
+        .execute(&handle, "START TRANSACTION")
+        .await
+        .expect("user statement starts native transaction");
+    driver
+        .execute(&handle, &format!("INSERT INTO {table} VALUES(19)"))
+        .await
+        .unwrap();
+    let status:String=sqlx::query_scalar(
+        "SELECT CAST(e.STATE AS CHAR) FROM performance_schema.threads t JOIN performance_schema.events_transactions_current e ON e.THREAD_ID=t.THREAD_ID WHERE t.PROCESSLIST_ID=?"
+    ).bind(pid).fetch_one(&mut f.oracle).await.expect("independent MySQL attests actual active transaction");
+    assert_eq!(status, "ACTIVE");
+    let observed = provider
+        .observe_session(&resource)
+        .await
+        .expect("read actual wire and independent control");
+    assert_eq!(observed.context.transaction_state, TransactionState::Active);
+    assert_eq!(
+        observed.context.confidence,
+        ObservationConfidence::Confirmed
+    );
+    assert_eq!(observed.handles.len(), 1);
+    provider
+        .close_handle(&resource, &observed.handles[0])
+        .await
+        .expect("roll back adopted real transaction only");
+    let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    let idle = provider
+        .observe_session(&resource)
+        .await
+        .expect("actual MySQL rollback");
+    assert_eq!(idle.context.transaction_state, TransactionState::Idle);
+    assert!(idle.handles.is_empty());
+    sqlx::query("UPDATE performance_schema.setup_consumers SET ENABLED='NO' WHERE NAME='events_transactions_current'")
+        .execute(&mut f.oracle).await.expect("genuinely disable the disposable server's consumer");
+    driver.execute(&handle, "START TRANSACTION").await.unwrap();
+    driver
+        .execute(&handle, &format!("INSERT INTO {table} VALUES(23)"))
+        .await
+        .unwrap();
+    let unknown = provider
+        .observe_session(&resource)
+        .await
+        .expect("still a real reachable session");
+    assert_eq!(unknown.context.transaction_state, TransactionState::Unknown);
+    assert_eq!(unknown.context.confidence, ObservationConfidence::Partial);
+    let undone = provider
+        .rollback_transaction(&resource)
+        .await
+        .expect("wire rollback even with unavailable observer");
+    assert_eq!(undone.effect, Some(EffectOutcome::RolledBack));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(&format!("SELECT COUNT(*) FROM {table}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap(),
+        0
+    );
+    sqlx::query("UPDATE performance_schema.setup_consumers SET ENABLED='YES' WHERE NAME='events_transactions_current'")
+        .execute(&mut f.oracle).await.unwrap();
+    assert_eq!(
+        provider.close_resource(&resource).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn mysql_provider_does_not_acknowledge_commit_of_a_lost_backend_or_leak_admission() {
+    let mut f = Fixture::open().await;
+    let driver = factory().create();
+    let provider = provider();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let mut invalid = f.cfg.clone();
+    invalid.password = Some(uuid::Uuid::new_v4().to_string());
+    invalid.connection_timeout = 1;
+    assert!(matches!(
+        provider
+            .acquire_resource(
+                &request(&invalid, ResourcePurpose::InteractiveQuery),
+                &budget
+            )
+            .await,
+        Err(ResourceError::Driver(_))
+    ));
+    assert!(
+        ledger.0.lock().unwrap().is_empty(),
+        "failed real authentication must release the charged permit"
+    );
+    let resource = provider
+        .acquire_resource(&request(&f.cfg, ResourcePurpose::InteractiveQuery), &budget)
+        .await
+        .unwrap();
+    let handle = provider.connection_handle(&resource).unwrap();
+    let table = format!("dz_lost_write_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!("CREATE TABLE {table}(id INT PRIMARY KEY)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(
+        provider
+            .request_cancel(&resource, &QueryExecutionId::new("missing-owned-execution"))
+            .await
+            .unwrap()
+            .disposition,
+        CancelDisposition::NotRegistered
+    );
+    provider
+        .begin_transaction(&resource, &TransactionOptions::default())
+        .await
+        .expect("start actual MySQL write");
+    driver
+        .execute(&handle, &format!("INSERT INTO {table} VALUES(7)"))
+        .await
+        .unwrap();
+    let Some(Value::Integer(pid)) = driver
+        .query(&handle, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap()
+        .rows[0][0]
+    else {
+        panic!("real fixture PID")
+    };
+    sqlx::query(&format!("KILL CONNECTION {pid}"))
+        .execute(&mut f.oracle)
+        .await
+        .expect("terminate only the fixture-owned backend");
+    let terminal = provider
+        .commit_transaction(&resource)
+        .await
+        .expect("effect receipt still honest");
+    assert_eq!(terminal.state, TransactionState::Unknown);
+    assert_eq!(terminal.effect, Some(EffectOutcome::Unknown));
+    assert!(!terminal.committed());
+    assert!(
+        provider.observe_session(&resource).await.is_err(),
+        "must not silently replace lost MySQL checkout"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(&format!("SELECT COUNT(*) FROM {table}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        provider.close_resource(&resource).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}

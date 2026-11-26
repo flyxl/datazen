@@ -20,7 +20,7 @@ use std::{
 };
 
 #[derive(Default)]
-struct Ledger(Mutex<BTreeMap<String, u32>>);
+pub(super) struct Ledger(pub(super) Mutex<BTreeMap<String, u32>>);
 #[async_trait::async_trait]
 impl BudgetPort for Ledger {
     async fn acquire_physical_connections(&self, n: u32) -> Result<BudgetPermit, ResourceError> {
