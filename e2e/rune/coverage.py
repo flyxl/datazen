@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 
+from redis_replay import add_redis_arguments, configure_redis
+
 ROOT = Path(__file__).resolve().parents[2]
 SCOPE = ("datazen-ui", "datazen-ui-api", "datazen-rune-host")
 MINIMUM = 90
@@ -62,11 +64,13 @@ def report(raw, output, journeys, source):
     return hit * 100 >= total * MINIMUM
 
 
-def run_journeys(binary, output, env, jobs, servers):
+def run_journeys(binary, output, env, jobs, servers, redis_fixture):
     runner = [sys.executable, str(ROOT / "e2e/rune/run.py"), str(binary),
               "--artifacts", str(output / "trees")]
     for engine, config in servers.items():
         runner.extend((f"--{engine}-config", str(config)))
+    if redis_fixture:
+        runner.extend(("--redis-server", str(redis_fixture[0]), "--redis-cli", str(redis_fixture[1])))
     names = json.loads(subprocess.check_output([*runner, "--list-tests"], cwd=ROOT, env=env))
     if not names:
         raise SystemExit("No native E2E journeys discovered")
@@ -105,7 +109,9 @@ def main():
     parser.add_argument("--mysql-config", type=Path)
     parser.add_argument("--report-only", action="store_true",
                         help="measure coverage without enforcing 90%%; still fail on E2E or LLVM errors")
+    add_redis_arguments(parser)
     args = parser.parse_args()
+    redis_fixture = configure_redis(parser, args)
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     servers = {engine: config.resolve(strict=True)
@@ -140,8 +146,8 @@ def main():
             source["binary_sha256"] = hashlib.file_digest(source_binary, "sha256").hexdigest()
         source["rustc"] = subprocess.check_output(["rustc", "--version"], text=True).strip()
         env["LLVM_PROFILE_FILE"] = str(profiles / "%p-%m.profraw")
-        journeys = run_journeys(binary, output, env, args.jobs, servers)
-        journeys["server_engines"] = sorted(servers)
+        journeys = run_journeys(binary, output, env, args.jobs, servers, redis_fixture)
+        journeys["server_engines"] = sorted([*servers, *(["redis"] if redis_fixture else [])])
         raw = sorted(profiles.glob("*.profraw"))
         if not raw:
             raise SystemExit("The instrumented executable produced no coverage profiles")

@@ -15,6 +15,7 @@ from data_sync import DataSyncJourneys
 from favorites import FavoritesJourney
 from offline import OfflineJourneys
 from query_history import QueryHistoryJourney
+from redis_replay import add_redis_arguments, configure_redis, register_redis_ui_cases
 from scenarios import fixture, query_steps, tap, type_text, visible
 from schema_diff import SchemaDiffJourney
 from sql_selection import SqlSelectionJourneys
@@ -207,7 +208,9 @@ if __name__ == "__main__":
     parser.add_argument("--list-tests", action="store_true")
     parser.add_argument("--postgres-config", type=Path)
     parser.add_argument("--mysql-config", type=Path)
+    add_redis_arguments(parser)
     parsed, remaining = parser.parse_known_args()
+    redis_fixture = configure_redis(parser, parsed)
     configs = {
         engine: config.resolve(strict=True)
         for engine, config in (("postgresql", parsed.postgres_config), ("mysql", parsed.mysql_config))
@@ -216,6 +219,7 @@ if __name__ == "__main__":
     with_tcp_journeys(NativeJourneys, configs)
     with_metadata_journeys(NativeJourneys, configs)
     with_sql_transfer_journeys(NativeJourneys, configs)
+    register_redis_ui_cases(NativeJourneys, parsed.binary.resolve(), redis_fixture, parsed.artifacts)
     if parsed.list_tests:
         if remaining:
             parser.error("--list-tests does not take test selectors")

@@ -55,6 +55,16 @@ mappings or nontransactional targets before writes. MySQL-to-PostgreSQL
 supports only mappings that can prove their type capacity from the catalog:
 signed integers, bounded DECIMAL and bounded VARCHAR.
 
+## Opt-in real Redis UI
+
+Pass both `--redis-server PATH` and `--redis-cli PATH` to either native
+runner to include eight UI journeys using private loopback Redis instances.
+They check archive/lifecycle and key inspection, collection removal,
+Stream groups, Pub/Sub, console completion, and server-side key filters and
+folders. These are UI replays in the same ordinary native binary, not runs
+of the separate driver-contract or Redis crate coverage gate. The combined
+report records enabled engines so compare like-for-like runs.
+
 ## Migration inventory
 
 These are behavioral mappings, not an assertion that every original test in a
