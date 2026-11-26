@@ -10,6 +10,7 @@ import tempfile
 import unittest
 
 from dashboard import DashboardJourney
+from favorites import FavoritesJourney
 from offline import OfflineJourneys
 from query_history import QueryHistoryJourney
 from scenarios import fixture, query_steps, tap, type_text, visible
@@ -17,7 +18,7 @@ from tcp_sql import TcpSqlJourneys, with_tcp_journeys
 from workflow import WorkflowJourney
 
 
-class NativeJourneys(DashboardJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, unittest.TestCase):
+class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="datazen-native-e2e-")
         self.addCleanup(tmp.cleanup)

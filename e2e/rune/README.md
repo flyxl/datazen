@@ -49,6 +49,7 @@ driver-specific assertions are added.
 | Legacy group | Rune coverage | Remaining examples |
 | --- | --- | --- |
 | Connection, settings, SQLite, grid, SQL, chart, exports, backups | Offline native smoke and focused journeys; see development E2E documentation | Connection editing/group drag, session recovery, clips, platform window operations, complete import/restore flow, per-locale validation |
+| `sql-query.ts` favorites | Save the current SQL to a real host file, restart, load without executing, explicitly run and check against SQLite, rename in place, delete to trash | React-specific menu/dialog parity and per-connection favorites policies |
 | `query-history.ts` | Real successful and failed SQL, reload, connection isolation, load a saved statement and explicitly rerun | Database-grouped all-scope, search, history lifecycle/delete |
 | `workflow.ts`, `workflow-window.ts` | Offline editor error, YAML save/restart, actual SQLite write and independent readback | Typed step output, variables, conditional and linked steps, execution history, workflow-to-dashboard |
 | `data-dashboard-sql-add.ts` | Real SQLite SQL widget creation, persisted chart and hidden workflow, restart + manual refresh after an independent database change | Multi-board import/export and scheduled refresh behavior |
