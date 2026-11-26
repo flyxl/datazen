@@ -468,3 +468,216 @@ async fn a_lost_retained_postgres_backend_is_not_silently_replaced() {
     );
     assert!(ledger.0.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn real_admission_refuses_unpaid_or_invalid_scope_without_leaking_postgres_sessions() {
+    use datazen_driver_api::resource::{DescribeResourceRequest, InitializationRequirement};
+
+    let mut fixture = Fixture::open().await;
+    let name = format!("dz_admit_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!("CREATE SCHEMA {name}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("real schema for a configured admission");
+    let driver = Arc::new(PostgresDriver::new());
+    let provider = PostgresResourceProvider::new(driver.clone());
+    let ledger = Arc::new(Budget::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let target = NamespaceTarget::empty()
+        .with_database(fixture.config.database.clone().unwrap())
+        .with_schema(name.clone());
+    let request = AcquireResourceRequest {
+        connection_config: fixture.config.clone(),
+        target: target.clone(),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 16,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    };
+    let described = provider
+        .describe_resource(&DescribeResourceRequest {
+            connection_config: request.connection_config.clone(),
+            target,
+            identity_scope: request.identity_scope.clone(),
+            purpose: request.scope.purpose,
+        })
+        .await
+        .expect("describe legitimate PostgreSQL target");
+    assert!(described.initialization_requirements.is_empty());
+
+    let unopened = async |oracle: &mut sqlx::PgConnection, database: &str| -> i64 {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()",
+        )
+        .bind(database)
+        .fetch_one(oracle)
+        .await
+        .expect("independent sessions")
+    };
+    let database = fixture.config.database.clone().unwrap();
+    let before = unopened(&mut fixture.oracle, &database).await;
+    let mut over_budget = request.clone();
+    over_budget.scope.max_physical_connections = 0;
+    assert!(matches!(
+        provider.acquire_resource(&over_budget, &budget).await,
+        Err(ResourceError::BudgetDenied { .. })
+    ));
+    let mut forbidden_baseline = request.clone();
+    forbidden_baseline.baseline = Baseline::new(vec![InitializationRequirement {
+        id: "unsupported-replay".into(),
+        sql: "SET application_name = 'not admitted'".into(),
+        mandatory: true,
+        idempotent: true,
+    }]);
+    assert!(matches!(
+        provider
+            .acquire_resource(&forbidden_baseline, &budget)
+            .await,
+        Err(ResourceError::OperationNotSupported { .. })
+    ));
+    let mut bad_auth = request.clone();
+    bad_auth.connection_config.password = Some(uuid::Uuid::new_v4().to_string());
+    assert!(matches!(
+        provider.acquire_resource(&bad_auth, &budget).await,
+        Err(ResourceError::Driver(_))
+    ));
+    assert!(ledger.0.lock().unwrap().is_empty());
+    assert_eq!(unopened(&mut fixture.oracle, &database).await, before);
+
+    let handle = provider
+        .acquire_resource(&request, &budget)
+        .await
+        .expect("valid scope still opens");
+    let observed = provider
+        .observe_session(&handle)
+        .await
+        .expect("actual configured schema");
+    assert_eq!(
+        observed.context.namespace.schema.as_deref(),
+        Some(name.as_str())
+    );
+    let connection = provider
+        .connection_handle(&handle)
+        .expect("owned live PG connection");
+    let query = driver
+        .query(&connection, "SELECT current_schema()::text")
+        .await
+        .expect("actual session schema");
+    assert_eq!(
+        query.rows,
+        vec![vec![Some(datazen_driver_api::Value::String(name.clone()))]]
+    );
+    provider
+        .close_resource(&handle)
+        .await
+        .expect("confirm physical closure");
+    assert!(ledger.0.lock().unwrap().is_empty());
+    assert_eq!(unopened(&mut fixture.oracle, &database).await, before);
+    sqlx::query(&format!("DROP SCHEMA {name}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("cleanup");
+}
+
+#[tokio::test]
+async fn commit_after_backend_loss_is_unknown_and_never_reports_success() {
+    use datazen_driver_api::session::EffectOutcome;
+    use datazen_driver_api::Value;
+
+    let mut fixture = Fixture::open().await;
+    let table = format!("public.dz_lost_tx_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!("CREATE TABLE {table}(id int PRIMARY KEY)"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("marked fixture table");
+    let driver = Arc::new(PostgresDriver::new());
+    let provider = PostgresResourceProvider::new(driver.clone());
+    let ledger = Arc::new(Budget::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let request = AcquireResourceRequest {
+        connection_config: fixture.config.clone(),
+        target: NamespaceTarget::empty().with_database(fixture.config.database.clone().unwrap()),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 16,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    };
+    let resource = provider
+        .acquire_resource(&request, &budget)
+        .await
+        .expect("real retained connection");
+    let connection = provider
+        .connection_handle(&resource)
+        .expect("open fixture connection");
+    let pid = driver
+        .query(&connection, "SELECT pg_backend_pid()")
+        .await
+        .expect("PG assigned a backend");
+    let [Some(Value::Integer(pid))] = pid.rows[0].as_slice() else {
+        panic!("fixture PID not returned")
+    };
+    let pid: i32 = (*pid).try_into().unwrap();
+    provider
+        .begin_transaction(
+            &resource,
+            &TransactionOptions {
+                isolation_level: None,
+                read_only: None,
+                defers_commit: false,
+            },
+        )
+        .await
+        .expect("live PostgreSQL transaction");
+    assert_eq!(
+        driver
+            .execute(&connection, &format!("INSERT INTO {table} VALUES(7)"))
+            .await
+            .expect("server acknowledged uncommitted write"),
+        1
+    );
+    let select = format!("SELECT count(*) FROM {table}");
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(&select)
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .unwrap(),
+        0
+    );
+    let available: bool = sqlx::query_scalar("SELECT pg_terminate_backend($1, 4000)")
+        .bind(pid)
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .expect("stop only test backend");
+    assert!(available, "retained backend was terminated before COMMIT");
+    let receipt = provider
+        .commit_transaction(&resource)
+        .await
+        .expect("unconfirmed commit returns an honest receipt");
+    assert_eq!(receipt.state, TransactionState::Unknown);
+    assert_eq!(receipt.effect, Some(EffectOutcome::Unknown));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(&select)
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .unwrap(),
+        0,
+        "external verification sees no committed row"
+    );
+    provider
+        .close_resource(&resource)
+        .await
+        .expect("clean up lost connection");
+    assert!(ledger.0.lock().unwrap().is_empty());
+    sqlx::query(&format!("DROP TABLE {table}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("remove marked fixture table");
+}
