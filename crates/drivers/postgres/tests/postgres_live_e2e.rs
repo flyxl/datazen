@@ -247,3 +247,6 @@ mod backup;
 
 #[path = "postgres_live_e2e/table_catalog.rs"]
 mod table_catalog;
+
+#[path = "postgres_live_e2e/resource_stream.rs"]
+mod resource_stream;
