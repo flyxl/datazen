@@ -318,3 +318,145 @@ async fn postgres_result_origin_reads_real_base_view_and_materialized_catalog_ki
         .await
         .expect("dispose exact catalog");
 }
+
+#[tokio::test]
+async fn postgres_catalog_distinguishes_column_visibility_from_missing_or_unreadable_tables() {
+    let mut fixture = Fixture::open().await;
+    let db = fixture
+        .config
+        .database
+        .as_deref()
+        .expect("fixture database");
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let role = format!("dz_catalog_reader_{tag}");
+    let secret = format!("scoped-catalog-{tag}");
+    let visible_schema = format!("dz_visible_{tag}");
+    let hidden_schema = format!("dz_hidden_{tag}");
+    sqlx::raw_sql(&format!(
+        r#"
+        CREATE ROLE {role} LOGIN PASSWORD '{secret}';
+        CREATE SCHEMA {visible_schema};
+        CREATE SCHEMA {hidden_schema};
+        CREATE TABLE {visible_schema}.entry(id integer PRIMARY KEY,private_note text);
+        INSERT INTO {visible_schema}.entry VALUES(4,'column not granted');
+        CREATE TABLE {hidden_schema}.entry(id integer PRIMARY KEY,private_note text);
+        INSERT INTO {hidden_schema}.entry VALUES(6,'other schema not granted');
+        GRANT USAGE ON SCHEMA {visible_schema} TO {role};
+        GRANT SELECT(id) ON {visible_schema}.entry TO {role};
+    "#
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("legitimate real column-only role fixtures");
+    let mut config = fixture.config.clone();
+    config.username = Some(role.clone());
+    config.password = Some(secret);
+    config.read_only = true;
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect_fixed_session(&config)
+        .await
+        .expect("actual limited PostgreSQL role");
+    let namespaces = driver
+        .get_schemas(&handle, db)
+        .await
+        .expect("real role-scoped navigator")
+        .expect("PG schema level");
+    assert!(namespaces.contains(&visible_schema));
+    assert!(
+        !namespaces.contains(&hidden_schema) && !namespaces.iter().any(|ns| ns == "pg_catalog")
+    );
+    let (literal, keys) = driver
+        .get_columns(&handle, "entry", db, Some(&visible_schema))
+        .await
+        .expect("read column-only catalog where actual role has one grant");
+    assert_eq!(
+        literal.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+        ["id"]
+    );
+    assert_eq!(keys, ["id"]);
+    let snapshot = driver
+        .get_table_schema(&handle, "entry", db, Some(&visible_schema))
+        .await
+        .expect("table exists even with partial grants");
+    assert_eq!(
+        snapshot
+            .columns
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>(),
+        ["id"]
+    );
+
+    let qualified = format!("\"{visible_schema}\".\"entry\"");
+    let exact = driver
+        .execute_command(
+            &handle,
+            "get_table_schema",
+            json!({
+                "relationSql":qualified, "database":db
+            }),
+        )
+        .await
+        .expect("explicit real retained relation metadata")
+        .data;
+    assert_eq!(exact["resolvedTarget"]["schema"], visible_schema);
+    let ddl_request = json!({"kind":"table","name":"entry","schema":visible_schema,"database":db});
+    assert!(
+        matches!(
+            driver
+                .execute_command(&handle, "get_object_ddl", ddl_request)
+                .await,
+            Err(DriverError::Unsupported(_))
+        ),
+        "column privilege is not whole-table DDL visibility"
+    );
+    assert!(driver
+        .query(
+            &handle,
+            &format!("SELECT private_note FROM {visible_schema}.entry")
+        )
+        .await
+        .is_err());
+    assert!(driver
+        .get_table_schema(&handle, "entry", db, Some(&hidden_schema))
+        .await
+        .is_err());
+
+    sqlx::query(&format!(
+        "REVOKE SELECT(id) ON {visible_schema}.entry FROM {role}"
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("revoke only that role's column access");
+    let formerly_visible = driver
+        .get_table_schema(&handle, "entry", db, Some(&visible_schema))
+        .await
+        .expect("existing table can have no visible column metadata");
+    assert_eq!(formerly_visible.table_name, "entry");
+    assert!(formerly_visible.columns.is_empty() && formerly_visible.indexes.is_empty());
+    let (now_empty, _) = driver
+        .get_columns(&handle, "entry", db, Some(&visible_schema))
+        .await
+        .expect("column listing distinguishes privilege filter from nonexistence");
+    assert!(now_empty.is_empty());
+    assert!(driver
+        .get_columns(&handle, "absent", db, Some(&visible_schema))
+        .await
+        .is_err());
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(&format!(
+            "SELECT private_note FROM {visible_schema}.entry"
+        ))
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .expect("independent actual fixture preserved"),
+        "column not granted"
+    );
+    driver
+        .disconnect(handle)
+        .await
+        .expect("close limited live role");
+    sqlx::raw_sql(&format!("DROP SCHEMA {visible_schema} CASCADE; DROP SCHEMA {hidden_schema} CASCADE; DROP ROLE {role}"))
+        .execute(&mut fixture.oracle).await.expect("cleanup only isolated objects");
+}
