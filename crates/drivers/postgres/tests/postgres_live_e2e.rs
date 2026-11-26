@@ -271,3 +271,6 @@ mod foreign_pools;
 
 #[path = "postgres_live_e2e/control.rs"]
 mod control;
+
+#[path = "postgres_live_e2e/admin_scope.rs"]
+mod admin_scope;

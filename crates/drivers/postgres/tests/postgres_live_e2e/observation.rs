@@ -731,6 +731,16 @@ async fn pg_wire_alias_factories_can_close_their_own_live_resources_and_transact
             identity_scope: IdentityScope::default(),
             baseline: Baseline::default(),
         };
+        let descriptor = provider
+            .describe_resource(&datazen_driver_api::resource::DescribeResourceRequest {
+                connection_config: config,
+                target: request.target.clone(),
+                identity_scope: request.identity_scope.clone(),
+                purpose: request.scope.purpose,
+            })
+            .await
+            .expect("same real server identity scope");
+        assert_eq!(descriptor.provider_id, alias);
         let resource = provider
             .acquire_resource(&request, &budget)
             .await

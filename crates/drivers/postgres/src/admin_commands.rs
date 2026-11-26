@@ -267,9 +267,37 @@ pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
 }
 
 const PG_DATABASE_PRIVILEGES: &[&str] = &["CONNECT", "CREATE", "TEMPORARY", "TEMP"];
+const PG_TABLE_PRIVILEGES: &[&str] = &[
+    "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER",
+    "MAINTAIN", "ALL", "ALL PRIVILEGES",
+];
 
 fn is_database_privilege(p: &str) -> bool {
     PG_DATABASE_PRIVILEGES.contains(&p.to_uppercase().as_str())
+}
+
+fn privilege_list(input: &serde_json::Value) -> Result<Vec<&'static str>, DriverError> {
+    let requested = input["privileges"]
+        .as_array()
+        .ok_or_else(|| DriverError::InvalidConfig("privileges array is required".into()))?;
+    if requested.is_empty() {
+        return Err(DriverError::InvalidConfig("at least one privilege is required".into()));
+    }
+    requested.iter().map(|p| {
+        let name = p.as_str().ok_or_else(|| DriverError::InvalidConfig("privilege name is required".into()))?;
+        PG_DATABASE_PRIVILEGES.iter().chain(PG_TABLE_PRIVILEGES)
+            .copied().find(|valid| valid.eq_ignore_ascii_case(name.trim()))
+            .ok_or_else(|| DriverError::InvalidConfig("unknown PostgreSQL privilege".into()))
+    }).collect()
+}
+
+fn admin_literal(value: &str) -> String {
+    let quoted = value.replace('\'', "''");
+    if quoted.contains('\\') {
+        format!("E'{}'", quoted.replace('\\', "\\\\"))
+    } else {
+        format!("'{quoted}'")
+    }
 }
 
 pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<String, DriverError> {
@@ -297,7 +325,7 @@ pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<Strin
                 .ok_or_else(|| DriverError::InvalidConfig("name is required".into()))?;
             let mut sql = format!("CREATE DATABASE {}", quote_ident(name));
             if let Some(encoding) = input["encoding"].as_str() {
-                sql.push_str(&format!(" ENCODING '{}'", encoding.replace('\'', "''")));
+                sql.push_str(&format!(" ENCODING {}", admin_literal(encoding)));
             }
             if let Some(owner) = input["owner"].as_str() {
                 sql.push_str(&format!(" OWNER {}", quote_ident(owner)));
@@ -320,7 +348,7 @@ pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<Strin
                 .ok_or_else(|| DriverError::InvalidConfig("username is required".into()))?;
             let mut sql = format!("CREATE ROLE {} WITH LOGIN", quote_ident(username));
             if let Some(password) = input["password"].as_str() {
-                sql.push_str(&format!(" PASSWORD '{}'", password.replace('\'', "''")));
+                sql.push_str(&format!(" PASSWORD {}", admin_literal(password)));
             }
             Ok(sql)
         }
@@ -337,18 +365,7 @@ pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<Strin
             let username = input["username"]
                 .as_str()
                 .ok_or_else(|| DriverError::InvalidConfig("username is required".into()))?;
-            let privileges = input["privileges"]
-                .as_array()
-                .ok_or_else(|| DriverError::InvalidConfig("privileges array is required".into()))?
-                .iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<_>>();
-            if privileges.is_empty() {
-                return Err(DriverError::InvalidConfig(
-                    "at least one privilege is required".into(),
-                ));
-            }
-
+            let privileges = privilege_list(input)?;
             let database = input["database"].as_str().unwrap_or("");
             let db_privs: Vec<&str> = privileges
                 .iter()
@@ -363,7 +380,10 @@ pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<Strin
 
             let mut stmts = Vec::new();
 
-            if !db_privs.is_empty() && !database.is_empty() {
+            if !db_privs.is_empty() {
+                if database.is_empty() {
+                    return Err(DriverError::InvalidConfig("database is required for database privileges".into()));
+                }
                 stmts.push(format!(
                     "REVOKE {} ON DATABASE {} FROM {}",
                     db_privs.join(", "),
@@ -380,32 +400,13 @@ pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<Strin
                 ));
             }
 
-            if stmts.is_empty() {
-                stmts.push(format!(
-                    "REVOKE {} ON ALL TABLES IN SCHEMA public FROM {}",
-                    privileges.join(", "),
-                    quote_ident(username),
-                ));
-            }
-
             Ok(stmts.join("; "))
         }
         "grant_privileges" => {
             let username = input["username"]
                 .as_str()
                 .ok_or_else(|| DriverError::InvalidConfig("username is required".into()))?;
-            let privileges = input["privileges"]
-                .as_array()
-                .ok_or_else(|| DriverError::InvalidConfig("privileges array is required".into()))?
-                .iter()
-                .filter_map(|v| v.as_str())
-                .collect::<Vec<_>>();
-            if privileges.is_empty() {
-                return Err(DriverError::InvalidConfig(
-                    "at least one privilege is required".into(),
-                ));
-            }
-
+            let privileges = privilege_list(input)?;
             let database = input["database"].as_str().unwrap_or("");
             let grant_option = input["grantOption"].as_bool().unwrap_or(false);
             let grant_suffix = if grant_option {
@@ -427,7 +428,10 @@ pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<Strin
 
             let mut stmts = Vec::new();
 
-            if !db_privs.is_empty() && !database.is_empty() {
+            if !db_privs.is_empty() {
+                if database.is_empty() {
+                    return Err(DriverError::InvalidConfig("database is required for database privileges".into()));
+                }
                 stmts.push(format!(
                     "GRANT {} ON DATABASE {} TO {}{}",
                     db_privs.join(", "),
@@ -444,21 +448,6 @@ pub fn build_admin_sql(command: &str, input: &serde_json::Value) -> Result<Strin
                     quote_ident(username),
                     grant_suffix,
                 ));
-            }
-
-            if stmts.is_empty() {
-                if !db_privs.is_empty() {
-                    stmts.push(format!(
-                        "GRANT {} ON ALL TABLES IN SCHEMA public TO {}{}",
-                        db_privs.join(", "),
-                        quote_ident(username),
-                        grant_suffix,
-                    ));
-                } else {
-                    return Err(DriverError::InvalidConfig(
-                        "no applicable privileges".into(),
-                    ));
-                }
             }
 
             Ok(stmts.join("; "))
@@ -628,22 +617,24 @@ async fn kill_pg_process(
     conn: &mut sqlx::PgConnection,
     input: &serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
-    use sqlx::Executor;
     let pid = input["pid"]
         .as_i64()
-        .ok_or_else(|| DriverError::InvalidConfig("pid is required".into()))?;
+        .and_then(|n| i32::try_from(n).ok())
+        .filter(|pid| *pid > 0)
+        .ok_or_else(|| DriverError::InvalidConfig("a valid PostgreSQL pid is required".into()))?;
     let force = input["force"].as_bool().unwrap_or(false);
-    let fn_name = if force {
-        "pg_terminate_backend"
+    let sql = if force {
+        "SELECT pg_terminate_backend($1)"
     } else {
-        "pg_cancel_backend"
+        "SELECT pg_cancel_backend($1)"
     };
-    let sql = format!("SELECT {fn_name}({pid})");
-    conn.execute(sql.as_str())
+    let accepted: bool = sqlx::query_scalar(sql)
+        .bind(pid)
+        .fetch_one(&mut *conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
     Ok(CommandResult {
-        data: json!({ "ok": true }),
+        data: json!({ "ok": accepted }),
     })
 }
 
@@ -930,19 +921,23 @@ async fn estimate_pg_table_rows(
 async fn execute_pg_admin_sql(
     conn: &mut sqlx::PgConnection,
     command: &str,
-    input: serde_json::Value,
+    mut input: serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
     use sqlx::Executor;
-    let sql = build_admin_sql(command, &input)?;
-    for stmt in sql.split("; ") {
-        let s = stmt.trim();
-        if s.is_empty() {
-            continue;
-        }
-        conn.execute(s)
-            .await
+    if matches!(command, "grant_privileges" | "revoke_privileges")
+        && input["database"].as_str().is_none_or(str::is_empty)
+        && privilege_list(&input)?.iter().any(|p| is_database_privilege(p))
+    {
+        let current: String = sqlx::query_scalar("SELECT current_database()")
+            .fetch_one(&mut *conn).await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        input["database"] = json!(current);
     }
+    let sql = build_admin_sql(command, &input)?;
+    // PostgreSQL, not a string delimiter, decides statement boundaries.
+    // Role passwords and identifiers can legitimately contain semicolons.
+    conn.execute(sql.as_str()).await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
     Ok(CommandResult {
         data: json!({ "ok": true }),
     })

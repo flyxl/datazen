@@ -99,7 +99,7 @@ impl ResourceProvider for PostgresResourceProvider {
         self.namespace_shape.canonicalize(&request.target)?;
 
         Ok(ResourceDescriptor {
-            provider_id: POSTGRES_PROVIDER_ID.to_string(),
+            provider_id: self.provider_id.to_string(),
             resource_key: format!("pg_pool:config:{}", request.connection_config.id),
             // A pool lends a backend per statement. That is not a fixed
             // session, and claiming `Fixed` here is what would let a caller
