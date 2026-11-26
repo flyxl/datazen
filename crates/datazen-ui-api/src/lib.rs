@@ -2187,6 +2187,11 @@ pub trait DesktopAdapter {
         Vec::new()
     }
 
+    /// Engine default from the host's actual linked driver.
+    fn default_connection_port(&self, _engine: &str) -> Option<u16> {
+        None
+    }
+
     /// The saved favorite queries (T6), newest first. The default answers
     /// the fixed error; the demo process has no favorites store.
     fn favorites(&self) -> Result<Vec<FavoriteSpec>, String> {

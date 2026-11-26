@@ -303,6 +303,7 @@ impl LiveSession {
 }
 
 pub struct LiveAdapter {
+    connection_ports: std::collections::BTreeMap<String, u16>,
     query_stops: std::collections::HashMap<u32, Arc<std::sync::atomic::AtomicBool>>,
     /// Jobs to the worker.
     jobs: Mutex<tokio::sync::mpsc::UnboundedSender<HostJob>>,
@@ -389,6 +390,16 @@ impl LiveAdapter {
         let (job_tx, mut job_rx) = tokio::sync::mpsc::unbounded_channel::<HostJob>();
         let (answer_tx, answer_rx) = std::sync::mpsc::channel::<HostAnswer>();
         let registry = Arc::new(host_registry());
+        // Resolve the admitted driver metadata at startup, not on a form press.
+        let connection_ports = futures_executor::block_on(async {
+            let mut ports = std::collections::BTreeMap::new();
+            for engine in registry.available_types() {
+                if let Some(port) = registry.get(&engine).await.and_then(|driver| driver.default_port()) {
+                    ports.insert(engine, port);
+                }
+            }
+            ports
+        });
         // N5: the execution runtime over the three host parts, sharing the
         // one repository with the adapter's connection use case.
         let (runtime, _backend, profiles) = crate::backend::assemble_runtime(
@@ -767,6 +778,7 @@ impl LiveAdapter {
             })
             .expect("the live job worker starts");
         Self {
+            connection_ports,
             query_stops: Default::default(),
             jobs: Mutex::new(job_tx),
             answers: Mutex::new(answer_rx),
@@ -2533,6 +2545,10 @@ impl DesktopAdapter for LiveAdapter {
         // means offered, and the form deserves the same list the binary
         // declares.
         self.registry.available_types()
+    }
+
+    fn default_connection_port(&self, engine: &str) -> Option<u16> {
+        self.connection_ports.get(engine).copied()
     }
 
     fn save_connection(&mut self, draft: &ConnectionDraft) -> Result<(), String> {

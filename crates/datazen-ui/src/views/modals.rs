@@ -337,9 +337,7 @@ fn connection_type_sidebar(state: &AppState, theme: tok::Theme, dark: bool) -> E
                 .radius(8.0)
                 .fill(row_bg)
                 .hover(theme.hover)
-                .on_press(move |state: &mut AppState| {
-                    state.connection_engine = rune::TextEdit::new(eng.clone());
-                })
+                .on_press(move |state: &mut AppState| state.select_connection_form_engine(&eng))
                 .child(engine_badge_icon(&engine, 20.0, dark))
                 .child(
                     text(label)

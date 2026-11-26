@@ -953,3 +953,63 @@ class OfflineJourneys:
         reloaded = self.replay(OPEN, until=5.5)
         self.expect_rendered(reloaded, text=committed, within="cell-0-1")
         self.expect_rendered(reloaded, text="fixture-lin", within="cell-1-1")
+
+    def test_legacy_connection_dialog_uses_driver_defaults_and_restores_per_engine_drafts(self):
+        """Migrate default ports and driver-specific drafts from new-connection.ts."""
+        create = tap(.5, "connections-create-first")
+
+        def field_value(tree, key_name):
+            def find(node, inside=False):
+                inside = inside or node.get("key") == key_name
+                if inside and node.get("role") == "text-input":
+                    return node
+                for child in node.get("children", ()):
+                    match = find(child, inside)
+                    if match is not None:
+                        return match
+                return None
+            self.expect_rendered(tree, key=key_name, within="connection-dialog")
+            result = find(tree["accessibility"])
+            self.assertIsNotNone(result, key_name)
+            return result.get("value", "")
+
+        address, name, engine = ("connection-address-input", "connection-name-input",
+                                 "connection-engine-input")
+        default = self.replay([create], until=1.85)
+        self.assertEqual(field_value(default, engine), "postgresql")
+        self.assertEqual(field_value(default, address), "127.0.0.1:5432")
+        for control in ("connection-database-input", "connection-username-input",
+                        "connection-test", "dialog-cancel", "connection-save"):
+            self.expect_rendered(default, key=control, within="connection-dialog")
+
+        mysql = [create, *fill(1.9, name, "PG draft"),
+                 *fill(3.1, address, "pg.example.test:5440"),
+                 tap(4.5, "connection-engine-option-mysql")]
+        mysql_tree = self.replay(mysql, until=5.9)
+        self.assertEqual(field_value(mysql_tree, engine), "mysql")
+        self.assertEqual(field_value(mysql_tree, address), "127.0.0.1:3306")
+
+        back_to_pg = [*mysql, *fill(6.0, name, "MySQL draft"),
+                      *fill(7.3, address, "my.example.test:3307"),
+                      tap(8.7, "connection-engine-option-postgresql")]
+        pg = self.replay(back_to_pg, until=10.0)
+        self.assertEqual(field_value(pg, name), "PG draft")
+        self.assertEqual(field_value(pg, address), "pg.example.test:5440")
+
+        back_to_mysql = [*back_to_pg, tap(10.2, "connection-engine-option-mysql")]
+        restored = self.replay(back_to_mysql, until=11.4)
+        self.assertEqual(field_value(restored, name), "MySQL draft")
+        self.assertEqual(field_value(restored, address), "my.example.test:3307")
+
+        maria = [*back_to_mysql, tap(11.6, "connection-engine-option-mariadb")]
+        mariadb = self.replay(maria, until=12.9)
+        self.assertEqual(field_value(mariadb, engine), "mariadb")
+        self.assertEqual(field_value(mariadb, address), "127.0.0.1:3306")
+
+        reopened = self.replay([
+            *maria, tap(13.1, "dialog-cancel"), tap(14, "connections-create-first"),
+        ], until=15.4)
+        self.assertEqual(field_value(reopened, engine), "postgresql")
+        self.assertEqual(field_value(reopened, name), "")
+        self.assertEqual(field_value(reopened, address), "127.0.0.1:5432")
+        self.assertFalse(self.store.exists(), "switching and cancelling a draft must never save it")

@@ -20,6 +20,15 @@ use rune::{
     FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
+/// Dialog-local drafts of non-secret fields. Passwords never enter this cache
+/// or cross from one engine to another.
+pub(crate) struct ConnectionFormSnapshot {
+    name: String,
+    address: String,
+    database: String,
+    username: String,
+}
+
 impl AppState {
     /// The export formats the dialog collects, in cycle order.
     pub const EXPORT_FORMATS: [&'static str; 3] = ["csv", "json", "sql"];
@@ -44,6 +53,11 @@ impl AppState {
         self.connection_username = TextEdit::new(String::new());
         self.connection_password = TextEdit::new(String::new());
         self.connection_database = TextEdit::new(String::new());
+        self.connection_form_snapshots.clear();
+        if let Some(port) = self.desktop.default_connection_port("postgresql") {
+            self.connection_engine = TextEdit::new("postgresql");
+            self.connection_address = TextEdit::new(format!("127.0.0.1:{port}"));
+        }
         self.connection_ssh_enabled = false;
         self.connection_ssh_host = TextEdit::new(String::new());
         self.connection_ssh_port = TextEdit::new(String::from("22"));
@@ -52,6 +66,46 @@ impl AppState {
 
     pub fn close_connection_dialog(&mut self) {
         self.connection_dialog_open = false;
+        self.connection_error = None;
+        self.connection_form_snapshots.clear();
+        self.connection_password = TextEdit::new("");
+    }
+
+    pub(crate) fn select_connection_form_engine(&mut self, engine: &str) {
+        if self.connection_engine.text == engine {
+            return;
+        }
+        // The in-memory demo has no linked engine vocabulary; keep its old
+        // immediate form behavior and let the native driver own defaults.
+        if self.desktop.available_engines().is_empty() {
+            self.connection_engine = TextEdit::new(engine);
+            return;
+        }
+        let previous = self.connection_engine.text.clone();
+        let carried_name = self.connection_name.text.clone();
+        if !previous.is_empty() {
+            self.connection_form_snapshots.insert(previous, ConnectionFormSnapshot {
+                name: carried_name.clone(),
+                address: self.connection_address.text.clone(),
+                database: self.connection_database.text.clone(),
+                username: self.connection_username.text.clone(),
+            });
+        }
+        let draft = self.connection_form_snapshots.remove(engine).unwrap_or_else(|| ConnectionFormSnapshot {
+            // An unsaved name is harmless and can follow the first switch,
+            // but returning to an engine restores its own draft.
+            name: carried_name,
+            address: self.desktop.default_connection_port(engine)
+                .map(|port| format!("127.0.0.1:{port}")).unwrap_or_default(),
+            database: String::new(),
+            username: String::new(),
+        });
+        self.connection_engine = TextEdit::new(engine);
+        self.connection_name = TextEdit::new(draft.name);
+        self.connection_address = TextEdit::new(draft.address);
+        self.connection_database = TextEdit::new(draft.database);
+        self.connection_username = TextEdit::new(draft.username);
+        self.connection_password = TextEdit::new("");
         self.connection_error = None;
     }
 
@@ -142,8 +196,7 @@ impl AppState {
         };
         match saved {
             Ok(()) => {
-                self.connection_error = None;
-                self.connection_dialog_open = false;
+                self.close_connection_dialog();
                 self.connection_name = TextEdit::new(String::new());
                 self.connection_engine = TextEdit::new(String::new());
                 self.connection_address = TextEdit::new(String::new());
