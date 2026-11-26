@@ -2269,7 +2269,7 @@ async fn run_query(
     })
 }
 
-/// What one setting write does to the document's ui object (L1): the three
+/// What one setting write does to the document's ui object (L1): the
 /// scalar settings set one flat key verbatim; a layout size sets a key
 /// inside the layout sub-object.
 enum UiWrite {
@@ -2281,6 +2281,9 @@ fn ui_write(setting: &datazen_ui_api::Setting) -> UiWrite {
     match setting {
         datazen_ui_api::Setting::Theme { dark } => {
             UiWrite::Scalar("themeDark", serde_json::json!(dark))
+        }
+        datazen_ui_api::Setting::BuiltinLanguage { locale } => {
+            UiWrite::Scalar("language", serde_json::json!(locale.code()))
         }
         datazen_ui_api::Setting::TablePageSize { rows } => {
             UiWrite::Scalar("tablePageSize", serde_json::json!(rows))
@@ -2696,8 +2699,7 @@ impl DesktopAdapter for LiveAdapter {
     }
 
     fn read_ui_settings(&self) -> Result<Vec<datazen_ui_api::Setting>, String> {
-        // The cached document answers; the "ui" object holds the three the
-        // UI knows. Absent keys are simply absent settings.
+        // The cached document answers. Absent keys are simply absent settings.
         let document = self.settings_document.lock().expect("the settings lock");
         let ui = document
             .get("ui")
@@ -2706,6 +2708,13 @@ impl DesktopAdapter for LiveAdapter {
         let mut settings = Vec::new();
         if let Some(dark) = ui.get("themeDark").and_then(|value| value.as_bool()) {
             settings.push(datazen_ui_api::Setting::Theme { dark });
+        }
+        if let Some(locale) = ui
+            .get("language")
+            .and_then(|value| value.as_str())
+            .and_then(datazen_ui_api::BuiltinLanguage::from_code)
+        {
+            settings.push(datazen_ui_api::Setting::BuiltinLanguage { locale });
         }
         if let Some(rows) = ui.get("tablePageSize").and_then(|value| value.as_u64()) {
             settings.push(datazen_ui_api::Setting::TablePageSize { rows: rows as u32 });

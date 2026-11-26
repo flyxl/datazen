@@ -140,16 +140,41 @@ pub mod settings_ui;
 /// selection by section key. Only the active section's content renders so
 /// navigation switching is observable and addressable.
 pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    use settings_content_state::SettingsField;
+
     let active = state.settings_section();
-    settings_content::SettingsContent::new(&state.settings_content, dark, cfg!(target_os = "macos"))
-        .on_select_section(|state: &mut AppState, section| state.set_settings_section(section))
-        .host_body(settings_content(state, theme, dark, active))
-        .build()
+    let shell = settings_content::SettingsContent::new(
+        &state.settings_content,
+        dark,
+        cfg!(target_os = "macos"),
+    )
+    .on_select_section(|state: &mut AppState, section| state.set_settings_section(section));
+    if active == "general" {
+        shell
+            .builtin_language(state.builtin_language())
+            .on_select_toggle(|state, which| state.settings_content.toggle_select(which))
+            .on_select_close(|state| state.settings_content.close_select())
+            .on_update_field(|state, field| {
+                if let SettingsField::Language(code) = field {
+                    state.save_builtin_language(&code);
+                }
+            })
+            .general_footer(
+                col()
+                    .gap(12.0)
+                    .child(settings_error_row(state, theme))
+                    .child(favorites_section(state, theme, dark)),
+            )
+            .build()
+    } else {
+        shell
+            .host_body(settings_content(state, theme, dark, active))
+            .build()
+    }
 }
 
 fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &str) -> El {
     let body = match active {
-        "general" => general_section(state, theme, dark),
         "appearance" => appearance_section(state, theme, dark),
         "dataBrowsing" => data_browsing_section(state, theme, dark),
         "editor" => editor_section(state, theme, dark),
@@ -171,20 +196,6 @@ fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &st
         .py(16.0)
         .gap(12.0)
         .child(body)
-}
-
-fn general_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    col()
-        .key("settings-section-general")
-        .w_full()
-        .gap(12.0)
-        .child(section_title(t("settings.general"), theme))
-        .child(
-            text("Application settings and saved queries.".to_owned())
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        )
-        .child(favorites_section(state, theme, dark))
 }
 
 fn appearance_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {

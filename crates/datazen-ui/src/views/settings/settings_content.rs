@@ -71,8 +71,7 @@
 //! formatted_rows`]; the `MutationObserver` dark-mode watch is the
 //! host's theme fact (the `dark` flag this shell receives).
 
-// No production consumer yet (the settings view wiring track mounts
-// the page); this crate's tests are the callers meanwhile.
+// Some optional ports are not yet mounted by the native host.
 #![allow(dead_code)]
 
 use std::rc::Rc;
@@ -183,6 +182,8 @@ pub struct SettingsContent<'a, S: 'static> {
     contributions: Vec<SettingsContribution>,
     // The native host can supply its wired body while retaining the shared navigation.
     host_body: Option<El>,
+    builtin_language: Option<datazen_ui_api::BuiltinLanguage>,
+    general_footer: Option<El>,
     // the child section slots
     language_packs_card: Option<El>,
     update_section: Option<El>,
@@ -234,6 +235,8 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             syntax_presets: Vec::new(),
             contributions: Vec::new(),
             host_body: None,
+            builtin_language: None,
+            general_footer: None,
             language_packs_card: None,
             update_section: None,
             table_data_section: None,
@@ -483,6 +486,17 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         self
     }
 
+    /// Use the live host's settings as the current language, not the standalone mirror.
+    pub fn builtin_language(mut self, locale: datazen_ui_api::BuiltinLanguage) -> Self {
+        self.builtin_language = Some(locale);
+        self
+    }
+
+    pub fn general_footer(mut self, footer: El) -> Self {
+        self.general_footer = Some(footer);
+        self
+    }
+
     // ---- build ----
 
     /// The page: the nav rail and the content pane in one row.
@@ -673,7 +687,10 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         layer: &mut Vec<El>,
         _sections: &[&crate::settings_state::SettingsSectionDef],
     ) -> El {
-        let mirror = &self.state.mirror;
+        let current = self
+            .builtin_language
+            .map(|locale| locale.code())
+            .unwrap_or(&self.state.mirror.language);
         let mut body = col()
             .key("settings-section-general")
             .w_full()
@@ -700,9 +717,9 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         let current_label = self
             .language_options
             .iter()
-            .find(|(code, _)| *code == mirror.language)
+            .find(|(code, _)| code == current)
             .map(|(_, label)| label.clone())
-            .unwrap_or_else(|| mirror.language.clone());
+            .unwrap_or_else(|| current.to_owned());
         let mut select = Select::new("settings-language-select", &labels)
             .values(&values)
             .current(Some(current_label.as_str()))
@@ -759,6 +776,9 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                             .color(k.c.text_muted),
                     ),
             );
+        }
+        if let Some(footer) = &self.general_footer {
+            body = body.child(footer.clone());
         }
         body
     }

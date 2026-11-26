@@ -49,7 +49,9 @@ use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 /// renders `<ConnectionPage />` beside those hosts, and owns the load-failure
 /// branch the router has to be able to show.
 pub fn view(state: &AppState, cx: &mut Cx<AppState>) -> El {
-    crate::views::app_root(state, cx)
+    crate::i18n::with_language(state.builtin_language(), || {
+        crate::views::app_root(state, cx)
+    })
 }
 
 /// The app's window chrome (L3): self-drawn 40pt titlebar and a minimum size

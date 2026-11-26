@@ -1,30 +1,52 @@
-//! zh-CN strings, generated from the React locale packs at build time.
+//! Built-in strings, generated from the React locale packs at build time.
 //!
-//! `packages/frontend/src/locales/zh-CN/*.ts` stays the single source of truth
-//! (see `build.rs`), so a translated string never exists twice. Callers ask for
-//! a key and get the Chinese text; an unknown key falls back to the key itself
-//! so a missing entry shows up in the UI instead of panicking or rendering
-//! nothing.
+//! The packs stay the source of truth (see `build.rs`). Native Rune initially
+//! uses Simplified Chinese, matching prior releases; an unknown key falls back
+//! to the key itself rather than rendering nothing.
 //!
 //! Placeholders such as `{count}` stay in the returned text: the caller formats
 //! them, exactly as the React `t('…', { count })` call does.
 
-include!(concat!(env!("OUT_DIR"), "/i18n_zh.rs"));
+use std::cell::Cell;
 
-/// The Chinese text behind `key`, or `key` itself when the table lacks it.
+use datazen_ui_api::BuiltinLanguage;
+
+include!(concat!(env!("OUT_DIR"), "/i18n_builtin.rs"));
+
+thread_local! {
+    static RENDER_LANGUAGE: Cell<BuiltinLanguage> =
+        const { Cell::new(BuiltinLanguage::SimplifiedChinese) };
+}
+
+/// Bind translations to one app's view build rather than mutating global
+/// state that would survive into another window, app instance, or test.
+pub(crate) fn with_language<R>(locale: BuiltinLanguage, render: impl FnOnce() -> R) -> R {
+    struct Restore(BuiltinLanguage);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            RENDER_LANGUAGE.set(self.0);
+        }
+    }
+
+    let _restore = Restore(RENDER_LANGUAGE.replace(locale));
+    render()
+}
+
+/// The rendered locale's text, the original Chinese text if missing in
+/// English, or the key when neither table contains it.
 ///
 /// A few React packs intentionally map a key to the empty string (a status line
 /// with nothing to say yet); those come back empty, matching `t()` there.
 pub fn t(key: &str) -> &str {
-    match lookup(key) {
-        Some(text) => text,
-        None => key,
-    }
+    let locale = RENDER_LANGUAGE.get();
+    lookup(locale, key)
+        .or_else(|| lookup(BuiltinLanguage::SimplifiedChinese, key))
+        .unwrap_or(key)
 }
 
 /// Whether `key` has a translation; useful for a parity test over used keys.
 pub fn has(key: &str) -> bool {
-    lookup(key).is_some()
+    lookup(BuiltinLanguage::SimplifiedChinese, key).is_some()
 }
 
 /// How many entries the generated table holds.
@@ -32,9 +54,13 @@ pub fn len() -> usize {
     ZH_CN.len()
 }
 
-fn lookup(key: &str) -> Option<&'static str> {
-    match ZH_CN.binary_search_by(|(candidate, _)| (*candidate).cmp(key)) {
-        Ok(index) => Some(ZH_CN[index].1),
+fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
+    let table: &[(&str, &str)] = match locale {
+        BuiltinLanguage::SimplifiedChinese => &ZH_CN,
+        BuiltinLanguage::English => &EN,
+    };
+    match table.binary_search_by(|(candidate, _)| (*candidate).cmp(key)) {
+        Ok(index) => Some(table[index].1),
         Err(_) => None,
     }
 }
@@ -58,6 +84,22 @@ mod tests {
         assert_eq!(t("common.save"), "保存");
         assert_eq!(t("common.cancel"), "取消");
         assert!(has("common.save"));
+    }
+
+    #[test]
+    fn english_table_is_used_only_in_its_render_scope() {
+        assert_eq!(
+            EN.iter().map(|(key, _)| key).collect::<Vec<_>>(),
+            ZH_CN.iter().map(|(key, _)| key).collect::<Vec<_>>()
+        );
+        with_language(BuiltinLanguage::English, || {
+            assert_eq!(t("settings.appearance"), "Appearance");
+            with_language(BuiltinLanguage::SimplifiedChinese, || {
+                assert_eq!(t("settings.appearance"), "外观");
+            });
+            assert_eq!(t("settings.appearance"), "Appearance");
+        });
+        assert_eq!(t("settings.appearance"), "外观");
     }
 
     #[test]

@@ -1912,6 +1912,9 @@ pub enum Setting {
     Theme {
         dark: bool,
     },
+    BuiltinLanguage {
+        locale: BuiltinLanguage,
+    },
     TablePageSize {
         rows: u32,
     },
@@ -1928,13 +1931,38 @@ pub enum Setting {
     },
 }
 
+/// Built-in locale supported by the native and shared Rune views.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BuiltinLanguage {
+    #[default]
+    SimplifiedChinese,
+    English,
+}
+
+impl BuiltinLanguage {
+    pub fn from_code(code: &str) -> Option<Self> {
+        match code {
+            "zh-CN" => Some(Self::SimplifiedChinese),
+            "en" => Some(Self::English),
+            _ => None,
+        }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::SimplifiedChinese => "zh-CN",
+            Self::English => "en",
+        }
+    }
+}
+
 impl Setting {
     /// The product's validation rules, shared by both ports (L1): the same
     /// sentences the memory port has always answered, so a rejection reads
     /// the same wherever it surfaces.
     pub fn validate(&self) -> Result<(), String> {
         match self {
-            Setting::Theme { .. } => Ok(()),
+            Setting::Theme { .. } | Setting::BuiltinLanguage { .. } => Ok(()),
             Setting::TablePageSize { rows } => {
                 if *rows == 0 || *rows > 500 {
                     return Err(format!("table page size must be 1..=500, got {rows}"));
@@ -2861,6 +2889,7 @@ fn setting_kind(setting: &Setting) -> u8 {
         Setting::TablePageSize { .. } => 1,
         Setting::QueryMaxRows { .. } => 2,
         Setting::Layout { .. } => 3,
+        Setting::BuiltinLanguage { .. } => 4,
     }
 }
 

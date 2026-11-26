@@ -116,7 +116,9 @@ impl AppState {
     /// `appearance` or `mcpServer`; invalid ids fall back to `general`.
     pub fn set_settings_section(&mut self, section: &str) {
         self.appearance_select = None;
-        self.settings_content.select_section(parse_settings_section(section));
+        self.settings_content.close_select();
+        self.settings_content
+            .select_section(parse_settings_section(section));
     }
 
     pub fn ui_settings(&self) -> Vec<Setting> {
@@ -124,6 +126,25 @@ impl AppState {
             Ok(settings) => settings,
             Err(_) => self.workspace.read_settings(),
         }
+    }
+
+    /// A missing or unsupported stored locale keeps the pre-migration UI language.
+    pub fn builtin_language(&self) -> datazen_ui_api::BuiltinLanguage {
+        self.ui_settings()
+            .into_iter()
+            .find_map(|setting| match setting {
+                Setting::BuiltinLanguage { locale } => Some(locale),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn save_builtin_language(&mut self, code: &str) {
+        self.settings_content.close_select();
+        let result = datazen_ui_api::BuiltinLanguage::from_code(code)
+            .ok_or_else(|| format!("unsupported built-in language: {code}"))
+            .and_then(|locale| self.write_ui_setting(Setting::BuiltinLanguage { locale }));
+        self.settings_error = result.err();
     }
 
     /// The active appearance: the persisted theme setting (from the desktop

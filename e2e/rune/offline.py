@@ -22,6 +22,69 @@ def fill(t, element, value):
 class OfflineJourneys:
     """Mix into the native replay harness; no externally hosted service."""
 
+    def test_settings_language_changes_other_ui_labels_and_survives_restart(self):
+        settings = self.root / "settings.json"
+        trigger = "settings-language-select-trigger"
+        appearance = "settings-nav-appearance"
+        opened = [SETTINGS, tap(1.5, trigger)]
+        choices = self.replay(opened, until=2.5)
+        self.expect_rendered(choices, text="外观", within=appearance)
+        self.expect_rendered(choices, text="简体中文", within=trigger)
+        self.expect_rendered(choices, key="option0")
+        self.expect_rendered(choices, text="English", within="option0")
+        self.expect_rendered(choices, key="option1")
+        self.assertFalse(visible(choices, key="option2"))
+        self.assertFalse(settings.exists(), "opening the selector must not save")
+
+        changed = self.replay([*opened, tap(2.8, "option0")], until=4.2)
+        self.expect_rendered(changed, text="Appearance", within=appearance)
+        self.assertFalse(visible(changed, text="外观", within=appearance))
+        self.assertFalse(visible(changed, key="settings-error"))
+        self.assertEqual(json.loads(settings.read_text())["ui"]["language"], "en")
+
+        restarted = self.replay([SETTINGS, tap(1.5, appearance)], until=2.8)
+        self.expect_rendered(restarted, key="appearance-color-scheme-select-trigger")
+        self.expect_rendered(restarted, text="Appearance", within=appearance)
+
+        back = self.replay([*opened, tap(2.8, "option1")], until=4.2)
+        self.expect_rendered(back, text="外观", within=appearance)
+        self.assertEqual(json.loads(settings.read_text())["ui"]["language"], "zh-CN")
+        restored = self.replay([SETTINGS], until=2.2)
+        self.expect_rendered(restored, text="外观", within=appearance)
+        self.expect_rendered(restored, key="settings-favorites")
+
+    def test_settings_unsupported_saved_locale_falls_back_without_rewriting_file(self):
+        settings = self.root / "settings.json"
+        previous = '{"ui":{"language":"fr","queryMaxRows":23},"keep":"sentinel"}'
+        settings.write_text(previous, encoding="utf-8")
+        tree = self.replay([SETTINGS], until=2.3)
+        self.expect_rendered(tree, text="外观", within="settings-nav-appearance")
+        self.expect_rendered(tree, text="简体中文", within="settings-language-select-trigger")
+        self.assertEqual(settings.read_text(encoding="utf-8"), previous)
+
+        choice = self.replay([
+            SETTINGS, tap(1.5, "settings-language-select-trigger"), tap(2.8, "option0"),
+        ], until=4.2)
+        self.expect_rendered(choice, text="Appearance", within="settings-nav-appearance")
+        self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), {
+            "ui": {"language": "en", "queryMaxRows": 23}, "keep": "sentinel",
+        })
+
+    def test_settings_language_failed_save_does_not_switch_rendered_language(self):
+        blocked = self.root / "settings.json"
+        blocked.mkdir()
+        sentinel = blocked / "keep"
+        sentinel.write_text("unchanged", encoding="utf-8")
+        tree = self.replay([
+            SETTINGS, tap(1.5, "settings-language-select-trigger"), tap(2.8, "option0"),
+        ], until=4.4)
+        self.expect_rendered(tree, key="settings-error")
+        self.expect_rendered(tree, text="外观", within="settings-nav-appearance")
+        self.expect_rendered(tree, text="简体中文", within="settings-language-select-trigger")
+        self.assertFalse(visible(tree, key="option0"))
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "unchanged")
+        self.assertEqual(list(blocked.iterdir()), [sentinel])
+
     def test_settings_theme_persists_after_relaunch(self):
         appearance = tap(1.4, "settings-nav-appearance")
         scheme = "appearance-color-scheme-select-trigger"
