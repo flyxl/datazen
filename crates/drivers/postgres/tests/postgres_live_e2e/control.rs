@@ -114,6 +114,17 @@ async fn control_channel_recovers_after_its_actual_anchor_database_is_removed() 
     let data_pids = live_pids(&mut fixture.oracle, &data).await;
     assert_eq!(anchor_pids.len(), 2);
     assert_eq!(data_pids.len(), 1);
+    let owning_connection = provider.connection_handle(&owning).expect("owning data handle");
+    let owner = driver.query(&owning_connection, "SELECT pg_backend_pid()")
+        .await.expect("identify the retained backend being closed");
+    let Some(Some(datazen_driver_api::Value::Integer(owning_pid))) =
+        owner.rows.first().and_then(|row| row.first())
+    else {
+        panic!("retained PostgreSQL backend PID");
+    };
+    assert!(anchor_pids.contains(&(*owning_pid as i32)));
+    let control_pid = *anchor_pids.iter().find(|&&pid| pid != *owning_pid as i32)
+        .expect("other backend owns the anchor control pool");
     assert_eq!(
         provider
             .close_resource(&owning)
@@ -121,7 +132,18 @@ async fn control_channel_recovers_after_its_actual_anchor_database_is_removed() 
             .expect("close only first data owner"),
         CloseDisposition::Closed
     );
-    assert_eq!(live_pids(&mut fixture.oracle, &anchor).await.len(), 1);
+    // Closing the local socket does not synchronously remove its entry from
+    // PostgreSQL's independent process view. Wait for actual backend exit.
+    tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            if live_pids(&mut fixture.oracle, &anchor).await == [control_pid] {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("only the originally shared control backend remains");
     assert_eq!(
         *ledger.control.lock().expect("controller still shared"),
         active_charge
