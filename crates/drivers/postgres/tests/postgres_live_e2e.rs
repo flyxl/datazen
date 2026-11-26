@@ -250,3 +250,6 @@ mod table_catalog;
 
 #[path = "postgres_live_e2e/resource_stream.rs"]
 mod resource_stream;
+
+#[path = "postgres_live_e2e/connection.rs"]
+mod connection;

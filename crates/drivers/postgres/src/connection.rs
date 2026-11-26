@@ -62,6 +62,12 @@ pub(crate) fn build_pg_options(
         SslMode::VerifyCa => PgSslMode::VerifyCa,
         SslMode::VerifyFull => PgSslMode::VerifyFull,
     };
+    // More than one rustls backend can be enabled by other workspace drivers.
+    // Keep the application's provider if it already chose one; otherwise the
+    // PG driver must not let SQLx panic on its first actual TLS handshake.
+    if !matches!(pg_ssl, PgSslMode::Disable) && rustls::crypto::CryptoProvider::get_default().is_none() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
     opts = opts.ssl_mode(pg_ssl);
 
     if let Some(schema) = config.schema.as_deref().filter(|s| !s.trim().is_empty()) {

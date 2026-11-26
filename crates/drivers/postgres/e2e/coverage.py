@@ -112,6 +112,34 @@ class Postgres:
     def invoke(self, program, *args, **kwargs):
         return cmd([self.pg_bin / program, *args], env=self.env, check=True, **kwargs)
 
+    def tls(self):
+        """A private, short-lived CA and leaf: IP-only identity is intentional."""
+        fixtures = self.cluster.parent
+        ca = fixtures / "ca.crt"
+        key = fixtures / "ca.key"
+        csr = fixtures / "server.csr"
+        config = fixtures / "server-cert.cnf"
+        config.write_text(
+            "[req]\ndistinguished_name=dn\nx509_extensions=ca\n[dn]\n"
+            "[ca]\nbasicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n"
+            "[leaf]\nbasicConstraints=critical,CA:FALSE\n"
+            "keyUsage=critical,digitalSignature,keyEncipherment\n"
+            "extendedKeyUsage=serverAuth\nsubjectAltName=IP:127.0.0.1\n"
+        )
+        def openssl(*args):
+            cmd(["openssl", *args], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256",
+                "-days", "2", "-config", config, "-subj", "/CN=DataZen test CA",
+                "-keyout", key, "-out", ca)
+        openssl("req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=DataZen test server",
+                "-keyout", self.cluster / "server.key", "-out", csr)
+        openssl("x509", "-req", "-in", csr, "-CA", ca, "-CAkey", key, "-CAcreateserial",
+                "-days", "2", "-sha256", "-extfile", config, "-extensions", "leaf",
+                "-out", self.cluster / "server.crt")
+        (self.cluster / "server.key").chmod(0o600)
+        key.unlink()
+        self.ca = ca
+
     def start(self):
         # Everything (including administrative operations) targets a new cluster.
         # No input DSN/user credentials are accepted and no Unix listening is needed.
@@ -125,9 +153,10 @@ class Postgres:
                         stdout=subprocess.DEVNULL)
         finally:
             password_file.unlink()
+        self.tls()
         self.invoke("pg_ctl", "-D", self.cluster, "-l", self.out / "server.log", "-w", "start",
                     "-o", f"-h 127.0.0.1 -p {self.port} -c unix_socket_directories='' "
-                          "-c max_connections=60 -c shared_buffers=32MB",
+                          "-c max_connections=60 -c shared_buffers=32MB -c ssl=on",
                     stdout=subprocess.DEVNULL)
         self.env["PGPASSWORD"] = self.password
 
@@ -147,6 +176,7 @@ class Postgres:
         result = dict(self.env)
         result.pop("PGPASSWORD")
         result.pop("DATAZEN_CONTRACT_ALLOW_UNVERIFIED", None)
+        result["PGSSLROOTCERT"] = str(self.ca)
         result["DATAZEN_CONTRACT_REQUIRE_LIVE"] = "1"
         result["TEST_PG_DATABASE_B"] = names[1]
         for prefix, db in (("TEST_PG_", names[0]), ("MIGRATION_TEST_", names[2])):

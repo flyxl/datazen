@@ -10,6 +10,7 @@ datazen-driver-api = { workspace = true }
 async-trait = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "macros"] }
 sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "json", "rust_decimal", "uuid"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rust_decimal = "1"
 serde_json = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }

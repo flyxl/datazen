@@ -4,7 +4,8 @@ This gate measures line coverage in `crates/drivers/postgres/src` against
 a **new, disposable PostgreSQL server**. It does not use a DSN, a saved
 connection, ambient PostgreSQL credentials, a mock, driver unit tests, or
 other engines' profiles. The runner requires a directory with compatible
-`initdb`, `pg_ctl` and `psql` and a non-root user. It binds to IPv4 loopback
+`initdb`, `pg_ctl` and `psql` from a TLS-enabled build, OpenSSL, and a non-root
+user. It mints a temporary CA for real TLS coverage and binds to IPv4 loopback
 on a temporary port, seeds marked test databases, and stops and removes
 the cluster when it exits normally. Run only from a trusted checkout.
 
@@ -15,7 +16,8 @@ python3 crates/drivers/postgres/e2e/coverage.py \
   --output target/postgres-e2e-report
 ```
 
-Choose a new output directory each time. Keep the Cargo target directory
+Choose a new output directory each time and do not share `--target-dir`
+across different checkouts; LLVM records the source paths in binaries. Keep the Cargo target directory
 separate for each checkout so cached coverage paths identify its own sources.
 The runner builds all eligible
 integration test targets in one locked Cargo invocation, stages exact
