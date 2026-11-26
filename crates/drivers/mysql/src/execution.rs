@@ -15,6 +15,7 @@ pub(crate) struct MysqlQueryExecution {
     pub(crate) control_pool: Option<MySqlPool>,
     pub(crate) thread_id: Option<u64>,
     pub(crate) cancel_requested: bool,
+    pub(crate) running: bool,
     pub(crate) transactional: bool,
 }
 
@@ -89,6 +90,28 @@ impl super::MysqlDriver {
         Ok(execution.cancel_requested)
     }
 
+    pub(crate) async fn claim_query_execution(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+    ) -> Result<(bool, Option<MySqlPool>), DriverError> {
+        let mut executions = self.query_executions.lock().await;
+        let execution = executions.get_mut(execution_id).ok_or_else(|| {
+            DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
+        })?;
+        if execution.session_id != handle.id {
+            return Err(DriverError::QueryExecutionSessionMismatch);
+        }
+        if execution.running {
+            return Err(DriverError::QueryFailed(format!(
+                "query execution '{}' is already running",
+                execution_id.as_str()
+            )));
+        }
+        execution.running = true;
+        Ok((execution.transactional, execution.target_pool.clone()))
+    }
+
     pub(crate) async fn stream_registered_execution(
         &self,
         handle: &ConnectionHandle,
@@ -97,16 +120,7 @@ impl super::MysqlDriver {
         limit: Option<u32>,
         on_event: &QueryStreamCallback,
     ) -> Result<(), DriverError> {
-        let (transactional, target_pool) = {
-            let executions = self.query_executions.lock().await;
-            let execution = executions.get(execution_id).ok_or_else(|| {
-                DriverError::QueryExecutionNotFound(execution_id.as_str().to_string())
-            })?;
-            if execution.session_id != handle.id {
-                return Err(DriverError::QueryExecutionSessionMismatch);
-            }
-            (execution.transactional, execution.target_pool.clone())
-        };
+        let (transactional, target_pool) = self.claim_query_execution(handle, execution_id).await?;
 
         let result: Result<(), DriverError> = async {
             if transactional {

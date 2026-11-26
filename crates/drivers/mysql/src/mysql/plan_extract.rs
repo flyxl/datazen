@@ -52,18 +52,21 @@ impl MysqlDriver {
     }
 
     pub(crate) fn extract_rule(s: &str, keyword: &str) -> String {
-        if let Some(pos) = s.find(keyword) {
-            let after = s[pos + keyword.len()..].trim_start();
-            let rule = after
-                .split(|c: char| c == ',' || c == ')' || c == '\n')
-                .next()
-                .unwrap_or("")
-                .trim();
-            if !rule.is_empty() {
-                return rule.to_uppercase();
-            }
+        let Some((_, rest)) = s.split_once(keyword) else {
+            return "RESTRICT".to_owned();
+        };
+        let mut words = rest
+            .split(|ch: char| ch.is_ascii_whitespace() || matches!(ch, ',' | ')'))
+            .filter(|word| !word.is_empty());
+        let first = words.next().unwrap_or_default();
+        match (first, words.next()) {
+            ("SET", Some("NULL")) => "SET NULL",
+            ("SET", Some("DEFAULT")) => "SET DEFAULT",
+            ("NO", Some("ACTION")) => "NO ACTION",
+            ("CASCADE", _) => "CASCADE",
+            _ => "RESTRICT",
         }
-        "RESTRICT".to_string()
+        .to_owned()
     }
     pub(crate) fn extract_mysql_plan_metrics(
         plan_json: &serde_json::Value,

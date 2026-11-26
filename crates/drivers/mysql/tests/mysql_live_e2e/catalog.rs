@@ -56,7 +56,10 @@ async fn mysql_object_browser_reads_and_replays_server_ddl() {
             // The schema-object API separates the body from view metadata.
             assert!(ddl.contains(&table) && shown.data["viewMetadata"].is_object());
         } else {
-            assert!(ddl.contains(name), "actual {kind} DDL owns the expected name");
+            assert!(
+                ddl.contains(name),
+                "actual {kind} DDL owns the expected name"
+            );
         }
     }
     let table_ddl = driver
@@ -215,4 +218,114 @@ async fn mysql_explain_reports_the_real_plan_and_retained_temporary_table() {
         .disconnect(handle)
         .await
         .expect("release fixed checkout");
+}
+
+#[tokio::test]
+async fn mysql_retained_metadata_distinguishes_real_relation_names_temp_state_and_composite_constraints(
+) {
+    let mut f = Fixture::open().await;
+    let driver = datazen_driver_mysql::MysqlDriver::new(false);
+    let handle = driver
+        .connect_fixed_session(&f.cfg)
+        .await
+        .expect("own retained MySQL relation browsing");
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let parent = format!("dz_exact_parent_{tag}");
+    let child = format!("dz_exact_child_{tag}");
+    let fk = format!("fk_exact_{tag}");
+    let ck = format!("ck_exact_{tag}");
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {parent}(x INT NOT NULL, y INT NOT NULL, PRIMARY KEY(x,y));
+         CREATE TABLE {child}(id INT PRIMARY KEY, a INT NULL, b INT NULL, note VARCHAR(30) NOT NULL DEFAULT 'left, right',
+           CONSTRAINT {fk} FOREIGN KEY(a,b) REFERENCES {parent}(x,y) ON UPDATE CASCADE ON DELETE SET NULL,
+           CONSTRAINT {ck} CHECK ((char_length(note)>=1) AND note <> 'forbidden,)'));"
+    )).execute(&mut f.oracle).await.expect("independent persisted real table metadata");
+    let cfg_name = f.database.clone();
+    let schema = driver
+        .get_table_schema(&handle, &child, &cfg_name, None)
+        .await
+        .expect("real SHOW FULL / INDEX / CREATE parse");
+    assert_eq!(schema.primary_keys, ["id"]);
+    let constraint = schema
+        .check_constraints
+        .iter()
+        .find(|x| x.name == ck)
+        .expect("nested MySQL CHECK with quoted comma");
+    assert!(constraint.expression.contains("forbidden,)"));
+    let foreign = schema
+        .foreign_keys
+        .iter()
+        .find(|x| x.name == fk)
+        .expect("composite real FK parsed");
+    assert_eq!(foreign.columns, ["a", "b"]);
+    assert_eq!(foreign.referenced_columns, ["x", "y"]);
+    assert_eq!(foreign.on_update, "CASCADE");
+    assert_eq!(foreign.on_delete, "SET NULL");
+    assert!(foreign.referenced_table.ends_with(&parent));
+    let normalizer = driver
+        .type_normalizer()
+        .expect("native schema comparison normalizer");
+    let id = schema.columns.iter().find(|c| c.name == "id").unwrap();
+    assert_eq!(
+        normalizer.normalize_type(&id.data_type),
+        normalizer.normalize_type("INTEGER")
+    );
+
+    let literal = format!("live.dot_{tag}");
+    let quoted = driver.quote_ident(&literal);
+    let raw=format!("CREATE TEMPORARY TABLE {quoted} (temporary_id BIGINT PRIMARY KEY, note VARCHAR(20) DEFAULT 'kept')");
+    driver
+        .execute(&handle, &raw)
+        .await
+        .expect("real temp table with literal dot");
+    let result = driver
+        .execute_command(&handle, "get_table_schema", json!({"relationSql":quoted}))
+        .await
+        .expect("resolve actual retained scoped identity");
+    assert_eq!(result.data["resolvedTarget"]["table"], literal);
+    assert_eq!(result.data["resolvedTarget"]["database"], cfg_name);
+    assert_eq!(result.data["resolvedTarget"]["sessionScoped"], true);
+    assert_eq!(result.data["schema"]["columns"][0]["name"], "temporary_id");
+    assert!(sqlx::query(&format!("SELECT temporary_id FROM {quoted}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .is_err());
+
+    let persisted = driver
+        .execute_command(
+            &handle,
+            "get_table_schema",
+            json!({"relationSql":format!("`{cfg_name}`.`{child}`"),"database":cfg_name}),
+        )
+        .await
+        .expect("exact qualified persisted table");
+    assert_eq!(persisted.data["resolvedTarget"]["table"], child);
+    assert_eq!(persisted.data["resolvedTarget"]["sessionScoped"], false);
+    for wrong in [
+        format!("{child} JOIN {parent} ON a=x"),
+        format!("(SELECT id FROM {child}) t"),
+        format!("{child},{parent}"),
+    ] {
+        assert!(
+            matches!(
+                driver
+                    .execute_command(
+                        &handle,
+                        "get_table_schema",
+                        json!({"relationSql":wrong,"database":cfg_name})
+                    )
+                    .await,
+                Err(DriverError::InvalidConfig(_))
+            ),
+            "join/derived/multi-source cannot identify one editable table"
+        );
+    }
+    assert!(driver
+        .get_table_schema(&handle, "dz_absent_for_mysql_metadata", &cfg_name, None)
+        .await
+        .is_err());
+    driver
+        .disconnect(handle)
+        .await
+        .expect("close and remove session-only objects");
 }

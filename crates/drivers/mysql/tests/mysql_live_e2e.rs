@@ -135,6 +135,8 @@ async fn mysql_dependency_catalog_status_matches_real_server_visibility() {
 mod catalog;
 #[path = "mysql_live_e2e/connection.rs"]
 mod connection;
+#[path = "mysql_live_e2e/execution.rs"]
+mod execution;
 #[path = "mysql_live_e2e/migration_objects.rs"]
 mod migration_objects;
 #[path = "mysql_live_e2e/resource.rs"]

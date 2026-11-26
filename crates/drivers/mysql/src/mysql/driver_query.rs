@@ -293,6 +293,7 @@ impl MysqlDriver {
                 control_pool,
                 thread_id: self.fixed_sessions.read().await.get(&handle.id).copied(),
                 cancel_requested: false,
+                running: false,
                 transactional,
             },
         );
@@ -309,6 +310,7 @@ impl MysqlDriver {
     ) -> Result<(), DriverError> {
         let statements = split_mysql_statements(sql);
         if statements.is_empty() {
+            self.claim_query_execution(handle, execution_id).await?;
             self.finish_query_execution(handle, execution_id).await?;
             on_event(QueryStreamEvent::Done { total_time_ms: 0 });
             return Ok(());

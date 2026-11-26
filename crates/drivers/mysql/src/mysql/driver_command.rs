@@ -39,6 +39,11 @@ impl MysqlDriver {
                         "one relation is required".into(),
                     ));
                 };
+                if !relation.joins.is_empty() {
+                    return Err(DriverError::InvalidConfig(
+                        "a join cannot identify one editable table".into(),
+                    ));
+                }
                 let sqlparser::ast::TableFactor::Table { name, .. } = &relation.relation else {
                     return Err(DriverError::InvalidConfig(
                         "one named relation is required".into(),

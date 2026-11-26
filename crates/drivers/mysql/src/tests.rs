@@ -630,6 +630,7 @@ async fn mariadb_transaction_execution_cancel_is_pending_until_target_is_bound()
             control_pool: None,
             thread_id: None,
             cancel_requested: false,
+            running: false,
             transactional: true,
         },
     );

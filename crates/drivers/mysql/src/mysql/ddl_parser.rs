@@ -17,8 +17,9 @@ impl MysqlDriver {
             let ref_table = Self::extract_qualified_table_after(trimmed, "REFERENCES");
             let ref_cols = Self::extract_backtick_list_after(trimmed, "REFERENCES");
 
-            let on_delete = Self::extract_rule(trimmed, "ON DELETE");
-            let on_update = Self::extract_rule(trimmed, "ON UPDATE");
+            let options = trimmed.rsplit_once(')').map_or("", |(_, options)| options);
+            let on_delete = Self::extract_rule(options, "ON DELETE");
+            let on_update = Self::extract_rule(options, "ON UPDATE");
 
             if !fk_name.is_empty() && !fk_cols.is_empty() {
                 fks.push(ForeignKeyInfo {
