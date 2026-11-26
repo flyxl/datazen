@@ -244,3 +244,6 @@ mod observation;
 
 #[path = "postgres_live_e2e/backup.rs"]
 mod backup;
+
+#[path = "postgres_live_e2e/table_catalog.rs"]
+mod table_catalog;
