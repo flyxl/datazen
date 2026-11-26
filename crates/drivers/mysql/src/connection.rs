@@ -45,6 +45,13 @@ pub(crate) fn build_mysql_options(
         SslMode::VerifyCa => MySqlSslMode::VerifyCa,
         SslMode::VerifyFull => MySqlSslMode::VerifyIdentity,
     };
+    if !matches!(mysql_ssl, MySqlSslMode::Disabled)
+        && rustls::crypto::CryptoProvider::get_default().is_none()
+    {
+        // A host may link a different Rustls consumer and enable both crypto
+        // backends. Honor any provider it has installed; otherwise select ring.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
     opts = opts.ssl_mode(mysql_ssl);
 
     Ok(opts)

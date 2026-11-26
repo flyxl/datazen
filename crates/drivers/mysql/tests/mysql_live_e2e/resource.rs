@@ -362,3 +362,129 @@ async fn mysql_provider_retains_real_transaction_context_and_closes_named_rollba
         "all admitted connection budgets must settle exactly once"
     );
 }
+
+#[tokio::test]
+async fn mysql_resource_stream_persists_batch_metadata_and_recovers_after_quota_error() {
+    let f = Fixture::open().await;
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|p| p.driver_id() == "mysql")
+        .unwrap();
+    let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+    let driver = factory.create();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let fixed = provider
+        .acquire_resource(
+            &AcquireResourceRequest {
+                connection_config: f.cfg.clone(),
+                identity_scope: IdentityScope::default(),
+                target: NamespaceTarget::empty().with_database(f.database.clone()),
+                baseline: Baseline::default(),
+                scope: ResourceScope {
+                    purpose: ResourcePurpose::InteractiveQuery,
+                    max_physical_connections: 8,
+                    holds_open_transaction: false,
+                    pin_for_streaming: false,
+                },
+            },
+            &budget,
+        )
+        .await
+        .expect("actual retained result checkout");
+    let connection = provider
+        .connection_handle(&fixed)
+        .expect("actual connection");
+    let before = driver
+        .query(&connection, "SELECT CONNECTION_ID()")
+        .await
+        .expect("exact MySQL backend")
+        .rows;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("result.ndjson");
+    let sink = Artifact(Mutex::new(std::fs::File::create(&path).unwrap()));
+    let id = |label| QueryExecutionId::new(label);
+    let prepared = CommandCall::new(
+        "query",
+        json!({
+            "sql":"WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<270) SELECT n,REPEAT('q', 800) AS payload FROM seq WHERE n>=? ORDER BY n",
+            "boundParameters":[Value::Integer(2)],"limit":260
+        }),
+    );
+    let completion = provider
+        .execute_on_resource(&fixed, &id("native-batches"), &prepared, &sink)
+        .await
+        .expect("persist real bounded rows");
+    assert!(completion.completion_status.is_success());
+    let read = || {
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<Json>(line).unwrap())
+            .collect::<Vec<_>>()
+    };
+    let saved = read();
+    let rows = saved
+        .iter()
+        .filter(|d| d["kind"] == "rows")
+        .flat_map(|d| d["rows"].as_array().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(rows.len(), 260);
+    assert_eq!(rows[0][0], serde_json::to_value(Value::Integer(2)).unwrap());
+    assert_eq!(
+        rows[259][0],
+        serde_json::to_value(Value::Integer(261)).unwrap()
+    );
+    assert!(saved
+        .iter()
+        .any(|d| d["kind"] == "statementMetadata" && d["truncated"] == true));
+    let empty = CommandCall::new(
+        "query",
+        json!({"sql":"SELECT CAST(? AS SIGNED) AS typed WHERE FALSE","boundParameters":[Value::Integer(41)]}),
+    );
+    provider
+        .execute_on_resource(&fixed, &id("empty-native-bound"), &empty, &sink)
+        .await
+        .expect("native empty bound result");
+    assert!(read()
+        .iter()
+        .any(|d| d["kind"] == "statementMetadata" && d["columns"][0]["name"] == "typed"));
+    let malformed = CommandCall::new(
+        "query",
+        json!({"sql":"SELECT ?; SELECT 2","boundParameters":[Value::Integer(1)]}),
+    );
+    assert!(provider
+        .execute_on_resource(&fixed, &id("ambiguous-native-sql"), &malformed, &sink)
+        .await
+        .is_err());
+    let too_wide = CommandCall::new(
+        "query",
+        json!({"sql":"SELECT REPEAT('a', 1200000) AS over_limit"}),
+    );
+    let err = provider
+        .execute_on_resource(&fixed, &id("native-row-quota"), &too_wide, &sink)
+        .await
+        .expect_err("no unbounded single-row artifact");
+    assert!(matches!(err,ResourceError::SinkRejected {reason} if reason.contains("batch limit")));
+    assert_eq!(
+        driver
+            .query(&connection, "SELECT CONNECTION_ID()")
+            .await
+            .expect("driver proves wire drain and never reconnects unobserved")
+            .rows,
+        before
+    );
+    assert_eq!(
+        driver
+            .query(&connection, "SELECT 17 AS after_quota")
+            .await
+            .unwrap()
+            .rows,
+        [vec![Some(Value::Integer(17))]]
+    );
+    assert_eq!(
+        provider.close_resource(&fixed).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}

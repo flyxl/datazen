@@ -27,16 +27,28 @@ impl MysqlDriver {
     pub(crate) async fn physical_database_identity_inner(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
     ) -> Result<Option<String>, DriverError> {
+        use sqlx::Executor;
         let mut connection = crate::session_connection::for_session(self, handle).await?;
-        let Ok(database_row) = sqlx::query("SELECT DATABASE() AS database_name")
-            .fetch_one(&mut *connection)
-            .await
-        else {
-            return Ok(None);
+        let database = database.trim();
+        let database: Option<String> = if database.is_empty() {
+            (&mut *connection)
+                .fetch_optional("SELECT DATABASE() AS database_name")
+                .await
+                .ok()
+                .flatten()
+                .and_then(|row| row.try_get("database_name").unwrap_or(None))
+        } else {
+            // A MySQL handle can address several databases on one server.
+            // Verify the requested one without switching the current catalog.
+            sqlx::query_scalar("SELECT CAST(SCHEMA_NAME AS CHAR) FROM information_schema.SCHEMATA WHERE BINARY SCHEMA_NAME = BINARY ?")
+                .bind(database)
+                .fetch_optional(&mut *connection)
+                .await
+                .ok()
+                .flatten()
         };
-        let database: Option<String> = database_row.try_get("database_name").unwrap_or(None);
         let Some(database) = database else {
             return Ok(None);
         };
