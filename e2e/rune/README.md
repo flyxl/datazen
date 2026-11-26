@@ -26,19 +26,24 @@ coverage.
 
 ## Opt-in real SQL servers
 
-`--postgres-config FILE` adds two named journeys and `--mysql-config FILE`
-adds one. An unconfigured engine is not included in the test counts. The config is a private JSON file with `host` (`127.0.0.1`),
-`port` (integer), `database` (`datazen_e2e`), `user`, `password`, and
+`--postgres-config FILE` adds three named journeys and `--mysql-config FILE`
+adds two. An unconfigured engine is not included in the test counts. The
+config is a private JSON file with `host` (`127.0.0.1`), `port` (integer), `database` (`datazen_e2e`), `user`, `password`, and
 `client` (path to `psql` or `mysql`). Do not commit the config. Use disposable
 servers only; create a `rune_e2e_fixture(marker VARCHAR(40) NOT NULL)` marker
 table containing exactly one row, `datazen-rune-disposable`. The runner rejects
 any other database or marker before mutating anything. Each journey creates
-and removes just its own randomized table. This verifies connection,
+and removes only its own randomized tables or schema. This verifies connection,
 catalog/browse, SQL result, and committed inline edit against the selected
 server and compares persisted rows using an independent CLI process.
 PostgreSQL verifies a non-default schema and safe refusal of same-name
 relations when the UI only carries a bare table name. Explicitly selecting one
 homonymous relation across namespaces remains separate work.
+Both engines verify ordered columns/types/nullability, all indexes with
+column order and uniqueness, and an ordered composite FK from actual server
+metadata. MySQL also compares the complete rendered table DDL against
+`SHOW CREATE TABLE`. PostgreSQL table DDL is not wired through its native
+object DDL provider; its columns, indexes and FK are checked instead.
 
 ## Migration inventory
 
@@ -53,7 +58,7 @@ driver-specific assertions are added.
 | `query-history.ts` | Real successful and failed SQL, reload, connection isolation, load a saved statement and explicitly rerun | Database-grouped all-scope, search, history lifecycle/delete |
 | `workflow.ts`, `workflow-window.ts` | Offline editor error, YAML save/restart, actual SQLite write and independent readback | Typed step output, variables, conditional and linked steps, execution history, workflow-to-dashboard |
 | `data-dashboard-sql-add.ts` | Real SQLite SQL widget creation, persisted chart and hidden workflow, restart + manual refresh after an independent database change | Multi-board import/export and scheduled refresh behavior |
-| Host SQL contract and driver-specific journeys | Opt-in PostgreSQL/MySQL browse/query/edit slice | Both-engine matrix for full contract, indexes/DDL, schema tree and pool rotation, maintenance commands |
+| Host SQL contract and driver-specific journeys | Real PostgreSQL/MySQL browse/query/edit and catalog structure, composite foreign keys and ordered indexes; MySQL table DDL | Index create/drop UI, PostgreSQL table DDL, complete schema tree and pool rotation, maintenance commands |
 | Redis | Separate checked-in native real-server fixture and driver production line coverage | Verify any additional legacy-only behavior separately |
 | Migrations and transfer | Existing UI activation/validation paths are not proof of transfer | Real source/target readback, diff/apply, heterogeneous transfers, synchronization, recovery |
 | AI, wapps, packaged desktop | Not counted by this harness | Real provider/bridge checks, native dialogs/tray/window behavior, platform packages |

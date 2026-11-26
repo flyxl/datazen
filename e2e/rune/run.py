@@ -14,11 +14,12 @@ from favorites import FavoritesJourney
 from offline import OfflineJourneys
 from query_history import QueryHistoryJourney
 from scenarios import fixture, query_steps, tap, type_text, visible
+from tcp_metadata import TcpMetadataJourneys, with_metadata_journeys
 from tcp_sql import TcpSqlJourneys, with_tcp_journeys
 from workflow import WorkflowJourney
 
 
-class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, unittest.TestCase):
+class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="datazen-native-e2e-")
         self.addCleanup(tmp.cleanup)
@@ -186,11 +187,13 @@ if __name__ == "__main__":
     parser.add_argument("--postgres-config", type=Path)
     parser.add_argument("--mysql-config", type=Path)
     parsed, remaining = parser.parse_known_args()
-    with_tcp_journeys(NativeJourneys, {
+    configs = {
         engine: config.resolve(strict=True)
         for engine, config in (("postgresql", parsed.postgres_config), ("mysql", parsed.mysql_config))
         if config is not None
-    })
+    }
+    with_tcp_journeys(NativeJourneys, configs)
+    with_metadata_journeys(NativeJourneys, configs)
     if parsed.list_tests:
         if remaining:
             parser.error("--list-tests does not take test selectors")
