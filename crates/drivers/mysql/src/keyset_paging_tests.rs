@@ -7,7 +7,7 @@
 use datazen_driver_api::*;
 
 fn driver() -> std::sync::Arc<dyn DatabaseDriver> {
-    crate::MysqlFactory.create()
+    crate::MYSQL_FACTORY.create()
 }
 
 #[test]

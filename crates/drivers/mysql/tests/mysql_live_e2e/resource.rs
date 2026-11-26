@@ -1027,3 +1027,97 @@ async fn mysql_native_checkout_timeout_does_not_run_waiting_commands_or_poison_s
     );
     assert!(ledger.0.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn mysql_real_resource_survives_concurrent_factory_lookup_in_both_orders() {
+    let mut f = Fixture::open().await;
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|p| p.driver_id() == "mysql")
+        .unwrap();
+    let simultaneous = Arc::new(std::sync::Barrier::new(3));
+    let left = std::thread::spawn({
+        let gate = simultaneous.clone();
+        move || {
+            gate.wait();
+            let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+            (factory.create(), provider)
+        }
+    });
+    let right = std::thread::spawn({
+        let gate = simultaneous.clone();
+        move || {
+            gate.wait();
+            let driver = factory.create();
+            (
+                driver,
+                datazen_driver_api::require_resource_provider(factory).unwrap(),
+            )
+        }
+    });
+    simultaneous.wait();
+    let (d1, p1) = left.join().unwrap();
+    let (d2, p2) = right.join().unwrap();
+    assert!(Arc::ptr_eq(&d1, &d2));
+    assert!(Arc::ptr_eq(&p1, &p2));
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let resource = p1
+        .acquire_resource(
+            &AcquireResourceRequest {
+                connection_config: f.cfg.clone(),
+                target: NamespaceTarget::empty().with_database(f.database.clone()),
+                identity_scope: IdentityScope::default(),
+                baseline: Baseline::default(),
+                scope: ResourceScope {
+                    purpose: ResourcePurpose::InteractiveQuery,
+                    max_physical_connections: 1,
+                    holds_open_transaction: false,
+                    pin_for_streaming: false,
+                },
+            },
+            &budget,
+        )
+        .await
+        .unwrap();
+    let a = p1.connection_handle(&resource).unwrap();
+    let b = p2.connection_handle(&resource).unwrap();
+    assert_eq!(a.id, b.id);
+    let physical = d1.query(&a, "SELECT CONNECTION_ID()").await.unwrap();
+    assert_eq!(
+        d2.query(&b, "SELECT CONNECTION_ID()").await.unwrap().rows,
+        physical.rows
+    );
+    let table = format!("dz_registry_{}", uuid::Uuid::new_v4().simple());
+    sqlx::query(&format!("CREATE TABLE {table}(id INT PRIMARY KEY)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let sink = Artifact(Mutex::new(
+        std::fs::File::create(dir.path().join("mutated.jsonl")).unwrap(),
+    ));
+    let call = CommandCall::new(
+        "execute",
+        json!({"sql":format!("INSERT INTO {table} VALUES(27)")}),
+    );
+    let run = QueryExecutionId::new(format!("native-{table}"));
+    assert!(
+        p2.execute_on_resource(&resource, &run, &call, &sink)
+            .await
+            .unwrap()
+            .completion_status
+            .is_success()
+    );
+    let durable: i32 = sqlx::query_scalar(&format!("SELECT id FROM {table}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(durable, 27);
+    assert_eq!(
+        p2.close_resource(&resource).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(p1.connection_handle(&resource).is_err());
+    assert!(ledger.0.lock().unwrap().is_empty());
+}

@@ -40,417 +40,104 @@ pub use schema_object_sql::MysqlSchemaObjectSql;
 pub use sync_adapter::MysqlSyncAdapter;
 pub use type_normalizer::MysqlTypeNormalizer;
 
-struct MysqlFactory;
+/// A wire-family member’s protocol adapter. Only the compatibility
+/// aliases use ReuseDriver; MariaDB has distinct discovery on MysqlDriver.
+#[derive(Clone, Copy)]
+enum FamilyProtocol {
+    Mysql,
+    Mariadb,
+    ReusedMysql,
+}
 
-/// The one driver every caller shares, and the one [`MYSQL_PROVIDER`] is bound to.
-static MYSQL_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
-/// The one provider, bound to [`MYSQL_DRIVER`].
-static MYSQL_PROVIDER: OnceLock<Arc<dyn ResourceProvider>> = OnceLock::new();
+/// One registration owns its own lazy pair. Keeping construction here makes
+/// cancellation and provider wiring a shared contract instead of six copies
+/// that can diverge. Different registrations never share a driver or epoch.
+struct MysqlFamilyFactory {
+    id: &'static str,
+    protocol: FamilyProtocol,
+    driver: OnceLock<Arc<dyn DatabaseDriver>>,
+    provider: OnceLock<Arc<dyn ResourceProvider>>,
+}
 
-impl MysqlFactory {
-    fn driver(&self) -> Arc<dyn DatabaseDriver> {
-        MYSQL_DRIVER
-            .get_or_init(|| Arc::new(MysqlDriver::new(false)))
-            .clone()
-    }
-
-    fn provider(&self) -> Arc<dyn ResourceProvider> {
-        MYSQL_PROVIDER
-            .get_or_init(|| {
-                Arc::new(MysqlResourceProvider::new(
-                    self.driver(),
-                    self.driver_id(),
-                    self.resource_capabilities(),
-                )) as Arc<dyn ResourceProvider>
-            })
-            .clone()
+impl MysqlFamilyFactory {
+    const fn new(id: &'static str, protocol: FamilyProtocol) -> Self {
+        Self {
+            id,
+            protocol,
+            driver: OnceLock::new(),
+            provider: OnceLock::new(),
+        }
     }
 }
 
-impl DatabaseDriverFactory for MysqlFactory {
+impl DatabaseDriverFactory for MysqlFamilyFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
-        self.driver()
-    }
-    fn driver_id(&self) -> &'static str {
-        "mysql"
-    }
-    fn supports_explain(&self) -> bool {
-        true
-    }
-    fn supports_cancel_query(&self) -> bool {
-        true
-    }
-    fn supports_query_execution_cancel(&self) -> bool {
-        true
-    }
-
-    /// A real P2 resource provider over the real driver: opaque handles, a
-    /// per-provider runtime epoch, and a budget permit released exactly once.
-    /// `None` here would mean "not migrated", so it is never returned.
-    ///
-    /// Memoized, and bound to [`MysqlFactory::driver`] — the same instance
-    /// `create()` returns. Rebuilding it per call would leave the host holding
-    /// one driver while the provider drives another, and would reject every
-    /// handle saved across two lookups.
-    fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
-        Some(self.provider())
-    }
-
-    /// Derived from the factory's own declarations, so the two can never drift.
-    fn resource_capabilities(&self) -> CapabilitySet {
-        mysql_capability_set(self.supports_query_execution_cancel())
-    }
-}
-datazen_driver_api::register_driver!(&MysqlFactory);
-
-/// See [`MysqlFactory`] for why the driver and the provider are memoized
-/// together rather than rebuilt per call.
-struct MariadbFactory;
-
-/// The one driver every caller shares, and the one [`MARIADB_PROVIDER`] is bound to.
-static MARIADB_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
-/// The one provider, bound to [`MARIADB_DRIVER`].
-static MARIADB_PROVIDER: OnceLock<Arc<dyn ResourceProvider>> = OnceLock::new();
-
-impl MariadbFactory {
-    fn driver(&self) -> Arc<dyn DatabaseDriver> {
-        MARIADB_DRIVER
-            .get_or_init(|| Arc::new(MysqlDriver::new(true)))
-            .clone()
-    }
-
-    fn provider(&self) -> Arc<dyn ResourceProvider> {
-        MARIADB_PROVIDER
-            .get_or_init(|| {
-                Arc::new(MysqlResourceProvider::new(
-                    self.driver(),
-                    self.driver_id(),
-                    self.resource_capabilities(),
-                )) as Arc<dyn ResourceProvider>
-            })
-            .clone()
-    }
-}
-
-impl DatabaseDriverFactory for MariadbFactory {
-    fn create(&self) -> Arc<dyn DatabaseDriver> {
-        self.driver()
-    }
-    fn driver_id(&self) -> &'static str {
-        "mariadb"
-    }
-    fn supports_explain(&self) -> bool {
-        true
-    }
-    fn supports_cancel_query(&self) -> bool {
-        false
-    }
-    fn supports_query_execution_cancel(&self) -> bool {
-        true
-    }
-
-    /// A real P2 resource provider over the real driver: opaque handles, a
-    /// per-provider runtime epoch, and a budget permit released exactly once.
-    /// `None` here would mean "not migrated", so it is never returned.
-    ///
-    /// Memoized, and bound to [`MariadbFactory::driver`] — the same instance
-    /// `create()` returns. Its epoch stays separate from the other five ids,
-    /// so a capability granted to one family member is never inherited by
-    /// another.
-    fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
-        Some(self.provider())
-    }
-
-    /// Derived from the factory's own declarations, so the two can never drift.
-    fn resource_capabilities(&self) -> CapabilitySet {
-        mysql_capability_set(self.supports_query_execution_cancel())
-    }
-}
-datazen_driver_api::register_driver!(&MariadbFactory);
-
-/// See [`MysqlFactory`] for why the driver and the provider are memoized
-/// together rather than rebuilt per call.
-struct DorisFactory;
-
-/// The one driver every caller shares, and the one [`DORIS_PROVIDER`] is bound to.
-static DORIS_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
-/// The one provider, bound to [`DORIS_DRIVER`].
-static DORIS_PROVIDER: OnceLock<Arc<dyn ResourceProvider>> = OnceLock::new();
-
-impl DorisFactory {
-    fn driver(&self) -> Arc<dyn DatabaseDriver> {
-        DORIS_DRIVER
-            .get_or_init(|| {
-                Arc::new(ReuseDriver::new_with_precise_cancel(
+        self.driver
+            .get_or_init(|| match self.protocol {
+                FamilyProtocol::Mysql => Arc::new(MysqlDriver::new(false)),
+                FamilyProtocol::Mariadb => Arc::new(MysqlDriver::new(true)),
+                FamilyProtocol::ReusedMysql => Arc::new(ReuseDriver::new_with_precise_cancel(
                     Arc::new(MysqlDriver::new(false)),
-                    "doris",
-                    true,
-                ))
+                    self.id,
+                    self.supports_query_execution_cancel(),
+                )),
             })
             .clone()
     }
 
-    fn provider(&self) -> Arc<dyn ResourceProvider> {
-        DORIS_PROVIDER
-            .get_or_init(|| {
-                Arc::new(MysqlResourceProvider::new(
-                    self.driver(),
-                    self.driver_id(),
-                    self.resource_capabilities(),
-                )) as Arc<dyn ResourceProvider>
-            })
-            .clone()
-    }
-}
-
-impl DatabaseDriverFactory for DorisFactory {
-    fn create(&self) -> Arc<dyn DatabaseDriver> {
-        self.driver()
-    }
     fn driver_id(&self) -> &'static str {
-        "doris"
+        self.id
     }
+
     fn supports_explain(&self) -> bool {
         true
     }
+
     fn supports_cancel_query(&self) -> bool {
-        false
+        matches!(self.protocol, FamilyProtocol::Mysql)
     }
+
     fn supports_query_execution_cancel(&self) -> bool {
         true
     }
 
-    /// A real P2 resource provider over the real driver: opaque handles, a
-    /// per-provider runtime epoch, and a budget permit released exactly once.
-    /// `None` here would mean "not migrated", so it is never returned.
-    ///
-    /// Memoized, and bound to [`DorisFactory::driver`] — the same instance
-    /// `create()` returns. Its epoch stays separate from the other five ids,
-    /// so a capability granted to one family member is never inherited by
-    /// another.
     fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
-        Some(self.provider())
+        Some(
+            self.provider
+                .get_or_init(|| {
+                    Arc::new(MysqlResourceProvider::new(
+                        self.create(),
+                        self.driver_id(),
+                        self.resource_capabilities(),
+                    ))
+                })
+                .clone(),
+        )
     }
 
-    /// Derived from the factory's own declarations, so the two can never drift.
     fn resource_capabilities(&self) -> CapabilitySet {
         mysql_capability_set(self.supports_query_execution_cancel())
     }
 }
-datazen_driver_api::register_driver!(&DorisFactory);
 
-/// See [`MysqlFactory`] for why the driver and the provider are memoized
-/// together rather than rebuilt per call.
-struct StarrocksFactory;
+static MYSQL_FACTORY: MysqlFamilyFactory = MysqlFamilyFactory::new("mysql", FamilyProtocol::Mysql);
+static MARIADB_FACTORY: MysqlFamilyFactory =
+    MysqlFamilyFactory::new("mariadb", FamilyProtocol::Mariadb);
+static DORIS_FACTORY: MysqlFamilyFactory =
+    MysqlFamilyFactory::new("doris", FamilyProtocol::ReusedMysql);
+static STARROCKS_FACTORY: MysqlFamilyFactory =
+    MysqlFamilyFactory::new("starrocks", FamilyProtocol::ReusedMysql);
+static MANTICORE_FACTORY: MysqlFamilyFactory =
+    MysqlFamilyFactory::new("manticore", FamilyProtocol::ReusedMysql);
+static OB_ORACLE_FACTORY: MysqlFamilyFactory =
+    MysqlFamilyFactory::new("ob_oracle", FamilyProtocol::ReusedMysql);
 
-/// The one driver every caller shares, and the one [`STARROCKS_PROVIDER`] is bound to.
-static STARROCKS_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
-/// The one provider, bound to [`STARROCKS_DRIVER`].
-static STARROCKS_PROVIDER: OnceLock<Arc<dyn ResourceProvider>> = OnceLock::new();
-
-impl StarrocksFactory {
-    fn driver(&self) -> Arc<dyn DatabaseDriver> {
-        STARROCKS_DRIVER
-            .get_or_init(|| {
-                Arc::new(ReuseDriver::new_with_precise_cancel(
-                    Arc::new(MysqlDriver::new(false)),
-                    "starrocks",
-                    true,
-                ))
-            })
-            .clone()
-    }
-
-    fn provider(&self) -> Arc<dyn ResourceProvider> {
-        STARROCKS_PROVIDER
-            .get_or_init(|| {
-                Arc::new(MysqlResourceProvider::new(
-                    self.driver(),
-                    self.driver_id(),
-                    self.resource_capabilities(),
-                )) as Arc<dyn ResourceProvider>
-            })
-            .clone()
-    }
-}
-
-impl DatabaseDriverFactory for StarrocksFactory {
-    fn create(&self) -> Arc<dyn DatabaseDriver> {
-        self.driver()
-    }
-    fn driver_id(&self) -> &'static str {
-        "starrocks"
-    }
-    fn supports_explain(&self) -> bool {
-        true
-    }
-    fn supports_cancel_query(&self) -> bool {
-        false
-    }
-    fn supports_query_execution_cancel(&self) -> bool {
-        true
-    }
-
-    /// A real P2 resource provider over the real driver: opaque handles, a
-    /// per-provider runtime epoch, and a budget permit released exactly once.
-    /// `None` here would mean "not migrated", so it is never returned.
-    ///
-    /// Memoized, and bound to [`StarrocksFactory::driver`] — the same instance
-    /// `create()` returns. Its epoch stays separate from the other five ids,
-    /// so a capability granted to one family member is never inherited by
-    /// another.
-    fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
-        Some(self.provider())
-    }
-
-    /// Derived from the factory's own declarations, so the two can never drift.
-    fn resource_capabilities(&self) -> CapabilitySet {
-        mysql_capability_set(self.supports_query_execution_cancel())
-    }
-}
-datazen_driver_api::register_driver!(&StarrocksFactory);
-
-/// See [`MysqlFactory`] for why the driver and the provider are memoized
-/// together rather than rebuilt per call.
-struct ManticoreFactory;
-
-/// The one driver every caller shares, and the one [`MANTICORE_PROVIDER`] is bound to.
-static MANTICORE_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
-/// The one provider, bound to [`MANTICORE_DRIVER`].
-static MANTICORE_PROVIDER: OnceLock<Arc<dyn ResourceProvider>> = OnceLock::new();
-
-impl ManticoreFactory {
-    fn driver(&self) -> Arc<dyn DatabaseDriver> {
-        MANTICORE_DRIVER
-            .get_or_init(|| {
-                Arc::new(ReuseDriver::new_with_precise_cancel(
-                    Arc::new(MysqlDriver::new(false)),
-                    "manticore",
-                    true,
-                ))
-            })
-            .clone()
-    }
-
-    fn provider(&self) -> Arc<dyn ResourceProvider> {
-        MANTICORE_PROVIDER
-            .get_or_init(|| {
-                Arc::new(MysqlResourceProvider::new(
-                    self.driver(),
-                    self.driver_id(),
-                    self.resource_capabilities(),
-                )) as Arc<dyn ResourceProvider>
-            })
-            .clone()
-    }
-}
-
-impl DatabaseDriverFactory for ManticoreFactory {
-    fn create(&self) -> Arc<dyn DatabaseDriver> {
-        self.driver()
-    }
-    fn driver_id(&self) -> &'static str {
-        "manticore"
-    }
-    fn supports_explain(&self) -> bool {
-        true
-    }
-    fn supports_cancel_query(&self) -> bool {
-        false
-    }
-    fn supports_query_execution_cancel(&self) -> bool {
-        true
-    }
-
-    /// A real P2 resource provider over the real driver: opaque handles, a
-    /// per-provider runtime epoch, and a budget permit released exactly once.
-    /// `None` here would mean "not migrated", so it is never returned.
-    ///
-    /// Memoized, and bound to [`ManticoreFactory::driver`] — the same instance
-    /// `create()` returns. Its epoch stays separate from the other five ids,
-    /// so a capability granted to one family member is never inherited by
-    /// another.
-    fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
-        Some(self.provider())
-    }
-
-    /// Derived from the factory's own declarations, so the two can never drift.
-    fn resource_capabilities(&self) -> CapabilitySet {
-        mysql_capability_set(self.supports_query_execution_cancel())
-    }
-}
-datazen_driver_api::register_driver!(&ManticoreFactory);
-
-/// See [`MysqlFactory`] for why the driver and the provider are memoized
-/// together rather than rebuilt per call.
-struct ObOracleFactory;
-
-/// The one driver every caller shares, and the one [`OB_ORACLE_PROVIDER`] is bound to.
-static OB_ORACLE_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
-/// The one provider, bound to [`OB_ORACLE_DRIVER`].
-static OB_ORACLE_PROVIDER: OnceLock<Arc<dyn ResourceProvider>> = OnceLock::new();
-
-impl ObOracleFactory {
-    fn driver(&self) -> Arc<dyn DatabaseDriver> {
-        OB_ORACLE_DRIVER
-            .get_or_init(|| {
-                Arc::new(ReuseDriver::new_with_precise_cancel(
-                    Arc::new(MysqlDriver::new(false)),
-                    "ob_oracle",
-                    true,
-                ))
-            })
-            .clone()
-    }
-
-    fn provider(&self) -> Arc<dyn ResourceProvider> {
-        OB_ORACLE_PROVIDER
-            .get_or_init(|| {
-                Arc::new(MysqlResourceProvider::new(
-                    self.driver(),
-                    self.driver_id(),
-                    self.resource_capabilities(),
-                )) as Arc<dyn ResourceProvider>
-            })
-            .clone()
-    }
-}
-
-impl DatabaseDriverFactory for ObOracleFactory {
-    fn create(&self) -> Arc<dyn DatabaseDriver> {
-        self.driver()
-    }
-    fn driver_id(&self) -> &'static str {
-        "ob_oracle"
-    }
-    fn supports_explain(&self) -> bool {
-        true
-    }
-    fn supports_cancel_query(&self) -> bool {
-        false
-    }
-    fn supports_query_execution_cancel(&self) -> bool {
-        true
-    }
-
-    /// A real P2 resource provider over the real driver: opaque handles, a
-    /// per-provider runtime epoch, and a budget permit released exactly once.
-    /// `None` here would mean "not migrated", so it is never returned.
-    ///
-    /// Memoized, and bound to [`ObOracleFactory::driver`] — the same instance
-    /// `create()` returns. Its epoch stays separate from the other five ids,
-    /// so a capability granted to one family member is never inherited by
-    /// another.
-    fn resource_provider(&self) -> Option<Arc<dyn ResourceProvider>> {
-        Some(self.provider())
-    }
-
-    /// Derived from the factory's own declarations, so the two can never drift.
-    fn resource_capabilities(&self) -> CapabilitySet {
-        mysql_capability_set(self.supports_query_execution_cancel())
-    }
-}
-datazen_driver_api::register_driver!(&ObOracleFactory);
+datazen_driver_api::register_driver!(&MYSQL_FACTORY);
+datazen_driver_api::register_driver!(&MARIADB_FACTORY);
+datazen_driver_api::register_driver!(&DORIS_FACTORY);
+datazen_driver_api::register_driver!(&STARROCKS_FACTORY);
+datazen_driver_api::register_driver!(&MANTICORE_FACTORY);
+datazen_driver_api::register_driver!(&OB_ORACLE_FACTORY);
 
 /// The host's entry into this crate (E4): the six MySQL-protocol families —
 /// mysql, mariadb, doris, starrocks, manticore and ob_oracle — the same
@@ -460,12 +147,12 @@ datazen_driver_api::register_driver!(&ObOracleFactory);
 /// link time.
 pub fn factories() -> Vec<&'static dyn datazen_driver_api::DatabaseDriverFactory> {
     vec![
-        &MysqlFactory,
-        &MariadbFactory,
-        &DorisFactory,
-        &StarrocksFactory,
-        &ManticoreFactory,
-        &ObOracleFactory,
+        &MYSQL_FACTORY,
+        &MARIADB_FACTORY,
+        &DORIS_FACTORY,
+        &STARROCKS_FACTORY,
+        &MANTICORE_FACTORY,
+        &OB_ORACLE_FACTORY,
     ]
 }
 
@@ -486,12 +173,12 @@ mod tests {
     #[test]
     fn every_family_factory_memoizes_its_driver_and_its_provider() {
         let factories: [&dyn DatabaseDriverFactory; 6] = [
-            &MysqlFactory,
-            &MariadbFactory,
-            &DorisFactory,
-            &StarrocksFactory,
-            &ManticoreFactory,
-            &ObOracleFactory,
+            &MYSQL_FACTORY,
+            &MARIADB_FACTORY,
+            &DORIS_FACTORY,
+            &STARROCKS_FACTORY,
+            &MANTICORE_FACTORY,
+            &OB_ORACLE_FACTORY,
         ];
 
         for factory in factories {
@@ -520,12 +207,12 @@ mod tests {
     #[test]
     fn each_family_id_keeps_its_own_provider() {
         let factories: [&dyn DatabaseDriverFactory; 6] = [
-            &MysqlFactory,
-            &MariadbFactory,
-            &DorisFactory,
-            &StarrocksFactory,
-            &ManticoreFactory,
-            &ObOracleFactory,
+            &MYSQL_FACTORY,
+            &MARIADB_FACTORY,
+            &DORIS_FACTORY,
+            &STARROCKS_FACTORY,
+            &MANTICORE_FACTORY,
+            &OB_ORACLE_FACTORY,
         ];
 
         for (index, factory) in factories.iter().enumerate() {
@@ -546,12 +233,12 @@ mod tests {
     #[test]
     fn mysql_factory_advertises_precise_cancellation_for_mysql_family_servers() {
         let factories: [&dyn DatabaseDriverFactory; 6] = [
-            &MysqlFactory,
-            &MariadbFactory,
-            &DorisFactory,
-            &StarrocksFactory,
-            &ManticoreFactory,
-            &ObOracleFactory,
+            &MYSQL_FACTORY,
+            &MARIADB_FACTORY,
+            &DORIS_FACTORY,
+            &STARROCKS_FACTORY,
+            &MANTICORE_FACTORY,
+            &OB_ORACLE_FACTORY,
         ];
 
         assert!(factories[0].supports_cancel_query());
@@ -569,10 +256,10 @@ mod tests {
 
         assert!(MysqlDriver::new(false).supports_query_execution_cancel());
         assert!(MysqlDriver::new(true).supports_query_execution_cancel());
-        assert!(DorisFactory.create().supports_query_execution_cancel());
-        assert!(StarrocksFactory.create().supports_query_execution_cancel());
-        assert!(ManticoreFactory.create().supports_query_execution_cancel());
-        assert!(ObOracleFactory.create().supports_query_execution_cancel());
+        assert!(DORIS_FACTORY.create().supports_query_execution_cancel());
+        assert!(STARROCKS_FACTORY.create().supports_query_execution_cancel());
+        assert!(MANTICORE_FACTORY.create().supports_query_execution_cancel());
+        assert!(OB_ORACLE_FACTORY.create().supports_query_execution_cancel());
     }
 
     #[tokio::test]
