@@ -14,29 +14,29 @@ impl SchemaObjectSql for MysqlSchemaObjectSql {
     fn list_objects_sql(&self, kind: ObjectKind) -> Option<String> {
         match kind {
             ObjectKind::Function => Some(
-                "SELECT NULL AS `schema`, ROUTINE_NAME AS name \
+                "SELECT NULL AS `schema`, CAST(ROUTINE_NAME AS CHAR CHARACTER SET utf8mb4) AS name \
              FROM information_schema.ROUTINES \
              WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_TYPE = 'FUNCTION' \
              ORDER BY 1, 2"
                     .into(),
             ),
             ObjectKind::Procedure => Some(
-                "SELECT NULL AS `schema`, ROUTINE_NAME AS name \
+                "SELECT NULL AS `schema`, CAST(ROUTINE_NAME AS CHAR CHARACTER SET utf8mb4) AS name \
              FROM information_schema.ROUTINES \
              WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_TYPE = 'PROCEDURE' \
              ORDER BY 1, 2"
                     .into(),
             ),
             ObjectKind::Trigger => Some(
-                "SELECT NULL AS `schema`, TRIGGER_NAME AS name, \
-                    NULL AS target_schema, EVENT_OBJECT_TABLE AS target_name \
+                "SELECT NULL AS `schema`, CAST(TRIGGER_NAME AS CHAR CHARACTER SET utf8mb4) AS name, \
+                    NULL AS target_schema, CAST(EVENT_OBJECT_TABLE AS CHAR CHARACTER SET utf8mb4) AS target_name \
              FROM information_schema.TRIGGERS \
              WHERE TRIGGER_SCHEMA = DATABASE() \
              ORDER BY 1, 2, 4"
                     .into(),
             ),
             ObjectKind::View => Some(
-                "SELECT NULL AS `schema`, TABLE_NAME AS name \
+                "SELECT NULL AS `schema`, CAST(TABLE_NAME AS CHAR CHARACTER SET utf8mb4) AS name \
              FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() \
              ORDER BY 1, 2"
                     .into(),
@@ -111,7 +111,7 @@ impl SchemaObjectSql for MysqlSchemaObjectSql {
             "SELECT GRANTEE AS grantee, '*' AS table_schema, '*' AS name, PRIVILEGE_TYPE AS privilege \
              FROM information_schema.USER_PRIVILEGES \
              UNION ALL \
-             SELECT GRANTEE AS grantee, TABLE_SCHEMA AS table_schema, TABLE_NAME AS name, PRIVILEGE_TYPE AS privilege \
+             SELECT GRANTEE AS grantee, TABLE_SCHEMA AS table_schema, CAST(TABLE_NAME AS CHAR CHARACTER SET utf8mb4) AS name, PRIVILEGE_TYPE AS privilege \
              FROM information_schema.TABLE_PRIVILEGES \
              WHERE TABLE_SCHEMA = DATABASE() \
              ORDER BY 1, 2, 3 LIMIT 500"

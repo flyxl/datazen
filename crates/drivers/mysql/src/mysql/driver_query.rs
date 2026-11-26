@@ -317,6 +317,22 @@ impl MysqlDriver {
             .await
     }
 
+    /// The server sends prepared metadata even when no rows match. Use it
+    /// without executing the statement a second time.
+    async fn describe_empty_result(
+        conn: &mut sqlx::MySqlConnection,
+        sql: &str,
+    ) -> Result<Vec<ColumnInfo>, DriverError> {
+        use sqlx::{Column, Executor, Statement};
+        let statement = conn.prepare(sql).await
+            .map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+        Ok(statement.columns().iter().map(|col| ColumnInfo {
+            name: col.name().to_owned(),
+            data_type: col.type_info().to_string(),
+            nullable: true,
+        }).collect())
+    }
+
     pub(crate) async fn query_with_params_inner(
         &self,
         handle: &ConnectionHandle,
@@ -337,7 +353,10 @@ impl MysqlDriver {
                     .await
                     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
                 let elapsed = start.elapsed().as_millis() as u64;
-                let (columns, result_rows) = Self::decode_rows(&rows);
+                let (mut columns, result_rows) = Self::decode_rows(&rows);
+                if rows.is_empty() {
+                    columns = Self::describe_empty_result(&mut conn, sql).await?;
+                }
                 let row_count = result_rows.len() as u64;
                 return Ok(QueryResult {
                     columns,
@@ -363,7 +382,10 @@ impl MysqlDriver {
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let elapsed = start.elapsed().as_millis() as u64;
 
-        let (columns, result_rows) = Self::decode_rows(&rows);
+        let (mut columns, result_rows) = Self::decode_rows(&rows);
+        if rows.is_empty() {
+            columns = Self::describe_empty_result(&mut conn, sql).await?;
+        }
         let row_count = result_rows.len() as u64;
 
         Ok(QueryResult {

@@ -509,7 +509,7 @@ async fn mysql_dependency_catalog_visibility<D: DatabaseDriver + ?Sized>(
     let grant_strings = grants_result
         .rows
         .iter()
-        .filter_map(|row| value_as_string(row.first().and_then(Option::as_ref)))
+        .filter_map(|row| value_as_ddl_text(row.first().and_then(Option::as_ref)))
         .collect::<Vec<_>>();
     if !mysql_dependency_grants_are_complete(&grant_strings) {
         return false;
@@ -538,7 +538,7 @@ async fn mysql_table_dependency_catalog_visibility<D: DatabaseDriver + ?Sized>(
     let grant_strings = grants_result
         .rows
         .iter()
-        .filter_map(|row| value_as_string(row.first().and_then(Option::as_ref)))
+        .filter_map(|row| value_as_ddl_text(row.first().and_then(Option::as_ref)))
         .collect::<Vec<_>>();
     mysql_table_dependency_grants_are_complete(&grant_strings)
 }

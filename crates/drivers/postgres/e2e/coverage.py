@@ -192,7 +192,7 @@ class Postgres:
                         stdout=subprocess.DEVNULL)
 
 
-def run_live(bins, selected, env, password, out):
+def run_live(bins, selected, env, password, out, *, include_ignored=()):
     profiles = out / "profiles"
     profiles.mkdir()
     counts = {"passed": 0, "failed": 0, "skipped": 0}
@@ -212,7 +212,8 @@ def run_live(bins, selected, env, password, out):
             for test in names:
                 before = set(profiles.glob(f"{name}-*.profraw"))
                 try:
-                    run = cmd([binary, "--exact", test, "--nocapture"], stdout=subprocess.PIPE,
+                    flags = ["--include-ignored"] if name in include_ignored else []
+                    run = cmd([binary, "--exact", test, "--nocapture", *flags], stdout=subprocess.PIPE,
                               stderr=subprocess.STDOUT, env={
                                   **env, "LLVM_PROFILE_FILE": str(profiles / f"{name}-%m-%p.profraw")
                               }, timeout=240)
@@ -244,7 +245,7 @@ def included(raw):
     return path.relative_to(ROOT) if path.is_relative_to(ROOT / SCOPE) else None
 
 
-def measure(bins, files, output, tools):
+def measure(bins, files, output, tools, *, lcov_filename="postgres-e2e.lcov"):
     profdata, cov = tools
     merged = output / "e2e.profdata"
     if not files:
@@ -255,7 +256,7 @@ def measure(bins, files, output, tools):
         raise SystemExit(f"LLVM profile merge was not clean: {result.stderr.strip()}")
     binary, *others = bins.values()
     opts = [binary, *(f"-object={p}" for p in others), f"-instr-profile={merged}",
-            "-ignore-filename-regex=.*/crates/drivers/postgres/src/\\.\\./"]
+            rf"-ignore-filename-regex=.*/{re.escape(SCOPE.as_posix())}/\.\./"]
     def export(mode, destination):
         with destination.open("w") as target:
             result = cmd([cov, "export", *opts, mode], stdout=target,
@@ -276,13 +277,13 @@ def measure(bins, files, output, tools):
                 paths[str(p)] = counts
     hit, total = (sum(row[n] for row in paths.values()) for n in (0, 1))
     if not total:
-        raise SystemExit("No PostgreSQL driver production source lines in LLVM output")
+        raise SystemExit(f"No production source lines under {SCOPE} in LLVM output")
     with tempfile.TemporaryDirectory(dir=output) as d:
         raw_lcov = Path(d) / "full.lcov"
         export("-format=lcov", raw_lcov)
         keep = False
         lcov_counts = [0, 0]
-        with raw_lcov.open() as src, (output / "postgres-e2e.lcov").open("w") as dst:
+        with raw_lcov.open() as src, (output / lcov_filename).open("w") as dst:
             for line in src:
                 if line.startswith("SF:"):
                     src_path = included(line[3:].rstrip("\n"))

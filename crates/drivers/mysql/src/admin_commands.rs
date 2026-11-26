@@ -579,7 +579,8 @@ async fn kill_mysql_process(
 ) -> Result<CommandResult, DriverError> {
     let pid = input["pid"]
         .as_i64()
-        .ok_or_else(|| DriverError::InvalidConfig("pid is required".into()))?;
+        .filter(|pid| *pid > 0)
+        .ok_or_else(|| DriverError::InvalidConfig("a positive pid is required".into()))?;
     let force = input["force"].as_bool().unwrap_or(false);
     let sql = if force {
         format!("KILL {pid}")

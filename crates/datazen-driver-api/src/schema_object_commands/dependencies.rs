@@ -1,6 +1,6 @@
 // Structured dependency-catalog row parsing shared by the schema command.
 
-use super::{column_index, value_as_string, value_as_string_allow_empty};
+use super::{column_index, value_as_ddl_text, value_as_string, value_as_string_allow_empty};
 use crate::schema_dependencies::{
     SequenceDependencyUsage, SequenceDependencyUsageKind, TypeDependencyUsage,
     TypeDependencyUsageKind,
@@ -86,18 +86,23 @@ pub(super) fn parse_object_dependency_catalog(
             && owner_table_schema_idx.is_some()
             && owner_table_name_idx.is_some()
             && owner_column_name_idx.is_some());
+    // MySQL 8.4 can label information_schema names returned through MIN
+    // or UNION as binary wire fields. They are catalog identifiers here,
+    // not arbitrary binary user data; require valid, nonempty UTF-8.
     for row in &result.rows {
         let Some(kind) = row
             .get(kind_idx)
             .and_then(Option::as_ref)
-            .and_then(|value| value_as_string(Some(value)))
+            .and_then(|value| value_as_ddl_text(Some(value)))
+            .filter(|text| !text.is_empty())
         else {
             continue;
         };
         let Some(schema) = row
             .get(schema_idx)
             .and_then(Option::as_ref)
-            .and_then(|value| value_as_string(Some(value)))
+            .and_then(|value| value_as_ddl_text(Some(value)))
+            .filter(|text| !text.is_empty())
         else {
             return Err(DriverError::QueryFailed(
                 "Dependency catalog returned an unqualified dependency".into(),
@@ -106,7 +111,8 @@ pub(super) fn parse_object_dependency_catalog(
         let Some(name) = row
             .get(name_idx)
             .and_then(Option::as_ref)
-            .and_then(|value| value_as_string(Some(value)))
+            .and_then(|value| value_as_ddl_text(Some(value)))
+            .filter(|text| !text.is_empty())
         else {
             return Err(DriverError::QueryFailed(
                 "Dependency catalog returned a dependency without a name".into(),
