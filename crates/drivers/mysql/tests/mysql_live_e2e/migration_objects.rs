@@ -1,8 +1,8 @@
 use super::Fixture;
 use datazen_driver_api::{
-    schema_objects::ObjectKind, sql_split::split_sql_statements, ConnectionHandle, DatabaseDriver,
-    MigrationOperation as Op, MigrationRenderer, MigrationRoutine, MigrationStatement,
-    MigrationTrigger, MigrationView, TableOptions,
+    ConnectionHandle, DatabaseDriver, MigrationOperation as Op, MigrationRenderer,
+    MigrationRoutine, MigrationStatement, MigrationTrigger, MigrationView, TableOptions,
+    schema_objects::ObjectKind, sql_split::split_sql_statements,
 };
 use datazen_driver_mysql::MysqlDriver;
 
@@ -54,9 +54,15 @@ async fn mysql_migration_replaces_and_restores_live_routine_trigger_and_view() {
             f.database
         ),
     };
-    let t = |offset: i32| {
-        MigrationTrigger{schema:schema.clone(),name:trg.clone(),target_schema:schema.clone(),target_name:table.clone(),
-        definition:format!("CREATE TRIGGER `{}`.`{trg}` BEFORE INSERT ON `{}`.`{table}` FOR EACH ROW SET NEW.cost = NEW.cost + {offset}",f.database,f.database)}
+    let t = |offset: i32| MigrationTrigger {
+        schema: schema.clone(),
+        name: trg.clone(),
+        target_schema: schema.clone(),
+        target_name: table.clone(),
+        definition: format!(
+            "CREATE TRIGGER `{}`.`{trg}` BEFORE INSERT ON `{}`.`{table}` FOR EACH ROW SET NEW.cost = NEW.cost + {offset}",
+            f.database, f.database
+        ),
     };
     for op in [
         Op::CreateView { view: v(2) },
@@ -124,14 +130,18 @@ async fn mysql_migration_replaces_and_restores_live_routine_trigger_and_view() {
     for stmt in &drops {
         apply(&driver, &handle, &stmt.sql).await;
     }
-    assert!(sqlx::query(&format!("SELECT * FROM {view}"))
-        .fetch_one(&mut f.oracle)
-        .await
-        .is_err());
-    assert!(sqlx::query(&format!("SELECT {fun}(1)"))
-        .fetch_one(&mut f.oracle)
-        .await
-        .is_err());
+    assert!(
+        sqlx::query(&format!("SELECT * FROM {view}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .is_err()
+    );
+    assert!(
+        sqlx::query(&format!("SELECT {fun}(1)"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .is_err()
+    );
     for stmt in drops.iter().rev() {
         apply(
             &driver,
@@ -296,12 +306,16 @@ async fn mysql_migration_replays_prefix_fulltext_spatial_hash_and_removes_owned_
         "SELECT CAST(INDEX_NAME AS CHAR),CAST(INDEX_TYPE AS CHAR),CAST(SUB_PART AS UNSIGNED) FROM information_schema.STATISTICS
          WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY 1"
     ).bind(&indexed).fetch_all(&mut f.oracle).await.expect("independent MySQL index options");
-    assert!(catalog
-        .iter()
-        .any(|(n, t, s)| n == "prefix_ix" && t == "BTREE" && *s == Some(12)));
-    assert!(catalog
-        .iter()
-        .any(|(n, t, _)| n == "book_ix" && t == "FULLTEXT"));
+    assert!(
+        catalog
+            .iter()
+            .any(|(n, t, s)| n == "prefix_ix" && t == "BTREE" && *s == Some(12))
+    );
+    assert!(
+        catalog
+            .iter()
+            .any(|(n, t, _)| n == "book_ix" && t == "FULLTEXT")
+    );
     let spatial = catalog
         .iter()
         .find(|(n, _, _)| n == "map_ix")
@@ -386,10 +400,12 @@ async fn mysql_migration_replays_prefix_fulltext_spatial_hash_and_removes_owned_
         .expect("native after ALTERs");
     assert!(remaining.primary_keys.is_empty());
     assert!(!remaining.columns.iter().any(|c| c.name == "old_note"));
-    assert!(remaining
-        .columns
-        .iter()
-        .any(|c| c.name == "amount" && c.data_type.starts_with("bigint")));
+    assert!(
+        remaining
+            .columns
+            .iter()
+            .any(|c| c.name == "amount" && c.data_type.starts_with("bigint"))
+    );
     assert!(!remaining.indexes.iter().any(|i| i.name == "prefix_ix"));
     for table in [indexed, memory] {
         apply(
@@ -412,4 +428,138 @@ async fn mysql_migration_replays_prefix_fulltext_spatial_hash_and_removes_owned_
         .disconnect(handle)
         .await
         .expect("release isolated MySQL connection");
+}
+
+#[tokio::test]
+async fn mysql_migration_preserves_native_unqualified_objects_and_rejects_cross_identity_replacement()
+ {
+    let mut f = Fixture::open().await;
+    let (driver, h) = f.connect().await;
+    let uuid = uuid::Uuid::new_v4().simple().to_string();
+    let table = format!("dz_unqualified_t_{uuid}");
+    let view = format!("dz_unqualified_v_{uuid}");
+    let routine = format!("dz_unqualified_fn_{uuid}");
+    let peer_routine = format!("dz_unqualified_other_{uuid}");
+    let trigger = format!("dz_unqualified_tr_{uuid}");
+    let peer_trigger = format!("dz_unqualified_tr2_{uuid}");
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY, val INT)"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let r = |name: &str, n| MigrationRoutine {
+        kind: ObjectKind::Function,
+        schema: None,
+        name: name.into(),
+        signature: None,
+        definition: format!(
+            "CREATE FUNCTION {name}(arg INT) RETURNS INT DETERMINISTIC RETURN arg + {n}"
+        ),
+    };
+    let t = |name: &str, kind: &str, n| MigrationTrigger {
+        schema: None,
+        name: name.into(),
+        target_schema: None,
+        target_name: table.clone(),
+        definition: format!(
+            "CREATE TRIGGER {name} {kind} INSERT ON {table} FOR EACH ROW SET NEW.val=NEW.val+{n}"
+        ),
+    };
+    let first = r(&routine, 3);
+    let second = r(&peer_routine, 10);
+    let fired = t(&trigger, "BEFORE", 8);
+    // MySQL allows a second BEFORE INSERT trigger; this is a real but
+    // separate definition and must not silently replace the first one.
+    let unrelated = t(&peer_trigger, "BEFORE", 2);
+    let migration = MigrationView {
+        schema: None,
+        name: view.clone(),
+        definition: format!("SELECT val FROM {table}"),
+    };
+    let renderer = driver.migration_renderer().unwrap();
+    let capabilities = driver.migration_capabilities().unwrap();
+    let create = [
+        Op::CreateRoutine {
+            routine: first.clone(),
+        },
+        Op::CreateRoutine {
+            routine: second.clone(),
+        },
+        Op::CreateTrigger {
+            trigger: fired.clone(),
+        },
+        Op::CreateTrigger {
+            trigger: unrelated.clone(),
+        },
+        Op::CreateView {
+            view: migration.clone(),
+        },
+    ];
+    for op in create {
+        assert!(capabilities.supports(&op));
+        apply(&driver, &h, &render(renderer.as_ref(), op).sql).await;
+    }
+    let incompatible = Op::ReplaceRoutine {
+        current: first.clone(),
+        desired: second.clone(),
+    };
+    assert!(
+        renderer
+            .render(&incompatible)
+            .unwrap_err()
+            .contains("identities must match")
+    );
+    let incompatible = Op::ReplaceTrigger {
+        current: fired.clone(),
+        desired: unrelated.clone(),
+    };
+    assert!(
+        renderer
+            .render(&incompatible)
+            .unwrap_err()
+            .contains("identities must match")
+    );
+    let invalid = Op::DropRoutine {
+        routine: MigrationRoutine {
+            kind: ObjectKind::View,
+            name: view.clone(),
+            definition: format!("CREATE VIEW {view} AS {}", migration.definition),
+            ..first.clone()
+        },
+    };
+    assert!(!capabilities.supports(&invalid));
+    assert!(renderer.render(&invalid).is_err());
+    sqlx::query(&format!("INSERT INTO {table} VALUES (1,5)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let live: (i32, i32, i32) = sqlx::query_as(&format!(
+        "SELECT {routine}(1),{peer_routine}(1),val FROM {view}"
+    ))
+    .fetch_one(&mut f.oracle)
+    .await
+    .unwrap();
+    assert_eq!(live, (4, 11, 15));
+    for op in [
+        Op::DropView { view: migration },
+        Op::DropTrigger { trigger: fired },
+        Op::DropTrigger { trigger: unrelated },
+        Op::DropRoutine { routine: first },
+        Op::DropRoutine { routine: second },
+    ] {
+        assert!(capabilities.supports(&op));
+        apply(&driver, &h, &render(renderer.as_ref(), op).sql).await;
+    }
+    let survivors:(i64,i64,i64)=sqlx::query_as("SELECT
+       (SELECT COUNT(*) FROM information_schema.VIEWS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?),
+       (SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE() AND TRIGGER_NAME IN (?,?)),
+       (SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE() AND ROUTINE_NAME IN (?,?))")
+       .bind(&view).bind(&trigger).bind(&peer_trigger).bind(&routine).bind(&peer_routine).fetch_one(&mut f.oracle).await.unwrap();
+    assert_eq!(
+        survivors,
+        (0, 0, 0),
+        "only the genuine plan targets were dropped"
+    );
+    driver.disconnect(h).await.unwrap();
 }

@@ -565,3 +565,109 @@ async fn mysql_registered_native_sleep_interrupt_cannot_end_as_a_successful_sing
         driver.disconnect(h).await.unwrap();
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn mysql_cancel_receipt_does_not_claim_success_when_native_thread_has_disappeared() {
+    use datazen_driver_api::Value;
+    let mut f = Fixture::open().await;
+    let driver = Arc::new(datazen_driver_mysql::MysqlDriver::new(false));
+    let h = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    let table = format!("dz_stale_cancel_{nonce}");
+    sqlx::raw_sql(&format!("CREATE TABLE {table}(id INT PRIMARY KEY)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let identity = driver.query(&h, "SELECT CONNECTION_ID()").await.unwrap();
+    let Some(Value::Integer(pid)) = identity.rows[0][0] else {
+        panic!("actual MySQL backend")
+    };
+    let id = QueryExecutionId::new(format!("stale-mysql-{nonce}"));
+    driver.prepare_query_execution(&h, &id).await.unwrap();
+    let (seen, notice) = tokio::sync::oneshot::channel();
+    let seen = Arc::new(Mutex::new(Some(seen)));
+    let ready = Arc::new((Mutex::new(false), Condvar::new()));
+    let script = format!("SELECT 37 AS real_row; INSERT INTO {table} VALUES (1)");
+    let task = tokio::spawn({
+        let (driver, h, id, ready) = (driver.clone(), h.clone(), id.clone(), ready.clone());
+        async move {
+            driver
+                .query_stream_with_execution(
+                    &h,
+                    &id,
+                    &script,
+                    None,
+                    Arc::new(move |event| {
+                        if matches!(event, QueryStreamEvent::Rows { index: 0, .. }) {
+                            tokio::task::block_in_place(|| {
+                                if let Some(ack) = seen.lock().unwrap().take() {
+                                    let _ = ack.send(());
+                                }
+                                let guard = ready.0.lock().unwrap();
+                                let _wait = ready
+                                    .1
+                                    .wait_timeout_while(guard, Duration::from_secs(8), |released| {
+                                        !*released
+                                    })
+                                    .unwrap();
+                            });
+                        }
+                    }),
+                )
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(4), notice)
+        .await
+        .unwrap()
+        .unwrap();
+    sqlx::raw_sql(&format!("KILL CONNECTION {pid}"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID=?",
+            )
+            .bind(pid)
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+            if count == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("original real backend is gone before cancellation");
+    let receipt = tokio::time::timeout(
+        Duration::from_secs(4),
+        driver.cancel_query_with_execution(&h, &id),
+    )
+    .await;
+    *ready.0.lock().unwrap() = true;
+    ready.1.notify_all();
+    let terminal = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(&receipt,Ok(Err(DriverError::QueryFailed(message))) if message.contains("Unknown thread id")),
+        "native cancel completion for vanished thread: {receipt:?}; stream: {terminal:?}"
+    );
+    assert!(
+        matches!(terminal, Err(DriverError::QueryFailed(_))),
+        "do not turn a lost transport into a successful cancel"
+    );
+    let observed: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(
+        observed, 0,
+        "defunct registered execution cannot replay its write on another socket"
+    );
+    driver.disconnect(h).await.unwrap();
+}

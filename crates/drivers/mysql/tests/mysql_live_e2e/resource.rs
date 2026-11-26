@@ -995,6 +995,32 @@ async fn mysql_native_checkout_timeout_does_not_run_waiting_commands_or_poison_s
         1,
         "the original pool is reusable once native owner finishes"
     );
+    let tx = driver.begin_transaction(&h).await.unwrap();
+    let transactional = QueryExecutionId::new(format!("transaction-gone-{nonce}"));
+    driver
+        .prepare_query_execution(&h, &transactional)
+        .await
+        .unwrap();
+    let pending = format!("INSERT INTO {table} VALUES(77)");
+    driver.execute(&h, &pending).await.unwrap();
+    let before: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE id=77"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(before, 0);
+    driver.rollback(tx).await.unwrap();
+    assert!(
+        matches!(driver.query_stream_with_execution(&h,&transactional,&pending,None,Arc::new(|_|{})).await,
+       Err(datazen_driver_api::DriverError::Unsupported(ref message)) if message.contains("transaction execution connection"))
+    );
+    let after: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE id=77"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(
+        after, 0,
+        "a queued run cannot fall through to autocommit after its transaction closed"
+    );
     assert_eq!(
         provider.close_resource(&leased).await.unwrap(),
         CloseDisposition::Closed

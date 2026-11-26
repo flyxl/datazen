@@ -156,6 +156,23 @@ async fn mysql_configured_but_offline_group_replication_keeps_native_node_identi
         .execute(&mut f.oracle)
         .await
         .expect("load official native MySQL plugin in disposable fixture");
+    let default_group: Option<String> =
+        sqlx::query_scalar("SELECT @@GLOBAL.group_replication_group_name")
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+    assert!(
+        default_group.as_deref().is_none_or(str::is_empty),
+        "fresh native group plugin is not configured"
+    );
+    assert_eq!(
+        driver
+            .physical_database_identity(&handle, &f.database)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some(initial.as_str())
+    );
     let group = uuid::Uuid::new_v4().to_string();
     sqlx::raw_sql(&format!(
         "SET GLOBAL group_replication_group_name='{group}'"
@@ -173,6 +190,35 @@ async fn mysql_configured_but_offline_group_replication_keeps_native_node_identi
             .unwrap(),
         Some(initial.clone())
     );
+    let user = format!(
+        "dz_group_{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..16]
+    );
+    let password = uuid::Uuid::new_v4().simple().to_string();
+    sqlx::raw_sql(&format!(
+        "CREATE USER '{user}'@'127.0.0.1' IDENTIFIED BY '{password}';
+      GRANT SELECT ON `{}`.* TO '{user}'@'127.0.0.1'",
+        f.database
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let mut restricted = f.cfg.clone();
+    restricted.username = Some(user.clone());
+    restricted.password = Some(password);
+    let limited = driver.connect(&restricted).await.unwrap();
+    assert!(
+        matches!(driver.query(&limited,"SELECT MEMBER_STATE FROM performance_schema.replication_group_members").await,
+       Err(datazen_driver_api::DriverError::QueryFailed(ref text)) if text.contains("denied"))
+    );
+    assert_eq!(
+        driver
+            .physical_database_identity(&limited, &f.database)
+            .await
+            .unwrap(),
+        None,
+        "unreadable membership is not proof of a unique native database"
+    );
     sqlx::raw_sql("UNINSTALL PLUGIN group_replication")
         .execute(&mut f.oracle)
         .await
@@ -185,6 +231,19 @@ async fn mysql_configured_but_offline_group_replication_keeps_native_node_identi
             .as_deref(),
         Some(initial.as_str())
     );
+    assert_eq!(
+        driver
+            .physical_database_identity(&limited, &f.database)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some(initial.as_str())
+    );
+    driver.disconnect(limited).await.unwrap();
+    sqlx::raw_sql(&format!("DROP USER '{user}'@'127.0.0.1'"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
     driver
         .disconnect(handle)
         .await

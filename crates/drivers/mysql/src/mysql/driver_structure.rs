@@ -112,10 +112,12 @@ impl MysqlDriver {
                     Some(true) | None => Ok(None),
                 };
             };
-            let Ok(group_name) = group_row.try_get::<String, _>("group_name") else {
+            let Ok(group_name) = group_row.try_get::<Option<String>, _>("group_name") else {
                 return Ok(None);
             };
-            let group_name = group_name.trim();
+            // A freshly installed native plugin reports SQL NULL until a
+            // group UUID is configured. That is the unconfigured node case.
+            let group_name = group_name.as_deref().unwrap_or_default().trim();
             if group_name.is_empty() {
                 mysql_group_replication_scope(Some(group_name), Ok(None))
             } else {

@@ -685,3 +685,125 @@ async fn mysql_catalog_roundtrips_native_constraint_names_with_escaped_punctuati
     );
     driver.disconnect(handle).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_review_refuses_schema_edits_that_cannot_preserve_live_constraints() {
+    let mut f = Fixture::open().await;
+    let (driver, h) = f.connect().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let parent = format!("dz_review_parent_{tag}");
+    let child = format!("dz_review_child_{tag}");
+    let foreign = format!("fk_review_{tag}");
+    sqlx::raw_sql(&format!("CREATE TABLE {parent}(id INT PRIMARY KEY);
+      CREATE TABLE {child}(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, parent_id INT, body TEXT,
+        FULLTEXT INDEX native_words(body),
+        CONSTRAINT {foreign} FOREIGN KEY(parent_id) REFERENCES {parent}(id) ON DELETE CASCADE);
+      INSERT INTO {parent} VALUES(1); INSERT INTO {child}(parent_id,body) VALUES(1,'verified actual row')"))
+      .execute(&mut f.oracle).await.unwrap();
+    let schema = driver
+        .get_table_schema(&h, &child, &f.database, None)
+        .await
+        .unwrap();
+    let mut index = schema
+        .indexes
+        .iter()
+        .find(|i| i.name == "native_words")
+        .unwrap()
+        .clone();
+    assert_eq!(index.index_type, "FULLTEXT");
+    let edge = schema
+        .foreign_keys
+        .iter()
+        .find(|v| v.name == foreign)
+        .unwrap()
+        .clone();
+    let renderer = driver.migration_renderer().unwrap();
+    let caps = driver.migration_capabilities().unwrap();
+    assert!(!caps.supports(&Op::SetNullable {
+        table: child.clone(),
+        column: "parent_id".into(),
+        nullable: false
+    }));
+    let nullable = Op::SetNullable {
+        table: child.clone(),
+        column: "parent_id".into(),
+        nullable: false,
+    };
+    let auto = Op::SetAutoIncrement {
+        table: child.clone(),
+        column: "id".into(),
+        from: true,
+        to: false,
+    };
+    assert!(!caps.supports(&auto));
+    assert!(caps.requires_table_rebuild(&auto));
+    index.is_unique = true;
+    let create_unique = Op::CreateIndex {
+        table: child.clone(),
+        index: index.clone(),
+    };
+    index.is_unique = false;
+    index.index_type.clear();
+    let missing_method = Op::CreateIndex {
+        table: child.clone(),
+        index: index.clone(),
+    };
+    index.index_type = "GIN".into();
+    let unsupported_method = Op::CreateIndex {
+        table: child.clone(),
+        index,
+    };
+    let deferrable = Op::AddForeignKey {
+        table: child.clone(),
+        foreign_key: ForeignKeyInfo {
+            deferrability: ForeignKeyDeferrability::DeferrableInitiallyDeferred,
+            ..edge.clone()
+        },
+    };
+    let mismatch = Op::AddForeignKey {
+        table: child.clone(),
+        foreign_key: ForeignKeyInfo {
+            columns: vec!["id".into(), "parent_id".into()],
+            ..edge.clone()
+        },
+    };
+    let nonnative_action = Op::AddForeignKey {
+        table: child.clone(),
+        foreign_key: ForeignKeyInfo {
+            on_delete: "INVALID ACTION".into(),
+            ..edge
+        },
+    };
+    let original: (String, String) = sqlx::query_as(&format!("SHOW CREATE TABLE {child}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    for (request, reason) in [
+        (nullable, "complete original column"),
+        (auto, "removal requires original column"),
+        (create_unique, "cannot create a unique FULLTEXT"),
+        (missing_method, "index type is missing"),
+        (unsupported_method, "cannot be safely recreated"),
+        (deferrable, "deferrable foreign key semantics"),
+        (mismatch, "matching column lists"),
+        (nonnative_action, "cannot represent foreign-key action"),
+    ] {
+        let refused = renderer.render(&request).unwrap_err();
+        assert!(refused.contains(reason), "{refused}");
+        let unchanged: (String, String) = sqlx::query_as(&format!("SHOW CREATE TABLE {child}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+        assert_eq!(unchanged, original);
+    }
+    sqlx::query(&format!("DELETE FROM {parent} WHERE id=1"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let actual: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {child}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(actual, 0, "real original foreign key is still applied");
+    driver.disconnect(h).await.unwrap();
+}
