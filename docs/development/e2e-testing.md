@@ -578,6 +578,7 @@ crate 百分比取平均；用例失败、没有有效 profile 或精确行覆�
 | `sql-query.ts` / `chart-views.ts` | 结果查找与下一处命中、数值结果图表与表格切换、只读连接不写库 |
 | `sqlite.ts` 查询结果分批 | 单条真实 SQLite 查询跨 500 行批次保留 600 行，查询结果定位到最后一行并与独立查询核对 |
 | `export-import.ts` / `backup-database.ts` | CSV 与 JSON 真落盘并与数据库核对、取消不落盘、SQLite 备份在独立库中恢复 |
+| `table-dirty-cells.ts` | 真实 SQLite 网格暂存三格，恢复其中一格后待提交数由 3 降为 2，独立确认提交前数据不变且提交仅落地剩余两格 |
 | `export-import.ts` CSV 导入 | 真实 SQLite 现有表，按同名表头预览并确认追加；独立核对 UTF-8、引号、逗号、NULL 与空串、默认值及原有记录；取消、只读、格式错误、重复表头、目标触发器和后续行键冲突均不写入 |
 | `sql-query.ts` 收藏 | 从设置保存当前 SQL 到真实收藏文件；重启加载但不自动执行，显式执行并与 SQLite 比对；改名不改身份，删除保留回收站文件 |
 | `query-history.ts` | 真 SQL 成功/失败、重启持久化、连接隔离、加载历史语句后手动重新执行 |

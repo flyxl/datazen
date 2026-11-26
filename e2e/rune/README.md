@@ -54,6 +54,7 @@ driver-specific assertions are added.
 | Legacy group | Rune coverage | Remaining examples |
 | --- | --- | --- |
 | Connection, settings, SQLite, grid, SQL, chart, exports, backups | Offline native smoke and focused journeys; see development E2E documentation | Connection editing/group drag, session recovery, clips, platform window operations, broader import/restore flow, per-locale validation |
+| `table-dirty-cells.ts` staged changes | Three cells staged in a real SQLite grid, restoring one to its original value clears its dirty count; a batch commit lands only the two remaining edits, independently verified | Dirty state across page/navigation and per-theme visual parity |
 | `export-import.ts` CSV import | Review exact CSV header mapping, then explicitly append UTF-8 rows to a real existing SQLite table; independent readback for quotes, commas, NULL vs empty, defaults and preexisting rows; cancel, malformed CSV, duplicate headers, read-only, triggers and later-key-conflict rollback | Arbitrary column remapping, additional formats/engines, schema creation and larger imports |
 | `sqlite.ts` query result batches | Real single SQLite statement returns all 600 rows; result find locates the unique last-row marker from the next batch | Multiple statements in one native run and retained artifact export |
 | `sql-query.ts` favorites | Save the current SQL to a real host file, restart, load without executing, explicitly run and check against SQLite, rename in place, delete to trash | React-specific menu/dialog parity and per-connection favorites policies |

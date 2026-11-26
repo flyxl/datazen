@@ -274,3 +274,44 @@ class OfflineJourneys:
             and (node.get("text") or "").endswith(" · 600 rows × 2 cols · selection r599c1..r599c1")
             for node in tree["elements"]
         ))
+
+    def test_sqlite_dirty_count_reverts_one_cell_and_commits_only_remaining_edits(self):
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as connection:
+            connection.execute("ALTER TABLE customers ADD COLUMN score INTEGER NOT NULL DEFAULT 0")
+            connection.execute("UPDATE customers SET score = id * 10")
+
+        def rows():
+            with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as connection:
+                return connection.execute(
+                    "SELECT id, customer_name, score FROM customers ORDER BY id").fetchall()
+
+        def edit(t, cell, value):
+            return [tap(t, cell), key(t + .35, "Enter"), tap(t + .6, "grid-editor"),
+                    key(t + .95, "a", cmd=True), type_text(t + 1.3, value),
+                    key(t + 2.15, "Enter")]
+
+        before = [(1, "fixture-ada", 10), (2, "fixture-lin", 20)]
+        self.assertEqual(rows(), before)
+        staged_steps = [
+            *OPEN, *edit(4.8, "cell-0-1", "Ada, staged"),
+            *edit(7.4, "cell-0-2", "17"), *edit(10.0, "cell-1-1", "temporary"),
+        ]
+        staged = self.replay(staged_steps, until=12.8)
+        self.expect_rendered(staged, text="3 pending changes — use Commit/Rollback",
+                             within="pending-changes-bar")
+        self.expect_rendered(staged, text="temporary", within="cell-1-1")
+        self.assertEqual(rows(), before)
+
+        reverted_steps = [*staged_steps, *edit(13.1, "cell-1-1", "fixture-lin")]
+        reverted = self.replay(reverted_steps, until=15.8)
+        self.expect_rendered(reverted, text="2 pending changes — use Commit/Rollback",
+                             within="pending-changes-bar")
+        self.expect_rendered(reverted, text="fixture-lin", within="cell-1-1")
+        self.assertEqual(rows(), before)
+
+        committed = self.replay([*reverted_steps, tap(16.2, "commit-staged")], until=19.0)
+        self.assertFalse(visible(committed, text="2 pending changes — use Commit/Rollback"))
+        self.expect_rendered(committed, text="Ada, staged", within="cell-0-1")
+        self.expect_rendered(committed, text="17", within="cell-0-2")
+        self.assertEqual(rows(), [(1, "Ada, staged", 17), before[1]])
