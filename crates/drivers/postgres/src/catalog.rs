@@ -457,10 +457,10 @@ impl PostgresDriver {
     pub(crate) async fn dump_routines_impl(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
     ) -> Result<String, DriverError> {
         let result = self
-            .query(
+            .query_at(
                 handle,
                 "SELECT n.nspname AS schema, p.proname AS name, \
                  pg_get_functiondef(p.oid) AS ddl \
@@ -468,6 +468,7 @@ impl PostgresDriver {
                  WHERE n.nspname NOT IN ('pg_catalog','information_schema') \
                    AND p.prokind IN ('f', 'p') \
                  ORDER BY 1, 2",
+                SqlTarget::new(Some(database), None),
             )
             .await?;
         Ok(collect_named_ddl_column(&result, "ddl", "ROUTINE"))

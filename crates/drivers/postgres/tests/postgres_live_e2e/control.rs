@@ -232,3 +232,130 @@ async fn control_channel_recovers_after_its_actual_anchor_database_is_removed() 
         .await
         .expect("no leaked data sessions");
 }
+
+#[tokio::test]
+async fn control_channel_uses_real_business_database_without_maintenance_connect_access() {
+    let mut fixture = Fixture::open().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let role = format!("dz_no_maintenance_{tag}");
+    let target = format!("dz_fixture_business_{tag}");
+    let missing_anchor = format!("dz_fixture_missing_anchor_{tag}");
+    let secret = format!("business-only-{tag}");
+    sqlx::query(&format!("CREATE ROLE {role} LOGIN PASSWORD '{secret}'"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("scope live login to isolated fixture");
+    sqlx::query(&format!("CREATE DATABASE {target} OWNER {role}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("only durable business database");
+    let public_had_connect:bool=sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM pg_database d CROSS JOIN LATERAL aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) acl WHERE d.datname='postgres' AND acl.grantee=0 AND acl.privilege_type='CONNECT')"
+    ).fetch_one(&mut fixture.oracle).await.expect("original disposable maintenance ACL");
+    if public_had_connect {
+        sqlx::query("REVOKE CONNECT ON DATABASE postgres FROM PUBLIC")
+            .execute(&mut fixture.oracle)
+            .await
+            .expect("separate fixture excludes business role from maintenance");
+    }
+    let barred: bool =
+        sqlx::query_scalar("SELECT NOT has_database_privilege($1,'postgres','CONNECT')")
+            .bind(&role)
+            .fetch_one(&mut fixture.oracle)
+            .await
+            .expect("independent maintenance privilege witness");
+    let mut config = fixture.config.clone();
+    config.database = Some(missing_anchor);
+    config.username = Some(role.clone());
+    config.password = Some(secret);
+    let driver = Arc::new(PostgresDriver::new());
+    let provider = PostgresResourceProvider::new(driver.clone());
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let result = provider
+        .acquire_resource(
+            &AcquireResourceRequest {
+                connection_config: config,
+                target: NamespaceTarget::empty().with_database(target.clone()),
+                scope: ResourceScope {
+                    purpose: ResourcePurpose::InteractiveQuery,
+                    max_physical_connections: 16,
+                    holds_open_transaction: false,
+                    pin_for_streaming: false,
+                },
+                identity_scope: IdentityScope::default(),
+                baseline: Baseline::default(),
+            },
+            &budget,
+        )
+        .await;
+    // Restore the disposable cluster's original ACL before making assertions.
+    if public_had_connect {
+        sqlx::query("GRANT CONNECT ON DATABASE postgres TO PUBLIC")
+            .execute(&mut fixture.oracle)
+            .await
+            .expect("restore exact prior maintenance access");
+    }
+    assert!(
+        barred,
+        "the fixture login could not reach the maintenance database"
+    );
+    let handle = result.expect("real data + control can elect the proven business target");
+    let observed = provider
+        .observe_session(&handle)
+        .await
+        .expect("same database observations available");
+    assert_eq!(
+        observed.context.namespace.database.as_deref(),
+        Some(target.as_str())
+    );
+    assert_eq!(
+        observed.context.effective_identity.as_deref(),
+        Some(role.as_str())
+    );
+    let backends:Vec<String>=sqlx::query_scalar(
+        "SELECT datname::text FROM pg_stat_activity WHERE usename=$1 AND datname IS NOT NULL ORDER BY pid"
+    ).bind(&role).fetch_all(&mut fixture.oracle).await.expect("actual role's control and data sockets");
+    assert_eq!(backends, [target.clone(), target.clone()]);
+    assert_eq!(
+        ledger
+            .control
+            .lock()
+            .expect("separate one-control admission")
+            .len(),
+        1
+    );
+    let connection = provider
+        .connection_handle(&handle)
+        .expect("actual acquired connection");
+    let native = driver
+        .get_server_info(&connection)
+        .await
+        .expect("actual business backend remains usable");
+    assert_eq!(native.server_type, "PostgreSQL");
+    assert_eq!(
+        provider
+            .close_resource(&handle)
+            .await
+            .expect("real network close"),
+        CloseDisposition::Closed
+    );
+    assert!(ledger
+        .control
+        .lock()
+        .expect("returned sole control permit")
+        .is_empty());
+    assert!(ledger
+        .data
+        .lock()
+        .expect("returned sole data permit")
+        .is_empty());
+    sqlx::query(&format!("DROP DATABASE {target}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("business sockets fully retired");
+    sqlx::query(&format!("DROP ROLE {role}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("cleanup isolated role");
+}

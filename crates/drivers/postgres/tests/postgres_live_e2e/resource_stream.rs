@@ -410,3 +410,90 @@ async fn losing_a_real_postgres_backend_midstream_tombstones_the_retained_checko
         .await
         .expect("resource can still be cleaned");
 }
+
+#[tokio::test]
+async fn postgres_refuses_to_reuse_a_stream_when_server_policy_blocks_cancellation_and_drain() {
+    let mut fixture = Fixture::open().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let role = format!("dz_drain_role_{tag}");
+    let db = format!("dz_fixture_drain_{tag}");
+    let secret = format!("fixture-drain-{tag}");
+    sqlx::query(&format!("CREATE ROLE {role} LOGIN PASSWORD '{secret}'"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("actual scoped business role");
+    sqlx::query(&format!("CREATE DATABASE {db}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("isolated database policy fixture");
+    let mut oracle = fixture.connect_to(&db).await;
+    // Scope this simulated production policy to the new disposable DB.
+    sqlx::query("REVOKE EXECUTE ON FUNCTION pg_catalog.pg_cancel_backend(integer) FROM PUBLIC")
+        .execute(&mut oracle)
+        .await
+        .expect("actual server denies role's cancellation primitive");
+    assert!(!sqlx::query_scalar::<_, bool>(
+        "SELECT has_function_privilege($1,'pg_catalog.pg_cancel_backend(integer)','EXECUTE')"
+    )
+    .bind(&role)
+    .fetch_one(&mut oracle)
+    .await
+    .expect("independent ACL witness"));
+    let driver = PostgresDriver::new();
+    let mut target = fixture.config.clone();
+    target.database = Some(db.clone());
+    target.username = Some(role.clone());
+    target.password = Some(secret);
+    let retained = driver
+        .connect_fixed_session(&target)
+        .await
+        .expect("data and control run as actual restricted role");
+    driver
+        .execute(&retained, "SET statement_timeout = '25s'")
+        .await
+        .expect("bound maximum lifetime of fixture query");
+    let pid = match driver
+        .query(&retained, "SELECT pg_backend_pid()")
+        .await
+        .expect("actual original checkout")
+        .rows[0][0]
+    {
+        Some(Value::Integer(pid)) => i32::try_from(pid).expect("PostgreSQL PID"),
+        _ => panic!("unexpected live PID"),
+    };
+    let artifacts = tempfile::tempdir().expect("disposable result output");
+    let refused = Artifact::new(&artifacts, "quota-denied.ndjson", 0);
+    // The first row is larger than the server's protocol buffer and reaches
+    // the sink before the second row's real backend delay.
+    let output=tokio::time::timeout(std::time::Duration::from_secs(15),stream(
+        &driver,&retained,
+        "SELECT repeat('x',100000) AS payload, CASE WHEN n=1 THEN NULL::text ELSE (SELECT NULL::text FROM pg_sleep(22) WHERE n>1) END AS delayed FROM generate_series(1,2) n",
+        None,None,&refused,
+    )).await.expect("protocol cleanup must remain bounded");
+    assert!(
+        matches!(output,Err(ResourceError::Driver(datazen_driver_api::DriverError::ConnectionFailed(reason))) if reason.contains("SessionLost")),
+        "incomplete drain must never return a reusable checkout"
+    );
+    assert!(refused.records().is_empty());
+    assert!(driver.observe_fixed_session(&retained).await.is_err());
+    driver
+        .disconnect(retained)
+        .await
+        .expect("control socket and retired checkout can close");
+    // The hardened role cannot cancel; the independent fixture administrator
+    // may stop its remaining isolated PostgreSQL backend during cleanup.
+    sqlx::query("SELECT pg_terminate_backend($1) FROM pg_stat_activity WHERE pid=$1")
+        .bind(pid)
+        .execute(&mut oracle)
+        .await
+        .expect("remove only old poisoned fixture backend");
+    drop(oracle);
+    sqlx::query(&format!("DROP DATABASE {db}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("dispose database-specific policy");
+    sqlx::query(&format!("DROP ROLE {role}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("dispose dedicated role");
+}

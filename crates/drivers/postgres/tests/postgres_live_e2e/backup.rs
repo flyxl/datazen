@@ -399,3 +399,70 @@ async fn retained_backup_runtime_streams_and_restores_views_routine_and_trigger(
             .expect("remove isolated backup DB");
     }
 }
+
+#[tokio::test]
+async fn postgres_backup_routines_read_the_explicit_catalog_without_moving_the_original_session() {
+    let mut fixture = Fixture::open().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let other = format!("dz_fixture_routine_{tag}");
+    let name = format!("routine_{tag}");
+    let default_db = fixture
+        .config
+        .database
+        .as_deref()
+        .expect("fixture database");
+    sqlx::query(&format!("CREATE DATABASE {other}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("isolated other catalog");
+    let mut oracle_target = fixture.connect_to(&other).await;
+    for (oracle, val) in [
+        (&mut fixture.oracle, "local fixture routine"),
+        (&mut oracle_target, "selected foreign fixture routine"),
+    ] {
+        sqlx::query(&format!("CREATE FUNCTION public.{name}() RETURNS text LANGUAGE SQL AS $$ SELECT '{val}'::text $$"))
+            .execute(oracle).await.expect("same routine name natural in different PostgreSQL databases");
+    }
+    let driver = PostgresDriver::new();
+    let handle = driver
+        .connect_fixed_session(&fixture.config)
+        .await
+        .expect("retained original database");
+    let local = driver
+        .dump_routines(&handle, default_db)
+        .await
+        .expect("local routine catalog");
+    let remote = driver
+        .dump_routines(&handle, &other)
+        .await
+        .expect("authorized selected foreign routine catalog");
+    assert!(local.contains("local fixture routine"));
+    assert!(remote.contains("selected foreign fixture routine"));
+    assert!(!remote.contains("local fixture routine"));
+    assert_eq!(
+        driver
+            .query(&handle, "SELECT current_database()::text")
+            .await
+            .expect("original data connection isn't switched")
+            .rows,
+        vec![vec![super::string(default_db)]]
+    );
+    let value: String = sqlx::query_scalar(&format!("SELECT public.{name}()"))
+        .fetch_one(&mut oracle_target)
+        .await
+        .expect("independent actual remote routine result");
+    assert_eq!(value, "selected foreign fixture routine");
+    driver
+        .disconnect(handle)
+        .await
+        .expect("all PostgreSQL pools released");
+    drop(oracle_target);
+    sqlx::query(&format!("DROP DATABASE {other}"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("remove other test catalog");
+    sqlx::query(&format!("DROP FUNCTION public.{name}()"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("clean scope");
+}
