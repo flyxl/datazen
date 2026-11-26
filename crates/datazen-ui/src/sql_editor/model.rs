@@ -384,6 +384,53 @@ impl SqlEditor {
             .map(|(start, end)| self.doc[*start..*end].trim().to_owned())
     }
 
+    /// Explicit text selection wins over the caret. The live host may supply
+    /// dialect-exact byte ranges; the generic fallback is only used when it
+    /// has not implemented an editor parser for the active connection.
+    pub(crate) fn query_execution_text(
+        &self,
+        resolve: impl FnOnce(&str) -> Option<Result<Vec<std::ops::Range<usize>>, String>>,
+    ) -> Result<Option<String>, String> {
+        let mut selected = self.selection.ranges().iter().filter(|range| range.from() < range.to());
+        if let Some(range) = selected.next() {
+            if selected.next().is_some() {
+                return Err("Select one SQL statement before running.".into());
+            }
+            let sql = self.doc[range.from()..range.to()].trim();
+            if let Some(ranges) = resolve(sql) {
+                let ranges = ranges?;
+                return match ranges.as_slice() {
+                    [statement] => Ok(Some(sql[statement.clone()].trim().to_owned())),
+                    _ => Err("Select one SQL statement before running.".into()),
+                };
+            }
+            let count = datazen_driver_api::sql_split::split_sql_statements(sql)
+                .iter()
+                .filter(|statement| !datazen_driver_api::sql_split::is_comment_only_or_empty(statement))
+                .count();
+            return if count == 1 {
+                Ok(Some(sql.to_owned()))
+            } else {
+                Err("Select one SQL statement before running.".into())
+            };
+        }
+
+        let Some(ranges) = resolve(&self.doc) else {
+            return Ok(self.statement_at_cursor());
+        };
+        let ranges = ranges?;
+        let head = self.selection.main().head;
+        let statement = ranges.iter().find(|range| head <= range.end).or_else(|| {
+            // The editor caret normally sits immediately after a trailing
+            // semicolon typed by the user. Do not jump back across a later
+            // comment or other non-whitespace text.
+            ranges.last().filter(|range| {
+                self.doc[range.end..].strip_prefix(';').is_some_and(|rest| rest.trim().is_empty())
+            })
+        });
+        Ok(statement.map(|range| self.doc[range.clone()].trim().to_owned()))
+    }
+
     /// Find the next occurrence of `needle` from the main caret, wrapping around,
     /// and select it. False when the needle is missing or empty.
     pub fn find_next(&mut self, needle: &str) -> bool {

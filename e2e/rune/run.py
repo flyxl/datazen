@@ -17,13 +17,14 @@ from offline import OfflineJourneys
 from query_history import QueryHistoryJourney
 from scenarios import fixture, query_steps, tap, type_text, visible
 from schema_diff import SchemaDiffJourney
+from sql_selection import SqlSelectionJourneys
 from tcp_metadata import TcpMetadataJourneys, with_metadata_journeys
 from tcp_sql import TcpSqlJourneys, with_tcp_journeys
 from transfer import TransferJourneys
 from workflow import WorkflowJourney
 
 
-class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, unittest.TestCase):
+class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="datazen-native-e2e-")
         self.addCleanup(tmp.cleanup)

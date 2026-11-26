@@ -1748,6 +1748,15 @@ pub trait DesktopAdapter {
         Vec::new()
     }
 
+    /// Dialect-exact statement ranges for the active editor connection. Native
+    /// adapters may delegate to the linked engine's non-executing parser.
+    fn editor_statement_ranges(
+        &self,
+        _sql: &str,
+    ) -> Option<Result<Vec<std::ops::Range<usize>>, String>> {
+        None
+    }
+
     /// The live native host exposes its restricted data-only transfer tool.
     fn supports_native_transfer(&self) -> bool {
         false

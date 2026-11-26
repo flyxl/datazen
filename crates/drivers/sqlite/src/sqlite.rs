@@ -6,7 +6,9 @@ use crate::structure;
 mod parameter_limit;
 mod csv_import;
 mod schema;
+mod statement_ranges;
 pub use csv_import::CsvImportTarget;
+pub use statement_ranges::sqlite_statement_ranges;
 use async_trait::async_trait;
 use datazen_driver_api::*;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -512,10 +514,9 @@ impl DatabaseDriver for SqliteDriver {
         let pool = Self::get_pool(&pools, handle)?;
 
         let total_start = Instant::now();
-        let statements: Vec<&str> = sql
-            .split(';')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
+        let statements: Vec<&str> = sqlite_statement_ranges(sql)?
+            .into_iter()
+            .map(|range| sql[range].trim())
             .collect();
 
         let mut results = Vec::new();
@@ -569,10 +570,9 @@ impl DatabaseDriver for SqliteDriver {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         let total_start = Instant::now();
-        let statements: Vec<&str> = sql
-            .split(';')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
+        let statements: Vec<&str> = sqlite_statement_ranges(sql)?
+            .into_iter()
+            .map(|range| sql[range].trim())
             .collect();
 
         if statements.is_empty() {

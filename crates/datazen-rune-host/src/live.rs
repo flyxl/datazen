@@ -2296,6 +2296,17 @@ impl DesktopAdapter for LiveAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    fn editor_statement_ranges(
+        &self,
+        sql: &str,
+    ) -> Option<Result<Vec<std::ops::Range<usize>>, String>> {
+        let driver = self.session.lock().ok()?.driver.clone()?;
+        if driver.driver_type() != "sqlite" {
+            return None;
+        }
+        Some(datazen_driver_sqlite::sqlite_statement_ranges(sql).map_err(|error| error.to_string()))
+    }
+
     fn supports_native_transfer(&self) -> bool {
         true
     }

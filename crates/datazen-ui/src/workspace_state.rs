@@ -330,11 +330,16 @@ impl AppState {
     /// remain; unpinned prior tabs are kept for switching). A synchronous
     /// failure restores the previously selected result so the UI stays as it was.
     pub fn run_query(&mut self) {
+        let sql = match self.sql.query_execution_text(|sql| self.desktop.editor_statement_ranges(sql)) {
+            Ok(Some(sql)) => sql,
+            Ok(None) => return,
+            Err(error) => {
+                self.query_action_notice(error);
+                return;
+            }
+        };
         let previous_selected = self.selected_query_result;
         let generation = self.next_query_generation();
-        let Some(sql) = self.sql.statement_at_cursor() else {
-            return;
-        };
         self.query_notice = None;
         self.park_selected_query_result_grid();
         let tab_id = self.ensure_query_result_tab_for_generation(generation);
