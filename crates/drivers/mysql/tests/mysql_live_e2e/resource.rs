@@ -1,5 +1,6 @@
 use super::Fixture;
 use datazen_driver_api::{
+    DatabaseDriver, QueryExecutionId, Value,
     namespace::NamespaceTarget,
     resource::{
         AcquireResourceRequest, Baseline, BudgetPermit, BudgetPort, CommandCall,
@@ -10,9 +11,8 @@ use datazen_driver_api::{
         CloseDisposition, ContextChangeDisposition, ObservationConfidence, ResetDisposition,
         TransactionOptions, TransactionState,
     },
-    DatabaseDriver, QueryExecutionId, Value,
 };
-use serde_json::{json, Value as Json};
+use serde_json::{Value as Json, json};
 use std::{
     collections::BTreeMap,
     io::Write,
@@ -300,9 +300,11 @@ async fn mysql_provider_retains_real_transaction_context_and_closes_named_rollba
         .await
         .expect("commit tracked transaction");
     assert_eq!(external(&mut f.oracle).await, [1, 3]);
-    assert!(std::fs::read_to_string(&p)
-        .expect("read written artifact")
-        .contains("statementSummary"));
+    assert!(
+        std::fs::read_to_string(&p)
+            .expect("read written artifact")
+            .contains("statementSummary")
+    );
 
     let read_only = TransactionOptions {
         isolation_level: None,
@@ -326,10 +328,12 @@ async fn mysql_provider_retains_real_transaction_context_and_closes_named_rollba
         .await
         .expect("read stable snapshot");
     assert_eq!(during.rows, before.rows);
-    assert!(driver
-        .execute(&connection, &format!("INSERT INTO {table} VALUES(5)"))
-        .await
-        .is_err());
+    assert!(
+        driver
+            .execute(&connection, &format!("INSERT INTO {table} VALUES(5)"))
+            .await
+            .is_err()
+    );
     provider
         .rollback_transaction(&fixed)
         .await
@@ -435,9 +439,11 @@ async fn mysql_resource_stream_persists_batch_metadata_and_recovers_after_quota_
         rows[259][0],
         serde_json::to_value(Value::Integer(261)).unwrap()
     );
-    assert!(saved
-        .iter()
-        .any(|d| d["kind"] == "statementMetadata" && d["truncated"] == true));
+    assert!(
+        saved
+            .iter()
+            .any(|d| d["kind"] == "statementMetadata" && d["truncated"] == true)
+    );
     let empty = CommandCall::new(
         "query",
         json!({"sql":"SELECT CAST(? AS SIGNED) AS typed WHERE FALSE","boundParameters":[Value::Integer(41)]}),
@@ -446,17 +452,21 @@ async fn mysql_resource_stream_persists_batch_metadata_and_recovers_after_quota_
         .execute_on_resource(&fixed, &id("empty-native-bound"), &empty, &sink)
         .await
         .expect("native empty bound result");
-    assert!(read()
-        .iter()
-        .any(|d| d["kind"] == "statementMetadata" && d["columns"][0]["name"] == "typed"));
+    assert!(
+        read()
+            .iter()
+            .any(|d| d["kind"] == "statementMetadata" && d["columns"][0]["name"] == "typed")
+    );
     let malformed = CommandCall::new(
         "query",
         json!({"sql":"SELECT ?; SELECT 2","boundParameters":[Value::Integer(1)]}),
     );
-    assert!(provider
-        .execute_on_resource(&fixed, &id("ambiguous-native-sql"), &malformed, &sink)
-        .await
-        .is_err());
+    assert!(
+        provider
+            .execute_on_resource(&fixed, &id("ambiguous-native-sql"), &malformed, &sink)
+            .await
+            .is_err()
+    );
     let too_wide = CommandCall::new(
         "query",
         json!({"sql":"SELECT REPEAT('a', 1200000) AS over_limit"}),
@@ -649,5 +659,195 @@ async fn mysql_backup_snapshot_refuses_to_commit_user_transaction_and_persists_a
         provider.close_resource(&fixed).await.unwrap(),
         CloseDisposition::Closed
     );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn mysql_leased_resource_routes_bound_work_to_native_scope_and_settles_read_snapshot() {
+    use datazen_driver_api::resource::InitializationRequirement;
+    let mut f = Fixture::open().await;
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|p| p.driver_id() == "mysql")
+        .unwrap();
+    let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let peer = std::env::var("TEST_MYSQL_DATABASE_B").unwrap();
+    let table = format!("dz_lease_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!("CREATE TABLE {table}(id INT PRIMARY KEY,val INT); INSERT INTO {table} VALUES(1,11);
+      CREATE TABLE {peer}.{table}(id INT PRIMARY KEY,val INT); INSERT INTO {peer}.{table} VALUES(1,22);"))
+      .execute(&mut f.oracle).await.unwrap();
+    let target = NamespaceTarget::empty().with_database(peer.clone());
+    let mut request = AcquireResourceRequest {
+        connection_config: f.cfg.clone(),
+        target: target.clone(),
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::new(vec![InitializationRequirement {
+            id: "native_time_zone".into(),
+            sql: "SET time_zone = '+01:00'".into(),
+            mandatory: true,
+            idempotent: true,
+        }]),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::TransferJob,
+            max_physical_connections: 8,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+    };
+    let shape = provider.namespace_shape();
+    assert!(shape.canonicalize(&target).is_ok());
+    let descriptor = provider
+        .describe_resource(&DescribeResourceRequest {
+            connection_config: f.cfg.clone(),
+            target: target.clone(),
+            identity_scope: IdentityScope::default(),
+            purpose: ResourcePurpose::TransferJob,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        descriptor.session_continuity,
+        datazen_driver_api::capabilities::SessionContinuity::Leased
+    );
+    assert!(
+        matches!(provider.acquire_resource(&request,&budget).await,Err(ResourceError::OperationNotSupported{ref reason,..}) if reason.contains("baseline replay"))
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+    request.baseline = Baseline::default();
+    let leased = provider
+        .acquire_resource(&request, &budget)
+        .await
+        .expect("leased native MySQL checkout");
+    assert_eq!(ledger.0.lock().unwrap().len(), 1);
+    let observed = provider.observe_session(&leased).await.unwrap();
+    assert_eq!(
+        observed.context.namespace.database.as_deref(),
+        Some(peer.as_str())
+    );
+    assert_eq!(observed.context.confidence, ObservationConfidence::Partial);
+    assert!(matches!(
+        provider.commit_transaction(&leased).await,
+        Err(ResourceError::InvalidResourceState { .. })
+    ));
+    assert!(matches!(
+        provider.rollback_transaction(&leased).await,
+        Err(ResourceError::InvalidResourceState { .. })
+    ));
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("leased.jsonl");
+    let sink = Artifact(Mutex::new(std::fs::File::create(&path).unwrap()));
+    let id = |label: &str| QueryExecutionId::new(format!("lease-{label}-{table}"));
+    let bound = CommandCall::new(
+        "query_stream",
+        json!({"sql":format!("SELECT val FROM {table} WHERE id=?"),
+       "boundParameters":[Value::Integer(1)],"limit":2}),
+    );
+    let inserted = CommandCall::new(
+        "execute",
+        json!({"sql":format!("INSERT INTO {table}(id,val) VALUES(?,?)"),
+       "boundParameters":[Value::Integer(2),Value::Integer(37)]}),
+    );
+    let id_reused = id("preflight");
+    for command in ["query", "execute"] {
+        let malformed = CommandCall::new(
+            command,
+            json!({"sql":"SELECT ?","boundParameters":{"not":"a list"}}),
+        );
+        assert!(matches!(
+            provider
+                .execute_on_resource(&leased, &id_reused, &malformed, &sink)
+                .await,
+            Err(ResourceError::Driver(_))
+        ));
+    }
+    let without_sql = CommandCall::new("query", json!({"sql":"   "}));
+    assert!(matches!(
+        provider
+            .execute_on_resource(&leased, &id_reused, &without_sql, &sink)
+            .await,
+        Err(ResourceError::OperationNotSupported { .. })
+    ));
+    let backup = CommandCall::new("backup_dump", json!({"database":peer}));
+    assert!(matches!(
+        provider
+            .execute_on_resource(&leased, &id_reused, &backup, &sink)
+            .await,
+        Err(ResourceError::OperationNotSupported { .. })
+    ));
+    assert!(
+        provider
+            .execute_on_resource(&leased, &id_reused, &inserted, &sink)
+            .await
+            .unwrap()
+            .completion_status
+            .is_success()
+    );
+    let options = TransactionOptions {
+        read_only: Some(true),
+        ..Default::default()
+    };
+    let snapshot = provider
+        .begin_transaction(&leased, &options)
+        .await
+        .expect("actual native read-only snapshot");
+    assert_eq!(snapshot.state, TransactionState::Active);
+    let before = provider
+        .execute_on_resource(&leased, &id("before"), &bound, &sink)
+        .await
+        .unwrap();
+    assert!(before.completion_status.is_success());
+    sqlx::query(&format!("UPDATE {peer}.{table} SET val=71 WHERE id=1"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let after = provider
+        .execute_on_resource(&leased, &id("after"), &bound, &sink)
+        .await
+        .unwrap();
+    assert!(after.completion_status.is_success());
+    let read_only = provider
+        .execute_on_resource(&leased, &id("read-only"), &inserted, &sink)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(read_only,ResourceError::Driver(ref error) if error.to_string().contains("READ ONLY")||error.to_string().contains("read-only"))
+    );
+    assert_eq!(
+        provider.commit_transaction(&leased).await.unwrap().state,
+        TransactionState::Idle
+    );
+    provider
+        .execute_on_resource(&leased, &id("settled"), &bound, &sink)
+        .await
+        .unwrap();
+    let actual = std::fs::read_to_string(&path)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str::<Json>(l).unwrap())
+        .filter(|event| event["kind"] == "rows")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual
+            .iter()
+            .map(|e| e["rows"][0][0].clone())
+            .collect::<Vec<_>>(),
+        [22, 22, 71].map(|v| serde_json::to_value(Value::Integer(v)).unwrap())
+    );
+    let native: (i32, i32, i64) = sqlx::query_as(&format!(
+        "SELECT (SELECT val FROM {table} WHERE id=1),(SELECT val FROM {peer}.{table} WHERE id=1),
+        (SELECT COUNT(*) FROM {peer}.{table} WHERE id=2 AND val=37)"
+    ))
+    .fetch_one(&mut f.oracle)
+    .await
+    .unwrap();
+    assert_eq!(native, (11, 71, 1));
+    assert_eq!(
+        provider.close_resource(&leased).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(provider.observe_session(&leased).await.is_err());
     assert!(ledger.0.lock().unwrap().is_empty());
 }

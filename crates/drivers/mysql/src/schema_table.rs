@@ -7,8 +7,17 @@ impl MysqlDriver {
         table: &str,
         db: &str,
     ) -> Result<TableSchema, DriverError> {
-        self.table_schema_exact_on_connection(conn, Self::bare_table_name(table), db)
-            .await
+        let exact = self.table_schema_exact_on_connection(conn, table, db).await;
+        // Catalog callers pass exact names; legacy callers may still supply
+        // db.table. Try that interpretation only when the literal name is absent.
+        let bare = Self::bare_table_name(table);
+        if table != bare
+            && matches!(&exact, Err(DriverError::QueryFailed(message)) if Self::is_table_not_found_error(message))
+        {
+            self.table_schema_exact_on_connection(conn, bare, db).await
+        } else {
+            exact
+        }
     }
 
     pub(super) async fn table_schema_exact_on_connection(
@@ -21,7 +30,7 @@ impl MysqlDriver {
         // Fully qualified, so the SHOW family resolves against `database`
         // instead of whatever schema the pooled connection happens to default
         // to. MySQL accepts `db.table` here — no `USE`, no pollution.
-        let q = format!("`{}`.`{}`", db.replace('`', "``"), table.replace('`', "``"));
+        let q = Self::exact_table_ref(db, table);
 
         let col_rows = match sqlx::query(&format!("SHOW FULL COLUMNS FROM {}", q))
             .fetch_all(&mut *conn)
@@ -90,11 +99,7 @@ impl MysqlDriver {
                 let extra = decode_mysql_text(r, "Extra");
                 let comment: Option<String> = {
                     let s = decode_mysql_text(r, "Comment");
-                    if s.is_empty() {
-                        None
-                    } else {
-                        Some(s)
-                    }
+                    if s.is_empty() { None } else { Some(s) }
                 };
                 let is_pk = key == "PRI";
                 if is_pk {

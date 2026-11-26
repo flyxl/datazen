@@ -208,8 +208,8 @@ impl MysqlDriver {
             // rows here. Distinguish them so the tree reports a bad target
             // instead of silently presenting an empty database — PostgreSQL
             // errors on the same input, and the two must not disagree.
-            let known: Option<String> = sqlx::query_scalar(
-                "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
+            let known: Option<i32> = sqlx::query_scalar(
+                "SELECT 1 FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
             )
             .bind(database)
             .fetch_optional(&mut *connection)

@@ -164,11 +164,10 @@ impl MysqlDriver {
     ) -> Result<String, DriverError> {
         validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         let db = self.effective_database(handle, database).await;
-        let sql = format!(
-            "SHOW CREATE TABLE {}",
-            Self::qualified_table_ref(&db, table)
-        );
-        match self.query(handle, &sql).await {
+        let create = self
+            .show_create_for_identity(handle, "TABLE", &db, table)
+            .await;
+        match create {
             Ok(result) => {
                 if let Some(create) = extract_show_create_table(&result) {
                     let mut ddl = create;
@@ -197,8 +196,9 @@ impl MysqlDriver {
     ) -> Result<String, DriverError> {
         validate_schema_target(self, database, schema, SchemaScope::ExactSchema)?;
         let db = self.effective_database(handle, database).await;
-        let sql = format!("SHOW CREATE VIEW {}", Self::qualified_table_ref(&db, view));
-        let result = self.query(handle, &sql).await?;
+        let result = self
+            .show_create_for_identity(handle, "VIEW", &db, view)
+            .await?;
         let create = extract_named_create_column(&result, "Create View").or_else(|| {
             if result.columns.len() >= 2 {
                 let row = result.rows.first()?;
@@ -221,6 +221,28 @@ impl MysqlDriver {
             Ok(format!("{trimmed}\n"))
         } else {
             Ok(format!("{trimmed};\n"))
+        }
+    }
+
+    async fn show_create_for_identity(
+        &self,
+        handle: &ConnectionHandle,
+        keyword: &str,
+        database: &str,
+        name: &str,
+    ) -> Result<QueryResult, DriverError> {
+        let exact = Self::exact_table_ref(database, name);
+        let result = self
+            .query(handle, &format!("SHOW CREATE {keyword} {exact}"))
+            .await;
+        let legacy = Self::qualified_table_ref(database, name);
+        if exact != legacy
+            && matches!(&result, Err(DriverError::QueryFailed(message)) if Self::is_table_not_found_error(message))
+        {
+            self.query(handle, &format!("SHOW CREATE {keyword} {legacy}"))
+                .await
+        } else {
+            result
         }
     }
 

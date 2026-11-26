@@ -2,8 +2,8 @@ use super::Fixture;
 use datazen_driver_api::{BackupDumpOptions, DatabaseDriver, DriverError, Value};
 use serde_json::json;
 use sqlx::{
-    mysql::{MySqlConnectOptions, MySqlSslMode},
     Connection, MySqlConnection,
+    mysql::{MySqlConnectOptions, MySqlSslMode},
 };
 
 #[tokio::test]
@@ -17,13 +17,22 @@ async fn mysql_object_browser_reads_and_replays_server_ddl() {
     let procedure = format!("dz_report_{id}");
     let trigger = format!("dz_upper_{id}");
     for sql in [
-        format!("CREATE TABLE {table}(id INT PRIMARY KEY AUTO_INCREMENT, payload VARCHAR(60) NOT NULL, price DECIMAL(20,4) NOT NULL DEFAULT 3, CONSTRAINT check_price CHECK (price >= 0), INDEX price_idx (price)) ENGINE=InnoDB COMMENT='order table'"),
+        format!(
+            "CREATE TABLE {table}(id INT PRIMARY KEY AUTO_INCREMENT, payload VARCHAR(60) NOT NULL, price DECIMAL(20,4) NOT NULL DEFAULT 3, CONSTRAINT check_price CHECK (price >= 0), INDEX price_idx (price)) ENGINE=InnoDB COMMENT='order table'"
+        ),
         format!("CREATE VIEW {view} AS SELECT id, payload FROM {table}"),
         format!("CREATE FUNCTION {function}(x INT) RETURNS INT DETERMINISTIC RETURN x * 100"),
         format!("CREATE PROCEDURE {procedure}() SELECT count(*) FROM {table}"),
-        format!("CREATE TRIGGER {trigger} BEFORE INSERT ON {table} FOR EACH ROW SET NEW.payload=UPPER(NEW.payload)"),
+        format!(
+            "CREATE TRIGGER {trigger} BEFORE INSERT ON {table} FOR EACH ROW SET NEW.payload=UPPER(NEW.payload)"
+        ),
         format!("INSERT INTO {table}(payload) VALUES ('initial')"),
-    ] {sqlx::raw_sql(&sql).execute(&mut f.oracle).await.expect("actual source database object");}
+    ] {
+        sqlx::raw_sql(&sql)
+            .execute(&mut f.oracle)
+            .await
+            .expect("actual source database object");
+    }
 
     for (kind, name) in [
         ("view", &view),
@@ -79,9 +88,11 @@ async fn mysql_object_browser_reads_and_replays_server_ddl() {
         )
         .await
         .expect("native table object");
-    assert!(table_object.data["ddl"]
-        .as_str()
-        .is_some_and(|ddl| ddl.contains("order table")));
+    assert!(
+        table_object.data["ddl"]
+            .as_str()
+            .is_some_and(|ddl| ddl.contains("order table"))
+    );
     let view_ddl = driver
         .dump_view_ddl(&handle, &view, &f.database, None)
         .await
@@ -119,9 +130,11 @@ async fn mysql_object_browser_reads_and_replays_server_ddl() {
             && dump.contains(&trigger)
             && !dump.contains("INSERT INTO")
     );
-    assert!(progress
-        .iter()
-        .any(|event| event.object_name.contains(&table)));
+    assert!(
+        progress
+            .iter()
+            .any(|event| event.object_name.contains(&table))
+    );
 
     let other = std::env::var("TEST_MYSQL_DATABASE_B").expect("fixture has second catalog");
     assert_ne!(other, f.database);
@@ -184,19 +197,23 @@ async fn mysql_explain_reports_the_real_plan_and_retained_temporary_table() {
         )
         .await
         .expect("seed real plan rows");
-    assert!(sqlx::query(&format!("SELECT id FROM {table}"))
-        .fetch_one(&mut f.oracle)
-        .await
-        .is_err());
+    assert!(
+        sqlx::query(&format!("SELECT id FROM {table}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .is_err()
+    );
     let plan = driver
         .explain(&handle, &format!("SELECT id FROM {table} WHERE id=1"))
         .await
         .expect("explain against same retained checkout");
     assert!(plan.plan_text.contains(&table) && plan.plan_text.contains("PRIMARY"));
     let json = plan.plan_json.expect("MySQL plan JSON adapter");
-    assert!(json["columns"]
-        .as_array()
-        .is_some_and(|columns| columns.iter().any(|v| v == "possible_keys")));
+    assert!(
+        json["columns"]
+            .as_array()
+            .is_some_and(|columns| columns.iter().any(|v| v == "possible_keys"))
+    );
     assert!(
         json["query_block"].is_object(),
         "native engine JSON format is preserved"
@@ -221,8 +238,8 @@ async fn mysql_explain_reports_the_real_plan_and_retained_temporary_table() {
 }
 
 #[tokio::test]
-async fn mysql_retained_metadata_distinguishes_real_relation_names_temp_state_and_composite_constraints(
-) {
+async fn mysql_retained_metadata_distinguishes_real_relation_names_temp_state_and_composite_constraints()
+ {
     let mut f = Fixture::open().await;
     let driver = datazen_driver_mysql::MysqlDriver::new(false);
     let handle = driver
@@ -273,7 +290,9 @@ async fn mysql_retained_metadata_distinguishes_real_relation_names_temp_state_an
 
     let literal = format!("live.dot_{tag}");
     let quoted = driver.quote_ident(&literal);
-    let raw=format!("CREATE TEMPORARY TABLE {quoted} (temporary_id BIGINT PRIMARY KEY, note VARCHAR(20) DEFAULT 'kept')");
+    let raw = format!(
+        "CREATE TEMPORARY TABLE {quoted} (temporary_id BIGINT PRIMARY KEY, note VARCHAR(20) DEFAULT 'kept')"
+    );
     driver
         .execute(&handle, &raw)
         .await
@@ -286,10 +305,12 @@ async fn mysql_retained_metadata_distinguishes_real_relation_names_temp_state_an
     assert_eq!(result.data["resolvedTarget"]["database"], cfg_name);
     assert_eq!(result.data["resolvedTarget"]["sessionScoped"], true);
     assert_eq!(result.data["schema"]["columns"][0]["name"], "temporary_id");
-    assert!(sqlx::query(&format!("SELECT temporary_id FROM {quoted}"))
-        .fetch_one(&mut f.oracle)
-        .await
-        .is_err());
+    assert!(
+        sqlx::query(&format!("SELECT temporary_id FROM {quoted}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .is_err()
+    );
 
     let persisted = driver
         .execute_command(
@@ -320,10 +341,12 @@ async fn mysql_retained_metadata_distinguishes_real_relation_names_temp_state_an
             "join/derived/multi-source cannot identify one editable table"
         );
     }
-    assert!(driver
-        .get_table_schema(&handle, "dz_absent_for_mysql_metadata", &cfg_name, None)
-        .await
-        .is_err());
+    assert!(
+        driver
+            .get_table_schema(&handle, "dz_absent_for_mysql_metadata", &cfg_name, None)
+            .await
+            .is_err()
+    );
     driver
         .disconnect(handle)
         .await
@@ -347,9 +370,18 @@ async fn mysql_same_session_can_dump_routines_and_triggers_from_explicit_foreign
     for (catalog, label) in [(&a, "primary_decoy"), (&b, "foreign_requested")] {
         for sql in [
             format!("CREATE TABLE {catalog}.{relation}(t VARCHAR(70))"),
-            format!("CREATE FUNCTION {catalog}.{routine}() RETURNS VARCHAR(70) DETERMINISTIC RETURN '{label} $$'"),
-            format!("CREATE TRIGGER {catalog}.{trigger} BEFORE INSERT ON {catalog}.{relation} FOR EACH ROW SET NEW.t='{label}'"),
-        ] {sqlx::raw_sql(&sql).execute(&mut f.oracle).await.expect("same name, genuinely distinct live catalog contents");}
+            format!(
+                "CREATE FUNCTION {catalog}.{routine}() RETURNS VARCHAR(70) DETERMINISTIC RETURN '{label} $$'"
+            ),
+            format!(
+                "CREATE TRIGGER {catalog}.{trigger} BEFORE INSERT ON {catalog}.{relation} FOR EACH ROW SET NEW.t='{label}'"
+            ),
+        ] {
+            sqlx::raw_sql(&sql)
+                .execute(&mut f.oracle)
+                .await
+                .expect("same name, genuinely distinct live catalog contents");
+        }
     }
     let foreign_sql = d
         .dump_routines(&h, &b)
@@ -456,7 +488,9 @@ async fn mysql_data_only_consistent_dump_replays_exact_rows_on_an_independent_ta
         Option<String>,
         Option<String>,
     );
-    let read=format!("SELECT id,label,bin,CAST(exact_amount AS CHAR),CAST(document AS CHAR),CAST(stamp AS CHAR) FROM {source}.sample ORDER BY id");
+    let read = format!(
+        "SELECT id,label,bin,CAST(exact_amount AS CHAR),CAST(document AS CHAR),CAST(stamp AS CHAR) FROM {source}.sample ORDER BY id"
+    );
     let original: Vec<Actual> = sqlx::query_as(&read)
         .fetch_all(&mut f.oracle)
         .await
@@ -469,4 +503,154 @@ async fn mysql_data_only_consistent_dump_replays_exact_rows_on_an_independent_ta
         [vec![Some(Value::String(source))]]
     );
     driver.disconnect(h).await.expect("read snapshot released");
+}
+
+#[tokio::test]
+async fn mysql_catalog_command_resolves_exact_native_relation_without_guessing_an_active_catalog() {
+    let mut f = Fixture::open().await;
+    let driver = datazen_driver_mysql::MysqlDriver::new(false);
+    let connected = driver
+        .connect(&f.cfg)
+        .await
+        .expect("native default catalog");
+    let fixed = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    let mut no_db = f.cfg.clone();
+    no_db.database = None;
+    let unscoped = driver
+        .connect(&no_db)
+        .await
+        .expect("real connection without a default catalog");
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+    let remote = std::env::var("TEST_MYSQL_DATABASE_B").unwrap();
+    let local = format!("new.dot_{suffix}");
+    let quoted = format!("`{local}`");
+    let foreign = format!("`{remote}`.{quoted}");
+    let empty = format!("dz_empty_{suffix}");
+    let absent = format!("dz_absent_{suffix}");
+    sqlx::raw_sql(&format!("CREATE DATABASE {empty}; CREATE TABLE {quoted}(from_local INT);
+      CREATE TABLE {foreign}(from_other BIGINT); CREATE VIEW {remote}.view_{suffix} AS SELECT 1 AS v;"))
+      .execute(&mut f.oracle).await.unwrap();
+    assert!(
+        driver
+            .get_tables(&connected, &empty, None)
+            .await
+            .expect("empty but existing native database")
+            .is_empty()
+    );
+    assert!(
+        matches!(driver.get_tables(&connected,&absent,None).await,Err(DriverError::QueryFailed(ref detail)) if detail.contains("Unknown database"))
+    );
+    assert!(
+        driver
+            .get_tables(&connected, &remote, None)
+            .await
+            .unwrap()
+            .iter()
+            .any(|t| t.name == format!("view_{suffix}"))
+    );
+    for (handle, identifier, field) in [
+        (&connected, &quoted, "from_local"),
+        (&connected, &foreign, "from_other"),
+        (&unscoped, &foreign, "from_other"),
+        (&fixed, &foreign, "from_other"),
+    ] {
+        let result = driver
+            .execute_command(
+                handle,
+                "get_table_schema",
+                json!({"relationSql":identifier}),
+            )
+            .await
+            .expect("parse exact catalog and literal dotted table name once");
+        assert_eq!(result.data["schema"]["columns"][0]["name"], field);
+    }
+    assert!(matches!(
+        driver
+            .execute_command(&unscoped, "get_table_schema", json!({"relationSql":quoted}))
+            .await,
+        Err(DriverError::InvalidConfig(_))
+    ));
+    for identifier in ["`unfinished", "one.two.three", ""] {
+        assert!(
+            matches!(
+                driver
+                    .execute_command(
+                        &fixed,
+                        "get_table_schema",
+                        json!({"relationSql":identifier})
+                    )
+                    .await,
+                Err(DriverError::InvalidConfig(_))
+            ),
+            "reject non-relation input: {identifier}"
+        );
+    }
+    let native_schema = driver
+        .get_table_schema(&connected, &local, &f.database, None)
+        .await
+        .unwrap();
+    assert_eq!(native_schema.table_name, local);
+    let with_database = driver
+        .execute_command(
+            &fixed,
+            "get_table_schema",
+            json!({ "database": f.database, "table": local }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(with_database.data["resolvedTarget"]["table"], local);
+    let ddl = driver
+        .dump_table_ddl(&connected, &local, &f.database, None)
+        .await
+        .unwrap();
+    assert!(ddl.contains(&quoted));
+    sqlx::query(&format!("INSERT INTO {quoted} VALUES (2026)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let dump = driver
+        .dump_database(
+            &connected,
+            &f.database,
+            &BackupDumpOptions {
+                data_only: true,
+                single_transaction: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("native catalog-wide data backup handles literal dots");
+    assert!(dump.contains(&format!(
+        "INSERT INTO {quoted} (`from_local`) VALUES (2026)"
+    )));
+    assert!(
+        !dump
+            .lines()
+            .any(|line| line.starts_with(&format!("-- Error dumping data for {local}")))
+    );
+
+    let data = driver.query(&fixed, "SELECT DATABASE()").await.unwrap();
+    assert_eq!(data.rows, [vec![Some(Value::String(f.database.clone()))]]);
+    let view = format!("view_{suffix}");
+    let native: Option<u64> = sqlx::query_scalar(
+        "SELECT TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=?",
+    )
+    .bind(&remote)
+    .bind(&view)
+    .fetch_one(&mut f.oracle)
+    .await
+    .unwrap();
+    assert_eq!(native, None);
+    let view_rows = driver
+        .execute_command(
+            &connected,
+            "estimate_table_rows",
+            json!({"schema":remote,"table":view}),
+        )
+        .await
+        .expect("view estimates allow NULL");
+    assert_eq!(view_rows.data["estimatedRows"], 0);
+    driver.disconnect(unscoped).await.unwrap();
+    driver.disconnect(connected).await.unwrap();
+    driver.disconnect(fixed).await.unwrap();
 }

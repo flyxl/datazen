@@ -42,8 +42,7 @@ fn supports_consistent_snapshot_engine(engine: Option<&str>) -> bool {
     engine.is_some_and(|value| value.eq_ignore_ascii_case("InnoDB"))
 }
 
-const MYSQL_TABLE_OPTIONS_QUERY: &str =
-    "SELECT t.ENGINE, collation_map.CHARACTER_SET_NAME AS TABLE_CHARSET, \
+const MYSQL_TABLE_OPTIONS_QUERY: &str = "SELECT t.ENGINE, collation_map.CHARACTER_SET_NAME AS TABLE_CHARSET, \
             t.TABLE_COLLATION AS TABLE_COLLATION, NULLIF(t.TABLE_COMMENT, '') AS TABLE_COMMENT \
      FROM information_schema.TABLES t \
      LEFT JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY collation_map \
@@ -56,9 +55,9 @@ use catalog::{
     dump_mysql_routines, dump_mysql_triggers, extract_named_create_column,
     extract_show_create_table,
 };
-use connection::{build_mysql_options, DEFAULT_HOST, DEFAULT_PORT};
+use connection::{DEFAULT_HOST, DEFAULT_PORT, build_mysql_options};
 use datazen_driver_api::*;
-use execution::{build_kill_query_sql, MysqlQueryExecution};
+use execution::{MysqlQueryExecution, build_kill_query_sql};
 use sql::{apply_mysql_select_limit, split_mysql_statements};
 use sqlx::mysql::{MySqlPool, MySqlPoolOptions};
 use sqlx::pool::PoolConnection;
@@ -68,8 +67,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
 
 pub(crate) use cluster_scope::{
-    canonical_database_identity, mariadb_wsrep_scope, mysql_group_replication_plugin_active,
-    mysql_group_replication_scope, ClusterScopeDecision,
+    ClusterScopeDecision, canonical_database_identity, mariadb_wsrep_scope,
+    mysql_group_replication_plugin_active, mysql_group_replication_scope,
 };
 pub(crate) use type_decode::{decode_mysql_text, decode_mysql_text_idx, decode_mysql_text_opt};
 
@@ -137,15 +136,19 @@ impl MysqlDriver {
     /// there, so a foreign database can be read without a `USE` — and therefore
     /// without re-pointing a connection that goes back into the pool.
     pub(crate) fn qualified_table_ref(database: &str, table: &str) -> String {
-        let bare = Self::bare_table_name(table);
+        Self::exact_table_ref(database, Self::bare_table_name(table))
+    }
+
+    /// Quote one catalog-proven name, treating embedded dots as data.
+    pub(crate) fn exact_table_ref(database: &str, table: &str) -> String {
         let db = database.trim();
         if db.is_empty() {
-            Self::quote_identifier(bare)
+            Self::quote_identifier(table)
         } else {
             format!(
                 "{}.{}",
                 Self::quote_identifier(db),
-                Self::quote_identifier(bare)
+                Self::quote_identifier(table)
             )
         }
     }
