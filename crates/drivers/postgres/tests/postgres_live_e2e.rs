@@ -277,3 +277,6 @@ mod admin_scope;
 
 #[path = "postgres_live_e2e/lexical.rs"]
 mod lexical;
+
+#[path = "postgres_live_e2e/statement_rows.rs"]
+mod statement_rows;

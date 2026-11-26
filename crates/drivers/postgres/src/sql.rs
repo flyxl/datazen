@@ -86,12 +86,52 @@ pub(crate) fn count_estimate_sql(
     ))
 }
 
+fn leading_pg_word(sql: &str) -> String {
+    use sqlparser::dialect::PostgreSqlDialect;
+    use sqlparser::tokenizer::{Token, Tokenizer};
+
+    let trimmed = sql.trim_start();
+    if trimmed.starts_with("--") || trimmed.starts_with("/*") {
+        // Let the PostgreSQL lexer handle nested comments and quoted text.
+        let dialect = PostgreSqlDialect {};
+        if let Ok(tokens) = Tokenizer::new(&dialect, trimmed).tokenize() {
+            if let Some(Token::Word(word)) = tokens
+                .into_iter()
+                .find(|token| !matches!(token, Token::Whitespace(_)))
+            {
+                if word.quote_style.is_none() {
+                    return word.value.to_ascii_uppercase();
+                }
+            }
+        }
+        return String::new();
+    }
+    trimmed
+        .chars()
+        .take_while(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '$'))
+        .collect::<String>()
+        .to_ascii_uppercase()
+}
+
 pub(crate) fn is_pg_result_query(sql: &str) -> bool {
-    let upper = sql.trim().to_ascii_uppercase();
-    upper.starts_with("SELECT")
-        || upper.starts_with("WITH")
-        || upper.starts_with("SHOW")
-        || upper.starts_with("EXPLAIN")
+    match leading_pg_word(sql).as_str() {
+        "SELECT" | "WITH" | "SHOW" | "EXPLAIN" | "TABLE" | "VALUES" => true,
+        "INSERT" | "UPDATE" | "DELETE" => {
+            // A quoted string or SQL comment containing RETURNING is not a
+            // projection. Parse DML only, and never append a SELECT row cap
+            // to it: the server must finish the complete write.
+            use sqlparser::{ast::Statement, dialect::PostgreSqlDialect, parser::Parser};
+            Parser::parse_sql(&PostgreSqlDialect {}, sql)
+                .ok()
+                .is_some_and(|statements| match statements.as_slice() {
+                    [Statement::Insert(insert)] => insert.returning.is_some(),
+                    [Statement::Update { returning, .. }] => returning.is_some(),
+                    [Statement::Delete(delete)] => delete.returning.is_some(),
+                    _ => false,
+                })
+        }
+        _ => false,
+    }
 }
 
 pub(crate) fn collect_named_ddl_column(
@@ -143,8 +183,7 @@ pub(crate) fn apply_select_limit(stmt: &str, limit: Option<u32>) -> (String, Opt
     };
 
     let trimmed = stmt.trim();
-    let upper = trimmed.to_ascii_uppercase();
-    let is_select = upper.starts_with("SELECT") || upper.starts_with("WITH");
+    let is_select = matches!(leading_pg_word(trimmed).as_str(), "SELECT" | "WITH" | "TABLE" | "VALUES");
     if !is_select {
         return (stmt.to_string(), None);
     }

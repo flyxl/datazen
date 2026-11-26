@@ -658,11 +658,7 @@ impl PostgresDriver {
             let mut conn = pinned.lock().await;
             for stmt in &statements {
                 let (effective_sql, applied_limit) = apply_select_limit(stmt, limit);
-                let trimmed_upper = effective_sql.trim().to_ascii_uppercase();
-                let is_query = trimmed_upper.starts_with("SELECT")
-                    || trimmed_upper.starts_with("WITH")
-                    || trimmed_upper.starts_with("SHOW")
-                    || trimmed_upper.starts_with("EXPLAIN");
+                let is_query = is_pg_result_query(&effective_sql);
 
                 let stmt_start = Instant::now();
 
@@ -724,11 +720,7 @@ impl PostgresDriver {
 
         for stmt in &statements {
             let (effective_sql, applied_limit) = apply_select_limit(stmt, limit);
-            let trimmed_upper = effective_sql.trim().to_ascii_uppercase();
-            let is_query = trimmed_upper.starts_with("SELECT")
-                || trimmed_upper.starts_with("WITH")
-                || trimmed_upper.starts_with("SHOW")
-                || trimmed_upper.starts_with("EXPLAIN");
+            let is_query = is_pg_result_query(&effective_sql);
 
             let stmt_start = Instant::now();
 
