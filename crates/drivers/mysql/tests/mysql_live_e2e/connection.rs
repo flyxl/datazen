@@ -266,3 +266,86 @@ async fn mysql_connection_limit_degrades_control_without_cancelling_an_unrelated
         .await
         .expect("only remove created fixture account");
 }
+
+#[tokio::test]
+async fn mysql_native_connection_test_and_schema_listing_honor_account_and_catalog_permissions() {
+    use datazen_driver_api::{DriverError, TableType};
+    let mut f = Fixture::open().await;
+    let driver = MysqlDriver::new(false);
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    let (user, password) = (
+        format!("dz_login_{}", &nonce[..14]),
+        uuid::Uuid::new_v4().simple().to_string(),
+    );
+    let a = format!("dz_claim_a_{nonce}");
+    let b = format!("dz_claim_b_{nonce}");
+    let sql = format!(
+        "CREATE DATABASE {a}; CREATE DATABASE {b};
+        CREATE TABLE {a}.token(id INT); CREATE TABLE {b}.token(secret_field BIGINT);
+        INSERT INTO {a}.token VALUES(17); INSERT INTO {b}.token VALUES(28);
+        CREATE USER '{user}'@'127.0.0.1' IDENTIFIED BY '{password}';
+        GRANT SELECT ON {a}.* TO '{user}'@'127.0.0.1'"
+    );
+    sqlx::raw_sql(&sql).execute(&mut f.oracle).await.unwrap();
+    let mut config = f.cfg.clone();
+    config.username = Some(user.clone());
+    config.password = Some(password);
+    config.database = Some(a.clone());
+    config.max_pool_size = 1;
+    let version = driver
+        .test_connection(&config)
+        .await
+        .expect("actual MySQL authentication and version");
+    assert_eq!(version.server_type, "MySQL");
+    assert!(version.server_version.starts_with("8.4."));
+    let bad = |c: &datazen_driver_api::ConnectionConfig| {
+        let mut out = c.clone();
+        out.password = Some("disposable wrong secret".into());
+        out
+    };
+    assert!(matches!(driver.test_connection(&bad(&config)).await,
+       Err(DriverError::ConnectionFailed(detail)) if detail.contains("Access denied")));
+    let mut foreign = config.clone();
+    foreign.database = Some(b.clone());
+    assert!(matches!(driver.connect(&foreign).await,
+       Err(DriverError::ConnectionFailed(detail)) if detail.contains("Access denied")));
+    let h = driver.connect(&config).await.unwrap();
+    let visible = driver.get_databases(&h).await.unwrap();
+    assert!(visible.iter().any(|database| database == &a));
+    assert!(!visible.iter().any(|database| database == &b));
+    assert!(
+        driver
+            .get_tables(&h, &a, None)
+            .await
+            .unwrap()
+            .iter()
+            .any(|table| table.name == "token")
+    );
+    assert!(driver.get_tables(&h, &b, None).await.is_err());
+    let systems = driver
+        .get_tables(&h, "information_schema", None)
+        .await
+        .unwrap();
+    assert!(
+        systems
+            .iter()
+            .any(|table| matches!(table.table_type, TableType::SystemTable))
+    );
+    let did_not_switch = driver.query(&h, "SELECT id FROM token").await.unwrap();
+    assert_eq!(
+        did_not_switch.rows,
+        [vec![Some(datazen_driver_api::Value::Integer(17))]]
+    );
+    let untouched: i64 = sqlx::query_scalar(&format!("SELECT secret_field FROM {b}.token"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(untouched, 28);
+    driver.disconnect(h).await.unwrap();
+    sqlx::raw_sql(&format!(
+        "DROP USER '{user}'@'127.0.0.1'; DROP DATABASE {a}; DROP DATABASE {b};"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+}

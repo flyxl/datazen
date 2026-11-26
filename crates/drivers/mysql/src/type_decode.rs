@@ -33,6 +33,50 @@ pub(crate) fn decode_mysql_text_idx(row: &MySqlRow, index: usize) -> String {
         .unwrap_or_default()
 }
 
+/// MySQL can store zero and incomplete calendar dates in legacy SQL modes.
+/// chrono rejects them, but presenting those real values as SQL NULL loses
+/// data. Read the original cell only after normal calendar decoding fails.
+fn legacy_mysql_temporal(row: &MySqlRow, index: usize, datetime: bool) -> Option<Value> {
+    // SQLx's checked temporal decoder treats an all-zero binary date as NULL.
+    // The unchecked byte decoder still rejects a real protocol NULL.
+    let raw: &[u8] = row.try_get_unchecked(index).ok()?;
+    // Wire text starts with the year; the binary length byte can only
+    // be 0, 4, 7, or 11, never an ASCII digit.
+    if raw.first().is_some_and(u8::is_ascii_digit) {
+        return std::str::from_utf8(raw)
+            .ok()
+            .map(|s| Value::String(s.to_owned()));
+    }
+    let (&length, fields) = raw.split_first()?;
+    if usize::from(length) != fields.len() {
+        return None;
+    }
+    let (mut text, clock) = match fields {
+        [] => ("0000-00-00".to_owned(), &[][..]),
+        [lo, hi, month, day, clock @ ..] => (
+            format!("{:04}-{month:02}-{day:02}", u16::from_le_bytes([*lo, *hi])),
+            clock,
+        ),
+        _ => return None,
+    };
+    if datetime {
+        match clock {
+            [] => text.push_str(" 00:00:00"),
+            [hour, minute, second] => {
+                text.push_str(&format!(" {hour:02}:{minute:02}:{second:02}"));
+            }
+            [hour, minute, second, a, b, c, d] => {
+                let micros = u32::from_le_bytes([*a, *b, *c, *d]);
+                text.push_str(&format!(" {hour:02}:{minute:02}:{second:02}.{micros:06}"));
+            }
+            _ => return None,
+        }
+    } else if !clock.is_empty() {
+        return None;
+    }
+    Some(Value::String(text))
+}
+
 impl super::MysqlDriver {
     pub(crate) fn safe_integer(v: i64) -> Value {
         if v > JS_MAX_SAFE_INT || v < JS_MIN_SAFE_INT {
@@ -180,16 +224,13 @@ impl super::MysqlDriver {
                                 .try_get_unchecked::<String, _>(i)
                                 .ok()
                                 .map(Value::String),
-                            s if s.contains("BIT") => row
-                                .try_get::<u64, _>(i)
-                                .ok()
-                                .map(|bits| {
-                                    if bits > JS_MAX_SAFE_INT as u64 {
-                                        Value::String(bits.to_string())
-                                    } else {
-                                        Value::Integer(bits as i64)
-                                    }
-                                }),
+                            s if s.contains("BIT") => row.try_get::<u64, _>(i).ok().map(|bits| {
+                                if bits > JS_MAX_SAFE_INT as u64 {
+                                    Value::String(bits.to_string())
+                                } else {
+                                    Value::Integer(bits as i64)
+                                }
+                            }),
                             s if s.contains("BOOL") || s.contains("BOOLEAN") => {
                                 row.try_get::<bool, _>(i).ok().map(Value::Bool)
                             }
@@ -200,7 +241,7 @@ impl super::MysqlDriver {
                                 row.try_get::<chrono::NaiveDate, _>(i)
                                     .ok()
                                     .map(|d| Value::String(d.format("%Y-%m-%d").to_string()))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
+                                    .or_else(|| legacy_mysql_temporal(row, i, false))
                             }
                             s if s.contains("DATETIME") || s.contains("TIMESTAMP") => row
                                 .try_get::<chrono::NaiveDateTime, _>(i)
@@ -208,7 +249,7 @@ impl super::MysqlDriver {
                                 .map(|dt| {
                                     Value::String(dt.format("%Y-%m-%d %H:%M:%S%.f").to_string())
                                 })
-                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                                .or_else(|| legacy_mysql_temporal(row, i, true)),
                             s if s.contains("TIME") => row
                                 .try_get::<sqlx::mysql::types::MySqlTime, _>(i)
                                 .ok()
@@ -216,7 +257,9 @@ impl super::MysqlDriver {
                                     let sign = if value.sign().is_negative() { "-" } else { "" };
                                     let mut text = format!(
                                         "{sign}{:02}:{:02}:{:02}",
-                                        value.hours(), value.minutes(), value.seconds()
+                                        value.hours(),
+                                        value.minutes(),
+                                        value.seconds()
                                     );
                                     if value.microseconds() != 0 {
                                         text.push_str(&format!(".{:06}", value.microseconds()));

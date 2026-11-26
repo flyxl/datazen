@@ -36,6 +36,14 @@ impl MysqlDriver {
                     sink,
                 )
                 .await;
+            if matches!(
+                outcome,
+                Err(ResourceError::Driver(DriverError::SessionLost))
+            ) {
+                // A timed-out drain already tombstoned the handle. Pinging
+                // the same unread wire would consume a second full deadline.
+                return outcome;
+            }
             match tokio::time::timeout(
                 std::time::Duration::from_secs(5),
                 sqlx::Connection::ping(&mut **conn),
@@ -262,10 +270,7 @@ impl MysqlDriver {
                 conn.close_on_drop();
                 self.transactions.lock().await.remove(&handle.id);
                 self.pools.write().await.remove(&handle.pool_id);
-                return Err(DriverError::ConnectionFailed(
-                    "SessionLost: result drain timed out".into(),
-                )
-                .into());
+                return Err(DriverError::SessionLost.into());
             }
             let invalidation = Self::clear_after_possible_use(&mut **conn, &effective_sql).await;
             if let Some(error) = delivery_error {

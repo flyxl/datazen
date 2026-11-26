@@ -59,7 +59,9 @@ pub(crate) fn split_mysql_statements(input: &str) -> Vec<String> {
                     }
                 }
             }
-            b'-' if bytes.get(i + 1) == Some(&b'-') && bytes.get(i + 2).is_some_and(u8::is_ascii_whitespace) => {
+            b'-' if bytes.get(i + 1) == Some(&b'-')
+                && bytes.get(i + 2).is_some_and(u8::is_ascii_whitespace) =>
+            {
                 while i < len && bytes[i] != b'\n' {
                     i += 1;
                 }
@@ -81,7 +83,7 @@ pub(crate) fn split_mysql_statements(input: &str) -> Vec<String> {
             }
             b';' => {
                 let fragment = input[start..i].trim();
-                if !fragment.is_empty() {
+                if !leading_sql(fragment).is_empty() {
                     stmts.push(fragment.to_string());
                 }
                 i += 1;
@@ -94,7 +96,7 @@ pub(crate) fn split_mysql_statements(input: &str) -> Vec<String> {
     }
 
     let tail = input[start..].trim();
-    if !tail.is_empty() {
+    if !leading_sql(tail).is_empty() {
         stmts.push(tail.to_string());
     }
     stmts
@@ -103,8 +105,16 @@ pub(crate) fn split_mysql_statements(input: &str) -> Vec<String> {
 fn leading_sql(mut sql: &str) -> &str {
     loop {
         sql = sql.trim_start();
+        // MySQL executes version comments; unlike ordinary comments they
+        // must reach the server even when they form the whole statement.
+        if sql.starts_with("/*!") || sql.starts_with("/*M!") {
+            return sql;
+        }
         if let Some(comment) = sql.strip_prefix("/*") {
-            sql = comment.split_once("*/").map_or("", |(_, tail)| tail);
+            let Some((_, tail)) = comment.split_once("*/") else {
+                return sql; // let MySQL report the unterminated comment
+            };
+            sql = tail;
         } else if sql.starts_with('#')
             || (sql.starts_with("--") && sql.as_bytes().get(2).is_some_and(u8::is_ascii_whitespace))
         {
@@ -137,11 +147,31 @@ pub(crate) fn apply_mysql_select_limit(stmt: &str, limit: Option<u32>) -> (Strin
         return (stmt.to_string(), None);
     }
 
-    let has_limit = upper.split_whitespace().any(|w| w == "LIMIT");
-    if has_limit {
+    use sqlparser::{
+        dialect::MySqlDialect,
+        tokenizer::{Token, Tokenizer},
+    };
+    let Ok(tokens) = Tokenizer::new(&MySqlDialect {}, trimmed).tokenize() else {
+        // Keep the native dialect text intact rather than guessing at a rewrite.
         return (stmt.to_string(), Some(lim));
+    };
+    let mut depth = 0usize;
+    for token in tokens {
+        match token {
+            Token::LParen => depth += 1,
+            Token::RParen => depth = depth.saturating_sub(1),
+            Token::Word(word)
+                if depth == 0
+                    && word.quote_style.is_none()
+                    && word.value.eq_ignore_ascii_case("LIMIT") =>
+            {
+                return (stmt.to_string(), Some(lim));
+            }
+            _ => {}
+        }
     }
 
-    let effective = format!("{} LIMIT {}", trimmed, lim.saturating_add(1));
+    // A trailing -- or # comment must not absorb the server-side bound.
+    let effective = format!("{}\nLIMIT {}", trimmed, lim.saturating_add(1));
     (effective, Some(lim))
 }

@@ -428,3 +428,136 @@ async fn mysql_losing_native_backend_midstream_never_reopens_a_retained_identity
     );
     assert!(ledger.0.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn mysql_undrainable_native_stream_closes_identity_when_control_connection_is_denied() {
+    let mut f = Fixture::open().await;
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let (actor, secret) = (
+        format!("dz_drain_{}", &tag[..15]),
+        uuid::Uuid::new_v4().simple().to_string(),
+    );
+    let table = format!("dz_drain_{tag}");
+    let lock = format!("dz_drain_lock_{tag}");
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY); INSERT INTO {table} VALUES (1),(2);
+     CREATE USER '{actor}'@'127.0.0.1' IDENTIFIED BY '{secret}' WITH MAX_USER_CONNECTIONS 1;
+     GRANT SELECT ON `{}`.* TO '{actor}'@'127.0.0.1'",
+        f.database
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let hold: i64 = sqlx::query_scalar("SELECT GET_LOCK(?,0)")
+        .bind(&lock)
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(hold, 1);
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|d| d.driver_id() == "mysql")
+        .unwrap();
+    let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+    let driver = factory.create();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let mut config = f.cfg.clone();
+    config.username = Some(actor.clone());
+    config.password = Some(secret);
+    config.max_pool_size = 1;
+    config.connection_timeout = 1;
+    let retained = provider
+        .acquire_resource(
+            &AcquireResourceRequest {
+                connection_config: config,
+                identity_scope: IdentityScope::default(),
+                target: NamespaceTarget::empty().with_database(f.database.clone()),
+                baseline: Baseline::default(),
+                scope: ResourceScope {
+                    purpose: ResourcePurpose::InteractiveQuery,
+                    max_physical_connections: 1,
+                    holds_open_transaction: false,
+                    pin_for_streaming: false,
+                },
+            },
+            &budget,
+        )
+        .await
+        .expect("native data admitted but one-account limit rejects auxiliary connection");
+    let real = provider.connection_handle(&retained).unwrap();
+    let rows = driver
+        .query(&real, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap()
+        .rows;
+    let process = match rows[0][0] {
+        Some(Value::Integer(id)) => u64::try_from(id).unwrap(),
+        ref other => panic!("unexpected native thread ID: {other:?}"),
+    };
+    let observed: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE USER=?")
+            .bind(&actor)
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+    assert_eq!(observed, 1);
+    let dir = tempfile::tempdir().unwrap();
+    let sink = FileQuota::new(&dir.path().join("rejected.jsonl"), false, 0);
+    let expected = QueryExecutionId::new(format!("no-control-drain-{tag}"));
+    let query = CommandCall::new(
+        "query_stream",
+        json!({"sql":format!(
+          "SELECT IF(id=1,REPEAT('x',262144),CONCAT(GET_LOCK('{lock}',18),'tail')) AS payload FROM {table} FORCE INDEX (PRIMARY) ORDER BY id"
+        )}),
+    );
+    let started = tokio::time::Instant::now();
+    let seen = tokio::time::timeout(
+        Duration::from_secs(13),
+        provider.execute_on_resource(&retained, &expected, &query, &sink),
+    )
+    .await;
+    let released: i64 = sqlx::query_scalar("SELECT RELEASE_LOCK(?)")
+        .bind(&lock)
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(released, 1);
+    let outcome = seen
+        .expect("provider stops before the native statement's full lock timeout")
+        .unwrap_err();
+    assert!(matches!(
+        outcome,
+        ResourceError::Driver(DriverError::SessionLost)
+    ));
+    assert!(
+        started.elapsed() >= Duration::from_secs(4),
+        "must be the actual bounded protocol drain, not a validation failure"
+    );
+    assert!(
+        driver.query(&real, "SELECT 1").await.is_err(),
+        "no replacement socket under the lost handle"
+    );
+    let left: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE ID=? AND USER=?",
+    )
+    .bind(process)
+    .bind(&actor)
+    .fetch_one(&mut f.oracle)
+    .await
+    .unwrap();
+    if left > 0 {
+        let _ = sqlx::raw_sql(&format!("KILL CONNECTION {process}"))
+            .execute(&mut f.oracle)
+            .await;
+    }
+    assert_eq!(
+        provider.close_resource(&retained).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+    sqlx::raw_sql(&format!("DROP USER '{actor}'@'127.0.0.1'"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+}

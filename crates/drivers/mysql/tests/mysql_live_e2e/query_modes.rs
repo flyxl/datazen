@@ -240,3 +240,61 @@ async fn mysql_native_failed_prepared_and_text_statements_do_not_poison_checkout
     driver.disconnect(pinned).await.unwrap();
     driver.disconnect(pool).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_native_batch_handles_comments_without_suppressing_server_execution_or_row_budget() {
+    let mut f = Fixture::open().await;
+    let driver = MysqlDriver::new(false);
+    let h = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    let table = format!("dz_comment_budget_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {table}(id INT PRIMARY KEY); INSERT INTO {table} VALUES (1),(2),(3)"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    driver.execute(&h, "SET @dz_touched=0").await.unwrap();
+    let results=driver.query_multi(&h,&format!("SELECT (@dz_touched:=@dz_touched+1) AS seen FROM {table} ORDER BY id -- do not swallow server LIMIT"),Some(1))
+        .await.expect("row limit survives trailing MySQL line comment");
+    assert_eq!(results.results[0].rows, [vec![Some(Value::Integer(1))]]);
+    assert!(results.results[0].truncated);
+    let read = driver
+        .query(&h, "SELECT CAST(@dz_touched AS SIGNED)")
+        .await
+        .unwrap();
+    assert_eq!(
+        read.rows,
+        [vec![Some(Value::Integer(2))]],
+        "native server evaluates budget plus one, not every row"
+    );
+    let formatted = driver
+        .query_multi(
+            &h,
+            r#"/*!80000 SET @dz_seen=77 */; SELECT CAST(@dz_seen AS SIGNED) AS `native;``label`,
+         "semicolon; quoted ""string""" AS literal; # ordinary tail is not a database statement
+         /* comment only ; */"#,
+            None,
+        )
+        .await
+        .expect("skip comment-only fragments and preserve native versioned statements");
+    assert_eq!(formatted.results.len(), 2);
+    assert_eq!(formatted.results[1].columns[0].name, "native;`label");
+    assert_eq!(
+        formatted.results[1].rows,
+        [vec![
+            Some(Value::Integer(77)),
+            Some(Value::String("semicolon; quoted \"string\"".into()))
+        ]]
+    );
+    let blank = driver
+        .query_multi(&h, "-- no SQL\n /* only commentary */;", None)
+        .await
+        .unwrap();
+    assert!(blank.results.is_empty());
+    let oracle: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(oracle, 3, "source data intact");
+    driver.disconnect(h).await.unwrap();
+}

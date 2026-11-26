@@ -253,3 +253,95 @@ async fn mysql_prepared_parameters_roundtrip_native_scalar_null_json_and_tempora
     driver.disconnect(fixed).await.unwrap();
     driver.disconnect(pooled).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_legacy_zero_dates_are_distinct_from_null_on_the_native_wire() {
+    use datazen_driver_api::{
+        QueryExecutionId,
+        resource::{ResourceError, ResultChunk, ResultSink},
+    };
+    #[derive(Default)]
+    struct Rows(Mutex<Vec<Vec<Option<Value>>>>);
+    #[async_trait::async_trait]
+    impl ResultSink for Rows {
+        async fn write(&self, chunk: ResultChunk) -> Result<(), ResourceError> {
+            self.0.lock().unwrap().extend(chunk.rows);
+            Ok(())
+        }
+        async fn write_output(&self, event: serde_json::Value) -> Result<(), ResourceError> {
+            assert!(matches!(
+                event["kind"].as_str(),
+                Some("statementColumns" | "statementMetadata" | "statementSummary")
+            ));
+            Ok(())
+        }
+        async fn complete(&self) -> Result<(), ResourceError> {
+            Ok(())
+        }
+        async fn fail(&self, reason: &str) -> Result<(), ResourceError> {
+            Err(ResourceError::SinkRejected {
+                reason: reason.into(),
+            })
+        }
+    }
+    let mut f = Fixture::open().await;
+    let driver = datazen_driver_mysql::MysqlDriver::new(false);
+    let fixed = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    let table = format!("dz_legacy_temporal_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!("SET SESSION sql_mode='ALLOW_INVALID_DATES';
+       CREATE TABLE {table}(id INT PRIMARY KEY,d DATE,t DATETIME(6));
+       INSERT INTO {table} VALUES (1,'0000-00-00','0000-00-00 00:00:00'),(2,NULL,NULL),
+         (3,'2030-00-15','2030-00-15 01:02:03.456789'),(4,'2030-09-31','2030-09-31 03:02:01.000007');"))
+       .execute(&mut f.oracle).await.unwrap();
+    let native: Vec<(i32, Option<String>, Option<String>)> = sqlx::query_as(&format!(
+        "SELECT id,CAST(d AS CHAR),CAST(t AS CHAR) FROM {table} ORDER BY id"
+    ))
+    .fetch_all(&mut f.oracle)
+    .await
+    .unwrap();
+    assert_eq!(
+        native[0],
+        (
+            1,
+            Some("0000-00-00".into()),
+            Some("0000-00-00 00:00:00.000000".into())
+        )
+    );
+    assert_eq!(native[1], (2, None, None));
+    let expect = |text_temporal: bool| {
+        native
+            .iter()
+            .map(|(id, d, t)| {
+                let timestamp = t.as_ref().map(|s| {
+                    if !text_temporal && s.ends_with(".000000") {
+                        s.trim_end_matches(".000000").to_string()
+                    } else {
+                        s.clone()
+                    }
+                });
+                vec![
+                    Some(Value::Integer(i64::from(*id))),
+                    d.clone().map(Value::String),
+                    timestamp.map(Value::String),
+                ]
+            })
+            .collect::<Vec<_>>()
+    };
+    let select = format!("SELECT id,d,t FROM {table} ORDER BY id");
+    let binary = driver.query(&fixed, &select).await.unwrap();
+    assert_eq!(
+        binary.rows,
+        expect(false),
+        "prepared protocol must not fold native zero dates into SQL NULL"
+    );
+    let sink = Rows::default();
+    let id = QueryExecutionId::new(format!("text-legacy-{table}"));
+    driver.prepare_query_execution(&fixed, &id).await.unwrap();
+    driver
+        .query_to_sink(&fixed, &id, &select, None, None, &sink)
+        .await
+        .expect("raw native resultset");
+    driver.cleanup_query_execution(&fixed, &id).await.unwrap();
+    assert_eq!(*sink.0.lock().unwrap(), expect(true));
+    driver.disconnect(fixed).await.unwrap();
+}
