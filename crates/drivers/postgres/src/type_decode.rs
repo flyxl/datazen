@@ -123,13 +123,13 @@ impl PostgresDriver {
                                 .ok()
                                 .map(|d| Value::String(d.format("%Y-%m-%d").to_string()))
                                 .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
-                            "TIME" | "TIME WITHOUT TIME ZONE" => row
-                                .try_get::<chrono::NaiveTime, _>(i)
-                                .ok()
-                                .map(|t| Value::String(t.format("%H:%M:%S%.f").to_string()))
-                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            "TIME" | "TIME WITHOUT TIME ZONE" => {
+                                Self::decode_custom_cell(row, i, decode_time_binary)
+                                    .map(Value::String)
+                            }
                             "TIMETZ" | "TIME WITH TIME ZONE" => {
-                                row.try_get::<String, _>(i).ok().map(Value::String)
+                                Self::decode_custom_cell(row, i, decode_time_tz_binary)
+                                    .map(Value::String)
                             }
                             "TIMESTAMP" | "TIMESTAMP WITHOUT TIME ZONE" => row
                                 .try_get::<chrono::NaiveDateTime, _>(i)
@@ -236,6 +236,50 @@ impl PostgresDriver {
         let estimated_rows = plan.get("Plan Rows").and_then(|v| v.as_i64());
         (total_cost, estimated_rows)
     }
+}
+
+/// PostgreSQL time is the number of microseconds since midnight. 24:00:00
+/// is representable in PostgreSQL and is distinct from midnight on
+/// readback; a clock type limited to 00:00:00..23:59:59.999999 wraps it.
+fn decode_time_binary(bytes: &[u8]) -> Option<String> {
+    let micros = i64::from_be_bytes(bytes.try_into().ok()?);
+    if !(0..=86_400_000_000).contains(&micros) {
+        return None;
+    }
+    let seconds = micros / 1_000_000;
+    let mut result = format!(
+        "{:02}:{:02}:{:02}",
+        seconds / 3600,
+        seconds % 3600 / 60,
+        seconds % 60
+    );
+    let fraction = micros % 1_000_000;
+    if fraction != 0 {
+        let digits = format!("{fraction:06}");
+        result.push('.');
+        result.push_str(digits.trim_end_matches('0'));
+    }
+    Some(result)
+}
+
+/// PostgreSQL appends a four-byte offset in seconds west of UTC to time.
+/// Match its text representation, including historical sub-minute offsets.
+fn decode_time_tz_binary(bytes: &[u8]) -> Option<String> {
+    let (time, offset) = bytes.split_at_checked(8)?;
+    let mut result = decode_time_binary(time)?;
+    let west = i32::from_be_bytes(offset.try_into().ok()?);
+    let absolute = west.unsigned_abs();
+    let sign = if west > 0 { '-' } else { '+' };
+    result.push_str(&format!("{sign}{:02}", absolute / 3600));
+    let minutes = absolute % 3600 / 60;
+    let seconds = absolute % 60;
+    if minutes != 0 || seconds != 0 {
+        result.push_str(&format!(":{minutes:02}"));
+        if seconds != 0 {
+            result.push_str(&format!(":{seconds:02}"));
+        }
+    }
+    Some(result)
 }
 
 /// Render a PostgreSQL interval the way the server prints it.

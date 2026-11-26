@@ -262,3 +262,6 @@ mod connection_identity;
 
 #[path = "postgres_live_e2e/grid.rs"]
 mod grid;
+
+#[path = "postgres_live_e2e/temporal.rs"]
+mod temporal;

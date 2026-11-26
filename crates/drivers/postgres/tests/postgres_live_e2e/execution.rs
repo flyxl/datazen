@@ -338,7 +338,7 @@ async fn explicit_target_queries_and_writes_do_not_switch_or_reuse_a_retained_fo
             "CREATE TABLE public.{table}(id integer PRIMARY KEY,label text); INSERT INTO public.{table} VALUES (1,'{label}')"
         )).execute(oracle).await.expect("same relation name but different databases");
     }
-    let driver = PostgresDriver::new();
+    let driver = Arc::new(PostgresDriver::new());
     let handle = driver
         .connect_fixed_session(&fixture.config)
         .await
@@ -426,6 +426,84 @@ async fn explicit_target_queries_and_writes_do_not_switch_or_reuse_a_retained_fo
         .iter()
         .any(|event| matches!(event,
             QueryStreamEvent::Rows{rows,..} if rows == &expected)));
+
+    // Start the foreign registered statement first so its explicit route is
+    // established; then run an independent query on the retained primary.
+    // Cancelling by execution id must not hit the latter backend.
+    let foreign_id = QueryExecutionId::new("retained-cross-target-cancel");
+    driver
+        .prepare_query_execution(&handle, &foreign_id)
+        .await
+        .expect("foreign cancellation registration");
+    let foreign_marker = format!("foreign_guard_{tag}");
+    let primary_marker = format!("primary_guard_{tag}");
+    let wait_for_sql = async |oracle: &mut sqlx::PgConnection, database: &str, marker: &str| {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let running: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=$1 AND wait_event='PgSleep' AND strpos(query,$2)>0)"
+                ).bind(database).bind(marker).fetch_one(&mut *oracle).await.expect("independent backend route oracle");
+                if running {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        }).await.expect("fixture backend is actively executing its own target query");
+    };
+    let foreign_query = {
+        let driver = Arc::clone(&driver);
+        let handle = handle.clone();
+        let destination = other.clone();
+        let id = foreign_id.clone();
+        let statement = format!("SELECT 99 FROM pg_sleep(30) /* {foreign_marker} */");
+        let (_, callback) = record();
+        tokio::spawn(async move {
+            driver
+                .query_stream_with_execution_at(
+                    &handle,
+                    &id,
+                    &statement,
+                    None,
+                    SqlTarget::new(Some(&destination), None),
+                    callback,
+                )
+                .await
+        })
+    };
+    wait_for_sql(&mut fixture.oracle, &other, &foreign_marker).await;
+    let primary_query = {
+        let driver = Arc::clone(&driver);
+        let handle = handle.clone();
+        let statement = format!("SELECT 17 FROM pg_sleep(1) /* {primary_marker} */");
+        tokio::spawn(async move { driver.query(&handle, &statement).await })
+    };
+    wait_for_sql(&mut fixture.oracle, database, &primary_marker).await;
+    driver
+        .cancel_query_with_execution(&handle, &foreign_id)
+        .await
+        .expect("cancel exact foreign PID");
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(5), foreign_query)
+            .await
+            .expect("foreign target stops promptly")
+            .expect("stopped task"),
+        Err(DriverError::QueryCancelled)
+    ));
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(5), primary_query)
+            .await
+            .expect("retained primary completes")
+            .expect("original task")
+            .expect("foreign cancel never hit primary")
+            .rows,
+        vec![vec![Some(Value::Integer(17))]]
+    );
+    assert!(matches!(
+        driver
+            .cancel_query_with_execution(&handle, &foreign_id)
+            .await,
+        Err(DriverError::QueryExecutionNotFound(_))
+    ));
 
     // The retained session is still physically bound to its original
     // database. Check a real snapshot and auth identity before and after an
