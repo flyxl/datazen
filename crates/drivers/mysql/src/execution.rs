@@ -250,21 +250,18 @@ impl super::MysqlDriver {
         result.and(cleanup)
     }
 
-    pub(crate) async fn stream_one_statement<'e, E>(
-        executor: E,
+    pub(crate) async fn stream_one_statement(
+        conn: &mut sqlx::MySqlConnection,
         stmt: &str,
         limit: Option<u32>,
         index: usize,
         on_event: &QueryStreamCallback,
-    ) -> Result<(), DriverError>
-    where
-        E: sqlx::Executor<'e, Database = sqlx::MySql>,
-    {
+    ) -> Result<(), DriverError> {
         use futures_util::TryStreamExt;
         let (effective_sql, applied_limit) = apply_mysql_select_limit(stmt, limit);
         let stmt_start = Instant::now();
         if is_mysql_result_query(&effective_sql) {
-            let mut stream = sqlx::query(effective_sql.as_str()).fetch(executor);
+            let mut stream = sqlx::query(effective_sql.as_str()).fetch(&mut *conn);
             let mut batcher =
                 QueryRowBatcher::new(Arc::clone(on_event), index, stmt.to_string(), applied_limit);
             while let Some(row) = stream
@@ -280,9 +277,13 @@ impl super::MysqlDriver {
                     break;
                 }
             }
+            drop(stream);
+            if !batcher.started() {
+                batcher.start(Self::describe_empty_result(conn, &effective_sql).await?);
+            }
             batcher.finish(stmt_start.elapsed().as_millis() as u64, None);
         } else {
-            let result = sqlx::Executor::execute(executor, effective_sql.as_str())
+            let result = Self::execute_text_on_conn(conn, effective_sql.as_str())
                 .await
                 .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?;
             emit_execute_statement(

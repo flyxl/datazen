@@ -244,3 +244,172 @@ async fn mysql_migration_round_trips_native_table_options_and_default_changes() 
         .await
         .expect("release MySQL connection");
 }
+
+#[tokio::test]
+async fn mysql_migration_replays_prefix_fulltext_spatial_hash_and_removes_owned_objects() {
+    use datazen_driver_api::{CheckConstraint, IndexInfo, MigrationColumn};
+    let mut f = Fixture::open().await;
+    let (driver, handle) = f.connect().await;
+    let renderer = driver.migration_renderer().expect("mysql DDL renderer");
+    let tag = uuid::Uuid::new_v4().simple().to_string();
+    let indexed = format!("dz_options_ix_{tag}");
+    let memory = format!("dz_options_mem_{tag}");
+    let check = CheckConstraint {
+        name: format!("ck_ix_{tag}"),
+        expression: "amount >= 0".into(),
+    };
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {indexed}(id INT NOT NULL PRIMARY KEY, body TEXT, tag VARCHAR(240),
+           position POINT NOT NULL, amount INT NOT NULL, old_note INT NULL, CONSTRAINT {} CHECK(amount>=0)) ENGINE=InnoDB;
+         CREATE TABLE {memory}(score INT NOT NULL PRIMARY KEY) ENGINE=MEMORY;
+         INSERT INTO {indexed} VALUES(1,'thunderstone lantern','prefixable',ST_GeomFromText('POINT(2 3)'),1,4);
+         INSERT INTO {memory} VALUES(2)",check.name))
+        .execute(&mut f.oracle).await.expect("real InnoDB & MEMORY tables");
+    let idx = |name: &str, method: &str, column: &str| IndexInfo {
+        name: name.into(),
+        index_type: method.into(),
+        columns: vec![column.into()],
+        is_primary: false,
+        is_unique: false,
+    };
+    for (table, index) in [
+        (&indexed, idx("prefix_ix", "BTREE", "tag(12)")),
+        (&indexed, idx("book_ix", "FULLTEXT", "body")),
+        (&indexed, idx("map_ix", "RTREE", "position")),
+        (&memory, idx("memory_ix", "HASH", "score")),
+    ] {
+        apply(
+            &driver,
+            &handle,
+            &render(
+                renderer.as_ref(),
+                Op::CreateIndex {
+                    table: table.clone(),
+                    index,
+                },
+            )
+            .sql,
+        )
+        .await;
+    }
+    let catalog:Vec<(String,String,Option<u64>)>=sqlx::query_as(
+        "SELECT CAST(INDEX_NAME AS CHAR),CAST(INDEX_TYPE AS CHAR),CAST(SUB_PART AS UNSIGNED) FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY 1"
+    ).bind(&indexed).fetch_all(&mut f.oracle).await.expect("independent MySQL index options");
+    assert!(catalog
+        .iter()
+        .any(|(n, t, s)| n == "prefix_ix" && t == "BTREE" && *s == Some(12)));
+    assert!(catalog
+        .iter()
+        .any(|(n, t, _)| n == "book_ix" && t == "FULLTEXT"));
+    let spatial = catalog
+        .iter()
+        .find(|(n, _, _)| n == "map_ix")
+        .expect("actual spatial catalog");
+    assert!(["RTREE", "SPATIAL"].contains(&spatial.1.as_str()));
+    let hash:String=sqlx::query_scalar(
+        "SELECT CAST(INDEX_TYPE AS CHAR) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME='memory_ix'"
+    ).bind(&memory).fetch_one(&mut f.oracle).await.expect("native memory index");
+    assert_eq!(hash, "HASH");
+    let search: i32 = sqlx::query_scalar(&format!(
+        "SELECT id FROM {indexed} WHERE MATCH(body) AGAINST('+thunderstone' IN BOOLEAN MODE)"
+    ))
+    .fetch_one(&mut f.oracle)
+    .await
+    .expect("real full-text reading");
+    assert_eq!(search, 1);
+
+    let drop_check = render(
+        renderer.as_ref(),
+        Op::DropCheckConstraint {
+            table: indexed.clone(),
+            constraint: check,
+        },
+    );
+    apply(&driver, &handle, &drop_check.sql).await;
+    sqlx::query(&format!("UPDATE {indexed} SET amount=-1 WHERE id=1"))
+        .execute(&mut f.oracle)
+        .await
+        .expect("engine constraint removed");
+    sqlx::query(&format!("UPDATE {indexed} SET amount=10 WHERE id=1"))
+        .execute(&mut f.oracle)
+        .await
+        .expect("make old data valid again");
+    apply(
+        &driver,
+        &handle,
+        drop_check
+            .rollback_sql
+            .as_deref()
+            .expect("actual reverse constraint"),
+    )
+    .await;
+    assert!(
+        sqlx::query(&format!("UPDATE {indexed} SET amount=-1 WHERE id=1"))
+            .execute(&mut f.oracle)
+            .await
+            .is_err()
+    );
+
+    for op in [
+        Op::AlterColumnType {
+            table: indexed.clone(),
+            column: "amount".into(),
+            from: "INT NOT NULL".into(),
+            to: "BIGINT NOT NULL".into(),
+        },
+        Op::DropColumn {
+            table: indexed.clone(),
+            column: MigrationColumn {
+                name: "old_note".into(),
+                data_type: "INT".into(),
+                nullable: true,
+                default_value: None,
+                comment: None,
+                is_auto_increment: false,
+            },
+        },
+        Op::DropIndex {
+            table: indexed.clone(),
+            index: idx("prefix_ix", "BTREE", "tag(12)"),
+        },
+        Op::DropPrimaryKey {
+            table: indexed.clone(),
+            columns: vec!["id".into()],
+        },
+    ] {
+        apply(&driver, &handle, &render(renderer.as_ref(), op).sql).await;
+    }
+    let remaining = driver
+        .get_table_schema(&handle, &indexed, &f.database, None)
+        .await
+        .expect("native after ALTERs");
+    assert!(remaining.primary_keys.is_empty());
+    assert!(!remaining.columns.iter().any(|c| c.name == "old_note"));
+    assert!(remaining
+        .columns
+        .iter()
+        .any(|c| c.name == "amount" && c.data_type.starts_with("bigint")));
+    assert!(!remaining.indexes.iter().any(|i| i.name == "prefix_ix"));
+    for table in [indexed, memory] {
+        apply(
+            &driver,
+            &handle,
+            &render(
+                renderer.as_ref(),
+                Op::DropTable {
+                    table: table.clone(),
+                },
+            )
+            .sql,
+        )
+        .await;
+        let count:i64=sqlx::query_scalar("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?")
+            .bind(table).fetch_one(&mut f.oracle).await.expect("actual target destroyed only inside generated fixture");
+        assert_eq!(count, 0);
+    }
+    driver
+        .disconnect(handle)
+        .await
+        .expect("release isolated MySQL connection");
+}

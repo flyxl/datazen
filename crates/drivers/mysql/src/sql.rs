@@ -59,7 +59,7 @@ pub(crate) fn split_mysql_statements(input: &str) -> Vec<String> {
                     }
                 }
             }
-            b'-' if i + 1 < len && bytes[i + 1] == b'-' => {
+            b'-' if bytes.get(i + 1) == Some(&b'-') && bytes.get(i + 2).is_some_and(u8::is_ascii_whitespace) => {
                 while i < len && bytes[i] != b'\n' {
                     i += 1;
                 }
@@ -100,8 +100,23 @@ pub(crate) fn split_mysql_statements(input: &str) -> Vec<String> {
     stmts
 }
 
+fn leading_sql(mut sql: &str) -> &str {
+    loop {
+        sql = sql.trim_start();
+        if let Some(comment) = sql.strip_prefix("/*") {
+            sql = comment.split_once("*/").map_or("", |(_, tail)| tail);
+        } else if sql.starts_with('#')
+            || (sql.starts_with("--") && sql.as_bytes().get(2).is_some_and(u8::is_ascii_whitespace))
+        {
+            sql = sql.split_once('\n').map_or("", |(_, tail)| tail);
+        } else {
+            return sql;
+        }
+    }
+}
+
 pub(crate) fn is_mysql_result_query(sql: &str) -> bool {
-    let upper = sql.trim().to_ascii_uppercase();
+    let upper = leading_sql(sql).to_ascii_uppercase();
     upper.starts_with("SELECT")
         || upper.starts_with("WITH")
         || upper.starts_with("SHOW")
@@ -116,7 +131,7 @@ pub(crate) fn apply_mysql_select_limit(stmt: &str, limit: Option<u32>) -> (Strin
     };
 
     let trimmed = stmt.trim();
-    let upper = trimmed.to_ascii_uppercase();
+    let upper = leading_sql(trimmed).to_ascii_uppercase();
     let is_select = upper.starts_with("SELECT") || upper.starts_with("WITH");
     if !is_select {
         return (stmt.to_string(), None);
@@ -127,6 +142,6 @@ pub(crate) fn apply_mysql_select_limit(stmt: &str, limit: Option<u32>) -> (Strin
         return (stmt.to_string(), Some(lim));
     }
 
-    let effective = format!("{} LIMIT {}", trimmed, lim + 1);
+    let effective = format!("{} LIMIT {}", trimmed, lim.saturating_add(1));
     (effective, Some(lim))
 }

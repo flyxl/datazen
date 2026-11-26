@@ -1,6 +1,7 @@
 //! Query execution: single statements, multi statements, streaming, writes.
 
 use super::*;
+use super::sql::is_mysql_result_query;
 
 impl MysqlDriver {
     pub(crate) async fn query_inner(
@@ -22,7 +23,10 @@ impl MysqlDriver {
                     .await
                     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
                 let elapsed = start.elapsed().as_millis() as u64;
-                let (columns, result_rows) = Self::decode_rows(&rows);
+                let (mut columns, result_rows) = Self::decode_rows(&rows);
+                if rows.is_empty() {
+                    columns = Self::describe_empty_result(&mut conn, sql).await?;
+                }
                 let row_count = result_rows.len() as u64;
                 return Ok(QueryResult {
                     columns,
@@ -48,7 +52,10 @@ impl MysqlDriver {
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let elapsed = start.elapsed().as_millis() as u64;
 
-        let (columns, result_rows) = Self::decode_rows(&rows);
+        let (mut columns, result_rows) = Self::decode_rows(&rows);
+        if rows.is_empty() {
+            columns = Self::describe_empty_result(&mut conn, sql).await?;
+        }
         let row_count = result_rows.len() as u64;
 
         Ok(QueryResult {
@@ -85,13 +92,7 @@ impl MysqlDriver {
             let mut conn = pinned.lock().await;
             for stmt in &statements {
                 let (effective_sql, applied_limit) = apply_mysql_select_limit(stmt, limit);
-                let trimmed_upper = effective_sql.trim().to_ascii_uppercase();
-                let is_query = trimmed_upper.starts_with("SELECT")
-                    || trimmed_upper.starts_with("WITH")
-                    || trimmed_upper.starts_with("SHOW")
-                    || trimmed_upper.starts_with("DESCRIBE")
-                    || trimmed_upper.starts_with("DESC")
-                    || trimmed_upper.starts_with("EXPLAIN");
+                let is_query = is_mysql_result_query(&effective_sql);
 
                 let stmt_start = Instant::now();
 
@@ -102,7 +103,10 @@ impl MysqlDriver {
                         .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
                     let stmt_ms = stmt_start.elapsed().as_millis() as u64;
 
-                    let (columns, mut result_rows) = Self::decode_rows(&rows);
+                    let (mut columns, mut result_rows) = Self::decode_rows(&rows);
+                    if rows.is_empty() {
+                        columns = Self::describe_empty_result(&mut conn, &effective_sql).await?;
+                    }
                     let truncated = if let Some(lim) = applied_limit {
                         let fetched = result_rows.len() as u32;
                         if fetched > lim {
@@ -157,13 +161,7 @@ impl MysqlDriver {
 
         for stmt in &statements {
             let (effective_sql, applied_limit) = apply_mysql_select_limit(stmt, limit);
-            let trimmed_upper = effective_sql.trim().to_ascii_uppercase();
-            let is_query = trimmed_upper.starts_with("SELECT")
-                || trimmed_upper.starts_with("WITH")
-                || trimmed_upper.starts_with("SHOW")
-                || trimmed_upper.starts_with("DESCRIBE")
-                || trimmed_upper.starts_with("DESC")
-                || trimmed_upper.starts_with("EXPLAIN");
+            let is_query = is_mysql_result_query(&effective_sql);
 
             let stmt_start = Instant::now();
 
@@ -174,7 +172,10 @@ impl MysqlDriver {
                     .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
                 let stmt_ms = stmt_start.elapsed().as_millis() as u64;
 
-                let (columns, mut result_rows) = Self::decode_rows(&rows);
+                let (mut columns, mut result_rows) = Self::decode_rows(&rows);
+                if rows.is_empty() {
+                    columns = Self::describe_empty_result(&mut conn, &effective_sql).await?;
+                }
                 let truncated = if let Some(lim) = applied_limit {
                     let fetched = result_rows.len() as u32;
                     if fetched > lim {
@@ -321,7 +322,7 @@ impl MysqlDriver {
 
     /// The server sends prepared metadata even when no rows match. Use it
     /// without executing the statement a second time.
-    async fn describe_empty_result(
+    pub(crate) async fn describe_empty_result(
         conn: &mut sqlx::MySqlConnection,
         sql: &str,
     ) -> Result<Vec<ColumnInfo>, DriverError> {

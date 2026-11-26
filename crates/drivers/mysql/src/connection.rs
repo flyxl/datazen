@@ -95,21 +95,26 @@ impl super::MysqlDriver {
     /// statement protocol yet**. Passing `&str` to [`sqlx::Executor::execute`]
     /// sends COM_QUERY (`Execute::take_arguments` is `None`).
     pub(crate) async fn execute_text_on_conn(
-        conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
+        conn: &mut sqlx::MySqlConnection,
         sql: &str,
     ) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
-        use sqlx::{Connection, Executor};
-        let result = (&mut **conn).execute(sql).await;
-        // An earlier statement may have executed USE even if a later one
-        // failed. Never reuse prepared statements from the prior catalog.
-        // Overmatch text containing USE so comments, dialect extensions and
-        // batches cannot bypass invalidation by defeating a SQL classifier.
+        use sqlx::Executor;
+        let result = (&mut *conn).execute(sql).await;
+        let invalidation = Self::clear_after_possible_use(conn, sql).await;
+        result.and_then(|result| invalidation.map(|()| result))
+    }
+
+    pub(crate) async fn clear_after_possible_use(
+        conn: &mut sqlx::MySqlConnection,
+        sql: &str,
+    ) -> Result<(), sqlx::Error> {
+        use sqlx::Connection;
+        // Overmatch USE, including inside comments and batches. MySQL
+        // resolves names at PREPARE time, even after a later USE succeeds.
         if sql.as_bytes().windows(3).any(|part| part.eq_ignore_ascii_case(b"use")) {
-            if let Err(error) = conn.clear_cached_statements().await {
-                return result.and(Err(error));
-            }
+            conn.clear_cached_statements().await?;
         }
-        result
+        Ok(())
     }
 
     /// Execute `USE \`db\`` via the MySQL text protocol (COM_QUERY).

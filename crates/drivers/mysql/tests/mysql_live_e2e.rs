@@ -139,6 +139,8 @@ mod connection;
 mod execution;
 #[path = "mysql_live_e2e/migration_objects.rs"]
 mod migration_objects;
+#[path = "mysql_live_e2e/query_modes.rs"]
+mod query_modes;
 #[path = "mysql_live_e2e/resource.rs"]
 mod resource;
 #[path = "mysql_live_e2e/scope.rs"]

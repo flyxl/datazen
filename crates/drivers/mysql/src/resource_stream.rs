@@ -268,9 +268,11 @@ impl MysqlDriver {
                 )
                 .into());
             }
+            let invalidation = Self::clear_after_possible_use(&mut **conn, &effective_sql).await;
             if let Some(error) = delivery_error {
                 return Err(error);
             }
+            invalidation.map_err(|error| DriverError::QueryFailed(error.to_string()))?;
             if !batch.is_empty() {
                 sink.write(ResultChunk {
                     statement_index,
