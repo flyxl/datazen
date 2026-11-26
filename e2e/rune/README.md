@@ -26,9 +26,10 @@ coverage.
 
 ## Opt-in real SQL servers
 
-`--postgres-config FILE` adds five PostgreSQL-only journeys and
-`--mysql-config FILE` adds two MySQL-only journeys. Passing both adds seven
-cross-engine journeys. Unconfigured engines are not counted. The
+`--postgres-config FILE` adds PostgreSQL-only journeys and
+`--mysql-config FILE` adds MySQL-only journeys. Passing both also enables
+cross-engine journeys. Unconfigured engines are not counted. Use
+`run.py --list-tests` with the same fixture options to see the exact plan. The
 config is a private JSON file with `host` (`127.0.0.1`), `port` (integer), `database` (`datazen_e2e`), `user`, `password`, and
 `client` (path to `psql` or `mysql`). Do not commit the config. Use disposable
 servers only; create a `rune_e2e_fixture(marker VARCHAR(40) NOT NULL)` marker
@@ -86,10 +87,12 @@ driver-specific assertions are added.
 | `sql-query.ts` SQ-002/SQ-004 and streaming batches | A real delayed PostgreSQL SELECT produces two named columns and 600 rows (including a unique independently read marker found at row 600) and displays the measured query duration | Duration for an entire multi-statement script |
 | `sql-query.ts` SQ-002 error branch | Real PostgreSQL rejects a statement targeting a missing table; an accessible per-result alert shows a classified reason, copy feedback appears and expires, and explicitly running corrected SQL in the same editor produces the independently checked result | Granular server diagnostic text, AI explain/fix, and retry of an unchanged query |
 | `sql-query.ts` SQ-001 Stop | A real PostgreSQL observer sees the active keyed long-running statement and verifies it ends after the native Stop button, before window teardown and the natural deadline. The same editor runs a fresh query; the keyboard hint is rendered | Other engines and runtime lifecycle switching |
+| `sql-query.ts` SQ-EXPLAIN-001 | Native PostgreSQL Explain renders a real plan on the selected database for an UPDATE on a relation unique to that database. The test verifies the operation and plan node with independent PostgreSQL EXPLAIN and confirms the rows did not change. Closing the plan leaves the prior grid intact. MySQL independently verifies its classic plan for an UPDATE and unchanged rows. | Plan-only SQL, not EXPLAIN ANALYZE; PostgreSQL case requires the alternate marker |
 | `sql-query.ts` SQ-CTX-001/002 | With an optional `alternateDatabase` of `datazen_e2e_alt`, both actual PostgreSQL databases must contain the disposable fixture marker. The native editor selection changes the actual database and sentinel rows returned; qualified catalog SQL does not reset it. A pinned profile has no selector | Only profiles without a pinned database show the picker |
 | `sql-query.ts` SQ-LIFECYCLE-001 editor isolation extension | Two editors on the same connection execute against distinct verified databases. Switching back restores the original choice; opening a new editor after closing the first starts at the default | Connection switch and non-PostgreSQL aliases are covered separately |
 | `sql-query.ts` SQ-LIFECYCLE-001 | Six real context switches in one Rune editor prove their actual PostgreSQL target from the server and show that each execution-owned physical backend disappears while the editor remains open | Rune uses execution-scoped sessions rather than mirroring the legacy editor's resource budget |
 | `sql-query.ts` SQ-013/014 | Against real PostgreSQL, Run and Command+Enter execute exactly the selected fragment containing a UTF-8 quoted semicolon. Neither an unselected UNION sibling nor an adjacent write executes; the server is independently checked | Other PostgreSQL syntax and aliases |
+| `sql-query.ts` SQ-021 | Three real SQLite updates run independently but yield one history card; a different intervening statement prevents a later repeat from replacing the earlier card | Legacy history deduplication is scoped to a connection, database and schema |
 | `sql-query.ts` SQ-012 | Actual PostgreSQL UPDATE result shows server-reported two affected rows, zero for a non-match, and measured duration. A separate database client verifies changed and untouched rows; an empty SELECT retains a column and does not display an affected count | DML with RETURNING and other driver parity are not claimed |
 | `sql-query.ts` SQ-011 | PostgreSQL SELECT scripts expose separate ordered result tabs, retain named columns for a zero-row result, keep a dollar-quoted semicolon inside its result, and reject SELECT INTO before dispatch | Mixed scripts, arbitrary SQL and other PostgreSQL-family drivers |
 | `sqlite.ts` multiple statements | Explicit SQLite SELECT script publishes separate tabs for each result, with independent counts/headers before and after switching; a mixed SELECT/delete script is rejected before execution | Mixed SQL scripts and SQLite zero-row column metadata |

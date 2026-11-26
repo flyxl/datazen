@@ -193,6 +193,54 @@ def run_legacy_postgres_editor_database_isolation(self, primary, alternate):
         self.assertIn(f" AS {name},", entry["sql"])
 
 
+def run_legacy_postgres_explain_selected_database(self, primary, alternate):
+    """Migrate SQ-EXPLAIN-001 with a real server plan and unchanged rows."""
+    ordered = primary.query("SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname;").splitlines()
+    primary.write_profile(self, default_database=False)
+    name = "aaa_rune_explain_" + uuid.uuid4().hex[:12]
+    relation = "public." + name
+    self.assertEqual(primary.query(f"SELECT to_regclass('{relation}') IS NULL;"), "t")
+    alternate.query(f"CREATE TABLE {relation} (id INTEGER PRIMARY KEY, label TEXT NOT NULL);")
+    self.addCleanup(alternate.query, f"DROP TABLE {relation};")
+    alternate.query(f"INSERT INTO {relation} VALUES (1,'original marker'),(2,'unchanged');")
+
+    snapshot = f"SELECT id, label FROM {relation} ORDER BY id;"
+    updated = f"UPDATE {relation} SET label='must not execute' WHERE id=1;"
+    expected = ["1|original marker", "2|unchanged"]
+    self.assertEqual(alternate.query(snapshot).splitlines(), expected)
+    plan = json.loads(alternate.query("EXPLAIN (FORMAT JSON) " + updated))[0]["Plan"]
+    self.assertEqual(plan["Operation"], "Update")
+    self.assertEqual(plan["Relation Name"], name)
+    primary_key_mode = plan["Plans"][0]["Node Type"]
+
+    def paste(at, statement):
+        return [tap(at, "sql-editor-scroll"), key(at+.25, "a", cmd=True),
+                {"t": at+.55, "type": "paste", "text": statement}]
+    trigger = "query-context-database-trigger"
+    actions = [
+        tap(.5, "conn-open-e2e-tcp-sql"), tap(5, "conn-toolbar-new-query"),
+        tap(6.6, trigger), tap(7.6, f"option{ordered.index(alternate.database)}"),
+        *paste(8.6, snapshot), tap(10, "sql-run"),
+        *paste(13, updated), tap(14.3, "sql-explain"),
+    ]
+    explained = self.replay(actions, until=17.8)
+    self.expect_rendered(explained, key="query-explain-panel")
+    self.expect_rendered(explained, key="query-explain-plan")
+    self.assertFalse(visible(explained, key="query-explain-error"))
+    plan_lines = [n["text"] for n in explained["elements"]
+                  if (n.get("key") or "").startswith("query-explain-plan-line-")]
+    self.assertTrue(any(line.startswith("Update on ") and name in line for line in plan_lines))
+    self.assertTrue(any(primary_key_mode in line for line in plan_lines))
+    self.assertEqual(alternate.query(snapshot).splitlines(), expected)
+
+    closed = self.replay([*actions, tap(18.2, "query-explain-close")], until=20.0)
+    self.assertFalse(visible(closed, key="query-explain-panel"))
+    self.expect_rendered(closed, text=alternate.database, within=trigger)
+    self.expect_rendered(closed, text="original marker", within="result-cell-0-1")
+    self.expect_rendered(closed, text="unchanged", within="result-cell-1-1")
+    self.assertEqual(alternate.query(snapshot).splitlines(), expected)
+
+
 def register_pg_editor_context_cases(suite, config, fixture_factory):
     """Register only when the explicitly allowlisted alternate is configured."""
     if "alternateDatabase" not in json.loads(config.read_text(encoding="utf-8")):
@@ -215,3 +263,9 @@ def register_pg_editor_context_cases(suite, config, fixture_factory):
         run.__name__ = name
         run.__doc__ = journey.__doc__
         setattr(suite, name, run)
+
+    run_explain = case(run_legacy_postgres_explain_selected_database)
+    name = "test_postgresql_legacy_editor_explain_selected_database"
+    run_explain.__name__ = name
+    run_explain.__doc__ = run_legacy_postgres_explain_selected_database.__doc__
+    setattr(suite, name, run_explain)

@@ -46,6 +46,13 @@ use rune::{
     FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
+/// Query plan work is owned by the editor and cannot publish into a newer run.
+pub(crate) struct NativeExplainState {
+    pub(crate) tab_id: u32,
+    pub(crate) generation: u32,
+    pub(crate) outcome: Option<Result<datazen_ui_api::ExplainResult, String>>,
+}
+
 pub struct AppState {
     pub active: Section,
     pub sql: SqlEditor,
@@ -75,6 +82,7 @@ pub struct AppState {
         crate::support::value_presentation::registry::ValuePresentationRegistry,
     pub tabs: Tabs,
     pub query_database_picker_tab: Option<u32>,
+    pub(crate) query_plan: Option<NativeExplainState>,
     pub query_database_targets: std::collections::HashMap<u32, datazen_ui_api::NativeQueryDatabase>,
     /// The page the workspace last opened for the selected table tab.
     pub table_page: u32,
@@ -572,6 +580,7 @@ impl Default for AppState {
             value_presentation_registry: Default::default(),
             tabs: Tabs::new(),
             query_database_picker_tab: None,
+            query_plan: None,
             query_database_targets: Default::default(),
             table_page: 0,
             sort: None,

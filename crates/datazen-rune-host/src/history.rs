@@ -96,8 +96,22 @@ impl FileQueryHistory {
 
 #[async_trait]
 impl QueryHistoryRepository for FileQueryHistory {
-    async fn add(&self, entry: QueryHistoryEntry) -> Result<(), HistoryError> {
+    async fn add(&self, mut entry: QueryHistoryEntry) -> Result<(), HistoryError> {
         let mut entries = self.state.lock().expect("the history lock");
+        // Match the desktop history contract: repeat the latest statement for
+        // this connection/database/schema without accumulating duplicate rows.
+        // Keep the existing identity but move the updated outcome to the end.
+        if let Some(index) = entries.iter().rposition(|previous| {
+            previous.connection_id == entry.connection_id
+                && previous.database == entry.database
+                && previous.schema == entry.schema
+        }) {
+            if entries[index].sql.trim() == entry.sql.trim() {
+                let previous = entries.remove(index);
+                entry.id = previous.id;
+                entry.sql = previous.sql;
+            }
+        }
         // Retention is the storage side's job (the repository contract):
         // the newest KEEP entries survive.
         entries.push(entry);

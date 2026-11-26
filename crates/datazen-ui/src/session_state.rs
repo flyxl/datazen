@@ -211,6 +211,7 @@ impl AppState {
         self.tabs = Tabs::new();
         self.query_database_picker_tab = None;
         self.query_database_targets.clear();
+        self.query_plan = None;
         self.grid.set_editable(false);
         self.table_page = 0;
         self.sort = None;

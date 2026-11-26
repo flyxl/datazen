@@ -280,7 +280,39 @@ impl AppState {
     }
 
     pub fn explain_query(&mut self) {
-        self.query_action_notice("Explain is not available in this host");
+        if !self.desktop.supports_native_explain() {
+            self.query_action_notice("Explain is not available in this host");
+            return;
+        }
+        if self.connect_loading.is_some() || self.native_query.is_some() || self.query_loading.is_some() {
+            return;
+        }
+        let Some(tab) = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query).map(|tab| tab.id) else {
+            return;
+        };
+        let sql = match self.sql.query_execution_text(|sql| self.desktop.editor_statement_ranges(sql)) {
+            Ok(Some(sql)) => sql,
+            Ok(None) => return,
+            Err(error) => {
+                self.query_action_notice(error);
+                return;
+            }
+        };
+        let target = self.query_database_target();
+        let generation = self.next_query_generation();
+        self.query_database_picker_tab = None;
+        if self.desktop.begin_native_explain(generation, sql.clone(), target) {
+            self.query_notice = None;
+            self.query_loading = Some(generation);
+            self.native_query = Some(crate::native_query_close::NativeQuery::new(generation, tab, sql));
+            self.query_plan = Some(crate::state_def::NativeExplainState {
+                tab_id: tab,
+                generation,
+                outcome: None,
+            });
+        } else {
+            self.query_action_notice("The query plan could not start.");
+        }
     }
 
     pub fn query_transaction(&mut self, action: &str) {
@@ -791,6 +823,7 @@ impl AppState {
                         });
                         self.query_database_picker_tab = None;
                         self.query_database_targets.clear();
+                        self.query_plan = None;
                         self.desktop_catalog = Some(catalog.clone());
                         self.desktop_connection = Some(id);
                         self.grid = DataGrid::new();
@@ -962,6 +995,17 @@ impl AppState {
             AdapterDelivery::QueryStopRejected { generation } => {
                 self.note_query_stop_rejected(generation);
             }
+            AdapterDelivery::QueryExplained { generation, result } => {
+                self.finish_running_query(generation, false);
+                if self.query_loading == Some(generation) {
+                    self.query_loading = None;
+                }
+                if let Some(plan) = self.query_plan.as_mut().filter(|plan| {
+                    plan.generation == generation && self.query_generation == generation
+                }) {
+                    plan.outcome = Some(result.map_err(|_| "The query plan could not be prepared.".into()));
+                }
+            }
             AdapterDelivery::QueryScriptPages { generation, pages } => {
                 self.deliver_query_script(generation, pages);
                 self.refresh_query_history_if_open();
@@ -1030,6 +1074,9 @@ impl AppState {
             return false;
         }
         self.query_database_targets.remove(&id);
+        if self.query_plan.as_ref().is_some_and(|plan| plan.tab_id == id) {
+            self.query_plan = None;
+        }
         if self.query_database_picker_tab == Some(id) {
             self.query_database_picker_tab = None;
         }

@@ -24,6 +24,7 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 // the workspace/ directory mirrors the React layout (WappIcon.tsx is its
 // first port — the manifest-icon-or-puzzle glyph the wapp page shell,
 // default cards, navigator and tab bar reuse).
+mod native_explain;
 mod query_history;
 pub mod wapp_icon;
 // T067: the host-side shell around a sandboxed wapp page — the lazy entry
@@ -357,6 +358,7 @@ pub fn query_workspace(
         .children(notice)
         .children(loading)
         .child(result_tabs)
+        .children(native_explain::panel(state, theme))
         .child(result_body);
 
     row()

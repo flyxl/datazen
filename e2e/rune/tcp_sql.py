@@ -105,6 +105,37 @@ class TcpSqlJourneys:
             ["server-after", "server-control"],
         )
 
+    def run_mysql_editor_explain_without_writing(self, config):
+        """Check the same retained Explain command against real MySQL."""
+        database = DisposableSql("mysql", config)
+        table = "aaa_rune_mysql_explain_" + uuid.uuid4().hex[:12]
+        database.query(f"CREATE TABLE {table} (id INT PRIMARY KEY, label VARCHAR(80) NOT NULL);")
+        self.addCleanup(database.query, f"DROP TABLE {table};")
+        database.query(f"INSERT INTO {table} VALUES (1, 'keep first'), (2, 'keep second');")
+        database.write_profile(self)
+        updated = f"UPDATE {table} SET label='must not execute' WHERE id=1;"
+        original = f"SELECT id, label FROM {table} ORDER BY id;"
+        expected = database.query(original).splitlines()
+        self.assertEqual(expected, ["1\tkeep first", "2\tkeep second"])
+        server = database.query("EXPLAIN " + updated).split("\t")
+        table_index = server.index(table)
+        # In the classic MySQL plan, partitions and access type follow table.
+        access_type = server[table_index + 2]
+        self.assertNotIn(access_type, ("", "NULL"))
+
+        actions = query_steps(updated, "e2e-tcp-sql")
+        actions[-2] = {"t": 5, "type": "paste", "text": updated}
+        actions[-1] = tap(8.5, "sql-explain")
+        tree = self.replay(actions, until=12)
+        self.expect_rendered(tree, key="query-explain-panel")
+        self.expect_rendered(tree, key="query-explain-plan")
+        self.assertFalse(visible(tree, key="query-explain-error"))
+        lines = [node["text"] for node in tree["elements"]
+                 if (node.get("key") or "").startswith("query-explain-plan-line-")]
+        self.assertTrue(any(f"table: {table}" in line and f" | type: {access_type} |" in line
+                            for line in lines))
+        self.assertEqual(database.query(original).splitlines(), expected)
+
     def run_legacy_mysql_probe_authentication(self, config):
         """Migrate TC-CONN-007 using real authentication on the disposable MySQL fixture."""
         database = DisposableSql("mysql", config)
@@ -583,6 +614,11 @@ def with_tcp_journeys(suite, configs):
                 return self.run_legacy_mysql_probe_authentication(config)
 
             setattr(suite, "test_mysql_legacy_connection_probe_authentication", probe_authentication)
+
+            def explain(self, config=config):
+                return self.run_mysql_editor_explain_without_writing(config)
+
+            setattr(suite, "test_mysql_editor_explain_without_writing", explain)
         if engine == "postgresql":
             def confirm_close(self, config=config):
                 return self.run_legacy_close_running_query(config, confirm=True)

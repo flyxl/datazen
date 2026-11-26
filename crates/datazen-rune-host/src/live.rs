@@ -79,6 +79,8 @@ use live_table_targets::LiveTableTargets;
 mod live_csv_import;
 #[path = "live_sql_transfer.rs"]
 mod live_sql_transfer;
+#[path = "live_query_command.rs"]
+mod live_query_command;
 #[path = "live_sqlite_script.rs"]
 mod live_sqlite_script;
 #[path = "live_sync.rs"]
@@ -193,6 +195,12 @@ enum HostJob {
         script: bool,
         target: Option<datazen_ui_api::NativeQueryDatabase>,
     },
+    ExplainQuery {
+        generation: u32,
+        sql: String,
+        stop: Arc<std::sync::atomic::AtomicBool>,
+        target: Option<datazen_ui_api::NativeQueryDatabase>,
+    },
 }
 
 /// A finished job on the answer channel.
@@ -296,6 +304,10 @@ enum HostAnswer {
         generation: u32,
         pages: Result<Vec<TablePage>, String>,
     },
+    QueryExplained {
+        generation: u32,
+        result: Result<datazen_ui_api::ExplainResult, String>,
+    },
 }
 
 /// The open live session, shared between the adapter and the worker. N4's
@@ -321,6 +333,13 @@ impl LiveSession {
             self.connection.as_deref() == Some(target.connection_id.as_str())
                 && target.connection_id == context.current.connection_id
                 && context.choices.contains(&target.database)
+        })
+    }
+
+    fn supports_query_explain(&self) -> bool {
+        self.is_open() && self.driver.as_ref().is_some_and(|driver| {
+            driver.supports_explain()
+                && driver.command_definitions().iter().any(|command| command.id == "explain")
         })
     }
 
@@ -592,6 +611,10 @@ impl LiveAdapter {
                                         generation,
                                         result: Err("The query history worker did not start.".into()),
                                     },
+                                HostJob::ExplainQuery { generation, .. } => HostAnswer::QueryExplained {
+                                    generation,
+                                    result: Err("The query plan could not be prepared.".into()),
+                                },
                                 HostJob::RunQuery { generation, script: true, .. } => HostAnswer::QueryScriptPages {
                                     generation,
                                     pages: Err("the query worker did not start".into()),
@@ -767,6 +790,21 @@ impl LiveAdapter {
                         HostJob::RunNativeTransfer { epoch, request } => {
                             let result = runtime.block_on(live_transfer::run(&worker_service, &worker_registry, request));
                             HostAnswer::NativeTransferFinished { epoch, result }
+                        }
+                        HostJob::ExplainQuery { generation, sql, stop, target } => {
+                            let result = runtime.block_on(live_query_command::explain_query_observed(
+                                &worker_runtime, &worker_profiles, &worker_session, &sql,
+                                target.as_ref(), &stop,
+                                |terminal| {
+                                    let answer = if terminal {
+                                        HostAnswer::QueryTerminal { generation }
+                                    } else {
+                                        HostAnswer::QueryStopRejected { generation }
+                                    };
+                                    let _ = answer_tx.send(answer);
+                                },
+                            ));
+                            HostAnswer::QueryExplained { generation, result }
                         }
                         HostJob::RunQuery { generation, sql, stop, script, target } => {
                             let started = std::time::Instant::now();
@@ -2358,91 +2396,9 @@ async fn run_query_observed(
         Some(dialect) => dialect.statement_count(sql)?,
         None => 1,
     };
-    let ctx = crate::host_request_context().clone();
-    let token = runtime
-        .issue_submission_token(
-            &ctx,
-            datazen::execution::IdempotentOperation::ExecuteAtTarget,
-            None,
-        )
-        .await
-        .map_err(|error| error.to_string())?;
-    let receipt = runtime
-        .execute_at_target(
-            &ctx,
-            datazen::execution::application::requests::ExecuteAtTargetRequest {
-                target: ExecutionTarget::new(
-                    ConnectionId::new(connection.clone()),
-                    datazen::connection::domain::NamespaceTarget::new(
-                        database.clone(),
-                        None,
-                        None,
-                        Vec::new(),
-                    ),
-                ),
-                expected_config_revision: Counter::new(profiles.revision_of(&connection)),
-                call: datazen::execution::application::requests::CommandCall {
-                    command: "query".into(),
-                    input: serde_json::json!({ "sql": sql }),
-                },
-                idempotency_key: token.idempotency_key,
-            },
-        )
-        .await
-        .map_err(|error| error.to_string())?;
-    // The serial host worker is occupied by this query. Read cancellation
-    // intent outside its job queue and apply it only to this exact receipt.
-    use datazen::execution::CancelDisposition;
-    use std::sync::atomic::Ordering;
-    let view = loop {
-        let view = runtime
-            .get_execution(&ctx, receipt.execution_id.clone())
-            .await
-            .map_err(|error| error.to_string())?;
-        if view.state.is_terminal() {
-            note_execution(true);
-            break view;
-        }
-        if stop.swap(false, Ordering::AcqRel) {
-            let receipt = runtime.cancel_execution(&ctx, receipt.execution_id.clone()).await;
-            if !receipt.is_ok_and(|receipt| {
-                matches!(
-                    receipt.disposition,
-                    CancelDisposition::Requested | CancelDisposition::AlreadyFinished
-                )
-            }) {
-                note_execution(false);
-            }
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    };
-    if view.state != datazen::execution::ExecutionState::Succeeded {
-        return Err(match view.error_code {
-            Some(code) => format!("the statement failed: {code:?}"),
-            None => "the statement failed".to_string(),
-        });
-    }
-    // Match result batches and terminal metadata by the provider's statement ordinal.
     let mut pages = live_sqlite_script::ResultPages::new(page_count, script);
-    for artifact in &view.artifact_ids {
-        let first = runtime
-            .read_artifact_chunk(&ctx, artifact.clone(), Counter::ZERO)
-            .await
-            .map_err(|error| error.to_string())?;
-        for index in 0..first.published_chunk_count.get() {
-            let chunk = if index == 0 {
-                first.clone()
-            } else {
-                runtime
-                    .read_artifact_chunk(&ctx, artifact.clone(), Counter::new(index))
-                    .await
-                    .map_err(|error| error.to_string())?
-            };
-            if let Some(output) = chunk.output {
-                pages.push(output)?;
-            }
-        }
-    }
+    live_query_command::consume_query_command(runtime, profiles, connection, database, "query", sql, stop,
+                          note_execution, |output| pages.push(output)).await?;
     pages.finish()
 }
 
@@ -2781,6 +2737,29 @@ impl DesktopAdapter for LiveAdapter {
         self.enqueue_query(generation, sql, script, Some(target))
     }
 
+    fn supports_native_explain(&self) -> bool {
+        self.session.lock().is_ok_and(|session| session.supports_query_explain())
+    }
+
+    fn begin_native_explain(
+        &mut self, generation: u32, sql: String, target: Option<datazen_ui_api::NativeQueryDatabase>,
+    ) -> bool {
+        if !self.supports_native_explain()
+            || target.as_ref().is_some_and(|target| {
+                !self.session.lock().is_ok_and(|session| session.allows_query_database(target))
+            })
+        {
+            return false;
+        }
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let job = HostJob::ExplainQuery { generation, sql, stop: Arc::clone(&stop), target };
+        let sent = self.jobs.lock().is_ok_and(|jobs| jobs.send(job).is_ok());
+        if sent {
+            self.query_stops.insert(generation, stop);
+        }
+        sent
+    }
+
     fn request_native_query_stop(&mut self, generation: u32) -> bool {
         let Some(stop) = self.query_stops.get(&generation) else {
             return false;
@@ -3002,6 +2981,10 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::QueryStopRejected { generation } => {
                     deliveries.push(AdapterDelivery::QueryStopRejected { generation });
+                }
+                HostAnswer::QueryExplained { generation, result } => {
+                    self.query_stops.remove(&generation);
+                    deliveries.push(AdapterDelivery::QueryExplained { generation, result });
                 }
                 HostAnswer::QueryScriptPages { generation, pages } => {
                     self.query_stops.remove(&generation);

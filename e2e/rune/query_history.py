@@ -1,5 +1,6 @@
 """SQLite migration of the native query-history journey."""
 import json
+import sqlite3
 
 from offline import fill
 from scenarios import fixture, query_steps, tap, visible
@@ -66,3 +67,44 @@ class QueryHistoryJourney:
         ], until=6)
         self.expect_rendered(empty, key="query-history-empty")
         self.assertFalse(visible(empty, key="query-history-list"))
+
+
+    def test_legacy_query_history_collapses_consecutive_execution_only(self):
+        """Migrate SQ-021 without confusing a collapsed card with a skipped execution."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.executescript("CREATE TABLE counter (n INTEGER NOT NULL); INSERT INTO counter VALUES (0);")
+        repeated = "UPDATE counter SET n = n + 1;"
+        separator = "SELECT n FROM counter;"
+        open_history = [
+            tap(.5, "conn-open-e2e-sqlite"),
+            tap(3, "conn-toolbar-new-query"),
+            tap(4.5, "query-sidebar-tab-history"),
+        ]
+        history_file = self.root / "query-history.json"
+
+        first = self.replay([
+            *open_history, *fill(5.2, "sql-editor-scroll", repeated),
+            tap(8, "sql-run"), tap(10.5, "sql-run"), tap(13, "sql-run"),
+        ], until=15.5)
+        self.expect_rendered(first, text=repeated.rstrip(";"), within="query-history-entry-0")
+        self.expect_rendered(first, key="query-history-success", within="query-history-entry-0")
+        self.assertFalse(visible(first, key="query-history-entry-1"))
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute(separator).fetchone(), (3,))
+        saved = json.loads(history_file.read_text(encoding="utf-8"))
+        self.assertEqual([(r["sql"].rstrip(";"), r["success"]) for r in saved],
+                         [(repeated.rstrip(";"), True)])
+
+        second = self.replay([
+            *open_history, *fill(5.2, "sql-editor-scroll", separator), tap(8, "sql-run"),
+            *fill(10, "sql-editor-scroll", repeated), tap(13, "sql-run"),
+        ], until=15.5)
+        for index, sql in enumerate((repeated, separator, repeated)):
+            self.expect_rendered(second, text=sql.rstrip(";"), within=f"query-history-entry-{index}")
+        self.assertFalse(visible(second, key="query-history-entry-3"))
+        with sqlite3.connect(self.db) as db:
+            self.assertEqual(db.execute(separator).fetchone(), (4,))
+        stored = json.loads(history_file.read_text(encoding="utf-8"))
+        self.assertEqual(stored[0]["id"], saved[0]["id"])
+        self.assertEqual(len({r["id"] for r in stored}), 3)

@@ -2135,6 +2135,16 @@ pub trait DesktopAdapter {
         false
     }
 
+    fn supports_native_explain(&self) -> bool {
+        false
+    }
+
+    fn begin_native_explain(
+        &mut self, _generation: u32, _sql: String, _target: Option<NativeQueryDatabase>,
+    ) -> bool {
+        false
+    }
+
     fn request_native_query_stop(&mut self, _generation: u32) -> bool {
         false
     }
@@ -2633,6 +2643,10 @@ pub enum AdapterDelivery {
         generation: u32,
         page: Result<TablePage, String>,
         execution_stats: Option<QueryExecutionStats>,
+    },
+    QueryExplained {
+        generation: u32,
+        result: Result<ExplainResult, String>,
     },
     /// Ordered result pages from one explicitly submitted SELECT script.
     QueryScriptPages {
