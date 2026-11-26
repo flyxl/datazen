@@ -283,3 +283,9 @@ mod statement_rows;
 
 #[path = "postgres_live_e2e/transfer_file.rs"]
 mod transfer_file;
+
+#[path = "postgres_live_e2e/interval.rs"]
+mod interval;
+
+#[path = "postgres_live_e2e/sequence_bounds.rs"]
+mod sequence_bounds;

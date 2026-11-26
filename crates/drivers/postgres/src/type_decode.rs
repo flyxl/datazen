@@ -282,31 +282,46 @@ fn decode_time_tz_binary(bytes: &[u8]) -> Option<String> {
     Some(result)
 }
 
-/// Render a PostgreSQL interval the way the server prints it.
-///
-/// Months become years and months, days stay days and the time part prints as
-/// `HH:MM:SS`; an all-zero interval is `00:00:00` rather than an empty cell.
+/// Render a binary interval in PostgreSQL's default `postgres` interval style.
 fn format_interval(months: i32, days: i32, microseconds: i64) -> String {
     let mut parts = Vec::new();
-    if months != 0 {
-        let years = months / 12;
-        let remainder = months % 12;
-        if years != 0 {
-            parts.push(format!("{} years", years));
+    let mut previous_negative = false;
+    for (value, unit) in [(months / 12, "year"), (months % 12, "mon"), (days, "day")] {
+        if value == 0 {
+            continue;
         }
-        if remainder != 0 {
-            parts.push(format!("{} mons", remainder));
-        }
-    }
-    if days != 0 {
-        parts.push(format!("{} days", days));
+        let sign = if value > 0 && previous_negative {
+            "+"
+        } else {
+            ""
+        };
+        let plural = if value == 1 { "" } else { "s" };
+        parts.push(format!("{sign}{value} {unit}{plural}"));
+        previous_negative = value < 0;
     }
     if microseconds != 0 {
-        let total_secs = microseconds / 1_000_000;
-        let hours = total_secs / 3600;
-        let minutes = (total_secs % 3600) / 60;
-        let seconds = total_secs % 60;
-        parts.push(format!("{:02}:{:02}:{:02}", hours, minutes, seconds));
+        let sign = if microseconds < 0 {
+            "-"
+        } else if previous_negative {
+            "+"
+        } else {
+            ""
+        };
+        let abs = microseconds.unsigned_abs();
+        let total_seconds = abs / 1_000_000;
+        let (hours, minutes, seconds) = (
+            total_seconds / 3600,
+            (total_seconds % 3600) / 60,
+            total_seconds % 60,
+        );
+        let mut time = format!("{sign}{hours:02}:{minutes:02}:{seconds:02}");
+        let subsecond = abs % 1_000_000;
+        if subsecond != 0 {
+            let fraction = format!("{subsecond:06}");
+            time.push('.');
+            time.push_str(fraction.trim_end_matches('0'));
+        }
+        parts.push(time);
     }
     if parts.is_empty() {
         "00:00:00".into()
@@ -389,7 +404,7 @@ mod tests {
             .collect::<Vec<u8>>();
         assert_eq!(
             decode_interval_binary(&bytes).as_deref(),
-            Some("1 years 2 mons 2 days 01:00:00")
+            Some("1 year 2 mons 2 days 01:00:00")
         );
     }
 
