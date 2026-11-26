@@ -514,3 +514,70 @@ class OfflineJourneys:
         with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as connection:
             self.assertEqual(connection.execute("SELECT label FROM keyless ORDER BY rowid").fetchall(),
                              [("first",), ("first",)])
+
+    def test_legacy_connection_group_expansion_and_search_clear_restore_connections(self):
+        """Migrate the expand/collapse and clear cases in connection-search-group.ts."""
+        fixture(self.store, self.db)
+        saved = json.loads(self.store.read_text(encoding="utf-8"))
+        saved["connections"].append({
+            **saved["connections"][0], "id": "other-local", "name": "Other local SQLite",
+        })
+        self.store.write_text(json.dumps(saved), encoding="utf-8")
+        group = "nav-group-all"
+        search = "navigator-filter-input"
+        first, second = "nav-conn-e2e-sqlite", "nav-conn-other-local"
+        collapsed = self.replay([tap(.6, group)], until=1.9)
+        self.expect_rendered(collapsed, key=group)
+        self.assertFalse(visible(collapsed, key=first))
+        self.assertFalse(visible(collapsed, key=second))
+
+        filtered = [tap(.6, group), *fill(1.8, search, "Other local")]
+        visible_match = self.replay(filtered, until=3.2)
+        self.expect_rendered(visible_match, key=second)
+        self.assertFalse(visible(visible_match, key=first))
+
+        cleared = [*filtered, tap(3.4, search), key(3.6, "a", cmd=True), key(3.9, "Backspace")]
+        closed_again = self.replay(cleared, until=4.9)
+        self.assertFalse(visible(closed_again, key=first))
+        self.assertFalse(visible(closed_again, key=second))
+
+        reopened = self.replay([*cleared, tap(5.0, group)], until=6.1)
+        self.expect_rendered(reopened, key=first)
+        self.expect_rendered(reopened, key=second)
+        self.assertEqual(json.loads(self.store.read_text(encoding="utf-8")), saved)
+
+    def test_legacy_settings_navigation_switches_all_six_sections(self):
+        """Migrate settings.ts SS-NAV-001 (navigation, not feature availability)."""
+        sections = ("behavior", "logging", "ai", "mcpServer", "mcpClient", "extensions")
+        for section in sections:
+            with self.subTest(section=section):
+                tree = self.replay([SETTINGS, tap(1.4, f"settings-nav-{section}")], until=2.3)
+                self.expect_rendered(tree, key=f"settings-section-{section}")
+                self.assertFalse(visible(tree, key="settings-section-general"))
+                for other in sections:
+                    if other != section:
+                        self.assertFalse(visible(tree, key=f"settings-section-{other}"))
+        self.assertFalse((self.root / "settings.json").exists(), "navigation must not save settings")
+
+    def test_legacy_sqlite_published_view_opens_and_shows_only_its_result(self):
+        """Migrate the display-view-data journey from sqlite.ts."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                CREATE TABLE posts(id INTEGER PRIMARY KEY, author TEXT, published INTEGER);
+                INSERT INTO posts VALUES (1, 'published-author', 1), (2, 'draft-author', 0);
+                CREATE VIEW published_posts AS
+                    SELECT author FROM posts WHERE published = 1;
+            """)
+            expected = db.execute("SELECT author FROM published_posts").fetchall()
+        self.assertEqual(expected, [("published-author",)])
+        with sqlite3.connect(self.db) as db:
+            original = tuple(db.iterdump())
+        opened = self.replay([OPEN[0], tap(3, "tree-table-published_posts")], until=5.8)
+        self.expect_rendered(opened, key="tree-table-published_posts", within="datazen-navigator")
+        self.expect_rendered(opened, text=expected[0][0], within="cell-0-0")
+        self.assertFalse(visible(opened, text="draft-author", within="table-workspace"))
+        # The live SQLite driver may initialize WAL on read. Compare all
+        # logical contents and schema rather than the physical journal bytes.
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+            self.assertEqual(tuple(db.iterdump()), original)
