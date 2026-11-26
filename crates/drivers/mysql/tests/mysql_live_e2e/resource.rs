@@ -851,3 +851,153 @@ async fn mysql_leased_resource_routes_bound_work_to_native_scope_and_settles_rea
     assert!(provider.observe_session(&leased).await.is_err());
     assert!(ledger.0.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn mysql_native_checkout_timeout_does_not_run_waiting_commands_or_poison_sole_backend() {
+    use std::{fmt::Debug, time::Duration};
+    let mut f = Fixture::open().await;
+    let factory = datazen_driver_mysql::factories()
+        .into_iter()
+        .find(|p| p.driver_id() == "mysql")
+        .unwrap();
+    let driver = factory.create();
+    let provider = datazen_driver_api::require_resource_provider(factory).unwrap();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    let table = format!("dz_wait_{nonce}");
+    let lock = format!("dz_limit_timeout_{nonce}");
+    let write = format!("INSERT INTO {table} VALUES (6)");
+    let bound_write = format!("INSERT INTO {table} VALUES (?)");
+    sqlx::query(&format!("CREATE TABLE {table}(id INT PRIMARY KEY)"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let reserved: i64 = sqlx::query_scalar("SELECT GET_LOCK(?,0)")
+        .bind(&lock)
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(reserved, 1);
+    let mut cfg = f.cfg.clone();
+    cfg.connection_timeout = 1;
+    cfg.max_pool_size = 1;
+    let leased = provider
+        .acquire_resource(
+            &AcquireResourceRequest {
+                connection_config: cfg,
+                target: NamespaceTarget::empty().with_database(f.database.clone()),
+                scope: ResourceScope {
+                    purpose: ResourcePurpose::TransferJob,
+                    max_physical_connections: 1,
+                    holds_open_transaction: false,
+                    pin_for_streaming: false,
+                },
+                identity_scope: IdentityScope::default(),
+                baseline: Baseline::default(),
+            },
+            &budget,
+        )
+        .await
+        .unwrap();
+    let h = provider.connection_handle(&leased).unwrap();
+    let worker = tokio::spawn({
+        let (driver, h, lock) = (driver.clone(), h.clone(), lock.clone());
+        async move {
+            driver
+                .query(&h, &format!("SELECT GET_LOCK('{lock}',10)"))
+                .await
+        }
+    });
+    tokio::time::timeout(Duration::from_secs(4),async {
+       loop {
+          let waiting:i64=sqlx::query_scalar(
+             "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE STATE='User lock' AND ID<>CONNECTION_ID() AND INFO LIKE ?")
+            .bind(format!("%{lock}%")).fetch_one(&mut f.oracle).await.unwrap();
+          if waiting==1 {break;}
+          tokio::time::sleep(Duration::from_millis(20)).await;
+       }
+    }).await.expect("the only native pool slot is holding an observed real lock wait");
+    let id = QueryExecutionId::new(format!("registered-wait-{nonce}"));
+    driver.prepare_query_execution(&h, &id).await.unwrap();
+    let artifact = tempfile::tempdir().unwrap();
+    let sink = Artifact(Mutex::new(
+        std::fs::File::create(artifact.path().join("never.jsonl")).unwrap(),
+    ));
+    let resource_id = QueryExecutionId::new(format!("leased-wait-{nonce}"));
+    let query = CommandCall::new("query", json!({"sql":"SELECT 1"}));
+    let parameters = [Value::Integer(6)];
+    fn timeout<T: Debug, E: Debug>(result: Result<T, E>) {
+        let error = format!(
+            "{:?}",
+            result.expect_err("sole native connection is still held")
+        );
+        assert!(
+            error.contains("timed out") || error.contains("PoolTimedOut"),
+            "{error}"
+        );
+    }
+    let all = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::join!(
+            driver.query(&h, "SELECT 1"),
+            driver.query_multi(&h, &write, None),
+            driver.query_stream(&h, &write, None, Arc::new(|_| {})),
+            driver.query_stream_with_execution(&h, &id, &write, None, Arc::new(|_| {})),
+            driver.query_with_params(&h, "SELECT ?", &parameters),
+            driver.execute(&h, &write),
+            driver.execute_with_params(&h, &bound_write, &parameters),
+            driver.begin_transaction(&h),
+            driver.begin_read_snapshot(&h),
+            driver.get_table_schema(&h, &table, &f.database, None),
+            driver.get_databases(&h),
+            driver.get_server_info(&h),
+            provider.execute_on_resource(&leased, &resource_id, &query, &sink),
+        )
+    })
+    .await;
+    let released: i64 = sqlx::query_scalar("SELECT RELEASE_LOCK(?)")
+        .bind(&lock)
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(released, 1);
+    let (r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13) =
+        all.expect("each lease attempt is bounded");
+    timeout(r1);
+    timeout(r2);
+    timeout(r3);
+    timeout(r4);
+    timeout(r5);
+    timeout(r6);
+    timeout(r7);
+    timeout(r8);
+    timeout(r9);
+    timeout(r10);
+    timeout(r11);
+    timeout(r12);
+    timeout(r13);
+    assert_eq!(
+        worker.await.unwrap().unwrap().rows,
+        [vec![Some(Value::Integer(1))]]
+    );
+    assert!(
+        std::fs::read(artifact.path().join("never.jsonl"))
+            .unwrap()
+            .is_empty()
+    );
+    let persisted: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(persisted, 0);
+    assert_eq!(
+        driver.execute(&h, &write).await.unwrap(),
+        1,
+        "the original pool is reusable once native owner finishes"
+    );
+    assert_eq!(
+        provider.close_resource(&leased).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}

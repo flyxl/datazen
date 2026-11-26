@@ -40,8 +40,8 @@ use datazen_driver_api::session::{
     SessionState, TransactionObservation, TransactionOptions, TransactionState,
 };
 use datazen_driver_api::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, DriverError, QueryExecutionId, SqlTarget,
-    TransactionHandle, Value, PROTOCOL_VERSION,
+    ConnectionConfig, ConnectionHandle, DatabaseDriver, DriverError, PROTOCOL_VERSION,
+    QueryExecutionId, SqlTarget, TransactionHandle, Value,
 };
 
 use crate::mysql::MysqlDriver;
@@ -665,6 +665,13 @@ impl ResourceProvider for MysqlResourceProvider {
                 .await
                 .map_err(ResourceError::Driver)?;
             self.reconcile_transaction(handle, &connection, context.transaction_state);
+            // A native DDL statement can commit a transaction that was open
+            // before dispatch. Do not publish the stale pre-statement effect.
+            if context.transaction_state == TransactionState::Idle
+                && outcome.effect_outcome == EffectOutcome::PartiallyApplied
+            {
+                outcome.effect_outcome = EffectOutcome::Completed;
+            }
             outcome.context_after = context.clone();
             outcome.transaction_observation = self.transaction_observation(handle);
             outcome.transaction_observation.state = context.transaction_state;

@@ -450,3 +450,148 @@ async fn mysql_fixed_typed_begin_does_not_implicitly_commit_native_transactions(
     driver.disconnect(pooled).await.unwrap();
     driver.disconnect(fixed).await.unwrap();
 }
+
+#[tokio::test]
+async fn mysql_retained_observation_exposes_native_implicit_ddl_commit_and_uncertain_lost_rollback()
+{
+    use datazen_driver_api::resource::{CommandCall, ResourceError, ResultChunk, ResultSink};
+    #[derive(Default)]
+    struct Receipt(std::sync::Mutex<Vec<serde_json::Value>>);
+    #[async_trait::async_trait]
+    impl ResultSink for Receipt {
+        async fn write(&self, _: ResultChunk) -> Result<(), ResourceError> {
+            Ok(())
+        }
+        async fn write_output(&self, event: serde_json::Value) -> Result<(), ResourceError> {
+            self.0.lock().unwrap().push(event);
+            Ok(())
+        }
+        async fn complete(&self) -> Result<(), ResourceError> {
+            Ok(())
+        }
+        async fn fail(&self, reason: &str) -> Result<(), ResourceError> {
+            Err(ResourceError::SinkRejected {
+                reason: reason.to_owned(),
+            })
+        }
+    }
+    let mut f = Fixture::open().await;
+    let provider = provider();
+    let driver = factory().create();
+    let ledger = Arc::new(Ledger::default());
+    let budget: Arc<dyn BudgetPort> = ledger.clone();
+    sqlx::raw_sql("UPDATE performance_schema.setup_instruments SET ENABLED='YES' WHERE NAME='transaction';
+       UPDATE performance_schema.setup_consumers SET ENABLED='YES'
+         WHERE NAME IN ('events_transactions_current','thread_instrumentation','global_instrumentation')")
+        .execute(&mut f.oracle).await.unwrap();
+    let h = provider
+        .acquire_resource(&request(&f.cfg, ResourcePurpose::InteractiveQuery), &budget)
+        .await
+        .unwrap();
+    let native = provider.connection_handle(&h).unwrap();
+    let marker = uuid::Uuid::new_v4().simple().to_string();
+    let prior = format!("dz_implicit_rows_{marker}");
+    let ddl = format!("dz_implicit_ddl_{marker}");
+    sqlx::query(&format!(
+        "CREATE TABLE {prior}(id INT PRIMARY KEY) ENGINE=InnoDB"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let persisted = async |oracle: &mut sqlx::MySqlConnection| {
+        sqlx::query_scalar::<_, i32>(&format!("SELECT id FROM {prior} ORDER BY id"))
+            .fetch_all(oracle)
+            .await
+            .unwrap()
+    };
+    provider
+        .begin_transaction(&h, &Default::default())
+        .await
+        .unwrap();
+    let sink = Receipt::default();
+    let id = |label| datazen_driver_api::QueryExecutionId::new(format!("{marker}-{label}"));
+    let inserted = provider
+        .execute_on_resource(
+            &h,
+            &id("initial"),
+            &CommandCall::new(
+                "execute",
+                serde_json::json!({"sql":format!("INSERT INTO {prior} VALUES (17)")}),
+            ),
+            &sink,
+        )
+        .await
+        .unwrap();
+    assert_eq!(inserted.effect_outcome, EffectOutcome::PartiallyApplied);
+    assert_eq!(
+        inserted.transaction_observation.state,
+        TransactionState::Active
+    );
+    assert_eq!(inserted.session_handles.len(), 1);
+    assert!(persisted(&mut f.oracle).await.is_empty());
+    let create = provider
+        .execute_on_resource(
+            &h,
+            &id("implicit-ddl"),
+            &CommandCall::new(
+                "execute",
+                serde_json::json!({"sql":format!("CREATE TABLE {ddl}(created INT)")}),
+            ),
+            &sink,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        persisted(&mut f.oracle).await,
+        [17],
+        "native DDL really commits the prior transaction"
+    );
+    assert_eq!(create.transaction_observation.state, TransactionState::Idle);
+    assert!(create.session_handles.is_empty());
+    assert_eq!(
+        create.effect_outcome,
+        EffectOutcome::Completed,
+        "must not return a stale pending transaction from before DDL"
+    );
+    let proof:i64=sqlx::query_scalar("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?")
+      .bind(&ddl).fetch_one(&mut f.oracle).await.unwrap();
+    assert_eq!(proof, 1);
+
+    provider
+        .begin_transaction(&h, &Default::default())
+        .await
+        .unwrap();
+    driver
+        .execute(&native, &format!("INSERT INTO {prior} VALUES (31)"))
+        .await
+        .unwrap();
+    let native_thread = driver
+        .query(&native, "SELECT CONNECTION_ID()")
+        .await
+        .unwrap();
+    let Some(Value::Integer(pid)) = native_thread.rows[0][0] else {
+        panic!("real retained native thread")
+    };
+    assert_eq!(
+        persisted(&mut f.oracle).await,
+        [17],
+        "next transaction remains uncommitted"
+    );
+    sqlx::raw_sql(&format!("KILL CONNECTION {pid}"))
+        .execute(&mut f.oracle)
+        .await
+        .unwrap();
+    let lost = provider.rollback_transaction(&h).await.unwrap();
+    assert_eq!(lost.state, TransactionState::Unknown);
+    assert_eq!(lost.effect, Some(EffectOutcome::Unknown));
+    assert_eq!(persisted(&mut f.oracle).await, [17]);
+    assert!(
+        provider.observe_session(&h).await.is_err(),
+        "never invent a replacement fixed session"
+    );
+    assert_eq!(
+        provider.close_resource(&h).await.unwrap(),
+        CloseDisposition::Closed
+    );
+    assert!(ledger.0.lock().unwrap().is_empty());
+}
