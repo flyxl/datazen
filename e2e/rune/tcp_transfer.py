@@ -1,6 +1,4 @@
 """Rune UI transfer from an exact PostgreSQL namespace to real MySQL tables."""
-import json
-import os
 import uuid
 
 from scenarios import tap, visible
@@ -15,12 +13,10 @@ class TcpTransferJourneys:
                         host="127.0.0.1", port=server.port, database=server.database,
                         username=server.user, password=server.password, sslMode="disable",
                         connectionTimeout=8, **extra)
-        fd = os.open(self.store, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode=0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as store:
-            json.dump({"connections": [
-                profile(source, "xfer-src", labels[source.engine], **(source_options or {})),
-                profile(target, "xfer-dst", labels[target.engine], **(target_options or {})),
-            ]}, store)
+        self.write_tcp_profiles([
+            profile(source, "xfer-src", labels[source.engine], **(source_options or {})),
+            profile(target, "xfer-dst", labels[target.engine], **(target_options or {})),
+        ])
 
     def sql_transfer_fixture(self, configs, scale, *, engine="InnoDB"):
         pg = DisposableSql("postgresql", configs["postgresql"])

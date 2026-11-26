@@ -107,7 +107,7 @@ class TcpMetadataJourneys:
         self.assertIn([secondary, "owner_id, region", "no"], indexes)
         qualified_owner = f"{schema}.{owner}" if engine == "postgresql" else owner
         self.assertEqual(link, [fk, "region, owner_id", f"{qualified_owner} (namespace, entity)"])
-        database.write_profile(self.store)
+        database.write_profile(self)
         browse = [tap(.5, "conn-open-e2e-tcp-sql"), tap(4, f"tree-table-{table}")]
         structure = self.replay([*browse, tap(5.5, "view-columns")], until=7.5)
         self.expect_rendered(structure, key=f"tree-table-{table}")
@@ -212,7 +212,7 @@ class TcpMetadataJourneys:
         self.assertEqual({name for name, _ in constraints}, {'"Report PK"', '"Owner FK"', '"Positive Score"'})
         self.assertTrue(index.startswith(f"CREATE UNIQUE INDEX {ident(secondary)} ON {relation}"))
         self.assertIn("WHERE (score > 0)", index)
-        database.write_profile(self.store, read_only=True)
+        database.write_profile(self, read_only=True)
         actions = [tap(.5, "conn-open-e2e-tcp-sql"), tap(4, f"tree-table-{table}"),
                    tap(5.6, "view-ddl")]
         ddl = self.replay(actions, until=8.1)
@@ -276,7 +276,7 @@ class TcpMetadataJourneys:
 
         original = oracle()
         self.assertEqual(original, ("a", "1|identity-row"))
-        database.write_profile(self.store, read_only=True)
+        database.write_profile(self, read_only=True)
         tree = self.replay([
             tap(.5, "conn-open-e2e-tcp-sql"), tap(4, f"tree-table-{table}"),
             tap(5.6, "view-ddl"),

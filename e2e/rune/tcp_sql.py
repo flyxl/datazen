@@ -41,17 +41,13 @@ class DisposableSql:
             raise AssertionError(f"{self.engine} independent fixture query failed (exit {result.returncode})")
         return result.stdout.strip()
 
-    def write_profile(self, file, *, read_only=False):
-        # TempDirectory confines this legacy plaintext profile to its owner.
-        # The suite never copies it into artifacts.
-        fd = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode=0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as store:
-            json.dump({"connections": [{
-                "id": "e2e-tcp-sql", "name": "Rune disposable SQL E2E",
-                "databaseType": self.engine, "database": self.database, "host": "127.0.0.1",
-                "port": self.port, "username": self.user, "password": self.password,
-                "readOnly": read_only, "connectionTimeout": 8, "maxPoolSize": 4,
-            }]}, store)
+    def write_profile(self, journey, *, read_only=False):
+        journey.write_tcp_profiles([{
+            "id": "e2e-tcp-sql", "name": "Rune disposable SQL E2E",
+            "databaseType": self.engine, "database": self.database, "host": "127.0.0.1",
+            "port": self.port, "username": self.user, "password": self.password,
+            "readOnly": read_only, "connectionTimeout": 8, "maxPoolSize": 4,
+        }])
 
 
 class TcpSqlJourneys:
@@ -68,7 +64,7 @@ class TcpSqlJourneys:
         database.query(f"CREATE TABLE {relation} (id INTEGER PRIMARY KEY, label VARCHAR(80) NOT NULL);")
         self.addCleanup(database.query, f"DROP TABLE {relation};")
         database.query(f"INSERT INTO {relation} VALUES (1, 'server-before'), (2, 'server-control');")
-        database.write_profile(self.store)
+        database.write_profile(self)
         browse = [tap(.5, "conn-open-e2e-tcp-sql"), tap(4, f"tree-table-{table}")]
         catalog = self.replay(browse, until=6)
         self.expect_rendered(catalog, key=f"tree-table-{table}")
@@ -95,7 +91,7 @@ class TcpSqlJourneys:
             ["server-after", "server-control"],
         )
 
-        database.write_profile(self.store, read_only=True)
+        database.write_profile(self, read_only=True)
         locked = self.replay([*browse, tap(6.5, "cell-0-1"), key(6.85, "Enter")], until=8)
         self.expect_rendered(locked, text="server-after", within="cell-0-1")
         self.assertFalse(visible(locked, key="grid-editor"))
@@ -115,7 +111,7 @@ class TcpSqlJourneys:
             database.query(f"CREATE TABLE {relation} (id INTEGER PRIMARY KEY, label VARCHAR(80) NOT NULL);")
             self.addCleanup(database.query, f"DROP TABLE {relation};")
             database.query(f"INSERT INTO {relation} VALUES (1, '{value}');")
-        database.write_profile(self.store)
+        database.write_profile(self)
         tree = self.replay([tap(.5, "conn-open-e2e-tcp-sql"), tap(4, f"tree-table-{table}")],
                            until=6.5)
         self.expect_rendered(tree, text="This table name is ambiguous across namespaces.",

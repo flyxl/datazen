@@ -45,6 +45,21 @@ class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryH
         self.env["XDG_RUNTIME_DIR"] = str(self.root / "runtime")
         (self.root / "runtime").mkdir(mode=0o700)
 
+    def write_tcp_profiles(self, profiles):
+        # Provision passwords through the native store CLI, never as legacy
+        # untagged tokens that could be mistaken for old encrypted secrets.
+        rows = [profile.copy() for profile in profiles]
+        passwords = {row["id"]: row.pop("password") for row in rows}
+        fd = os.open(self.store, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode=0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as store:
+            json.dump({"connections": rows}, store)
+        result = subprocess.run(
+            [str(BINARY), "--replace-saved-passwords"],
+            input=json.dumps(passwords), text=True, capture_output=True,
+            env=self.env, cwd=self.root, timeout=15,
+        )
+        self.assertEqual(result.returncode, 0, "Native fixture credential setup failed")
+
     def replay(self, actions, *, until=1, exit_code=0):
         self.replays += 1
         script, tree = self.root / "input.json", self.root / "tree.json"
