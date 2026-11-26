@@ -86,17 +86,17 @@ pub fn workspace_body(
     if let Some(workbench) = &state.native_kv {
         return super::native_kv::workbench_view(workbench, theme, dark);
     }
+    let table_selected = state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Table);
     let content = if query_selected(state) {
         query_workspace(state, theme, dark)
     } else if let Some((database, schema)) = &state.er_schema {
         er_view(state, database, schema, theme, dark)
-    } else if let Some(error) = state.table_read_error.as_ref().filter(|_| {
-        state.tabs.selected().is_some_and(|tab| tab.kind == TabKind::Table)
-    }) {
+    } else if let Some(error) = state.table_read_error.as_ref().filter(|_| table_selected) {
         col().key("table-read-error").w_full().padding(16.0).child(
             text(error.clone()).font(type_::LABEL).color(theme.text).w_full(),
         )
-    } else if state.grid.has_page() {
+    } else if table_selected && state.grid.has_page() {
+        // A retained table page is not active after its last tab is closed.
         table_workspace(state, theme, dark)
     } else {
         workspace_empty(theme)

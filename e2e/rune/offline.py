@@ -613,3 +613,44 @@ class OfflineJourneys:
         self.expect_rendered(narrowed, key="tree-table-published_posts")
         self.assertFalse(visible(narrowed, key="tree-table-draft_posts"))
         self.assertFalse(visible(narrowed, key="tree-table-posts"))
+
+    def test_legacy_workspace_switches_and_closes_tabs_then_returns_to_empty(self):
+        """Migrate unified-tab-bar.ts UTB-001 through UTB-006."""
+        fixture(self.store, self.db)
+        sql = "SELECT customer_name FROM customers WHERE id = 2;"
+        with sqlite3.connect(self.db) as db:
+            expected = db.execute(sql).fetchone()[0]
+            original = db.execute("SELECT * FROM customers ORDER BY id").fetchall()
+        query = [*OPEN, tap(4.4, "conn-toolbar-new-query"), tap(5.5, "sql-editor-scroll"),
+                 key(5.8, "a", cmd=True), type_text(6.0, sql), tap(8.9, "sql-run")]
+        before = self.replay(query, until=10.5)
+        self.expect_rendered(before, key="conn-toolbar-new-query")
+        self.expect_rendered(before, text="customers", within="tab-1")
+        self.expect_rendered(before, text="Query", within="tab-2")
+        self.expect_rendered(before, text=expected, within="result-workspace")
+
+        table = [*query, tap(10.7, "tab-1")]
+        active_table = self.replay(table, until=12.0)
+        self.expect_rendered(active_table, text="fixture-ada", within="table-workspace")
+        self.assertFalse(visible(active_table, key="result-workspace"))
+        self.expect_rendered(active_table, key="tab-2")
+
+        switch_back = [*table, tap(12.2, "tab-2")]
+        active_query = self.replay(switch_back, until=13.3)
+        self.expect_rendered(active_query, text=expected, within="result-workspace")
+        self.assertFalse(visible(active_query, key="table-workspace"))
+
+        close_query = [*switch_back, tap(13.5, "tab-close-2")]
+        closed = self.replay(close_query, until=14.9)
+        self.assertFalse(visible(closed, key="tab-2"))
+        self.expect_rendered(closed, key="tab-1")
+        self.expect_rendered(closed, text="fixture-ada", within="table-workspace")
+
+        empty = self.replay([*close_query, tap(15.1, "tab-close-1")], until=16.3)
+        self.expect_rendered(empty, key="workspace-empty")
+        self.expect_rendered(empty, key="conn-toolbar-new-query")
+        self.assertFalse(visible(empty, key="tab-1"))
+        self.assertFalse(visible(empty, key="tab-2"))
+        self.assertFalse(visible(empty, key="table-workspace"))
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+            self.assertEqual(db.execute("SELECT * FROM customers ORDER BY id").fetchall(), original)
