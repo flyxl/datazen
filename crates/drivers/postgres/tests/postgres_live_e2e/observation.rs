@@ -681,3 +681,116 @@ async fn commit_after_backend_loss_is_unknown_and_never_reports_success() {
         .await
         .expect("remove marked fixture table");
 }
+
+#[tokio::test]
+async fn pg_wire_alias_factories_can_close_their_own_live_resources_and_transactions() {
+    use datazen_driver_api::Value;
+
+    let mut fixture = Fixture::open().await;
+    let oracle: i32 = sqlx::query_scalar("SELECT 43")
+        .fetch_one(&mut fixture.oracle)
+        .await
+        .expect("independent PG response");
+    let all = datazen_driver_postgres::factories();
+    let ordinary = all
+        .iter()
+        .find(|f| f.driver_id() == "postgresql")
+        .expect("native factory");
+    let native = ordinary.resource_provider().expect("native provider");
+    // Both aliases deliberately use a real PostgreSQL wire fixture here.
+    // This verifies this crate's lifecycle wiring, not the other products'
+    // server-specific SQL or compatibility.
+    for alias in ["questdb", "cloudberry"] {
+        let factory = all
+            .iter()
+            .find(|f| f.driver_id() == alias)
+            .expect("registered alias factory");
+        let driver = factory.create();
+        let provider = factory
+            .resource_provider()
+            .expect("registered aliased provider");
+        assert_eq!(provider.provider_id(), alias);
+        assert_eq!(
+            factory.resource_capabilities(),
+            provider.capabilities().capabilities
+        );
+        let ledger = Arc::new(Budget::default());
+        let budget: Arc<dyn BudgetPort> = ledger.clone();
+        let mut config = fixture.config.clone();
+        config.id = uuid::Uuid::new_v4().to_string();
+        config.database_type = alias.into();
+        let request = AcquireResourceRequest {
+            connection_config: config.clone(),
+            target: NamespaceTarget::empty().with_database(config.database.clone().unwrap()),
+            scope: ResourceScope {
+                purpose: ResourcePurpose::InteractiveQuery,
+                max_physical_connections: 16,
+                holds_open_transaction: false,
+                pin_for_streaming: false,
+            },
+            identity_scope: IdentityScope::default(),
+            baseline: Baseline::default(),
+        };
+        let resource = provider
+            .acquire_resource(&request, &budget)
+            .await
+            .expect("aliased real PG connection");
+        assert!(
+            native.connection_handle(&resource).is_err(),
+            "native provider must not own the alias handle"
+        );
+        let connection = provider
+            .connection_handle(&resource)
+            .expect("factory owns its compatible native pool");
+        let rows = driver
+            .query(&connection, "SELECT 43")
+            .await
+            .expect("actual server query via the alias driver");
+        assert_eq!(
+            rows.rows,
+            vec![vec![Some(Value::Integer(i64::from(oracle)))]]
+        );
+        provider
+            .begin_transaction(
+                &resource,
+                &TransactionOptions {
+                    isolation_level: None,
+                    read_only: None,
+                    defers_commit: false,
+                },
+            )
+            .await
+            .expect("aliased real transaction");
+        let state = provider
+            .observe_session(&resource)
+            .await
+            .expect("alias observes real transaction");
+        assert_eq!(state.context.transaction_state, TransactionState::Active);
+        assert!(native
+            .close_handle(&resource, &state.handles[0])
+            .await
+            .is_err());
+        provider
+            .close_handle(&resource, &state.handles[0])
+            .await
+            .expect("alias can close its own transaction");
+        assert_eq!(
+            provider
+                .observe_session(&resource)
+                .await
+                .unwrap()
+                .context
+                .transaction_state,
+            TransactionState::Idle
+        );
+        assert!(native.close_resource(&resource).await.is_err());
+        assert_eq!(
+            provider
+                .close_resource(&resource)
+                .await
+                .expect("alias can close its own physical pool"),
+            CloseDisposition::Closed
+        );
+        assert!(ledger.0.lock().unwrap().is_empty());
+    }
+}

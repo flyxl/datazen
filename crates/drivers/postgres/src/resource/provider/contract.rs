@@ -419,7 +419,7 @@ impl ResourceProvider for PostgresResourceProvider {
         &self,
         handle: &ResourceHandle,
     ) -> Result<CloseDisposition, ResourceError> {
-        handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
+        handle.check(self.provider_id, self.runtime_epoch)?;
 
         if handle.is_closed() {
             return Ok(CloseDisposition::Closed);
@@ -474,7 +474,7 @@ impl ResourceProvider for PostgresResourceProvider {
         handle: &ResourceHandle,
         session_handle: &SessionHandleRef,
     ) -> Result<(), ResourceError> {
-        handle.check(POSTGRES_PROVIDER_ID, self.runtime_epoch)?;
+        handle.check(self.provider_id, self.runtime_epoch)?;
 
         // The ref must name *this* resource at *this* epoch. `belongs_to` is the
         // same test `session_handles_of` satisfies when it mints the handle, so
