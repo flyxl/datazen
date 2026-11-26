@@ -253,3 +253,6 @@ mod resource_stream;
 
 #[path = "postgres_live_e2e/connection.rs"]
 mod connection;
+
+#[path = "postgres_live_e2e/identity.rs"]
+mod identity;

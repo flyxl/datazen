@@ -60,9 +60,24 @@ impl PostgresDriver {
             .execute(&mut **conn)
             .await
             .map_err(|error| {
-                DriverError::QueryFailed(format!(
-                    "cannot lock target table before sequence synchronization: {error}"
-                ))
+                // A retained physical checkout also lives in `transactions`
+                // while idle. PostgreSQL itself is the authoritative guard
+                // against reseeding outside an actual transaction block.
+                if error
+                    .as_database_error()
+                    .and_then(|error| error.code())
+                    .as_deref()
+                    == Some("25P01")
+                {
+                    DriverError::TransactionError(
+                        "identity sequence synchronization requires the active table transaction"
+                            .into(),
+                    )
+                } else {
+                    DriverError::QueryFailed(format!(
+                        "cannot lock target table before sequence synchronization: {error}"
+                    ))
+                }
             })?;
 
         let mut seen = std::collections::HashSet::new();
