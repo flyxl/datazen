@@ -486,6 +486,9 @@ impl AppState {
             AdapterDelivery::NativeTransferFinished { epoch, result } => {
                 self.native_transfer.run_completed(epoch, result);
             }
+            AdapterDelivery::NativeSchemaCompared { epoch, result } => {
+                self.native_transfer.schema_completed(epoch, result);
+            }
             AdapterDelivery::RedisProbed { epoch, result } => {
                 if self.connection_dialog_open && epoch == self.connection_dialog_epoch {
                     self.redis_probe_pending = false;

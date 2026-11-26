@@ -43,3 +43,18 @@ pub struct NativeTransferRequest {
     pub target: TransferEndpoint,
     pub columns: Vec<(String, String)>,
 }
+
+/// A read-only request. Unlike transfer, it carries no mappings or write mode.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeSchemaDiffRequest {
+    pub source: TransferEndpoint,
+    pub target: TransferEndpoint,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeSchemaDiff {
+    pub missing_on_target: Vec<String>,
+    pub extra_on_target: Vec<String>,
+    /// Column name plus the attributes that differ (not executable SQL).
+    pub changed: Vec<(String, Vec<String>)>,
+}

@@ -1,4 +1,4 @@
-//! Live SQLite transfer, intentionally separate from the demo data tools.
+//! Live SQLite transfer and read-only schema diff, separate from demo data tools.
 use crate::state_def::AppState;
 use datazen_ui_api::native_transfer::{TransferChoice, TransferSide};
 use rune::tok::{self, type_};
@@ -113,7 +113,10 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
             },
         ));
     }
-    if let Some(column) = endpoint.selected_column() {
+    if let Some(column) = endpoint
+        .selected_column()
+        .filter(|_| !state.native_transfer.show_schema_diff)
+    {
         panel = panel.child(button(
             format!("native-transfer-{prefix}-column"),
             format!("Column: {column}"),
@@ -123,7 +126,8 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
             },
         ));
     }
-    if side == TransferSide::Target && catalog.read_only {
+    if side == TransferSide::Target && catalog.read_only && !state.native_transfer.show_schema_diff
+    {
         panel = panel.child(label(
             "native-transfer-read-only",
             "Target is read-only",
@@ -135,7 +139,7 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
 
 pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
     let transfer = &state.native_transfer;
-    let mut page = col()
+    let page = col()
         .key("native-transfer")
         .w_full()
         .h_full()
@@ -145,6 +149,26 @@ pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
         .scroll(ScrollSpec {
             stick_bottom: false,
         })
+        .child(
+            row()
+                .gap(8.0)
+                .child(button(
+                    "native-tool-transfer",
+                    "Data Transfer",
+                    theme,
+                    |s| s.set_native_schema_diff(false),
+                ))
+                .child(button(
+                    "native-tool-schema-diff",
+                    "Schema Diff",
+                    theme,
+                    |s| s.set_native_schema_diff(true),
+                )),
+        );
+    if transfer.show_schema_diff {
+        return schema_diff_view(page, state, theme);
+    }
+    let mut page = page
         .child(
             text("SQLite Data Transfer")
                 .font(type_::TITLE)
@@ -242,4 +266,67 @@ pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
         ));
     }
     page
+}
+
+fn schema_diff_view(page: rune::El, state: &AppState, theme: tok::Theme) -> El {
+    let comparison = &state.native_transfer;
+    let mut page = page
+        .child(
+            text("SQLite Schema Diff")
+                .font(type_::TITLE)
+                .color(theme.text),
+        )
+        .child(label(
+            "native-schema-scope",
+            "Read-only comparison of table columns. No SQL is applied.",
+            theme,
+        ))
+        .child(endpoint(state, TransferSide::Source, theme))
+        .child(endpoint(state, TransferSide::Target, theme));
+    if comparison.comparing_schema {
+        return page.child(label("native-schema-running", "Comparing columns…", theme));
+    }
+    page = page.child(button(
+        "native-schema-compare",
+        "Compare columns",
+        theme,
+        |s| s.compare_native_schema(),
+    ));
+    if let Some(error) = &comparison.schema_error {
+        return page.child(label("native-schema-error", error.clone(), theme));
+    }
+    let Some(diff) = &comparison.schema_diff else {
+        return page;
+    };
+    if diff.missing_on_target.is_empty()
+        && diff.extra_on_target.is_empty()
+        && diff.changed.is_empty()
+    {
+        return page.child(label(
+            "native-schema-equal",
+            "No column differences.",
+            theme,
+        ));
+    }
+    let mut results = col().key("native-schema-results").w_full().gap(4.0);
+    for (key, heading, columns) in [
+        ("missing", "Missing on target", &diff.missing_on_target),
+        ("extra", "Extra on target", &diff.extra_on_target),
+    ] {
+        for (index, column) in columns.iter().enumerate() {
+            results = results.child(label(
+                &format!("native-schema-{key}-{index}"),
+                format!("{heading}: {column}"),
+                theme,
+            ));
+        }
+    }
+    for (index, (column, aspects)) in diff.changed.iter().enumerate() {
+        results = results.child(label(
+            &format!("native-schema-changed-{index}"),
+            format!("Changed on target: {column} ({})", aspects.join(", ")),
+            theme,
+        ));
+    }
+    page.child(results)
 }

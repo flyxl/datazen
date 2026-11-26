@@ -77,13 +77,15 @@ use live_table_targets::LiveTableTargets;
 #[path = "live_transfer.rs"]
 mod live_transfer;
 use datazen_ui_api::native_transfer::{
-    NativeTransferRequest, TransferCatalog, TransferChoice, TransferSide,
+    NativeSchemaDiff, NativeSchemaDiffRequest, NativeTransferRequest, TransferCatalog,
+    TransferChoice, TransferSide,
 };
 
 /// A job on the worker's channel, with the generation the UI expects back.
 enum HostJob {
     ReadNativeTransfer { epoch: u32, side: TransferSide, choice: TransferChoice },
     RunNativeTransfer { epoch: u32, request: NativeTransferRequest },
+    CompareNativeSchema { epoch: u32, request: NativeSchemaDiffRequest },
     ProbeRedis { epoch: u64, config: datazen_driver_api::ConnectionConfig },
     ReadKv(KvRead),
     CloseKv { connection_id: String, session_generation: u32 },
@@ -132,6 +134,7 @@ enum HostJob {
 enum HostAnswer {
     NativeTransferRead { epoch: u32, side: TransferSide, result: Result<TransferCatalog, String> },
     NativeTransferFinished { epoch: u32, result: Result<u64, String> },
+    NativeSchemaCompared { epoch: u32, result: Result<NativeSchemaDiff, String> },
     RedisProbed { epoch: u64, result: Result<(), String> },
     KvRead { request: KvRead, result: Result<KvReply, String> },
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
@@ -359,6 +362,9 @@ impl LiveAdapter {
                                 HostJob::RunNativeTransfer { epoch, .. } => HostAnswer::NativeTransferFinished {
                                     epoch, result: Err("The transfer worker could not start.".into()),
                                 },
+                                HostJob::CompareNativeSchema { epoch, .. } => HostAnswer::NativeSchemaCompared {
+                                    epoch, result: Err("The schema comparison worker could not start.".into()),
+                                },
                                 HostJob::CloseKv { .. } => continue,
                                 HostJob::ProbeRedis { epoch, .. } => HostAnswer::RedisProbed {
                                     epoch, result: Err("The Redis connection test is unavailable.".into()),
@@ -537,6 +543,10 @@ impl LiveAdapter {
                         HostJob::ReadNativeTransfer { epoch, side, choice } => {
                             let result = runtime.block_on(live_transfer::catalog(&worker_service, &worker_registry, choice));
                             HostAnswer::NativeTransferRead { epoch, side, result }
+                        }
+                        HostJob::CompareNativeSchema { epoch, request } => {
+                            let result = runtime.block_on(live_transfer::compare_schema(&worker_service, &worker_registry, request));
+                            HostAnswer::NativeSchemaCompared { epoch, result }
                         }
                         HostJob::RunNativeTransfer { epoch, request } => {
                             let result = runtime.block_on(live_transfer::run(&worker_service, &worker_registry, request));
@@ -2262,6 +2272,7 @@ impl DesktopAdapter for LiveAdapter {
         let job = match job {
             AdapterJob::ReadNativeTransfer { epoch, side, choice } => HostJob::ReadNativeTransfer { epoch, side, choice },
             AdapterJob::RunNativeTransfer { epoch, request } => HostJob::RunNativeTransfer { epoch, request },
+            AdapterJob::CompareNativeSchema { epoch, request } => HostJob::CompareNativeSchema { epoch, request },
             AdapterJob::ReadKv(request) => HostJob::ReadKv(request),
             AdapterJob::CloseKv { connection_id, session_generation } =>
                 HostJob::CloseKv { connection_id, session_generation },
@@ -2303,6 +2314,9 @@ impl DesktopAdapter for LiveAdapter {
                 }
                 HostAnswer::NativeTransferFinished { epoch, result } => {
                     deliveries.push(AdapterDelivery::NativeTransferFinished { epoch, result });
+                }
+                HostAnswer::NativeSchemaCompared { epoch, result } => {
+                    deliveries.push(AdapterDelivery::NativeSchemaCompared { epoch, result });
                 }
                 HostAnswer::RedisProbed { epoch, result } => {
                     deliveries.push(AdapterDelivery::RedisProbed { epoch, result });

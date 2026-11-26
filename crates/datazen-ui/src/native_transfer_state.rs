@@ -1,7 +1,8 @@
-//! Selection, review and result for the real native transfer panel.
+//! SQLite endpoint selection and results for the live native tools.
 use crate::state_def::AppState;
 use datazen_ui_api::native_transfer::{
-    NativeTransferRequest, TransferCatalog, TransferChoice, TransferEndpoint, TransferSide,
+    NativeSchemaDiff, NativeSchemaDiffRequest, NativeTransferRequest, TransferCatalog,
+    TransferChoice, TransferEndpoint, TransferSide,
 };
 use datazen_ui_api::AdapterJob;
 
@@ -43,6 +44,11 @@ pub(crate) struct NativeTransferState {
     pub running: bool,
     pub error: Option<String>,
     pub inserted: Option<u64>,
+    pub show_schema_diff: bool,
+    pub comparing_schema: bool,
+    pub schema_error: Option<String>,
+    pub schema_diff: Option<NativeSchemaDiff>,
+    schema_epoch: u32,
     epoch: u32,
 }
 
@@ -62,7 +68,7 @@ impl NativeTransferState {
     }
 
     pub fn busy(&self) -> bool {
-        self.confirming.is_some() || self.running
+        self.confirming.is_some() || self.running || self.comparing_schema
     }
 
     pub fn read_completed(
@@ -93,6 +99,17 @@ impl NativeTransferState {
         match result {
             Ok(rows) => self.inserted = Some(rows),
             Err(error) => self.error = Some(error),
+        }
+    }
+
+    pub fn schema_completed(&mut self, epoch: u32, result: Result<NativeSchemaDiff, String>) {
+        if epoch != self.schema_epoch || !self.comparing_schema {
+            return;
+        }
+        self.comparing_schema = false;
+        match result {
+            Ok(diff) => self.schema_diff = Some(diff),
+            Err(error) => self.schema_error = Some(error),
         }
     }
 
@@ -175,6 +192,8 @@ impl AppState {
         state.pairs.clear();
         state.error = None;
         state.inserted = None;
+        state.schema_diff = None;
+        state.schema_error = None;
         let entry = state.side_mut(side);
         let epoch = entry.epoch.wrapping_add(1);
         *entry = EndpointState {
@@ -192,6 +211,41 @@ impl AppState {
                 epoch,
                 side,
                 Err("Cannot start the transfer catalog read.".into()),
+            );
+        }
+    }
+
+    pub(crate) fn set_native_schema_diff(&mut self, show: bool) {
+        if !self.native_transfer.busy() {
+            self.native_transfer.show_schema_diff = show;
+        }
+    }
+
+    pub(crate) fn compare_native_schema(&mut self) {
+        let state = &mut self.native_transfer;
+        if state.busy() || state.source.loading || state.target.loading {
+            return;
+        }
+        state.schema_diff = None;
+        state.schema_error = None;
+        let (Some(source), Some(target)) = (state.source.endpoint(), state.target.endpoint())
+        else {
+            state.schema_error = Some("Select an existing source and target table.".into());
+            return;
+        };
+        if source.identity == target.identity {
+            state.schema_error = Some("Select two different SQLite files.".into());
+            return;
+        }
+        state.schema_epoch = state.schema_epoch.wrapping_add(1);
+        state.comparing_schema = true;
+        if !self.desktop.begin_job(AdapterJob::CompareNativeSchema {
+            epoch: state.schema_epoch,
+            request: NativeSchemaDiffRequest { source, target },
+        }) {
+            state.schema_completed(
+                state.schema_epoch,
+                Err("Cannot start the schema comparison.".into()),
             );
         }
     }

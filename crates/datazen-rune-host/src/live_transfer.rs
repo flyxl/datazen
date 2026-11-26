@@ -1,4 +1,4 @@
-//! Worker-only adapter for insert-only Data Transfer between two SQLite files.
+//! Worker adapters for native migration tools between two SQLite files.
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -12,10 +12,14 @@ use datazen::migration::data_transfer::{
     build_preview, enforce_transfer_pairing, execute_transfer_data, inspect_tables, TableMapping,
     TransferJob, TransferMode, ValueFormatter, WriteMode,
 };
+use datazen::migration::schema_diff::{diff_table_schemas, ColumnChange};
 use datazen_driver_api::{
     ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableType,
 };
-use datazen_ui_api::native_transfer::{NativeTransferRequest, TransferCatalog, TransferChoice};
+use datazen_ui_api::native_transfer::{
+    NativeSchemaDiff, NativeSchemaDiffRequest, NativeTransferRequest, TransferCatalog,
+    TransferChoice,
+};
 
 const MAIN: &str = "main";
 const SQLITE: &str = "sqlite";
@@ -25,10 +29,10 @@ async fn profile(service: &ConnectionService, id: &str) -> Result<ConnectionConf
     let config = service
         .get(&scope, id)
         .await
-        .map_err(|_| "Could not read the saved transfer profile.")?
-        .ok_or("The saved transfer profile no longer exists.")?;
+        .map_err(|_| "Could not read the saved SQLite profile.")?
+        .ok_or("The saved SQLite profile no longer exists.")?;
     if config.database_type != SQLITE {
-        return Err("Native Data Transfer currently supports SQLite files only.".into());
+        return Err("These native tools currently support SQLite files only.".into());
     }
     let existing = config.database.as_deref().is_some_and(|path| {
         !path.chars().any(|ch| matches!(ch, '?' | '#' | '%'))
@@ -120,6 +124,97 @@ pub(super) async fn catalog(
     }
     .await;
     let _ = driver.disconnect(handle).await;
+    result
+}
+
+/// Both handles are opened read-only, even for otherwise writable profiles.
+/// The raw shared comparison returns column differences, not a deploy plan.
+pub(super) async fn compare_schema(
+    service: &ConnectionService,
+    registry: &DriverRegistry,
+    request: NativeSchemaDiffRequest,
+) -> Result<NativeSchemaDiff, String> {
+    if request.source.connection_id == request.target.connection_id
+        || request.source.identity == request.target.identity
+    {
+        return Err("Select two different SQLite files.".into());
+    }
+    let mut source = profile(service, &request.source.connection_id).await?;
+    let mut target = profile(service, &request.target.connection_id).await?;
+    source.read_only = true;
+    target.read_only = true;
+    let driver = driver(registry).await?;
+    let source_handle = driver
+        .connect(&source)
+        .await
+        .map_err(|_| "Could not reopen the source SQLite file read-only.")?;
+    let result = async {
+        let target_handle = driver
+            .connect(&target)
+            .await
+            .map_err(|_| "Could not reopen the target SQLite file read-only.")?;
+        let comparison = async {
+            for (handle, selected) in [
+                (&source_handle, &request.source),
+                (&target_handle, &request.target),
+            ] {
+                if identity(driver.as_ref(), handle).await? != selected.identity {
+                    return Err("A selected SQLite file changed. Select it again.".into());
+                }
+            }
+            // Catalog picks are exact SQLite names. Do not apply a generic
+            // dotted-schema resolver that can reinterpret e.g. "a.orders".
+            let source = driver
+                .get_table_schema(&source_handle, &request.source.table, MAIN, None)
+                .await
+                .map_err(|_| "Could not read the selected source table.")?;
+            let target = driver
+                .get_table_schema(&target_handle, &request.target.table, MAIN, None)
+                .await
+                .map_err(|_| "Could not read the selected target table.")?;
+            if source.columns.is_empty() || target.columns.is_empty() {
+                return Err("Both selected tables must still exist.".into());
+            }
+            let normalizer = driver.type_normalizer();
+            let diff = diff_table_schemas(
+                &request.source.table,
+                &source,
+                &target,
+                normalizer.as_deref(),
+            );
+            Ok(NativeSchemaDiff {
+                missing_on_target: diff.missing_on_target.into_iter().map(|c| c.name).collect(),
+                extra_on_target: diff.extra_on_target.into_iter().map(|c| c.name).collect(),
+                changed: diff
+                    .changed
+                    .into_iter()
+                    .map(|column| {
+                        let attributes = column
+                            .changes
+                            .into_iter()
+                            .map(|change| match change {
+                                ColumnChange::DataType => format!(
+                                    "type: source {}, target {}",
+                                    column.source.data_type, column.target.data_type
+                                ),
+                                ColumnChange::Nullable => "nullability".into(),
+                                ColumnChange::Default => "default".into(),
+                                ColumnChange::Comment => "comment".into(),
+                                ColumnChange::AutoIncrement => "auto increment".into(),
+                                ColumnChange::PrimaryKey => "primary key".into(),
+                            })
+                            .collect();
+                        (column.name, attributes)
+                    })
+                    .collect(),
+            })
+        }
+        .await;
+        let _ = driver.disconnect(target_handle).await;
+        comparison
+    }
+    .await;
+    let _ = driver.disconnect(source_handle).await;
     result
 }
 

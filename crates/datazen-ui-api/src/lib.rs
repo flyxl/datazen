@@ -1981,6 +1981,10 @@ pub enum AdapterJob {
         side: native_transfer::TransferSide,
         choice: native_transfer::TransferChoice,
     },
+    CompareNativeSchema {
+        epoch: u32,
+        request: native_transfer::NativeSchemaDiffRequest,
+    },
     RunNativeTransfer {
         epoch: u32,
         request: native_transfer::NativeTransferRequest,
@@ -2065,6 +2069,10 @@ pub enum AdapterDelivery {
         result: Result<native_transfer::TransferCatalog, String>,
     },
     NativeTransferFinished { epoch: u32, result: Result<u64, String> },
+    NativeSchemaCompared {
+        epoch: u32,
+        result: Result<native_transfer::NativeSchemaDiff, String>,
+    },
     RedisProbed { epoch: u64, result: Result<(), String> },
     KvRead { request: native_kv::KvRead, result: Result<native_kv::KvReply, String> },
     /// An open job's catalog (or its failure sentence). The connection id
