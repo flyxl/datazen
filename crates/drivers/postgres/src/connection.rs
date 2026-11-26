@@ -152,7 +152,7 @@ impl PostgresDriver {
             SELECT n.nspname AS table_schema, c.relname AS table_name,
                    CASE c.relkind
                      WHEN 'v' THEN 'VIEW'
-                     WHEN 'm' THEN 'VIEW'
+                     WHEN 'm' THEN 'MATERIALIZED VIEW'
                      ELSE 'BASE TABLE'
                    END AS table_type
             FROM pg_catalog.pg_class c
@@ -193,6 +193,7 @@ impl PostgresDriver {
                     name,
                     table_type: match tt.as_str() {
                         "VIEW" => TableType::View,
+                        "MATERIALIZED VIEW" => TableType::MaterializedView,
                         "SCHEMA_MARKER" => TableType::SystemTable,
                         _ => TableType::Table,
                     },

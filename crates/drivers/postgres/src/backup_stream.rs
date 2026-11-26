@@ -57,14 +57,11 @@ impl RetainedBackupSource for Source<'_> {
             &object.name,
         );
         if sql_dump::is_view_like(&object.table_type) {
-            let ddl = crate::catalog::fetch_pg_view_definition(&mut connection, &name).await?;
+            let (ddl, materialized) =
+                crate::catalog::fetch_pg_view_definition(&mut connection, &name).await?;
             Ok(format!(
                 "CREATE {}VIEW {name} AS\n{};\n",
-                if matches!(object.table_type, TableType::MaterializedView) {
-                    "MATERIALIZED "
-                } else {
-                    ""
-                },
+                if materialized { "MATERIALIZED " } else { "" },
                 ddl.trim_end().trim_end_matches(';')
             ))
         } else {
@@ -151,6 +148,24 @@ impl PostgresDriver {
                     &format!("CREATE DATABASE {};\n\n", self.quote_ident(database)),
                 )
                 .await?;
+            }
+            if !opts.data_only {
+                // A restore into an empty database must be able to resolve
+                // the visible user namespaces before any qualified DDL.
+                let schemas = self
+                    .get_schemas(handle, database)
+                    .await?
+                    .unwrap_or_default();
+                for schema in schemas {
+                    stream::text(
+                        sink,
+                        &format!(
+                            "CREATE SCHEMA IF NOT EXISTS {};\n",
+                            self.quote_ident(&schema)
+                        ),
+                    )
+                    .await?;
+                }
             }
             stream::dump(
                 &Source {

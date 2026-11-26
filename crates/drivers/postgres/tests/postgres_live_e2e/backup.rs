@@ -273,7 +273,7 @@ async fn retained_backup_runtime_streams_and_restores_views_routine_and_trigger(
         runtime.clone(),
         runtime_host::backup_binder(runtime.clone()),
         &ctx,
-        endpoint,
+        endpoint.clone(),
         BackupDumpOptions {
             single_transaction: true,
             routines: true,
@@ -298,10 +298,7 @@ async fn retained_backup_runtime_streams_and_restores_views_routine_and_trigger(
         .expect("driver emits only selected actual database preamble");
     assert!(contents.contains("CREATE MATERIALIZED VIEW") && contents.contains("CREATE TRIGGER"));
     assert!(!contents.contains("statementMetadata"));
-    sqlx::query("CREATE SCHEMA retained_demo")
-        .execute(&mut target)
-        .await
-        .expect("prepare a separate target namespace");
+    assert!(contents.contains("CREATE SCHEMA IF NOT EXISTS \"retained_demo\""));
     sqlx::raw_sql(contents)
         .execute(&mut target)
         .await
@@ -336,6 +333,62 @@ async fn retained_backup_runtime_streams_and_restores_views_routine_and_trigger(
     );
     assert_eq!(lifecycle.opened.load(Ordering::SeqCst), 1);
     assert_eq!(lifecycle.closed.load(Ordering::SeqCst), 1);
+    struct CancelOnObject(CancelToken);
+    impl datazen::backup::BackupEvents for CancelOnObject {
+        fn backup_progress(&self, _: datazen_driver_api::DumpProgress) {
+            self.0.cancel();
+        }
+        fn restore_progress(&self, _: datazen_driver_api::DumpProgress) {}
+    }
+    let token = CancelToken::new();
+    let cancel_events = CancelOnObject(token.clone());
+    let partial = dir.path().join("cancelled-snapshot.sql");
+    assert!(backup_to_path(
+        runtime.clone(),
+        runtime_host::backup_binder(runtime.clone()),
+        &ctx,
+        endpoint.clone(),
+        BackupDumpOptions {
+            single_transaction: true,
+            ..Default::default()
+        },
+        &partial,
+        false,
+        Some(Arc::new(cancel_events)),
+        &token,
+    )
+    .await
+    .is_err());
+    assert!(
+        !partial.exists(),
+        "aborted real backup must not publish a partial artifact"
+    );
+    let conflicting = dir.path().join("conflicting-options.sql");
+    assert!(backup_to_path(
+        runtime.clone(),
+        runtime_host::backup_binder(runtime.clone()),
+        &ctx,
+        endpoint,
+        BackupDumpOptions {
+            schema_only: true,
+            data_only: true,
+            ..Default::default()
+        },
+        &conflicting,
+        false,
+        None,
+        &CancelToken::new(),
+    )
+    .await
+    .is_err());
+    assert!(!conflicting.exists());
+    assert_eq!(
+        lifecycle.opened.load(Ordering::SeqCst),
+        lifecycle.closed.load(Ordering::SeqCst)
+    );
+    assert_eq!(sqlx::query_scalar::<_,i64>(
+        "SELECT count(*) FROM pg_stat_activity WHERE datname=$1 AND state LIKE 'idle in transaction%'"
+    ).bind(&origin_name).fetch_one(&mut fixture.oracle).await.expect("independent snapshot cleanup"),0);
     drop(runtime);
     drop(source);
     drop(target);

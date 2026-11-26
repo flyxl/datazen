@@ -350,7 +350,7 @@ pub(crate) async fn fetch_pg_table_ddl_on_connection(
 pub(crate) async fn fetch_pg_view_definition(
     connection: &mut sqlx::PgConnection,
     qualified: &str,
-) -> Result<String, DriverError> {
+) -> Result<(String, bool), DriverError> {
     // Deparsing with the source session's search_path can omit schema
     // qualifiers that a different restore session needs. Resolve the
     // intended view first, then deparse with only pg_catalog visible.
@@ -362,10 +362,10 @@ pub(crate) async fn fetch_pg_view_definition(
          ), restricted AS ( \
            SELECT path, view_oid, pg_catalog.set_config('search_path', 'pg_catalog', true) FROM saved \
          ), definition AS ( \
-           SELECT path, pg_catalog.pg_get_viewdef(view_oid, true) AS def FROM restricted OFFSET 0 \
+           SELECT path, view_oid, pg_catalog.pg_get_viewdef(view_oid, true) AS def FROM restricted OFFSET 0 \
          ), restored AS ( \
-           SELECT def, pg_catalog.set_config('search_path', path, true) FROM definition \
-         ) SELECT def FROM restored",
+           SELECT def, view_oid, pg_catalog.set_config('search_path', path, true) FROM definition \
+         ) SELECT def, (SELECT c.relkind = 'm' FROM pg_catalog.pg_class c WHERE c.oid = restored.view_oid) AS materialized FROM restored",
     )
     .bind(qualified)
     .fetch_one(connection)
@@ -377,7 +377,10 @@ pub(crate) async fn fetch_pg_view_definition(
             "View definition not found: {qualified}"
         )));
     }
-    Ok(def)
+    let materialized = row
+        .try_get("materialized")
+        .map_err(|error| DriverError::QueryFailed(error.to_string()))?;
+    Ok((def, materialized))
 }
 
 // Deparse trigger functions against the catalog-only path and restore it even
@@ -439,9 +442,14 @@ impl PostgresDriver {
         let (schema, bare_view) = crate::sql::resolve_pg_table_schema(view, schema);
         let qualified = pg_regclass_name(schema, bare_view);
         let mut connection = crate::session_connection::for_session(self, handle, database).await?;
-        let def = fetch_pg_view_definition(&mut connection, &qualified).await?;
+        let (def, materialized) = fetch_pg_view_definition(&mut connection, &qualified).await?;
+        let command = if materialized {
+            "CREATE MATERIALIZED VIEW"
+        } else {
+            "CREATE OR REPLACE VIEW"
+        };
         Ok(format!(
-            "CREATE OR REPLACE VIEW {qualified} AS\n{};\n",
+            "{command} {qualified} AS\n{};\n",
             def.trim().trim_end_matches(';')
         ))
     }

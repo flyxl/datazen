@@ -227,3 +227,94 @@ async fn table_ddl_and_catalog_introspection_use_exact_live_postgres_identity() 
     .await
     .expect("remove exact catalog fixtures");
 }
+
+#[tokio::test]
+async fn postgres_result_origin_reads_real_base_view_and_materialized_catalog_kinds() {
+    use datazen_driver_api::{ResultObjectKind, ResultOrigin, ResultShape, SqlTarget, Value};
+    let mut fixture = Fixture::open().await;
+    let database = fixture.config.database.as_deref().expect("fixture");
+    let schema = format!("dz_origin_{}", uuid::Uuid::new_v4().simple());
+    sqlx::raw_sql(&format!(
+        r#"
+         CREATE SCHEMA {schema};
+         CREATE TABLE {schema}.records(id integer PRIMARY KEY,label text);
+         INSERT INTO {schema}.records VALUES(1,'durable');
+         CREATE VIEW {schema}.projected AS SELECT * FROM {schema}.records;
+         CREATE MATERIALIZED VIEW {schema}.cached AS SELECT * FROM {schema}.records;
+         UPDATE {schema}.records SET label='live';
+    "#
+    ))
+    .execute(&mut fixture.oracle)
+    .await
+    .expect("real relations with independent materialized snapshot");
+    let expected_catalog:Vec<(String,String)>=sqlx::query_as(
+        "SELECT c.relname::text,c.relkind::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind IN ('r','v','m') ORDER BY c.relname"
+    ).bind(&schema).fetch_all(&mut fixture.oracle).await.expect("actual exact PG catalog identity");
+    assert_eq!(
+        expected_catalog,
+        [
+            ("cached".into(), "m".into()),
+            ("projected".into(), "v".into()),
+            ("records".into(), "r".into())
+        ]
+    );
+    let driver = PostgresDriver::new();
+    let handle = driver.connect(&fixture.config).await.expect("driver query");
+    let target = SqlTarget::new(Some(database), Some(&schema));
+    for (name, kind, expected) in [
+        ("records", ResultObjectKind::BaseTable, "live"),
+        ("projected", ResultObjectKind::View, "live"),
+        ("cached", ResultObjectKind::MaterializedView, "durable"),
+    ] {
+        let statement =
+            format!("SELECT id AS row_id, label, length(label) AS computed FROM {schema}.{name}");
+        let query = driver
+            .query_at(&handle, &statement, target)
+            .await
+            .expect("real executed result rows");
+        assert_eq!(query.rows[0][1], Some(Value::String(expected.into())));
+        let names = query
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .collect::<Vec<_>>();
+        let described = driver
+            .describe_result_origin(&handle, target, &names, &statement)
+            .await
+            .expect("catalog-based origin");
+        let ResultOrigin::Determined(origin) = described else {
+            panic!("actual result should have origin")
+        };
+        assert_eq!(origin.shape, ResultShape::SingleBaseTable);
+        assert_eq!(
+            origin.object_kind, kind,
+            "actual PostgreSQL relation kind {name}"
+        );
+        assert_eq!(
+            origin
+                .table
+                .as_ref()
+                .expect("physical object identity")
+                .name,
+            name
+        );
+        assert_eq!(origin.columns[0].source_column.as_deref(), Some("id"));
+        assert!(origin.columns[0].passthrough);
+        assert!(!origin.columns[2].passthrough);
+    }
+    for (name, command) in [
+        ("cached", "CREATE MATERIALIZED VIEW"),
+        ("projected", "CREATE OR REPLACE VIEW"),
+    ] {
+        let ddl = driver
+            .dump_view_ddl(&handle, name, database, Some(&schema))
+            .await
+            .expect("same catalog preserves original relation kind when exporting DDL");
+        assert!(ddl.starts_with(command));
+    }
+    driver.disconnect(handle).await.expect("release driver");
+    sqlx::query(&format!("DROP SCHEMA {schema} CASCADE"))
+        .execute(&mut fixture.oracle)
+        .await
+        .expect("dispose exact catalog");
+}
