@@ -213,15 +213,20 @@ fn mysql_index_column_max_bytes(ir_type: &IRType, native: &str) -> Result<usize,
         })),
         IRType::Char { length } => checked_product(*length as usize, 4),
         IRType::Varchar { length } => checked_product(length.map_or(255, |n| n as usize), 4),
-        IRType::Binary { length: Some(length) } => Ok(*length as usize),
+        IRType::Binary {
+            length: Some(length),
+        } => Ok(*length as usize),
         IRType::Bit { length } => Ok((*length as usize).div_ceil(8)),
         IRType::Date => Ok(3),
         IRType::Time { .. } | IRType::Timestamp { .. } => Ok(8),
         IRType::Uuid => Ok(36 * 4),
         IRType::Other(_) => match native_base().as_str() {
-            "CHAR" | "VARCHAR" => checked_product(native_length().ok_or_else(|| {
-                format!("cannot prove target index key size for type '{native}'")
-            })?, 4),
+            "CHAR" | "VARCHAR" => checked_product(
+                native_length().ok_or_else(|| {
+                    format!("cannot prove target index key size for type '{native}'")
+                })?,
+                4,
+            ),
             "BINARY" | "VARBINARY" => native_length()
                 .ok_or_else(|| format!("cannot prove target index key size for type '{native}'")),
             "TINYINT" | "BOOL" | "BOOLEAN" => Ok(1),
@@ -542,7 +547,9 @@ impl SyncTargetAdapter for MysqlSyncAdapter {
             IRType::Int64 => Some(64),
             _ => None,
         };
-        if let Some(source_bits) = source_integer_bits {
+        if let Some(portable_bits) = source_integer_bits {
+            let (source_bits, source_unsigned) =
+                mysql_integer_capacity(native_source).unwrap_or((portable_bits, false));
             let target_native = match target_native_type
                 .map(str::trim)
                 .filter(|native| !native.is_empty())
@@ -558,9 +565,19 @@ impl SyncTargetAdapter for MysqlSyncAdapter {
             let (target_bits, unsigned) = mysql_integer_capacity(&target_native).ok_or_else(|| {
                 format!("target type '{target_native}' cannot prove an integer range compatible with '{native_source}'")
             })?;
-            if unsigned || target_bits < source_bits {
+            let range_preserved = match (source_unsigned, unsigned) {
+                (false, true) => false,
+                (true, false) => target_bits > source_bits,
+                _ => target_bits >= source_bits,
+            };
+            if !range_preserved {
+                let sign = if source_unsigned {
+                    "unsigned"
+                } else {
+                    "signed"
+                };
                 return Err(format!(
-                    "target type '{target_native}' cannot preserve the signed range of source type '{native_source}'"
+                    "target type '{target_native}' cannot preserve the {sign} range of source type '{native_source}'"
                 ));
             }
         }
@@ -748,9 +765,10 @@ impl SyncTargetAdapter for MysqlSyncAdapter {
             Some(Value::Bool(b)) => if *b { "1" } else { "0" }.into(),
             Some(Value::Integer(n)) => n.to_string(),
             Some(Value::Float(f)) => f.to_string(),
-            Some(Value::String(s)) => format!("'{}'", s.replace('\'', "''")),
-            Some(Value::Timestamp(s)) => format!("'{}'", s),
-            Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
+            // Hex literals keep text and the JSON codec's backslashes intact
+            // with or without the session's NO_BACKSLASH_ESCAPES mode.
+            Some(Value::String(s)) | Some(Value::Timestamp(s)) => mysql_utf8_hex_expression(s),
+            Some(Value::Json(j)) => mysql_utf8_hex_expression(&j.to_string()),
             Some(Value::Bytes(b)) => {
                 format!(
                     "X'{}'",
@@ -1396,9 +1414,10 @@ mod tests {
             a.format_default(&IRDefault::Literal("0".into())),
             Some("0".into())
         );
-        assert!(a
-            .format_default(&IRDefault::RawExpression("x".into()))
-            .is_none());
+        assert!(
+            a.format_default(&IRDefault::RawExpression("x".into()))
+                .is_none()
+        );
         assert_eq!(a.quote_char(), '`');
         assert_eq!(a.auto_increment_keyword(), Some("AUTO_INCREMENT"));
         assert_eq!(a.format_literal(&None, &IRType::Int32), "NULL");

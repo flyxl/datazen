@@ -1,5 +1,5 @@
 use super::Fixture;
-use datazen_driver_api::{inventory, DatabaseDriver, IRDefault, IRType, SyncAdapterFactory, Value};
+use datazen_driver_api::{DatabaseDriver, IRDefault, IRType, SyncAdapterFactory, Value, inventory};
 
 #[tokio::test]
 async fn mysql_transfer_validates_real_catalog_width_and_replays_exact_values() {
@@ -191,8 +191,8 @@ async fn mysql_transfer_validates_real_catalog_width_and_replays_exact_values() 
 }
 
 #[tokio::test]
-async fn mysql_transfer_preflight_reads_native_generated_and_index_metadata_and_applies_portable_plan(
-) {
+async fn mysql_transfer_preflight_reads_native_generated_and_index_metadata_and_applies_portable_plan()
+ {
     use datazen_driver_api::{IndexInfo, MigrationColumn, MigrationOperation, TableOptions};
     let mut f = Fixture::open().await;
     let (driver, handle) = f.connect().await;
@@ -365,10 +365,12 @@ async fn mysql_transfer_preflight_reads_native_generated_and_index_metadata_and_
         .get_table_schema(&handle, &copied, &f.database, None)
         .await
         .expect("native replay catalog");
-    assert!(verified
-        .indexes
-        .iter()
-        .any(|i| i.name == "ix_verified" && i.columns == ["id", "keycode", "exact_amount"]));
+    assert!(
+        verified
+            .indexes
+            .iter()
+            .any(|i| i.name == "ix_verified" && i.columns == ["id", "keycode", "exact_amount"])
+    );
     assert_eq!(
         verified.table_options.comment.as_deref(),
         Some("portable copy")
@@ -377,4 +379,296 @@ async fn mysql_transfer_preflight_reads_native_generated_and_index_metadata_and_
         .disconnect(handle)
         .await
         .expect("release live plan session");
+}
+
+#[tokio::test]
+async fn mysql_transfer_replays_native_text_and_json_unchanged_under_both_escape_modes() {
+    let mut f = Fixture::open().await;
+    let driver = datazen_driver_mysql::MysqlDriver::new(false);
+    let handle = driver.connect_fixed_session(&f.cfg).await.unwrap();
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    let source = format!("dz_mode_source_{nonce}");
+    let destination = format!("dz_mode_target_{nonce}");
+    let table_layout="(id INT AUTO_INCREMENT PRIMARY KEY, note TEXT, payload JSON, ratio DOUBLE,
+                       bytes VARBINARY(12), occurred DATETIME(6), empty_text VARCHAR(8), missing_value INT)";
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE {source} {table_layout}; CREATE TABLE {destination} {table_layout};"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .expect("real source and destination");
+    let path = "C:\\new\\temp\\owner's\\雪";
+    let payload = serde_json::json!({"file":path,"line":"first\nsecond","missing":null});
+    sqlx::query(&format!("INSERT INTO {source} (note,payload,ratio,bytes,occurred,empty_text) VALUES (?,?,0.625,X'F0005C','2030-01-02 03:04:05.123456','')"))
+       .bind(path).bind(sqlx::types::Json(payload.clone())).execute(&mut f.oracle).await.unwrap();
+    let registration = inventory::iter::<SyncAdapterFactory>
+        .into_iter()
+        .find(|f| f.db_types.contains(&"mysql"))
+        .unwrap();
+    let adapters = (registration.create)();
+    let table = driver
+        .get_table_schema(&handle, &source, &f.database, None)
+        .await
+        .unwrap();
+    let types = adapters.source.table_to_ir(&table, None);
+    let target = &adapters.target;
+    assert!(target.supports_explicit_identity_values());
+    assert!(target.index_names_are_table_scoped());
+    assert_eq!(target.auto_increment_keyword(), Some("AUTO_INCREMENT"));
+    let qualified = target.qualify_relation("", Some(&f.database), &source);
+    let local = target.qualify_relation("", None, &destination);
+    let verify = target.qualify_relation(&f.database, None, &destination);
+    let ordering = adapters.source.sync_key_order_expression(
+        &target.quote_ident("id"),
+        &adapters
+            .source
+            .sync_key_contract(&table.columns[0])
+            .unwrap(),
+    );
+    let fields = [
+        "note",
+        "payload",
+        "ratio",
+        "bytes",
+        "occurred",
+        "empty_text",
+        "missing_value",
+    ];
+    let ordered = fields.join(",");
+    let data = driver
+        .query(
+            &handle,
+            &format!("SELECT {ordered} FROM {qualified} ORDER BY {ordering}"),
+        )
+        .await
+        .unwrap();
+    let row = data.rows.first().unwrap();
+    assert_eq!(row[0], Some(Value::String(path.into())));
+    assert_eq!(row[1], Some(Value::Json(payload.clone())));
+    assert_eq!(row[2], Some(Value::Float(0.625)));
+    assert_eq!(row[3], Some(Value::Bytes(vec![240, 0, 92])));
+    assert!(row[6].is_none());
+    let values = row
+        .iter()
+        .zip(fields)
+        .map(|(value, name)| {
+            let ir = &types
+                .columns
+                .iter()
+                .find(|col| col.name == name)
+                .unwrap()
+                .ir_type;
+            target.format_literal(value, ir)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let alias = target
+        .transfer_target_character_metadata_query("", None, &destination)
+        .unwrap();
+    let native_meta = driver
+        .query(&handle, &alias)
+        .await
+        .expect("character metadata determined by native active catalog");
+    assert_eq!(native_meta.rows.len(), 8);
+    for (no_escape, relation) in [(false, local), (true, verify)] {
+        let mode = if no_escape {
+            "NO_BACKSLASH_ESCAPES,STRICT_TRANS_TABLES"
+        } else {
+            "STRICT_TRANS_TABLES"
+        };
+        driver
+            .execute(&handle, &format!("SET SESSION sql_mode='{mode}'"))
+            .await
+            .unwrap();
+        driver
+            .execute(
+                &handle,
+                &format!("INSERT INTO {relation}({ordered}) VALUES ({values})"),
+            )
+            .await
+            .expect("replay native bytes without session-dependent escaping");
+    }
+    type Fields = (
+        String,
+        sqlx::types::Json<serde_json::Value>,
+        f64,
+        Vec<u8>,
+        String,
+        String,
+        Option<i32>,
+    );
+    let copied:Vec<Fields>=sqlx::query_as(&format!("SELECT note,payload,ratio,bytes,CAST(occurred AS CHAR),empty_text,missing_value FROM {destination} ORDER BY id"))
+       .fetch_all(&mut f.oracle).await.unwrap();
+    let expected = (
+        path.into(),
+        sqlx::types::Json(payload),
+        0.625,
+        vec![240, 0, 92],
+        "2030-01-02 03:04:05.123456".into(),
+        String::new(),
+        None,
+    );
+    assert_eq!(copied, [expected.clone(), expected]);
+    driver.disconnect(handle).await.unwrap();
+}
+
+#[tokio::test]
+async fn mysql_transfer_recognizes_real_text_capacity_and_integer_widths_before_catalog_writes() {
+    let mut f = Fixture::open().await;
+    let (driver, handle) = f.connect().await;
+    let nonce = uuid::Uuid::new_v4().simple().to_string();
+    let source = format!("dz_bound_source_{nonce}");
+    let destination = format!("dz_bound_target_{nonce}");
+    sqlx::raw_sql(&format!("CREATE TABLE {source}(tiny TINYINT,small SMALLINT,medium MEDIUMINT,exact_value DECIMAL(18,5),
+       u_small SMALLINT UNSIGNED, u_large BIGINT UNSIGNED, s_large BIGINT, oneflag BIT(1),coords POINT, t1 TINYTEXT,t2 TEXT,t3 MEDIUMTEXT,t4 LONGTEXT,
+       b1 TINYBLOB,b2 BLOB,b3 MEDIUMBLOB,b4 LONGBLOB) CHARACTER SET utf8mb4;
+       CREATE TABLE {destination} LIKE {source};")).execute(&mut f.oracle).await.unwrap();
+    let registration = inventory::iter::<SyncAdapterFactory>
+        .into_iter()
+        .find(|f| f.db_types.contains(&"mysql"))
+        .unwrap();
+    let adapters = (registration.create)();
+    let src = driver
+        .get_table_schema(&handle, &source, &f.database, None)
+        .await
+        .unwrap();
+    let dst = driver
+        .get_table_schema(&handle, &destination, &f.database, None)
+        .await
+        .unwrap();
+    let at = |name: &str| src.columns.iter().find(|c| c.name == name).unwrap();
+    let dst_at = |name: &str| dst.columns.iter().find(|c| c.name == name).unwrap();
+    let prove = |name: &str, destination: Option<&str>| {
+        let base = at(name);
+        let ir = adapters.source.column_to_ir(base, None);
+        adapters.target.validate_transfer_column_type(
+            base,
+            &ir,
+            adapters.source.transfer_source_text_limit_bytes(base),
+            adapters
+                .source
+                .transfer_source_requires_collation_preservation(base),
+            adapters
+                .source
+                .transfer_source_type_is_native_only(base, &ir),
+            destination.map(|n| dst_at(n).data_type.as_str()),
+            false,
+        )
+    };
+    for (tiny, bytes) in [(1, 255), (2, 65_535), (3, 16_777_215), (4, 4_294_967_295)] {
+        for prefix in ["t", "b"] {
+            let name = format!("{prefix}{tiny}");
+            assert_eq!(
+                adapters.source.transfer_source_text_limit_bytes(at(&name)),
+                Some(bytes)
+            );
+        }
+        let name = format!("t{tiny}");
+        prove(&name, Some(&name)).unwrap();
+        if tiny > 1 {
+            let smaller = format!("t{}", tiny - 1);
+            assert!(
+                prove(&name, Some(&smaller))
+                    .unwrap_err()
+                    .contains("holds at most")
+            );
+        }
+    }
+    for name in ["tiny", "small", "medium", "exact_value"] {
+        prove(name, Some(name)).unwrap();
+    }
+    for (field, target, wanted) in [
+        ("medium", Some("tiny"), "signed range"),
+        ("small", Some("t1"), "integer range"),
+        ("t2", Some("coords"), "string capacity"),
+        ("t2", None, "string type could not be inspected"),
+        ("exact_value", None, "numeric type could not be inspected"),
+    ] {
+        assert!(prove(field, target).unwrap_err().contains(wanted));
+    }
+    prove("u_small", Some("u_small")).unwrap();
+    prove("u_small", Some("medium")).unwrap();
+    prove("u_large", Some("u_large")).unwrap();
+    assert!(
+        prove("u_small", Some("small"))
+            .unwrap_err()
+            .contains("unsigned range")
+    );
+    assert!(
+        prove("u_large", Some("s_large"))
+            .unwrap_err()
+            .contains("unsigned range")
+    );
+    assert!(
+        prove("small", Some("u_large"))
+            .unwrap_err()
+            .contains("signed range")
+    );
+
+    let flag = adapters.source.column_to_ir(at("oneflag"), None);
+    assert_eq!(flag.ir_type, IRType::Bool);
+    let existing_char = adapters.source.column_to_ir(at("t1"), None);
+    assert!(
+        adapters
+            .target
+            .validate_transfer_target_character_metadata(
+                &flag,
+                &dst_at("oneflag").data_type,
+                None,
+                None,
+                false
+            )
+            .is_ok()
+    );
+    assert!(
+        adapters
+            .target
+            .validate_transfer_target_character_metadata(
+                &existing_char,
+                &dst_at("t1").data_type,
+                None,
+                None,
+                false
+            )
+            .unwrap_err()
+            .contains("character set was not inspected")
+    );
+    let total: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {destination}"))
+        .fetch_one(&mut f.oracle)
+        .await
+        .unwrap();
+    assert_eq!(total, 0);
+    sqlx::query(&format!(
+        "INSERT INTO {source}(u_small,u_large) VALUES (65535,18446744073709551615)"
+    ))
+    .execute(&mut f.oracle)
+    .await
+    .unwrap();
+    let actual = driver
+        .query(&handle, &format!("SELECT u_small,u_large FROM {source}"))
+        .await
+        .unwrap();
+    let values = actual.rows[0]
+        .iter()
+        .zip(["u_small", "u_large"])
+        .map(|(value, n)| {
+            let ir = adapters.source.column_to_ir(at(n), None);
+            adapters.target.format_literal(value, &ir.ir_type)
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    driver
+        .execute(
+            &handle,
+            &format!("INSERT INTO {destination}(u_small,u_large) VALUES({values})"),
+        )
+        .await
+        .unwrap();
+    let independent: (u16, u64) =
+        sqlx::query_as(&format!("SELECT u_small,u_large FROM {destination}"))
+            .fetch_one(&mut f.oracle)
+            .await
+            .unwrap();
+    assert_eq!(independent, (u16::MAX, u64::MAX));
+    driver.disconnect(handle).await.unwrap();
 }
