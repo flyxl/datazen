@@ -30,6 +30,7 @@ LEGACY = {
     "schema_dependency_catalog": None,
 }
 JOURNEYS = "mysql_live_e2e"
+CROSS_TRANSFER = "mysql_transfer_postgres"
 A, B, MIGRATION = "dz_fixture_mysql_a", "dz_fixture_mysql_b", "dz_mig_mysql"
 
 
@@ -121,6 +122,8 @@ class Mysql:
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--mysql-bin", type=Path, required=True)
+    p.add_argument("--postgres-bin", type=Path,
+                   help="optional native source for the MySQL cross-transfer E2E report")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--target-dir", type=Path, default=gate.ROOT / "target/mysql-live-coverage")
     p.add_argument("--report-only", action="store_true")
@@ -128,6 +131,8 @@ def main():
     args = p.parse_args()
     if args.legacy_baseline and not args.report_only:
         p.error("--legacy-baseline requires --report-only")
+    if args.postgres_bin and (not args.report_only or args.legacy_baseline):
+        p.error("--postgres-bin requires --report-only and cannot be used with --legacy-baseline")
     if os.geteuid() == 0:
         p.error("the disposable fixture must run as non-root")
     out = args.output.resolve()
@@ -135,8 +140,11 @@ def main():
     server = args.mysql_bin.resolve(strict=True)
     tools = gate.llvm_tools()
     targets = LEGACY if args.legacy_baseline else {**LEGACY, JOURNEYS: None}
+    postgres_bin = args.postgres_bin.resolve(strict=True) if args.postgres_bin else None
+    if postgres_bin:
+        targets[CROSS_TRANSFER] = ("postgres_catalog_types_preflight_actual_mysql_target",)
     env = {k: v for k, v in os.environ.items() if not k.startswith((
-        "MYSQL_", "TEST_MYSQL_", "MIGRATION_TEST_", "DATAZEN_CONTRACT_"))}
+        "MYSQL_", "TEST_MYSQL_", "MIGRATION_TEST_", "DATAZEN_CONTRACT_", "TEST_PG_", "PG"))}
     source = {"commit": gate.read(["git", "rev-parse", "HEAD"]),
               "working_tree_dirty": bool(gate.read(["git", "status", "--porcelain"])),
               "rustc": gate.read(["rustc", "--version"])}
@@ -147,12 +155,32 @@ def main():
             source["executables_sha256"][name] = hashlib.file_digest(stream, "sha256").hexdigest()
     with tempfile.TemporaryDirectory(prefix="dz-mysql-", dir="/tmp") as d:
         fixture = Mysql(server, Path(d), out, env)
+        postgres = None
         try:
             source["mysql"] = fixture.start()
-            counts, profiles = gate.run_live(binaries, targets, fixture.test_env(), fixture.password,
-                                              out, include_ignored=("restore_sql",))
+            test_env = fixture.test_env()
+            ignored = ["restore_sql"]
+            if postgres_bin:
+                pg_root, pg_out = Path(d) / "pg", out / "postgres-fixture"
+                pg_root.mkdir()
+                pg_out.mkdir()
+                postgres = gate.Postgres(postgres_bin, pg_out, pg_root / "data", env)
+                postgres.start()
+                pg_env = postgres.env_for_tests()
+                test_env.update({key: val for key, val in pg_env.items()
+                                 if key.startswith("TEST_PG_") or key == "PGSSLROOTCERT"})
+                test_env["DATAZEN_MYSQL_E2E_PSQL"] = str(postgres_bin / "psql")
+                test_env["PGSSLMODE"] = "verify-full"
+                source["postgres_transfer_source"] = gate.read([postgres_bin / "postgres", "--version"])
+                ignored.append(CROSS_TRANSFER)
+            counts, profiles = gate.run_live(binaries, targets, test_env, fixture.password,
+                                              out, include_ignored=tuple(ignored))
         finally:
-            fixture.stop()
+            try:
+                if postgres:
+                    postgres.stop()
+            finally:
+                fixture.stop()
     paths, hit, total = gate.measure(binaries, profiles, out, tools, lcov_filename="mysql-e2e.lcov")
     report = {"source": source, "scope": str(gate.SCOPE), "files": paths,
               "covered": hit, "total": total, "percent": 100 * hit / total,

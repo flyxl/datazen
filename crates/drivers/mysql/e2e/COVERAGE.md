@@ -30,3 +30,10 @@ test failures. `--legacy-baseline --report-only` runs only the pre-existing
 live contracts. The generic CM-26 diagnostic cannot verify reset-for-reuse
 because the driver interface has no matching reset entry point, so it
 does not count as an acceptance case.
+
+An optional report-only cross-transfer journey starts a separate disposable
+PostgreSQL 15+ source (`--postgres-bin /path/to/postgresql/bin --report-only`).
+It exercises the MySQL target adapter against actual source catalog types,
+including unsupported ranges and lossless supported values. This report
+still counts only MySQL production source, and never replaces the standalone
+MySQL acceptance gate.
