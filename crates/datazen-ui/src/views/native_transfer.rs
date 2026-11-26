@@ -285,17 +285,21 @@ fn schema_diff_view(page: rune::El, state: &AppState, theme: tok::Theme) -> El {
         )
         .child(label(
             "native-schema-scope",
-            "Read-only comparison of table columns. No SQL is applied.",
+            "Read-only comparison of columns, named CHECK constraints and ordinary secondary indexes. No SQL is applied.",
             theme,
         ))
         .child(endpoint(state, TransferSide::Source, theme))
         .child(endpoint(state, TransferSide::Target, theme));
     if comparison.comparing_schema {
-        return page.child(label("native-schema-running", "Comparing columns…", theme));
+        return page.child(label(
+            "native-schema-running",
+            "Comparing table definitions…",
+            theme,
+        ));
     }
     page = page.child(button(
         "native-schema-compare",
-        "Compare columns",
+        "Compare table definitions",
         theme,
         |s| s.compare_native_schema(),
     ));
@@ -308,10 +312,17 @@ fn schema_diff_view(page: rune::El, state: &AppState, theme: tok::Theme) -> El {
     if diff.missing_on_target.is_empty()
         && diff.extra_on_target.is_empty()
         && diff.changed.is_empty()
+        && diff.objects.as_ref().is_some_and(|objects| {
+            [&objects.checks, &objects.indexes]
+                .into_iter()
+                .all(|section| {
+                    section.expected_on_target.is_empty() && section.unexpected_on_target.is_empty()
+                })
+        })
     {
         return page.child(label(
             "native-schema-equal",
-            "No column differences.",
+            "No differences in the compared columns, named CHECK constraints or ordinary secondary indexes.",
             theme,
         ));
     }
@@ -334,6 +345,46 @@ fn schema_diff_view(page: rune::El, state: &AppState, theme: tok::Theme) -> El {
             format!("Changed on target: {column} ({})", aspects.join(", ")),
             theme,
         ));
+    }
+    if let Some(objects) = &diff.objects {
+        for (key, object, changes) in [
+            ("check", "CHECK", &objects.checks),
+            ("index", "Index", &objects.indexes),
+        ] {
+            for (side, heading, definitions) in [
+                (
+                    "expected",
+                    "Expected on target",
+                    &changes.expected_on_target,
+                ),
+                (
+                    "unexpected",
+                    "Unexpected on target",
+                    &changes.unexpected_on_target,
+                ),
+            ] {
+                for (index, (name, definition)) in definitions.iter().enumerate() {
+                    results = results.child(label(
+                        &format!("native-schema-{key}-{side}-{index}"),
+                        format!("{heading}: {object} {name} ({definition})"),
+                        theme,
+                    ));
+                }
+            }
+        }
+    } else {
+        results = results.child(label(
+            "native-schema-unresolved",
+            "Comparison incomplete: CHECK constraints and indexes were not compared.",
+            theme,
+        ));
+        for (index, reason) in diff.unresolved.iter().enumerate() {
+            results = results.child(label(
+                &format!("native-schema-unresolved-{index}"),
+                reason.clone(),
+                theme,
+            ));
+        }
     }
     page.child(results)
 }

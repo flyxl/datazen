@@ -12,12 +12,14 @@ use datazen::migration::data_transfer::{
     build_preview, enforce_transfer_pairing, execute_transfer_data, inspect_tables, TableMapping,
     TransferJob, TransferMode, ValueFormatter, WriteMode,
 };
-use datazen::migration::schema_diff::{diff_table_schemas, ColumnChange};
+use datazen::migration::schema_diff::{compare::diff_indexes, diff_table_schemas, ColumnChange};
 use datazen_driver_api::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableType,
+    ConnectionConfig, ConnectionHandle, DatabaseDriver, IndexInfo, TableInfo, TableSchema,
+    TableType,
 };
 use datazen_ui_api::native_transfer::{
-    NativeSchemaDiff, NativeTransferRequest, SqliteReadComparison, TransferCatalog, TransferChoice,
+    NativeNamedDefinitionDiff, NativeSchemaDiff, NativeSchemaObjects, NativeTransferRequest,
+    SqliteReadComparison, TransferCatalog, TransferChoice,
 };
 
 const MAIN: &str = "main";
@@ -130,7 +132,7 @@ pub(super) async fn catalog(
 }
 
 /// Both handles are opened read-only, even for otherwise writable profiles.
-/// The raw shared comparison returns column differences, not a deploy plan.
+/// The shared comparison returns metadata differences, not a deploy plan.
 pub(super) async fn compare_schema(
     service: &ConnectionService,
     registry: &DriverRegistry,
@@ -166,11 +168,11 @@ pub(super) async fn compare_schema(
             }
             // Catalog picks are exact SQLite names. Do not apply a generic
             // dotted-schema resolver that can reinterpret e.g. "a.orders".
-            let source = driver
+            let mut source = driver
                 .get_table_schema(&source_handle, &request.source.table, MAIN, None)
                 .await
                 .map_err(|_| "Could not read the selected source table.")?;
-            let target = driver
+            let mut target = driver
                 .get_table_schema(&target_handle, &request.target.table, MAIN, None)
                 .await
                 .map_err(|_| "Could not read the selected target table.")?;
@@ -184,7 +186,48 @@ pub(super) async fn compare_schema(
                 &target,
                 normalizer.as_deref(),
             );
+            let unresolved = [
+                ("Source", schema_comparison_limits(&source)),
+                ("Target", schema_comparison_limits(&target)),
+            ]
+            .into_iter()
+            .flat_map(|(side, limits)| {
+                limits
+                    .into_iter()
+                    .map(move |limit| format!("{side}: {limit}"))
+            })
+            .collect::<Vec<_>>();
+            let objects = unresolved.is_empty().then(|| {
+                // SQLite reserves this prefix for implicit UNIQUE and PK
+                // backing indexes, which are outside the secondary-index scope.
+                for schema in [&mut source, &mut target] {
+                    schema.indexes.retain(|index| {
+                        !index.is_primary && !index.name.starts_with("sqlite_autoindex_")
+                    });
+                }
+                let indexes = diff_indexes(&source, &target);
+                NativeSchemaObjects {
+                    checks: NativeNamedDefinitionDiff {
+                        expected_on_target: diff
+                            .missing_check_constraints
+                            .into_iter()
+                            .map(|check| (check.name, check.expression))
+                            .collect(),
+                        unexpected_on_target: diff
+                            .extra_check_constraints
+                            .into_iter()
+                            .map(|check| (check.name, check.expression))
+                            .collect(),
+                    },
+                    indexes: NativeNamedDefinitionDiff {
+                        expected_on_target: describe_indexes(indexes.missing_on_target),
+                        unexpected_on_target: describe_indexes(indexes.extra_on_target),
+                    },
+                }
+            });
             Ok(NativeSchemaDiff {
+                objects,
+                unresolved,
                 missing_on_target: diff.missing_on_target.into_iter().map(|c| c.name).collect(),
                 extra_on_target: diff.extra_on_target.into_iter().map(|c| c.name).collect(),
                 changed: diff
@@ -218,6 +261,48 @@ pub(super) async fn compare_schema(
     .await;
     let _ = driver.disconnect(source_handle).await;
     result
+}
+
+fn schema_comparison_limits(schema: &TableSchema) -> Vec<String> {
+    let mut unresolved = schema.table_options.migration_blockers.clone();
+    let mut check_names = HashSet::new();
+    for check in &schema.check_constraints {
+        let name = check.name.to_ascii_lowercase();
+        // This is the driver's generated identifier for an unnamed CHECK.
+        // A genuine user name in the same reserved comparison namespace also
+        // cannot be safely distinguished from a generated one in this snapshot.
+        if name.strip_prefix("sqlite_check_").is_some_and(|suffix| {
+            !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+        }) {
+            unresolved
+                .push("Unnamed or ambiguously named CHECK constraints cannot be compared.".into());
+        }
+        if !check_names.insert(name) {
+            unresolved.push(format!(
+                "Repeated CHECK name `{}` cannot be compared.",
+                check.name
+            ));
+        }
+    }
+    unresolved.sort();
+    unresolved.dedup();
+    unresolved
+}
+
+fn describe_indexes(indexes: Vec<IndexInfo>) -> Vec<(String, String)> {
+    let mut output = indexes
+        .into_iter()
+        .map(|index| {
+            let kind = if index.is_unique {
+                "unique"
+            } else {
+                "non-unique"
+            };
+            (index.name, format!("{kind} ({})", index.columns.join(", ")))
+        })
+        .collect::<Vec<_>>();
+    output.sort();
+    output
 }
 
 pub(super) async fn run(

@@ -57,6 +57,22 @@ pub struct NativeSchemaDiff {
     pub extra_on_target: Vec<String>,
     /// Column name plus the attributes that differ (not executable SQL).
     pub changed: Vec<(String, Vec<String>)>,
+    /// None when either catalog has unrepresented SQLite syntax.
+    pub objects: Option<NativeSchemaObjects>,
+    pub unresolved: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeSchemaObjects {
+    pub checks: NativeNamedDefinitionDiff,
+    pub indexes: NativeNamedDefinitionDiff,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeNamedDefinitionDiff {
+    /// Object name and descriptive definition, not a deploy operation.
+    pub expected_on_target: Vec<(String, String)>,
+    pub unexpected_on_target: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
