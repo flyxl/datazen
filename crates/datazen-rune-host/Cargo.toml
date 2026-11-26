@@ -21,7 +21,7 @@ datazen-ui = { path = "../datazen-ui" }
 datazen-ui-api = { path = "../datazen-ui-api" }
 # The connection use case and its repository boundary; N4 adds the table
 # read use case (`table-browsing`) over the live session.
-datazen = { workspace = true, features = ["connection", "connection_import", "execution", "table-browsing", "table-editing", "schema", "settings", "history", "schema_diff", "dashboard", "services"] }
+datazen = { workspace = true, features = ["connection", "connection_import", "execution", "table-browsing", "table-editing", "schema", "settings", "history", "schema_diff", "dashboard", "services", "data_transfer"] }
 datazen-driver-api = { workspace = true }
 # T9: the system tray — StatusNotifierItem over D-Bus on Linux (rune's
 # `dbus` feature; a busless desktop is an honest absence, see `tray.rs`).

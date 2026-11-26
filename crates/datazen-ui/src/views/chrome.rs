@@ -80,6 +80,9 @@ pub fn rail_view(state: &AppState, dark: bool) -> El {
     ] {
         items = items.child(rail_item(state, section, expanded, dark));
     }
+    if state.desktop.supports_native_transfer() {
+        items = items.child(rail_item(state, Section::Tools, expanded, dark));
+    }
     let toggle_icon = if expanded {
         &ICON_PANEL_LEFT_CLOSE
     } else {

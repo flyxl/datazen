@@ -80,6 +80,7 @@ pub mod data_sync;
 // `data_transfer_attached_jobs` carries the shared `JobState`/`JobProgress`
 // vocabulary the schema-diff commands shell (T377) re-uses.
 pub mod data_transfer;
+mod native_transfer;
 mod main;
 // The windows/dashboard subtree ports (T018: AddToDashboardDialog is its
 // first); the dashboards page itself stays in dashboards_workflows.rs.

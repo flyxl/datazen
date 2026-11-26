@@ -7,9 +7,10 @@ mod parameter_limit;
 mod schema;
 use async_trait::async_trait;
 use datazen_driver_api::*;
-use sqlx::sqlite::SqlitePoolOptions;
-use sqlx::{Column, Row, Sqlite, SqlitePool};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::{Column, Row, Sqlite, SqlitePool, ValueRef};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -76,6 +77,12 @@ impl SqliteDriver {
                         .iter()
                         .enumerate()
                         .map(|(i, col)| {
+                            // A concrete SQLx decoder may yield its zero/empty
+                            // value for SQLite NULL. Preserve SQL nullability
+                            // before checking the declared or runtime type.
+                            if row.try_get_raw(i).ok()?.is_null() {
+                                return None;
+                            }
                             let type_name = col.type_info().to_string().to_uppercase();
                             match type_name.as_str() {
                                 "INTEGER" | "INT" | "BIGINT" | "SMALLINT" | "TINYINT"
@@ -348,20 +355,27 @@ impl DatabaseDriver for SqliteDriver {
         let url = format!("sqlite:{}", path);
         let timeout = Duration::from_secs(config.connection_timeout as u64);
         let pool_id = format!("sqlite_{}", uuid::Uuid::new_v4());
+        let options = SqliteConnectOptions::from_str(&url)
+            .map_err(|error| DriverError::ConnectionFailed(error.to_string()))?;
+        let options = if config.read_only {
+            options.read_only(true).create_if_missing(false)
+        } else {
+            options
+        };
 
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
             .min_connections(1)
             .acquire_timeout(timeout)
-            .connect(&url)
+            .connect_with(options)
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
 
-        // Enable WAL mode for better concurrent access
-        sqlx::query("PRAGMA journal_mode=WAL")
-            .execute(&pool)
-            .await
-            .ok();
+        // Changing the journal mode is itself a write. Catalog previews and
+        // read-only profiles must not change the file merely by opening it.
+        if !config.read_only {
+            sqlx::query("PRAGMA journal_mode=WAL").execute(&pool).await.ok();
+        }
 
         let mut pools = self.pools.write().await;
         pools.insert(pool_id.clone(), pool);
@@ -898,6 +912,32 @@ mod tests {
             SqliteDriver::new().ddl_atomicity(),
             DdlAtomicity::Transactional
         );
+    }
+
+    #[tokio::test]
+    async fn query_preserves_null_empty_text_and_zero_as_distinct_values() {
+        let driver = SqliteDriver::new();
+        let handle = driver.connect(&test_config(":memory:")).await.unwrap();
+        let result = driver
+            .query(
+                &handle,
+                concat!(
+                    "SELECT CAST(NULL AS TEXT) AS absent_text, '' AS empty_text, ",
+                    "CAST(NULL AS INTEGER) AS absent_integer, 0 AS zero",
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            result.rows,
+            vec![vec![
+                None,
+                Some(Value::String(String::new())),
+                None,
+                Some(Value::Integer(0)),
+            ]]
+        );
+        driver.disconnect(handle).await.unwrap();
     }
 
     #[tokio::test]

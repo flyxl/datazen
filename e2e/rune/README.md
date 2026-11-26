@@ -60,5 +60,6 @@ driver-specific assertions are added.
 | `data-dashboard-sql-add.ts` | Real SQLite SQL widget creation, persisted chart and hidden workflow, restart + manual refresh after an independent database change | Multi-board import/export and scheduled refresh behavior |
 | Host SQL contract and driver-specific journeys | Real PostgreSQL/MySQL browse/query/edit and catalog structure, composite foreign keys and ordered indexes; MySQL table DDL | Index create/drop UI, PostgreSQL table DDL, complete schema tree and pool rotation, maintenance commands |
 | Redis | Separate checked-in native real-server fixture and driver production line coverage | Verify any additional legacy-only behavior separately |
-| Migrations and transfer | Existing UI activation/validation paths are not proof of transfer | Real source/target readback, diff/apply, heterogeneous transfers, synchronization, recovery |
+| Data Transfer | Native insert-only transfer into an existing table in a second real SQLite file; explicit mappings, review/cancel, read-only and file-alias refusal, NULL/empty distinction and conflict rollback | Other engines, destructive or structure modes, cross-driver type mapping, recordset ranges and resume/recovery |
+| Sync and schema comparison | Existing UI activation/validation paths are not proof of real data or schema change | Real source/target readback, diff/apply, heterogeneous pairs, synchronization and recovery |
 | AI, wapps, packaged desktop | Not counted by this harness | Real provider/bridge checks, native dialogs/tray/window behavior, platform packages |

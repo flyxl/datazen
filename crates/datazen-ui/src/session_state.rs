@@ -26,7 +26,9 @@ impl AppState {
     pub fn select(&mut self, section: Section) {
         if self.active != section && !self.kv_can_leave() { return; }
         self.active = section;
-        if section == Section::Connections {
+        if section == Section::Connections
+            || (section == Section::Tools && self.desktop.supports_native_transfer())
+        {
             self.sync_desktop_connections();
         }
         if section == Section::Dashboards {

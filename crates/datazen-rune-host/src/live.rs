@@ -74,9 +74,16 @@ mod native_kv;
 #[path = "live_table_targets.rs"]
 mod live_table_targets;
 use live_table_targets::LiveTableTargets;
+#[path = "live_transfer.rs"]
+mod live_transfer;
+use datazen_ui_api::native_transfer::{
+    NativeTransferRequest, TransferCatalog, TransferChoice, TransferSide,
+};
 
 /// A job on the worker's channel, with the generation the UI expects back.
 enum HostJob {
+    ReadNativeTransfer { epoch: u32, side: TransferSide, choice: TransferChoice },
+    RunNativeTransfer { epoch: u32, request: NativeTransferRequest },
     ProbeRedis { epoch: u64, config: datazen_driver_api::ConnectionConfig },
     ReadKv(KvRead),
     CloseKv { connection_id: String, session_generation: u32 },
@@ -123,6 +130,8 @@ enum HostJob {
 
 /// A finished job on the answer channel.
 enum HostAnswer {
+    NativeTransferRead { epoch: u32, side: TransferSide, result: Result<TransferCatalog, String> },
+    NativeTransferFinished { epoch: u32, result: Result<u64, String> },
     RedisProbed { epoch: u64, result: Result<(), String> },
     KvRead { request: KvRead, result: Result<KvReply, String> },
     Connection { generation: u32, id: String, catalog: Result<Catalog, String> },
@@ -344,6 +353,12 @@ impl LiveAdapter {
                         // instead of dying silently.
                         while let Some(job) = job_rx.blocking_recv() {
                             let answer = match job {
+                                HostJob::ReadNativeTransfer { epoch, side, .. } => HostAnswer::NativeTransferRead {
+                                    epoch, side, result: Err("The transfer worker could not start.".into()),
+                                },
+                                HostJob::RunNativeTransfer { epoch, .. } => HostAnswer::NativeTransferFinished {
+                                    epoch, result: Err("The transfer worker could not start.".into()),
+                                },
                                 HostJob::CloseKv { .. } => continue,
                                 HostJob::ProbeRedis { epoch, .. } => HostAnswer::RedisProbed {
                                     epoch, result: Err("The Redis connection test is unavailable.".into()),
@@ -518,6 +533,14 @@ impl LiveAdapter {
                                 &worker_history, &connection_id,
                             ));
                             HostAnswer::QueryHistoryRead { generation, result }
+                        }
+                        HostJob::ReadNativeTransfer { epoch, side, choice } => {
+                            let result = runtime.block_on(live_transfer::catalog(&worker_service, &worker_registry, choice));
+                            HostAnswer::NativeTransferRead { epoch, side, result }
+                        }
+                        HostJob::RunNativeTransfer { epoch, request } => {
+                            let result = runtime.block_on(live_transfer::run(&worker_service, &worker_registry, request));
+                            HostAnswer::NativeTransferFinished { epoch, result }
                         }
                         HostJob::RunQuery { generation, sql } => {
                             let started = std::time::Instant::now();
@@ -2231,8 +2254,14 @@ impl DesktopAdapter for LiveAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    fn supports_native_transfer(&self) -> bool {
+        true
+    }
+
     fn begin_job(&mut self, job: AdapterJob) -> bool {
         let job = match job {
+            AdapterJob::ReadNativeTransfer { epoch, side, choice } => HostJob::ReadNativeTransfer { epoch, side, choice },
+            AdapterJob::RunNativeTransfer { epoch, request } => HostJob::RunNativeTransfer { epoch, request },
             AdapterJob::ReadKv(request) => HostJob::ReadKv(request),
             AdapterJob::CloseKv { connection_id, session_generation } =>
                 HostJob::CloseKv { connection_id, session_generation },
@@ -2269,6 +2298,12 @@ impl DesktopAdapter for LiveAdapter {
         let mut deliveries = Vec::new();
         while let Ok(answer) = answers.try_recv() {
             match answer {
+                HostAnswer::NativeTransferRead { epoch, side, result } => {
+                    deliveries.push(AdapterDelivery::NativeTransferRead { epoch, side, result });
+                }
+                HostAnswer::NativeTransferFinished { epoch, result } => {
+                    deliveries.push(AdapterDelivery::NativeTransferFinished { epoch, result });
+                }
                 HostAnswer::RedisProbed { epoch, result } => {
                     deliveries.push(AdapterDelivery::RedisProbed { epoch, result });
                 }

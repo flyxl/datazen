@@ -18,6 +18,9 @@ use rune::{col, row, text, text_input, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    if state.desktop.supports_native_transfer() {
+        return super::native_transfer::view(state, theme);
+    }
     let entry = |key: &str, label: &str, tool: Tool, active: bool| {
         row()
             .key(key)

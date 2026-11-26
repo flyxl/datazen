@@ -151,6 +151,7 @@ mod locale_sync;
 mod kv_slot_state;
 mod kv_workspace;
 pub mod native_kv;
+pub mod native_transfer;
 mod load_batch_export_table;
 mod main_window_context_menu;
 mod metadata;
@@ -1746,6 +1747,11 @@ pub trait DesktopAdapter {
         Vec::new()
     }
 
+    /// The live native host exposes its restricted data-only transfer tool.
+    fn supports_native_transfer(&self) -> bool {
+        false
+    }
+
     /// The host's persisted UI settings (N8). The default answers the fixed
     /// error, and the UI falls back to the memory port's settings — the
     /// demo path.
@@ -1970,6 +1976,15 @@ pub trait DesktopAdapter {
 /// deliveries whose generation the state has moved past (plan invariant 3).
 #[derive(Clone, Debug, PartialEq)]
 pub enum AdapterJob {
+    ReadNativeTransfer {
+        epoch: u32,
+        side: native_transfer::TransferSide,
+        choice: native_transfer::TransferChoice,
+    },
+    RunNativeTransfer {
+        epoch: u32,
+        request: native_transfer::NativeTransferRequest,
+    },
     ReadKv(native_kv::KvRead),
     CloseKv { connection_id: String, session_generation: u32 },
     /// Open a connection in the host and read its catalog (N3): the live
@@ -2044,6 +2059,12 @@ pub enum AdapterJob {
 /// matches it against the live one before writing any state.
 #[derive(Clone, Debug, PartialEq)]
 pub enum AdapterDelivery {
+    NativeTransferRead {
+        epoch: u32,
+        side: native_transfer::TransferSide,
+        result: Result<native_transfer::TransferCatalog, String>,
+    },
+    NativeTransferFinished { epoch: u32, result: Result<u64, String> },
     RedisProbed { epoch: u64, result: Result<(), String> },
     KvRead { request: native_kv::KvRead, result: Result<native_kv::KvReply, String> },
     /// An open job's catalog (or its failure sentence). The connection id

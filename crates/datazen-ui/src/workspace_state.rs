@@ -480,6 +480,12 @@ impl AppState {
     /// when the delivery's generation is still the current one.
     pub fn deliver_host_job(&mut self, delivery: AdapterDelivery) {
         match delivery {
+            AdapterDelivery::NativeTransferRead { epoch, side, result } => {
+                self.native_transfer.read_completed(epoch, side, result);
+            }
+            AdapterDelivery::NativeTransferFinished { epoch, result } => {
+                self.native_transfer.run_completed(epoch, result);
+            }
             AdapterDelivery::RedisProbed { epoch, result } => {
                 if self.connection_dialog_open && epoch == self.connection_dialog_epoch {
                     self.redis_probe_pending = false;

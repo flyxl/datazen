@@ -108,6 +108,7 @@ pub mod schema_metadata_keys;
 pub mod search_state;
 pub mod schema_workflows_state;
 pub mod tools_state;
+mod native_transfer_state;
 pub mod workflow_page_state;
 // T471: the shell layout store (uiStore.ts).
 pub mod ui_store;

@@ -1,0 +1,45 @@
+//! Typed vocabulary for the native, data-only SQLite transfer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransferSide {
+    Source,
+    Target,
+}
+
+impl TransferSide {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Source => "source",
+            Self::Target => "target",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TransferChoice {
+    pub connection_id: String,
+    pub table: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TransferCatalog {
+    pub choice: TransferChoice,
+    pub tables: Vec<String>,
+    pub columns: Vec<String>,
+    /// Opaque physical identity; the worker checks it again before executing.
+    pub identity: String,
+    pub read_only: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TransferEndpoint {
+    pub connection_id: String,
+    pub table: String,
+    pub identity: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeTransferRequest {
+    pub source: TransferEndpoint,
+    pub target: TransferEndpoint,
+    pub columns: Vec<(String, String)>,
+}
