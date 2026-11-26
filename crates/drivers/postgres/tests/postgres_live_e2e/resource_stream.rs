@@ -243,6 +243,48 @@ async fn live_resource_stream_writes_bounded_artifacts_and_preserves_retained_se
         .iter()
         .any(|record| record["kind"] == "rows" || record["kind"] == "statementSummary"));
 
+    // Actual file quotas at different phases: a first row may not fit,
+    // or earlier batches can be durable while a later byte-flush is refused.
+    // No failed artifact may masquerade as a successful statement summary.
+    for (name, quota, expected_batches, sql) in [
+        (
+            "first-row-quota.ndjson",
+            4096,
+            Vec::<usize>::new(),
+            "SELECT repeat('x',20000) AS payload",
+        ),
+        (
+            "later-batch-quota.ndjson",
+            650_000,
+            vec![1],
+            "SELECT n,repeat('x',400000) AS payload FROM generate_series(1,4) n",
+        ),
+    ] {
+        let constrained = Artifact::new(&artifacts, name, quota);
+        assert!(
+            matches!(stream(&driver,&retained,sql,None,None,&constrained).await,
+            Err(ResourceError::SinkRejected{reason}) if reason == "output artifact quota exceeded")
+        );
+        let stored = constrained.records();
+        assert!(stored
+            .iter()
+            .any(|record| record["kind"] == "statementColumns"));
+        assert!(!stored
+            .iter()
+            .any(|record| record["kind"] == "statementSummary"));
+        let saved = stored
+            .iter()
+            .filter(|row| row["kind"] == "rows")
+            .map(|row| {
+                row["rows"]
+                    .as_array()
+                    .expect("persisted partial artifact")
+                    .len()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(saved, expected_batches);
+    }
+
     let bad = Artifact::new(&artifacts, "bad.ndjson", 4096);
     assert!(stream(
         &driver,

@@ -268,3 +268,6 @@ mod temporal;
 
 #[path = "postgres_live_e2e/foreign_pools.rs"]
 mod foreign_pools;
+
+#[path = "postgres_live_e2e/control.rs"]
+mod control;
