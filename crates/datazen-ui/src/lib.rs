@@ -104,6 +104,7 @@ mod query_history_state;
 pub mod query_run_request_store;
 // T421: the schema request tracker (schemaRequestTracker.ts).
 mod native_csv_state;
+mod native_transfer_mapping;
 mod native_transfer_state;
 pub mod schema_metadata_keys;
 pub mod schema_request_tracker;

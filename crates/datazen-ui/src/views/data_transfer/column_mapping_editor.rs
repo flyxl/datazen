@@ -316,6 +316,7 @@ pub struct ColumnMappingEditor<'a, S: 'static> {
     editor: Option<EditorFn<S>>,
     on_change: Option<TableChange<S>>,
     on_target_table_blur: Option<Action<S>>,
+    existing_table_only: bool,
 }
 
 impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
@@ -325,6 +326,7 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
             editor: None,
             on_change: None,
             on_target_table_blur: None,
+            existing_table_only: false,
         }
     }
 
@@ -357,6 +359,13 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
         self
     }
 
+    /// The native insert-only worker takes neither a draft table name nor
+    /// recordset/filter parameters. Exclude controls that it cannot honor.
+    pub fn existing_table_only(mut self) -> Self {
+        self.existing_table_only = true;
+        self
+    }
+
     pub fn build(self, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let state = self.state;
@@ -382,7 +391,9 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
             .min_h(0.0)
             .gap(12.0);
 
-        root = root.child(self.top_row(k, dark, &change, &editor, target_table_invalid));
+        if !self.existing_table_only {
+            root = root.child(self.top_row(k, dark, &change, &editor, target_table_invalid));
+        }
         root = root.child(self.actions_row(k, &change, &mappings));
 
         if !unmapped_targets.is_empty() {
@@ -416,6 +427,9 @@ impl<'a, S: 'static> ColumnMappingEditor<'a, S> {
         // `data-transfer-recordset` (see `recordset_section`), T204
         // fills `data-transfer-source-filter`. The filter shell is an
         // empty keyed shell, as `AiChatPanel` does for T195/T334.
+        if self.existing_table_only {
+            return root;
+        }
         let (recordset_el, recordset_layer) = self.recordset_section(dark, &change, &editor);
         layer.extend(recordset_layer);
         root = root.child(recordset_el);

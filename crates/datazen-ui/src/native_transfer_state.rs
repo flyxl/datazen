@@ -49,6 +49,7 @@ pub(crate) struct NativeTransferState {
     pub source: EndpointState,
     pub target: EndpointState,
     pub pairs: Vec<(String, String)>,
+    pub mapping: crate::native_transfer_mapping::NativeColumnMapping,
     pub confirming: Option<NativeTransferRequest>,
     pub running: bool,
     pub reviewing: Option<NativeTransferRequest>,
@@ -253,6 +254,7 @@ impl AppState {
             return;
         }
         state.pairs.clear();
+        state.mapping = Default::default();
         state.error = None;
         state.inserted = None;
         state.schema_diff = None;
@@ -299,6 +301,7 @@ impl AppState {
             // An intervening transfer can change the same table pair.
             state.sync_preview = None;
             state.sync_error = None;
+            state.mapping = Default::default();
             state.tool = tool;
         }
     }

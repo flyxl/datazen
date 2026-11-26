@@ -155,3 +155,62 @@ class TransferJourneys:
             self.assertEqual(connection.execute("SELECT * FROM z_target_selected ORDER BY target_id").fetchall(),
                              [(7, "verified source"), (80, "pre-existing")])
         self.assertEqual(self.db.read_bytes(), source_original)
+
+    def test_sqlite_mapping_editor_auto_match_and_manual_pairs_use_catalog(self):
+        target = self.root / "transfer-mapping-editor.sqlite"
+        with sqlite3.connect(self.db) as source:
+            source.executescript("""
+                CREATE TABLE incoming(id INTEGER PRIMARY KEY, incoming_note TEXT, source_only TEXT);
+                INSERT INTO incoming VALUES (1, NULL, 'not copied'), (2, '明细', 'not copied');
+            """)
+        with sqlite3.connect(target) as dest:
+            dest.executescript("""
+                CREATE TABLE receiving(id INTEGER PRIMARY KEY, note TEXT, sticky TEXT DEFAULT 'retained');
+                INSERT INTO receiving VALUES (8, 'sentinel', 'existing');
+            """)
+        self.store.write_text(json.dumps({"connections": [
+            {"id": identifier, "name": identifier, "databaseType": "sqlite",
+             "database": str(path), "connectionTimeout": 8}
+            for identifier, path in (("source", self.db), ("target", target))
+        ]}), encoding="utf-8")
+        source_original = self.db.read_bytes()
+        target_original = target.read_bytes()
+        setup = [
+            tap(.5, "rail-tools"),
+            tap(1.6, "native-transfer-source-profile-source"),
+            tap(2.1, "native-transfer-target-profile-target"),
+            tap(3.4, "native-transfer-toggle-column-editor"),
+            tap(4.5, "data-transfer-auto-match"),
+        ]
+        open_manual_row = "data-transfer-target-select-incoming_note-field-trigger"
+        unmatched = self.replay(setup, until=5.5)
+        for column in ("id", "incoming_note", "source_only"):
+            self.expect_rendered(unmatched, key=f"data-transfer-column-row-{column}")
+        for unsupported in ("data-transfer-target-table-input", "data-transfer-create-new-toggle",
+                            "data-transfer-recordset", "data-transfer-source-filter"):
+            self.assertFalse(visible(unmatched, key=unsupported))
+
+        duplicate = self.replay([
+            *setup, tap(5.5, open_manual_row), tap(6.5, "option1"),
+        ], until=7.8)
+        self.expect_rendered(duplicate, key="native-transfer-error", text="Each column can be mapped once.")
+        self.assertEqual(target.read_bytes(), target_original)
+
+        review = [
+            *setup, tap(5.5, open_manual_row), tap(6.5, "option2"),
+            tap(7.6, "native-transfer-review"),
+        ]
+        preview = self.replay(review, until=9.2)
+        self.expect_rendered(preview, key="native-transfer-confirm",
+                             text="From source / incoming to target / receiving")
+        self.expect_rendered(preview, key="native-transfer-confirm-pair-0", text="id → id")
+        self.expect_rendered(preview, key="native-transfer-confirm-pair-1", text="incoming_note → note")
+        self.assertFalse(visible(preview, key="native-transfer-confirm-pair-2"))
+        self.assertEqual(target.read_bytes(), target_original)
+
+        finished = self.replay([*review, tap(9.7, "native-transfer-yes")], until=11.5)
+        self.expect_rendered(finished, key="native-transfer-success", text="Inserted 2 rows.")
+        with sqlite3.connect(target) as dest:
+            self.assertEqual(dest.execute("SELECT * FROM receiving ORDER BY id").fetchall(),
+                             [(1, None, "retained"), (2, "明细", "retained"), (8, "sentinel", "existing")])
+        self.assertEqual(self.db.read_bytes(), source_original)

@@ -1,4 +1,5 @@
 //! Live SQLite transfer, schema diff and sync preview, separate from demo tools.
+use super::data_transfer::column_mapping_editor::ColumnMappingEditor;
 use crate::{native_transfer_state::NativeTool, state_def::AppState};
 use datazen_ui_api::native_transfer::{TransferChoice, TransferSide, NATIVE_SYNC_ROW_LIMIT};
 use rune::tok::{self, type_};
@@ -141,7 +142,9 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
     }
     if let Some(column) = endpoint
         .selected_column()
-        .filter(|_| state.native_transfer.tool == NativeTool::Transfer)
+        .filter(|_| {
+            state.native_transfer.tool == NativeTool::Transfer && !state.native_transfer.mapping.open
+        })
     {
         panel = panel.child(button(
             format!("native-transfer-{prefix}-column"),
@@ -165,7 +168,7 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
     panel
 }
 
-pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
+pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let transfer = &state.native_transfer;
     let page = col()
         .key("native-transfer")
@@ -267,32 +270,60 @@ pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
     }
     page = page
         .child(endpoint(state, TransferSide::Source, theme))
-        .child(endpoint(state, TransferSide::Target, theme))
-        .child(button(
+        .child(endpoint(state, TransferSide::Target, theme));
+    if [TransferSide::Source, TransferSide::Target].into_iter().all(|side| {
+        transfer.side(side).catalog.as_ref().is_some_and(|c| c.choice.table.is_some())
+    }) {
+        page = page.child(button(
+            "native-transfer-toggle-column-editor",
+            if transfer.mapping.open { "Use quick mapping" } else { "Edit column mappings" },
+            theme,
+            |s| s.native_transfer.toggle_mapping_editor(),
+        ));
+    }
+    let mut layer = Vec::new();
+    if transfer.mapping.open {
+        page = page.child(
+            col()
+                .key("native-transfer-editor-pane")
+                .w_full()
+                .h(240.0)
+                .shrink()
+                .child(
+                    ColumnMappingEditor::new(&transfer.mapping.editor)
+                        .existing_table_only()
+                        .editor_mut(|s: &mut AppState| &mut s.native_transfer.mapping.editor)
+                        .on_change(|s, patch| s.native_transfer.change_editor_mappings(patch))
+                        .build(dark, &mut layer),
+                ),
+        );
+    } else {
+        page = page.child(button(
             "native-transfer-map",
             "Map selected columns",
             theme,
             |s| s.native_transfer.add_pair(),
         ));
-    for (index, (left, right)) in transfer.pairs.iter().enumerate() {
-        page = page.child(
-            row()
-                .gap(6.0)
-                .child(
-                    text(format!("{left} → {right}"))
-                        .key(format!("native-transfer-pair-{index}"))
-                        .grow(1.0)
-                        .min_w(0.0)
-                        .font(type_::LABEL)
-                        .color(theme.text),
-                )
-                .child(button(
-                    format!("native-transfer-remove-{index}"),
-                    "Remove",
-                    theme,
-                    move |s| s.native_transfer.remove_pair(index),
-                )),
-        );
+        for (index, (left, right)) in transfer.pairs.iter().enumerate() {
+            page = page.child(
+                row()
+                    .gap(6.0)
+                    .child(
+                        text(format!("{left} → {right}"))
+                            .key(format!("native-transfer-pair-{index}"))
+                            .grow(1.0)
+                            .min_w(0.0)
+                            .font(type_::LABEL)
+                            .color(theme.text),
+                    )
+                    .child(button(
+                        format!("native-transfer-remove-{index}"),
+                        "Remove",
+                        theme,
+                        move |s| s.native_transfer.remove_pair(index),
+                    )),
+            );
+        }
     }
     page = page.child(button(
         "native-transfer-review",
@@ -310,7 +341,11 @@ pub(super) fn view(state: &AppState, theme: tok::Theme) -> El {
             theme,
         ));
     }
-    page
+    if transfer.mapping.open {
+        rune_kit::root(page, layer)
+    } else {
+        page
+    }
 }
 
 fn schema_diff_view(page: rune::El, state: &AppState, theme: tok::Theme) -> El {
