@@ -236,7 +236,7 @@ pub fn query_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let editor_h =
         splitter::splitter_size(state, QUERY_EDITOR_HEIGHT_KEY, QUERY_EDITOR_HEIGHT_DEFAULT) as f32;
 
-    let sidebar = query_sidebar(state, theme);
+    let sidebar = query_sidebar(state, theme, dark);
     let sidebar_split = splitter::splitter_handle(
         state,
         QUERY_SIDEBAR_WIDTH_KEY,
@@ -450,7 +450,7 @@ fn query_result_tabs_bar(state: &AppState, theme: tok::Theme) -> El {
     bar
 }
 
-fn query_sidebar(state: &AppState, theme: tok::Theme) -> El {
+fn query_sidebar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let mut tabs = row()
         .key("query-sidebar-tabs")
         .w_full()
@@ -485,7 +485,7 @@ fn query_sidebar(state: &AppState, theme: tok::Theme) -> El {
 
     let content = match state.query_sidebar_panel {
         crate::types::QuerySidebarPanel::Favorites => query_favorites_panel(state, theme),
-        crate::types::QuerySidebarPanel::History => query_history::panel(state, theme),
+        crate::types::QuerySidebarPanel::History => query_history::panel(state, theme, dark),
         crate::types::QuerySidebarPanel::Snippets => query_snippets_panel(state, theme),
     };
 

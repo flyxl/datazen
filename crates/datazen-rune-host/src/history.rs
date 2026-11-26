@@ -23,6 +23,7 @@ fn io_error(error: impl std::fmt::Display) -> HistoryError {
 pub(crate) async fn read_native_query_history(
     history: &datazen::history::HistoryService,
     connection_id: &str,
+    current_database: Option<String>,
 ) -> Result<datazen_ui_api::QueryHistorySnapshot, String> {
     let page = history
         .query_history_page(&QueryHistoryFilter {
@@ -33,18 +34,32 @@ pub(crate) async fn read_native_query_history(
         .await
         .map_err(|_| "Could not read query history.".to_owned())?;
     Ok(datazen_ui_api::QueryHistorySnapshot {
+        current_database: current_database.and_then(history_database_name),
         total: page.total,
         entries: page
             .entries
             .into_iter()
             .map(|entry| datazen_ui_api::QueryHistoryRecord {
                 id: entry.id,
+                database: history_database_name(entry.database),
+                executed_at: entry.executed_at.to_rfc3339(),
                 sql: entry.sql,
                 success: entry.success,
                 error_message: entry.error_message,
             })
             .collect(),
     })
+}
+
+fn history_database_name(database: String) -> Option<String> {
+    // SQLite normally resolves to "main". Never show a path from a legacy
+    // file-backed fixture or imported history as a database group label.
+    let name = database.trim();
+    if name.is_empty() || Path::new(name).is_absolute() || name.contains('\\') {
+        None
+    } else {
+        Some(name.to_owned())
+    }
 }
 
 fn parse_error(path: &Path, error: impl std::fmt::Display) -> HistoryError {

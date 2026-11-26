@@ -2536,6 +2536,8 @@ pub enum AdapterDelivery {
 /// A connection-scoped page of the native host's persisted SQL history.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueryHistorySnapshot {
+    /// Active logical database for the requested connection, not the file path.
+    pub current_database: Option<String>,
     pub entries: Vec<QueryHistoryRecord>,
     pub total: u64,
 }
@@ -2543,6 +2545,8 @@ pub struct QueryHistorySnapshot {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueryHistoryRecord {
     pub id: String,
+    pub database: Option<String>,
+    pub executed_at: String,
     pub sql: String,
     pub success: bool,
     pub error_message: Option<String>,

@@ -1,12 +1,16 @@
 //! Connection-scoped history for the live query sidebar.
 use crate::state_def::AppState;
 use crate::types::{QuerySidebarPanel, Section};
+use crate::views::query::query_sidebar_section::HistoryScope;
+use rune::TextEdit;
 use datazen_ui_api::{AdapterJob, QueryHistorySnapshot};
 
 #[derive(Default)]
 pub(crate) struct QueryHistoryState {
     generation: u32,
     pub pending: bool,
+    pub scope: HistoryScope,
+    pub search: TextEdit,
     pub result: Option<Result<QueryHistorySnapshot, String>>,
 }
 
@@ -15,6 +19,12 @@ impl QueryHistoryState {
         self.generation = self.generation.wrapping_add(1);
         self.pending = false;
         self.result = None;
+    }
+
+    pub fn reset_context(&mut self) {
+        self.reset();
+        self.scope = HistoryScope::Current;
+        self.search.clear();
     }
 
     pub fn deliver(&mut self, generation: u32, result: Result<QueryHistorySnapshot, String>) {

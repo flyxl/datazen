@@ -602,7 +602,7 @@ impl AppState {
                         self.grid = DataGrid::new();
                         self.grid.set_editable(false);
                         self.table_read_error = None;
-                        self.query_history.reset();
+                        self.query_history.reset_context();
                         self.refresh_query_history_if_open();
                         self.active = Section::Workspace;
                         if self.native_kv.is_some() {

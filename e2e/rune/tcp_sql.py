@@ -122,6 +122,83 @@ class TcpSqlJourneys:
         self.assertEqual(database.query(f"SELECT label FROM {schema}.{table};"), "schema-specific")
         self.assertEqual(database.query(f"SELECT label FROM public.{table};"), "public-specific")
 
+    def run_legacy_history_scope_and_search(self, config):
+        """Migrate e2e/specs/query-history.ts QH-001 through QH-005."""
+        database = DisposableSql("postgresql", config)
+        self.assertEqual(database.query("SELECT current_database();"), database.database)
+        database.write_profile(self)
+        first = "SELECT current_database(), 'qh_marker_a';"
+        second = "SELECT current_database(), 'qh_marker_b';"
+        executed = self.replay([
+            *query_steps(first, "e2e-tcp-sql"), *fill(10.2, "sql-editor-scroll", second),
+            tap(13.5, "sql-run"), tap(15.4, "query-sidebar-tab-history"),
+        ], until=18)
+        self.expect_rendered(executed, text="qh_marker_b", within="result-workspace")
+        path = self.root / "query-history.json"
+        persisted = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            [(r["connectionId"], r["database"], r["sql"].rstrip(";"), r["success"])
+             for r in persisted],
+            [("e2e-tcp-sql", database.database, sql.rstrip(";"), True) for sql in (first, second)],
+        )
+
+        panel = "query-history-panel"
+        current, all_db = "history-scope-current", "history-scope-all"
+        selector = "query-history-search"
+        opened = [tap(.5, "conn-open-e2e-tcp-sql"), tap(3.8, "conn-toolbar-new-query"),
+                  tap(5.0, "query-sidebar-tab-history")]
+
+        def selected(root, control):
+            def find(node):
+                if node.get("key") == control:
+                    return node
+                for child in node.get("children", ()):
+                    match = find(child)
+                    if match is not None:
+                        return match
+                return None
+            node = find(root["accessibility"])
+            self.assertIsNotNone(node, control)
+            return "checked" in node.get("states", ())
+
+        def markers(tree):
+            return tuple(visible(tree, text=sql.rstrip(";"), within=panel)
+                         for sql in (first, second))
+
+        default = self.replay(opened, until=6.7)
+        self.expect_rendered(default, key=current, within=panel)
+        self.expect_rendered(default, key=all_db, within=panel)
+        self.assertTrue(selected(default, current))
+        self.assertFalse(selected(default, all_db))
+        self.expect_rendered(default, key="history-current-db", within=panel)
+        self.assertFalse(visible(default, key="history-scope-fallback-hint", within=panel))
+        self.assertFalse(visible(default, key="history-group-label", within=panel))
+        self.assertEqual(markers(default), (True, True))
+
+        choose_all = [*opened, tap(6.8, all_db)]
+        all_view = self.replay(choose_all, until=8.0)
+        self.assertTrue(selected(all_view, all_db))
+        self.expect_rendered(all_view, key="history-group-label", text=database.database, within=panel)
+        self.assertEqual(markers(all_view), (True, True))
+
+        matched = [*choose_all, *fill(8.0, selector, "QH_MARKER_B")]
+        one = self.replay(matched, until=10.2)
+        self.assertEqual(markers(one), (False, True))
+        no_match = [*matched, *fill(10.4, selector, "__no_such_marker__")]
+        empty = self.replay(no_match, until=12.6)
+        self.expect_rendered(empty, key="query-no-history-match", within=panel)
+        self.assertEqual(markers(empty), (False, False))
+
+        restored = self.replay([
+            *no_match, tap(12.8, selector), key(13.0, "a", cmd=True), key(13.3, "Backspace"),
+            tap(14.1, current),
+        ], until=15.6)
+        self.assertTrue(selected(restored, current))
+        self.expect_rendered(restored, key="history-current-db", within=panel)
+        self.assertFalse(visible(restored, key="history-group-label", within=panel))
+        self.assertEqual(markers(restored), (True, True))
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), persisted)
+
 
 def with_tcp_journeys(suite, configs):
     # Do not discover unprovisioned engines as skipped/pass. Opt-in fixtures
@@ -132,6 +209,11 @@ def with_tcp_journeys(suite, configs):
 
         setattr(suite, f"test_{engine}_native_catalog_query_edit", journey)
         if engine == "postgresql":
+            def history_scope(self, config=config):
+                return self.run_legacy_history_scope_and_search(config)
+
+            setattr(suite, "test_postgresql_legacy_history_scope_and_search", history_scope)
+
             def collision(self, config=config):
                 return self.run_postgres_collision(config)
 

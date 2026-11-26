@@ -34,7 +34,7 @@ use crate::ui::kit::kit;
 use crate::ui::menu::{context_menu, Item};
 
 mod favorites;
-mod history;
+pub(crate) mod history;
 
 pub use history::{find_group, group_history, HistoryGroup};
 

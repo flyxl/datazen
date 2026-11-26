@@ -232,7 +232,7 @@ impl AppState {
         self.connect_loading = None;
         self.desktop_catalog = None;
         self.desktop_connection = None;
-        self.query_history.reset();
+        self.query_history.reset_context();
         self.structures.clear();
         self.widget_bars.clear();
         self.inbound_refs = None;

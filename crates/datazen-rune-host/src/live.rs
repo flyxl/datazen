@@ -657,8 +657,13 @@ impl LiveAdapter {
                             HostAnswer::CommitCount { generation, count }
                         }
                         HostJob::ReadQueryHistory { generation, connection_id } => {
+                            let database = worker_session.lock().ok().and_then(|session| {
+                                (session.connection.as_deref() == Some(connection_id.as_str()))
+                                    .then(|| session.database.clone())
+                                    .flatten()
+                            });
                             let result = runtime.block_on(crate::history::read_native_query_history(
-                                &worker_history, &connection_id,
+                                &worker_history, &connection_id, database,
                             ));
                             HostAnswer::QueryHistoryRead { generation, result }
                         }

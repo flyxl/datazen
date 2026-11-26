@@ -229,7 +229,7 @@ fn center_text(key: &str, message: &str, dark: bool) -> El {
         )
 }
 
-fn search_row<S: 'static>(
+pub(crate) fn search_row<S: 'static>(
     vm: &SidebarSectionVm,
     on_action: &Option<QuerySidebarActionFn<S>>,
     search_edit: Option<SearchEditFn<S>>,
@@ -258,7 +258,7 @@ fn search_row<S: 'static>(
         .child(field.build(dark))
 }
 
-fn scope_row<S: 'static>(
+pub(crate) fn scope_row<S: 'static>(
     vm: &SidebarSectionVm,
     on_action: &Option<QuerySidebarActionFn<S>>,
     dark: bool,
