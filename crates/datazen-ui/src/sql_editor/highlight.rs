@@ -1,10 +1,15 @@
+use datazen_ui_api::SqlSyntaxTheme;
 use rune::Span;
 
-use crate::ui::palette;
+use super::syntax_theme::SyntaxPalette;
 
 use super::model::{is_keyword, KEYWORDS};
 
 pub fn highlight_sql(src: &str, dark: bool) -> Vec<Span> {
+    highlight_with_palette(src, SyntaxPalette::live(SqlSyntaxTheme::DEFAULT, dark))
+}
+
+pub(crate) fn highlight_with_palette(src: &str, palette: SyntaxPalette) -> Vec<Span> {
     let bytes = src.as_bytes();
     let mut i = 0;
     let mut spans = Vec::new();
@@ -15,7 +20,7 @@ pub fn highlight_sql(src: &str, dark: bool) -> Vec<Span> {
             while i < bytes.len() && bytes[i] != b'\n' {
                 i += 1;
             }
-            spans.push(Span::new(start, i).color(comment_color(dark)).italic());
+            spans.push(Span::new(start, i).color(palette.tokens.comment).italic());
             continue;
         }
         if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'*') {
@@ -25,7 +30,7 @@ pub fn highlight_sql(src: &str, dark: bool) -> Vec<Span> {
                 i += 1;
             }
             i = (i + 2).min(bytes.len());
-            spans.push(Span::new(start, i).color(comment_color(dark)).italic());
+            spans.push(Span::new(start, i).color(palette.tokens.comment).italic());
             continue;
         }
         if bytes[i] == b'\'' || bytes[i] == b'"' {
@@ -48,7 +53,7 @@ pub fn highlight_sql(src: &str, dark: bool) -> Vec<Span> {
                     i += 1;
                 }
             }
-            spans.push(Span::new(start, i).color(string_color(dark)));
+            spans.push(Span::new(start, i).color(palette.tokens.string));
             continue;
         }
         if bytes[i].is_ascii_digit() {
@@ -57,7 +62,7 @@ pub fn highlight_sql(src: &str, dark: bool) -> Vec<Span> {
             while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
                 i += 1;
             }
-            spans.push(Span::new(start, i).color(number_color(dark)));
+            spans.push(Span::new(start, i).color(palette.tokens.number));
             continue;
         }
         if bytes[i].is_ascii_alphabetic() || bytes[i] == b'_' {
@@ -67,26 +72,22 @@ pub fn highlight_sql(src: &str, dark: bool) -> Vec<Span> {
                 i += 1;
             }
             if is_keyword(&src[start..i]) {
-                spans.push(Span::new(start, i).color(keyword_color(dark)).bold());
+                spans.push(Span::new(start, i).color(palette.tokens.keyword).bold());
             }
             continue;
+        }
+        let color = match bytes[i] {
+            b'=' | b'<' | b'>' | b'+' | b'-' | b'*' | b'/' | b'%' | b'!' | b'|' | b'&'
+                => palette.operator,
+            b'.' | b',' | b';' | b'(' | b')' | b'[' | b']' => palette.punctuation,
+            _ => None,
+        };
+        if let Some(color) = color {
+            spans.push(Span::new(i, i + 1).color(color));
         }
         i += 1;
     }
     spans
-}
-
-pub(super) fn keyword_color(dark: bool) -> rune::Color {
-    palette::code_palette(dark).keyword
-}
-pub(super) fn string_color(dark: bool) -> rune::Color {
-    palette::code_palette(dark).string
-}
-pub(super) fn comment_color(dark: bool) -> rune::Color {
-    palette::code_palette(dark).comment
-}
-pub(super) fn number_color(dark: bool) -> rune::Color {
-    palette::code_palette(dark).number
 }
 
 // keep KEYWORDS referenced to avoid unused warning pattern in some builds? not needed.

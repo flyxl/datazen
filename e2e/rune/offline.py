@@ -484,6 +484,49 @@ class OfflineJourneys:
         tree = self.replay([*search, tap(13, "result-find-next")], until=14.2)
         self.expect_rendered(tree, key="result-find-count", text="2 of 2")
 
+    def test_settings_sql_syntax_theme_select_colors_query_and_survives_restart(self):
+        fixture(self.store, self.db)
+        path = self.root / "settings.json"
+        original = {"sqlSyntaxTheme": "future-unknown", "keep": True,
+                    "ui": {"language": "en", "themeMode": "dark"}}
+        path.write_text(json.dumps(original), encoding="utf-8")
+        before = path.read_bytes()
+        trigger = "settings-sql-syntax-theme-trigger"
+        start = [SETTINGS, tap(1.4, "settings-nav-editor")]
+        opened = [*start, tap(2.3, trigger)]
+        choices = self.replay(opened, until=3.1)
+        self.expect_rendered(choices, text="Default (DataZen)", within=trigger)
+        self.expect_rendered(choices, text="Dracula", within="option5")
+        self.assertEqual(path.read_bytes(), before)
+        canceled = self.replay([*opened, key(3.4, "Escape")], until=4.4)
+        self.expect_rendered(canceled, text="Default (DataZen)", within=trigger)
+        self.assertEqual(path.read_bytes(), before)
+
+        def fill_at(tree, key):
+            self.expect_rendered(tree, key=key)
+            [fill_value] = [node.get("fill") for node in tree["elements"]
+                            if node.get("key") == key]
+            return fill_value
+
+        applied = self.replay([*opened, tap(3.4, "option5")], until=4.4)
+        self.expect_rendered(applied, text="Dracula", within=trigger)
+        self.assertEqual(fill_at(applied, "settings-sql-syntax-preview"), "#282a36ff")
+        self.assertEqual(json.loads(path.read_text()), {**original, "sqlSyntaxTheme": "dracula"})
+
+        sql = "SELECT customer_name FROM customers WHERE id = 1;"
+        query = self.replay(query_steps(sql), until=11)
+        self.assertEqual(fill_at(query, "sql-editor-body"), "#282a36ff")
+        self.expect_rendered(query, text="fixture-ada", within="result-workspace")
+
+        restored = self.replay([*opened, tap(3.4, "option0")], until=4.4)
+        self.expect_rendered(restored, text="Default (DataZen)", within=trigger)
+        self.assertNotEqual(fill_at(restored, "settings-sql-syntax-preview"), "#282a36ff")
+        self.assertEqual(json.loads(path.read_text()), {**original, "sqlSyntaxTheme": "default"})
+
+        query = self.replay(query_steps(sql), until=11)
+        self.assertNotEqual(fill_at(query, "sql-editor-body"), "#282a36ff")
+        self.expect_rendered(query, text="fixture-ada", within="result-workspace")
+
     def test_settings_snippet_survives_restart_then_can_be_deleted(self):
         editor = tap(1.4, "settings-nav-editor")
         self.replay([

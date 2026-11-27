@@ -1958,6 +1958,28 @@ pub const MIN_EDITOR_FONT_SIZE: u32 = 10;
 pub const MAX_EDITOR_FONT_SIZE: u32 = 24;
 pub const DEFAULT_EDITOR_FONT_SIZE: u32 = settings_store::DEFAULT_EDITOR_FONT_SIZE as u32;
 
+/// A validated built-in SQL syntax palette ID, scoped to the SQL editor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SqlSyntaxTheme(&'static str);
+
+impl SqlSyntaxTheme {
+    pub const DEFAULT: Self = Self("default");
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        SQL_SYNTAX_PRESETS.iter().find(|preset| preset.id == id).map(|preset| Self(preset.id))
+    }
+
+    pub const fn id(self) -> &'static str {
+        self.0
+    }
+}
+
+impl Default for SqlSyntaxTheme {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// One typed settings entry. A write validates a single entry; a failure
 /// leaves every entry at its old value.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1976,6 +1998,9 @@ pub enum Setting {
     },
     EditorFontSize {
         points: u32,
+    },
+    SqlSyntaxTheme {
+        theme: SqlSyntaxTheme,
     },
     TablePageSize {
         rows: u32,
@@ -2024,7 +2049,7 @@ impl Setting {
     /// the same wherever it surfaces.
     pub fn validate(&self) -> Result<(), String> {
         match self {
-            Setting::Theme { .. } | Setting::BuiltinLanguage { .. } => Ok(()),
+            Setting::Theme { .. } | Setting::BuiltinLanguage { .. } | Setting::SqlSyntaxTheme { .. } => Ok(()),
             Setting::ThemeMode { mode }
                 if matches!(mode.as_str(), "light" | "dark" | "system") =>
             {
@@ -3135,6 +3160,7 @@ fn setting_kind(setting: &Setting) -> u8 {
         Setting::Layout { .. } => 3,
         Setting::BuiltinLanguage { .. } => 4,
         Setting::EditorFontSize { .. } => 5,
+        Setting::SqlSyntaxTheme { .. } => 6,
     }
 }
 

@@ -12,9 +12,12 @@ mod highlight;
 mod input;
 mod model;
 mod navigation;
+mod syntax_theme;
 mod view;
 
 pub use highlight::highlight_sql;
+pub(crate) use highlight::highlight_with_palette;
+pub(crate) use syntax_theme::SyntaxPalette;
 pub use input::{on_ime, on_key};
 pub(crate) use model::CompletionScope;
 pub use model::{Sel, Selection, SqlEditor};

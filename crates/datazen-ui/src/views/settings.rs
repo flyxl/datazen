@@ -31,6 +31,7 @@ pub mod appearance_section;
 // T244: the history-data cleanup section.
 pub mod data_cleanup_section;
 mod data_browsing_live;
+mod editor_syntax_live;
 // T265: the driver settings section (per-driver blocks over the
 // generated entries seam).
 pub mod driver_settings_section;
@@ -237,6 +238,7 @@ fn editor_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .gap(20.0)
         .child(heading)
         .child(font_size)
+        .child(editor_syntax_live::row(state, dark, &k, &mut overlays))
         .children(state.settings_error.as_ref().map(|_| settings_error_row(state, theme)))
         // Keep the current native inline snippet controls as-is, with no newly
         // mounted card, modal, empty list, or unsupported React control.

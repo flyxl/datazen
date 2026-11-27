@@ -3,7 +3,8 @@ use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, row, text
 use crate::i18n::t;
 use crate::ui::palette;
 
-use super::highlight::highlight_sql;
+use super::highlight::highlight_with_palette;
+use super::syntax_theme::SyntaxPalette;
 use super::model::SqlEditor;
 use crate::ui::field::TextField;
 
@@ -23,6 +24,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
     panel_with_completion_scope(
         editor, ink, muted, dark, editor.completion_scope().is_none(), None,
         datazen_ui_api::DEFAULT_EDITOR_FONT_SIZE,
+        datazen_ui_api::SqlSyntaxTheme::DEFAULT,
     )
 }
 
@@ -31,13 +33,16 @@ pub(crate) fn panel_with_completion_scope(
     completion_current: bool,
     viewport: Option<crate::query_editor_tabs::QueryEditorViewport>,
     font_size: u32,
+    syntax_theme: datazen_ui_api::SqlSyntaxTheme,
 ) -> El {
     let size = font_size as f32;
     let row_height = size * 1.4;
     let caret_height = size * (16.0 / DEFAULT_SIZE);
     let completion_height = size * (18.0 / DEFAULT_SIZE);
     let font = TextStyle::new(size, 400.0).mono();
-    let spans = highlight_sql(editor.doc(), dark);
+    let syntax = SyntaxPalette::live(syntax_theme, dark);
+    let spans = highlight_with_palette(editor.doc(), syntax);
+    let document_ink = syntax.foreground.unwrap_or(ink);
     let carets: Vec<(usize, bool)> = editor
         .selection
         .ranges()
@@ -80,7 +85,10 @@ pub(crate) fn panel_with_completion_scope(
         );
         doc = doc.child(line_row_with_style(
             n, start, line, &spans, &carets, editor, dark,
-            LineStyle { font, height: row_height, caret_height, ink: Some(ink) },
+            LineStyle {
+                font, height: row_height, caret_height, ink: Some(document_ink),
+                selection: syntax.selection,
+            },
         ));
         if completion_current && !editor.completion_items().is_empty()
             && main_head >= start
@@ -171,11 +179,14 @@ pub(crate) fn panel_with_completion_scope(
                 ),
         )
         .child(
-            col()
-                .key("sql-editor-body")
-                .w_full()
-                .grow(1.0)
-                .min_h(60.0)
+            {
+                let body = col()
+                    .key("sql-editor-body")
+                    .w_full()
+                    .grow(1.0)
+                    .min_h(60.0);
+                if let Some(background) = syntax.background { body.fill(background) } else { body }
+            }
                 // The numbered sheet can be shorter than the idle canvas.
                 // Keep the gutter chrome visible to the viewport's bottom
                 // without padding the document or changing scroll offsets.
@@ -287,6 +298,7 @@ struct LineStyle {
     height: f32,
     caret_height: f32,
     ink: Option<rune::Color>,
+    selection: Option<rune::Color>,
 }
 
 pub fn line_row(
@@ -299,7 +311,7 @@ pub fn line_row(
     dark: bool,
 ) -> El {
     line_row_with_style(index, start, line, spans, carets, editor, dark,
-        LineStyle { font: editor_font(), height: 18.0, caret_height: 16.0, ink: None })
+        LineStyle { font: editor_font(), height: 18.0, caret_height: 16.0, ink: None, selection: None })
 }
 
 fn line_row_with_style(
@@ -342,7 +354,7 @@ fn line_row_with_style(
             if selected.iter().any(|sel| sel.from() <= start + a && start + b <= sel.to()) {
                 fragment = fragment
                     .key(format!("sql-selected-{index}-{a}"))
-                    .fill(palette::editor_selection_bg(dark));
+                    .fill(style.selection.unwrap_or_else(|| palette::editor_selection_bg(dark)));
             }
             row = row.child(fragment);
         }

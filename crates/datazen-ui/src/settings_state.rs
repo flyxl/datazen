@@ -166,6 +166,23 @@ impl AppState {
         }
     }
 
+    pub(crate) fn sql_syntax_theme(&self) -> datazen_ui_api::SqlSyntaxTheme {
+        self.ui_settings().into_iter().find_map(|setting| match setting {
+            Setting::SqlSyntaxTheme { theme } => Some(theme),
+            _ => None,
+        }).unwrap_or_default()
+    }
+
+    pub(crate) fn save_sql_syntax_theme(&mut self, theme: datazen_ui_api::SqlSyntaxTheme) {
+        if self.active != crate::types::Section::Settings || self.settings_section() != "editor" {
+            return;
+        }
+        self.settings_content.close_select();
+        if theme != self.sql_syntax_theme() {
+            self.settings_error = self.write_ui_setting(Setting::SqlSyntaxTheme { theme }).err();
+        }
+    }
+
     /// The active theme mode. React persists `settings.theme.mode`; the Rune
     /// host keeps the same three-way value in `Setting::ThemeMode`. An older
     /// install that only has `themeDark` still reads as light/dark, and a

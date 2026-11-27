@@ -2546,6 +2546,9 @@ fn ui_write(setting: &datazen_ui_api::Setting) -> UiWrite {
             // React stores this exact name at app-settings level, not in Rune's UI bag.
             UiWrite::AppPreference("editorFontSize", serde_json::json!(points))
         }
+        datazen_ui_api::Setting::SqlSyntaxTheme { theme } => {
+            UiWrite::AppPreference("sqlSyntaxTheme", serde_json::json!(theme.id()))
+        }
         datazen_ui_api::Setting::TablePageSize { rows } => {
             UiWrite::Scalar("tablePageSize", serde_json::json!(rows))
         }
@@ -3169,6 +3172,12 @@ impl DesktopAdapter for LiveAdapter {
             if entry.validate().is_ok() {
                 settings.push(entry);
             }
+        }
+        if let Some(theme) = document.get("sqlSyntaxTheme")
+            .and_then(|value| value.as_str())
+            .and_then(datazen_ui_api::SqlSyntaxTheme::from_id)
+        {
+            settings.push(datazen_ui_api::Setting::SqlSyntaxTheme { theme });
         }
         let Some(ui) = document.get("ui").and_then(|ui| ui.as_object()) else {
             return if settings.is_empty() { Err("no ui settings yet".into()) } else { Ok(settings) };
@@ -4449,6 +4458,37 @@ mod tests {
         drop(adapter);
         let reopened = LiveAdapter::with_data_dir(repository, &dir);
         assert_eq!(reopened.read_ui_settings().unwrap(), vec![Setting::EditorFontSize { points: 20 }]);
+    }
+
+    #[test]
+    fn sql_syntax_theme_uses_the_flat_compatible_slot_and_recovers_from_unknown() {
+        use datazen_ui_api::{Setting, SqlSyntaxTheme};
+
+        let dir = temp_dir("editor-syntax-theme");
+        let path = dir.join("settings.json");
+        let old = br#"{"sqlSyntaxTheme":"future-unknown","editorFontSize":17,"keep":true}"#;
+        std::fs::write(&path, old).unwrap();
+        let repository = Arc::new(FileConnectionRepository::open(&dir.join("connections.json")).unwrap());
+        let mut app = LiveAdapter::with_data_dir(repository.clone(), &dir);
+        assert_eq!(app.read_ui_settings().unwrap(), vec![Setting::EditorFontSize { points: 17 }]);
+        assert_eq!(std::fs::read(&path).unwrap(), old);
+
+        let theme = SqlSyntaxTheme::from_id("dracula").unwrap();
+        app.write_ui_setting(Setting::SqlSyntaxTheme { theme }).unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(json, serde_json::json!({
+            "sqlSyntaxTheme": "dracula", "editorFontSize": 17, "keep": true,
+        }));
+        drop(app);
+
+        let mut app = LiveAdapter::with_data_dir(repository.clone(), &dir);
+        assert!(app.read_ui_settings().unwrap().contains(&Setting::SqlSyntaxTheme { theme }));
+        app.write_ui_setting(Setting::SqlSyntaxTheme { theme: SqlSyntaxTheme::DEFAULT }).unwrap();
+        drop(app);
+        let app = LiveAdapter::with_data_dir(repository, &dir);
+        assert!(app.read_ui_settings().unwrap().contains(&Setting::SqlSyntaxTheme {
+            theme: SqlSyntaxTheme::DEFAULT,
+        }));
     }
 
     #[test]
