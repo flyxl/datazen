@@ -92,116 +92,121 @@ fn banners(state: &AppState, theme: tok::Theme) -> Vec<El> {
     found
 }
 
-/// React State 1: no connections at all — a centered card with the actions.
+/// React State 1: center exactly one localized empty-state message and its
+/// two real connection actions in the available client area.
 fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let accent = crate::ui::theme::accent(dark);
+    let colors = crate::ui::theme::colors(dark);
+    let import_label = t("common.importConnections");
+    let create_label = t("main.createFirst");
+    let button_font = TextStyle::new(13.0, 600.0).lh(19.5);
+    let focus = colors.accent.alpha(0.60);
     let mut page = col()
         .key("connection-list")
         .grow(1.0)
         .min_h(0.0)
         .w_full()
-        .gap(12.0)
+        .px(24.0)
         .center();
     for banner in banners(state, theme) {
-        page = page.child(banner);
+        page = page.child(banner.mb(12.0));
     }
-    // React's root test id survives every state (State 1 / 2 / 3 / 3b).
-    page = page.child(react_key("connection-workspace-home"));
-    page.child(
+    page.child(react_key("connection-workspace-home")).child(
         col()
             .key("connections-empty")
-            .w(420.0)
-            .gap(14.0)
-            .center()
+            .w_full()
+            .max_w(384.0)
+            .items_center()
             .child(
                 row()
                     .key("connections-empty-icon")
-                    .size(52.0, 52.0)
+                    .size(48.0, 48.0)
                     .radius(16.0)
+                    .mb(16.0)
                     .center()
-                    .fill(palette::accent_tint_fill(dark))
-                    .child(icon(&ICON_CONNECTIONS, 24.0).color(accent)),
+                    .fill(empty_icon_fill(dark, colors.accent))
+                    .child(icon(&ICON_CONNECTIONS, 24.0).color(colors.accent)),
             )
-            .child(
-                text("No connections yet")
-                    .key("connections-empty-title")
-                    .font(TextStyle::new(15.0, 600.0))
-                    .color(theme.text),
-            )
-            // React State 1 uses exact i18n keys; keep the A1 English copy above
-            // for the existing key/text probes and add the translated lines.
+            .child(react_key("connections-empty-title"))
             .child(
                 text(t("main.noConnections"))
                     .key("home-empty-title-i18n")
-                    .font(TextStyle::new(15.0, 600.0))
-                    .color(theme.text),
+                    .font(TextStyle::new(14.0, 500.0).lh(20.0))
+                    .color(colors.fg),
             )
-            .child(
-                text("Import connections from another tool, or create your first one.")
-                    .key("connections-empty-hint")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary)
-                    .align(Align::Center),
-            )
+            .child(react_key("connections-empty-hint"))
             .child(
                 text(t("connWin.home.emptyNoConnectionsHint"))
                     .key("home-empty-hint-i18n")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary)
+                    .font(TextStyle::new(12.0, 400.0).lh(16.0))
+                    .color(colors.fg_muted)
+                    .mt(6.0)
+                    .w_full()
+                    .wrap()
                     .align(Align::Center),
             )
+            // Legacy React probe aliases do not occupy a gap inside buttons.
+            .child(react_key("import-connections-button"))
+            .child(react_key("new-connection-button"))
             .child(
                 row()
                     .key("connections-empty-actions")
-                    .h(32.0)
+                    .w_full()
+                    .min_h(36.0)
+                    .mt(16.0)
                     .gap(8.0)
+                    .flex_wrap()
+                    .justify_center()
                     .center_y()
                     .child(
                         row()
                             .key("import-connections")
-                            .child(react_key("import-connections-button"))
-                            .h(30.0)
-                            .px(12.0)
-                            .gap(6.0)
-                            .center_y()
-                            .radius(8.0)
-                            .fill(theme.card)
-                            .border(1.0, theme.card_border)
-                            .hover(theme.hover)
-                            .child(icon(&ICON_DOWNLOAD, 14.0).color(theme.text_secondary))
-                            .child(
-                                text("Import connections…")
-                                    .font(type_::LABEL)
-                                    .color(theme.text),
-                            )
-                            .on_press(|state: &mut AppState| state.open_import_dialog()),
+                            .role("button")
+                            .label(import_label)
+                            .focusable(true)
+                            .focus_ring(2.0, 0.0, focus)
+                            .h(36.0)
+                            .px(18.0)
+                            .gap(8.0)
+                            .center()
+                            .radius(9.0)
+                            .hover(colors.surface_raised)
+                            .child(icon(&ICON_DOWNLOAD, 16.0).color(colors.fg_secondary))
+                            .child(text(import_label).font(button_font).color(colors.fg_secondary))
+                            .on_press(AppState::open_import_dialog),
                     )
                     .child(
                         row()
                             .key("connections-create-first")
-                            .child(react_key("new-connection-button"))
-                            .h(30.0)
-                            .px(12.0)
-                            .gap(6.0)
-                            .center_y()
-                            .radius(8.0)
-                            .fill(accent)
-                            .child(icon(&ICON_PLUS, 14.0).color(on_accent()))
+                            .role("button")
+                            .label(create_label)
+                            .focusable(true)
+                            .focus_ring(2.0, 0.0, focus)
+                            .h(36.0)
+                            .px(18.0)
+                            .gap(8.0)
+                            .center()
+                            .radius(9.0)
+                            .fill(colors.accent)
+                            .hover(colors.accent_hover)
+                            .shadow(1.0, 2.0, Color::BLACK.alpha(0.10))
+                            .child(icon(&ICON_PLUS, 16.0).color(colors.on_accent))
                             .child(
-                                text("Create first connection")
-                                    .font(type_::LABEL)
-                                    .color(on_accent()),
-                            )
-                            .child(
-                                text(t("main.createFirst"))
+                                text(create_label)
                                     .key("home-create-first-i18n")
-                                    .font(type_::LABEL)
-                                    .color(on_accent()),
+                                    .font(button_font)
+                                    .color(colors.on_accent),
                             )
-                            .on_press(|state: &mut AppState| state.open_connection_dialog()),
+                            .on_press(AppState::open_connection_dialog),
                     ),
             ),
     )
+}
+
+/// The original `bg-accent/10` composited on the fixed home surface.
+/// Pin the painted flat colors because Blink and Rune quantize alpha differently.
+fn empty_icon_fill(dark: bool, accent: Color) -> Color {
+    let painted = if dark { "#11202a" } else { "#e5f2fa" };
+    rune::color::hex(painted).unwrap_or(accent.alpha(0.10))
 }
 
 /// React State 3: the landing — hero, header row, card list, recent queries,

@@ -114,6 +114,48 @@ fn empty_state_keeps_react_keys_and_exact_i18n_text() {
     }
 }
 
+#[test]
+fn empty_home_uses_original_icon_and_action_geometry_without_duplicate_copy() {
+    for (dark, expected_tint) in [(false, "#e5f2fa"), (true, "#11202a")] {
+        let mut rt = runtime(dark, (1118.0, 860.0), Vec::new());
+        let icon = element(&rt, "connections-empty-icon");
+        let title = element(&rt, "home-empty-title-i18n");
+        let hint = element(&rt, "home-empty-hint-i18n");
+        let import = element(&rt, "import-connections");
+        let create = element(&rt, "connections-create-first");
+        let expected = rune::color::hex(expected_tint).expect("known sRGB token");
+        assert_eq!(icon.fill, expected);
+        assert_eq!(&icon.rect[2..], &[48.0, 48.0]);
+        assert!((title.rect[1] - icon.rect[1] - icon.rect[3] - 16.0).abs() < 0.5);
+        assert!((hint.rect[1] - title.rect[1] - title.rect[3] - 6.0).abs() < 0.5);
+        assert!((import.rect[1] - hint.rect[1] - hint.rect[3] - 16.0).abs() < 0.5);
+        assert_eq!(import.rect[3], 36.0);
+        assert_eq!(create.rect[3], 36.0);
+        assert_eq!(import.rect[1], create.rect[1]);
+        assert!((create.rect[0] - import.rect[0] - import.rect[2] - 8.0).abs() < 0.5);
+        for key in [
+            "main.noConnections",
+            "connWin.home.emptyNoConnectionsHint",
+            "common.importConnections",
+            "main.createFirst",
+        ] {
+            let localized = datazen_ui::i18n::t(key);
+            assert_eq!(
+                texts(&rt).iter().filter(|text| text.as_str() == localized).count(),
+                1,
+                "{key} has one painted instance",
+            );
+        }
+        click(&mut rt, "import-connections");
+        assert!(rt.state.import_dialog_open, "the existing import action still opens");
+        assert!(!rt.state.connection_dialog_open);
+        rt.state.close_import_dialog();
+        refresh(&mut rt);
+        click(&mut rt, "connections-create-first");
+        assert!(rt.state.connection_dialog_open, "the existing connection form still opens");
+    }
+}
+
 // ---- Hero counts and landing keys ---------------------------------------------------------------
 
 #[test]

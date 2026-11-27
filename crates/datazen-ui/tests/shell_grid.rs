@@ -415,10 +415,15 @@ use rune::{Env, Runtime};
             rt.find("connections-empty").is_some(),
             "the empty state is on the page"
         );
-        let texts: Vec<String> = rt.elements().iter().filter_map(|e| e.text.clone()).collect();
+        let elements = rt.elements();
+        let title = elements
+            .iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some("home-empty-title-i18n"))
+            .expect("the empty home's title is painted");
+        assert_eq!(title.text.as_deref(), Some(datazen_ui::i18n::t("main.noConnections")));
         assert!(
-            texts.iter().any(|t| t.contains("No connections yet")),
-            "the empty state's title is present: {texts:?}"
+            !elements.iter().any(|e| e.text.as_deref() == Some("No connections yet")),
+            "do not paint the old duplicate English copy"
         );
         assert!(
             rt.find("import-connections").is_some(),
