@@ -46,6 +46,12 @@ pub use table_editing as data_browsing;
 #[cfg(feature = "backup")]
 pub use backup::{backup_gateway, restore_gateway, restore_job};
 
+// Keep the single resolver beside its embedded templates and tests. Native
+// Basic settings can use it independently of providers and orchestration.
+#[cfg(feature = "prompt_settings")]
+#[path = "ai/application/prompt_resolver.rs"]
+pub mod prompt_resolver;
+
 #[cfg(feature = "ai")]
 pub mod ai;
 

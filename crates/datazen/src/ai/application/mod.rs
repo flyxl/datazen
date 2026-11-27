@@ -23,7 +23,7 @@ pub mod filter;
 pub mod mcp_tools;
 pub mod ownership;
 pub mod ports;
-pub mod prompt_resolver;
+pub use crate::prompt_resolver;
 pub mod response;
 pub mod retry;
 pub mod schema_context;

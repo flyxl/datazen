@@ -315,6 +315,10 @@ jobs = [
     "dep:futures-util",
     "execution",
 ]
+# Local prompt defaults/overrides, shared by native Settings and the AI
+# resolver. Resolving or editing local templates needs no provider client.
+prompt_settings = ["dep:datazen-driver-api", "dep:serde_json", "dep:tokio", "dep:tracing"]
+
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。
@@ -324,6 +328,7 @@ jobs = [
 # workflow（schema_context 经 ResourceExecutionHost 走共享执行网关；
 # workflow 已传递 execution/schema/table-editing）、uuid（请求 id 铸造）。
 ai = [
+    "prompt_settings",
     "dep:async-trait",
     "dep:serde_json",
     "dep:serde_yaml",

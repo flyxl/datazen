@@ -2,7 +2,7 @@
 //! existing persisted file; never construct a completion client for this job.
 use std::path::Path;
 
-use datazen::ai::prompt_resolver::{PromptOverrideEntry, PromptResolver};
+use datazen::prompt_resolver::{PromptOverrideEntry, PromptResolver};
 use datazen::execution::runtime::driver_registry::DriverRegistry;
 use datazen_ui_api::native_prompts::{
     NativePromptChange, NativePromptRequest, NativePromptView, PromptScenario,
