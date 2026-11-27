@@ -88,6 +88,7 @@ impl AppState {
 
     pub(crate) fn cancel_query_editor_input(&mut self) {
         self.sql.preedit("");
+        self.sql.dismiss_find();
         self.sql.focused = false;
         self.query_editor_tabs.scroll_mount = None;
         if self.query_editor_tabs.active.is_some() && self.query_editor_tabs.pending_scroll.is_none() {

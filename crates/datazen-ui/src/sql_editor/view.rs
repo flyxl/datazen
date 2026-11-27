@@ -1,12 +1,10 @@
 use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, row, text};
 
-use crate::i18n::t;
 use crate::ui::palette;
 
 use super::highlight::highlight_with_palette;
 use super::syntax_theme::SyntaxPalette;
 use super::model::SqlEditor;
-use crate::ui::field::TextField;
 
 /// The current Native editing surface scrolls long lines horizontally.
 /// React enables soft wrap; it needs shared render/caret geometry and is not
@@ -38,7 +36,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
 }
 
 pub(crate) fn panel_with_completion_scope(
-    editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool,
+    editor: &SqlEditor, ink: rune::Color, _muted: rune::Color, dark: bool,
     completion_current: bool,
     viewport: Option<crate::query_editor_tabs::QueryEditorViewport>,
     font_size: u32,
@@ -116,78 +114,11 @@ pub(crate) fn panel_with_completion_scope(
         ),
         None => (sheet, None),
     };
-    col()
+    let panel = col()
         .key("sql-editor")
         .w_full()
         .h_full()
         .min_h(120.0)
-        .gap(8.0)
-        .child(
-            row()
-                .key("sql-find-bar")
-                .w_full()
-                .h(28.0)
-                .gap(8.0)
-                .center_y()
-                .child(
-                    TextField::new("sql-find-input", &editor.find_input)
-                        .height(24.0)
-                        .text_style(editor_font())
-                        .width(150.0)
-                        .on_edit(|state: &mut crate::AppState| &mut state.sql.find_input)
-                        .on_submit(|state: &mut crate::AppState, tx| {
-                            state.sql.find_from_bar();
-                            tx.blur();
-                        })
-                        .build(dark),
-                )
-                .child(
-                    text("Find next")
-                        .font(rune::tok::type_::LABEL)
-                        .color(ink)
-                        .key("sql-find-next")
-                        .on_press(|state: &mut crate::AppState| {
-                            state.sql.find_from_bar();
-                        }),
-                )
-                .child(
-                    TextField::new("sql-replace-input", &editor.replace_input)
-                        .height(24.0)
-                        .text_style(editor_font())
-                        .width(150.0)
-                        .on_edit(|state: &mut crate::AppState| &mut state.sql.replace_input)
-                        .on_submit(|state: &mut crate::AppState, tx| {
-                            state.sql.replace_current_from_bar();
-                            tx.blur();
-                        })
-                        .build(dark),
-                )
-                .child(
-                    text(t("resultFind.replaceNext"))
-                        .font(rune::tok::type_::LABEL)
-                        .color(ink)
-                        .key("sql-replace-current")
-                        .on_press(|state: &mut crate::AppState| {
-                            state.sql.replace_current_from_bar();
-                        }),
-                )
-                .child(
-                    text("Replace all")
-                        .font(rune::tok::type_::LABEL)
-                        .color(ink)
-                        .key("sql-replace-all")
-                        .on_press(|state: &mut crate::AppState| {
-                            state.sql.replace_all_from_bar();
-                        }),
-                )
-                .child(
-                    text("Add cursor")
-                        .font(rune::tok::type_::LABEL)
-                        .color(muted)
-                        .key("sql-add-cursor")
-                        .on_press(|state: &mut crate::AppState| state.sql.add_cursor_at_end()),
-                ),
-        )
         .child(
             {
                 let body = col()
@@ -215,17 +146,25 @@ pub(crate) fn panel_with_completion_scope(
                         .grow(1.0)
                         .min_h(0.0)
                         .scroll_xy()
+                        .focusable(true)
+                        .on_key(super::find_dock::canvas_key)
                         .on_scroll_offset(move |at| {
                             if let Some(scroll) = &scroll { scroll.set(at.offset); }
                         })
-                        .on_press(|state: &mut crate::AppState| {
-                            // The editor takes keyboard input back from the result grid.
+                        .on_press_tx(|state: &mut crate::AppState, tx| {
+                            // Take the actual editor focus back from other fields/results.
                             state.result_focused = false;
                             state.sql.focus();
+                            tx.focus("sql-editor-scroll", false);
                         })
                         .child(doc),
                 ),
-        )
+        );
+    if editor.find_open {
+        panel.child(super::find_dock::panel(editor, document_ink, dark))
+    } else {
+        panel
+    }
 }
 
 /// The completion list, drawn in the canvas below the caret line.

@@ -417,8 +417,8 @@ class TcpSqlJourneys:
         editor[-1] = {"t": 5, "type": "paste", "text": sql}
         invoke = key(12, "Enter", cmd=True) if shortcut else tap(12, "sql-run")
         tree = self.replay([
-            *editor, *fill(8.5, "sql-find-input", fragment),
-            tap(10.8, "sql-find-next"), invoke,
+            *editor, tap(8.0, "sql-find-open"), *fill(8.5, "sql-find-input", fragment),
+            tap(10.8, "sql-find-next"), key(11.3, "Escape"), invoke,
         ], until=15)
         self.expect_rendered(tree, text="picked_only", within="result-data-grid-header")
         self.expect_rendered(tree, text=expected, within="result-cell-0-0")

@@ -7,6 +7,7 @@
 //! the view paints lines, highlight spans and carets. The main caret is an `El::ime_cursor`,
 //! which is what turns the platform input method on.
 
+pub(crate) mod find_dock;
 mod from_completion;
 mod highlight;
 mod input;

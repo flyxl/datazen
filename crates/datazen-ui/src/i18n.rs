@@ -57,6 +57,12 @@ pub fn len() -> usize {
 
 fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
     let native = match key {
+        "query.nativeFind.open" => Some(("在 SQL 中查找", "Find in SQL")),
+        "query.nativeFind.find" => Some(("查找", "Find")),
+        "query.nativeFind.next" => Some(("下一处", "Find next")),
+        "query.nativeFind.previous" => Some(("上一处", "Find previous")),
+        "query.nativeFind.replaceAll" => Some(("全部替换", "Replace all")),
+        "query.nativeFind.addCursor" => Some(("添加光标", "Add cursor")),
         "settings.nativeEditorFont.bundled" => Some(("内置等宽字体（IBM Plex Mono）", "Bundled monospace (IBM Plex Mono)")),
         "settings.nativeEditorFont.system" => Some(("系统等宽字体（不可用时使用内置字体）", "System monospace (bundled fallback)")),
         "extensions.page.nativeListUnavailable" => Some((

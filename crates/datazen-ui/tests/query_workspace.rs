@@ -130,8 +130,10 @@ fn query_toolbar_is_above_flex_idle_editor_and_run_preserves_the_selected_statem
     assert!(rt.find("query-idle-hint").is_some());
     assert!(rt.find("query-result-tabs").is_none());
     assert!(rt.find("splitter:query-editor-height").is_none());
-    assert!(rt.find("sql-find-input").is_some());
-    assert!(rt.find("sql-replace-input").is_some());
+    assert!(rt.find("sql-find-open").is_some());
+    assert!(rt.find("sql-find-input").is_none(), "idle Query does not reserve a find bar");
+    assert!(rt.find("sql-replace-input").is_none());
+    assert_eq!(viewport[1], editor[1], "no gap under the editor pane edge");
 
     tap_query(&mut rt, "sql-run");
     let grid = rt.state.result_grid.as_ref().expect("toolbar executes the selected statement");

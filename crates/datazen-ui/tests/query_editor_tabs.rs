@@ -192,9 +192,8 @@ fn sql_gutter_numbers_follow_document_rows_and_stay_left_while_scrolling() {
     rt.state.sql.set_main_selection(0, 6);
     rt.frame(0.05);
     assert!(rt.find("sql-cursor-count").is_none(), "no development status row");
-    for key in ["sql-add-cursor", "sql-find-input", "sql-replace-input", "sql-selected-0-0"] {
-        assert!(rt.find(key).is_some(), "existing {key} affordance still mounted");
-    }
+    assert!(rt.find("sql-selected-0-0").is_some());
+    assert!(rt.find("sql-find-bar").is_none(), "the dock is opt-in");
 
     let box_of = |rt: &Runtime<AppState>, key: &str| rt.presented(key).expect(key).0;
     let view = box_of(&rt, "sql-editor-scroll");
@@ -223,4 +222,80 @@ fn sql_gutter_numbers_follow_document_rows_and_stay_left_while_scrolling() {
     let document = box_of(&rt, "sql-line-11");
     assert_eq!(moved[1] - document[1], 80.0);
     assert_eq!(number[1], document[1], "vertical scroll stays aligned");
+}
+
+#[test]
+fn find_dock_scopes_real_shortcuts_and_returns_focus_without_editing_the_draft() {
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.state.workspace.connect("local").unwrap();
+    let a = rt.state.open_query_tab("Query").unwrap();
+    let sql = "SELECT '中文';\nSELECT '中文';";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(sql);
+    rt.frame(0.0);
+    let doc = |rt: &Runtime<AppState>| rt.presented("sql-editor-scroll").unwrap().0;
+    let closed = doc(&rt);
+    assert!(rt.find("sql-find-bar").is_none());
+    assert!(rt.find("sql-find-open").is_some());
+
+    let command = Mods { cmd: true, ..Mods::default() };
+    tap(&mut rt, "sql-editor-scroll");
+    key(&mut rt, Key::Command('f'), command);
+    let open = doc(&rt);
+    let dock = rt.presented("sql-find-bar").unwrap().0;
+    assert_eq!(open[1], closed[1], "search does not shift the top of the document");
+    assert!((open[1] + open[3] - dock[1]).abs() < 0.1, "dock immediately below the viewport");
+    assert!((dock[3] - 52.0).abs() < 0.1, "compact two-row dock");
+    assert!((closed[3] - open[3] - dock[3]).abs() < 0.1);
+    for key in ["sql-find-prev", "sql-find-next", "sql-add-cursor", "sql-replace-input", "sql-replace-all", "sql-find-close"] {
+        assert!(rt.find(key).is_some(), "{key} still reachable");
+    }
+    assert!(rt.state.sql.find_input.focused);
+    key(&mut rt, Key::Text("中文".into()), Mods::default());
+    assert_eq!(rt.state.sql.find_input.text, "中文");
+    key(&mut rt, Key::Enter, command);
+    assert!(rt.state.query_result_tabs.is_empty(), "search input does not run SQL");
+    key(&mut rt, Key::Enter, Mods::default());
+    assert_eq!(rt.state.sql.selection().main().from(), 8);
+    assert_eq!(rt.state.sql.selected_text(), "中文");
+    assert!(rt.state.sql.find_input.focused, "Enter retains search focus");
+    key(&mut rt, Key::Function(3), Mods::default());
+    assert_eq!(rt.state.sql.selection().main().from(), 25);
+    key(&mut rt, Key::Command('g'), Mods { shift: true, ..command });
+    assert_eq!(rt.state.sql.selection().main().from(), 8);
+    tap(&mut rt, "sql-find-next");
+    assert_eq!(rt.state.sql.selection().main().from(), 25);
+    key(&mut rt, Key::Enter, command);
+    assert!(rt.state.query_result_tabs.is_empty(), "search buttons do not run SQL either");
+    key(&mut rt, Key::Escape, Mods::default());
+    assert!(rt.find("sql-find-bar").is_none());
+    assert!(rt.state.sql.focused(), "Escape returns to the actual editor");
+    assert_eq!(doc(&rt), closed, "dock doesn't reserve idle space");
+    assert_eq!(rt.state.sql.doc(), sql);
+    assert!(rt.state.sql.undo_stack.is_empty(), "search is not a document edit");
+
+    tap(&mut rt, "sql-find-open");
+    assert!(rt.state.sql.find_input.focused, "the visible control opens and focuses Find");
+    assert_eq!(rt.state.sql.find_input.text, "中文");
+    tap(&mut rt, "toolbar-new-query");
+    let b = rt.state.tabs.selected().expect("new Query mounted").id;
+    assert_ne!(a, b);
+    assert!(rt.find("sql-find-bar").is_none());
+    assert!(rt.state.sql.find_input.text.is_empty());
+    tap_tab(&mut rt, a);
+    assert!(rt.find("sql-find-bar").is_none());
+    assert_eq!(rt.state.sql.find_input.text, "中文", "needle belongs to its own query draft");
+    assert_eq!(rt.state.sql.doc(), sql);
+    assert!(rt.state.sql.undo_stack.is_empty());
+
+    tap(&mut rt, "sql-find-open");
+    tap(&mut rt, "sql-find-close");
+    assert!(rt.find("sql-find-bar").is_none());
+    assert!(rt.state.sql.focused(), "explicit close restores the editor focus");
+    let match_range = rt.state.sql.selection().main();
+    assert!(match_range.from() < match_range.to(), "closing preserves the selected match");
+    key(&mut rt, Key::Left, Mods::default());
+    let caret = rt.state.sql.selection().main();
+    assert_eq!((caret.from(), caret.to()), (match_range.from(), match_range.from()),
+        "ArrowLeft in the editor collapses the match to its leading edge");
 }

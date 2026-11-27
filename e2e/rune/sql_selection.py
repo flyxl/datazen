@@ -69,14 +69,55 @@ class SqlSelectionJourneys:
             expected = db.execute(selected).fetchone()[0]
         actions = [
             *query_steps(sql)[:-1],
-            *fill(9.5, "sql-find-input", selected), tap(11.0, "sql-find-next"),
-            tap(12.0, "sql-run"),
+            tap(9.0, "sql-find-open"), *fill(9.5, "sql-find-input", selected),
+            tap(11.0, "sql-find-next"), key(11.5, "Escape"), tap(12.0, "sql-run"),
         ]
         tree = self.replay(actions, until=14.4)
         self.expect_rendered(tree, text=expected, within="result-workspace")
         self.expect_rendered(tree, key="result-grid-status", text="result · 1 rows × 1 cols")
         self.assertFalse(visible(tree, text="unselected sibling", within="result-workspace"))
         self.assertEqual(self.sql_customer_rows(), original)
+
+    def test_native_sql_editor_find_dock_is_opt_in_then_focuses_next_and_escapes(self):
+        """The live Query dock is scoped and search never runs or edits a draft."""
+        self.sql_fixture_before()
+        db_bytes = self.db.read_bytes()
+        sql = "SELECT '中文';\nSELECT '中文';"
+        prefix = query_steps(sql)[:-1]
+        prefix[-1] = {"t": 4.8, "type": "paste", "text": sql}
+        prefix.extend([key(5.8, "Home", cmd=True), key(6.2, "Home")])
+        idle = self.replay(prefix, until=6.7)
+        self.expect_rendered(idle, key="sql-find-open")
+        self.assertFalse(visible(idle, key="sql-find-bar"))
+        idle_box = self._settled_rect(idle, "sql-editor-scroll")
+
+        opened = [*prefix, key(6.8, "f", cmd=True),
+                  type_text(7.4, "中文"), key(7.9, "Enter", cmd=True),
+                  key(8.3, "Enter")]
+        first = self.replay(opened, until=8.9)
+        self.expect_rendered(first, text="中文", key="sql-selected-0-8")
+        self.assertFalse(visible(first, key="sql-selected-1-8"))
+        self.assertFalse(visible(first, key="result-workspace"))
+        self.assertEqual(self._settled_rect(first, "sql-editor-scroll")[1], idle_box[1])
+        y, height = self._settled_rect(first, "sql-find-bar")[1::2]
+        self.assertAlmostEqual(y+height, idle_box[1] + idle_box[3], delta=.1)
+        self.assertAlmostEqual(height, 52.0, delta=.1)
+
+        next_actions = [*opened, key(9.0, "F3")]
+        second = self.replay(next_actions, until=9.55)
+        self.expect_rendered(second, key="sql-selected-1-8", text="中文")
+        self.assertFalse(visible(second, key="sql-selected-0-8"))
+
+        restored = self.replay([*next_actions, key(9.6, "Escape")], until=10.3)
+        self.assertFalse(visible(restored, key="sql-find-bar"))
+        self.assertEqual(self._settled_rect(restored, "sql-editor-scroll"), idle_box)
+        editor = next(e for e in restored["elements"] if e.get("key") == "sql-editor-scroll")
+        self.assertTrue(editor["focused"])
+        self.expect_rendered(restored, key="sql-selected-1-8", text="中文")
+        self.assertFalse(visible(restored, key="result-workspace"))
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+        self.assertEqual(self.db.read_bytes(), db_bytes)
 
     def test_native_sql_editor_caret_keeps_literal_semicolon_and_ignores_other_write(self):
         original = self.sql_fixture_before()

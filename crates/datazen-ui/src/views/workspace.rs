@@ -496,6 +496,17 @@ fn query_toolbar(state: &AppState, theme: tok::Theme, database_picker: Option<El
             toolbar_button("sql-tx-rollback", t("query.rollbackTx"), theme)
                 .on_press(|s: &mut AppState| s.query_transaction("Rollback")),
         );
+    // CodeMirror finds from its editor shortcut. Keep the same shortcut
+    // reachable from the Native toolbar for users who discover actions by eye.
+    let find_label = t("query.nativeFind.open");
+    let chord = if cfg!(target_os = "macos") { "⌘F" } else { "Ctrl+F" };
+    bar = bar.child(
+        row().key("sql-find-open").role("button").focusable(true).label(find_label)
+            .help(format!("{find_label} ({chord})"))
+            .w(26.0).h(24.0).center().radius(4.0)
+            .child(rune::icon(&icons::ICON_SEARCH, 14.0).color(theme.text_secondary))
+            .on_press_tx(crate::sql_editor::find_dock::open),
+    );
     if state.native_query_selected() || state.query_loading.is_some() {
         bar = bar.child(
             text("Command+Enter runs the statement at the cursor")

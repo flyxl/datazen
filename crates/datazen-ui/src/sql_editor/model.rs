@@ -145,7 +145,8 @@ pub struct SqlEditor {
     /// Undo and redo cover character insertion and deletion only.
     pub undo_stack: Vec<Snapshot>,
     pub redo_stack: Vec<Snapshot>,
-    /// The find bar's needle and replacement.
+    /// The Query-only find dock opens on demand; each draft owns its needle.
+    pub(super) find_open: bool,
     pub find_input: TextEdit,
     pub replace_input: TextEdit,
     /// The open completion list, if any.
@@ -176,6 +177,7 @@ impl SqlEditor {
             preferred_columns: Vec::new(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            find_open: false,
             find_input: TextEdit::new(String::new()),
             replace_input: TextEdit::new(String::new()),
             completion: None,
@@ -594,6 +596,38 @@ impl SqlEditor {
             }
             None => false,
         }
+    }
+
+    fn find_previous_from(&mut self, needle: &str) -> bool {
+        if needle.is_empty() {
+            return false;
+        }
+        let main = self.selection.main();
+        let from = if self.doc.get(main.from()..main.to()) == Some(needle) {
+            main.from()
+        } else {
+            main.head
+        };
+        let found = self.doc[..from].rfind(needle)
+            .or_else(|| self.doc[from..].rfind(needle).map(|at| at + from));
+        let Some(at) = found else { return false; };
+        self.preferred_columns.clear();
+        self.selection = Selection {
+            ranges: vec![Sel { anchor: at, head: at + needle.len() }],
+            main: 0,
+        };
+        true
+    }
+
+    pub(super) fn find_previous_from_bar(&mut self) -> bool {
+        let needle = self.find_input.text.clone();
+        self.find_previous_from(&needle)
+    }
+
+    pub(crate) fn dismiss_find(&mut self) {
+        self.find_open = false;
+        self.find_input.focused = false;
+        self.replace_input.focused = false;
     }
 
     /// Replace the main selection when it matches `needle`, then select the next
