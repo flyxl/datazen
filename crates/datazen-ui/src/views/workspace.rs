@@ -154,7 +154,6 @@ pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .selected()
         .map(|tab| tab.title.clone())
         .unwrap_or_default();
-    let _ = &title;
     let body = match state.table_view {
         TableView::Data => crate::data_grid::panel(
             state,
@@ -171,62 +170,49 @@ pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     col()
         .key("table-workspace")
         .w_full()
-        .gap(8.0)
-        .child(view_switcher(state, theme))
+        .child(view_switcher(state, dark))
         .child(body)
 }
-pub fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
-    let entry = |key: &str, label: &str, view: TableView, active: bool| {
-        row()
-            .key(key)
-            .h(24.0)
-            .px(10.0)
-            .center_y()
-            .radius(6.0)
-            .fill(if active {
-                crate::ui::theme::accent(true)
-            } else {
-                theme.control_off
-            })
-            .child(text(label).font(type_::LABEL).color(theme.text))
-            .on_press(move |state: &mut AppState| state.set_table_view(view))
-    };
-    row()
-        .key("table-view-switcher")
-        .w_full()
-        .h(28.0)
-        .gap(6.0)
-        .center_y()
-        .child(entry(
-            "view-data",
-            t("connWin.data"),
-            TableView::Data,
-            state.table_view == TableView::Data,
-        ))
-        .child(entry(
-            "view-columns",
-            t("connWin.fields"),
-            TableView::Columns,
-            state.table_view == TableView::Columns,
-        ))
-        .child(entry(
-            "view-indexes",
-            t("connWin.indexes"),
-            TableView::Indexes,
-            state.table_view == TableView::Indexes,
-        ))
-        .child(entry(
-            "view-fks",
-            "Foreign keys",
-            TableView::ForeignKeys,
-            state.table_view == TableView::ForeignKeys,
-        ))
-        .child(entry(
-            "view-ddl",
-            t("objectSearch.ddl"),
-            TableView::Ddl,
-            state.table_view == TableView::Ddl,
-        ))
+pub fn view_switcher(state: &AppState, dark: bool) -> El {
+    let k = crate::ui::kit::kit(dark);
+    let tabs = [
+        ("view-data", t("connWin.data"), TableView::Data),
+        ("view-columns", t("connWin.structure"), TableView::Columns),
+        ("view-indexes", t("connWin.indexes"), TableView::Indexes),
+        ("view-fks", t("connWin.foreignKeys"), TableView::ForeignKeys),
+        ("view-ddl", t("objectSearch.ddl"), TableView::Ddl),
+    ];
+    // The original SubTabBar joins the data/structure panel with a square
+    // surface-alt strip. Each real action takes its own label width + 20pt
+    // insets; the focusable pressed control uses a 2pt bottom indicator
+    // instead of tinting the whole selected tab.
+    let mut strip = row().key("table-view-switcher").w_full().h(37.0).shrink()
+        .fill(k.c.layer_02)
+        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base);
+    for (key, label, view) in tabs {
+        let active = state.table_view == view;
+        let mut tab = row().key(key).h(36.0).px(20.0).shrink().center_y()
+            .role("button").label(label).checked(active).focusable(true)
+            .focus_ring(2.0, 2.5, k.c.border_focus)
+            .child(
+                text(label).key(format!("{key}-label"))
+                    .font(rune::TextStyle::new(13.0, if active { 500.0 } else { 400.0 }))
+                    .color(if active { k.c.text_base } else { k.c.text_muted })
+                    .a11y_hidden(),
+            )
+            .on_press(move |state: &mut AppState| state.set_table_view(view));
+        if active {
+            tab = tab.fill(k.c.page).child(
+                row().key(format!("{key}-active-indicator"))
+                    .pin(Some(0.0), None, Some(0.0), Some(0.0))
+                    .h(2.0).fill(k.c.bg_accent).a11y_hidden(),
+            );
+        } else {
+            tab = tab.hover(k.c.surface_raised);
+        }
+        strip = strip.child(tab);
+    }
+    strip
 }
 
 /// E1: the honest state of one table's structure read — a read in flight,
