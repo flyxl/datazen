@@ -9,9 +9,8 @@
 
 use datazen_ui::test_support::*;
 
-/// The keys the connection page shell must compose. Split into "always" (the
-/// window chrome, rail, navigator, toolbar and status bar are present on every
-/// section) and "workspace only" (the tab strip follows React's `ContentView`).
+/// Invariants for the connections landing composition. Other routes still
+/// share the window shell, but mount the database navigator conditionally.
 const SHELL_KEYS: &[&str] = &[
     "datazen-root",
     "rune-connection-page",
@@ -122,6 +121,17 @@ fn every_section_stays_reachable_after_the_port() {
             keys.contains(*body_key),
             "{section:?} must still dispatch to {body_key:?}; keys: {keys:?}"
         );
+        let database = matches!(*section, Section::Connections | Section::Workspace);
+        for key in [
+            "datazen-navigator",
+            "navigator-connections",
+            "navigator-filter-input",
+            "splitter:navigator-width",
+        ] {
+            assert_eq!(keys.contains(key), database, "{section:?}: {key}");
+        }
+        assert_eq!(keys.contains("workflow-sidebar"), *section == Section::Workflows);
+        assert!(keys.contains("datazen-rail"), "the mode rail still navigates sections");
         let title = rt
             .elements()
             .into_iter()
@@ -153,6 +163,43 @@ fn every_section_stays_reachable_after_the_port() {
         key_set(&rt).contains("tab-strip"),
         "Workspace now mounts the tab strip"
     );
+}
+
+#[test]
+fn switching_to_workflow_and_back_preserves_the_database_navigator_state() {
+    let mut rt = runtime();
+    rt.state.set_layout_size("navigator-width", 310).unwrap();
+    rt.state.navigator_filter = rune::TextEdit::new("local");
+    rt.state.toggle_expand("catalog-fixture");
+    let rail_was_expanded = rt.state.sidebar_expanded();
+    rt.frame(0.0);
+
+    for (key, section) in [
+        ("rail-workflows", Section::Workflows),
+        ("rail-connections", Section::Connections),
+        ("rail-workspace", Section::Workspace),
+    ] {
+        let (x, y) = rt.find(key).expect("route is reachable through the mode rail");
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
+        rt.frame(0.0);
+        assert_eq!(rt.state.active, section);
+        let asides: Vec<_> = rt.elements().into_iter()
+            .filter(|e| !e.exiting && e.key.as_deref() == Some("datazen-navigator"))
+            .collect();
+        if section == Section::Workflows {
+            assert!(asides.is_empty(), "Workflow owns only its dedicated sidebar");
+            assert!(key_set(&rt).contains("workflow-sidebar"));
+            assert!(!key_set(&rt).contains("splitter:navigator-width"));
+        } else {
+            assert_eq!(asides.len(), 1, "one database navigator per database route");
+            assert!((asides[0].rect[2] - 310.0).abs() <= 0.5, "saved width resumes");
+        }
+        assert_eq!(rt.state.navigator_filter.text, "local");
+        assert!(rt.state.collapsed.contains("catalog-fixture"));
+        assert_eq!(rt.state.sidebar_expanded(), rail_was_expanded);
+    }
 }
 
 #[test]

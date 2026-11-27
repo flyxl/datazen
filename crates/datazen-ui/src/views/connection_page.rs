@@ -77,33 +77,34 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
 
     let titlebar = connection_titlebar(state, theme, dark, titlebar_inset);
 
-    // WorkspaceModeSidebar (React mode rail) + the navigator aside with its
-    // resize handle, then the content workspace.
-    let rail = rail_view(state, dark);
-    let navigator = navigator_panel(state, theme, dark);
-    let nav_splitter = splitter::splitter_handle(
-        state,
-        NAVIGATOR_WIDTH_KEY,
-        splitter::SplitAxis::Vertical,
-        NAVIGATOR_WIDTH_MIN,
-        NAVIGATOR_WIDTH_MAX,
-        NAVIGATOR_WIDTH_DEFAULT,
-    );
-
-    // Single window-level overlay layer: dialogs and select listboxes mount
-    // here (page_body takes the same vec). Appended once at the root below.
-    let mut layer = modal_layer(state, theme, dark);
-
-    let body = row()
+    // The mode rail is independent of the database navigator. React
+    // mounts ConnectionNavigatorTree in its connection workspace only;
+    // Rune splits that workspace between the landing and the live tabs.
+    // Workflow and the other sections keep their own content/sidebar.
+    let mut body = row()
         .key("datazen-body")
         .w_full()
         .grow(1.0)
         .min_h(0.0)
         .min_w(0.0)
-        .child(rail)
-        .child(navigator)
-        .child(nav_splitter)
-        .child(connection_content(state, theme, dark, &mut layer));
+        .child(rail_view(state, dark));
+    if matches!(state.active, Section::Connections | Section::Workspace) {
+        body = body
+            .child(navigator_panel(state, theme, dark))
+            .child(splitter::splitter_handle(
+                state,
+                NAVIGATOR_WIDTH_KEY,
+                splitter::SplitAxis::Vertical,
+                NAVIGATOR_WIDTH_MIN,
+                NAVIGATOR_WIDTH_MAX,
+                NAVIGATOR_WIDTH_DEFAULT,
+            ));
+    }
+
+    // Single window-level overlay layer: dialogs and select listboxes mount
+    // here (page_body takes the same vec). Appended once at the root below.
+    let mut layer = modal_layer(state, theme, dark);
+    let body = body.child(connection_content(state, theme, dark, &mut layer));
 
     col()
         .key("datazen-root")
