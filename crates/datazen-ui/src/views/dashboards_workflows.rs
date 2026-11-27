@@ -4,7 +4,8 @@
 use super::*;
 
 use crate::constants::*;
-use crate::icons::{self, section_icon};
+use crate::i18n::t;
+use crate::icons::{self, section_icon, ICON_DASHBOARDS, ICON_PLUS, ICON_REFRESH};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{Section, TableView, Tool};
 use crate::ui::field::TextField;
@@ -17,7 +18,10 @@ use rune::tok::{self, type_};
 use rune::{col, row, text, Color, Cx, El};
 
 use crate::ui::palette;
-use rune::{FileDialogOptions, TextEdit, Tx};
+use rune::{icon, FileDialogOptions, ScrollSpec, TextEdit, Tx};
+use rune_kit::{Button, ButtonVariant, ControlSize};
+
+use crate::ui::kit::kit;
 
 // The workflows section arms in `views/workspace.rs` route to the page
 // port (`views/workflow/workflow_page.rs`, T145) — the lite inline editor
@@ -25,101 +29,138 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 /// The dashboards page: the widget list. An empty list has its own state.
 pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let widgets = state.host_widgets();
+    let k = kit(dark);
     let mut page = col()
         .key("dashboards-page")
         .w_full()
-        .gap(8.0)
-        .child(
-            text("Dashboards".to_owned())
-                .font(type_::TITLE)
-                .color(theme.text),
-        )
+        .grow(1.0)
+        .min_h(0.0)
+        .fill(k.c.page)
         .child(
             row()
                 .key("widget-form")
                 .w_full()
-                .h(28.0)
+                .shrink()
                 .gap(8.0)
-                .center_y()
+                .px(16.0)
+                .py(8.0)
+                .items_center()
+                .flex_wrap()
+                .fill(k.c.surface_weak)
+                .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
                 .child(
                     TextField::new("widget-title-input", &state.widget_title)
-                        .height(24.0)
-                        .width(160.0)
+                        .height(28.0)
+                        .width(164.0)
+                        .shrink()
+                        .pad_x(8.0)
+                        .radius(k.radius.sm)
+                        .fill(k.c.bg_base)
+                        .border(1.0, k.c.border_base)
+                        .placeholder(t("dashboard.widgetTitlePlaceholder"))
+                        .label(t("dashboard.widgetTitle"))
                         .on_edit(|state: &mut AppState| &mut state.widget_title)
                         .build(dark),
                 )
                 .child(
                     TextField::new("widget-query-input", &state.widget_query)
-                        .height(24.0)
-                        .width(260.0)
+                        .height(28.0)
+                        .width(280.0)
                         .shrink()
+                        .pad_x(8.0)
+                        .radius(k.radius.sm)
+                        .fill(k.c.bg_base)
+                        .border(1.0, k.c.border_base)
+                        .placeholder(t("dashboard.sql"))
+                        .label(t("dashboard.sql"))
                         .on_edit(|state: &mut AppState| &mut state.widget_query)
                         .build(dark),
                 )
                 .child(
                     row()
                         .key("widget-save")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("Save widget").font(type_::LABEL).color(theme.text))
+                        .h(28.0)
+                        .px(12.0)
+                        .gap(4.0)
+                        .center()
+                        .radius(k.radius.md)
+                        .fill(k.c.bg_accent)
+                        .hover(k.alpha(k.c.submit_hover, 0.8))
+                        .focus_ring(2.0, 2.5, k.c.border_focus)
+                        .role("button")
+                        .label(t("common.save"))
+                        .focusable(true)
+                        .child(icon(&ICON_PLUS, 14.0).color(k.c.submit_icon).a11y_hidden())
+                        .child(
+                            text(t("common.save"))
+                                .font(k.ty.text_xsmall_medium)
+                                .color(k.c.submit_fg)
+                                .a11y_hidden(),
+                        )
                         .on_press(|state: &mut AppState| state.save_widget_form()),
                 )
                 .child(
-                    row()
-                        .key("widget-refresh")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("Refresh").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.refresh_widget_bars()),
+                    Button::new(t("dashboard.refreshWidget"))
+                        .variant(ButtonVariant::Ghost)
+                        .control_size(ControlSize::Large)
+                        .icon(&ICON_REFRESH)
+                        .on_press(|state: &mut AppState| state.refresh_widget_bars())
+                        .build(k)
+                        .key("widget-refresh"),
                 ),
         );
     if let Some(error) = &state.widget_error {
         page = page.child(
-            row()
+            text(error.clone())
                 .key("widget-form-error")
                 .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(
-                    text(error.clone())
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
+                .shrink()
+                .px(16.0)
+                .py(8.0)
+                .font(k.ty.text_xsmall)
+                .color(k.c.danger.fg)
+                .fill(k.alpha(k.c.danger.fg, 0.06))
+                .wrap()
+                .selectable(true),
         );
     }
     if widgets.is_empty() {
+        // Match the embedded DashboardPanel's centered empty treatment. This
+        // host manages widgets, not boards; the form is the real entry point.
         return page.child(
             col()
                 .key("dashboard-empty")
                 .w_full()
-                .h(120.0)
-                .px(12.0)
-                .py(8.0)
-                .radius(8.0)
-                .fill(theme.control_off)
+                .grow(1.0)
+                .min_h(0.0)
+                .center()
+                .gap(12.0)
+                .px(16.0)
                 .child(
-                    text("No widgets yet".to_owned())
-                        .font(type_::TITLE)
-                        .color(theme.text),
+                    icon(&ICON_DASHBOARDS, 40.0)
+                        .key("dashboard-empty-icon")
+                        .color(k.alpha(k.c.text_faint, 0.40)),
                 )
                 .child(
-                    text("The widget form arrives with the next task")
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
+                    text(t("dashboard.empty"))
+                        .key("dashboard-empty-message")
+                        .font(k.ty.body)
+                        .color(k.c.text_faint)
+                        .align(rune::Align::Center)
+                        .wrap(),
                 ),
         );
     }
+    let mut list = col()
+        .key("dashboard-widget-list")
+        .w_full()
+        .grow(1.0)
+        .min_h(0.0)
+        .gap(12.0)
+        .padding(16.0)
+        .scroll(ScrollSpec { stick_bottom: false });
     for widget in &widgets {
-        page = page.child(
+        list = list.child(
             col()
                 .key(format!("widget-{}", widget.id))
                 .w_full()
@@ -127,7 +168,9 @@ pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .px(8.0)
                 .py(6.0)
                 .radius(8.0)
-                .fill(theme.control_off)
+                .shrink()
+                .fill(k.c.bg_base)
+                .border(1.0, k.c.border_base)
                 .child(
                     row()
                         .key(format!("widget-head-{}", widget.id))
@@ -146,7 +189,7 @@ pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .child(bar_chart(state, widget.id, theme)),
         );
     }
-    page
+    page.child(list)
 }
 
 /// A bar chart drawn with color blocks — the port's integers, no chart library.

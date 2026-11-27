@@ -664,6 +664,7 @@ pub fn workflow_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     // page column (the embedded branch's `h-full min-h-0`).
     let page = col()
         .key("workflow-workspace")
+        .fill(k.c.page)
         .w_full()
         .grow(1.0)
         .min_h(0.0)
@@ -780,7 +781,7 @@ fn workflow_sidebar(state: &AppState, k: &Kit, dark: bool, width: f32) -> El {
         .w(width)
         .shrink()
         .min_h(0.0)
-        .fill(k.c.layer_01)
+        .fill(k.c.surface_weak)
         .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
         .child(side_tab_header(state, k));
 
@@ -1163,7 +1164,7 @@ fn panel_tab_bar(state: &AppState, k: &Kit, dark: bool) -> El {
         .w_full()
         .shrink()
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
-        .fill(k.c.layer_01);
+        .fill(k.c.surface_weak);
     for panel in &state.workflow_panels {
         bar = bar.child(panel_tab(state, panel, k, dark));
     }
@@ -1281,7 +1282,7 @@ fn variables_row(state: &AppState, k: &Kit, dark: bool, layer: &mut Vec<El>) -> 
         .px(VARIABLES_PAD_X)
         .py(VARIABLES_PAD_Y)
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
-        .fill(k.c.bg_base);
+        .fill(k.c.page);
 
     if let Some(run) = active.filter(|run| !run.variables.is_empty()
         && state.workflow_list.iter().any(|flow| flow.id == run.workflow_id)) {
@@ -1455,7 +1456,7 @@ fn run_status_row(state: &AppState, result: &WorkflowExecutionResult, k: &Kit) -
         .px(12.0)
         .py(4.0)
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
-        .fill(k.c.layer_01)
+        .fill(k.c.surface_weak)
         .child(
             text(format!("{mark} {}ms", result.total_time_ms))
                 .key("workflow-run-status")
@@ -1505,7 +1506,7 @@ fn steps_bar(state: &AppState, result: &WorkflowExecutionResult, k: &Kit) -> El 
         .px(12.0)
         .py(4.0)
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
-        .fill(k.c.layer_01);
+        .fill(k.c.surface_weak);
     let indices = step_indices(result, state.workflow_step_order);
     for index in indices {
         let Some(step) = result.steps.get(index) else { continue };

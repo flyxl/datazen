@@ -109,6 +109,7 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
     // the shell's page column and scrolls its own content.
     let page = col()
         .key("extension-management-page")
+        .fill(k.c.page)
         .grow(1.0)
         .min_h(0.0)
         .w_full()
@@ -208,12 +209,12 @@ fn page_header(state: &AppState, k: &'static Kit, dark: bool) -> El {
             .key("extension-page-heading")
             .grow(1.0)
             .min_w(0.0)
-            .gap(4.0)
             .child(
                 row()
                     .key("extension-page-title-row")
                     .w_full()
-                    .gap(6.0)
+                    .items_center()
+                    .gap(8.0)
                     .child(
                         text(t("extensions.page.title"))
                             .key("extension-page-title")
@@ -244,17 +245,30 @@ fn page_header(state: &AppState, k: &'static Kit, dark: bool) -> El {
             ),
     );
     header = header.child(
-        // React's default Button (primary, md/h-9 = 36pt) leading with the
-        // Download glyph — the kit's Contrast skin and ExtraLarge control,
-        // the mapping the ported dialog footers use.
-        Button::new(t("extensions.page.install"))
-            .variant(ButtonVariant::Contrast)
-            .control_size(ControlSize::ExtraLarge)
-            .icon(&ICON_DOWNLOAD)
-            .on_press(|state: &mut AppState| state.open_install_wapp_dialog())
-            .build(k)
+        // React's 36pt primary button uses the app accent, not the
+        // kit's macOS contrast/submit background.
+        row()
             .key("extension-install-button")
-            .shrink(),
+            .h(36.0)
+            .px(16.0)
+            .gap(8.0)
+            .center()
+            .shrink()
+            .radius(k.radius.md)
+            .fill(k.c.bg_accent)
+            .hover(k.alpha(k.c.submit_hover, 0.8))
+            .focus_ring(2.0, 2.5, k.c.border_focus)
+            .role("button")
+            .focusable(true)
+            .label(t("extensions.page.install"))
+            .child(icon(&ICON_DOWNLOAD, 16.0).color(k.c.submit_icon).a11y_hidden())
+            .child(
+                text(t("extensions.page.install"))
+                    .font(k.ty.text_xsmall_medium)
+                    .color(k.c.submit_fg)
+                    .a11y_hidden(),
+            )
+            .on_press(|state: &mut AppState| state.open_install_wapp_dialog()),
     );
     header
 }
@@ -274,6 +288,11 @@ fn search_row(state: &AppState, k: &'static Kit, dark: bool, counts: (usize, usi
             // React: `h-8 max-w-xs text-xs` on the shared Input base.
             .height(32.0)
             .width(320.0)
+            .shrink()
+            .pad_x(12.0)
+            .radius(k.radius.md)
+            .fill(k.c.bg_base)
+            .border(1.0, k.c.border_base)
             .text_style(k.ty.text_xsmall)
             .placeholder(t("extensions.page.searchPlaceholder"))
             .on_edit(|state: &mut AppState| &mut state.wapp_search)

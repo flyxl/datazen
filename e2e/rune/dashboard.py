@@ -15,6 +15,14 @@ class DashboardJourney:
         invalid = self.replay([*start, tap(4.2, "widget-save")], until=5.4)
         self.expect_rendered(invalid, key="widget-form-error")
         self.expect_rendered(invalid, key="dashboard-empty")
+        self.expect_rendered(invalid, key="dashboard-empty-icon", within="dashboard-empty")
+        self.expect_rendered(invalid, key="dashboard-empty-message", within="dashboard-empty")
+        rect = {node["key"]: node["rect"] for node in invalid["elements"] if node.get("key")}
+        empty_x, empty_y, empty_w, empty_h = rect["dashboard-empty"]
+        icon_x, icon_y, icon_w, icon_h = rect["dashboard-empty-icon"]
+        self.assertAlmostEqual(icon_x + icon_w / 2, empty_x + empty_w / 2, delta=2)
+        self.assertGreater(icon_y + icon_h / 2, empty_y + empty_h * 0.35)
+        self.assertLess(icon_y + icon_h / 2, empty_y + empty_h * 0.65)
         self.assertFalse((self.root / "dashboards.json").exists())
         self.assertFalse((self.root / "workflows.json").exists())
 
@@ -31,6 +39,8 @@ class DashboardJourney:
         self.expect_rendered(created, text="fixture-ada 1", within="dashboards-page")
         self.expect_rendered(created, text="fixture-lin 2", within="dashboards-page")
         self.assertFalse(visible(created, key="widget-form-error"))
+        self.assertFalse(visible(created, key="dashboard-empty"))
+        self.expect_rendered(created, key="dashboard-widget-list")
 
         with sqlite3.connect(self.db) as connection:
             connection.execute("UPDATE customers SET customer_name='dashboard-fresh' WHERE id=2")
