@@ -148,6 +148,31 @@ pub fn workspace_empty(theme: tok::Theme) -> El {
             .w_full(),
         )
 }
+/// The stock SQLite table route, not a stale page, query result, or drawer.
+pub(super) fn live_sqlite_table_page(state: &AppState) -> bool {
+    if state.active != Section::Workspace
+        || state.native_kv.is_some()
+        || state.er_schema.is_some()
+        || state.table_read_error.is_some()
+        || state.ai_chat_open
+    {
+        return false;
+    }
+    let Some(tab) = state.tabs.selected() else { return false };
+    if tab.kind != TabKind::Table
+        || !state.grid.has_page()
+        || state.grid.table_label() != tab.title.as_str()
+        || state.desktop_catalog.is_none()
+    {
+        return false;
+    }
+    state.desktop_connection.as_ref().is_some_and(|id| {
+        state.desktop_connections.as_ref().is_some_and(|profiles| {
+            profiles.iter().any(|profile| &profile.id == id && profile.engine == "sqlite")
+        })
+    })
+}
+
 pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let title = state
         .tabs
@@ -155,13 +180,24 @@ pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .map(|tab| tab.title.clone())
         .unwrap_or_default();
     let body = match state.table_view {
-        TableView::Data => crate::data_grid::panel(
-            state,
-            theme.text,
-            theme.text_secondary,
-            theme.control_off,
-            dark,
-        ),
+        TableView::Data => {
+            // React's DataTable scroll area inherits the parent bg-surface.
+            // Give this table canvas that role without changing the status
+            // wells, cells, or any query/result-preview surface.
+            let viewport = if live_sqlite_table_page(state) {
+                crate::ui::theme::colors(dark).surface
+            } else {
+                theme.control_off
+            };
+            crate::data_grid::panel(
+                state,
+                theme.text,
+                theme.text_secondary,
+                theme.control_off,
+                viewport,
+                dark,
+            )
+        }
         TableView::Ddl => ddl_view(state, &title, theme),
         TableView::Columns => columns_view(state, &title, theme, dark),
         TableView::Indexes => indexes_view(state, &title, theme),

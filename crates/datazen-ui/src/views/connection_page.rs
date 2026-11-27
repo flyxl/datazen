@@ -172,32 +172,12 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool, layer: &m
 
 /// React's plain table pane starts immediately below its toolbar and tabs.
 fn plain_live_sqlite_table(state: &AppState, vm: &crate::views::content_view::ContentViewVm) -> bool {
-    if state.active != Section::Workspace
-        || state.native_kv.is_some()
-        || state.er_schema.is_some()
-        || state.table_read_error.is_some()
-        || state.ai_chat_open
-        || vm.show_drawers()
-        || vm.split_secondary
-        || vm.object_vm.is_some()
-        || vm.document_vm.is_some()
-        || vm.dialogs_vm.is_some()
-    {
-        return false;
-    }
-    let Some(tab) = state.tabs.selected() else { return false };
-    if tab.kind != datazen_ui_api::TabKind::Table
-        || !state.grid.has_page()
-        || state.grid.table_label() != tab.title.as_str()
-        || state.desktop_catalog.is_none()
-    {
-        return false;
-    }
-    state.desktop_connection.as_ref().is_some_and(|id| {
-        state.desktop_connections.as_ref().is_some_and(|profiles| {
-            profiles.iter().any(|profile| &profile.id == id && profile.engine == "sqlite")
-        })
-    })
+    super::workspace::live_sqlite_table_page(state)
+        && !vm.show_drawers()
+        && !vm.split_secondary
+        && vm.object_vm.is_none()
+        && vm.document_vm.is_none()
+        && vm.dialogs_vm.is_none()
 }
 
 /// The same content column with an explicit view model, so a host that owns an

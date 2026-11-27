@@ -104,6 +104,7 @@ pub fn panel(
     ink: rune::Color,
     muted: rune::Color,
     well: rune::Color,
+    viewport: rune::Color,
     dark: bool,
 ) -> El {
     let grid = &state.grid;
@@ -118,7 +119,7 @@ pub fn panel(
         .child(pending_changes_bar(state, muted, well))
         .child(filter_bar(state, ink, muted, well, dark))
         .child(fk_bar(state, ink, muted, well))
-        .child(sheet(grid, GridSlot::Table, ink, well, 380.0, dark))
+        .child(sheet(grid, GridSlot::Table, ink, viewport, 380.0, dark))
         .child(footer(state, ink, muted))
 }
 
