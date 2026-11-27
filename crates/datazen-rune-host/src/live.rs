@@ -3365,6 +3365,14 @@ impl DesktopAdapter for LiveAdapter {
         self.host_jobs.stop(job)
     }
 
+    fn native_dashboard_board(&self) -> Result<Option<datazen_ui_api::NativeDashboardBoard>, String> {
+        self.dashboard_store.native_board()
+    }
+
+    fn create_first_native_dashboard(&mut self, name: &str) -> Result<datazen_ui_api::NativeDashboardBoard, String> {
+        self.dashboard_store.create_first_board(name)
+    }
+
     fn dashboard_widgets(&self) -> Result<Vec<DashboardWidget>, String> {
         // N13: the dashboard rows through the domain rules; a fresh install
         // has no dashboard row yet and answers no widgets.

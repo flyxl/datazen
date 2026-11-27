@@ -25,12 +25,28 @@ use datazen::workflow::domain::model::{WorkflowDefinition, WorkflowStep, Workflo
 use datazen::workflow::domain::repository::{
     WorkflowDefinitionRecord, WorkflowDefinitionRepository,
 };
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-/// The one dashboard a native install has. The host owns rows; the first
-/// widget's creation brings the row into existence.
+/// The sole dashboard identity surfaced by the native host.
+/// Old report callers retain their implicit creation compatibility.
 pub(crate) const DEFAULT_DASHBOARD_ID: &str = "default";
+
+const UNSUPPORTED_BOARDS: &str = "This native workspace can only open its default dashboard. Existing dashboards were not changed.";
+const DASHBOARD_UNAVAILABLE: &str = "Could not open the local dashboard. Existing dashboards were not changed.";
+
+fn empty_dashboard(id: &str, name: &str) -> Dashboard {
+    let now = chrono::Utc::now().to_rfc3339();
+    Dashboard {
+        id: id.to_owned(), name: name.to_owned(),
+        created_at: now.clone(), updated_at: now,
+        layout: DashboardLayout { cols: 12, row_height: 4 },
+        widgets: Vec::new(),
+        enabled: true,
+        refresh_paused: false,
+    }
+}
 
 /// The one organization a desktop process recognizes.
 pub(crate) fn host_scope() -> OrganizationScope {
@@ -183,7 +199,7 @@ impl WorkflowDefinitionRepository for FileWorkflowStore {
 
 /// The dashboard document: the dashboard rows and the widget rows, one JSON
 /// file, written atomically.
-#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 struct DashboardDocument {
     #[serde(default)]
     dashboards: Vec<DashboardRecord>,
@@ -197,23 +213,113 @@ struct DashboardDocument {
 pub struct FileDashboardStore {
     path: PathBuf,
     state: Mutex<DashboardDocument>,
+    known_board_shape: bool,
 }
 
 impl FileDashboardStore {
     pub fn open(path: &Path) -> Result<Self, String> {
-        let document = match std::fs::read_to_string(path) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                DashboardDocument::default()
+        let (document, known_board_shape) = match std::fs::read_to_string(path) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                (DashboardDocument::default(), true)
             }
             Err(error) => return Err(format!("read {}: {error}", path.display())),
-            Ok(text) if text.trim().is_empty() => DashboardDocument::default(),
-            Ok(text) => serde_json::from_str(&text)
-                .map_err(|error| format!("parse {}: {error}", path.display()))?,
+            Ok(text) if text.trim().is_empty() => (DashboardDocument::default(), true),
+            Ok(text) => (
+                serde_json::from_str(&text).map_err(|error| format!("parse {}: {error}", path.display()))?,
+                known_dashboard_document(&text, false),
+            ),
         };
         Ok(Self {
             path: path.to_owned(),
             state: Mutex::new(document),
+            known_board_shape,
         })
+    }
+
+    /// Cache-only read for the native route. An unknown or inconsistent
+    /// document must not be surfaced as a newly empty workspace.
+    pub(crate) fn native_board(&self) -> Result<Option<datazen_ui_api::NativeDashboardBoard>, String> {
+        if !self.known_board_shape {
+            return Err(UNSUPPORTED_BOARDS.into());
+        }
+        let current = self.state.lock().map_err(|_| DASHBOARD_UNAVAILABLE.to_owned())?;
+        Self::native_board_in(&current)
+    }
+
+    fn native_board_in(document: &DashboardDocument) -> Result<Option<datazen_ui_api::NativeDashboardBoard>, String> {
+        match document.dashboards.as_slice() {
+            [] if document.widgets.is_empty() => Ok(None),
+            [row] if row.id == DEFAULT_DASHBOARD_ID
+                && !row.name.trim().is_empty()
+                && document.widgets.iter().all(|widget| widget.dashboard_id == row.id) =>
+            {
+                Ok(Some(datazen_ui_api::NativeDashboardBoard { id: row.id.clone(), name: row.name.clone() }))
+            }
+            _ => Err(UNSUPPORTED_BOARDS.into()),
+        }
+    }
+
+    pub(crate) fn create_first_board(&self, name: &str) -> Result<datazen_ui_api::NativeDashboardBoard, String> {
+        self.create_first_board_using(name, Self::publish_first_board)
+    }
+
+    fn create_first_board_using(
+        &self,
+        name: &str,
+        publish: impl FnOnce(&Self, &DashboardDocument) -> io::Result<()>,
+    ) -> Result<datazen_ui_api::NativeDashboardBoard, String> {
+        if !self.known_board_shape {
+            return Err(UNSUPPORTED_BOARDS.into());
+        }
+        let mut current = self.state.lock().map_err(|_| DASHBOARD_UNAVAILABLE.to_owned())?;
+        if let Some(existing) = Self::native_board_in(&current)? {
+            return Ok(existing); // stable identity/label; do not rewrite file or widgets
+        }
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(DASHBOARD_UNAVAILABLE.into());
+        }
+        let row = dashboard_rules::dashboard_to_record(&empty_dashboard(DEFAULT_DASHBOARD_ID, name));
+        let board = datazen_ui_api::NativeDashboardBoard { id: row.id.clone(), name: row.name.clone() };
+        let mut candidate = current.clone();
+        candidate.dashboards.push(row);
+        publish(self, &candidate).map_err(|_| DASHBOARD_UNAVAILABLE.to_owned())?;
+        *current = candidate;
+        Ok(board)
+    }
+
+    fn publish_first_board(&self, document: &DashboardDocument) -> io::Result<()> {
+        let (mut stage, replace) = self.stage_first_board(document)?;
+        stage.as_file_mut().sync_all()?;
+        let result = if replace { stage.persist(&self.path) } else { stage.persist_noclobber(&self.path) };
+        result.map(|_| ()).map_err(|error| error.error)
+    }
+
+    fn stage_first_board(&self, document: &DashboardDocument) -> io::Result<(tempfile::NamedTempFile, bool)> {
+        // Re-read before replacing a previously empty file. A new/modified
+        // store, unknown keys/rows, links and malformed data are not consent
+        // to discard an existing document. This check is process-local, not
+        // a cross-process merge guarantee.
+        let permissions = match std::fs::symlink_metadata(&self.path) {
+            Ok(meta) if meta.is_file() => {
+                let bytes = std::fs::read_to_string(&self.path)?;
+                if !known_dashboard_document(&bytes, true) {
+                    return Err(io::Error::new(io::ErrorKind::AlreadyExists, "dashboard store is no longer empty"));
+                }
+                Some(std::fs::OpenOptions::new().write(true).open(&self.path)?.metadata()?.permissions())
+            }
+            Ok(_) => return Err(io::Error::new(io::ErrorKind::InvalidInput, "dashboard store is not a regular file")),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        let parent = self.path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
+        let mut stage = tempfile::Builder::new().prefix(".dashboard-first-").tempfile_in(parent)?;
+        stage.write_all(&serde_json::to_vec_pretty(document).map_err(io::Error::other)?)?;
+        let replace = permissions.is_some();
+        if let Some(permissions) = permissions {
+            stage.as_file().set_permissions(permissions)?;
+        }
+        Ok((stage, replace))
     }
 
     fn persist(&self, document: &DashboardDocument) -> Result<(), DashboardRepositoryError> {
@@ -226,6 +332,17 @@ impl FileDashboardStore {
         std::fs::rename(&temp, &self.path)
             .map_err(|error| DashboardRepositoryError::Db(error.to_string()))
     }
+}
+
+fn known_dashboard_document(text: &str, require_empty: bool) -> bool {
+    if text.trim().is_empty() {
+        return true;
+    }
+    let Ok(serde_json::Value::Object(document)) = serde_json::from_str(text) else {
+        return false;
+    };
+    document.iter().all(|(key, value)| matches!(key.as_str(), "dashboards" | "widgets")
+        && value.as_array().is_some_and(|rows| !require_empty || rows.is_empty()))
 }
 
 impl DashboardRepository for FileDashboardStore {
@@ -406,20 +523,7 @@ impl WidgetCreationHost for HostWidgets {
             Err(DashboardRepositoryError::NotFound(_)) => {
                 // A native install starts with one dashboard; its row comes
                 // into existence the first time a widget needs it.
-                let now = chrono::Utc::now().to_rfc3339();
-                let dashboard = Dashboard {
-                    id: id.to_owned(),
-                    name: "Dashboard".into(),
-                    created_at: now.clone(),
-                    updated_at: now,
-                    layout: DashboardLayout {
-                        cols: 12,
-                        row_height: 4,
-                    },
-                    widgets: Vec::new(),
-                    enabled: true,
-                    refresh_paused: false,
-                };
+                let dashboard = empty_dashboard(id, "Dashboard");
                 dashboard_rules::save_dashboard(scope, self.store.as_ref(), dashboard.clone())
                     .map_err(|error| error.to_string())?;
                 Ok(dashboard)
@@ -617,5 +721,76 @@ mod tests {
         // A slug another workflow owns gets the hash suffix.
         let taken = vec!["nightly-backup".to_owned()];
         assert_ne!(workflow_id_for("nightly backup", &taken), "nightly-backup");
+    }
+}
+
+#[cfg(test)]
+mod native_first_board_tests {
+    use super::*;
+
+    #[test]
+    fn creates_one_real_default_board_and_never_rewrites_it_on_repeat() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("dashboards.json");
+        let store = FileDashboardStore::open(&file).unwrap();
+        assert!(store.native_board().unwrap().is_none() && !file.exists());
+        let created = store.create_first_board("New Dashboard").unwrap();
+        assert_eq!((created.id.as_str(), created.name.as_str()), ("default", "New Dashboard"));
+        let bytes = std::fs::read(&file).unwrap();
+        let raw: DashboardDocument = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(raw.dashboards.len(), 1);
+        assert!(raw.widgets.is_empty());
+        assert!(raw.dashboards[0].enabled);
+        assert!(!root.path().join("workflows.json").exists());
+        assert_eq!(store.create_first_board("Must not rename").unwrap(), created);
+        assert_eq!(std::fs::read(&file).unwrap(), bytes);
+        let reopened = FileDashboardStore::open(&file).unwrap();
+        assert_eq!(reopened.native_board().unwrap(), Some(created));
+    }
+
+    #[test]
+    fn staged_creation_failure_preserves_original_empty_file_and_cache() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("dashboards.json");
+        let prior = b"{\n  \"dashboards\": [], \"widgets\": []\n}";
+        std::fs::write(&file, prior).unwrap();
+        let store = FileDashboardStore::open(&file).unwrap();
+        let result = store.create_first_board_using("Not committed", |store, candidate| {
+            let (stage, replace) = store.stage_first_board(candidate)?;
+            assert!(replace);
+            assert!(stage.as_file().metadata()?.len() > 0); // real written bytes
+            Err(io::Error::other("injected failure after staging"))
+        });
+        assert_eq!(result, Err(DASHBOARD_UNAVAILABLE.into()));
+        assert_eq!(std::fs::read(&file).unwrap(), prior);
+        assert!(store.native_board().unwrap().is_none());
+        assert!(FileDashboardStore::open(&file).unwrap().native_board().unwrap().is_none());
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn foreign_rows_unknown_shapes_and_late_writes_are_not_empty() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("dashboards.json");
+        let unrecognized = br#"{"dashboards":[],"widgets":[],"otherBoards":["retain"]}"#;
+        std::fs::write(&file, unrecognized).unwrap();
+        let unknown = FileDashboardStore::open(&file).unwrap();
+        assert_eq!(unknown.native_board(), Err(UNSUPPORTED_BOARDS.into()));
+        assert_eq!(unknown.create_first_board("No overwrite"), Err(UNSUPPORTED_BOARDS.into()));
+        assert_eq!(std::fs::read(&file).unwrap(), unrecognized);
+
+        std::fs::remove_file(&file).unwrap();
+        let stale = FileDashboardStore::open(&file).unwrap();
+        let foreign = DashboardDocument {
+            dashboards: vec![dashboard_rules::dashboard_to_record(&empty_dashboard("outside", "Foreign board"))],
+            widgets: Vec::new(),
+        };
+        let bytes = serde_json::to_vec(&foreign).unwrap();
+        std::fs::write(&file, &bytes).unwrap();
+        let current = FileDashboardStore::open(&file).unwrap();
+        assert_eq!(current.native_board(), Err(UNSUPPORTED_BOARDS.into()));
+        assert_eq!(current.create_first_board("Must refuse"), Err(UNSUPPORTED_BOARDS.into()));
+        assert_eq!(stale.create_first_board("Stale local snapshot"), Err(DASHBOARD_UNAVAILABLE.into()));
+        assert_eq!(std::fs::read(&file).unwrap(), bytes);
     }
 }

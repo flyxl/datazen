@@ -378,6 +378,15 @@ impl AppState {
         self.workflow_generation
     }
 
+    /// Explicitly create the first real local board. A stale control cannot
+    /// create a board after leaving the Dashboard route.
+    pub(crate) fn create_first_dashboard(&mut self, name: &str) {
+        if self.active != Section::Dashboards {
+            return;
+        }
+        self.dashboard_create_error = self.desktop.create_first_native_dashboard(name).err();
+    }
+
     /// Save the widget form. An empty title is refused. The host's
     /// dashboard use case runs first (N13); its fixed not-implemented error
     /// means the demo process, and the memory port answers instead; any

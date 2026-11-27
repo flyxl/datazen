@@ -7,10 +7,83 @@ from scenarios import fixture, tap, visible
 
 
 class DashboardJourney:
+    def _create_local_dashboard_fixture(self):
+        created = self.replay([
+            tap(.55, "rail-dashboards"), tap(2.05, "dashboard-create-first"),
+        ], until=3.4)
+        self.expect_rendered(created, key="dashboard-selected-board-title")
+        self.expect_rendered(created, key="dashboard-empty")
+        return (self.root / "dashboards.json").read_bytes()
+
+    def test_create_first_dashboard_without_database_then_restore_exact_board(self):
+        (self.root / "settings.json").write_text(
+            json.dumps({"ui": {"language": "en"}}), encoding="utf-8",
+        )
+        path = self.root / "dashboards.json"
+        workflows = self.root / "workflows.json"
+        enter = [tap(.55, "rail-dashboards")]
+        empty = self.replay(enter, until=1.8)
+        self.expect_rendered(empty, key="dashboard-empty-boards")
+        self.expect_rendered(empty, key="dashboard-create-first", within="dashboard-empty-boards")
+        self.assertFalse(visible(empty, key="widget-save"))
+        self.assertFalse(path.exists())
+        self.assertFalse(workflows.exists())
+        self.assertFalse(self.store.exists())
+
+        before = self._create_local_dashboard_fixture()
+        data = json.loads(before)
+        (created,) = data["dashboards"]
+        self.assertEqual((created["id"], created["name"]), ("default", "New Dashboard"))
+        self.assertTrue(created["enabled"])
+        self.assertEqual(data["widgets"], [])
+        self.assertFalse(workflows.exists())
+        self.assertFalse(self.store.exists())
+        self.assertFalse(self.db.exists())
+
+        restored = self.replay(enter, until=1.8)
+        self.expect_rendered(restored, key="dashboard-selected-board-title", text="New Dashboard")
+        self.expect_rendered(restored, key="dashboard-empty")
+        self.expect_rendered(restored, key="widget-save")
+        self.assertFalse(visible(restored, key="dashboard-create-first"))
+        self.assertEqual(path.read_bytes(), before)
+
+        back = self.replay([
+            *enter, tap(2.0, "rail-settings"), tap(3.5, "settings-back"),
+        ], until=4.5)
+        self.expect_rendered(back, key="dashboard-selected-board-title", text="New Dashboard")
+        self.expect_rendered(back, key="dashboard-empty")
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse(workflows.exists())
+
+    def test_dashboard_does_not_present_unknown_record_as_create_first(self):
+        path = self.root / "dashboards.json"
+        before = json.dumps({
+            "dashboards": [{
+                "id": "existing-unsupported",
+                "name": "Keep this board",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "updatedAt": "2026-01-01T00:00:00Z",
+                "layoutCols": 12,
+                "layoutRowHeight": 4,
+                "enabled": True,
+                "refreshPaused": False,
+            }],
+            "widgets": [],
+        }).encode()
+        path.write_bytes(before)
+        tree = self.replay([tap(.55, "rail-dashboards")], until=2.1)
+        self.expect_rendered(tree, key="dashboard-board-error")
+        self.assertFalse(visible(tree, key="dashboard-create-first"))
+        self.assertFalse(visible(tree, key="dashboard-empty-boards"))
+        self.assertFalse(visible(tree, key="widget-save"))
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse((self.root / "workflows.json").exists())
+
     def test_dashboard_sql_widget_persists_and_refreshes_live_sqlite(self):
         fixture(self.store, self.db)
         title = "SQLite E2E Bars"
         sql = "SELECT customer_name, id FROM customers ORDER BY id"
+        empty_board = self._create_local_dashboard_fixture()
         start = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-dashboards")]
         invalid = self.replay([*start, tap(4.2, "widget-save")], until=5.4)
         self.expect_rendered(invalid, key="widget-form-error")
@@ -23,7 +96,7 @@ class DashboardJourney:
         self.assertAlmostEqual(icon_x + icon_w / 2, empty_x + empty_w / 2, delta=2)
         self.assertGreater(icon_y + icon_h / 2, empty_y + empty_h * 0.35)
         self.assertLess(icon_y + icon_h / 2, empty_y + empty_h * 0.65)
-        self.assertFalse((self.root / "dashboards.json").exists())
+        self.assertEqual((self.root / "dashboards.json").read_bytes(), empty_board)
         self.assertFalse((self.root / "workflows.json").exists())
 
         created = self.replay([
@@ -57,6 +130,7 @@ class DashboardJourney:
         fixture(self.store, self.db)
         sql = "SELECT customer_name, id FROM customers ORDER BY id"
         title, shared = "Referenced Widget", "shared-e2e-workflow"
+        self._create_local_dashboard_fixture()
         dashboard_start = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-dashboards")]
         created = self.replay([
             *dashboard_start, *fill(4.1, "widget-title-input", title),

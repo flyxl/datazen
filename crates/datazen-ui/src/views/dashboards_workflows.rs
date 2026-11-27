@@ -28,15 +28,32 @@ use crate::ui::kit::kit;
 // this module carried until that swap is retired with it.
 /// The dashboards page: the widget list. An empty list has its own state.
 pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let widgets = state.host_widgets();
     let k = kit(dark);
-    let mut page = col()
-        .key("dashboards-page")
-        .w_full()
-        .grow(1.0)
-        .min_h(0.0)
-        .fill(k.c.page)
-        .child(
+    let mut page = col().key("dashboards-page").w_full().grow(1.0).min_h(0.0).fill(k.c.page);
+    match state.desktop.native_dashboard_board() {
+        Ok(None) => return page.child(first_board_view(state, k)),
+        Ok(Some(board)) => {
+            // This is the existing selection's real persisted title, not an
+            // inert tab or a claim that the native host supports more boards.
+            page = page.child(
+                row().key("dashboard-selected-board").w_full().h(36.0).px(16.0).center_y()
+                    .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
+                    .child(text(board.name).key("dashboard-selected-board-title").font(k.ty.body).color(k.c.text_base)),
+            );
+        }
+        Err(error) if error == datazen_ui_api::DESKTOP_NOT_IMPLEMENTED => {
+            // The demo/older adapter keeps its already supported report UI.
+        }
+        Err(error) => {
+            return page.child(
+                col().w_full().grow(1.0).center().padding(16.0).child(
+                    text(error).key("dashboard-board-error").color(k.c.danger.fg).wrap(),
+                ),
+            );
+        }
+    }
+    let widgets = state.host_widgets();
+    page = page.child(
             row()
                 .key("widget-form")
                 .w_full()
@@ -190,6 +207,27 @@ pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         );
     }
     page.child(list)
+}
+
+fn first_board_view(state: &AppState, k: &rune_kit::Kit) -> El {
+    let label = t("dashboard.createFirstBoard");
+    let board_name = t("dashboard.defaultName").to_owned();
+    let mut hero = col().key("dashboard-empty-boards").w_full().grow(1.0).min_h(0.0)
+        .center().gap(12.0).px(16.0)
+        .child(icon(&ICON_DASHBOARDS, 40.0).color(k.alpha(k.c.text_faint, 0.4)))
+        .child(text(t("dashboard.emptyBoards")).font(k.ty.body).color(k.c.text_faint).align(rune::Align::Center).wrap())
+        .child(
+            row().key("dashboard-create-first").h(28.0).px(8.0).gap(4.0).center()
+                .radius(k.radius.md).fill(k.c.bg_accent).hover(k.alpha(k.c.submit_hover, 0.8))
+                .focus_ring(2.0, 2.5, k.c.border_focus).role("button").label(label).focusable(true)
+                .child(icon(&ICON_PLUS, 14.0).color(k.c.submit_icon).a11y_hidden())
+                .child(text(label).font(k.ty.text_xsmall_medium).color(k.c.submit_fg).a11y_hidden())
+                .on_press(move |state: &mut AppState| state.create_first_dashboard(&board_name)),
+        );
+    if let Some(error) = state.dashboard_create_error.as_ref() {
+        hero = hero.child(text(error.clone()).key("dashboard-create-error").color(k.c.danger.fg).wrap());
+    }
+    hero
 }
 
 /// A bar chart drawn with color blocks — the port's integers, no chart library.

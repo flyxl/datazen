@@ -1938,6 +1938,14 @@ pub struct DashboardWidget {
     pub kind: String,
 }
 
+/// Identity of the sole supported native dashboard, independent of whether
+/// it already contains reports.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeDashboardBoard {
+    pub id: String,
+    pub name: String,
+}
+
 /// One object of a structure comparison: its name and whether the target
 /// endpoint has an object of the same name.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2442,6 +2450,18 @@ pub trait DesktopAdapter {
     /// Ask a host job to stop (N11). A finished job answers Ok; the memory
     /// port's stop stays the fallback path's.
     fn stop_host_job(&self, _job: u64) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Local single-board presence; None is real absence, not unsupported,
+    /// corrupt or another board. The demo's existing report route is separate.
+    fn native_dashboard_board(&self) -> Result<Option<NativeDashboardBoard>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Explicitly create the first local board without SQL, connection,
+    /// workflow or report. An existing supported board is returned unchanged.
+    fn create_first_native_dashboard(&mut self, _name: &str) -> Result<NativeDashboardBoard, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 

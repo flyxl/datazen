@@ -398,6 +398,7 @@ pub struct AppState {
     pub widget_title: TextEdit,
     pub widget_query: TextEdit,
     pub widget_error: Option<String>,
+    pub(crate) dashboard_create_error: Option<String>,
     /// The workflow page's YAML document, edited through the SQL editor's
     /// document model (T145: the edit panel's yaml mode and the lite editor
     /// before it — the surface the workspace-tabs tests pin).
@@ -773,6 +774,7 @@ impl Default for AppState {
             widget_title: TextEdit::new(String::new()),
             widget_query: TextEdit::new(String::new()),
             widget_error: None,
+            dashboard_create_error: None,
             workflow_yaml: SqlEditor::new(),
             workflow_results: Vec::new(),
             workflow_execution: None,
