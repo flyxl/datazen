@@ -2353,6 +2353,20 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    /// The effective workflow report tab order. A supported persistence
+    /// port returns Desc for an unset or unrecognized legacy preference.
+    fn read_workflow_step_result_order(&self) -> Result<types::WorkflowStepResultOrder, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Persist only the report presentation preference, not workflow steps.
+    fn write_workflow_step_result_order(
+        &mut self,
+        _order: types::WorkflowStepResultOrder,
+    ) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// The table's DDL from the host's catalog (N10). The default answers
     /// the fixed error; the UI falls back to the memory port.
     fn table_ddl(&self, _table: &str) -> Result<String, String> {

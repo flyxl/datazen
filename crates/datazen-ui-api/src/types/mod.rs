@@ -207,6 +207,7 @@ pub use crate::types::driver_commands::{
 pub use crate::types::client_settings::{
     SettingsMcpPermissionMode as McpPermissionMode, SettingsSqlExecutionStrategy as
     SqlExecutionStrategy, SettingsSqlFormatOptions as SqlFormatOptions,
+    WorkflowStepResultOrder,
 };
 
 // ── Re-export group: frontend `types/settings.ts` (the table-read trio) ─────

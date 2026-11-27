@@ -491,10 +491,10 @@ pub struct AppState {
     pub workflow_dir: Option<String>,
     /// T145: the edit panel's editor mode (React `editorMode`).
     pub workflow_editor_mode: WorkflowEditorMode,
-    /// T145: the step-result order (React
-    /// `appSettings.workflowStepResultOrder ?? 'desc'`; the settings store's
-    /// persistence is the seam).
-    pub workflow_step_order: WorkflowStepOrder,
+    /// In the standalone demo the report toggle remains session-only.
+    pub(crate) workflow_session_step_order: WorkflowStepOrder,
+    /// The report toolbar's preference write error, separate from run errors.
+    pub(crate) workflow_step_order_error: Option<String>,
     /// T145: the confirm dialog's pending ask (React `useConfirmDialog`'s
     /// `{options, resolve}`; the root modal layer mounts the dialog while
     /// one is pending).
@@ -820,7 +820,8 @@ impl Default for AppState {
             workflow_variable_select: None,
             workflow_dir: None,
             workflow_editor_mode: WorkflowEditorMode::Visual,
-            workflow_step_order: WorkflowStepOrder::Desc,
+            workflow_session_step_order: WorkflowStepOrder::Desc,
+            workflow_step_order_error: None,
             workflow_confirm_request: None,
             workflow_confirm_epoch: 0,
             workflow_add_dashboard_open: false,

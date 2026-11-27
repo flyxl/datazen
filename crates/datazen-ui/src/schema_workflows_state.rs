@@ -285,7 +285,7 @@ impl AppState {
     fn set_workflow_report(&mut self, results: Vec<WorkflowStepResult>, report: WorkflowExecutionResult) {
         self.workflow_execution = Some(report);
         self.workflow_results = results;
-        let order = self.workflow_step_order;
+        let order = self.workflow_step_order();
         let answer = self.workflow_execution.clone();
         if let Some(panel) = self
             .workflow_panels

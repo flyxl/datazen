@@ -17,7 +17,7 @@
 //! | Run inputs | Declaration and editor pairs owned by each open run panel |
 //! | `savedConnections` (connectionCommands.getConnections) | `AppState::workflow_form_connections` — T070's slot, filled by `reload_workflow_connections` (the adapter's `list_connections`) |
 //! | the edit panel's `draft`/`yamlText`/`editorMode` | `AppState::workflow_draft` / `workflow_yaml` / `workflow_editor_mode` — one live edit panel's backing (see the seams below) |
-//! | `appSettings.workflowStepResultOrder` + `updateSettings` | `AppState::workflow_step_order` + `toggle_workflow_step_order` (the settingsStore persistence is the settings track's seam) |
+//! | `appSettings.workflowStepResultOrder` + `updateSettings` | `AppState::workflow_step_order()` + `toggle_workflow_step_order`, shared with Data Browsing |
 //! | `useConfirmDialog()`'s pending `{options, resolve}` | `AppState::workflow_confirm_request` (+ `workflow_confirm_epoch`, each ask a fresh mount) and `answer_workflow_confirm` — the wapps remove pattern |
 //! | `useResizable` (256/180/420, `workflow.sidebar`) | `splitter::splitter_handle` over the same bounds and a valid native layout key |
 //! | `useEffect` mount (loadSettings/loadConfig/loadWorkflows/getDir/reloadConnections/listeners) | `AppState::select`'s `Section::Workflows` arm — the real halves (list + connections) run, the command seams below stay |
@@ -332,20 +332,14 @@ pub enum WorkflowEditorMode {
     Yaml,
 }
 
-/// React's `stepResultOrder: 'asc' | 'desc'` (the settings slot's `?? 'desc'`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WorkflowStepOrder {
-    Asc,
-    Desc,
-}
+/// The workflow view and the Settings port use the same checked preference.
+pub use datazen_ui_api::types::WorkflowStepResultOrder as WorkflowStepOrder;
 
-impl WorkflowStepOrder {
-    /// The label the toggle shows (React's `stepOrder.desc` / `stepOrder.asc`).
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Asc => t("workflows.stepOrder.asc"),
-            Self::Desc => t("workflows.stepOrder.desc"),
-        }
+/// The short label the report toggle shows (React's `stepOrder.desc` / `asc`).
+fn step_order_label(order: WorkflowStepOrder) -> &'static str {
+    match order {
+        WorkflowStepOrder::Asc => t("workflows.stepOrder.asc"),
+        WorkflowStepOrder::Desc => t("workflows.stepOrder.desc"),
     }
 }
 
@@ -819,8 +813,12 @@ fn workflow_sidebar(state: &AppState, k: &Kit, dark: bool, width: f32) -> El {
 
     // React: the `ErrorBanner variant="strip"` with the alert glyph and the
     // dismiss control (`common.close`).
-    if let Some(error) = state.workflow_operation_error.clone() {
-        let banner = Banner::new("workflow-operation-error", error)
+    if let Some(error) = state
+        .workflow_operation_error
+        .as_ref()
+        .or(state.workflow_step_order_error.as_ref())
+    {
+        let banner = Banner::new("workflow-operation-error", error.clone())
             .variant(BannerVariant::Strip)
             .icon(
                 icon(&ICON_ALERT_TRIANGLE, 14.0)
@@ -829,7 +827,11 @@ fn workflow_sidebar(state: &AppState, k: &Kit, dark: bool, width: f32) -> El {
                     .shrink(),
             )
             .on_dismiss(t("common.close"), |state: &mut AppState| {
-                state.dismiss_workflow_operation_error()
+                if state.workflow_operation_error.is_some() {
+                    state.dismiss_workflow_operation_error();
+                } else {
+                    state.workflow_step_order_error = None;
+                }
             })
             .build(k);
         if let Some(banner) = banner {
@@ -1497,7 +1499,7 @@ fn run_status_row(state: &AppState, result: &WorkflowExecutionResult, k: &Kit) -
                 .hover(k.alpha(k.c.layer_02, 0.5))
                 .child(icon(&ICON_ARROW_DOWN_UP, 12.0).color(k.c.text_faint))
                 .child(
-                    text(state.workflow_step_order.label().to_owned())
+                    text(step_order_label(state.workflow_step_order()).to_owned())
                         .key("workflow-step-order-toggle-label")
                         .font(TextStyle {
                             size: 11.0,
@@ -1524,7 +1526,7 @@ fn steps_bar(state: &AppState, result: &WorkflowExecutionResult, k: &Kit) -> El 
         .py(4.0)
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
         .fill(k.c.surface_weak);
-    let indices = step_indices(result, state.workflow_step_order);
+    let indices = step_indices(result, state.workflow_step_order());
     for index in indices {
         let Some(step) = result.steps.get(index) else { continue };
         let active = state.workflow_active_step == Some(index);

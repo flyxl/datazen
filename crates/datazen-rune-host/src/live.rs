@@ -3335,6 +3335,34 @@ impl DesktopAdapter for LiveAdapter {
         Ok(())
     }
 
+    fn read_workflow_step_result_order(
+        &self,
+    ) -> Result<datazen_ui_api::types::WorkflowStepResultOrder, String> {
+        let document = self.settings_document.lock().expect("the settings lock");
+        Ok(document
+            .get("workflowStepResultOrder")
+            .and_then(|value| value.as_str())
+            .and_then(datazen_ui_api::types::WorkflowStepResultOrder::from_wire)
+            .unwrap_or_default())
+    }
+
+    fn write_workflow_step_result_order(
+        &mut self,
+        order: datazen_ui_api::types::WorkflowStepResultOrder,
+    ) -> Result<(), String> {
+        // Use the current document, not the boot fallback: never overwrite
+        // an unreadable settings file to save one preference.
+        let mut document = futures_executor::block_on(self.settings.read_app_settings())
+            .map_err(|error| error.to_string())?;
+        let settings = document.as_object_mut()
+            .ok_or_else(|| "the settings document is not an object".to_owned())?;
+        settings.insert("workflowStepResultOrder".into(), serde_json::json!(order.as_str()));
+        let stored = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|error| error.to_string())?;
+        *self.settings_document.lock().expect("the settings lock") = stored;
+        Ok(())
+    }
+
     fn table_ddl(&self, _table: &str) -> Result<String, String> {
         // E3: the DDL read runs as part of the structure job (E1) — a
         // remote DDL render is unbounded IO and never the frame loop's to

@@ -222,14 +222,24 @@ impl KeymapPreset {
 /// React `UserPreferences.workflowStepResultOrder`'s inline union `'asc' |
 /// 'desc'`. React declares it inline with no exported name; the mirror
 /// gives it one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum WorkflowStepResultOrder {
     Asc,
+    #[default]
     Desc,
 }
 
 impl WorkflowStepResultOrder {
+    /// Check the persisted spelling; unknown or malformed values are not orders.
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "asc" => Some(Self::Asc),
+            "desc" => Some(Self::Desc),
+            _ => None,
+        }
+    }
+
     /// The wire spelling.
     pub fn as_str(self) -> &'static str {
         match self {

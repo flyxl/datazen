@@ -231,7 +231,7 @@ impl AppState {
         {
             let reseed = existing
                 .execution_result()
-                .and_then(|result| first_shown_index(result.steps.len(), self.workflow_step_order));
+                .and_then(|result| first_shown_index(result.steps.len(), self.workflow_step_order()));
             self.workflow_active_panel = Some(existing.id().to_owned());
             self.workflow_active_step = reseed;
             return;
@@ -265,7 +265,7 @@ impl AppState {
             }
         };
         let id = self.next_workflow_panel_id("hist");
-        let first = first_shown_index(result.steps.len(), self.workflow_step_order);
+        let first = first_shown_index(result.steps.len(), self.workflow_step_order());
         let panel = WorkflowHistoryPanel {
             id,
             history_id: history_id.to_owned(),
@@ -330,7 +330,7 @@ impl AppState {
             .iter()
             .find(|panel| panel.id() == panel_id)
             .and_then(|panel| panel.execution_result())
-            .and_then(|result| first_shown_index(result.steps.len(), self.workflow_step_order));
+            .and_then(|result| first_shown_index(result.steps.len(), self.workflow_step_order()));
     }
 
     // ── the run flow ──────────────────────────────────────────────────────────
@@ -662,13 +662,50 @@ impl AppState {
         }
     }
 
-    /// React's `toggleStepOrder` — the order flips; the settingsStore write
-    /// (`updateSettings`) is the settings track's seam.
+    /// The same report display order is read by Data Browsing, new run or
+    /// history panels, and report rendering. It never orders execution.
+    pub fn workflow_step_order(&self) -> WorkflowStepOrder {
+        match self.desktop.read_workflow_step_result_order() {
+            Ok(order) => order,
+            Err(error) if error == datazen_ui_api::DESKTOP_NOT_IMPLEMENTED => {
+                self.workflow_session_step_order
+            }
+            Err(_) => WorkflowStepOrder::Desc,
+        }
+    }
+
+    pub(crate) fn save_workflow_step_order(
+        &mut self,
+        order: WorkflowStepOrder,
+    ) -> Result<(), String> {
+        if self.workflow_step_order() == order {
+            return Ok(());
+        }
+        match self.desktop.write_workflow_step_result_order(order) {
+            Err(error) if error == datazen_ui_api::DESKTOP_NOT_IMPLEMENTED => {
+                // Only an actually unimplemented port is a session demo.
+                // Never replace a claimed, but failing, persistence port
+                // with an optimistic local write.
+                match self.desktop.read_workflow_step_result_order() {
+                    Err(error) if error == datazen_ui_api::DESKTOP_NOT_IMPLEMENTED => {
+                        self.workflow_session_step_order = order;
+                        Ok(())
+                    }
+                    _ => Err(error),
+                }
+            }
+            result => result,
+        }
+    }
+
     pub fn toggle_workflow_step_order(&mut self) {
-        self.workflow_step_order = match self.workflow_step_order {
+        let order = match self.workflow_step_order() {
             WorkflowStepOrder::Desc => WorkflowStepOrder::Asc,
             WorkflowStepOrder::Asc => WorkflowStepOrder::Desc,
         };
+        // The existing selection is the index in the immutable report, not
+        // in the reordered display, so flipping never changes its identity.
+        self.workflow_step_order_error = self.save_workflow_step_order(order).err();
     }
 
     /// React's step-tab click (`setActiveStepIndex(i)`).

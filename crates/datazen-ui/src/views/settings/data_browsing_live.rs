@@ -1,5 +1,6 @@
 //! The live native Data Browsing view presents only preferences with real host writes.
 
+use datazen_ui_api::types::WorkflowStepResultOrder;
 use datazen_ui_api::{BuiltinLanguage, Setting};
 use rune::{col, row, text, tok, El, TextEdit, TextStyle};
 use rune_kit::Kit;
@@ -101,7 +102,8 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         },
                     ),
                 )),
-        );
+        )
+        .child(workflow_step_order_row(state, &k, &mut overlays));
     if state.settings_error.is_some() {
         section = section.child(settings_error_row(state, theme));
     }
@@ -109,11 +111,11 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let unavailable = match state.builtin_language() {
         BuiltinLanguage::English => concat!(
             "Row counting, default sorting, grid and time display, connection pool, ",
-            "SELECT-limit toggle, auto-chart, and workflow result ordering are not configurable here."
+            "the SELECT-limit toggle, and auto-chart are not configurable here."
         ),
         BuiltinLanguage::SimplifiedChinese => concat!(
             "此处暂不支持行数统计、默认排序、表格和时间显示、",
-            "连接池、SELECT 限制开关、自动图表及工作流结果顺序设置。"
+            "连接池、SELECT 限制开关及自动图表设置。"
         ),
     };
     // Keep the working native actions, even though React places them elsewhere.
@@ -138,6 +140,58 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .wrap(),
         )
         .children(overlays)
+}
+
+fn workflow_step_order_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) -> El {
+    use WorkflowStepResultOrder::{Asc, Desc};
+
+    let label = t("settings.workflowStepResultOrder");
+    let labels = [
+        t("settings.workflowStepOrder.desc"),
+        t("settings.workflowStepOrder.asc"),
+    ];
+    let current = match state.workflow_step_order() {
+        Desc => labels[0],
+        Asc => labels[1],
+    };
+    let select = Select::new("settings-workflow-step-order", &labels)
+        .values(&[Desc.as_str(), Asc.as_str()])
+        .current(Some(current))
+        .label(label)
+        .open(state.settings_content.open_select == Some(SettingsSelect::WorkflowOrder))
+        .on_toggle(|state: &mut AppState| {
+            state.settings_content.toggle_select(SettingsSelect::WorkflowOrder);
+        })
+        .on_close(|state: &mut AppState| state.settings_content.close_select())
+        .on_choose(|state: &mut AppState, value, _tx| {
+            if state.active != crate::types::Section::Settings
+                || state.settings_section() != "dataBrowsing"
+                || state.settings_content.open_select != Some(SettingsSelect::WorkflowOrder)
+            {
+                return;
+            }
+            state.settings_content.close_select();
+            if let Some(order) = WorkflowStepResultOrder::from_wire(value) {
+                state.settings_error = state.save_workflow_step_order(order).err();
+                if state.settings_error.is_none() {
+                    state.workflow_step_order_error = None;
+                }
+            }
+        })
+        .build(&preset_field_kit(k), overlays)
+        .h(FIELD_HEIGHT)
+        .radius(9.0)
+        .border(1.0, k.c.border_base)
+        .pl(3.0)
+        .pr(8.0);
+    setting_row(
+        k,
+        overlays,
+        "settings-workflow-step-order-row".to_owned(),
+        label,
+        Some(t("settings.workflowStepResultOrderHint")),
+        select,
+    )
 }
 
 fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Vec<El>) -> El {
