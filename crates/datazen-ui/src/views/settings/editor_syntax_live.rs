@@ -59,15 +59,14 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
 fn preview(theme: SqlSyntaxTheme, dark: bool, kit: &Kit) -> El {
     let colors = SyntaxPalette::preview(theme, dark);
     let spans = highlight_with_palette(PREVIEW_SQL, colors);
-    let mut root = col()
-        .key("settings-sql-syntax-preview")
-        .w_full()
+    // A horizontal viewport lays its direct children out side by side.
+    // Give it one naturally sized, vertical code block, so the longest
+    // line can scroll without turning the five lines into a filmstrip.
+    let mut lines = col()
+        .key("settings-sql-syntax-preview-content")
+        .items_start()
         .px(16.0)
-        .py(12.0)
-        .radius(kit.radius.md)
-        .border(1.0, kit.c.border_base)
-        .fill(colors.background.unwrap_or(kit.c.bg_base))
-        .scroll_x();
+        .py(12.0);
     let mut start = 0usize;
     let font = TextStyle::new(12.0, 400.0).lh(20.4).mono();
     let foreground = colors.foreground.unwrap_or(Color::BLACK);
@@ -84,7 +83,7 @@ fn preview(theme: SqlSyntaxTheme, dark: bool, kit: &Kit) -> El {
                 relative
             })
         }).collect();
-        root = root.child(
+        lines = lines.child(
             text(line)
                 .key(format!("settings-sql-syntax-preview-line-{index}"))
                 .font(font)
@@ -93,5 +92,18 @@ fn preview(theme: SqlSyntaxTheme, dark: bool, kit: &Kit) -> El {
         );
         start = end + 1;
     }
-    root
+    col()
+        .key("settings-sql-syntax-preview")
+        .w_full()
+        .radius(kit.radius.md)
+        .clip_rounded(kit.radius.md)
+        .border(1.0, kit.c.border_base)
+        .fill(colors.background.unwrap_or(kit.c.bg_base))
+        .child(
+            col()
+                .key("settings-sql-syntax-preview-scroll")
+                .w_full()
+                .scroll_x()
+                .child(lines),
+        )
 }

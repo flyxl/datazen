@@ -508,7 +508,38 @@ class OfflineJourneys:
                             if node.get("key") == key]
             return fill_value
 
+        def expect_stacked_preview(tree):
+            select = lambda key: next(node for node in tree["elements"] if node.get("key") == key)
+            viewport = select("settings-sql-syntax-preview-scroll")
+            vx, vy, vw, vh = viewport["rect"]
+            self.assertGreater(vh, 100)
+            first_x, previous_bottom = None, vy
+            for index, text in enumerate((
+                "-- Sample query preview",
+                "SELECT u.name, COUNT(o.id) AS total",
+                "FROM users u",
+                "WHERE u.status = 'active' AND u.age > 18",
+                "ORDER BY total DESC;",
+            )):
+                line_key = f"settings-sql-syntax-preview-line-{index}"
+                self.expect_rendered(tree, key=line_key, text=text)
+                line = select(line_key)
+                self.assertTrue(line["path"].startswith(viewport["path"] + "/"))
+                x, y, width, height = line["rect"]
+                self.assertGreater(width, 0)
+                self.assertGreater(height, 0)
+                if first_x is None:
+                    first_x = x
+                self.assertAlmostEqual(x, first_x, delta=0.1)
+                self.assertGreaterEqual(x, vx)
+                self.assertLessEqual(x + width, vx + vw + 0.1)
+                self.assertGreaterEqual(y, previous_bottom - 0.1)
+                self.assertLessEqual(y + height, vy + vh + 0.1)
+                previous_bottom = y + height
+
+        expect_stacked_preview(canceled)
         applied = self.replay([*opened, tap(3.4, "option5")], until=4.4)
+        expect_stacked_preview(applied)
         self.expect_rendered(applied, text="Dracula", within=trigger)
         self.assertEqual(fill_at(applied, "settings-sql-syntax-preview"), "#282a36ff")
         self.assertEqual(json.loads(path.read_text()), {**original, "sqlSyntaxTheme": "dracula"})
@@ -519,6 +550,7 @@ class OfflineJourneys:
         self.expect_rendered(query, text="fixture-ada", within="result-workspace")
 
         restored = self.replay([*opened, tap(3.4, "option0")], until=4.4)
+        expect_stacked_preview(restored)
         self.expect_rendered(restored, text="Default (DataZen)", within=trigger)
         self.assertNotEqual(fill_at(restored, "settings-sql-syntax-preview"), "#282a36ff")
         self.assertEqual(json.loads(path.read_text()), {**original, "sqlSyntaxTheme": "default"})
