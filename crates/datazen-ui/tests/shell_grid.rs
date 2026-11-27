@@ -505,6 +505,7 @@ use rune::{Env, Runtime};
                 id: format!("page-{i}"),
                 name: format!("Conn {i}"),
                 engine: "sqlite".into(),
+                host: None,
             })
             .collect();
         many.push(ConnectionProfile {
