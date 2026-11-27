@@ -94,6 +94,25 @@ class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourne
             f"No rendered node for key={key!r}, text={text!r}, within={within!r}",
         )
 
+    def _settled_rect(self, tree, key):
+        self.expect_rendered(tree, key=key)
+        matches = [node["rect"] for node in tree["elements"]
+                   if node.get("key") == key and not node.get("exiting")
+                   and node.get("opacity", 0) > .95 and min(node["rect"][2:]) > 0]
+        self.assertEqual(len(matches), 1, key)
+        return matches[0]
+
+    def _expect_plain_table_fills_workspace(self, tree):
+        page = self._settled_rect(tree, "datazen-page")
+        toolbar = self._settled_rect(tree, "content-toolbar")
+        tabs = self._settled_rect(tree, "tab-strip")
+        switcher = self._settled_rect(tree, "table-view-switcher")
+        self.assertAlmostEqual(switcher[0], page[0], delta=.5)
+        self.assertAlmostEqual(switcher[2], page[2], delta=.5)
+        self.assertAlmostEqual(toolbar[1], page[1], delta=.5)
+        self.assertAlmostEqual(switcher[1], tabs[1] + tabs[3], delta=.5)
+        self.expect_rendered(tree, key="content-status-bar")
+
     def test_fresh_install_shows_empty_connections(self):
         tree = self.replay([])
         self.expect_rendered(tree, key="connections-empty")
@@ -146,11 +165,33 @@ class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourne
 
     def test_connection_browse_reads_sqlite_rows(self):
         fixture(self.store, self.db)
-        tree = self.replay([tap(0.5, "conn-open-e2e-sqlite"),
-                            tap(3, "tree-table-customers")], until=5)
-        self.expect_rendered(tree, key="tree-table-customers")
-        self.expect_rendered(tree, text="fixture-ada")
-        self.expect_rendered(tree, text="fixture-lin")
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        before = self.db.read_bytes()
+        browse = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "tree-table-customers")]
+        data = self.replay(browse, until=5)
+        self.expect_rendered(data, key="tree-table-customers")
+        self.expect_rendered(data, text="fixture-ada", within="cell-0-1")
+        self.expect_rendered(data, text="fixture-lin", within="cell-1-1")
+        self.expect_rendered(data, key="grid-readonly", within="data-grid")
+        self._expect_plain_table_fills_workspace(data)
+
+        columns = [*browse, tap(5, "view-columns")]
+        structure = self.replay(columns, until=7)
+        self.expect_rendered(structure, text="id", within="columns-list")
+        self.expect_rendered(structure, text="customer_name", within="columns-list")
+        self._expect_plain_table_fills_workspace(structure)
+        self.assertEqual(self._settled_rect(data, "table-view-switcher"),
+                         self._settled_rect(structure, "table-view-switcher"))
+
+        query = self.replay([*columns, tap(7.5, "conn-toolbar-new-query")], until=9)
+        self.expect_rendered(query, key="sql-editor-scroll")
+        self.assertFalse(visible(query, key="table-view-switcher"))
+        navigator = self._settled_rect(data, "datazen-navigator")
+        self.assertEqual(navigator, self._settled_rect(structure, "datazen-navigator"))
+        self.assertEqual(navigator, self._settled_rect(query, "datazen-navigator"))
+        self.assertEqual(self.db.read_bytes(), before)
 
     def test_connection_failure_keeps_connection_picker_open(self):
         fixture(self.store, self.db)
@@ -169,6 +210,7 @@ class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourne
             tap(.5, "conn-open-e2e-sqlite"), tap(3, "tree-table-customers"), tap(5, "view-ddl"),
         ], until=7)
         self.expect_rendered(tree, text=expected, within="table-ddl")
+        self._expect_plain_table_fills_workspace(tree)
 
     def test_table_edit_commit_and_rollback(self):
         fixture(self.store, self.db)
@@ -211,6 +253,11 @@ class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourne
         tree = self.replay(query_steps(sql), until=11)
         self.expect_rendered(tree, text=expected, within="result-workspace")
         self.assertFalse(visible(tree, text="fixture-ada", within="result-workspace"))
+        self.assertFalse(visible(tree, key="table-view-switcher"))
+        page = self._settled_rect(tree, "datazen-page")
+        toolbar = self._settled_rect(tree, "content-toolbar")
+        self.assertAlmostEqual(toolbar[0] - page[0], 24.0, delta=.5)
+        self.assertAlmostEqual(toolbar[1] - page[1], 24.0, delta=.5)
 
     def test_sql_write_persists_and_is_read_on_relaunch(self):
         fixture(self.store, self.db)

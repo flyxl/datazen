@@ -170,6 +170,36 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool, layer: &m
     connection_content_with_vm(state, theme, dark, &vm, layer)
 }
 
+/// React's plain table pane starts immediately below its toolbar and tabs.
+fn plain_live_sqlite_table(state: &AppState, vm: &crate::views::content_view::ContentViewVm) -> bool {
+    if state.active != Section::Workspace
+        || state.native_kv.is_some()
+        || state.er_schema.is_some()
+        || state.table_read_error.is_some()
+        || state.ai_chat_open
+        || vm.show_drawers()
+        || vm.split_secondary
+        || vm.object_vm.is_some()
+        || vm.document_vm.is_some()
+        || vm.dialogs_vm.is_some()
+    {
+        return false;
+    }
+    let Some(tab) = state.tabs.selected() else { return false };
+    if tab.kind != datazen_ui_api::TabKind::Table
+        || !state.grid.has_page()
+        || state.grid.table_label() != tab.title.as_str()
+        || state.desktop_catalog.is_none()
+    {
+        return false;
+    }
+    state.desktop_connection.as_ref().is_some_and(|id| {
+        state.desktop_connections.as_ref().is_some_and(|profiles| {
+            profiles.iter().any(|profile| &profile.id == id && profile.engine == "sqlite")
+        })
+    })
+}
+
 /// The same content column with an explicit view model, so a host that owns an
 /// object selection can compose the real `DatabaseObjectView` into the slot.
 #[allow(dead_code)] // composition entry point; remove when the host owns object selection.
@@ -194,13 +224,14 @@ pub fn connection_content_with_vm(
     } else {
         slot = slot.size(0.0, 0.0);
     }
+    let page_inset = if plain_live_sqlite_table(state, vm) { 0.0 } else { 24.0 };
     col()
         .key("datazen-page")
         .grow(1.0)
         .min_w(0.0)
         .h_full()
-        .px(24.0)
-        .py(24.0)
+        .px(page_inset)
+        .py(page_inset)
         .gap(16.0)
         .fill(theme.bg)
         // Thread the single overlay layer through the ContentView port down to
