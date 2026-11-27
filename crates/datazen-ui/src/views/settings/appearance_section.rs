@@ -66,12 +66,8 @@ const FIELD_TEXT: TextStyle = TextStyle::new(14.0, 400.0).lh(20.0);
 /// accessibility, selection handlers and keyboard focus; change only the
 /// Appearance trigger skin.
 fn appearance_select(select: Select, kit: &rune_kit::Kit, layer: &mut Vec<El>) -> El {
-    let mut field_kit = (*kit).clone();
-    field_kit.elevation = field_kit.elevation.with_input(Vec::<rune::Shadow>::new());
-    field_kit.ty.ui_compact = FIELD_TEXT;
-    field_kit.c.icon_muted = kit.c.text_faint;
     select
-        .build(&field_kit, layer)
+        .build(&appearance_field_kit(kit), layer)
         .h(FIELD_HEIGHT)
         .radius(FIELD_RADIUS)
         .border(1.0, kit.c.border_base)
@@ -80,6 +76,17 @@ fn appearance_select(select: Select, kit: &rune_kit::Kit, layer: &mut Vec<El>) -
         // frame needs a 2pt larger right inset to align its center.
         .pl(3.0)
         .pr(8.0)
+}
+
+fn appearance_field_kit(kit: &rune_kit::Kit) -> rune_kit::Kit {
+    let mut field_kit = (*kit).clone();
+    // In Rune, an empty input elevation *inherits* the neutral button's
+    // drop shadow and ring. Clear that fallback in this local clone too.
+    field_kit.elevation = field_kit.elevation.with_input(Vec::<rune::Shadow>::new());
+    field_kit.elevation.button_neutral.clear();
+    field_kit.ty.ui_compact = FIELD_TEXT;
+    field_kit.c.icon_muted = kit.c.text_faint;
+    field_kit
 }
 
 /// The sentinel option value representing the built-in default theme
@@ -495,4 +502,25 @@ fn open_flag<S: 'static>(
     s: &S,
 ) -> Option<usize> {
     slot.as_ref().and_then(|open| open(s))
+}
+
+
+#[cfg(test)]
+mod appearance_field_tests {
+    use super::*;
+
+    #[test]
+    fn appearance_field_disables_the_neutral_button_shadow_fallback_only_locally() {
+        for dark in [false, true] {
+            let shared = kit(dark);
+            let field = appearance_field_kit(shared);
+
+            assert!(field.elevation.input().is_empty());
+            assert!(!shared.elevation.input().is_empty());
+            assert!(!shared.elevation.button_neutral.is_empty());
+            assert_eq!(field.elevation.floating.len(), shared.elevation.floating.len());
+            assert_eq!(field.c.border_focus, shared.c.border_focus);
+            assert_eq!(field.c.border_base, shared.c.border_base);
+        }
+    }
 }

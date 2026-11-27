@@ -216,9 +216,9 @@ fn mount_shows_both_selects_with_the_builtin_default() {
 
 #[test]
 fn appearance_trigger_matches_field_size_inset_and_theme_tokens_without_a_fake_pack_select() {
-    for (dark, inset, ink) in [
-        (false, "#ffffffff", "#26364dff"),
-        (true, "#0a0d14ff", "#e6eaf2ff"),
+    for (dark, inset, ink, chevron_ink) in [
+        (false, "#ffffffff", "#26364dff", "#8498afff"),
+        (true, "#0a0d14ff", "#e6eaf2ff", "#5f6879ff"),
     ] {
         let mut scene = AuditState::scene();
         scene.pack_adapter_enabled = false;
@@ -240,12 +240,57 @@ fn appearance_trigger_matches_field_size_inset_and_theme_tokens_without_a_fake_p
         assert_eq!(label.rect[0] - scheme.rect[0], 11.0);
         assert_eq!(label.rect[3], 20.0);
         assert_eq!(label.text_color.unwrap().hex(), ink);
+        assert_eq!(find("chevron").text_color.unwrap().hex(), chevron_ink);
         assert_eq!(scheme.role, "combobox");
         assert!(scheme.focusable);
         assert_eq!(status.fill.hex(), inset);
         assert!(!status.focusable);
         assert!(!has(&rt, "appearance-theme-select-trigger"));
     }
+}
+
+#[test]
+fn keyboard_opens_the_appearance_field_commits_one_mode_and_returns_focus() {
+    use rune::{Key, KeyEvent, Mods};
+
+    let mut scene = AuditState::scene();
+    scene.pack_adapter_enabled = false;
+    scene.theme.mode = ThemeMode::Light;
+    let mut rt = rt(scene);
+    const TRIGGER: &str = "appearance-color-scheme-select-trigger";
+    let focused = |rt: &Runtime<AuditState>| rt.elements().into_iter()
+        .find(|e| e.focused && !e.exiting).and_then(|e| e.key);
+    let key = |rt: &mut Runtime<AuditState>, key| {
+        rt.key(KeyEvent { key, mods: Mods::default() });
+        settle(rt);
+    };
+
+    for _ in 0..8 {
+        if focused(&rt).as_deref() == Some(TRIGGER) {
+            break;
+        }
+        key(&mut rt, Key::Tab);
+    }
+    assert_eq!(focused(&rt).as_deref(), Some(TRIGGER));
+    key(&mut rt, Key::Down);
+    assert_eq!(rt.state.open, Some(0));
+    assert!(has(&rt, "listbox"));
+    assert_eq!(focused(&rt).as_deref(), Some("option0"));
+    assert!(rt.state.mode_writes.is_empty());
+    key(&mut rt, Key::Down);
+    assert_eq!(focused(&rt).as_deref(), Some("option1"));
+    key(&mut rt, Key::Enter);
+    assert_eq!(rt.state.theme.mode, ThemeMode::Dark);
+    assert_eq!(rt.state.mode_writes, vec![ThemeMode::Dark]);
+    assert_eq!(rt.state.open, None);
+    assert_eq!(focused(&rt).as_deref(), Some(TRIGGER));
+    key(&mut rt, Key::Down);
+    assert_eq!(rt.state.open, Some(0));
+    key(&mut rt, Key::Escape);
+    assert_eq!(rt.state.open, None);
+    assert_eq!(focused(&rt).as_deref(), Some(TRIGGER));
+    assert_eq!(rt.state.mode_writes, vec![ThemeMode::Dark]);
+    assert!(rt.state.pack_writes.is_empty());
 }
 
 /// The live native host supports changing mode but does not apply plugin
