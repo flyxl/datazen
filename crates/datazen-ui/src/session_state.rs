@@ -225,7 +225,7 @@ impl AppState {
         }
         self.collapsed.clear();
         self.table_page = 0;
-        self.sort = None;
+        self.manual_table_sorts.clear();
         self.filter = None;
         self.filter_column = 0;
         self.filter_editor = TextEdit::new(String::new());
@@ -266,7 +266,7 @@ impl AppState {
         self.query_plan = None;
         self.grid.set_editable(false);
         self.table_page = 0;
-        self.sort = None;
+        self.manual_table_sorts.clear();
         self.filter = None;
         self.filter_column = 0;
         self.filter_editor = TextEdit::new(String::new());

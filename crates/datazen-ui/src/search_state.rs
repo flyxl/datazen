@@ -151,7 +151,7 @@ impl AppState {
             label,
             table: self.grid.table_label().to_owned(),
             page: self.grid.page(),
-            sort: self.sort.clone(),
+            sort: self.manual_sort_for_table(self.grid.table_label()).cloned(),
             filter: self.filter.clone(),
         };
         self.fk_breadcrumbs.push(crumb);
@@ -165,9 +165,11 @@ impl AppState {
         let crumb = self.fk_breadcrumbs[index].clone();
         self.fk_breadcrumbs.truncate(index);
         self.active = Section::Workspace;
-        self.open_table_tab(&crumb.table);
+        if self.open_table_tab(&crumb.table).is_none() {
+            return;
+        }
         self.filter = crumb.filter;
-        self.sort = crumb.sort;
+        self.set_selected_table_manual_sort(crumb.sort);
         self.table_page = crumb.page;
         self.reload_table_page();
     }
@@ -177,12 +179,13 @@ impl AppState {
     /// re-reads.
     pub fn open_table_with_filter(&mut self, table: &str, column: &str, value: &str) {
         self.active = Section::Workspace;
-        self.open_table_tab(table);
+        if self.open_table_tab(table).is_none() {
+            return;
+        }
         self.filter = Some(ColumnFilter {
             column: column.to_owned(),
             contains: value.to_owned(),
         });
-        self.sort = None;
         self.table_page = 0;
         self.reload_table_page();
     }

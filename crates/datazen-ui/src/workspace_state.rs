@@ -27,12 +27,13 @@ impl AppState {
         // page and the footer says the read is in flight; a declined job
         // falls through to the synchronous paths below (H4's contract).
         let generation = self.next_read_generation();
+        let sort = self.manual_sort_for_table(title).cloned();
         let job = AdapterJob::ReadTable {
             generation,
             table: title.to_owned(),
             page: self.table_page,
             page_size: self.table_page_size(),
-            sort: self.sort.clone(),
+            sort: sort.clone(),
             filter: self.filter.clone(),
         };
         if self.desktop.begin_job(job) {
@@ -50,7 +51,6 @@ impl AppState {
         // grid keeps its previous page.
         let page = self.table_page;
         let size = self.table_page_size();
-        let sort = self.sort.clone();
         let filter = self.filter.clone();
         let read = self
             .desktop
@@ -95,12 +95,46 @@ impl AppState {
         self.reload_table_page();
     }
 
+    /// Only the selected table tab owns a manual ordering for this read.
+    pub(crate) fn manual_sort_for_table(&self, title: &str) -> Option<&ColumnSort> {
+        if self.connect_loading.is_some() {
+            return None;
+        }
+        self.tabs
+            .selected()
+            .filter(|tab| tab.kind == TabKind::Table && tab.title == title)
+            .and_then(|tab| self.manual_table_sorts.get(&tab.id))
+    }
+
+    pub(crate) fn set_selected_table_manual_sort(&mut self, sort: Option<ColumnSort>) {
+        let Some(id) = self.tabs.selected()
+            .filter(|tab| tab.kind == TabKind::Table)
+            .map(|tab| tab.id)
+        else {
+            return;
+        };
+        if let Some(sort) = sort {
+            self.manual_table_sorts.insert(id, sort);
+        } else {
+            self.manual_table_sorts.remove(&id);
+        }
+    }
+
     /// A header click cycles its column: none, ascending, descending, back to none.
     pub fn cycle_sort(&mut self, column: u32) {
+        if self.active != Section::Workspace
+            || self.connect_loading.is_some()
+            || !self.grid.has_page()
+            || !self.tabs.selected().is_some_and(|tab| {
+                tab.kind == TabKind::Table && tab.title == self.grid.table_label()
+            })
+        {
+            return;
+        }
         let Some(name) = self.grid.column_name(column).map(str::to_owned) else {
             return;
         };
-        let next = match &self.sort {
+        let next = match self.manual_sort_for_table(self.grid.table_label()) {
             Some(sort) if sort.column == name && !sort.descending => Some(ColumnSort {
                 column: name,
                 descending: true,
@@ -111,7 +145,7 @@ impl AppState {
                 descending: false,
             }),
         };
-        self.sort = next;
+        self.set_selected_table_manual_sort(next);
         self.table_page = 0;
         self.reload_table_page();
     }
@@ -860,7 +894,7 @@ impl AppState {
                         self.fk_breadcrumbs.clear();
                         self.collapsed.clear();
                         self.table_page = 0;
-                        self.sort = None;
+                        self.manual_table_sorts.clear();
                         self.filter = None;
                         self.filter_column = 0;
                         self.filter_editor = TextEdit::new(String::new());
@@ -1172,6 +1206,7 @@ impl AppState {
         if !self.tabs.close(id) {
             return false;
         }
+        self.manual_table_sorts.remove(&id);
         self.discard_query_editor_tab(id);
         self.query_database_targets.remove(&id);
         if self.query_plan.as_ref().is_some_and(|plan| plan.tab_id == id) {

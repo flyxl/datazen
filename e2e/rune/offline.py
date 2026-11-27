@@ -790,6 +790,57 @@ class OfflineJourneys:
             self.assertEqual(db.execute(
                 "SELECT customer_name FROM customers WHERE id=1").fetchone(), ("fixture-ada",))
 
+    def test_sqlite_manual_table_sort_follows_only_its_own_tab(self):
+        """An identical sortable column on two real SQLite tables must not leak order."""
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                CREATE TABLE orders(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                INSERT INTO customers VALUES (1,'zora'),(2,'amber'),(3,'mica');
+                INSERT INTO orders VALUES (1,'tango'),(2,'bravo'),(3,'delta');
+            """)
+        self.store.write_text(json.dumps({"connections":[{
+            "id":"e2e-sqlite", "name":"Rune SQLite sort ownership", "databaseType":"sqlite",
+            "database":str(self.db), "readOnly":True, "connectionTimeout":30, "maxPoolSize":2,
+        }]}), encoding="utf-8")
+        before = self.db.read_bytes()
+        with sqlite3.connect(self.db.as_uri()+"?mode=ro", uri=True) as db:
+            customers_default = db.execute("SELECT name FROM customers").fetchall()
+            customers_asc = db.execute("SELECT name FROM customers ORDER BY name ASC").fetchall()
+            orders_default = db.execute("SELECT name FROM orders").fetchall()
+            orders_desc = db.execute("SELECT name FROM orders ORDER BY name DESC").fetchall()
+        self.assertNotEqual(customers_default, customers_asc)
+        self.assertNotEqual(orders_default, orders_desc)
+
+        def expect_order(tree, rows, header):
+            self.expect_rendered(tree, key="grid-readonly", within="data-grid")
+            self.expect_rendered(tree, text=header, within="head-1")
+            for i, (name,) in enumerate(rows):
+                self.expect_rendered(tree, text=name, within=f"cell-{i}-1")
+
+        a = [*OPEN, tap(5.2, "head-1")]
+        expect_order(self.replay(a, until=6.8), customers_asc, "name ↑")
+        b = [*a, tap(7.0, "tree-table-orders")]
+        unsorted_b = self.replay(b, until=8.8)
+        self.expect_rendered(unsorted_b, text="customers", within="tab-1")
+        self.expect_rendered(unsorted_b, text="orders", within="tab-2")
+        expect_order(unsorted_b, orders_default, "name")
+        ordered_b = [*b, tap(9.1, "head-1"), tap(10.6, "head-1")]
+        expect_order(self.replay(ordered_b, until=12), orders_desc, "name ↓")
+
+        back_a = [*ordered_b, tap(12.3, "tab-1")]
+        expect_order(self.replay(back_a, until=13.9), customers_asc, "name ↑")
+        back_b = [*back_a, tap(14.1, "tab-2")]
+        expect_order(self.replay(back_b, until=15.6), orders_desc, "name ↓")
+
+        reopened_a = self.replay([
+            *back_b, tap(16, "tab-close-1"), tap(17, "tree-table-customers"),
+        ], until=18.7, timeout=75)
+        self.assertFalse(visible(reopened_a, key="tab-1"))
+        self.expect_rendered(reopened_a, text="customers", within="tab-3")
+        expect_order(reopened_a, customers_default, "name")
+        self.assertEqual(self.db.read_bytes(), before)
+
     def test_sqlite_query_retains_rows_across_result_batches(self):
         fixture(self.store, self.db)
         sql = ("WITH RECURSIVE n(i) AS(SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<600) "

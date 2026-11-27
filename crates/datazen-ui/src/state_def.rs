@@ -105,8 +105,9 @@ pub struct AppState {
     pub query_database_targets: std::collections::HashMap<u32, datazen_ui_api::NativeQueryDatabase>,
     /// The page the workspace last opened for the selected table tab.
     pub table_page: u32,
-    /// The sort the table page is opened with.
-    pub sort: Option<ColumnSort>,
+    /// In-memory user-selected sort, scoped to a table tab in this session.
+    /// No entry means use the existing unsorted/default driver path.
+    pub(crate) manual_table_sorts: std::collections::BTreeMap<u32, ColumnSort>,
     /// The filter the table page is opened with.
     pub filter: Option<ColumnFilter>,
     /// The column the filter bar targets, as an index into the loaded page.
@@ -620,7 +621,7 @@ impl Default for AppState {
             query_plan: None,
             query_database_targets: Default::default(),
             table_page: 0,
-            sort: None,
+            manual_table_sorts: Default::default(),
             filter: None,
             filter_column: 0,
             filter_editor: TextEdit::new(String::new()),
