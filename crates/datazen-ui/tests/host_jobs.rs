@@ -92,6 +92,125 @@ use rune::{Env, Runtime};
     }
 
     #[test]
+    fn connection_form_refreshes_only_after_desktop_save_and_never_connects() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+
+        struct Host {
+            operations: Rc<RefCell<Vec<&'static str>>>,
+            save_error: Option<&'static str>,
+            list_error: Option<&'static str>,
+        }
+
+        impl DesktopAdapter for Host {
+            fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+                self.operations.borrow_mut().push("list");
+                if let Some(error) = self.list_error {
+                    return Err(error.into());
+                }
+                Ok(vec![ConnectionProfile {
+                    id: "actual-host-id".into(),
+                    name: "Saved fixture".into(),
+                    engine: "sqlite".into(),
+                    host: None,
+                }])
+            }
+
+            fn read_table_page(
+                &mut self,
+                _: &str,
+                _: u32,
+                _: u32,
+                _: Option<&ColumnSort>,
+                _: Option<&ColumnFilter>,
+            ) -> Result<TablePage, String> {
+                panic!("saving a profile must not read a table")
+            }
+
+            fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+                panic!("saving a profile must not write cells")
+            }
+
+            fn begin_job(&mut self, _: datazen_ui_api::AdapterJob) -> bool {
+                panic!("saving a profile must not enqueue a connection/session job")
+            }
+
+            fn save_connection(
+                &mut self,
+                _: &datazen_ui_api::ConnectionDraft,
+            ) -> Result<(), String> {
+                self.operations.borrow_mut().push("save");
+                self.save_error.map_or(Ok(()), |error| Err(error.into()))
+            }
+        }
+
+        let old = ConnectionProfile {
+            id: "previous".into(),
+            name: "Previous fixture".into(),
+            engine: "sqlite".into(),
+            host: None,
+        };
+        for (save_error, list_error) in [
+            (None, None),
+            (None, Some("list unavailable")),
+            (Some("save unavailable"), None),
+            (Some(DESKTOP_NOT_IMPLEMENTED), None),
+        ] {
+            let mut state = AppState::default();
+            let operations = Rc::new(RefCell::new(Vec::new()));
+            state.desktop = Box::new(Host {
+                operations: Rc::clone(&operations),
+                save_error,
+                list_error,
+            });
+            if save_error != Some(DESKTOP_NOT_IMPLEMENTED) {
+                state.desktop_connections = Some(vec![old.clone()]);
+            }
+            state.open_connection_dialog();
+            state.connection_name = rune::TextEdit::new("Saved fixture");
+            state.connection_engine = rune::TextEdit::new("sqlite");
+            state.connection_address = rune::TextEdit::new("fixture");
+            state.connection_database = rune::TextEdit::new("fixture.sqlite");
+            state.save_connection_form();
+            assert!(!state.session_open());
+            assert_eq!(state.active, Section::Connections);
+            match (save_error, list_error) {
+                (None, None) => {
+                    assert_eq!(operations.borrow().as_slice(), ["save", "list"]);
+                    assert_eq!(state.visible_connections()[0].id, "actual-host-id");
+                    assert!(!state.connection_dialog_open);
+                    assert!(state.connection_error.is_none());
+                    assert!(state.connections_load_error.is_none());
+                }
+                (None, Some(error)) => {
+                    assert_eq!(operations.borrow().as_slice(), ["save", "list"]);
+                    assert!(!state.connection_dialog_open);
+                    assert_eq!(state.connection_name.text, "");
+                    assert!(state.connection_error.is_none());
+                    assert_eq!(state.connections_load_error.as_deref(), Some(error));
+                    assert_eq!(state.visible_connections(), vec![old.clone()]);
+                }
+                (Some(DESKTOP_NOT_IMPLEMENTED), None) => {
+                    assert_eq!(operations.borrow().as_slice(), ["save"]);
+                    assert!(state.desktop_connections.is_none());
+                    assert!(state.visible_connections().iter().any(|p| p.name == "Saved fixture"));
+                    assert!(!state.connection_dialog_open);
+                    assert!(state.connection_error.is_none());
+                }
+                (Some(error), None) => {
+                    assert_eq!(operations.borrow().as_slice(), ["save"]);
+                    assert!(state.connection_dialog_open);
+                    assert_eq!(state.connection_name.text, "Saved fixture");
+                    assert_eq!(state.connection_error.as_deref(), Some(error));
+                    assert!(state.connections_load_error.is_none());
+                    assert_eq!(state.visible_connections(), vec![old.clone()]);
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
     fn a_stale_read_delivery_is_dropped() {
         use datazen_ui::app_poll;
         use datazen_ui_api::WorkspaceApi;

@@ -223,14 +223,14 @@ impl AppState {
             self.desktop.save_connection(&draft)
         };
         let saved = match result {
-            Ok(()) => Ok(()),
+            Ok(()) => Ok(true),
             Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
-                self.workspace.save_connection(&draft)
+                self.workspace.save_connection(&draft).map(|()| false)
             }
             Err(error) => Err(error),
         };
         match saved {
-            Ok(()) => {
+            Ok(saved_on_desktop) => {
                 self.close_connection_dialog();
                 self.connection_name = TextEdit::new(String::new());
                 self.connection_engine = TextEdit::new(String::new());
@@ -242,6 +242,11 @@ impl AppState {
                 self.connection_ssh_host = TextEdit::new(String::new());
                 self.connection_ssh_port = TextEdit::new(String::from("22"));
                 self.connection_ssh_username = TextEdit::new(String::new());
+                if saved_on_desktop {
+                    // Refresh the redacted list, without opening a session.
+                    // A list failure is independent of the committed save.
+                    self.sync_desktop_connections();
+                }
             }
             Err(error) => self.connection_error = Some(error),
         }

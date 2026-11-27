@@ -126,6 +126,19 @@ class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourne
             self.assertIsNone(rows[0].get(network_field), network_field)
         self.assertFalse(visible(tree, key="connection-form-error"))
         saved_id = rows[0]["id"]
+        # Saving must display the actual persisted card in the same process,
+        # without opening it. Only the next replay explicitly connects.
+        self.expect_rendered(tree, key=f"connection-{saved_id}")
+        self.expect_rendered(tree, text=name, within=f"connection-{saved_id}")
+        self.expect_rendered(tree, key=f"conn-open-{saved_id}")
+        status = f"conn-status-{saved_id}"
+        self.assertTrue(any(visible(tree, text=offline, within=status)
+                            for offline in ("Offline", "离线")), "the saved connection is offline")
+        self.assertFalse(visible(tree, key="connection-dialog"))
+        self.assertFalse(visible(tree, key="connections-empty"))
+        self.assertFalse(visible(tree, key="connect-loading"))
+        self.assertFalse(visible(tree, key="tree-table-customers"))
+        self.assertIsNone(rows[0].get("lastConnectedAt"))
         reopened = self.replay([tap(.5, f"conn-open-{saved_id}"),
                                 tap(3, "tree-table-customers")], until=5)
         self.expect_rendered(reopened, key="tree-table-customers")
