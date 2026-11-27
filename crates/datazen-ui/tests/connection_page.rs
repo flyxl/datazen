@@ -519,6 +519,34 @@ fn general_language_keeps_the_real_combobox_through_the_local_field_skin() {
     use datazen_ui_api::{BuiltinLanguage, Setting};
     use rune::{Env, Key, KeyEvent, Mods};
 
+    // AppState intentionally ignores the UI memory fallback for appearance.
+    // Read/write through a test desktop settings adapter instead, as the
+    // stock host does with its file store. No system-mode substitution.
+    struct SettingsFixture(MemoryWorkspace);
+    impl DesktopAdapter for SettingsFixture {
+        fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+            Ok(Vec::new())
+        }
+
+        fn read_table_page(
+            &mut self, _: &str, _: u32, _: u32, _: Option<&ColumnSort>, _: Option<&ColumnFilter>,
+        ) -> Result<TablePage, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn read_ui_settings(&self) -> Result<Vec<Setting>, String> {
+            Ok(self.0.read_settings())
+        }
+
+        fn write_ui_setting(&mut self, setting: Setting) -> Result<(), String> {
+            self.0.write_setting(setting)
+        }
+    }
+
     fn node(rt: &Runtime<AppState>, key: &str) -> rune::ElementInfo {
         rt.elements()
             .into_iter()
@@ -543,6 +571,7 @@ fn general_language_keeps_the_real_combobox_through_the_local_field_skin() {
 
     for (dark, theme) in [(false, "light"), (true, "dark")] {
         let mut state = AppState::default();
+        state.desktop = Box::new(SettingsFixture(MemoryWorkspace::new()));
         state.write_ui_setting(Setting::ThemeMode { mode: theme.into() }).unwrap();
         state.write_ui_setting(Setting::BuiltinLanguage { locale: BuiltinLanguage::English }).unwrap();
         let mut rt = Runtime::new(
@@ -561,6 +590,7 @@ fn general_language_keeps_the_real_combobox_through_the_local_field_skin() {
         assert!(field.focusable);
         assert_eq!(field.expanded, Some(false));
         assert_eq!(field.rect, [650.0, 103.5, 496.0, 36.0]);
+        assert_eq!(field.fill.hex(), if dark { "#0a0d14ff" } else { "#ffffffff" });
 
         press(&mut rt, TRIGGER);
         assert!(key_set(&rt).contains(LISTBOX));
