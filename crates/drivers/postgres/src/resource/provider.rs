@@ -627,11 +627,25 @@ impl PostgresResourceProvider {
                 .ensure_transaction_reaches(&resource.connection, target)
                 .await?;
             let sql = datazen_driver_api::DatabaseDriver::qualified_sql(&*self.driver, sql, target);
-            let limit = call
-                .input
-                .get("limit")
-                .and_then(serde_json::Value::as_u64)
-                .map(|n| n.min(u32::MAX as u64) as u32);
+            use crate::resource_stream::PublicationLimit;
+            let limit = match call.input.get("publishedRowLimit") {
+                Some(value) => {
+                    if call.input.get("limit").is_some() {
+                        return Err(DriverError::InvalidConfig(
+                            "Specify a fetch limit or a publication limit, not both".into(),
+                        ).into());
+                    }
+                    // The Rune UI allows at most 10,000 visible rows plus one
+                    // extra proof row. Reject malformed/oversized budgets.
+                    let rows = value.as_u64().filter(|n| (1..=10_001).contains(n))
+                        .ok_or_else(|| DriverError::InvalidConfig(
+                            "Published row limit must be 1..=10001".into(),
+                        ))?;
+                    Some(PublicationLimit::OutputOnly(rows as u32))
+                }
+                None => call.input.get("limit").and_then(serde_json::Value::as_u64)
+                    .map(|n| PublicationLimit::Legacy(n.min(u32::MAX as u64) as u32)),
+            };
             let parameters: Option<Vec<datazen_driver_api::Value>> = call
                 .input
                 .get("boundParameters")
@@ -639,7 +653,7 @@ impl PostgresResourceProvider {
                 .transpose()
                 .map_err(|_| DriverError::InvalidConfig("invalid bound parameters".into()))?;
             self.driver
-                .stream_resource_query(
+                .stream_resource_query_with_budget(
                     &resource.connection,
                     execution_id,
                     &sql,

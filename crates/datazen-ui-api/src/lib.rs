@@ -2563,6 +2563,8 @@ pub enum AdapterJob {
 pub struct QueryExecutionStats {
     pub affected_rows: Option<u64>,
     pub elapsed_ms: u64,
+    /// Configured display cap, only when a real extra row proved truncation.
+    pub truncated_to: Option<u32>,
 }
 
 /// A completed job's answer. The generation is the requesting job's; the UI

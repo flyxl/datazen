@@ -10,6 +10,14 @@ use sqlx::{Column, Executor, TypeInfo};
 const BATCH_BYTES: usize = 1024 * 1024;
 const BATCH_ROWS: usize = 256;
 
+#[derive(Clone, Copy)]
+pub(crate) enum PublicationLimit {
+    /// Legacy contract: append a server-side LIMIT where supported, and cap publication.
+    Legacy(u32),
+    /// Execute the author's exact SQL and cap only result publication.
+    OutputOnly(u32),
+}
+
 impl PostgresDriver {
     pub(crate) async fn stream_resource_query(
         &self,
@@ -17,6 +25,20 @@ impl PostgresDriver {
         execution_id: &QueryExecutionId,
         sql: &str,
         limit: Option<u32>,
+        parameters: Option<&[Value]>,
+        sink: &dyn ResultSink,
+    ) -> Result<Vec<StatementResult>, ResourceError> {
+        self.stream_resource_query_with_budget(
+            handle, execution_id, sql, limit.map(PublicationLimit::Legacy), parameters, sink,
+        ).await
+    }
+
+    pub(crate) async fn stream_resource_query_with_budget(
+        &self,
+        handle: &ConnectionHandle,
+        execution_id: &QueryExecutionId,
+        sql: &str,
+        limit: Option<PublicationLimit>,
         parameters: Option<&[Value]>,
         sink: &dyn ResultSink,
     ) -> Result<Vec<StatementResult>, ResourceError> {
@@ -85,7 +107,7 @@ impl PostgresDriver {
         handle: &ConnectionHandle,
         execution_id: &QueryExecutionId,
         sql: &str,
-        limit: Option<u32>,
+        limit: Option<PublicationLimit>,
         parameters: Option<&[Value]>,
         sink: &dyn ResultSink,
     ) -> Result<Vec<StatementResult>, ResourceError> {
@@ -109,7 +131,11 @@ impl PostgresDriver {
             if self.is_cancel_requested(handle, execution_id).await? {
                 return Err(DriverError::QueryCancelled.into());
             }
-            let (effective_sql, applied_limit) = apply_select_limit(&statement, limit);
+            let (effective_sql, applied_limit) = match limit {
+                Some(PublicationLimit::OutputOnly(rows)) => (statement.clone(), Some(rows)),
+                Some(PublicationLimit::Legacy(rows)) => apply_select_limit(&statement, Some(rows)),
+                None => (statement.clone(), None),
+            };
             let started = std::time::Instant::now();
             let mut columns = Vec::new();
             let mut batch = Vec::new();

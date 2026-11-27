@@ -52,6 +52,7 @@ pub(super) async fn explain_query_observed(
         database,
         "explain",
         sql,
+        None,
         stop,
         note_execution,
         |output| {
@@ -80,6 +81,7 @@ pub(super) async fn consume_query_command(
     database: Option<String>,
     command: &'static str,
     sql: &str,
+    published_row_limit: Option<u32>,
     stop: &std::sync::atomic::AtomicBool,
     note_execution: impl Fn(bool),
     mut consume: impl FnMut(serde_json::Value) -> Result<(), String>,
@@ -93,6 +95,10 @@ pub(super) async fn consume_query_command(
         )
         .await
         .map_err(|error| error.to_string())?;
+    let mut input = serde_json::json!({ "sql": sql });
+    if let Some(rows) = published_row_limit {
+        input["publishedRowLimit"] = serde_json::json!(rows);
+    }
     let receipt = runtime
         .execute_at_target(
             &ctx,
@@ -109,7 +115,7 @@ pub(super) async fn consume_query_command(
                 expected_config_revision: Counter::new(profiles.revision_of(&connection)),
                 call: datazen::execution::application::requests::CommandCall {
                     command: command.into(),
-                    input: serde_json::json!({ "sql": sql }),
+                    input,
                 },
                 idempotency_key: token.idempotency_key,
             },

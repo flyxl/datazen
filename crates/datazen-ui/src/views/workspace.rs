@@ -310,7 +310,10 @@ pub fn query_workspace(
             col().key("result-workspace").w_full()
                 .child(build::<AppState>(&summary, None, None, dark))
         }
-        (None, None, Some(grid)) => result_workspace(state, grid, theme, dark, elapsed_ms),
+        (None, None, Some(grid)) => result_workspace(
+            state, grid, theme, dark, elapsed_ms,
+            execution_stats.and_then(|stats| stats.truncated_to),
+        ),
         (None, None, None) => col()
             .key("query-results")
             .w_full()
@@ -647,6 +650,7 @@ fn result_workspace(
     theme: tok::Theme,
     dark: bool,
     elapsed_ms: Option<u64>,
+    truncated_to: Option<u32>,
 ) -> El {
     let toggle = result_view_toggle(state, theme);
     let find_bar = result_find_bar(state, grid, theme, dark);
@@ -669,6 +673,11 @@ fn result_workspace(
         .child(toggle)
         .child(find_bar)
         .child(status)
+        .children(truncated_to.map(|limit| {
+            let message = t("query.resultTruncated").replace("{limit}", &limit.to_string());
+            text(message).key("result-truncated").role("status").font(type_::LABEL)
+                .color(crate::ui::kit::kit(dark).c.warning.fg)
+        }))
         .child(body)
 }
 

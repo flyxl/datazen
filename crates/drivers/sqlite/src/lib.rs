@@ -54,12 +54,12 @@ pub fn factories() -> Vec<&'static dyn datazen_driver_api::DatabaseDriverFactory
 }
 
 /// The one driver every caller shares, and the one [`SQLITE_PROVIDER`] is bound to.
-static SQLITE_DRIVER: OnceLock<Arc<dyn DatabaseDriver>> = OnceLock::new();
+static SQLITE_DRIVER: OnceLock<Arc<SqliteDriver>> = OnceLock::new();
 /// The one provider, bound to [`SQLITE_DRIVER`].
 static SQLITE_PROVIDER: OnceLock<Arc<dyn ResourceProvider>> = OnceLock::new();
 
 impl SqliteFactory {
-    fn driver(&self) -> Arc<dyn DatabaseDriver> {
+    fn driver(&self) -> Arc<SqliteDriver> {
         SQLITE_DRIVER
             .get_or_init(|| Arc::new(SqliteDriver::new()))
             .clone()
@@ -68,7 +68,7 @@ impl SqliteFactory {
     fn provider(&self) -> Arc<dyn ResourceProvider> {
         SQLITE_PROVIDER
             .get_or_init(|| {
-                Arc::new(SqliteResourceProvider::new(self.driver(), self.driver_id()))
+                Arc::new(SqliteResourceProvider::new_with_publication(self.driver(), self.driver_id()))
                     as Arc<dyn ResourceProvider>
             })
             .clone()

@@ -217,6 +217,63 @@ class TcpSqlJourneys:
         self.expect_rendered(no_results, text="val", within="result-data-grid-header")
         self.assertEqual(rows(), expected)
 
+    def run_legacy_postgres_limit_preserves_authored_query(self, config):
+        """Migrate QLIMIT-003/004 for authored PostgreSQL FETCH/LIMIT/OFFSET."""
+        db = DisposableSql("postgresql", config)
+        name = "aaa_rune_query_limit_" + uuid.uuid4().hex[:12]
+        table = f"public.{name}"
+        db.query(f"CREATE TABLE {table} (id INT PRIMARY KEY, score INT NOT NULL);")
+        self.addCleanup(db.query, f"DROP TABLE {table};")
+        db.query(f"INSERT INTO {table} VALUES (1,10),(2,10),(3,10),(4,20),(5,30),(6,40);")
+        snapshot = f"SELECT id, score FROM {table} ORDER BY id;"
+        initial = db.query(snapshot)
+        self.assertEqual(initial.splitlines(), ["1|10", "2|10", "3|10", "4|20", "5|30", "6|40"])
+        db.write_profile(self)
+        cap = 2
+        settings = self.root / "settings.json"
+        settings.write_text(json.dumps({"ui": {"language": "en", "queryMaxRows": cap}}),
+                            encoding="utf-8")
+
+        sample = (
+            # Same unique ordered visible prefix, distinct true overflow.
+            ("equal FETCH FIRST", f"SELECT id AS probe FROM {table} ORDER BY id FETCH FIRST 2 ROWS ONLY;",
+             ["1", "2"]),
+            ("adjacent overflowing FETCH FIRST", f"SELECT id AS probe FROM {table} ORDER BY id FETCH FIRST 3 ROWS ONLY;",
+             ["1", "2", "3"]),
+            ("authored LIMIT and OFFSET", f"SELECT id AS probe FROM {table} ORDER BY id LIMIT 1 OFFSET 2;", ["3"]),
+            ("authored OFFSET/FETCH", f"SELECT id AS probe FROM {table} ORDER BY id OFFSET 4 ROWS FETCH NEXT 2 ROWS ONLY;", ["5", "6"]),
+            ("WITH TIES", f"SELECT score AS probe FROM {table} ORDER BY score FETCH FIRST 1 ROW WITH TIES;", ["10", "10", "10"]),
+            ("LIMIT only in nested SELECT",
+             f"SELECT id AS probe FROM (SELECT id FROM {table} ORDER BY id DESC LIMIT 3) s ORDER BY id;",
+             ["4", "5", "6"]),
+            ("authored top-level LIMIT above UI cap", f"SELECT id AS probe FROM {table} ORDER BY id LIMIT 5;",
+             ["1", "2", "3", "4", "5"]),
+        )
+        for name, sql, reference in sample:
+            with self.subTest(clause=name):
+                independently_returned = db.query(sql).splitlines()
+                self.assertEqual(independently_returned, reference)
+                kept = independently_returned[:cap]
+                actions = query_steps(sql, "e2e-tcp-sql")
+                actions[-2] = {"t": 5.2, "type": "paste", "text": sql}
+                tree = self.replay(actions, until=11.8)
+                self.assertFalse(visible(tree, key="query-error-message"))
+                self.expect_rendered(tree, text="probe", within="result-data-grid-header")
+                self.expect_rendered(tree, key="result-grid-status",
+                                     text=f"result · {len(kept)} rows × 1 cols")
+                for index, value in enumerate(kept):
+                    self.expect_rendered(tree, text=value, within=f"result-cell-{index}-0")
+                self.assertFalse(visible(tree, key=f"result-cell-{len(kept)}-0"))
+                noticed = visible(tree, key="result-truncated", within="result-workspace")
+                self.assertEqual(noticed, len(independently_returned) > cap)
+                if noticed:
+                    self.assertTrue(any(str(cap) in node.get("text", "") for node in tree["elements"]
+                                        if node.get("key") == "result-truncated"))
+        self.assertEqual(db.query(snapshot), initial)
+        histories = json.loads((self.root / "query-history.json").read_text(encoding="utf-8"))
+        self.assertEqual([(r["sql"].rstrip(";"), r["success"]) for r in histories],
+                         [(sql.rstrip(";"), True) for _name, sql, _reference in sample])
+
     def run_legacy_postgres_stream_result_status(self, config):
         """Migrate sql-query.ts SQ-002/SQ-004 and the over-one-batch result."""
         database = DisposableSql("postgresql", config)
@@ -643,6 +700,11 @@ def with_tcp_journeys(suite, configs):
                 return self.run_legacy_postgres_stream_result_status(config)
 
             setattr(suite, "test_postgresql_legacy_stream_result_status", stream_result_status)
+
+            def authored_limit(self, config=config):
+                return self.run_legacy_postgres_limit_preserves_authored_query(config)
+
+            setattr(suite, "test_postgresql_legacy_query_limit_preserves_authored_fetch_and_offset", authored_limit)
 
             def select_script(self, config=config):
                 return self.run_legacy_postgres_select_script(config)

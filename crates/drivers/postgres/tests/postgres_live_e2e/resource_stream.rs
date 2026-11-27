@@ -923,3 +923,82 @@ async fn postgres_backup_rejects_nesting_without_committing_user_writes() {
         .await
         .expect("confirmed backup session cleanup");
 }
+
+/// Exercise the new output-only mode through PostgreSQL's actual retained
+/// provider and its persisted result records (not through the Rune UI).
+#[tokio::test]
+async fn live_publication_budget_preserves_authored_fetch_and_server_row_count() {
+    use super::observation::Budget;
+    use datazen_driver_api::namespace::NamespaceTarget;
+    use datazen_driver_api::resource::{
+        AcquireResourceRequest, Baseline, BudgetPort, CommandCall, IdentityScope,
+        ResourceProvider, ResourcePurpose, ResourceScope,
+    };
+    use datazen_driver_api::DriverError;
+    use datazen_driver_postgres::PostgresResourceProvider;
+    use std::sync::Arc;
+
+    let mut fixture = Fixture::open().await;
+    let mut config = fixture.config.clone();
+    config.read_only = true;
+    let db = config.database.clone().expect("marked fixture database");
+    let provider = PostgresResourceProvider::new(Arc::new(PostgresDriver::new()));
+    let budget: Arc<dyn BudgetPort> = Arc::new(Budget::default());
+    let resource = provider.acquire_resource(&AcquireResourceRequest {
+        connection_config: config,
+        target: NamespaceTarget::empty().with_database(db.clone()),
+        scope: ResourceScope {
+            purpose: ResourcePurpose::InteractiveQuery,
+            max_physical_connections: 16,
+            holds_open_transaction: false,
+            pin_for_streaming: false,
+        },
+        identity_scope: IdentityScope::default(),
+        baseline: Baseline::default(),
+    }, &budget).await.expect("real retained query resource");
+    let artifacts = tempfile::tempdir().expect("isolated artifact directory");
+    for (name, sql, expected) in [
+        ("ties", "SELECT score FROM (VALUES(10),(10),(10),(20)) AS s(score) ORDER BY score FETCH FIRST 1 ROW WITH TIES", vec![10, 10, 10]),
+        ("offset", "SELECT n FROM generate_series(1,6) AS s(n) ORDER BY n OFFSET 3 ROWS FETCH NEXT 2 ROWS ONLY", vec![4, 5]),
+    ] {
+        let oracle = sqlx::query_scalar::<_, i32>(sql)
+            .fetch_all(&mut fixture.oracle).await.expect("independent authored PostgreSQL oracle");
+        assert_eq!(oracle, expected);
+        let sink = Artifact::new(&artifacts, name, 16 * 1024);
+        let completed = provider.execute_on_resource(&resource,
+            &QueryExecutionId::new(format!("publication-only-{name}")),
+            &CommandCall::new("query", json!({"database":db,"sql":sql,"publishedRowLimit":2})),
+            &sink,
+        ).await.expect("authored FETCH still runs under bounded publication");
+        assert!(completed.completion_status.is_success());
+        let records = sink.records();
+        let values: Vec<i32> = records.iter().filter(|record| record["kind"]=="rows")
+            .flat_map(|record| record["rows"].as_array().expect("published rows"))
+            .map(|row| i32::try_from(row[0].as_i64().expect("real integer cells")).unwrap())
+            .collect();
+        assert_eq!(values, oracle[..2]);
+        let summaries: Vec<_> = records.iter().filter(|record| record["kind"]=="statementSummary").collect();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0]["sql"], sql);
+        assert_eq!(summaries[0]["rowsAffected"], oracle.len() as u64);
+        assert!(records.iter().any(|record| record["kind"]=="statementMetadata"
+                                    && record["truncated"]==(oracle.len()>2)));
+    }
+
+    let rejected = Artifact::new(&artifacts, "rejected", 16 * 1024);
+    for (input, reason) in [
+        (json!({"sql":"SELECT 1","limit":2,"publishedRowLimit":2}), "not both"),
+        (json!({"sql":"SELECT 1","publishedRowLimit":0}), "1..=10001"),
+        (json!({"sql":"SELECT 1","publishedRowLimit":10002}), "1..=10001"),
+    ] {
+        let error = provider.execute_on_resource(&resource,
+            &QueryExecutionId::new(uuid::Uuid::new_v4().to_string()),
+            &CommandCall::new("query", input),
+            &rejected,
+        ).await;
+        assert!(matches!(error, Err(ResourceError::Driver(DriverError::InvalidConfig(text)))
+                         if text.contains(reason)));
+    }
+    assert!(rejected.records().is_empty(), "invalid bounds do not produce data");
+    provider.close_resource(&resource).await.expect("close actual retained resource");
+}

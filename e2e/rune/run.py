@@ -17,6 +17,7 @@ from favorites import FavoritesJourney
 from grid_drag import GridDragJourney
 from offline import OfflineJourneys
 from query_history import QueryHistoryJourney
+from query_row_limit import QueryRowLimitJourney
 from redis_replay import add_redis_arguments, configure_redis, register_redis_ui_cases
 from scenarios import fixture, query_steps, tap, type_text, visible
 from schema_diff import SchemaDiffJourney
@@ -28,7 +29,7 @@ from transfer import TransferJourneys
 from workflow import WorkflowJourney
 
 
-class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourney, OfflineJourneys, GridDragJourney, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, unittest.TestCase):
+class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourney, OfflineJourneys, GridDragJourney, QueryHistoryJourney, QueryRowLimitJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="datazen-native-e2e-")
         self.addCleanup(tmp.cleanup)

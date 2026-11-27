@@ -20,6 +20,17 @@ impl ScriptDialect {
         }
     }
 
+    pub(super) fn is_single_read_select(self, sql: &str) -> bool {
+        let single = match self {
+            Self::Sqlite => datazen_driver_sqlite::sqlite_statement_ranges(sql)
+                .is_ok_and(|ranges| ranges.len() == 1),
+            Self::Postgres => datazen_driver_api::sql_dump::split_sql_statements(sql).len() == 1,
+        };
+        single
+            && sql_main_keyword(sql).as_deref() == Some("SELECT")
+            && check_sql(sql, true, false).is_ok()
+    }
+
     pub(super) fn statement_count(self, sql: &str) -> Result<usize, String> {
         match self {
             Self::Sqlite => sqlite_statement_count(sql),
@@ -69,23 +80,27 @@ struct Page {
     has_metadata: bool,
     has_rows: bool,
     summary: Option<StatementSummary>,
+    truncated: bool,
 }
 
 pub(super) struct CollectedPage {
     pub(super) page: TablePage,
     pub(super) affected_rows: Option<u64>,
+    pub(super) truncated_to: Option<u32>,
 }
 
 pub(super) struct ResultPages {
     pages: Vec<Page>,
     script: bool,
+    display_limit: Option<u32>,
 }
 
 impl ResultPages {
-    pub(super) fn new(count: usize, script: bool) -> Self {
+    pub(super) fn new(count: usize, script: bool, display_limit: Option<u32>) -> Self {
         Self {
             pages: (0..count).map(|_| Page::default()).collect(),
             script,
+            display_limit,
         }
     }
 
@@ -146,10 +161,18 @@ impl ResultPages {
                 Ok(())
             };
         };
+        // Some result providers return a whole artifact chunk. Keep only
+        // the requested prefix regardless of chunk boundaries, but consume
+        // terminal metadata and all completion artifacts normally.
+        let available = self.display_limit.map_or(usize::MAX, |limit| {
+            (limit as usize).saturating_sub(page.rows.len())
+        });
+        page.truncated |= chunk.rows.len() > available;
         page.rows.extend(
             chunk
                 .rows
                 .into_iter()
+                .take(available)
                 .map(|row| row.into_iter().map(super::cell_to_text).collect()),
         );
         page.has_rows = true;
@@ -170,6 +193,7 @@ impl ResultPages {
         {
             return Err("The SELECT script returned incomplete statement results.".into());
         }
+        let display_limit = self.display_limit;
         Ok(self
             .pages
             .into_iter()
@@ -198,6 +222,7 @@ impl ResultPages {
                         read_only: Some("query result".into()),
                     },
                     affected_rows,
+                    truncated_to: display_limit.filter(|_| page.truncated),
                 }
             })
             .collect())

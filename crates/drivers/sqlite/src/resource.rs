@@ -7,9 +7,9 @@
 //!
 //! Three design rules shape everything below.
 //!
-//! 1. **The provider only ever speaks the driver trait.** It works through
-//!    `Arc<dyn DatabaseDriver>` and never downcasts, so a wrapped driver keeps
-//!    working exactly as it does through the registry.
+//! 1. **Generic operations speak the driver trait.** The linked factory
+//!    explicitly supplies the same native instance for bounded publication;
+//!    there is no downcast or second connection identity.
 //! 2. **A one-connection pool is not a session.** `SqliteDriver::connect` opens
 //!    a pool of size one. That is a scheduling decision, so the descriptor
 //!    reports `SessionContinuity::Leased` and `stateful_session` stays
@@ -62,6 +62,7 @@ struct OpenTransaction {
 
 pub(crate) struct SqliteResourceProvider {
     driver: Arc<dyn DatabaseDriver>,
+    publication_driver: Option<Arc<crate::SqliteDriver>>,
     driver_id: String,
     runtime_epoch: u64,
     namespace_shape: NamespaceShape,
@@ -105,6 +106,7 @@ impl SqliteResourceProvider {
         capabilities.capabilities = sqlite_capability_set();
         Self {
             driver,
+            publication_driver: None,
             driver_id: driver_id.to_string(),
             runtime_epoch: RUNTIME_EPOCH_SEQUENCE.fetch_add(1, Ordering::Relaxed) + 1,
             namespace_shape: sqlite_namespace_shape(),
@@ -113,6 +115,14 @@ impl SqliteResourceProvider {
             transactions: Mutex::new(BTreeMap::new()),
             revision: AtomicU64::new(0),
         }
+    }
+
+    /// The actual native factory shares one instance for ordinary and bounded
+    /// requests. Generic mock/wrapped providers do not advertise this path.
+    pub(crate) fn new_with_publication(driver: Arc<crate::SqliteDriver>, driver_id: &str) -> Self {
+        let mut provider = Self::new(driver.clone(), driver_id);
+        provider.publication_driver = Some(driver);
+        provider
     }
 
     fn next_revision(&self) -> u64 {
@@ -401,11 +411,26 @@ impl ResourceProvider for SqliteResourceProvider {
         let outcome = match call.command.as_str() {
             "query" => {
                 let sql = sql_of(&self.driver_id, &call.input)?;
-                let multi = self
-                    .driver
-                    .query_multi_at(&connection, &sql, limit_of(&call.input), sql_target)
-                    .await
-                    .map_err(ResourceError::Driver)?;
+                let multi = if let Some(value) = call.input.get("publishedRowLimit") {
+                    if call.input.get("limit").is_some() {
+                        return Err(datazen_driver_api::DriverError::InvalidConfig(
+                            "Specify a fetch limit or a publication limit, not both".into(),
+                        ).into());
+                    }
+                    let rows = value.as_u64().filter(|n| (1..=10_001).contains(n))
+                        .ok_or_else(|| datazen_driver_api::DriverError::InvalidConfig(
+                            "Published row limit must be 1..=10001".into(),
+                        ))?;
+                    let publisher = self.publication_driver.as_ref().ok_or_else(|| {
+                        ResourceError::unsupported(&self.driver_id, "execute_on_resource",
+                                                   "this driver has no native bounded publisher")
+                    })?;
+                    publisher.query_for_publication(&connection, &sql, rows as usize, sql_target)
+                        .await.map_err(ResourceError::Driver)?
+                } else {
+                    self.driver.query_multi_at(&connection, &sql, limit_of(&call.input), sql_target)
+                        .await.map_err(ResourceError::Driver)?
+                };
                 for (statement_index, statement) in multi.results.iter().enumerate() {
                     // Awaiting the write is the backpressure signal: a slow
                     // sink throttles the producer instead of buffering.

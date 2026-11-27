@@ -195,6 +195,7 @@ enum HostJob {
         stop: Arc<std::sync::atomic::AtomicBool>,
         script: bool,
         target: Option<datazen_ui_api::NativeQueryDatabase>,
+        configured_limit: Option<u32>,
     },
     ExplainQuery {
         generation: u32,
@@ -814,7 +815,7 @@ impl LiveAdapter {
                             ));
                             HostAnswer::QueryExplained { generation, result }
                         }
-                        HostJob::RunQuery { generation, sql, stop, script, target } => {
+                        HostJob::RunQuery { generation, sql, stop, script, target, configured_limit } => {
                             let started = std::time::Instant::now();
                             let pages = runtime.block_on(run_query_observed(
                                 &worker_runtime,
@@ -823,6 +824,7 @@ impl LiveAdapter {
                                 &sql,
                                 script,
                                 target.as_ref(),
+                                configured_limit,
                                 &stop,
                                 |terminal| {
                                     let answer = if terminal {
@@ -854,7 +856,11 @@ impl LiveAdapter {
                                 None
                             } else {
                                 pages.as_ref().ok().and_then(|pages| pages.first()).map(|result| {
-                                    QueryExecutionStats { affected_rows: result.affected_rows, elapsed_ms }
+                                    QueryExecutionStats {
+                                        affected_rows: result.affected_rows,
+                                        elapsed_ms,
+                                        truncated_to: result.truncated_to,
+                                    }
                                 })
                             };
                             runtime.block_on(worker_history.add_query_history(
@@ -2392,7 +2398,7 @@ async fn run_query(
     sql: &str,
 ) -> Result<TablePage, String> {
     let stop = std::sync::atomic::AtomicBool::new(false);
-    first_query_page(run_query_observed(runtime, profiles, session, sql, false, None, &stop, |_| {}).await)
+    first_query_page(run_query_observed(runtime, profiles, session, sql, false, None, None, &stop, |_| {}).await)
 }
 
 fn first_query_page(
@@ -2409,6 +2415,7 @@ async fn run_query_observed(
     sql: &str,
     script: bool,
     target: Option<&datazen_ui_api::NativeQueryDatabase>,
+    configured_limit: Option<u32>,
     stop: &std::sync::atomic::AtomicBool,
     note_execution: impl Fn(bool),
 ) -> Result<Vec<live_sqlite_script::CollectedPage>, String> {
@@ -2420,13 +2427,8 @@ async fn run_query_observed(
         if session.kv.is_some() {
             return Err("SQL queries are not available in the KV workbench.".into());
         }
-        let dialect = if script {
-            Some(session.driver.as_ref()
-                .and_then(|driver| live_sqlite_script::ScriptDialect::linked_driver(&driver.driver_type()))
-                .ok_or("Running a SELECT script is only supported for SQLite and PostgreSQL.")?)
-        } else {
-            None
-        };
+        let dialect = session.driver.as_ref()
+            .and_then(|driver| live_sqlite_script::ScriptDialect::linked_driver(&driver.driver_type()));
         let database = if let Some(target) = target {
             if !session.allows_query_database(target) {
                 return Err("The selected query database is no longer available.".into());
@@ -2437,13 +2439,24 @@ async fn run_query_observed(
         };
         (session.connection.clone().unwrap_or_default(), database, dialect)
     };
-    let page_count = match dialect {
-        Some(dialect) => dialect.statement_count(sql)?,
-        None => 1,
+    let page_count = if script {
+        dialect
+            .ok_or("Running a SELECT script is only supported for SQLite and PostgreSQL.")?
+            .statement_count(sql)?
+    } else {
+        1
     };
-    let mut pages = live_sqlite_script::ResultPages::new(page_count, script);
-    live_query_command::consume_query_command(runtime, profiles, connection, database, "query", sql, stop,
-                          note_execution, |output| pages.push(output)).await?;
+    // Read one extra published row to prove truncation. Neither driver
+    // rewrites authored SQL for this opt-in editor output budget.
+    let display_limit = configured_limit.filter(|_| {
+        !script && dialect.is_some_and(|dialect| dialect.is_single_read_select(sql))
+    });
+    let probe = display_limit.and_then(|rows| rows.checked_add(1));
+    let mut pages = live_sqlite_script::ResultPages::new(page_count, script, display_limit);
+    live_query_command::consume_query_command(
+        runtime, profiles, connection, database, "query", sql, probe, stop,
+        note_execution, |output| pages.push(output),
+    ).await?;
     pages.finish()
 }
 
@@ -2552,7 +2565,15 @@ impl LiveAdapter {
         target: Option<datazen_ui_api::NativeQueryDatabase>,
     ) -> bool {
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let job = HostJob::RunQuery { generation, sql, stop: Arc::clone(&stop), script, target };
+        let configured_limit = self.settings_document.lock().ok().and_then(|settings| {
+            settings["ui"]["queryMaxRows"]
+                .as_u64()
+                .and_then(|rows| u32::try_from(rows).ok())
+                .filter(|rows| (datazen_ui_api::Setting::QueryMaxRows { rows: *rows }).validate().is_ok())
+        });
+        let job = HostJob::RunQuery {
+            generation, sql, stop: Arc::clone(&stop), script, target, configured_limit,
+        };
         let sent = self.jobs.lock().is_ok_and(|jobs| jobs.send(job).is_ok());
         if sent {
             self.query_stops.insert(generation, stop);

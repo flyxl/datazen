@@ -13,7 +13,7 @@ use datazen_driver_api::DatabaseDriver;
 use datazen_driver_postgres::{PostgresDriver, PostgresResourceProvider};
 
 #[derive(Default)]
-struct Budget(Mutex<Vec<String>>);
+pub(super) struct Budget(Mutex<Vec<String>>);
 
 #[async_trait::async_trait]
 impl BudgetPort for Budget {

@@ -41,6 +41,60 @@ impl SqliteDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
     }
 
+    /// Execute the existing qualified statement verbatim. Fetch rows
+    /// incrementally and retain only the publication budget, while still
+    /// observing terminal driver errors. This is not a server work limit.
+    pub(crate) async fn query_for_publication(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        max_rows: usize,
+        target: SqlTarget<'_>,
+    ) -> Result<MultiQueryResult, DriverError> {
+        use futures_util::TryStreamExt;
+
+        let sql = self.qualified_sql(sql, target);
+        let ranges = sqlite_statement_ranges(&sql)?;
+        let [range] = ranges.as_slice() else {
+            return Err(DriverError::InvalidConfig(
+                "Bounded publication requires exactly one SQLite statement".into(),
+            ));
+        };
+        let stmt = sql[range.clone()].trim();
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let start = Instant::now();
+        let mut query = sqlx::query(stmt).fetch(pool);
+        let mut columns = Vec::new();
+        let mut rows = Vec::new();
+        let mut truncated = false;
+        while let Some(row) = query.try_next().await
+            .map_err(|error| DriverError::QueryFailed(error.to_string()))?
+        {
+            if rows.len() >= max_rows {
+                truncated = true;
+                continue;
+            }
+            let (metadata, mut decoded) = Self::decode_rows(std::slice::from_ref(&row));
+            if columns.is_empty() {
+                columns = metadata;
+            }
+            rows.append(&mut decoded);
+        }
+        let elapsed = start.elapsed().as_millis() as u64;
+        Ok(MultiQueryResult {
+            results: vec![StatementResult {
+                sql: stmt.to_owned(),
+                columns,
+                rows,
+                rows_affected: None,
+                execution_time_ms: elapsed,
+                truncated,
+            }],
+            total_time_ms: elapsed,
+        })
+    }
+
     /// Bind `Value` params into a sqlx SQLite query (`?` placeholders).
     fn bind_values<'q>(
         mut query: sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
