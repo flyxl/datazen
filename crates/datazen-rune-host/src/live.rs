@@ -2527,6 +2527,7 @@ async fn run_query_observed(
 /// inside the layout sub-object.
 enum UiWrite {
     Scalar(&'static str, serde_json::Value),
+    AppPreference(&'static str, serde_json::Value),
     Layout(String, u32),
 }
 
@@ -2540,6 +2541,10 @@ fn ui_write(setting: &datazen_ui_api::Setting) -> UiWrite {
         }
         datazen_ui_api::Setting::BuiltinLanguage { locale } => {
             UiWrite::Scalar("language", serde_json::json!(locale.code()))
+        }
+        datazen_ui_api::Setting::EditorFontSize { points } => {
+            // React stores this exact name at app-settings level, not in Rune's UI bag.
+            UiWrite::AppPreference("editorFontSize", serde_json::json!(points))
         }
         datazen_ui_api::Setting::TablePageSize { rows } => {
             UiWrite::Scalar("tablePageSize", serde_json::json!(rows))
@@ -3155,11 +3160,19 @@ impl DesktopAdapter for LiveAdapter {
     fn read_ui_settings(&self) -> Result<Vec<datazen_ui_api::Setting>, String> {
         // The cached document answers. Absent keys are simply absent settings.
         let document = self.settings_document.lock().expect("the settings lock");
-        let ui = document
-            .get("ui")
-            .and_then(|ui| ui.as_object())
-            .ok_or_else(|| "no ui settings yet".to_string())?;
         let mut settings = Vec::new();
+        if let Some(points) = document.get("editorFontSize")
+            .and_then(|value| value.as_u64())
+            .and_then(|value| u32::try_from(value).ok())
+        {
+            let entry = datazen_ui_api::Setting::EditorFontSize { points };
+            if entry.validate().is_ok() {
+                settings.push(entry);
+            }
+        }
+        let Some(ui) = document.get("ui").and_then(|ui| ui.as_object()) else {
+            return if settings.is_empty() { Err("no ui settings yet".into()) } else { Ok(settings) };
+        };
         if let Some(mode) = ui.get("themeMode").and_then(|value| value.as_str()) {
             settings.push(datazen_ui_api::Setting::ThemeMode { mode: mode.to_owned() });
         }
@@ -3210,26 +3223,24 @@ impl DesktopAdapter for LiveAdapter {
             .lock()
             .expect("the settings lock")
             .clone();
-        let ui = document
-            .as_object_mut()
-            .ok_or_else(|| "the settings document is not an object".to_string())?
-            .entry("ui")
-            .or_insert_with(|| serde_json::json!({}));
-        if let Some(object) = ui.as_object_mut() {
-            match ui_write(&setting) {
-                UiWrite::Scalar(key, value) => {
-                    object.insert(key.into(), value);
+        let object = document.as_object_mut()
+            .ok_or_else(|| "the settings document is not an object".to_string())?;
+        match ui_write(&setting) {
+            UiWrite::AppPreference(key, value) => {
+                object.insert(key.into(), value);
+            }
+            UiWrite::Scalar(key, value) => {
+                if let Some(ui) = object.entry("ui").or_insert_with(|| serde_json::json!({})).as_object_mut() {
+                    ui.insert(key.into(), value);
                 }
-                UiWrite::Layout(key, points) => {
-                    // Layout sizes land in their own sub-object: region keys
-                    // cannot collide with the scalar settings.
-                    if let Some(layout) = object
-                        .entry("layout")
-                        .or_insert_with(|| serde_json::json!({}))
-                        .as_object_mut()
-                    {
-                        layout.insert(key, serde_json::json!(points));
-                    }
+            }
+            UiWrite::Layout(key, points) => {
+                let ui = object.entry("ui").or_insert_with(|| serde_json::json!({}));
+                if let Some(layout) = ui.as_object_mut()
+                    .and_then(|ui| ui.entry("layout").or_insert_with(|| serde_json::json!({})).as_object_mut())
+                {
+                    // Region keys cannot collide with scalar settings.
+                    layout.insert(key, serde_json::json!(points));
                 }
             }
         }
@@ -4410,6 +4421,34 @@ mod tests {
             error.contains("session"),
             "the sentence names the state: {error}"
         );
+    }
+
+    #[test]
+    fn editor_font_size_round_trips_the_app_preference_and_rejects_invalid_ranges() {
+        use datazen_ui_api::Setting;
+
+        let dir = temp_dir("editor-font-size");
+        let path = dir.join("settings.json");
+        std::fs::write(&path, r#"{"editorFontSize":17,"otherField":true}"#).unwrap();
+        let repository = Arc::new(FileConnectionRepository::open(&dir.join("connections.json")).unwrap());
+        let mut adapter = LiveAdapter::with_data_dir(repository.clone(), &dir);
+        assert_eq!(adapter.read_ui_settings().unwrap(), vec![Setting::EditorFontSize { points: 17 }]);
+
+        for points in [10, 24, 20] {
+            adapter.write_ui_setting(Setting::EditorFontSize { points }).unwrap();
+        }
+        let before = std::fs::read(&path).unwrap();
+        for points in [0, 9, 25, u32::MAX] {
+            assert!(adapter.write_ui_setting(Setting::EditorFontSize { points }).is_err());
+        }
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let document: serde_json::Value = serde_json::from_slice(&before).unwrap();
+        assert_eq!(document["editorFontSize"], serde_json::json!(20));
+        assert_eq!(document["otherField"], serde_json::json!(true));
+        assert!(document.get("ui").is_none(), "no shadow copy of the React preference");
+        drop(adapter);
+        let reopened = LiveAdapter::with_data_dir(repository, &dir);
+        assert_eq!(reopened.read_ui_settings().unwrap(), vec![Setting::EditorFontSize { points: 20 }]);
     }
 
     #[test]

@@ -151,6 +151,21 @@ impl AppState {
         self.settings_error = result.err();
     }
 
+    /// The font size used by both the Settings slider and the mounted SQL editor.
+    pub fn editor_font_size(&self) -> u32 {
+        self.ui_settings().into_iter().find_map(|setting| match setting {
+            Setting::EditorFontSize { points } if setting.validate().is_ok() => Some(points),
+            _ => None,
+        }).unwrap_or(datazen_ui_api::DEFAULT_EDITOR_FONT_SIZE)
+    }
+
+    pub(crate) fn save_editor_font_size(&mut self, points: u32) {
+        // A held drag can report the same step more than once.
+        if points != self.editor_font_size() {
+            self.settings_error = self.write_ui_setting(Setting::EditorFontSize { points }).err();
+        }
+    }
+
     /// The active theme mode. React persists `settings.theme.mode`; the Rune
     /// host keeps the same three-way value in `Setting::ThemeMode`. An older
     /// install that only has `themeDark` still reads as light/dark, and a

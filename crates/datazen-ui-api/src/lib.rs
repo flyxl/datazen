@@ -1953,6 +1953,11 @@ pub struct Snippet {
     pub sql: String,
 }
 
+/// Editor slider bounds and the stored React default.
+pub const MIN_EDITOR_FONT_SIZE: u32 = 10;
+pub const MAX_EDITOR_FONT_SIZE: u32 = 24;
+pub const DEFAULT_EDITOR_FONT_SIZE: u32 = settings_store::DEFAULT_EDITOR_FONT_SIZE as u32;
+
 /// One typed settings entry. A write validates a single entry; a failure
 /// leaves every entry at its old value.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1968,6 +1973,9 @@ pub enum Setting {
     },
     BuiltinLanguage {
         locale: BuiltinLanguage,
+    },
+    EditorFontSize {
+        points: u32,
     },
     TablePageSize {
         rows: u32,
@@ -2024,6 +2032,14 @@ impl Setting {
             }
             Setting::ThemeMode { mode } => {
                 Err(format!("unsupported theme mode: {mode}"))
+            }
+            Setting::EditorFontSize { points } => {
+                if !(MIN_EDITOR_FONT_SIZE..=MAX_EDITOR_FONT_SIZE).contains(points) {
+                    return Err(format!(
+                        "editor font size must be {MIN_EDITOR_FONT_SIZE}..={MAX_EDITOR_FONT_SIZE}, got {points}"
+                    ));
+                }
+                Ok(())
             }
             Setting::TablePageSize { rows } => {
                 if *rows == 0 || *rows > 500 {
@@ -3118,6 +3134,7 @@ fn setting_kind(setting: &Setting) -> u8 {
         Setting::QueryMaxRows { .. } => 2,
         Setting::Layout { .. } => 3,
         Setting::BuiltinLanguage { .. } => 4,
+        Setting::EditorFontSize { .. } => 5,
     }
 }
 

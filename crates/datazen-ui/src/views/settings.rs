@@ -221,13 +221,65 @@ fn appearance_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
 }
 
 fn editor_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    let k = crate::ui::kit::kit(dark);
+    let mut overlays = Vec::new();
+    let heading = settings_ui::section_title(
+        &k,
+        &mut overlays,
+        "settings-live-editor-title".into(),
+        t("settings.editor"),
+        None,
+    );
+    let font_size = font_size_row(state, dark, &k, &mut overlays);
     col()
         .key("settings-section-editor")
         .w_full()
-        .gap(12.0)
-        .child(section_title(t("settings.editor"), theme))
+        .gap(20.0)
+        .child(heading)
+        .child(font_size)
+        .children(state.settings_error.as_ref().map(|_| settings_error_row(state, theme)))
+        // Keep the current native inline snippet controls as-is, with no newly
+        // mounted card, modal, empty list, or unsupported React control.
         .child(snippets_section(state, theme, dark))
+        .children(overlays)
 }
+
+fn font_size_row(state: &AppState, dark: bool, k: &rune_kit::Kit, overlays: &mut Vec<El>) -> El {
+    use crate::ui::slider::Slider;
+    use datazen_ui_api::{MAX_EDITOR_FONT_SIZE, MIN_EDITOR_FONT_SIZE};
+
+    let size = state.editor_font_size();
+    let label = t("settings.fontSize");
+    let slider = Slider::<AppState>::new("settings-font-size", f64::from(size))
+        .min(f64::from(MIN_EDITOR_FONT_SIZE))
+        .max(f64::from(MAX_EDITOR_FONT_SIZE))
+        .step(1.0)
+        .label(label)
+        .on_change(|state, size| state.save_editor_font_size(size as u32))
+        .build(dark);
+    settings_ui::setting_row(
+        k,
+        overlays,
+        "settings-font-size-row".into(),
+        label,
+        None,
+        row()
+            .key("settings-font-size-slider")
+            .w_full()
+            .gap(12.0)
+            .center_y()
+            .child(col().grow(1.0).min_w(0.0).child(slider))
+            .child(
+                row().w(48.0).justify_end().child(
+                    text(format!("{size}px"))
+                        .key("settings-font-size-value")
+                        .font(rune::TextStyle::new(14.0, 400.0).lh(20.0))
+                        .color(k.c.text_muted),
+                ),
+            ),
+    )
+}
+
 
 fn behavior_section(_state: &AppState, theme: tok::Theme) -> El {
     placeholder_section("behavior", t("settings.behavior"), theme)

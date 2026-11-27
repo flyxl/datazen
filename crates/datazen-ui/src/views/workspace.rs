@@ -338,6 +338,7 @@ pub fn query_workspace(
             dark,
             state.catalog_completion_current(),
             state.query_editor_viewport(),
+            state.editor_font_size(),
         ));
     let editor = if split { editor.h(editor_h).shrink() } else { editor.grow(1.0) };
 

@@ -173,3 +173,92 @@ fn narrow_query_toolbar_can_scroll_to_its_last_action() {
     tap_query(&mut rt, "sql-tx-rollback");
     assert!(rt.state.query_notice.is_some(), "the scrolled action still hits its own callback");
 }
+
+#[test]
+fn mounted_editor_font_slider_resizes_sql_glyphs_caret_and_gutter() {
+    use datazen_ui::types::Section;
+
+    let mut rt = runtime();
+    rt.state.open_query_tab("Font proof").unwrap();
+    rt.state.sql = sql_editor::SqlEditor::from_doc("SELECT '字号';\nSELECT 2;");
+    rt.state.sql.set_main_caret(3);
+    rt.state.sql.focus();
+    rt.frame(0.1);
+    assert_eq!(rt.state.editor_font_size(), 13);
+    let before_line = query_rect(&rt, "sql-line-0");
+    let before_gutter = query_rect(&rt, "sql-gutter-line-0");
+    let before_number = query_rect(&rt, "sql-gutter-number-0");
+    let before_caret = query_rect(&rt, "sql-caret");
+    assert_eq!(before_line[1], before_gutter[1]);
+    assert_eq!(before_line[3], before_gutter[3]);
+
+    // Enter the real route, which invalidates Rune's previous query frame.
+    tap_query(&mut rt, "rail-settings");
+    assert_eq!(rt.state.active, Section::Settings);
+    tap_query(&mut rt, "settings-nav-editor");
+    assert_eq!(rt.state.settings_section(), "editor");
+    let [x, y, width, height] = query_rect(&rt, "settings-font-size");
+    assert!(width > 0.0);
+    assert_eq!(height, 36.0);
+    let thumb_at_13 = query_rect(&rt, "settings-font-size-thumb");
+    assert_eq!(thumb_at_13[2], 16.0);
+    let center = |r: [f32; 4]| r[0] + r[2] * 0.5;
+    let center_at_13 = x + width * (3.0 / 14.0);
+    assert!(
+        (center(thumb_at_13) - center_at_13).abs() <= 1.0,
+        "default thumb={thumb_at_13:?}, expected x={center_at_13:.2}, track={:?}",
+        [x, y, width, height],
+    );
+    // This slice does not replace the pre-existing live snippets workflow.
+    assert!(rt.find("settings-snippets").is_some());
+    for key in ["snippet-name-input", "snippet-sql-input", "snippet-save", "snippet-update"] {
+        assert!(rt.find(key).is_some(), "existing snippet control disappeared: {key}");
+    }
+    assert!(rt.find("snippet-edit-dialog").is_none());
+    let pos = x + width * (10.0 / 14.0);
+    rt.pointer_down(pos, y + height * 0.5);
+    rt.pointer_up(pos, y + height * 0.5);
+    rt.frame(0.1);
+    assert_eq!(rt.state.editor_font_size(), 20);
+    // The preference commits as soon as the drag lands, but presented bounds
+    // still follow Rune's layout spring. Compare the real thumb at rest.
+    let moving_thumb = query_rect(&rt, "settings-font-size-thumb");
+    rt.settle_all();
+    rt.frame(0.0);
+    let track_at_20 = query_rect(&rt, "settings-font-size");
+    let thumb_at_20 = query_rect(&rt, "settings-font-size-thumb");
+    let center_at_20 = track_at_20[0] + track_at_20[2] * (10.0 / 14.0);
+    eprintln!(
+        "font slider 20px: click x={pos:.2}; 0.1s thumb={moving_thumb:?}; settled track={track_at_20:?}, thumb={thumb_at_20:?}, expected x={center_at_20:.2}",
+    );
+    assert_eq!(thumb_at_20[2], 16.0);
+    assert!(
+        (center(thumb_at_20) - center_at_20).abs() <= 1.0,
+        "misaligned settled thumb: actual x={:.2}, expected x={center_at_20:.2}; track={track_at_20:?}, thumb={thumb_at_20:?}",
+        center(thumb_at_20),
+    );
+
+    tap_query(&mut rt, "settings-back");
+    assert_eq!(rt.state.active, Section::Workspace);
+    assert_eq!(rt.state.sql.main_head(), 3, "the route preserved the caret");
+    // Re-focus the same model anchor (returning from Settings blurs the
+    // editor). Do not reposition the caret by clicking elsewhere in the doc.
+    rt.update(|state, _| state.sql.focus());
+    rt.settle_all();
+    rt.frame(0.0);
+    assert!(rt.state.sql.focused());
+    let after_line = query_rect(&rt, "sql-line-0");
+    let after_gutter = query_rect(&rt, "sql-gutter-line-0");
+    assert_eq!(after_line[1], after_gutter[1]);
+    assert_eq!(after_line[3], after_gutter[3]);
+    assert!(after_line[3] > before_line[3]);
+    assert!(after_gutter[2] > before_gutter[2]);
+    assert!(query_rect(&rt, "sql-gutter-number-0")[2] > before_number[2]);
+    let after_caret = query_rect(&rt, "sql-caret");
+    assert!(after_caret[3] > before_caret[3]);
+    // Same caret byte, more distance from the gutter: the SQL glyphs, not just
+    // the line boxes, have increased in size.
+    assert!(after_caret[0] - after_line[0] > before_caret[0] - before_line[0]);
+    assert_eq!(rt.state.sql.doc(), "SELECT '字号';\nSELECT 2;");
+    assert_eq!(rt.state.sql.main_head(), 3);
+}

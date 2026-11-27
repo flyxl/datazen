@@ -206,7 +206,15 @@ impl<S: 'static> Slider<S> {
                             el()
                                 .w(0.0)
                                 .h(thumb_size)
-                                .child(el().key(format!("{}-thumb", self.key)).w(0.0).h(thumb_size)),
+                                .child(
+                                    el()
+                                        .key(format!("{}-thumb", self.key))
+                                        .absolute(-thumb_size / 2.0, 0.0)
+                                        .size(thumb_size, thumb_size)
+                                        .radius(thumb_size / 2.0)
+                                        .fill(c.knob)
+                                        .border(1.0, c.border_strong),
+                                ),
                         )
                         .child(el().grow((1.0 - ratio).max(0.0) as f32).min_w(0.0).h(thumb_size)),
                 );

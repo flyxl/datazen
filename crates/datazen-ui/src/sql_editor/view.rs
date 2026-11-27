@@ -11,13 +11,8 @@ use crate::ui::field::TextField;
 /// React enables soft wrap; it needs shared render/caret geometry and is not
 /// approximated by independently wrapping the text fragments here.
 pub const EDITOR_SURFACE_WIDTH: f32 = 2800.0;
-const SQL_LINE_HEIGHT: f32 = 18.2;
 const SQL_BODY_PADDING: f32 = 12.0;
-const COMPLETION_ROW_HEIGHT: f32 = 18.0;
-
-fn sql_font() -> TextStyle {
-    TextStyle::new(13.0, 400.0).mono()
-}
+const DEFAULT_SIZE: f32 = datazen_ui_api::DEFAULT_EDITOR_FONT_SIZE as f32;
 
 pub fn editor_font() -> TextStyle {
     TextStyle::new(13.0, 400.0)
@@ -25,14 +20,23 @@ pub fn editor_font() -> TextStyle {
 
 /// The editor page: a scroll view of unwrapped lines. Not a `text_input`.
 pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool) -> El {
-    panel_with_completion_scope(editor, ink, muted, dark, editor.completion_scope().is_none(), None)
+    panel_with_completion_scope(
+        editor, ink, muted, dark, editor.completion_scope().is_none(), None,
+        datazen_ui_api::DEFAULT_EDITOR_FONT_SIZE,
+    )
 }
 
 pub(crate) fn panel_with_completion_scope(
     editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool,
     completion_current: bool,
     viewport: Option<crate::query_editor_tabs::QueryEditorViewport>,
+    font_size: u32,
 ) -> El {
+    let size = font_size as f32;
+    let row_height = size * 1.4;
+    let caret_height = size * (16.0 / DEFAULT_SIZE);
+    let completion_height = size * (18.0 / DEFAULT_SIZE);
+    let font = TextStyle::new(size, 400.0).mono();
     let spans = highlight_sql(editor.doc(), dark);
     let carets: Vec<(usize, bool)> = editor
         .selection
@@ -43,7 +47,8 @@ pub(crate) fn panel_with_completion_scope(
         .collect();
     let main_head = editor.main_head();
     let lines = split_lines(editor.doc());
-    let gutter_width = 13.0 + 8.0 * (lines.len().max(1).ilog10() + 1) as f32;
+    let gutter_width =
+        13.0 + size * (8.0 / DEFAULT_SIZE) * (lines.len().max(1).ilog10() + 1) as f32;
     let (gutter_bg, gutter_ink, gutter_edge) = palette::sql_editor_gutter(dark);
     let mut gutter = col()
         .key("sql-editor-gutter")
@@ -61,7 +66,7 @@ pub(crate) fn panel_with_completion_scope(
         gutter = gutter.child(
             row()
                 .key(format!("sql-gutter-line-{n}"))
-                .h(SQL_LINE_HEIGHT)
+                .h(row_height)
                 .w_full()
                 .px(6.0)
                 .center_y()
@@ -69,20 +74,20 @@ pub(crate) fn panel_with_completion_scope(
                 .child(
                     text((n + 1).to_string())
                         .key(format!("sql-gutter-number-{n}"))
-                        .font(sql_font())
+                        .font(font)
                         .color(gutter_ink),
                 ),
         );
         doc = doc.child(line_row_with_style(
             n, start, line, &spans, &carets, editor, dark,
-            LineStyle { font: sql_font(), height: SQL_LINE_HEIGHT, ink: Some(ink) },
+            LineStyle { font, height: row_height, caret_height, ink: Some(ink) },
         ));
         if completion_current && !editor.completion_items().is_empty()
             && main_head >= start
             && main_head <= start + line.len()
         {
-            gutter = gutter.child(col().h(COMPLETION_ROW_HEIGHT * editor.completion_items().len() as f32));
-            doc = doc.child(completion_list(editor, ink, dark));
+            gutter = gutter.child(col().h(completion_height * editor.completion_items().len() as f32));
+            doc = doc.child(completion_list(editor, ink, dark, size, completion_height));
         }
     }
     let sheet = row().key("sql-editor-sheet").child(gutter).child(doc);
@@ -203,7 +208,9 @@ pub(crate) fn panel_with_completion_scope(
 }
 
 /// The completion list, drawn in the canvas below the caret line.
-fn completion_list(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
+fn completion_list(
+    editor: &SqlEditor, ink: rune::Color, dark: bool, size: f32, row_height: f32,
+) -> El {
     let bg = palette::editor_bg(dark);
     let sel_bg = palette::editor_selection_bg(dark);
     let mut list = col()
@@ -219,11 +226,11 @@ fn completion_list(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
             row()
                 .key(format!("sql-completion-item-{index}"))
                 .w_full()
-                .h(COMPLETION_ROW_HEIGHT)
+                .h(row_height)
                 .px(8.0)
                 .center_y()
                 .fill(if selected { sel_bg } else { bg })
-                .child(text(item.clone()).font(editor_font()).color(ink))
+                .child(text(item.clone()).font(TextStyle::new(size, 400.0)).color(ink))
                 .on_press(move |state: &mut crate::AppState| {
                     if state.catalog_completion_current()
                         && state.sql.completion_scope() == scope.as_ref()
@@ -278,6 +285,7 @@ pub fn plain_panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dar
 struct LineStyle {
     font: TextStyle,
     height: f32,
+    caret_height: f32,
     ink: Option<rune::Color>,
 }
 
@@ -291,7 +299,7 @@ pub fn line_row(
     dark: bool,
 ) -> El {
     line_row_with_style(index, start, line, spans, carets, editor, dark,
-        LineStyle { font: editor_font(), height: 18.0, ink: None })
+        LineStyle { font: editor_font(), height: 18.0, caret_height: 16.0, ink: None })
 }
 
 fn line_row_with_style(
@@ -356,10 +364,10 @@ fn line_row_with_style(
                 );
             }
             if editor.focused() {
-                row = row.child(caret(true, dark));
+                row = row.child(caret(true, dark, style.caret_height));
             }
         } else {
-            row = row.child(caret(false, dark));
+            row = row.child(caret(false, dark, style.caret_height));
         }
         cursor = rel;
     }
@@ -395,9 +403,9 @@ fn clip_span(span: &Span, abs_from: usize, abs_to: usize, origin: usize) -> Opti
     Some(out)
 }
 
-fn caret(main: bool, dark: bool) -> El {
+fn caret(main: bool, dark: bool, height: f32) -> El {
     let fill = palette::editor_caret_fill(main, dark);
-    let bar = col().w(2.0).h(16.0).fill(fill);
+    let bar = col().w(2.0).h(height).fill(fill);
     if main { bar.key("sql-caret").ime_cursor() } else { bar }
 }
 
