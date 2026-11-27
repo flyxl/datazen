@@ -190,10 +190,7 @@ fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &st
     };
     col()
         .key(format!("settings-content-{active}"))
-        .grow(1.0)
-        .h_full()
-        .px(24.0)
-        .py(16.0)
+        .w_full()
         .gap(12.0)
         .child(body)
 }

@@ -109,6 +109,13 @@ pub(crate) fn accent(dark: bool) -> Color {
     colors(dark).accent
 }
 
+/// React's accent at 15% composited on the Settings rail's opaque
+/// surface-alt. Blink and the native renderer quantize blend channels
+/// differently; keep the sRGB result for this fixed backdrop.
+pub(crate) fn settings_selected_fill(dark: bool) -> Color {
+    rgb(if dark { 0x172c3b } else { 0xd9edf9 })
+}
+
 pub const NAV_ROW_H: f32 = 28.0;
 pub const NAV_SEARCH_H: f32 = 28.0;
 pub const NAV_GAP: f32 = 2.0;

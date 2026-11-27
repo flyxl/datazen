@@ -66,7 +66,7 @@ use crate::views::{
     connection_page, modal_layer, query_selected, running_execution_close_host,
 };
 use datazen_ui_api::Setting;
-use rune::tok::{self, type_};
+use rune::tok::type_;
 use rune::{col, row, text, Align, Cx, El};
 use rune_kit::{Button, ButtonVariant, ControlSize};
 

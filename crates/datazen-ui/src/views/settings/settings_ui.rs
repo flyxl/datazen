@@ -26,21 +26,18 @@
 //! and keep their audits; new sections build on this one, and the
 //! stand-ins retire as their sections are touched.
 //!
-//! Known deltas: `uppercase tracking-wider` has no Rune text
-//! transform — the headings arrive already-cased from the callers'
-//! message catalogs (the stand-ins' own documented delta); the knob's
-//! `shadow` is a CSS paint flourish with no layout effect.
+//! The switch knob's CSS shadow is not yet implemented.
 
 use std::rc::Rc;
 
-use rune::{col, row, text, tok, Color, El, TextStyle};
+use rune::{col, row, text, Color, El, TextStyle};
 use rune_kit::Kit;
 
 use crate::ui::palette;
 use crate::views::settings::setting_hint::SettingHint;
 
 /// `text-sm` (14/400) — the rows' label ink size.
-const TEXT_SM: TextStyle = TextStyle::new(14.0, 400.0);
+const TEXT_SM: TextStyle = TextStyle::new(14.0, 400.0).lh(20.0);
 /// `text-sm leading-5` — the SettingRow label's 20pt line box.
 const LABEL_MIN_HEIGHT: f32 = 36.0;
 /// `w-40` — the label column.
@@ -68,7 +65,11 @@ pub fn section_title(
         .w_full()
         .gap(4.0)
         .center_y()
-        .child(text(title.to_owned()).font(tok::type_::TITLE).color(k.c.text_muted));
+        .child(
+            text(title.to_uppercase())
+                .font(TextStyle::new(13.0, 600.0).lh(19.5).tracking(0.65))
+                .color(k.c.text_faint),
+        );
     if let Some(hint) = hint {
         heading = heading.child(
             SettingHint::new(format!("{key}-hint"), title.to_owned(), hint.to_owned())

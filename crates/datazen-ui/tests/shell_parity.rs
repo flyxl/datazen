@@ -10,12 +10,11 @@
 //!
 //! These tests are the receipt for that decision: they show the four concerns
 //! the barrel re-exported are all present in the Rune root view, sourced from
-//! `t()`, `Cx`/`Env`, `AppState` and `tok::theme` instead of a re-export. A
+//! `t()`, `Cx`/`Env`, `AppState` and the DataZen palette instead of a re-export. A
 //! future "port shell.ts" that duplicated a separate shell component would be
 //! wrong; this file documents why.
 
 use datazen_ui::test_support::*;
-use rune::tok;
 
 /// Render the real root view once and return its runtime.
 fn root_shell() -> Runtime<AppState> {
@@ -85,21 +84,31 @@ fn shell_ts_is_x_class_and_the_rune_root_carries_its_four_concerns() {
 }
 
 #[test]
-fn surface_color_is_themed_by_the_platform_dark_mode() {
-    // Window-surface colour concern: the Rune root surface is the theme's bg
-    // (which the host also uses for the native window background), derived from
-    // the platform's system_dark — no re-exported colour helper needed.
-    let dark = root_shell();
-    let dark_fill = element_by_key(&dark, "datazen-root").fill;
-    assert_eq!(dark_fill, tok::theme(true).bg, "dark root surface");
-
-    let env = Env {
-        system_dark: false,
-        scale: 1.0,
-    };
-    let mut light = Runtime::new(AppState::default(), view, (1440.0, 900.0), env);
-    light.frame(0.0);
-    let light_fill = element_by_key(&light, "datazen-root").fill;
-    assert_eq!(light_fill, tok::theme(false).bg, "light root surface");
-    assert_ne!(dark_fill, light_fill, "dark and light surfaces differ");
+fn live_shell_and_settings_use_original_react_surface_roles_in_both_appearances() {
+    for (system_dark, page, title, rail, selected) in [
+        (false, "#f6f8fb", "#ffffff", "#f1f5f9", "#d9edf9"),
+        (true, "#0b0e14", "#0a0d14", "#0e121b", "#172c3b"),
+    ] {
+        let env = Env {
+            system_dark,
+            scale: 1.0,
+        };
+        let mut rt = Runtime::new(AppState::default(), view, (1440.0, 900.0), env);
+        rt.frame(0.0);
+        let check = |rt, key, expected| {
+            assert_eq!(
+                element_by_key(rt, key).fill,
+                rune::color::hex(expected).expect("known CSS color"),
+                "{key} (system_dark={system_dark})",
+            );
+        };
+        check(&rt, "datazen-root", page);
+        check(&rt, "datazen-titlebar", title);
+        let (x, y) = rt.find("rail-settings").expect("Settings entry");
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
+        check(&rt, "settings-nav", rail);
+        check(&rt, "settings-nav-general", selected);
+    }
 }

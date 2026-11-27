@@ -19,7 +19,7 @@
 
 use std::rc::Rc;
 
-use rune::tok::{self, type_};
+use rune::tok::type_;
 use rune::{row, text, El, TextEdit};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 

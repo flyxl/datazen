@@ -97,11 +97,11 @@ use crate::ui::select::Select;
 use crate::ui::slider::Slider;
 
 /// `text-[13px]` — the nav item label.
-const NAV_ITEM_TEXT: TextStyle = TextStyle::new(13.0, 400.0);
+const NAV_ITEM_TEXT: TextStyle = TextStyle::new(13.0, 400.0).lh(19.5);
 /// `text-[13px] font-medium` — the active nav item label.
-const NAV_ITEM_ACTIVE: TextStyle = TextStyle::new(13.0, 500.0);
+const NAV_ITEM_ACTIVE: TextStyle = TextStyle::new(13.0, 500.0).lh(19.5);
 /// `text-[11px] font-semibold` — the nav group label.
-const NAV_GROUP_TEXT: TextStyle = TextStyle::new(11.0, 600.0);
+const NAV_GROUP_TEXT: TextStyle = TextStyle::new(11.0, 600.0).lh(16.5).tracking(0.55);
 /// `text-xs` — the version line, the keymap rows, the back button.
 const TEXT_XS: TextStyle = TextStyle::new(12.0, 400.0);
 /// `text-xs` semibold — the keymap card's header.
@@ -218,6 +218,21 @@ pub struct SettingsContent<'a, S: 'static> {
     keymap_edit: Option<Rc<dyn for<'b> Fn(&'b mut S, &'static str) -> &'b mut TextEdit>>,
     contribution_edit:
         Option<Rc<dyn for<'b, 'd> Fn(&'b mut S, &'d str, &'d str) -> &'b mut TextEdit>>,
+}
+
+// Keep the same centered, width-capped region for host-wired pages and
+// pages whose fields are rendered by SettingsContent itself.
+fn settings_content_pane() -> El {
+    col()
+        .key("settings-content")
+        .grow(1.0)
+        .min_w(0.0)
+        .min_h(0.0)
+        .h_full()
+        .items_center()
+        .px(32.0)
+        .py(24.0)
+        .scroll(rune::ScrollSpec { stick_bottom: false })
 }
 
 impl<'a, S: 'static> SettingsContent<'a, S> {
@@ -512,10 +527,13 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             .min_w(0.0)
             .gap(0.0);
         page = page.child(self.build_nav(&k, &sections, active));
-        let body = self
-            .host_body
-            .take()
-            .unwrap_or_else(|| self.build_content(&k, &sections, active));
+        let body = if let Some(body) = self.host_body.take() {
+            settings_content_pane().child(
+                col().w_full().max_w(BODY_MAX_WIDTH).child(body),
+            )
+        } else {
+            self.build_content(k, &sections, active)
+        };
         page = page.child(body);
         page
     }
@@ -535,6 +553,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             .px(8.0)
             .pb(12.0)
             .gap(2.0)
+            .scroll(rune::ScrollSpec { stick_bottom: false })
             .fill(k.c.surface_weak) // bg-surface-alt
             .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base);
 
@@ -564,10 +583,11 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 row()
                     .key(format!("settings-nav-group-label-{group_id}"))
                     .w_full()
+                    .h(18.5)
                     .px(12.0)
                     .pb(2.0)
                     .child(
-                        text(t(group_label).to_owned())
+                        text(t(group_label).to_uppercase())
                             .font(NAV_GROUP_TEXT)
                             .color(k.c.text_faint), // text-fg-muted
                     ),
@@ -578,8 +598,8 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             {
                 let is_active = section.id == active;
                 let fill = if is_active {
-                    // bg-accent/15
-                    k.c.bg_accent.alpha(0.15)
+                    // bg-accent/15 over the settings rail (bg-surface-alt).
+                    crate::ui::theme::settings_selected_fill(self.dark)
                 } else {
                     k.c.surface_weak
                 };
@@ -591,11 +611,13 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 let mut item = row()
                     .key(format!("settings-nav-{}", section.id))
                     .w_full()
-                    .h(30.0)
+                    .h(35.5)
                     .px(12.0)
                     .gap(10.0)
                     .center_y()
-                    .radius(6.0)
+                    .radius(if self.dark { 10.0 } else { 9.0 })
+                    .role("button")
+                    .label(t(section.label_key))
                     .fill(fill);
                 if let Some(icon_el) = settings_section_icon(section.id) {
                     item = item.child(icon(icon_el, 16.0).color(label_color));
@@ -646,17 +668,12 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         // The selects' open listboxes ride the overlay layer (the
         // section convention: the pane carries the layer's elements
         // as trailing children).
-        col()
-            .key("settings-content")
-            .grow(1.0)
-            .min_w(0.0)
-            .h_full()
-            .px(32.0)
-            .py(24.0)
+        settings_content_pane()
             .child(
                 col()
                     .key(format!("settings-section-{active}"))
-                    .w(BODY_MAX_WIDTH)
+                    .w_full()
+                    .max_w(BODY_MAX_WIDTH)
                     .gap(20.0)
                     .child(body),
             )
