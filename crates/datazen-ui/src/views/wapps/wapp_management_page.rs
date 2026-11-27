@@ -12,8 +12,8 @@
 //!
 //! | React | Rune |
 //! |---|---|
-//! | `useWappStore` (`wapps`/`loaded`/`error`) | `AppState::wapps` / `AppState::wapps_loaded` / `AppState::wapps_error` — the store's fields, filled by the seam transition `wapps_loaded` (`wapps_state.rs`) |
-//! | `useEffect(() => { if (!loaded) fetch(); }, [loaded])` | `AppState::select`'s Wapps arm runs the same `!loaded` fetch guard when the rail enters the page — React's mount effect, at the moment the page mounts |
+//! | `useWappStore` (`wapps`/`loaded`/`error`) | The adapter's read-only snapshot, plus the store's last successful list and error |
+//! | Wapp page mount | The rail requests the native profile's registry once on entry, or refreshes the last snapshot on re-entry |
 //! | `search`/`filter` restored from the `workspacePanelStateStore` snapshot on mount, saved on unmount | the two live in `AppState::wapp_search`/`AppState::wapp_filter` and simply persist — the section switch that unmounts React's page and remounts it cannot drop Rune state, so the snapshot round-trip is a no-op of the same observable behaviour |
 //! | `filtered`/`counts`/`allGroups` `useMemo`s | the functions of them in `wapp_summary.rs` |
 //! | `useConfirmDialog()`'s pending `{options, resolve}` | `AppState::wapp_remove_request` (+ `wapp_remove_epoch`: each ask is a fresh mount) and `answer_remove_wapp` — the running-execution close host's pattern |
@@ -23,22 +23,10 @@
 //!
 //! ## Honest seams (each belongs to its own later task)
 //!
-//! - **The wapp host use cases** — `list_wapps`, `set_wapp_enabled`,
-//!   `remove_wapp` (and the `read_wapp_file` the card's icon would need) —
-//!   have no `DesktopAdapter` methods. The store's fetch therefore runs
-//!   React's failure branch honestly (the seam sentence names the missing use
-//!   case, in the same form the T022 install dialog's answers take), and the
-//!   toggle/uninstall actions run their catches: the optimistic flip, then
-//!   the store's error slot, then the page's action error. The success
-//!   transitions (`wapps_loaded`, `wapp_removed`) are the surface the wiring
-//!   will call; tests pin them.
-//! - `openWappPage` — the workspace tab the Open press creates
-//!   (`workspaceTabKey(wappId, pageId)` keyed, with the page's title/icon/
-//!   version) and the extension page shell it hosts belong to the workspace
-//!   tabs port; this build's workspace carries table/query tabs only. The
-//!   resolve gate (enabled, has pages, the first page) is real, and the host
-//!   switch the caller makes of it — `onOpenInWorkspace()` →
-//!   `select(Section::Workspace)` — is the half this port performs.
+//! - The native adapter can list validated local metadata only. Opening,
+//!   enabling, removing, loading icons, and activating themes are unavailable.
+//!   The install button still opens the existing picker dialog; choosing a
+//!   package does not inspect or install it in this build.
 //! - `PERMISSION_LABELS` (`permissionLabels.ts`, T484) — see the card's own
 //!   seams.
 //! - `ensureWappsChangedListener` (`wapps:changed` cross-window refresh,
@@ -74,6 +62,7 @@ use crate::views::wapps::wapp_card::wapp_card;
 use crate::views::wapps::wapp_summary::{
     all_wapp_groups, filtered_wapps, wapp_counts, WappFilter, WappSummaryVm,
 };
+use datazen_ui_api::WappListError;
 use rune::tok;
 use rune::{col, icon, row, text, Color, El, ScrollSpec, TextCase, TextStyle};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
@@ -103,7 +92,9 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
     let _ = theme; // the kit tokens carry the page's paint; tok::Theme stays in the shell's type
     let k = kit(dark);
     let filtered = filtered_wapps(state);
-    let counts = wapp_counts(&state.wapps);
+    let read_only = state.desktop.wapp_listing_is_read_only();
+    let show_counts = !read_only || state.wapps_snapshot_known;
+    let counts = show_counts.then(|| wapp_counts(&state.wapps));
 
     // React: `min-h-0 flex-1 overflow-y-auto` — the page fills its slot in
     // the shell's page column and scrolls its own content.
@@ -125,7 +116,7 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
         .self_center()
         .px(24.0)
         .py(24.0)
-        .child(page_header(state, k, dark));
+        .child(page_header(state, k, dark, show_counts));
 
     content = content.child(search_row(state, k, dark, counts).mt(16.0));
 
@@ -135,6 +126,10 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
         .wapp_action_error
         .clone()
         .or_else(|| state.wapps_error.clone())
+        .or_else(|| state.wapps_list_problem.map(|problem| t(match problem {
+            WappListError::Unavailable => "extensions.page.nativeListUnavailable",
+            WappListError::Unreadable => "extensions.page.nativeListUnreadable",
+        }).to_owned()))
     {
         content = content.child(
             text(error)
@@ -151,10 +146,29 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
         );
     }
 
+    if state.wapps_pending.is_some() {
+        content = content.child(
+            text(t("common.loading")).key("extension-page-loading").color(k.c.text_muted).mt(12.0),
+        );
+    }
+    if read_only && !state.wapps.is_empty() {
+        content = content.child(
+            text(t("extensions.page.nativeReadOnly"))
+                .key("extension-page-read-only")
+                .font(k.ty.body)
+                .color(k.c.text_muted)
+                .w_full()
+                .wrap()
+                .mt(12.0),
+        );
+    }
+
     if filtered.is_empty() {
-        // React: `filtered.length === 0` — the empty state, whatever the error
-        // row says above it (`mt-10`).
-        content = content.child(empty_state(k).mt(40.0));
+        // A failed or unknown stock snapshot does not establish an empty
+        // registry. Leave any verified rows intact above/below the warning.
+        if !read_only || (state.wapps_snapshot_known && state.wapps_list_problem.is_none()) {
+            content = content.child(empty_state(k).mt(40.0));
+        }
     } else if let Some(groups) = all_wapp_groups(&filtered, state.wapp_filter) {
         // The "all" view: the two sections, each with its header and grid
         // (React: `mt-4 flex flex-col gap-6` over the non-empty groups — the
@@ -186,13 +200,13 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
                             .w_full()
                             .mb(8.0),
                     )
-                    .child(wapp_grid(&items, dark)),
+                    .child(wapp_grid(&items, dark, read_only)),
             );
         }
         content = content.child(group_stack);
     } else {
         // The single-kind views keep React's flat grid without headers.
-        content = content.child(wapp_grid(&filtered, dark).mt(16.0));
+        content = content.child(wapp_grid(&filtered, dark, read_only).mt(16.0));
     }
 
     page.child(content)
@@ -201,38 +215,28 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
 /// The page header (React: `flex items-start justify-between gap-4`) — the
 /// title with the installed count, the subtitle, and the install press that
 /// opens the T022 dialog over the window.
-fn page_header(state: &AppState, k: &'static Kit, dark: bool) -> El {
+fn page_header(state: &AppState, k: &'static Kit, dark: bool, show_counts: bool) -> El {
     let _ = dark; // the kit build below already carries the appearance
     let mut header = row().key("extension-page-header").w_full().items_start().gap(16.0);
+    let mut title = row()
+        .key("extension-page-title-row")
+        .w_full()
+        .items_center()
+        .gap(8.0)
+        .child(
+            text(t("extensions.page.title"))
+                .key("extension-page-title").font(TextStyle::new(16.0, 600.0))
+                .color(k.c.text_base),
+        );
+    if show_counts {
+        title = title.child(
+            text(t("extensions.page.count").replace("{count}", &state.wapps.len().to_string()))
+                .key("extension-page-count").font(k.ty.text_xsmall).color(k.c.text_faint),
+        );
+    }
     header = header.child(
         col()
-            .key("extension-page-heading")
-            .grow(1.0)
-            .min_w(0.0)
-            .child(
-                row()
-                    .key("extension-page-title-row")
-                    .w_full()
-                    .items_center()
-                    .gap(8.0)
-                    .child(
-                        text(t("extensions.page.title"))
-                            .key("extension-page-title")
-                            // React: `text-base font-semibold text-fg`.
-                            .font(TextStyle::new(16.0, 600.0))
-                            .color(k.c.text_base),
-                    )
-                    .child(
-                        text(
-                            t("extensions.page.count")
-                                .replace("{count}", &state.wapps.len().to_string()),
-                        )
-                        .key("extension-page-count")
-                        // React: `text-xs font-normal text-fg-muted`.
-                        .font(k.ty.text_xsmall)
-                        .color(k.c.text_faint),
-                    ),
-            )
+            .key("extension-page-heading").grow(1.0).min_w(0.0).child(title)
             .child(
                 text(t("extensions.page.subtitle"))
                     .key("extension-page-subtitle")
@@ -290,7 +294,7 @@ fn page_header(state: &AppState, k: &'static Kit, dark: bool) -> El {
 
 /// The search row (React: `mt-4 flex flex-wrap items-center gap-2`) — the
 /// search input and the three filter chips with their counts.
-fn search_row(state: &AppState, k: &'static Kit, dark: bool, counts: (usize, usize, usize)) -> El {
+fn search_row(state: &AppState, k: &'static Kit, dark: bool, counts: Option<(usize, usize, usize)>) -> El {
     let _ = dark; // the TextField build carries the appearance
     let mut search = row()
         .key("extension-page-search")
@@ -313,11 +317,11 @@ fn search_row(state: &AppState, k: &'static Kit, dark: bool, counts: (usize, usi
             .on_edit(|state: &mut AppState| &mut state.wapp_search)
             .build(dark),
     );
-    let count_for = |filter: WappFilter| match filter {
+    let count_for = |filter: WappFilter| counts.map(|counts| match filter {
         WappFilter::All => counts.0,
         WappFilter::Workspace => counts.1,
         WappFilter::Theme => counts.2,
-    };
+    });
     for filter in WappFilter::ALL {
         let selected = state.wapp_filter == filter;
         // React: selected `border-accent/60 bg-accent/15 text-accent`; else
@@ -331,7 +335,8 @@ fn search_row(state: &AppState, k: &'static Kit, dark: bool, counts: (usize, usi
         } else {
             (Color::TRANSPARENT, k.c.border_base, k.c.text_muted)
         };
-        let label = t(filter.label_key()).replace("{count}", &count_for(filter).to_string());
+        let count = count_for(filter).map(|count| count.to_string()).unwrap_or_else(|| "—".into());
+        let label = t(filter.label_key()).replace("{count}", &count);
         search = search.child(
             row()
                 .key(filter.key())
@@ -395,7 +400,7 @@ fn empty_state(k: &'static Kit) -> El {
 /// gap-3`) — a wrapping row of 260pt cards, the same column count the
 /// auto-fill picks at the same width; the line's cards stretch to one height
 /// (CSS grid's default cross-axis stretch).
-fn wapp_grid(items: &[&WappSummaryVm], dark: bool) -> El {
+fn wapp_grid(items: &[&WappSummaryVm], dark: bool, read_only: bool) -> El {
     let mut grid = row()
         .key("extension-grid")
         .w_full()
@@ -403,7 +408,7 @@ fn wapp_grid(items: &[&WappSummaryVm], dark: bool) -> El {
         .flex_wrap()
         .items_stretch();
     for wapp in items {
-        grid = grid.child(wapp_card(wapp, dark));
+        grid = grid.child(wapp_card(wapp, dark, read_only));
     }
     grid
 }

@@ -186,6 +186,9 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
         state.deliver_host_job(delivery);
         dirty = true;
     }
+    if let Some(delivery) = state.desktop.poll_wapp_list() {
+        dirty |= state.deliver_wapp_list(delivery);
+    }
     // T009-S7: the AI panel's host sync runs on every section — its
     // mount tracking has to see the workspace being left, so the
     // unmount cancel fires on the transition.

@@ -420,6 +420,7 @@ pub struct LiveAdapter {
     host_jobs: crate::jobs::HostJobs,
     /// The data directory exports and backups land under (N11).
     data_dir: PathBuf,
+    wapp_listing: Mutex<crate::wapp_listing::WappListing>,
     /// The workflow registry use case over the workflow file (N13).
     workflows: Arc<WorkflowRegistry>,
     workflow_history: Arc<crate::workflow_run_history::FileWorkflowRunHistory>,
@@ -982,6 +983,7 @@ impl LiveAdapter {
             registry: adapter_registry,
             host_jobs: jobs,
             data_dir: adapter_data_dir,
+            wapp_listing: Default::default(),
             workflows,
             workflow_history,
             snippets,
@@ -2742,6 +2744,22 @@ impl LiveAdapter {
 }
 
 impl DesktopAdapter for LiveAdapter {
+    fn wapp_listing_is_read_only(&self) -> bool {
+        true
+    }
+
+    fn begin_wapp_list(&mut self, generation: u32) -> bool {
+        let data_dir = self.data_dir.clone();
+        self.wapp_listing
+            .get_mut()
+            .ok()
+            .is_some_and(|listing| listing.begin(generation, data_dir))
+    }
+
+    fn poll_wapp_list(&mut self) -> Option<datazen_ui_api::WappListDelivery> {
+        self.wapp_listing.get_mut().ok()?.poll()
+    }
+
     fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
         let scope = crate::host_connection_scope();
         let configs = futures_executor::block_on(self.service.list_redacted(&scope))

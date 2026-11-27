@@ -241,13 +241,15 @@ pub struct AppState {
     /// T022: the install flow's last error (the dialog's error branch).
     pub install_wapp_error: Option<String>,
     /// T072: the wapp store's installed list (React `wappStore.wapps`),
-    /// filled by the `wapps_loaded` seam transition (`wapps_state.rs`); the
-    /// fetch's own failure branch is the honest answer until the adapter
-    /// carries the wapp list use case.
+    /// filled by the most recent successful list for this adapter.
     pub wapps: Vec<WappSummaryVm>,
     /// T072: the store's `loaded` flag — the page's mount-time fetch gate
     /// (React: `if (!loaded) void fetch()`).
     pub wapps_loaded: bool,
+    pub(crate) wapps_snapshot_known: bool,
+    pub(crate) wapps_pending: Option<u32>,
+    pub(crate) wapps_generation: u32,
+    pub(crate) wapps_list_problem: Option<datazen_ui_api::WappListError>,
     /// T072: the store's `error` slot (a failed fetch, or the store-side
     /// error of a failed toggle/uninstall command — React's store writes
     /// only the error on failure and keeps the list).
@@ -686,6 +688,10 @@ impl Default for AppState {
             install_wapp_error: None,
             wapps: Vec::new(),
             wapps_loaded: false,
+            wapps_snapshot_known: false,
+            wapps_pending: None,
+            wapps_generation: 0,
+            wapps_list_problem: None,
             wapps_error: None,
             wapp_search: TextEdit::new(String::new()),
             wapp_filter: WappFilter::Workspace,

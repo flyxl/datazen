@@ -24,9 +24,8 @@
 //!   permission badges render without their tooltip texts until that port
 //!   lands; the mismatch badge's own hint tooltip is real (its key is in the
 //!   zh-CN table).
-//! - disabling a wapp closes its workspace tabs in React (`closeByWapp`) —
-//!   the workspace tabs this build carries are table/query tabs; no wapp tab
-//!   exists to close (the workspace-tabs port is ahead).
+//! - The stock native registry is read-only. Its cards expose the persisted
+//!   enabled state, but cannot change it, launch a page, or remove a package.
 //!
 //! ## Keys
 //!
@@ -60,7 +59,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant
 /// One installed wapp's card. `dark` carries the theme the hosting page built
 /// with; the card is a pure function of the wapp row (React's `renderCard`
 /// closes over nothing but the wapp).
-pub fn wapp_card(wapp: &WappSummaryVm, dark: bool) -> El {
+pub fn wapp_card(wapp: &WappSummaryVm, dark: bool, read_only: bool) -> El {
     let k = kit(dark);
     let card_key = format!("extension-card-{}", wapp.id);
     let api_mismatch = wapp.api_version != WAPP_API_VERSION;
@@ -180,7 +179,7 @@ pub fn wapp_card(wapp: &WappSummaryVm, dark: bool) -> El {
     }
     card = card.child(badges);
 
-    if !has_pages(wapp) && has_themes(wapp) {
+    if !read_only && !has_pages(wapp) && has_themes(wapp) {
         card = card.child(
             text(t("extensions.page.themeHint"))
                 .key(format!("{card_key}-theme-hint"))
@@ -197,7 +196,7 @@ pub fn wapp_card(wapp: &WappSummaryVm, dark: bool) -> El {
     // aligned (the wrap row stretches its children).
     card = card.child(col().key(format!("{card_key}-spacer")).grow(1.0).min_h(0.0));
 
-    card = card.child(card_footer(wapp, &k, &card_key, api_mismatch));
+    card = card.child(card_footer(wapp, &k, &card_key, api_mismatch, read_only));
 
     // React: `dimmed && 'opacity-60'` — the whole card composites at 60%.
     // The element's own opacity is the one the a11y tree's opacity channel
@@ -281,7 +280,7 @@ fn card_byline(wapp: &WappSummaryVm, k: &Kit, card_key: &str) -> El {
 /// The card's action row (React: `mt-auto flex items-center gap-2 border-t
 /// border-edge pt-2.5`) — the enable switch, the Open action, the spacer and
 /// the uninstall.
-fn card_footer(wapp: &WappSummaryVm, k: &Kit, card_key: &str, api_mismatch: bool) -> El {
+fn card_footer(wapp: &WappSummaryVm, k: &Kit, card_key: &str, api_mismatch: bool, read_only: bool) -> El {
     let mut footer = row()
         .key(format!("{card_key}-footer"))
         .w_full()
@@ -296,57 +295,55 @@ fn card_footer(wapp: &WappSummaryVm, k: &Kit, card_key: &str, api_mismatch: bool
     // mismatch, and the title swapping to the mismatch label. The kit's web
     // track (24 × 16) is the closest of its three switch skins to React's
     // hand-drawn 32 × 18.
-    let wapp_id = wapp.id.clone();
-    footer = footer.child(
-        Switch::new(format!("{card_key}-toggle"), wapp.enabled)
-            .web()
-            .label(t("extensions.page.toggle"))
-            .disabled(api_mismatch)
-            .on_toggle(move |state: &mut AppState| state.toggle_wapp(&wapp_id))
-            .build(k)
-            .help(if api_mismatch {
-                t("extensions.page.apiMismatch")
-            } else {
-                t("extensions.page.toggle")
-            }),
-    );
+    let disabled_help = t("extensions.page.nativeReadOnly");
+    let mut toggle = Switch::new(format!("{card_key}-toggle"), wapp.enabled)
+        .web().label(t("extensions.page.toggle")).disabled(api_mismatch || read_only);
+    if !read_only {
+        let wapp_id = wapp.id.clone();
+        toggle = toggle.on_toggle(move |state: &mut AppState| state.toggle_wapp(&wapp_id));
+    }
+    footer = footer.child(toggle.build(k).help(if read_only {
+        disabled_help
+    } else if api_mismatch {
+        t("extensions.page.apiMismatch")
+    } else {
+        t("extensions.page.toggle")
+    }));
 
     // The Open action — only a wapp with pages and no mismatch carries one
     // (React: `hasPages(wapp) && !apiMismatch`).
     if has_pages(wapp) && !api_mismatch {
-        let wapp_id = wapp.id.clone();
-        footer = footer.child(
-            // React: `Button size="sm" variant="secondary"` (h-7 = 28pt); the
-            // T022 mapping of `secondary` (transparent + edge border + fg
-            // text) is the kit Outline skin.
-            Button::new(t("extensions.page.open"))
-                .variant(ButtonVariant::Outline)
-                .control_size(ControlSize::Large)
-                .disabled(!wapp.enabled)
-                .on_press(move |state: &mut AppState| {
-                    state.open_wapp_page(&wapp_id);
-                })
-                .build(k)
-                .key(format!("{card_key}-open")),
-        );
+        let mut open = Button::new(t("extensions.page.open"))
+            .variant(ButtonVariant::Outline)
+            .control_size(ControlSize::Large)
+            .disabled(!wapp.enabled || read_only);
+        if !read_only {
+            let wapp_id = wapp.id.clone();
+            open = open.on_press(move |state: &mut AppState| {
+                state.open_wapp_page(&wapp_id);
+            });
+        }
+        let mut button = open.build(k).key(format!("{card_key}-open"));
+        if read_only {
+            button = button.help(disabled_help);
+        }
+        footer = footer.child(button);
     }
 
     // React: `<span className="flex-1" />` between the Open action and the
     // uninstall.
     footer = footer.child(col().key(format!("{card_key}-footer-spacer")).grow(1.0));
 
-    let wapp_id = wapp.id.clone();
-    footer = footer.child(
-        // React: `Button size="sm" variant="ghost"` wrapping a `Trash2`
-        // (h-3.5) — the kit's ghost IconButton at the sm height.
-        IconButton::new(&ICON_TRASH)
-            .variant(IconButtonVariant::Ghost)
-            .control_size(ControlSize::Large)
-            .label(t("extensions.page.uninstall"))
-            .help(t("extensions.page.uninstall"))
-            .on_press(move |state: &mut AppState| state.ask_remove_wapp(&wapp_id))
-            .build(k)
-            .key(format!("{card_key}-uninstall")),
-    );
+    let mut uninstall = IconButton::new(&ICON_TRASH)
+        .variant(IconButtonVariant::Ghost)
+        .control_size(ControlSize::Large)
+        .label(t("extensions.page.uninstall"))
+        .help(if read_only { disabled_help } else { t("extensions.page.uninstall") })
+        .disabled(read_only);
+    if !read_only {
+        let wapp_id = wapp.id.clone();
+        uninstall = uninstall.on_press(move |state: &mut AppState| state.ask_remove_wapp(&wapp_id));
+    }
+    footer = footer.child(uninstall.build(k).key(format!("{card_key}-uninstall")));
     footer
 }

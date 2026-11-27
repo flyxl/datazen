@@ -2142,6 +2142,19 @@ pub trait QueryApi {
 /// this sentence verbatim next to the data it falls back to.
 pub const DESKTOP_NOT_IMPLEMENTED: &str = "not implemented in the desktop adapter yet";
 
+/// An installed Workspace App list from one adapter/profile. The view only
+/// accepts the latest requested generation.
+pub struct WappListDelivery {
+    pub generation: u32,
+    pub result: Result<Vec<types::wapp::WappSummary>, WappListError>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WappListError {
+    Unavailable,
+    Unreadable,
+}
+
 /// The desktop host's seam into the shared UI. The desktop process wires it
 /// one use case at a time — H3 fills in `list_connections`, H4
 /// `read_table_page`, H5 `commit_cells` — and until a method is wired it
@@ -2169,6 +2182,20 @@ pub trait DesktopAdapter {
     /// how many landed. One edit is (row, column name, new value).
     fn commit_cells(&mut self, table: &str, edits: &[(u32, String, String)])
         -> Result<u32, String>;
+
+    /// A read-only installed extension list; no row actions are implied.
+    fn wapp_listing_is_read_only(&self) -> bool {
+        false
+    }
+
+    /// Start a bounded local read off the UI thread. False means unavailable.
+    fn begin_wapp_list(&mut self, _generation: u32) -> bool {
+        false
+    }
+
+    fn poll_wapp_list(&mut self) -> Option<WappListDelivery> {
+        None
+    }
 
     /// The unified unbound driver-command entry (the frontend's
     /// `execute_driver_command(driverType, …)` IPC): runs a driver command

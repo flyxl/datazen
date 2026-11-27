@@ -4,7 +4,11 @@
 use crate::i18n::t;
 use crate::state_def::*;
 use crate::types::Section;
-use crate::views::{InstallWappStep, WappFilter, WappPackageKind, WappPackagePreview, WappRemoveRequest, WappSummaryVm};
+use crate::views::{
+    InstallWappStep, WappFilter, WappPackageKind, WappPackagePreview, WappPageSummaryVm,
+    WappRemoveRequest, WappSummaryVm,
+};
+use datazen_ui_api::{WappListDelivery, WappListError};
 use rune::{FileDialogOptions, FileDialogResult, Tx};
 
 impl AppState {
@@ -164,27 +168,69 @@ impl AppState {
     // page's own actions — React `WappManagementPage.tsx` over
     // `stores/wappStore.ts`.
 
-    /// React's wapp store `fetch` (`wappStore.ts:23-30`): the installed list
-    /// from the host's `list_wapps` command. The adapter carries no wapp use
-    /// case yet, so the answer is the honest failure branch React renders —
-    /// `loaded` turns true and the error slot carries the seam sentence; the
-    /// previous list survives (React's failed fetch writes only the error).
+    /// Read the installed list independently of any active database or picker.
+    /// Never overwrite the last valid list with an error.
     pub fn fetch_wapps(&mut self) {
-        self.wapps_loaded = true;
-        self.wapps_error = Some(
-            "wapp list needs the live host; the wapps list use case is not wired into this Rune build yet"
-                .into(),
-        );
+        if !self.desktop.wapp_listing_is_read_only() {
+            self.wapps_loaded = true;
+            self.wapps_error = Some(
+                "wapp list needs the live host; the wapps list use case is not wired into this Rune build yet"
+                    .into(),
+            );
+            return;
+        }
+        if self.wapps_pending.is_some() {
+            return;
+        }
+        self.wapps_generation = self.wapps_generation.wrapping_add(1);
+        let generation = self.wapps_generation;
+        if self.desktop.begin_wapp_list(generation) {
+            self.wapps_pending = Some(generation);
+        } else {
+            self.wapps_loaded = true;
+            self.wapps_list_problem = Some(WappListError::Unavailable);
+        }
     }
 
-    /// The fetch answer's success transition — the wiring's call once the
-    /// adapter answers the list (`wapps`, `loaded`, `error: null`). No
-    /// production caller exists yet; tests pin the transition.
-    #[allow(dead_code)] // the wapps host wiring is the production caller
+    pub(crate) fn deliver_wapp_list(&mut self, delivery: WappListDelivery) -> bool {
+        if self.wapps_pending != Some(delivery.generation) {
+            return false;
+        }
+        self.wapps_pending = None;
+        self.wapps_loaded = true;
+        match delivery.result {
+            Ok(wapps) => self.wapps_loaded(
+                wapps.into_iter().map(|wapp| WappSummaryVm {
+                    id: wapp.id,
+                    name: wapp.name,
+                    version: wapp.version,
+                    api_version: wapp.api_version,
+                    author: wapp.author,
+                    description: wapp.description,
+                    icon: wapp.icon,
+                    enabled: wapp.enabled,
+                    permissions: wapp.permissions.into_iter()
+                        .map(|permission| permission.as_str().to_owned()).collect(),
+                    pages: wapp.pages.into_iter().map(|page| WappPageSummaryVm {
+                        id: page.id,
+                        title: page.title,
+                        icon: page.icon,
+                    }).collect(),
+                    themes: wapp.themes.into_iter().map(|theme| theme.id).collect(),
+                }).collect(),
+            ),
+            Err(problem) => self.wapps_list_problem = Some(problem),
+        }
+        true
+    }
+
+    /// Apply a fresh, verified list.
     pub fn wapps_loaded(&mut self, wapps: Vec<WappSummaryVm>) {
         self.wapps = wapps;
         self.wapps_loaded = true;
+        self.wapps_snapshot_known = true;
         self.wapps_error = None;
+        self.wapps_list_problem = None;
     }
 
     /// React's `handleToggle` (`WappManagementPage.tsx:175-186`): the
@@ -213,6 +259,9 @@ impl AppState {
     /// flip survives the failed refetch, as React's does (a failed fetch
     /// writes only the error).
     pub fn set_wapp_enabled(&mut self, wapp_id: &str, enabled: bool) -> Result<(), String> {
+        if self.desktop.wapp_listing_is_read_only() {
+            return Err(t("extensions.page.nativeReadOnly").to_owned());
+        }
         for wapp in &mut self.wapps {
             if wapp.id == wapp_id {
                 wapp.enabled = enabled;
@@ -233,6 +282,9 @@ impl AppState {
     /// options object the promise carries). A new ask is a fresh mount
     /// (`wapp_remove_epoch`), so the dialog's body starts at the top.
     pub fn ask_remove_wapp(&mut self, wapp_id: &str) {
+        if self.desktop.wapp_listing_is_read_only() {
+            return;
+        }
         let Some(wapp) = self.wapps.iter().find(|wapp| wapp.id == wapp_id) else {
             // The card only renders wapps the list carries; a vanished row
             // leaves nothing to ask about.
@@ -271,6 +323,9 @@ impl AppState {
     /// (`closeByWapp` after the remove) is the same workspace-tabs seam
     /// `toggle_wapp` documents.
     pub fn remove_wapp(&mut self, _wapp_id: &str) -> Result<(), String> {
+        if self.desktop.wapp_listing_is_read_only() {
+            return Err(t("extensions.page.nativeReadOnly").to_owned());
+        }
         let error =
             "wapp uninstall needs the live host; the wapps uninstall use case is not wired into this Rune build yet"
                 .to_owned();
@@ -299,6 +354,9 @@ impl AppState {
     /// workspace carries table/query tabs only, so the switch lands without
     /// it and the resolve's gate still refuses a disabled or page-less wapp.
     pub fn open_wapp_page(&mut self, wapp_id: &str) -> bool {
+        if self.desktop.wapp_listing_is_read_only() {
+            return false;
+        }
         let Some(wapp) = self.wapps.iter().find(|wapp| wapp.id == wapp_id) else {
             return false;
         };

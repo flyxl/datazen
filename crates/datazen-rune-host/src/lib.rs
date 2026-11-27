@@ -16,6 +16,7 @@ pub mod settings;
 pub mod snippets;
 pub mod store;
 pub mod tray;
+mod wapp_listing;
 
 pub use dashboards::{FileDashboardStore, FileWorkflowStore};
 pub use history::{FileMigrationRuns, FileQueryHistory};

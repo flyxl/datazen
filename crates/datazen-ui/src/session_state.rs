@@ -32,6 +32,7 @@ impl AppState {
         if !matches!(section, Section::Connections | Section::Workspace) {
             self.close_navigator_value_search();
         }
+        let entering = self.active != section;
         if self.active == Section::Workspace && section != Section::Workspace {
             self.cancel_query_editor_input();
         }
@@ -46,12 +47,15 @@ impl AppState {
             // bars — the chart renders the cached answers only.
             self.refresh_widget_bars();
         }
-        if section == Section::Wapps && !self.wapps_loaded {
+        if section == Section::Wapps
+            && (!self.wapps_loaded || (entering && self.desktop.wapp_listing_is_read_only()))
+        {
             // T072: React's mount effect (`WappManagementPage.tsx:141-143`:
             // `useEffect(() => { if (!loaded) void fetch(); }, [loaded])`) —
             // the wapp store fetches the moment the page mounts, which the
-            // rail's entry into the section is here; the `!loaded` guard
-            // keeps a loaded store from refetching on every entry.
+            // rail's entry into the section is here. The native read-only
+            // profile can change externally, so a new rail entry refreshes
+            // without throwing away the last verified snapshot.
             self.fetch_wapps();
         }
         if section == Section::Workflows {

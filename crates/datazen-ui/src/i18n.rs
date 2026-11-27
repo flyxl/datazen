@@ -1,6 +1,7 @@
 //! Built-in strings, generated from the React locale packs at build time.
 //!
-//! The packs stay the source of truth (see `build.rs`). Native Rune initially
+//! The packs stay the source of truth (see `build.rs`), with a few native-only
+//! status strings that the React UI does not use. Native Rune initially
 //! uses Simplified Chinese, matching prior releases; an unknown key falls back
 //! to the key itself rather than rendering nothing.
 //!
@@ -55,6 +56,27 @@ pub fn len() -> usize {
 }
 
 fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
+    let native = match key {
+        "extensions.page.nativeListUnavailable" => Some((
+            "当前平台无法读取本地扩展列表。",
+            "Installed extensions are unavailable on this platform.",
+        )),
+        "extensions.page.nativeListUnreadable" => Some((
+            "无法验证本地扩展列表。",
+            "Could not verify the installed extensions.",
+        )),
+        "extensions.page.nativeReadOnly" => Some((
+            "仅查看已安装的扩展。无法打开、启用、禁用、卸载或应用扩展主题。",
+            "Installed extensions are read-only. Opening, enabling, disabling, uninstalling, and applying themes are unavailable.",
+        )),
+        _ => None,
+    };
+    if let Some((zh, en)) = native {
+        return Some(match locale {
+            BuiltinLanguage::SimplifiedChinese => zh,
+            BuiltinLanguage::English => en,
+        });
+    }
     let table: &[(&str, &str)] = match locale {
         BuiltinLanguage::SimplifiedChinese => &ZH_CN,
         BuiltinLanguage::English => &EN,
