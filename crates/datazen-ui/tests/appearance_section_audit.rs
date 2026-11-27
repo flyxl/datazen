@@ -214,6 +214,40 @@ fn mount_shows_both_selects_with_the_builtin_default() {
     assert!(option_text(&rt, "内置默认"), "the pack trigger shows the builtin default");
 }
 
+#[test]
+fn appearance_trigger_matches_field_size_inset_and_theme_tokens_without_a_fake_pack_select() {
+    for (dark, inset, ink) in [
+        (false, "#ffffffff", "#26364dff"),
+        (true, "#0a0d14ff", "#e6eaf2ff"),
+    ] {
+        let mut scene = AuditState::scene();
+        scene.pack_adapter_enabled = false;
+        scene.dark = dark;
+        scene.theme.mode = if dark { ThemeMode::Dark } else { ThemeMode::Light };
+        let rt = rt(scene);
+        let elements = rt.elements();
+        let find = |key: &str| elements.iter()
+            .find(|e| e.key.as_deref() == Some(key) && !e.exiting)
+            .unwrap_or_else(|| panic!("missing {key}"));
+        let scheme = find("appearance-color-scheme-select-trigger");
+        let status = find("appearance-builtin-theme-status");
+        let label = elements.iter().find(|e| {
+            e.path.starts_with(&format!("{}/", scheme.path)) && e.text.is_some()
+        }).unwrap();
+        assert_eq!(scheme.rect[3], 36.0);
+        assert_eq!(scheme.radius, 9.0);
+        assert_eq!(scheme.fill.hex(), inset);
+        assert_eq!(label.rect[0] - scheme.rect[0], 11.0);
+        assert_eq!(label.rect[3], 20.0);
+        assert_eq!(label.text_color.unwrap().hex(), ink);
+        assert_eq!(scheme.role, "combobox");
+        assert!(scheme.focusable);
+        assert_eq!(status.fill.hex(), inset);
+        assert!(!status.focusable);
+        assert!(!has(&rt, "appearance-theme-select-trigger"));
+    }
+}
+
 /// The live native host supports changing mode but does not apply plugin
 /// themes. Its pack row reports what is actually rendered, never offers an
 /// inert chooser, and leaves the scheme's real listbox functional.

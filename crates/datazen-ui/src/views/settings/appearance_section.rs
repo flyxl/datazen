@@ -58,7 +58,29 @@ use crate::views::settings::settings_ui::{section_title, setting_row};
 
 // CSS h-9 and text-sm/leading-5 in the original Settings fields.
 const FIELD_HEIGHT: f32 = 36.0;
+const FIELD_RADIUS: f32 = 9.0;
 const FIELD_TEXT: TextStyle = TextStyle::new(14.0, 400.0).lh(20.0);
+
+/// Appearance uses the original Select's real border box, not the kit's
+/// half-point outside input shadow. Keep the kit's anchored listbox,
+/// accessibility, selection handlers and keyboard focus; change only the
+/// Appearance trigger skin.
+fn appearance_select(select: Select, kit: &rune_kit::Kit, layer: &mut Vec<El>) -> El {
+    let mut field_kit = (*kit).clone();
+    field_kit.elevation = field_kit.elevation.with_input(Vec::<rune::Shadow>::new());
+    field_kit.ty.ui_compact = FIELD_TEXT;
+    field_kit.c.icon_muted = kit.c.text_faint;
+    select
+        .build(&field_kit, layer)
+        .h(FIELD_HEIGHT)
+        .radius(FIELD_RADIUS)
+        .border(1.0, kit.c.border_base)
+        // The kit already puts 8pt before the value. CSS px-2.5 plus
+        // the 1px inside border yields 11px. The kit's larger chevron
+        // frame needs a 2pt larger right inset to align its center.
+        .pl(3.0)
+        .pr(8.0)
+}
 
 /// The sentinel option value representing the built-in default theme
 /// (packId = null).
@@ -332,7 +354,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
                     }
                 });
         }
-        let scheme_control = scheme_select.build(&k, layer).h(FIELD_HEIGHT);
+        let scheme_control = appearance_select(scheme_select, k, layer);
         section = section.child(setting_row(
             &k,
             layer,
@@ -386,7 +408,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
                         }
                     });
             }
-            let pack_control = pack_select.build(&k, layer).h(FIELD_HEIGHT);
+            let pack_control = appearance_select(pack_select, k, layer);
             section = section.child(setting_row(
                 &k,
                 layer,
@@ -415,7 +437,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
                 .h(FIELD_HEIGHT)
                 .px(11.0)
                 .center_y()
-                .radius(k.radius.md)
+                .radius(FIELD_RADIUS)
                 .fill(k.c.bg_base)
                 .border(1.0, k.c.border_base)
                 .child(text(t("settings.theme.packDefault")).font(FIELD_TEXT).color(k.c.text_base));
