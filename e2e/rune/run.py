@@ -64,15 +64,17 @@ class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourne
         )
         self.assertEqual(result.returncode, 0, "Native fixture credential setup failed")
 
-    def replay(self, actions, *, until=1, exit_code=0, timeout=75):
+    def replay(self, actions, *, until=1, exit_code=0, timeout=75, trace=None):
         self.replays += 1
         script, tree = self.root / "input.json", self.root / "tree.json"
         tree.unlink(missing_ok=True)
         script.write_text(json.dumps(actions), encoding="utf-8")
+        command = [str(BINARY), "--script", str(script), "--tree", str(tree),
+                   "--size", "1440x900", "--scale", "1", "--realtime", "--at", str(until)]
+        if trace is not None:
+            command.extend(("--trace", str(trace)))
         result = subprocess.run(
-            [str(BINARY), "--script", str(script), "--tree", str(tree),
-             "--size", "1440x900", "--scale", "1", "--realtime", "--at", str(until)],
-            env=self.env, cwd=self.root, capture_output=True, text=True, timeout=timeout,
+            command, env=self.env, cwd=self.root, capture_output=True, text=True, timeout=timeout,
         )
         self.assertEqual(result.returncode, exit_code, result.stdout + result.stderr)
         if exit_code != 0:
