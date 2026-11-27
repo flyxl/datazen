@@ -381,3 +381,66 @@ steps:
         with sqlite3.connect(fixture_uri, uri=True) as database:
             self.assertEqual(database.execute(select).fetchall(),
                              [(1, "choose-else"), (2, "else-committed"), (3, "fixture-decoy")])
+
+    def test_legacy_workflow_history_survives_restart_and_requires_confirmation_to_clear(self):
+        """Migrate SW-03 and history tab reuse using actual SQLite and native storage."""
+        fixture(self.store, self.db)
+        name = "e2e-native-workflow-history"
+        query = "SELECT customer_name AS observed FROM customers WHERE id=2"
+        definition = (f'id: {name}\nname: {name}\ndescription: ""\nsteps:\n'
+                      f'  - type: query\n    id: read_customer\n    sql: {query}\n')
+        registry = self.root / "workflows.json"
+        registry.write_text(json.dumps([{
+            "id": name, "name": name, "description": "", "visibility": "user",
+            "definitionYaml": definition, "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-01T00:00:00Z",
+        }]), encoding="utf-8")
+        history = self.root / "workflow-run-history.json"
+        self.assertFalse(history.exists())
+
+        live = self.replay([
+            tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-workflows"),
+            tap(4.5, f"workflow-{name}"), tap(6, "workflow-execute-button"),
+        ], until=9.5)
+        self.expect_rendered(live, key="workflow-step-read_customer-status", text="✓")
+        self.expect_rendered(live, key="workflow-step-table-cell-0-0", text="fixture-lin")
+        original_history = history.read_bytes()
+        (record,) = json.loads(original_history)
+        self.assertEqual(record["workflowId"], name)
+        self.assertEqual(record["workflowName"], name)
+        self.assertTrue(record["result"]["success"])
+        self.assertGreaterEqual(record["result"]["totalTimeMs"], 0)
+        (step,) = record["result"]["steps"]
+        self.assertEqual(step["stepId"], "read_customer")
+        self.assertEqual(step["sqlExecuted"], query)
+
+        with sqlite3.connect(self.db) as database:
+            database.execute("UPDATE customers SET customer_name='edited-after-run' WHERE id=2")
+            self.assertEqual(database.execute(query).fetchone(), ("edited-after-run",))
+
+        # No connection is opened in the restarted app: history must render the
+        # saved result, not rerun the SQL or reuse an in-memory result.
+        row = f"workflow-history-list-item-{record['id']}"
+        start = [tap(.5, "rail-workflows"), tap(2.5, "workflow-side-tab-history")]
+        opened = self.replay([*start, tap(4, row), tap(5.4, row)], until=6.6)
+        self.expect_rendered(opened, key=row)
+        self.expect_rendered(opened, key="workflow-tab-hist-1")
+        self.assertFalse(visible(opened, key="workflow-tab-hist-2"))
+        self.expect_rendered(opened, key="workflow-step-detail-id", text="read_customer")
+        self.expect_rendered(opened, key="workflow-step-table-cell-0-0", text="fixture-lin")
+        self.assertEqual(history.read_bytes(), original_history)
+
+        ask = [*start, tap(4, "workflow-history-list-clear")]
+        canceled = self.replay([*ask, tap(5.4, "workflow-confirm-dialog-cancel")], until=6.7)
+        self.expect_rendered(canceled, key=row)
+        self.assertEqual(history.read_bytes(), original_history)
+        cleared = self.replay([*ask, tap(5.4, "workflow-confirm-dialog-confirm")], until=6.7)
+        self.expect_rendered(cleared, key="workflow-history-list-empty")
+        self.assertFalse(visible(cleared, key=row))
+        self.assertEqual(json.loads(history.read_bytes()), [])
+        restarted = self.replay(start, until=4)
+        self.expect_rendered(restarted, key="workflow-history-list-empty")
+        self.assertFalse(visible(restarted, key=row))
+        self.assertEqual(json.loads(registry.read_text())[0]["id"], name)
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as database:
+            self.assertEqual(database.execute(query).fetchone(), ("edited-after-run",))

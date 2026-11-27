@@ -390,6 +390,7 @@ pub struct LiveAdapter {
     data_dir: PathBuf,
     /// The workflow registry use case over the workflow file (N13).
     workflows: Arc<WorkflowRegistry>,
+    workflow_history: Arc<crate::workflow_run_history::FileWorkflowRunHistory>,
     /// The snippets' file store (T3): reads answer from the loaded file,
     /// writes persist atomically.
     snippets: Arc<crate::snippets::FileSnippets>,
@@ -497,6 +498,10 @@ impl LiveAdapter {
                 .expect("the workflow store opens"),
         );
         let workflows = Arc::new(WorkflowRegistry::new(workflow_store, Vec::new()));
+        let workflow_history = Arc::new(crate::workflow_run_history::FileWorkflowRunHistory::open(
+            &data_dir.join("workflow-run-history.json"),
+        ));
+        let worker_workflow_history = Arc::clone(&workflow_history);
         let dashboard_store = Arc::new(
             crate::dashboards::FileDashboardStore::open(&data_dir.join("dashboards.json"))
                 .expect("the dashboard store opens"),
@@ -701,6 +706,7 @@ impl LiveAdapter {
                                 &worker_workflows,
                                 &worker_repository,
                                 &worker_session,
+                                &worker_workflow_history,
                                 &name,
                                 variables,
                             ));
@@ -899,6 +905,7 @@ impl LiveAdapter {
             host_jobs: jobs,
             data_dir: adapter_data_dir,
             workflows,
+            workflow_history,
             snippets,
             favorites,
             import_stash,
@@ -2217,6 +2224,7 @@ async fn run_workflow_engine(
     workflows: &Arc<WorkflowRegistry>,
     repository: &Arc<dyn ConnectionRepository>,
     session: &Arc<Mutex<LiveSession>>,
+    history: &crate::workflow_run_history::FileWorkflowRunHistory,
     name: &str,
     mut variables: std::collections::BTreeMap<String, serde_json::Value>,
 ) -> Result<datazen_ui_api::NativeWorkflowRun, String> {
@@ -2300,6 +2308,11 @@ async fn run_workflow_engine(
         total_time_ms: result.total_time_ms,
         error: result.error,
     };
+    // The SQL may already have committed. Don't turn a history write failure
+    // into a retryable operation failure or run the workflow twice.
+    if let Err(error) = history.record(definition.id, definition.name, report.clone()) {
+        eprintln!("Could not record native workflow history: {error}");
+    }
     Ok(datazen_ui_api::NativeWorkflowRun { summaries, report })
 }
 
@@ -3443,6 +3456,18 @@ impl DesktopAdapter for LiveAdapter {
                 default: variable.default,
             }).collect(),
         }).collect())
+    }
+
+    fn list_native_workflow_history(&self) -> Result<Vec<datazen_ui_api::WorkflowRunListItem>, String> {
+        self.workflow_history.list()
+    }
+
+    fn get_native_workflow_history(&self, id: &str) -> Result<Option<datazen_ui_api::WorkflowRunRecord>, String> {
+        self.workflow_history.get(id)
+    }
+
+    fn clear_native_workflow_history(&mut self) -> Result<(), String> {
+        self.workflow_history.clear()
     }
 
     fn workflows(&self) -> Result<Vec<Workflow>, String> {

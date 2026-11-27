@@ -2403,6 +2403,17 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.to_owned())
     }
 
+    /// Completed native workflow runs, newest first, without result payloads.
+    fn list_native_workflow_history(&self) -> Result<Vec<WorkflowRunListItem>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.to_owned())
+    }
+    fn get_native_workflow_history(&self, _id: &str) -> Result<Option<WorkflowRunRecord>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.to_owned())
+    }
+    fn clear_native_workflow_history(&mut self) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.to_owned())
+    }
+
     fn workflows(&self) -> Result<Vec<Workflow>, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }

@@ -8,6 +8,7 @@ pub mod backend;
 pub mod dashboards;
 pub mod favorites;
 pub mod history;
+mod workflow_run_history;
 pub mod jobs;
 pub mod live;
 pub mod secrets;

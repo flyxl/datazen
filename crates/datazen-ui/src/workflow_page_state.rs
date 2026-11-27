@@ -236,36 +236,47 @@ impl AppState {
             self.workflow_active_step = reseed;
             return;
         }
-        let Some(item) = self.workflow_history_items.iter().find(|item| item.id == history_id)
-        else {
-            // React's catch: `setFeedback(String(e))`.
-            self.workflow_feedback = format!("history entry not found: {history_id}");
-            return;
+        let (created_at, result) = match self.desktop.get_native_workflow_history(history_id) {
+            Ok(Some(run)) => (
+                run.created_at,
+                crate::views::WorkflowExecutionResult::from_native_report(run.result),
+            ),
+            Ok(None) => {
+                self.workflow_feedback = format!("history entry not found: {history_id}");
+                return;
+            }
+            Err(error) if error == datazen_ui_api::DESKTOP_NOT_IMPLEMENTED => {
+                let Some(item) = self.workflow_history_items.iter().find(|item| item.id == history_id)
+                else {
+                    self.workflow_feedback = format!("history entry not found: {history_id}");
+                    return;
+                };
+                (item.created_at.clone(), crate::views::WorkflowExecutionResult {
+                    success: item.success,
+                    total_time_ms: item.total_time_ms,
+                    steps: Vec::new(),
+                    final_output: String::new(),
+                    error: None,
+                })
+            }
+            Err(error) => {
+                self.workflow_operation_error = Some(error);
+                return;
+            }
         };
-        let entry = (
-            item.created_at.clone(),
-            item.success,
-            item.total_time_ms,
-        );
         let id = self.next_workflow_panel_id("hist");
+        let first = first_shown_index(result.steps.len(), self.workflow_step_order);
         let panel = WorkflowHistoryPanel {
             id,
             history_id: history_id.to_owned(),
             workflow_name: name.to_owned(),
-            created_at: entry.0,
-            result: crate::views::WorkflowExecutionResult {
-                success: entry.1,
-                total_time_ms: entry.2,
-                steps: Vec::new(),
-                final_output: String::new(),
-                error: None,
-            },
+            created_at,
+            result,
         };
         let active = panel.id.clone();
         self.workflow_panels.push(WorkflowPanel::History(panel));
         self.workflow_active_panel = Some(active);
-        // React: `entry.result.steps.length > 0 ? firstShownIndex(...) : null`.
-        self.workflow_active_step = None;
+        self.workflow_active_step = first;
     }
 
     /// React's `closePanel(panelId)` — the panel leaves the list; the active
@@ -599,36 +610,43 @@ impl AppState {
         self.fetch_workflow_list();
     }
 
-    /// React's `handleClearHistory` command half — `workflowHistoryClear` has
-    /// no adapter method. React's flow carries no catch, so the honest branch
-    /// keeps the list and records the seam in the operation error slot (the
-    /// module docs' ruling); the success transition below is the wiring's.
     pub fn clear_workflow_history(&mut self) {
-        self.workflow_operation_error = Some(
-            "workflow history clear needs the live host; the history use case is not wired into \
-             this Rune build yet"
-                .to_owned(),
-        );
+        match self.desktop.clear_native_workflow_history() {
+            Ok(()) => {
+                self.workflow_operation_error = None;
+                self.workflow_history_cleared();
+            }
+            Err(error) if error == datazen_ui_api::DESKTOP_NOT_IMPLEMENTED => {
+                self.workflow_operation_error = Some(
+                    "workflow history clear needs the live host; no history adapter was provided".to_owned(),
+                );
+            }
+            Err(error) => self.workflow_operation_error = Some(error),
+        }
     }
 
-    /// React's `loadHistory` — `workflowHistoryList` has no adapter method,
-    /// and React's flow has no catch (an unhandled rejection keeps the items
-    /// as they were), so the seam leaves the list untouched. The transition
-    /// the wiring will call lands below.
-    pub fn load_workflow_history(&mut self) {}
+    pub fn load_workflow_history(&mut self) {
+        match self.desktop.list_native_workflow_history() {
+            Ok(rows) => {
+                self.workflow_operation_error = None;
+                self.workflow_history_loaded(rows.into_iter().map(|row| HistoryListItem {
+                    id: row.id,
+                    workflow_id: row.workflow_id,
+                    workflow_name: row.workflow_name,
+                    success: row.success,
+                    total_time_ms: row.total_time_ms,
+                    created_at: row.created_at,
+                }).collect());
+            }
+            Err(error) if error == datazen_ui_api::DESKTOP_NOT_IMPLEMENTED => {}
+            Err(error) => self.workflow_operation_error = Some(error),
+        }
+    }
 
-    /// The history list's success transition — the wiring's call once the
-    /// adapter answers the list. No production caller exists yet; tests pin
-    /// the transition.
-    #[allow(dead_code)] // the workflow host wiring is the production caller
     pub fn workflow_history_loaded(&mut self, items: Vec<HistoryListItem>) {
         self.workflow_history_items = items;
     }
 
-    /// The clear answer's success transition — the wiring's call (React's
-    /// `setHistoryItems([])`). No production caller exists yet; tests pin the
-    /// transition.
-    #[allow(dead_code)] // the workflow host wiring is the production caller
     pub fn workflow_history_cleared(&mut self) {
         self.workflow_history_items.clear();
     }
