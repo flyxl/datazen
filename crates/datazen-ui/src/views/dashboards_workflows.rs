@@ -30,46 +30,26 @@ use crate::ui::kit::kit;
 pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let k = kit(dark);
     let mut page = col().key("dashboards-page").w_full().grow(1.0).min_h(0.0).fill(k.c.page);
-    let native = match state.desktop.native_dashboard_board() {
+    let board = match state.desktop.native_dashboard_board() {
         Ok(None) => return page.child(first_board_view(state, k)),
-        Ok(Some(board)) => {
-            // This is the existing selection's real persisted title, not an
-            // inert tab or a claim that the native host supports more boards.
-            page = page.child(
-                row().key("dashboard-selected-board").w_full().h(36.0).px(16.0).center_y()
-                    .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
-                    .child(text(board.name).key("dashboard-selected-board-title").font(k.ty.body).color(k.c.text_base)),
-            );
-            true
-        }
-        Err(error) if error == datazen_ui_api::DESKTOP_NOT_IMPLEMENTED => {
-            // The demo/older adapter keeps its already supported report UI.
-            false
-        }
-        Err(error) => {
-            return page.child(
-                col().w_full().grow(1.0).center().padding(16.0).child(
-                    text(error).key("dashboard-board-error").color(k.c.danger.fg).wrap(),
-                ),
-            );
-        }
+        Ok(Some(board)) => Some(board),
+        // The demo/older adapter keeps its already supported report UI.
+        Err(error) if error == datazen_ui_api::DESKTOP_NOT_IMPLEMENTED => None,
+        Err(error) => return page.child(dashboard_read_error("dashboard-board-error", error, k)),
     };
-    let widgets = state.host_widgets();
-    if native && !widgets.is_empty() {
-        let mut actions = row().key("dashboard-report-actions").w_full().gap(8.0).px(16.0);
-        if !state.dashboard_report_open {
-            actions = actions.child(
-                Button::new(t("dashboard.addWidget"))
-                    .variant(ButtonVariant::Ghost)
-                    .control_size(ControlSize::Large)
-                    .icon(&ICON_PLUS)
-                    .on_press(|state: &mut AppState| state.begin_native_dashboard_report())
-                    .build(k)
-                    .key("dashboard-add-widget"),
-            );
-        }
-        page = page.child(actions.child(widget_refresh(k)));
-    }
+    let native = board.is_some();
+    let widgets = if let Some(board) = board {
+        page = page.child(selected_board_marker(board, k));
+        // Count actual report rows, not the demo fallback or a fabricated zero.
+        let widgets = match state.desktop.dashboard_widgets() {
+            Ok(widgets) => widgets,
+            Err(error) => return page.child(dashboard_read_error("dashboard-report-read-error", error, k)),
+        };
+        page = page.child(native_report_toolbar(widgets.len(), state.dashboard_report_open, k));
+        widgets
+    } else {
+        state.host_widgets()
+    };
     if !native || state.dashboard_report_open {
         let active_session = !native || state.desktop.native_dashboard_report_session_open();
         page = page.child(widget_form(state, k, dark, native, active_session));
@@ -167,6 +147,66 @@ pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         );
     }
     page.child(list)
+}
+
+fn dashboard_read_error(key: &str, error: String, k: &rune_kit::Kit) -> El {
+    col().w_full().grow(1.0).center().padding(16.0).child(
+        text(error).key(key).color(k.c.danger.fg).wrap(),
+    )
+}
+
+fn selected_board_marker(board: datazen_ui_api::NativeDashboardBoard, k: &rune_kit::Kit) -> El {
+    // React's 32pt selected entry plus the strip's 1pt edge. This is an
+    // identity marker for the single persisted board, never a tab button.
+    row().key("dashboard-selected-board").w_full().h(33.0).shrink()
+        .fill(k.c.layer_02).border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
+        .child(
+            col().key(format!("dashboard-selected-board-{}", board.id)).h(32.0).max_w(145.0).shrink()
+                .fill(k.c.page).border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
+                .child(
+                    row().h(30.0).px(12.0).center_y().child(
+                        text(board.name).key("dashboard-selected-board-title")
+                            .font(k.ty.text_xsmall_medium).color(k.c.text_base)
+                            .max_w(120.0).truncate(),
+                    ),
+                )
+                .child(
+                    row().key("dashboard-selected-board-indicator")
+                        .pin(Some(0.0), None, Some(0.0), Some(0.0)).h(2.0).fill(k.c.bg_accent),
+                ),
+        )
+}
+
+fn native_report_toolbar(count: usize, composing: bool, k: &rune_kit::Kit) -> El {
+    // React's existing report toolbar is 28pt controls + 6pt vertical insets
+    // + 1pt bottom edge. Keep real count/actions in that space, not filler.
+    let mut actions = row().key("dashboard-report-actions").w_full().h(41.0).shrink()
+        .px(12.0).gap(4.0).center_y()
+        .fill(k.c.page).border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
+        .child(
+            row().grow(1.0).min_w(0.0).child(
+                text(t("dashboard.widgetCount").replace("{count}", &count.to_string()))
+                    .key("dashboard-report-count").role("status")
+                    .font(k.ty.text_xsmall_medium).color(k.c.text_muted).truncate(),
+            ),
+        );
+    if count != 0 && !composing {
+        actions = actions.child(
+            Button::new(t("dashboard.addWidget")).variant(ButtonVariant::Ghost)
+                .control_size(ControlSize::Large).icon(&ICON_PLUS)
+                .on_press(|state: &mut AppState| state.begin_native_dashboard_report())
+                .build(k).key("dashboard-add-widget"),
+        );
+    }
+    let mut refresh = Button::new(t("dashboard.refreshAll"))
+        .variant(ButtonVariant::Ghost).control_size(ControlSize::Large).icon(&ICON_REFRESH);
+    if count == 0 {
+        // No fake action when there is nothing to refresh.
+        refresh = refresh.disabled(true);
+    } else {
+        refresh = refresh.on_press(|state: &mut AppState| state.refresh_widget_bars());
+    }
+    actions.child(refresh.build(k).key("widget-refresh"))
 }
 
 fn widget_refresh(k: &rune_kit::Kit) -> El {
