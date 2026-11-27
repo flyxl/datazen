@@ -100,10 +100,16 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
                     NAVIGATOR_WIDTH_DEFAULT,
                 ));
         }
-        if state.active == Section::Workflows {
-            // Like React's embedded WorkflowPage, this page owns its
-            // toolbar, history sidebar and editor. Do not wrap it in the
-            // database ContentView's inset, title or status footer.
+        // These React modes mount their page directly, outside the database
+        // ContentView. Each existing Rune page owns its own controls and
+        // any padding, with no generic database title or status footer.
+        let embedded = match state.active {
+            Section::Workflows | Section::Dashboards | Section::Wapps => {
+                Some(page_body(state, theme, dark, &mut layer))
+            }
+            _ => None,
+        };
+        if let Some(page) = embedded {
             body.child(
                 col()
                     .key("datazen-page")
@@ -111,7 +117,7 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
                     .min_w(0.0)
                     .min_h(0.0)
                     .h_full()
-                    .child(super::workflow::workflow_page::workflow_page(state, theme, dark)),
+                    .child(page.h_full()),
             )
         } else {
             body.child(connection_content(state, theme, dark, &mut layer))

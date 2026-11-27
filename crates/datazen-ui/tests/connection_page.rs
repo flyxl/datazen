@@ -265,6 +265,72 @@ fn embedded_workflow_is_flush_to_the_rail_and_keeps_its_own_controls() {
 }
 
 #[test]
+fn dashboard_and_extensions_own_their_full_page_and_keep_their_controls() {
+    use datazen_ui_api::WorkspaceApi;
+
+    let mut rt = runtime();
+    rt.state.workspace.connect("local").expect("memory database session");
+    let stored_tab = rt.state.open_table_tab("customers").expect("database table tab");
+    rt.frame(0.0);
+
+    let click = |rt: &mut Runtime<AppState>, key: &str| {
+        let (x, y) = rt.find(key).unwrap_or_else(|| panic!("missing visible control {key}"));
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
+        rt.frame(0.0);
+    };
+    let assert_owned_page = |rt: &Runtime<AppState>, page: &str| {
+        let keys = key_set(rt);
+        for key in ["content-toolbar", "content-toolbar-title", "content-status-bar",
+                    "status-connection-label", "datazen-navigator", "splitter:navigator-width"] {
+            assert!(!keys.contains(key), "{page}: no foreign database chrome {key}");
+        }
+        let elements = rt.elements();
+        let rect = |key: &str| {
+            elements.iter()
+                .find(|e| !e.exiting && e.key.as_deref() == Some(key))
+                .unwrap_or_else(|| panic!("missing {key}"))
+                .rect
+        };
+        let [x, y, width, height] = rect("datazen-rail");
+        assert_eq!(rect(page), [x + width, y, 1440.0 - x - width, height]);
+    };
+
+    click(&mut rt, "rail-dashboards");
+    assert_owned_page(&rt, "dashboards-page");
+    assert!(key_set(&rt).contains("widget-form"));
+    rt.state.widget_title = rune::TextEdit::new("Still a real widget");
+    rt.state.widget_query = rune::TextEdit::new("SELECT 1");
+    rt.invalidate();
+    rt.frame(0.0);
+    click(&mut rt, "widget-save");
+    let widget = rt.state.host_widgets().into_iter()
+        .find(|widget| widget.title == "Still a real widget")
+        .expect("existing widget save runs");
+    assert!(key_set(&rt).contains(&format!("widget-{}", widget.id)));
+    click(&mut rt, "widget-refresh");
+    assert!(rt.state.widget_bars.contains_key(&widget.id));
+
+    click(&mut rt, "rail-wapps");
+    assert_owned_page(&rt, "extension-management-page");
+    let keys = key_set(&rt);
+    assert!(keys.contains("extension-page-title") && keys.contains("extension-search-input"));
+    assert!(keys.contains("extension-page-error"), "unsupported host list remains visible");
+    click(&mut rt, "extension-filter-theme");
+    assert_eq!(rt.state.wapp_filter.key(), "extension-filter-theme");
+    click(&mut rt, "extension-install-button");
+    assert!(key_set(&rt).contains("install-wapp-dialog"));
+    click(&mut rt, "extension-install-cancel");
+    assert!(!key_set(&rt).contains("install-wapp-dialog"));
+
+    click(&mut rt, "rail-workspace");
+    let keys = key_set(&rt);
+    assert!(keys.contains("datazen-navigator") && keys.contains("content-status-bar"));
+    assert_eq!(rt.state.tabs.selected().map(|tab| tab.id), Some(stored_tab));
+}
+
+#[test]
 fn tabs_and_toolbar_follow_the_content_workspace_contract() {
     let mut rt = runtime();
     rt.state.active = Section::Workspace;
