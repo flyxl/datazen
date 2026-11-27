@@ -30,6 +30,7 @@ pub mod ai_tool_bridge_section;
 pub mod appearance_section;
 // T244: the history-data cleanup section.
 pub mod data_cleanup_section;
+mod data_browsing_live;
 // T265: the driver settings section (per-driver blocks over the
 // generated entries seam).
 pub mod driver_settings_section;
@@ -176,7 +177,7 @@ pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
 fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &str) -> El {
     let body = match active {
         "appearance" => appearance_section(state, theme, dark),
-        "dataBrowsing" => data_browsing_section(state, theme, dark),
+        "dataBrowsing" => data_browsing_live::view(state, theme, dark),
         "editor" => editor_section(state, theme, dark),
         "behavior" => behavior_section(state, theme),
         "logging" => placeholder_section("logging", t("settings.logging"), theme),
@@ -216,88 +217,6 @@ fn appearance_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .child(section)
         .child(settings_error_row(state, theme))
         .children(overlays)
-}
-
-fn data_browsing_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let settings = state.ui_settings();
-    let page_size = settings
-        .iter()
-        .find_map(|setting| match setting {
-            Setting::TablePageSize { rows } => Some(*rows),
-            _ => None,
-        })
-        .unwrap_or(TABLE_PAGE_SIZE);
-    let max_rows = settings
-        .iter()
-        .find_map(|setting| match setting {
-            Setting::QueryMaxRows { rows } => Some(*rows),
-            _ => None,
-        })
-        .unwrap_or(100);
-    col()
-        .key("settings-section-dataBrowsing")
-        .w_full()
-        .gap(12.0)
-        .child(section_title(t("settings.dataBrowsing"), theme))
-        .child(
-            row()
-                .key("settings-data")
-                .w_full()
-                .min_h(32.0)
-                .gap(8.0)
-                .center_y()
-                .flex_wrap()
-                .child(
-                    text(format!("Rows per page: {page_size}"))
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                )
-                .child(
-                    TextField::new("settings-page-size-input", &state.page_size_input)
-                        .height(24.0)
-                        .width(90.0)
-                        .on_edit(|state: &mut AppState| &mut state.page_size_input)
-                        .build(dark),
-                )
-                .child(
-                    row()
-                        .key("settings-page-size-set")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("Set").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.set_table_page_size()),
-                )
-                .child(
-                    text(format!("Query max rows: {max_rows}"))
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                )
-                .child(
-                    TextField::new("settings-max-rows-input", &state.max_rows_input)
-                        .height(24.0)
-                        .width(90.0)
-                        .on_edit(|state: &mut AppState| &mut state.max_rows_input)
-                        .build(dark),
-                )
-                .child(
-                    row()
-                        .key("settings-max-rows-set")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text("Set").font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.set_query_max_rows()),
-                ),
-        )
-        .child(settings_error_row(state, theme))
-        .child(export_section(state, theme, dark))
-        .child(import_section(state, theme, dark))
-        .child(backup_section(state, theme))
 }
 
 fn editor_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {

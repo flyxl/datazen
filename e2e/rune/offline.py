@@ -152,6 +152,30 @@ class OfflineJourneys:
         self.expect_rendered(tree, text="Rows per page: 17", within="settings-data")
         self.expect_rendered(tree, text="Query max rows: 23", within="settings-data")
 
+    def test_settings_page_size_preset_persists_without_changing_the_query_limit(self):
+        config = self.root / "settings.json"
+        initial = json.dumps({"ui": {"tablePageSize": 17, "queryMaxRows": 23}})
+        config.write_text(initial, encoding="utf-8")
+        preset = "settings-page-size-preset-trigger"
+
+        cancelled = self.replay([
+            SETTINGS, DATA_SETTINGS, tap(2.1, preset), key(3.3, "Escape"),
+        ], until=4.3)
+        self.expect_rendered(cancelled, text="Rows per page: 17", within="settings-data")
+        self.assertEqual(config.read_text(encoding="utf-8"), initial)
+
+        applied = self.replay([
+            SETTINGS, DATA_SETTINGS, tap(2.1, preset), tap(3.3, "option1"),
+        ], until=4.3)
+        self.expect_rendered(applied, text="Rows per page: 50", within="settings-data")
+        self.expect_rendered(applied, text="Query max rows: 23", within="settings-data")
+        ui = json.loads(config.read_text(encoding="utf-8"))["ui"]
+        self.assertEqual((ui["tablePageSize"], ui["queryMaxRows"]), (50, 23))
+
+        restarted = self.replay([SETTINGS, DATA_SETTINGS], until=2.5)
+        self.expect_rendered(restarted, text="Rows per page: 50", within="settings-data")
+        self.expect_rendered(restarted, key=preset)
+
     def test_settings_navigation_changes_real_grid_page_boundary_after_restart(self):
         fixture(self.store, self.db)
         with sqlite3.connect(self.db) as connection:
