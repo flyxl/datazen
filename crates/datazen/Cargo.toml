@@ -317,7 +317,7 @@ jobs = [
 ]
 # Local prompt defaults/overrides, shared by native Settings and the AI
 # resolver. Resolving or editing local templates needs no provider client.
-prompt_settings = ["dep:datazen-driver-api", "dep:serde_json", "dep:tokio", "dep:tracing"]
+prompt_settings = ["dep:datazen-driver-api", "dep:serde_json", "dep:tempfile", "dep:tokio", "dep:tracing"]
 
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
@@ -393,6 +393,8 @@ sha2 = { workspace = true, optional = true }
 # comparison_store 的跨进程排他租约（flock / LockFileEx；宿主边界 F1 替换
 # SQLite 租约。单一消费者，按 P1 口径不上收 workspace 根表）。
 fd-lock = { version = "4", optional = true }
+# prompt settings: same-filesystem atomic replacement.
+tempfile = { version = "3", optional = true }
 # connection_import：读取 DBX 的 dbx.db（只读打开活库，先复制 -wal/-shm）。
 # data_sync 的比对租约已改用 fd-lock，不再依赖 rusqlite（host-boundary F1）。
 rusqlite = { workspace = true, optional = true }

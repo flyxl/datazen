@@ -396,3 +396,88 @@ async fn test_dialect_notes_in_prompt_template_struct() {
     };
     assert_eq!(tpl.dialect_notes.as_deref(), Some("PG specific"));
 }
+
+// A real temp-file writer that fails after putting a partial prefix on disk.
+// Do not chmod the parent to reproduce this: that is nondeterministic when
+// tests run with an elevated user and does not prove what happens after I/O.
+fn fail_after_partial_write(path: &Path, bytes: &[u8]) -> io::Result<tempfile::NamedTempFile> {
+    stage_overrides_with(path, bytes, |staged, bytes| {
+        assert!(bytes.len() > 8);
+        staged.write_all(&bytes[..8])?;
+        assert_eq!(staged.metadata()?.len(), 8);
+        Err(io::Error::other("fixture partial staging write"))
+    })
+}
+
+fn prompt_entry(scope: &str, scenario: PromptScenario, system: &str) -> PromptOverrideEntry {
+    PromptOverrideEntry { driver_type: scope.into(), scenario, system: system.into() }
+}
+
+#[tokio::test]
+async fn failed_partial_save_or_remove_never_replaces_prior_file_or_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let resolver = PromptResolver::new(dir.path(), None);
+    let path = dir.path().join("prompt_overrides.json");
+    let original = "prior first line\n原始第二行";
+    resolver.set_override(prompt_entry("*", PromptScenario::Chat, original)).await.unwrap();
+    let bytes = fs::read(&path).unwrap();
+
+    let save = resolver.commit_overrides(
+        |snapshot| snapshot[0].system = "must not commit".into(),
+        fail_after_partial_write,
+    ).await;
+    assert_eq!(save.unwrap_err(), "fixture partial staging write");
+    let remove = resolver.commit_overrides(
+        |snapshot| snapshot.clear(),
+        fail_after_partial_write,
+    ).await;
+    assert_eq!(remove.unwrap_err(), "fixture partial staging write");
+
+    assert_eq!(fs::read(&path).unwrap(), bytes);
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1, "failed stages must clean up");
+    assert_eq!(resolver.get_all_overrides().await[0].system, original);
+    let reopened = PromptResolver::new(dir.path(), None);
+    reopened.load().await.unwrap();
+    assert_eq!(reopened.get_all_overrides().await[0].system, original);
+}
+
+#[tokio::test]
+async fn concurrent_writes_inside_one_resolver_preserve_different_scopes() {
+    let dir = tempfile::tempdir().unwrap();
+    let resolver = PromptResolver::new(dir.path(), None);
+    let (left, right) = tokio::join!(
+        resolver.set_override(prompt_entry("*", PromptScenario::Chat, "global")),
+        resolver.set_override(prompt_entry("sqlite", PromptScenario::Chat, "sqlite-only")),
+    );
+    left.unwrap();
+    right.unwrap();
+    let reopened = PromptResolver::new(dir.path(), None);
+    reopened.load().await.unwrap();
+    let entries = reopened.get_all_overrides().await;
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().any(|e| e.driver_type == "*" && e.system == "global"));
+    assert!(entries.iter().any(|e| e.driver_type == "sqlite" && e.system == "sqlite-only"));
+    let (remove, other) = tokio::join!(
+        resolver.remove_override("sqlite", PromptScenario::Chat),
+        resolver.set_override(prompt_entry("*", PromptScenario::Chat, "global revisited")),
+    );
+    remove.unwrap();
+    other.unwrap();
+    reopened.load().await.unwrap();
+    let entries = reopened.get_all_overrides().await;
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].system, "global revisited");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn atomic_replacement_keeps_existing_unix_mode() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let resolver = PromptResolver::new(dir.path(), None);
+    let path = dir.path().join("prompt_overrides.json");
+    resolver.set_override(prompt_entry("*", PromptScenario::Chat, "old")).await.unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+    resolver.set_override(prompt_entry("*", PromptScenario::Chat, "new")).await.unwrap();
+    assert_eq!(fs::metadata(path).unwrap().permissions().mode() & 0o777, 0o640);
+}

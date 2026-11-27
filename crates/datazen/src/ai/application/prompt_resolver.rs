@@ -15,6 +15,8 @@
 //! 5. Embedded English fallback compiled into the binary
 
 use std::collections::HashMap;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -74,6 +76,9 @@ pub struct PromptResolver {
     overrides_loaded: AtomicBool,
     templates_loaded: AtomicBool,
     load_lock: Mutex<()>,
+    // Serialize this resolver's read/modify/replace cycles, including reload.
+    // This is not a lock between resolver instances or processes.
+    override_writes: Mutex<()>,
 }
 
 impl PromptResolver {
@@ -86,6 +91,7 @@ impl PromptResolver {
             overrides_loaded: AtomicBool::new(false),
             templates_loaded: AtomicBool::new(false),
             load_lock: Mutex::new(()),
+            override_writes: Mutex::new(()),
         }
     }
 
@@ -122,14 +128,15 @@ impl PromptResolver {
     }
 
     pub async fn load(&self) -> Result<(), String> {
-        if self.file_path.exists() {
-            let data = tokio::fs::read_to_string(&self.file_path)
-                .await
-                .map_err(|e| e.to_string())?;
-            let file: PromptOverridesFile =
-                serde_json::from_str(&data).map_err(|e| e.to_string())?;
-            *self.user_overrides.write().await = file.overrides;
-        }
+        let _transaction = self.override_writes.lock().await;
+        let data = match tokio::fs::read_to_string(&self.file_path).await {
+            Ok(data) => data,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.to_string()),
+        };
+        let file: PromptOverridesFile =
+            serde_json::from_str(&data).map_err(|e| e.to_string())?;
+        *self.user_overrides.write().await = file.overrides;
         Ok(())
     }
 
@@ -169,18 +176,30 @@ impl PromptResolver {
         }
     }
 
-    async fn save(&self) -> Result<(), String> {
-        let overrides = self.user_overrides.read().await.clone();
-        let file = PromptOverridesFile { overrides };
-        let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
-        if let Some(parent) = self.file_path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| e.to_string())?;
-        }
-        tokio::fs::write(&self.file_path, json)
+    async fn commit_overrides(
+        &self,
+        change: impl FnOnce(&mut Vec<PromptOverrideEntry>) + Send,
+        stage: impl FnOnce(&Path, &[u8]) -> io::Result<tempfile::NamedTempFile> + Send + 'static,
+    ) -> Result<(), String> {
+        let _transaction = self.override_writes.lock().await;
+        let mut file = PromptOverridesFile {
+            overrides: self.user_overrides.read().await.clone(),
+        };
+        change(&mut file.overrides);
+        let bytes = serde_json::to_vec_pretty(&file).map_err(|e| e.to_string())?;
+        let path = self.file_path.clone();
+        let staged = tokio::task::spawn_blocking(move || stage(&path, &bytes))
             .await
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
+        let mut current = self.user_overrides.write().await;
+        // No await from atomic publication to installing the committed
+        // snapshot: cancellation cannot publish disk alone. Cancellation
+        // during staging only drops the unpublished temporary file.
+        staged.persist(&self.file_path).map_err(|e| e.error.to_string())?;
+        *current = file.overrides;
+        Ok(())
     }
 
     /// Resolve the effective system prompt for a scenario.
@@ -346,13 +365,11 @@ impl PromptResolver {
 
     /// Save a user prompt override.
     pub async fn set_override(&self, entry: PromptOverrideEntry) -> Result<(), String> {
-        {
-            let mut overrides = self.user_overrides.write().await;
-            overrides
-                .retain(|o| !(o.driver_type == entry.driver_type && o.scenario == entry.scenario));
+        self.commit_overrides(move |overrides| {
+            overrides.retain(|o| !(o.driver_type == entry.driver_type && o.scenario == entry.scenario));
             overrides.push(entry);
-        }
-        self.save().await
+        }, stage_overrides)
+        .await
     }
 
     /// Remove a user prompt override, reverting to driver/default.
@@ -361,17 +378,58 @@ impl PromptResolver {
         driver_type: &str,
         scenario: PromptScenario,
     ) -> Result<(), String> {
-        {
-            let mut overrides = self.user_overrides.write().await;
+        self.commit_overrides(|overrides| {
             overrides.retain(|o| !(o.driver_type == driver_type && o.scenario == scenario));
-        }
-        self.save().await
+        }, stage_overrides)
+        .await
     }
 
     /// Get all user overrides (raw).
     pub async fn get_all_overrides(&self) -> Vec<PromptOverrideEntry> {
         self.user_overrides.read().await.clone()
     }
+}
+
+fn stage_overrides(path: &Path, bytes: &[u8]) -> io::Result<tempfile::NamedTempFile> {
+    stage_overrides_with(path, bytes, |staged, bytes| staged.write_all(bytes))
+}
+
+fn stage_overrides_with(
+    path: &Path,
+    bytes: &[u8],
+    write: impl FnOnce(&mut File, &[u8]) -> io::Result<()>,
+) -> io::Result<tempfile::NamedTempFile> {
+    let parent = path.parent().filter(|dir| !dir.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    fs::create_dir_all(parent)?;
+    let permissions = match fs::symlink_metadata(path) {
+        Ok(meta) if !meta.is_file() => {
+            // Do not turn an existing link or special file into a regular
+            // JSON file as a side effect of replacement.
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "prompt store is not a regular file"));
+        }
+        Ok(_) => {
+            // Replacing a directory entry must not bypass the destination's
+            // existing file access check. Open without creating or truncating.
+            Some(OpenOptions::new().write(true).open(path)?.metadata()?.permissions())
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".prompt-overrides-");
+    #[cfg(unix)]
+    if permissions.is_none() {
+        use std::os::unix::fs::PermissionsExt;
+        // Preserve the normal creation mode/umask of the former file writer.
+        builder.permissions(fs::Permissions::from_mode(0o666));
+    }
+    let mut staged = builder.tempfile_in(parent)?;
+    write(staged.as_file_mut(), bytes)?;
+    if let Some(permissions) = permissions {
+        staged.as_file().set_permissions(permissions)?;
+    }
+    staged.as_file().sync_all()?;
+    Ok(staged)
 }
 
 /// Convert a `PromptScenario` to its file-system key (matches `.md` / `.txt` file stems).
