@@ -103,8 +103,38 @@ class WorkflowJourney:
                 self.assertTrue(inside(rect(bottom, tail), bottom_geometry[1]),
                                 "the wheel must reveal the real last editable step")
 
-                canceled = self.replay([*scroll_long, tap(4.35, "workflow-editor-cancel")],
-                                       until=5.5, size=size)
+                # The page owns this anchored overlay, not the clipped form.
+                # Open it on the real last editable row after the wheel.
+                select = "workflow-form-step-11-type"
+                trigger = f"{select}-trigger"
+                popup = f"{select}-content"
+                open_select = [*scroll_long, tap(4.35, trigger)]
+                opened = self.replay(open_select, until=5.5, size=size)
+                trigger_rect = rect(opened, trigger)
+                popup_rect = rect(opened, popup)
+                self.assertTrue(inside(trigger_rect, bottom_geometry[1]), trigger_rect)
+                self.assertTrue(inside(popup_rect, (0, 0, *viewport)), popup_rect)
+                self.assertFalse(visible(opened, key=popup, within="workflow-edit-visual"))
+                self.expect_rendered(opened, key="listbox", within=popup)
+                self.expect_rendered(opened, text="Command", within=popup)
+                self.expect_rendered(opened, text="Query (legacy)", within=trigger)
+                # The Select uses BottomEnd placement, including when vertically flipped.
+                self.assertAlmostEqual(popup_rect[0] + popup_rect[2],
+                                       trigger_rect[0] + trigger_rect[2], delta=1.0)
+                vertical_gaps = (popup_rect[1] - (trigger_rect[1] + trigger_rect[3]),
+                                 trigger_rect[1] - (popup_rect[1] + popup_rect[3]))
+                self.assertTrue(any(abs(gap - 2.0) <= 1.0 for gap in vertical_gaps),
+                                (trigger_rect, popup_rect))
+
+                close_select = [*open_select, key(5.65, "Escape")]
+                dismissed = self.replay(close_select, until=6.8, size=size)
+                self.assertFalse(visible(dismissed, key=popup))
+                self.expect_rendered(dismissed, text="Query (legacy)", within=trigger)
+                self.assertEqual(geometry(dismissed, viewport, sidebar, "workflow-edit-visual"),
+                                 bottom_geometry)
+
+                canceled = self.replay([*close_select, tap(6.95, "workflow-editor-cancel")],
+                                       until=8.1, size=size)
                 self.expect_rendered(canceled, key="workflow-empty-hint")
                 self.expect_rendered(canceled, key=workflow_row)
                 self.assertFalse(visible(canceled, key="workflow-edit-panel"))
