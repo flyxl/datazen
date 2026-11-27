@@ -50,6 +50,7 @@ fn sheet(
     dark: bool,
 ) -> El {
     let scroll_x = grid.scroll_x();
+    let table_scroll_y = (slot == GridSlot::Table).then(|| grid.table_scroll_y());
     let data_width = grid.sheet_data_width();
     let width = GUTTER_W + data_width;
     let sheet = col()
@@ -91,6 +92,9 @@ fn sheet(
         .scroll_xy()
         .on_scroll_offset(move |at: ScrollPos| {
             scroll_x.set(at.offset[0]);
+            if let Some(scroll_y) = &table_scroll_y {
+                scroll_y.set(at.offset[1]);
+            }
         })
         .child(sheet)
 }
@@ -606,6 +610,15 @@ fn header_cell(
     cell
 }
 
+/// A hit can be a text child of a cell. Resolve the enclosing key in the
+/// presented tree instead of inferring a column from scroll offsets.
+fn table_cell_at(hit: &rune::Picked) -> Option<(u32, u32)> {
+    hit.path().rsplit('/').find_map(|part| {
+        let (row, col) = part.strip_prefix("cell-")?.split_once('-')?;
+        Some((row.parse().ok()?, col.parse().ok()?))
+    })
+}
+
 fn cell(
     grid: &DataGrid,
     slot: GridSlot,
@@ -650,6 +663,43 @@ fn cell(
         box_el = box_el
             .on_press_tx(move |state: &mut crate::AppState, tx| {
                 state.grid.click_cell(row_index, col_index, tx.mods().shift);
+            })
+            .on_drag(move |state: &mut crate::AppState, drag, tx| {
+                use rune::Phase;
+                if drag.phase == Phase::Down {
+                    // A disappearing virtualized press has no cell callback.
+                    // Do not let its saved selection be reused by a new drag.
+                    state.grid.finish_cell_drag(true);
+                    return;
+                }
+                if state.grid.cancel_table_drag_if_needed(true) {
+                    return;
+                }
+                if drag.cancelled() {
+                    state.grid.finish_cell_drag(true);
+                    return;
+                }
+                // Match Rune's click slop so small pointer jitter preserves
+                // both plain click and double-click into the editor.
+                if drag.data == 0.0 {
+                    const CLICK_SLOP: f32 = 4.0;
+                    if drag.dx.abs().max(drag.dy.abs()) <= CLICK_SLOP
+                        || !state.grid.begin_cell_drag(row_index, col_index)
+                    {
+                        return;
+                    }
+                    drag.data = 1.0;
+                }
+                let [x, y] = drag.window_point();
+                let finished = drag.phase == Phase::Up;
+                tx.element_at_in("data-grid-scroll", x, y, move |state: &mut crate::AppState, hit, _| {
+                    if let Some((end_row, end_col)) = hit.as_ref().and_then(table_cell_at) {
+                        state.grid.extend_cell_drag(end_row, end_col);
+                    }
+                    if finished {
+                        state.grid.finish_cell_drag(false);
+                    }
+                });
             })
             .on_double_press_tx(move |state: &mut crate::AppState, tx| {
                 if tx.mods().shift {

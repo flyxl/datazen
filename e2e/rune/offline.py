@@ -877,6 +877,58 @@ class OfflineJourneys:
         with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
             self.assertEqual(db.execute("SELECT * FROM customers ORDER BY id").fetchall(), original)
 
+    def test_legacy_sqlite_empty_table_remains_a_table_as_rows_come_and_go(self):
+        """Migrate table-data.ts TC-TABLE-009 with an exact empty-grid oracle."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TABLE empty_probe (id INTEGER PRIMARY KEY, marker TEXT NOT NULL)")
+            original_customers = db.execute("SELECT * FROM customers ORDER BY id").fetchall()
+
+        table = "tree-table-empty_probe"
+        open_table = [tap(.5, "conn-open-e2e-sqlite"), tap(3.8, table)]
+
+        def readback():
+            with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+                self.assertEqual(db.execute("SELECT * FROM customers ORDER BY id").fetchall(),
+                                 original_customers)
+                self.assertEqual([row[1] for row in db.execute("PRAGMA table_info(empty_probe)")],
+                                 ["id", "marker"])
+                return db.execute("SELECT id, marker FROM empty_probe ORDER BY id").fetchall()
+
+        def check_grid(tree, expected, tab):
+            self.expect_rendered(tree, key="data-grid", within="table-workspace")
+            self.expect_rendered(tree, text="empty_probe", within=tab)
+            self.expect_rendered(tree, text="id", within="head-0")
+            self.expect_rendered(tree, text="marker", within="head-1")
+            self.expect_rendered(tree, text=f"{len(expected)} rows", within="grid-filter")
+            for key in ("workspace-empty", "table-read-error", "table-loading-banner"):
+                self.assertFalse(visible(tree, key=key), key)
+            if expected:
+                self.expect_rendered(tree, text=str(expected[0][0]), within="cell-0-0")
+                self.expect_rendered(tree, text=expected[0][1], within="cell-0-1")
+            else:
+                self.assertFalse(visible(tree, key="cell-0-0"))
+                self.assertFalse(visible(tree, key="cell-0-1"))
+            self.assertFalse(visible(tree, key="cell-1-0"))
+
+        initial = self.replay(open_table, until=5.7)
+        self.assertEqual(readback(), [])
+        check_grid(initial, [], "tab-1")
+
+        def execute_then_open(sql):
+            # Open the table from the real navigator after the execution.
+            # A retained query result cannot satisfy the table-grid assertions.
+            return self.replay([*query_steps(sql), tap(10.6, table)], until=12.6)
+
+        inserted = execute_then_open("INSERT INTO empty_probe VALUES (47, 'only real row');")
+        expected = [(47, "only real row")]
+        self.assertEqual(readback(), expected)
+        check_grid(inserted, expected, "tab-2")
+
+        emptied = execute_then_open("DELETE FROM empty_probe WHERE id = 47;")
+        self.assertEqual(readback(), [])
+        check_grid(emptied, [], "tab-2")
+
     def test_legacy_table_double_click_edits_current_value_and_escape_discards_draft(self):
         """Migrate table-edit.ts DE-002 and DE-005 on the real SQLite grid."""
         fixture(self.store, self.db)

@@ -18,6 +18,13 @@ enum Selection {
     Row(u32),
 }
 
+struct DragSelection {
+    selection: Selection,
+    anchor: (u32, u32),
+    focus: (u32, u32),
+    scroll: (f32, f32),
+}
+
 pub struct DataGrid {
     pub rows: u32,
     pub cols: u32,
@@ -29,6 +36,7 @@ pub struct DataGrid {
     pub anchor: (u32, u32),
     pub focus: (u32, u32),
     selection: Selection,
+    drag_selection: Option<DragSelection>,
     pub editing: bool,
     editable: bool,
     page: u32,
@@ -46,6 +54,9 @@ pub struct DataGrid {
     pub editor: TextEdit,
     /// Horizontal scroll, in points. `on_scroll_offset` writes it; it cannot touch this struct.
     scroll_x: rune::Live<f32>,
+    // Only the table sheet observes Y: a virtualized source row can disappear
+    // before Rune can send its captured cell a final pointer event.
+    table_scroll_y: rune::Live<f32>,
     origin_col: u32,
     /// Result/find state (A5): the active needle, every matching cell in
     /// row-major order, and the current hit's index in that list.
@@ -87,6 +98,7 @@ impl DataGrid {
             anchor: (0, 0),
             focus: (0, 0),
             selection: Selection::Cells,
+            drag_selection: None,
             editing: false,
             editable: true,
             page: 0,
@@ -98,6 +110,7 @@ impl DataGrid {
             table: None,
             editor: TextEdit::new(String::new()),
             scroll_x: rune::Live::new(0.0),
+            table_scroll_y: rune::Live::new(0.0),
             origin_col: 0,
             find_needle: String::new(),
             find_hits: Vec::new(),
@@ -173,6 +186,10 @@ impl DataGrid {
 
     pub fn scroll_x(&self) -> rune::Live<f32> {
         self.scroll_x.clone()
+    }
+
+    pub(super) fn table_scroll_y(&self) -> rune::Live<f32> {
+        self.table_scroll_y.clone()
     }
 
     /// A4: width of one data column in points (persisted per table).
@@ -299,10 +316,12 @@ impl DataGrid {
         self.clear_selection();
         self.origin_col = 0;
         self.scroll_x.set(0.0);
+        self.table_scroll_y.set(0.0);
         self.clear_find();
     }
 
     pub fn select(&mut self, row: u32, col: u32) {
+        self.drag_selection = None;
         if self.editing {
             self.commit_edit();
         }
@@ -329,6 +348,55 @@ impl DataGrid {
         self.focus = (row, col);
     }
 
+    /// Only a real drag (not a click or an inline edit) takes ownership of the
+    /// cell selection. Save the previous selection so Escape can cancel it.
+    pub(super) fn begin_cell_drag(&mut self, row: u32, col: u32) -> bool {
+        if self.editing || row >= self.rows || col >= self.cols {
+            return false;
+        }
+        if self.drag_selection.is_none() {
+            let saved = DragSelection {
+                selection: self.selection,
+                anchor: self.anchor,
+                focus: self.focus,
+                scroll: (self.scroll_x.get(), self.table_scroll_y.get()),
+            };
+            self.select(row, col);
+            self.drag_selection = Some(saved);
+        }
+        true
+    }
+
+    pub(super) fn extend_cell_drag(&mut self, row: u32, col: u32) {
+        if self.drag_selection.is_some() && row < self.rows && col < self.cols {
+            self.focus = (row, col);
+        }
+    }
+
+    pub(super) fn finish_cell_drag(&mut self, cancelled: bool) {
+        if let Some(saved) = self.drag_selection.take() {
+            if cancelled {
+                self.selection = saved.selection;
+                self.anchor = saved.anchor;
+                self.focus = saved.focus;
+            }
+        }
+    }
+
+    /// The scroll viewport deliberately cancels rather than extending through
+    /// recycled cells. The app also calls this when the grid is unmounted.
+    pub(crate) fn cancel_table_drag_if_needed(&mut self, mounted: bool) -> bool {
+        let displaced = self.drag_selection.as_ref().is_some_and(|drag| {
+            let (x, y) = drag.scroll;
+            !mounted || (x - self.scroll_x.get()).abs() > 0.5
+                || (y - self.table_scroll_y.get()).abs() > 0.5
+        });
+        if displaced {
+            self.finish_cell_drag(true);
+        }
+        displaced
+    }
+
     /// Row selection has no active cell; anchor and focus remain navigation
     /// coordinates, not endpoints of the selected row.
     pub fn select_row(&mut self, row: u32) {
@@ -338,6 +406,7 @@ impl DataGrid {
         if self.editing {
             self.commit_edit();
         }
+        self.drag_selection = None;
         self.selection = Selection::Row(row);
     }
 
@@ -354,6 +423,7 @@ impl DataGrid {
     }
 
     pub fn clear_selection(&mut self) {
+        self.drag_selection = None;
         self.selection = Selection::None;
         self.anchor = self.focus;
     }

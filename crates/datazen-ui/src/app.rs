@@ -180,6 +180,16 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     // T012: the write-proposal host's expiry tick runs on every section —
     // the dialog is mounted at the app root, not inside a section.
     dirty = state.sync_ai_write_proposals() || dirty;
+    // A captured cell might not receive Up once its virtual row or table
+    // subtree is gone. Cancel the app's gesture before it can affect a newer grid.
+    let table_grid_mounted = state.active == Section::Workspace
+        && state.native_kv.is_none()
+        && state.er_schema.is_none()
+        && state.table_read_error.is_none()
+        && state.table_loading.is_none()
+        && state.table_view == crate::types::TableView::Data
+        && state.tabs.selected().is_some_and(|tab| tab.kind == datazen_ui_api::TabKind::Table);
+    dirty |= state.grid.cancel_table_drag_if_needed(table_grid_mounted);
     if state.active != Section::Workspace {
         return dirty;
     }
