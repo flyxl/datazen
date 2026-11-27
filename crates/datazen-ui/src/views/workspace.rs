@@ -361,6 +361,7 @@ pub fn query_workspace(
             state.catalog_completion_current(),
             state.query_editor_viewport(),
             state.editor_font_size(),
+            state.editor_font_family(),
             state.sql_syntax_theme(),
         ));
     let editor = if split { editor.h(editor_h).shrink() } else { editor.grow(1.0) };

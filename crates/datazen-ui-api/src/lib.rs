@@ -1997,6 +1997,32 @@ impl Default for SqlSyntaxTheme {
     }
 }
 
+/// Two native editor font modes supported by Rune's stock mono slots.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum EditorFontFamily {
+    #[default]
+    Bundled,
+    System,
+}
+
+impl EditorFontFamily {
+    pub const MODES: [Self; 2] = [Self::Bundled, Self::System];
+
+    /// CSS-compatible strings in the existing React application preference.
+    pub const fn css_family(self) -> &'static str {
+        match self {
+            Self::Bundled => "IBM Plex Mono, monospace",
+            Self::System => "monospace",
+        }
+    }
+
+    /// Do not reinterpret arbitrary React CSS strings or silently rewrite
+    /// the React default. The native editor's missing/unknown fallback is bundled.
+    pub fn from_css_family(value: &str) -> Option<Self> {
+        Self::MODES.into_iter().find(|mode| mode.css_family() == value.trim())
+    }
+}
+
 /// One typed settings entry. A write validates a single entry; a failure
 /// leaves every entry at its old value.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2015,6 +2041,9 @@ pub enum Setting {
     },
     EditorFontSize {
         points: u32,
+    },
+    EditorFontFamily {
+        family: EditorFontFamily,
     },
     SqlSyntaxTheme {
         theme: SqlSyntaxTheme,
@@ -2066,7 +2095,8 @@ impl Setting {
     /// the same wherever it surfaces.
     pub fn validate(&self) -> Result<(), String> {
         match self {
-            Setting::Theme { .. } | Setting::BuiltinLanguage { .. } | Setting::SqlSyntaxTheme { .. } => Ok(()),
+            Setting::Theme { .. } | Setting::BuiltinLanguage { .. }
+            | Setting::SqlSyntaxTheme { .. } | Setting::EditorFontFamily { .. } => Ok(()),
             Setting::ThemeMode { mode }
                 if matches!(mode.as_str(), "light" | "dark" | "system") =>
             {
@@ -3239,6 +3269,7 @@ fn setting_kind(setting: &Setting) -> u8 {
         Setting::BuiltinLanguage { .. } => 4,
         Setting::EditorFontSize { .. } => 5,
         Setting::SqlSyntaxTheme { .. } => 6,
+        Setting::EditorFontFamily { .. } => 7,
     }
 }
 

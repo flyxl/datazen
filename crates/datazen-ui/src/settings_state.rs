@@ -166,6 +166,24 @@ impl AppState {
         }
     }
 
+    /// Native Query and its Settings preview use the same typed mono mode.
+    pub(crate) fn editor_font_family(&self) -> datazen_ui_api::EditorFontFamily {
+        self.ui_settings().into_iter().find_map(|setting| match setting {
+            Setting::EditorFontFamily { family } => Some(family),
+            _ => None,
+        }).unwrap_or_default()
+    }
+
+    pub(crate) fn save_editor_font_family(&mut self, family: datazen_ui_api::EditorFontFamily) {
+        if self.active != crate::types::Section::Settings || self.settings_section() != "editor" {
+            return;
+        }
+        self.settings_content.close_select();
+        // An explicit choice replaces a previously unrecognized React CSS family;
+        // simply opening Settings or reading the fallback never changes the file.
+        self.settings_error = self.write_ui_setting(Setting::EditorFontFamily { family }).err();
+    }
+
     pub(crate) fn sql_syntax_theme(&self) -> datazen_ui_api::SqlSyntaxTheme {
         self.ui_settings().into_iter().find_map(|setting| match setting {
             Setting::SqlSyntaxTheme { theme } => Some(theme),

@@ -2571,6 +2571,9 @@ fn ui_write(setting: &datazen_ui_api::Setting) -> UiWrite {
             // React stores this exact name at app-settings level, not in Rune's UI bag.
             UiWrite::AppPreference("editorFontSize", serde_json::json!(points))
         }
+        datazen_ui_api::Setting::EditorFontFamily { family } => {
+            UiWrite::AppPreference("editorFontFamily", serde_json::json!(family.css_family()))
+        }
         datazen_ui_api::Setting::SqlSyntaxTheme { theme } => {
             UiWrite::AppPreference("sqlSyntaxTheme", serde_json::json!(theme.id()))
         }
@@ -3236,6 +3239,12 @@ impl DesktopAdapter for LiveAdapter {
             if entry.validate().is_ok() {
                 settings.push(entry);
             }
+        }
+        if let Some(family) = document.get("editorFontFamily")
+            .and_then(serde_json::Value::as_str)
+            .and_then(datazen_ui_api::EditorFontFamily::from_css_family)
+        {
+            settings.push(datazen_ui_api::Setting::EditorFontFamily { family });
         }
         if let Some(theme) = document.get("sqlSyntaxTheme")
             .and_then(|value| value.as_str())
@@ -4534,6 +4543,33 @@ mod tests {
         drop(adapter);
         let reopened = LiveAdapter::with_data_dir(repository, &dir);
         assert_eq!(reopened.read_ui_settings().unwrap(), vec![Setting::EditorFontSize { points: 20 }]);
+    }
+
+    #[test]
+    fn editor_font_family_uses_the_same_app_field_and_preserves_unknown_until_chosen() {
+        use datazen_ui_api::{EditorFontFamily, Setting};
+
+        let dir = temp_dir("editor-font-family");
+        let path = dir.join("settings.json");
+        let old = br#"{"editorFontFamily":"Example Custom, monospace","editorFontSize":17,"keep":true}"#;
+        std::fs::write(&path, old).unwrap();
+        let repo = Arc::new(FileConnectionRepository::open(&dir.join("connections.json")).unwrap());
+        let mut app = LiveAdapter::with_data_dir(repo.clone(), &dir);
+        assert_eq!(app.read_ui_settings().unwrap(), vec![Setting::EditorFontSize { points: 17 }]);
+        assert_eq!(std::fs::read(&path).unwrap(), old);
+
+        for family in [EditorFontFamily::System, EditorFontFamily::Bundled] {
+            let preference = Setting::EditorFontFamily { family };
+            app.write_ui_setting(preference.clone()).unwrap();
+            let doc: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            assert_eq!(doc, serde_json::json!({
+                "editorFontFamily": family.css_family(), "editorFontSize": 17, "keep": true,
+            }));
+            drop(app);
+            app = LiveAdapter::with_data_dir(repo.clone(), &dir);
+            assert!(app.read_ui_settings().unwrap().contains(&preference));
+        }
     }
 
     #[test]

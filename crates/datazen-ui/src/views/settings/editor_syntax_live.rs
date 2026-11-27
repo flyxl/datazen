@@ -1,5 +1,5 @@
 //! Built-in syntax themes for the actual native SQL workspace.
-use datazen_ui_api::{SqlSyntaxTheme, SQL_SYNTAX_PRESETS};
+use datazen_ui_api::{EditorFontFamily, SqlSyntaxTheme, SQL_SYNTAX_PRESETS};
 use rune::{col, text, Color, El, Span, TextStyle};
 use rune_kit::Kit;
 
@@ -16,6 +16,40 @@ const PREVIEW_SQL: &str = concat!(
     "WHERE u.status = 'active' AND u.age > 18\n",
     "ORDER BY total DESC;",
 );
+
+fn font_label(family: EditorFontFamily) -> &'static str {
+    match family {
+        EditorFontFamily::Bundled => t("settings.nativeEditorFont.bundled"),
+        EditorFontFamily::System => t("settings.nativeEditorFont.system"),
+    }
+}
+
+pub(super) fn font_family_row(state: &AppState, kit: &Kit, overlays: &mut Vec<El>) -> El {
+    let label = t("settings.fontFamily");
+    let which = SettingsSelect::EditorFontFamily;
+    let select = Select::new("settings-editor-font-family", &EditorFontFamily::MODES.map(font_label))
+        .values(&EditorFontFamily::MODES.map(EditorFontFamily::css_family))
+        .current(Some(font_label(state.editor_font_family())))
+        .label(label)
+        .open(state.settings_content.open_select == Some(which))
+        .on_toggle(move |state: &mut AppState| {
+            if state.active == crate::types::Section::Settings && state.settings_section() == "editor" {
+                state.settings_content.toggle_select(which);
+            }
+        })
+        .on_close(move |state: &mut AppState| {
+            if state.settings_content.open_select == Some(which) {
+                state.settings_content.close_select();
+            }
+        })
+        .on_choose(|state: &mut AppState, value, _tx| {
+            if let Some(family) = EditorFontFamily::from_css_family(value) {
+                state.save_editor_font_family(family);
+            }
+        });
+    let field = editor_preference_trigger(select, kit, overlays);
+    setting_row(kit, overlays, "settings-editor-font-family-row".to_owned(), label, None, field)
+}
 
 pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El>) -> El {
     let theme = state.sql_syntax_theme();
@@ -44,20 +78,20 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
                 state.save_sql_syntax_theme(theme);
             }
         });
-    let select = syntax_theme_trigger(select, kit, overlays);
+    let select = editor_preference_trigger(select, kit, overlays);
     setting_row(
         kit,
         overlays,
         "settings-live-syntax-theme".to_owned(),
         label,
         Some(t("settings.sqlSyntaxThemeHint")),
-        col().w_full().gap(8.0).child(select).child(preview(theme, dark, kit)),
+        col().w_full().gap(8.0).child(select).child(preview(theme, state.editor_font_family(), dark, kit)),
     )
 }
 
 /// The original setting uses a 1pt inside edge on a 36pt field, not
 /// the generic Kit control's softer outside elevation.
-fn syntax_theme_trigger(select: Select, kit: &Kit, overlays: &mut Vec<El>) -> El {
+fn editor_preference_trigger(select: Select, kit: &Kit, overlays: &mut Vec<El>) -> El {
     select
         .build(&syntax_field_kit(kit), overlays)
         .h(36.0)
@@ -84,7 +118,7 @@ fn preview_radius(dark: bool) -> f32 {
     if dark { 12.0 } else { 11.0 }
 }
 
-fn preview(theme: SqlSyntaxTheme, dark: bool, kit: &Kit) -> El {
+fn preview(theme: SqlSyntaxTheme, family: EditorFontFamily, dark: bool, kit: &Kit) -> El {
     let colors = SyntaxPalette::preview(theme, dark);
     let spans = highlight_with_palette(PREVIEW_SQL, colors);
     // A horizontal viewport lays its direct children out side by side.
@@ -96,7 +130,8 @@ fn preview(theme: SqlSyntaxTheme, dark: bool, kit: &Kit) -> El {
         .px(16.0)
         .py(12.0);
     let mut start = 0usize;
-    let font = TextStyle::new(12.0, 400.0).lh(20.4).mono();
+    let font = TextStyle::new(12.0, 400.0).lh(20.4)
+        .family(crate::sql_editor::query_font_family(family));
     let foreground = colors.foreground.unwrap_or(Color::BLACK);
     for (index, line) in PREVIEW_SQL.split('\n').enumerate() {
         let end = start + line.len();
@@ -156,7 +191,7 @@ mod visual_tests {
             assert_eq!(trigger.c.icon_muted, shared.c.text_faint);
 
             fn view(dark: &bool, _: &mut rune::Cx<bool>) -> El {
-                preview(SqlSyntaxTheme::DEFAULT, *dark, crate::ui::kit::kit(*dark))
+                preview(SqlSyntaxTheme::DEFAULT, EditorFontFamily::Bundled, *dark, crate::ui::kit::kit(*dark))
             }
             let mut rt = rune::Runtime::new(dark, view, (496.0, 240.0), rune::Env::new(dark, 1.0));
             rt.frame(0.0);

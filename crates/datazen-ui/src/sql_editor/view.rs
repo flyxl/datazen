@@ -19,11 +19,20 @@ pub fn editor_font() -> TextStyle {
     TextStyle::new(13.0, 400.0)
 }
 
+pub(crate) fn query_font_family(family: datazen_ui_api::EditorFontFamily) -> rune::tok::Family {
+    use datazen_ui_api::EditorFontFamily::*;
+    match family {
+        Bundled => rune::tok::Family::Mono,
+        System => rune::tok::Family::SystemMono,
+    }
+}
+
 /// The editor page: a scroll view of unwrapped lines. Not a `text_input`.
 pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool) -> El {
     panel_with_completion_scope(
         editor, ink, muted, dark, editor.completion_scope().is_none(), None,
         datazen_ui_api::DEFAULT_EDITOR_FONT_SIZE,
+        datazen_ui_api::EditorFontFamily::Bundled,
         datazen_ui_api::SqlSyntaxTheme::DEFAULT,
     )
 }
@@ -33,13 +42,14 @@ pub(crate) fn panel_with_completion_scope(
     completion_current: bool,
     viewport: Option<crate::query_editor_tabs::QueryEditorViewport>,
     font_size: u32,
+    font_family: datazen_ui_api::EditorFontFamily,
     syntax_theme: datazen_ui_api::SqlSyntaxTheme,
 ) -> El {
     let size = font_size as f32;
     let row_height = size * 1.4;
     let caret_height = size * (16.0 / DEFAULT_SIZE);
     let completion_height = size * (18.0 / DEFAULT_SIZE);
-    let font = TextStyle::new(size, 400.0).mono();
+    let font = TextStyle::new(size, 400.0).family(query_font_family(font_family));
     let syntax = SyntaxPalette::live(syntax_theme, dark);
     let spans = highlight_with_palette(editor.doc(), syntax);
     let document_ink = syntax.foreground.unwrap_or(ink);

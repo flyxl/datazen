@@ -25,7 +25,7 @@ pub use view::{editor_font, panel, plain_panel, EDITOR_SURFACE_WIDTH};
 // T200: crate-visible row renderers — the workflow yaml editor mounts the
 // same rows the plain panel renders.
 pub use view::{line_row, split_lines};
-pub(crate) use view::panel_with_completion_scope;
+pub(crate) use view::{panel_with_completion_scope, query_font_family};
 
 #[cfg(test)]
 mod tests;

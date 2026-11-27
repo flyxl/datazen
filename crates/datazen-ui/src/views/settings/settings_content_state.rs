@@ -260,6 +260,8 @@ pub enum SettingsSelect {
     ResultLimit,
     /// The data-browsing workflow step order select.
     WorkflowOrder,
+    /// The native editor mono-family select.
+    EditorFontFamily,
     /// The editor SQL syntax theme select.
     SyntaxTheme,
     /// The editor completion quote policy select.

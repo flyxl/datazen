@@ -57,6 +57,8 @@ pub fn len() -> usize {
 
 fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
     let native = match key {
+        "settings.nativeEditorFont.bundled" => Some(("内置等宽字体（IBM Plex Mono）", "Bundled monospace (IBM Plex Mono)")),
+        "settings.nativeEditorFont.system" => Some(("系统等宽字体（不可用时使用内置字体）", "System monospace (bundled fallback)")),
         "extensions.page.nativeListUnavailable" => Some((
             "当前平台无法读取本地扩展列表。",
             "Installed extensions are unavailable on this platform.",

@@ -238,6 +238,7 @@ fn editor_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .gap(20.0)
         .child(heading)
         .child(font_size)
+        .child(editor_syntax_live::font_family_row(state, &k, &mut overlays))
         .child(editor_syntax_live::row(state, dark, &k, &mut overlays))
         .children(state.settings_error.as_ref().map(|_| settings_error_row(state, theme)))
         // Keep the current native inline snippet controls as-is, with no newly
