@@ -11,6 +11,7 @@ mod from_completion;
 mod highlight;
 mod input;
 mod model;
+mod navigation;
 mod view;
 
 pub use highlight::highlight_sql;

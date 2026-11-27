@@ -373,3 +373,104 @@ fn native_from_completion_inserts_exact_quoted_target_as_one_undo_edit() {
     editor.completion_accept_index(0);
     assert_eq!(editor.doc(), original, "moving the caret invalidates the popup");
 }
+
+fn editor_key(editor: &mut SqlEditor, key: Key, shift: bool) -> bool {
+    press(editor, KeyEvent { key, mods: rune::Mods { shift, ..Default::default() } })
+}
+
+#[test]
+fn keyboard_steps_and_deletes_whole_combining_cjk_and_joined_emoji() {
+    let accent = "e\u{301}";
+    let family = "👩‍👩‍👧‍👧";
+    let combined = format!("{accent}{family}雪");
+    let mut editor = SqlEditor::from_doc(&combined);
+    editor.focus();
+
+    assert!(editor_key(&mut editor, Key::Right, false));
+    assert_eq!(editor.main_head(), accent.len());
+    assert!(editor_key(&mut editor, Key::Right, true));
+    assert_eq!(editor.selected_text(), family);
+    assert!(editor_key(&mut editor, Key::Left, false));
+    assert_eq!(editor.main_head(), accent.len(), "arrows collapse without an extra step");
+
+    assert!(editor_key(&mut editor, Key::Delete, false));
+    assert_eq!(editor.doc(), format!("{accent}雪"));
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), combined);
+    assert_eq!(editor.main_head(), accent.len());
+    assert!(editor_key(&mut editor, Key::Backspace, false));
+    assert_eq!(editor.doc(), format!("{family}雪"));
+    assert_eq!(editor.main_head(), 0);
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), combined);
+}
+
+#[test]
+fn keyboard_vertical_keeps_the_preferred_grapheme_column_across_short_lines() {
+    let mut editor = SqlEditor::from_doc("AB雪D\r\n短\r\n1234\n");
+    editor.focus();
+    editor.set_main_caret("AB雪".len());
+    assert!(editor_key(&mut editor, Key::Down, false));
+    assert_eq!(editor.main_head(), "AB雪D\r\n短".len());
+    assert!(editor_key(&mut editor, Key::Down, true));
+    assert_eq!(editor.selected_text(), "\r\n123");
+    assert!(editor_key(&mut editor, Key::Up, true));
+    assert!(editor.selected_text().is_empty());
+    assert!(editor_key(&mut editor, Key::Home, false));
+    assert_eq!(editor.main_head(), "AB雪D\r\n".len());
+    assert!(editor_key(&mut editor, Key::End, true));
+    assert_eq!(editor.selected_text(), "短");
+}
+
+#[test]
+fn alt_horizontal_is_word_movement_and_alt_vertical_remains_available() {
+    let mut editor = SqlEditor::from_doc("alpha beta\nnext");
+    editor.focus();
+    let alt = rune::Mods { alt: true, ..Default::default() };
+    assert!(press(&mut editor, KeyEvent { key: Key::Right, mods: alt }));
+    assert_eq!(editor.main_head(), "alpha".len());
+    assert!(!press(&mut editor, KeyEvent { key: Key::Down, mods: alt }));
+    assert_eq!(editor.main_head(), "alpha".len());
+    let command = rune::Mods { cmd: true, ..Default::default() };
+    assert!(press(&mut editor, KeyEvent { key: Key::Right, mods: command }));
+    assert_eq!(editor.main_head(), "alpha beta".len());
+}
+
+#[test]
+fn ime_undo_and_redo_leave_prior_typed_text_in_its_own_history_step() {
+    let mut editor = SqlEditor::from_doc("");
+    editor.focus();
+    editor_key(&mut editor, Key::Text("prefix".to_owned()), false);
+    editor.on_ime(&Ime::Preedit("中".to_owned(), None));
+    assert_eq!(editor.doc(), "prefix");
+    assert!(!editor_key(&mut editor, Key::Backspace, false));
+    editor.on_ime(&Ime::Preedit("中文".to_owned(), None));
+    editor.on_ime(&Ime::Commit("中文".to_owned()));
+    assert_eq!(editor.doc(), "prefix中文");
+    assert_eq!(editor.composition(), None);
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), "prefix");
+    assert_eq!(editor.main_head(), "prefix".len());
+    assert!(editor.redo());
+    assert_eq!(editor.doc(), "prefix中文");
+    assert!(editor.undo());
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), "");
+}
+
+#[test]
+fn canceled_ime_and_noop_boundary_edits_do_not_invalidate_history() {
+    let mut editor = SqlEditor::from_doc("");
+    editor.focus();
+    editor.insert("prefix");
+    assert!(editor.undo());
+    editor.on_ime(&Ime::Preedit("候选".to_owned(), None));
+    editor.on_ime(&Ime::Disabled);
+    assert_eq!(editor.composition(), None);
+    editor.on_ime(&Ime::Commit(String::new()));
+    editor_key(&mut editor, Key::Backspace, false);
+    editor_key(&mut editor, Key::Delete, false);
+    assert!(editor.undo_stack.is_empty());
+    assert!(editor.redo());
+    assert_eq!(editor.doc(), "prefix");
+}

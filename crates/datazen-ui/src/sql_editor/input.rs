@@ -1,6 +1,6 @@
 use rune::{Ime, Key, KeyEvent, Tx};
 
-use super::model::SqlEditor;
+use super::{model::SqlEditor, navigation::Motion};
 
 pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
     if !editor.focused() || editor.composition().is_some() {
@@ -39,11 +39,11 @@ pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
     }
     if editor.has_completion() {
         match &ev.key {
-            Key::Down => {
+            Key::Down if ev.mods == rune::Mods::default() => {
                 editor.completion_down();
                 return true;
             }
-            Key::Up => {
+            Key::Up if ev.mods == rune::Mods::default() => {
                 editor.completion_up();
                 return true;
             }
@@ -58,6 +58,11 @@ pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
             _ => {}
         }
     }
+    if let Some(motion) = navigation(ev) {
+        editor.move_caret(motion, ev.mods.shift);
+        tx.scroll_into_view("sql-caret");
+        return true;
+    }
     match &ev.key {
         Key::Text(text) if !ev.mods.cmd && !ev.mods.ctrl => {
             editor.insert(text);
@@ -69,8 +74,12 @@ pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
             editor.completion_close();
             true
         }
-        Key::Backspace => {
-            editor.backspace();
+        Key::Backspace | Key::Delete => {
+            if ev.key == Key::Backspace {
+                editor.backspace();
+            } else {
+                editor.delete_forward();
+            }
             editor.refresh_completion();
             true
         }
@@ -87,6 +96,43 @@ pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
             true
         }
         _ => false,
+    }
+}
+
+fn navigation(ev: &KeyEvent) -> Option<Motion> {
+    let mods = ev.mods;
+    // Mac Option / elsewhere Control moves by word horizontally; macOS
+    // Command moves to a line edge. Do not take Alt+vertical or combined
+    // modifiers reserved by line/multi-cursor commands.
+    let line = mods.cmd && (!mods.ctrl || cfg!(target_os = "macos"));
+    let word = mods.alt || (mods.ctrl && !cfg!(target_os = "macos"));
+    if (mods.alt && (mods.cmd || mods.ctrl)) || (mods.logo && !mods.cmd)
+        || (mods.ctrl && cfg!(target_os = "macos"))
+    {
+        return None;
+    }
+    match ev.key {
+        Key::Left | Key::Right => {
+            let right = ev.key == Key::Right;
+            Some(if line {
+                Motion::LineEdge(right)
+            } else if word {
+                Motion::Word(right)
+            } else {
+                Motion::Grapheme(right)
+            })
+        }
+        Key::Up | Key::Down if !mods.alt && !mods.ctrl => Some(if line {
+            Motion::DocumentEdge(ev.key == Key::Down)
+        } else {
+            Motion::Vertical(ev.key == Key::Down)
+        }),
+        Key::Home | Key::End if !mods.alt => Some(if mods.cmd || mods.ctrl {
+            Motion::DocumentEdge(ev.key == Key::End)
+        } else {
+            Motion::LineEdge(ev.key == Key::End)
+        }),
+        _ => None,
     }
 }
 

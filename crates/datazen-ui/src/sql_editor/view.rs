@@ -260,11 +260,35 @@ pub fn line_row(
     here.sort_by_key(|(at, _)| *at);
     here.dedup_by_key(|(at, _)| *at);
     let mut row = row().key(format!("sql-line-{index}")).h(18.0);
+    let selected = editor.selection().ranges();
+    let append = |mut row: El, from: usize, to: usize| {
+        let mut edges = vec![from, to];
+        for sel in selected {
+            for edge in [sel.from(), sel.to()].into_iter().filter_map(|edge| edge.checked_sub(start)) {
+                if edge > from && edge < to && line.is_char_boundary(edge) {
+                    edges.push(edge);
+                }
+            }
+        }
+        edges.sort_unstable();
+        edges.dedup();
+        for pair in edges.windows(2) {
+            let [a, b] = [pair[0], pair[1]];
+            let mut fragment = slice_text(line, start, a, b, spans);
+            if selected.iter().any(|sel| sel.from() <= start + a && start + b <= sel.to()) {
+                fragment = fragment
+                    .key(format!("sql-selected-{index}-{a}"))
+                    .fill(palette::editor_selection_bg(dark));
+            }
+            row = row.child(fragment);
+        }
+        row
+    };
     let mut cursor = 0usize;
     for (at, is_main) in here {
         let rel = at - start;
         if rel > cursor {
-            row = row.child(slice_text(line, start, cursor, rel, spans));
+            row = append(row, cursor, rel);
         }
         if is_main {
             if let Some(composed) = editor.composition() {
@@ -284,7 +308,7 @@ pub fn line_row(
         cursor = rel;
     }
     if cursor < line.len() {
-        row = row.child(slice_text(line, start, cursor, line.len(), spans));
+        row = append(row, cursor, line.len());
     }
     row
 }

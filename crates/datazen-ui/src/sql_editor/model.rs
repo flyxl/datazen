@@ -141,6 +141,7 @@ pub struct SqlEditor {
     /// Marked text at the main caret. Not part of `doc` until commit.
     pub composition: Option<String>,
     pub focused: bool,
+    pub(super) preferred_columns: Vec<usize>,
     /// Undo and redo cover character insertion and deletion only.
     pub undo_stack: Vec<Snapshot>,
     pub redo_stack: Vec<Snapshot>,
@@ -172,6 +173,7 @@ impl SqlEditor {
             selection: Selection::single(0),
             composition: None,
             focused: false,
+            preferred_columns: Vec::new(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             find_input: TextEdit::new(String::new()),
@@ -372,6 +374,7 @@ impl SqlEditor {
 
     /// Put one caret at `byte`, replacing every range (a single selection).
     pub fn set_main_caret(&mut self, byte: usize) {
+        self.preferred_columns.clear();
         self.completion_close();
         let at = boundary(&self.doc, byte);
         self.selection = Selection::single(at);
@@ -381,6 +384,7 @@ impl SqlEditor {
     /// SqlEditor component port (`toggleLineComment`/`insertAt` land a
     /// selection, CodeMirror's `selection: {anchor, head}` dispatch).
     pub fn set_main_selection(&mut self, anchor: usize, head: usize) {
+        self.preferred_columns.clear();
         self.completion_close();
         let anchor = boundary(&self.doc, anchor);
         let head = boundary(&self.doc, head);
@@ -399,6 +403,7 @@ impl SqlEditor {
 
     /// CodeMirror `addCursor`: a new caret, and it becomes the main range.
     pub fn add_cursor(&mut self, byte: usize) {
+        self.preferred_columns.clear();
         self.completion_close();
         let at = boundary(&self.doc, byte);
         if let Some(i) = self
@@ -429,22 +434,16 @@ impl SqlEditor {
     }
 
     pub fn backspace(&mut self) {
-        if self.composition.is_some() {
-            return;
-        }
-        self.push_history();
-        let doc = self.doc.clone();
-        self.change_by_range(|sel| {
-            if sel.from() != sel.to() {
-                (sel.from(), sel.to(), String::new())
-            } else {
-                (prev_boundary(&doc, sel.head), sel.head, String::new())
-            }
-        });
+        self.delete_grapheme(false);
+    }
+
+    pub fn delete_forward(&mut self) {
+        self.delete_grapheme(true);
     }
 
     /// Undo the last insert or delete; false when there is nothing to undo.
     pub fn undo(&mut self) -> bool {
+        self.preferred_columns.clear();
         self.completion_close();
         match self.undo_stack.pop() {
             Some(snapshot) => {
@@ -462,6 +461,7 @@ impl SqlEditor {
 
     /// Redo the last undone insert or delete; false when there is nothing to redo.
     pub fn redo(&mut self) -> bool {
+        self.preferred_columns.clear();
         self.completion_close();
         match self.redo_stack.pop() {
             Some(snapshot) => {
@@ -582,6 +582,7 @@ impl SqlEditor {
             .or_else(|| self.doc[..start].find(needle));
         match found {
             Some(at) => {
+                self.preferred_columns.clear();
                 self.selection = Selection {
                     ranges: vec![Sel {
                         anchor: at,
@@ -677,8 +678,15 @@ impl SqlEditor {
     /// through that change, which is what CodeMirror does when the input method updates the DOM.
     pub fn commit(&mut self, text: &str) {
         self.composition = None;
+        if text.is_empty() {
+            return;
+        }
         let main = self.selection.main();
-        self.apply_change(main.from(), main.to(), text);
+        let (from, to) = super::navigation::edit_range(&self.doc, main);
+        if self.doc.get(from..to) != Some(text) {
+            self.push_history();
+            self.apply_change(from, to, text);
+        }
     }
 
     pub fn on_ime(&mut self, ev: &Ime) -> bool {
@@ -688,12 +696,14 @@ impl SqlEditor {
         match ev {
             Ime::Preedit(text, _) => self.preedit(text),
             Ime::Commit(text) => self.commit(text),
-            Ime::Enabled | Ime::Disabled => {}
+            Ime::Disabled => self.preedit(""),
+            Ime::Enabled => {}
         }
         true
     }
 
     pub fn change_by_range(&mut self, mut change: impl FnMut(Sel) -> (usize, usize, String)) {
+        self.preferred_columns.clear();
         self.completion_close();
         let snapshot = self.selection.ranges.clone();
         let main_i = self.selection.main;
@@ -728,6 +738,7 @@ impl SqlEditor {
     }
 
     pub fn apply_change(&mut self, from: usize, to: usize, text: &str) {
+        self.preferred_columns.clear();
         self.completion_close();
         let from = boundary(&self.doc, from);
         let to = boundary(&self.doc, to.max(from));
@@ -782,15 +793,4 @@ pub(super) fn starts_with_ignore_ascii_case(haystack: &str, prefix: &str) -> boo
 
 pub(super) fn boundary(text: &str, byte: usize) -> usize {
     text.floor_char_boundary(byte.min(text.len()))
-}
-
-pub(super) fn prev_boundary(text: &str, byte: usize) -> usize {
-    if byte == 0 {
-        return 0;
-    }
-    let mut i = byte - 1;
-    while i > 0 && !text.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
 }

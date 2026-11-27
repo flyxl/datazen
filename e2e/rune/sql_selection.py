@@ -91,6 +91,35 @@ class SqlSelectionJourneys:
         self.expect_rendered(tree, key="result-grid-status", text="result · 1 rows × 1 cols")
         self.assertEqual(self.sql_customer_rows(), original)
 
+    def test_native_sql_editor_key_navigation_selects_and_runs_only_visible_line(self):
+        """Real Home/End/arrow/Shift and a painted selection, no Find injection."""
+        original = self.sql_fixture_before()
+        selected = "SELECT '键盘;👩‍👩‍👧‍👧' AS picked"
+        sql = ("UPDATE customers SET customer_name='must-not-run-left' WHERE id=1;\n"
+               + selected + "\n"
+               "UPDATE customers SET customer_name='must-not-run-right' WHERE id=2;")
+        prefix = query_steps(sql)[:-1]
+        prefix[-1] = {"t": 4.8, "type": "paste", "text": sql}
+        select = [
+            *prefix, key(6.0, "Home"), key(6.4, "Up"),
+            key(6.8, "Right"), key(7.2, "Left"), key(7.6, "End"),
+            {"t": 8.1, "type": "key", "name": "Home", "shift": True},
+        ]
+        highlighted = self.replay(select, until=8.8)
+        self.expect_rendered(highlighted, key="sql-selected-1-0", text=selected)
+        self.assertFalse(visible(highlighted, key="sql-selected-0-0"))
+        self.assertFalse(visible(highlighted, key="sql-selected-2-0"))
+        self.assertFalse(visible(highlighted, key="result-workspace"))
+
+        with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as db:
+            expected = db.execute(selected).fetchone()[0]
+        result = self.replay([*select, key(9.1, "Enter", cmd=True)], until=11.7)
+        self.expect_rendered(result, text=expected, within="result-cell-0-0")
+        self.assertEqual(self.sql_customer_rows(), original)
+        history = json.loads((self.root / "query-history.json").read_text(encoding="utf-8"))
+        self.assertEqual([(item["success"], item["sql"].rstrip(";")) for item in history],
+                         [(True, selected)])
+
     def test_native_sql_editor_refuses_a_multi_statement_selection_without_writing(self):
         original = self.sql_fixture_before()
         sql = "SELECT 1; UPDATE customers SET customer_name='must-not-run' WHERE id=1;"
