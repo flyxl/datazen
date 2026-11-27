@@ -34,9 +34,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            archive: tar
+            archive: deb
           - os: macos-latest
-            archive: tar
+            archive: dmg
           - os: windows-latest
             archive: zip
     steps:
@@ -52,13 +52,14 @@ jobs:
           mkdir -p artifacts
           mv target/deb/*.deb artifacts/
 
-      - name: Package (tar)
-        if: matrix.archive == 'tar' && runner.os != 'Linux'
+      # A bare Unix executable launched from Finder opens Terminal.app; the
+      # .app bundle built here is what makes the release launch as a GUI app.
+      - name: Package (macOS DMG)
+        if: matrix.archive == 'dmg'
         run: |
+          packaging/native/build-macos-dmg.sh release
           mkdir -p artifacts
-          TAG="${GITHUB_REF_NAME:-native}"
-          tar -czf "artifacts/datazen-native-${TAG}-${RUNNER_OS}-${RUNNER_ARCH}.tar.gz" \
-            -C target/release datazen-native
+          mv target/dmg/*.dmg artifacts/
         shell: bash
 
       - name: Package (zip)
