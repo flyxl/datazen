@@ -166,8 +166,26 @@ fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Ve
                 }
             }
         })
-        .build(k, overlays)
+        .build(&preset_field_kit(k), overlays)
         .h(FIELD_HEIGHT)
+        .radius(9.0)
+        .border(1.0, k.c.border_base)
+        // Match the original Select's inset without changing the list
+        // placement or stretching the row to imitate its scroller.
+        .pl(3.0)
+        .pr(8.0)
+}
+
+fn preset_field_kit(k: &Kit) -> Kit {
+    let mut field = (*k).clone();
+    // The actual React page-size field paints a 1px edge inside the
+    // surface. An empty input shadow alone falls back to the neutral
+    // button shadow. Remove both only for this Select.
+    field.elevation = field.elevation.with_input(Vec::<rune::Shadow>::new());
+    field.elevation.button_neutral.clear();
+    field.ty.ui_compact = TextStyle::new(14.0, 400.0).lh(20.0);
+    field.c.icon_muted = k.c.text_faint;
+    field
 }
 
 struct NumberControl<'a> {
