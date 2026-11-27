@@ -305,17 +305,30 @@ pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -
     // editable engine input in this file form; other engines are unchanged.
     let engine = state.connection_engine.text.trim();
     if engine.eq_ignore_ascii_case("sqlite") && state.desktop.connection_uses_file_path(engine) {
+        let colors = crate::ui::theme::colors(dark);
         let field = |label: &str, input: El| {
             col()
                 .w_full()
-                .gap(6.0)
-                .child(field_label(&format!("{label} *"), theme))
+                .gap(4.0)
+                .child(
+                    text(format!("{label} *"))
+                        .font(rune::TextStyle::new(12.0, 400.0).lh(16.0))
+                        .color(colors.fg_secondary),
+                )
                 .child(input)
         };
-        return connection_form_body(
-            state,
-            theme,
-            [
+        // The original file form has a real section caption before a 12pt
+        // field stack. It uses the regular 40pt connection input for both
+        // editable fields; no unsupported picker/Advanced actions are added.
+        let caption = text(t("newConn.connectionConfig").to_uppercase())
+            .key("connection-sqlite-config-heading")
+            .font(rune::TextStyle::new(11.0, 600.0).lh(16.5).tracking(0.55))
+            .color(colors.fg_muted);
+        let fields = col()
+            .key("connection-sqlite-field-stack")
+            .w_full()
+            .gap(12.0)
+            .child(
                 field(
                     t("newConn.connName"),
                     connection_text_field(
@@ -324,11 +337,16 @@ pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -
                         theme,
                         |state| &mut state.connection_name,
                     )
+                    .height(40.0)
+                    .radius(9.0)
+                    .text_style(rune::TextStyle::new(13.0, 400.0).mono())
                     .label(t("newConn.connName"))
                     .placeholder(t("newConn.namePlaceholder"))
                     .build(dark),
                 )
                 .key("connection-section-basic"),
+            )
+            .child(
                 field(
                     t("newConn.dbFilePath"),
                     connection_text_field(
@@ -337,13 +355,16 @@ pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -
                         theme,
                         |state| &mut state.connection_database,
                     )
+                    .height(40.0)
+                    .radius(9.0)
+                    .text_style(rune::TextStyle::new(13.0, 400.0).mono())
                     .label(t("newConn.dbFilePath"))
                     .placeholder("/path/to/db.sqlite")
                     .build(dark),
                 )
                 .key("connection-section-file"),
-            ],
-        );
+            );
+        return connection_form_body(state, theme, [caption, fields]);
     }
 
     // Basic: name + engine (engine also selectable from sidebar).
