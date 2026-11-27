@@ -249,7 +249,7 @@ fn embedded_workflow_is_flush_to_the_rail_and_keeps_its_own_controls() {
     assert!(close(wx, rx + rw) && close(wy, ry) && close(wh, rh));
     assert!(close(wx + ww, 1440.0), "workflow reaches the right edge");
     assert!(close(tx, wx) && close(ty, wy) && close(tw, ww));
-    assert!(close(th, 40.0), "one 40pt workflow toolbar");
+    assert!(close(th, 41.0), "24pt controls + 16pt padding + one layout border");
     assert!(close(sx, wx) && close(sy, ty + th) && close(sy + sh, wy + wh),
             "workflow sidebar fills the area below its own toolbar");
 

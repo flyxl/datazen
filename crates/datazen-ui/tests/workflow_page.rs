@@ -2224,6 +2224,74 @@ fn the_create_stub_carries_the_select_one_step() {
     );
 }
 
+/// The header's precise geometry is relational so it also checks a live
+/// splitter preview without depending on the mode rail's preferred width.
+fn assert_sidebar_tab_geometry(rt: &rune::Runtime<datazen_ui::AppState>) {
+    let close = |a: f32, b: f32| (a - b).abs() <= 0.5;
+    let [sx, sy, sw, sh] = element(rt, "workflow-sidebar").rect;
+    let [tx, ty, tw, th] = element(rt, "workflow-side-tabs").rect;
+    let [dx, dy, dw, dh] = element(rt, "splitter:workflow.sidebar").rect;
+    let [mx, my, _, mh] = element(rt, "workflow-main").rect;
+    assert!(close(tx, sx) && close(ty, sy) && close(tw, sw - 1.0) && close(th, 33.0),
+            "tab header is two genuine 32px hits + 1px bottom border");
+    assert!(close(dx, sx + sw) && close(dy, sy) && close(dw, 1.0) && close(dh, sh));
+    assert!(close(mx, dx + dw) && close(my, sy) && close(mh, sh));
+    let mut next_x = tx;
+    for key in ["workflow-side-tab-workflows", "workflow-side-tab-history"] {
+        let [x, y, w, h] = element(rt, key).rect;
+        let [ux, uy, uw, uh] = element(rt, &format!("{key}-underline")).rect;
+        assert!(close(x, next_x) && close(y, ty) && close(w, tw / 2.0)
+                && close(h, 32.0), "each real hit owns half of the inner sidebar");
+        assert!(close(ux, x) && close(uw, w) && close(uh, 2.0)
+                && close(uy + uh, y + h), "underline stays inside the real hit");
+        next_x += w;
+    }
+    assert!(close(next_x, tx + tw), "no unused trailing click region");
+}
+
+#[test]
+fn workflow_side_tabs_switch_from_their_full_content_width_before_and_after_resize() {
+    let mut rt = runtime();
+    rt.frame(0.0);
+    enter_workflows(&mut rt);
+    assert_sidebar_tab_geometry(&rt);
+    let workflows = "workflow-side-tab-workflows";
+    let history = "workflow-side-tab-history";
+    let indicator_visible = |rt: &rune::Runtime<datazen_ui::AppState>, key: &str| {
+        element(rt, &format!("{key}-underline")).fill.a > 0.0
+    };
+    assert!(indicator_visible(&rt, workflows) && !indicator_visible(&rt, history));
+
+    // Press just inside the far-right edge, where the historical layout
+    // left 89px with no action, and verify an actual mounted History list.
+    let [x, y, w, h] = element(&rt, history).rect;
+    rt.pointer_down(x + w - 3.0, y + h / 2.0);
+    rt.pointer_up(x + w - 3.0, y + h / 2.0);
+    rt.frame(1.0);
+    assert!(rt.find("workflow-history-list").is_some());
+    assert!(rt.find("workflow-list").is_none());
+    assert!(indicator_visible(&rt, history) && !indicator_visible(&rt, workflows));
+
+    let (x, y) = rt.find("splitter:workflow.sidebar").expect("real splitter handle");
+    rt.pointer_down(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(x + 100.0, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(element(&rt, "workflow-sidebar").rect[2], 356.0);
+    assert_sidebar_tab_geometry(&rt);
+    rt.pointer_up(x + 100.0, y);
+    rt.frame(1.0 / 60.0);
+    rt.settle_all();
+
+    let [x, y, _, h] = element(&rt, workflows).rect;
+    rt.pointer_down(x + 3.0, y + h / 2.0);
+    rt.pointer_up(x + 3.0, y + h / 2.0);
+    rt.frame(1.0);
+    assert!(rt.find("workflow-list").is_some());
+    assert!(rt.find("workflow-history-list").is_none());
+    assert!(indicator_visible(&rt, workflows) && !indicator_visible(&rt, history));
+}
+
 /// The sidebar's resizable drag (WorkflowPage.tsx:210-216): `useResizable`
 /// holds the sidebar between 180 and 420 around its 256 default, and the
 /// drag previews live — the sidebar's own width follows the gesture and clamps

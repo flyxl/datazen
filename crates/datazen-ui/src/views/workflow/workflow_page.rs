@@ -169,6 +169,8 @@ const TOOLBAR_PAD_Y: f32 = 8.0;
 /// The toolbar button's `h-6 w-6 !px-0` with the `h-3 w-3` glyph.
 const TOOLBAR_BUTTON: f32 = 24.0;
 const TOOLBAR_ICON: f32 = 12.0;
+const SIDE_TAB_HEIGHT: f32 = 32.0; // text-xs (16px line-height) + py-2
+const SIDE_TAB_UNDERLINE: f32 = 2.0;
 
 /// The variables row's `px-4 py-3` and the `mb-3` between it and the fields.
 const VARIABLES_PAD_X: f32 = 16.0;
@@ -659,6 +661,18 @@ pub fn workflow_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let k = kit(dark);
     let mut layer = Vec::new();
     let sidebar_w = splitter::splitter_size(state, SIDEBAR_WIDTH_KEY, SIDEBAR_WIDTH_DEFAULT) as f32;
+    // The real 1pt drag target is transparent until hovered in React.
+    // Keep the shared drag handlers and keyboard actions.
+    let sidebar_resize = splitter::splitter_handle(
+        state,
+        SIDEBAR_WIDTH_KEY,
+        SplitAxis::Vertical,
+        SIDEBAR_WIDTH_MIN,
+        SIDEBAR_WIDTH_MAX,
+        SIDEBAR_WIDTH_DEFAULT,
+    )
+    .fill(Color::TRANSPARENT)
+    .hover(k.c.bg_accent.alpha(0.30));
 
     // React: `flex h-full flex-col` — the page fills its slot in the shell's
     // page column (the embedded branch's `h-full min-h-0`).
@@ -676,14 +690,7 @@ pub fn workflow_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .grow(1.0)
                 .min_h(0.0)
                 .child(workflow_sidebar(state, k, dark, sidebar_w))
-                .child(splitter::splitter_handle(
-                    state,
-                    SIDEBAR_WIDTH_KEY,
-                    SplitAxis::Vertical,
-                    SIDEBAR_WIDTH_MIN,
-                    SIDEBAR_WIDTH_MAX,
-                    SIDEBAR_WIDTH_DEFAULT,
-                ))
+                .child(sidebar_resize)
                 .child(workflow_main(state, k, dark, &mut layer)),
         );
     rune_kit::root(page, layer)
@@ -705,6 +712,7 @@ fn workflow_toolbar(state: &AppState, k: &Kit) -> El {
         .px(TOOLBAR_PAD_X)
         .py(TOOLBAR_PAD_Y)
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
+        .border_layout()
         .child(toolbar_icon_button(
             "workflow-reload",
             t("workflows.reload"),
@@ -783,6 +791,7 @@ fn workflow_sidebar(state: &AppState, k: &Kit, dark: bool, width: f32) -> El {
         .min_h(0.0)
         .fill(k.c.surface_weak)
         .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
+        .border_layout()
         .child(side_tab_header(state, k));
 
     // React: the feedback paragraph — green unless it starts with `Error`.
@@ -853,6 +862,9 @@ fn side_tab_header(state: &AppState, k: &Kit) -> El {
         .key("workflow-side-tabs")
         .w_full()
         .shrink()
+        // The interactive buttons themselves split the complete inner width.
+        // Growing a button in an intrinsic-width wrapper left a dead region.
+        .equal_columns(2)
         .child(side_tab_button(
             "workflow-side-tab-workflows",
             "Workflows",
@@ -870,10 +882,11 @@ fn side_tab_header(state: &AppState, k: &Kit) -> El {
             k,
         ))
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
+        .border_layout()
 }
 
-/// One side tab (React's `flex-1 px-3 py-2 text-xs` button; the active one
-/// medium ink with the accent underline, the rest muted).
+/// One full-width sidebar tab; the two-pixel selection indicator is an
+/// overlay inside the hit area, not a separate row that changes its height.
 fn side_tab_button(
     key: &'static str,
     label: &str,
@@ -883,42 +896,41 @@ fn side_tab_button(
     k: &Kit,
 ) -> El {
     let ink = if active { k.c.text_base } else { k.c.text_faint };
+    let tab_type = TextStyle::new(12.0, if active { 500.0 } else { 400.0 }).lh(16.0);
     let mut button = row()
         .key(key)
-        .grow(1.0)
+        .w_full()
+        .min_w(0.0)
+        .h(SIDE_TAB_HEIGHT)
         .px(12.0)
-        .py(8.0)
-        .center_y()
-        .justify_center()
+        .center()
         .gap(4.0)
         .role("button")
         .label(label.to_owned())
         .focusable(true)
-        .hover(k.c.hover)
-        .on_press(move |state: &mut AppState| on_press(state));
-    if let Some(glyph) = glyph {
-        button = button.child(icon(glyph, 12.0).color(ink).shrink());
+        .on_press(on_press);
+    if !active {
+        button = button.hover_group();
     }
-    button = button.child(
-        text(label.to_owned())
-            .key(format!("{key}-text"))
-            .font(if active {
-                k.ty.text_xsmall_medium
-            } else {
-                k.ty.text_xsmall
-            })
-            .color(ink),
-    );
-    // React's underline indicator: the accent hairline at the tab's foot.
-    let underline = el()
-        .key(format!("{key}-underline"))
-        .h(2.0)
-        .w_full()
-        .fill(if active { k.c.bg_accent } else { Color::TRANSPARENT });
-    col()
-        .key(format!("{key}-cell"))
-        .child(button)
-        .child(underline)
+    if let Some(glyph) = glyph {
+        let glyph = icon(glyph, 12.0).color(ink).a11y_hidden();
+        button = button.child(if active { glyph } else { glyph.group_color(k.c.text_base) });
+    }
+    let label = text(label.to_owned())
+        .key(format!("{key}-text"))
+        .font(tab_type)
+        .color(ink)
+        .min_w(0.0)
+        .truncate();
+    button
+        .child(if active { label } else { label.group_color(k.c.text_base) })
+        .child(
+            el().key(format!("{key}-underline"))
+                .pin(Some(0.0), None, Some(0.0), Some(0.0))
+                .h(SIDE_TAB_UNDERLINE)
+                .fill(if active { k.c.bg_accent } else { Color::TRANSPARENT })
+                .a11y_hidden(),
+        )
 }
 
 /// React's `WorkflowSidebarList` — the loading spinner, the workflow rows
