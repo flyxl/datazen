@@ -16,6 +16,15 @@ struct SearchAdapter {
 }
 
 impl DesktopAdapter for SearchAdapter {
+    fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+        Ok(vec![ConnectionProfile {
+            id: "profile-a".into(),
+            name: "Local SQLite A".into(),
+            engine: "sqlite".into(),
+            host: None,
+        }])
+    }
+
     fn native_value_search_scope(&self) -> Option<NativeValueSearchScope> {
         self.scope.borrow().clone()
     }
