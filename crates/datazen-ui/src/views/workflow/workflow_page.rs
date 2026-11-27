@@ -1654,7 +1654,7 @@ fn panel_content(
     let content = if matches!(active, Some(WorkflowPanel::AiCreate { .. })) {
         ai_create_pane(k)
     } else if let Some(WorkflowPanel::Edit(edit)) = active {
-        edit_pane(state, edit, k, dark)
+        edit_pane(state, edit, k, dark, layer)
     } else if let Some((_, _, step)) = current_step {
         step_detail_view(state, step, k, dark, layer)
     } else if current_result.is_some() {
@@ -1793,7 +1793,13 @@ fn ai_create_pane(k: &Kit) -> El {
 /// The edit pane — React's mode tabs, the visual form or the yaml document,
 /// and the shared bottom action bar (its `saveTestId` slot carries React's
 /// page key `workflow-yaml-save`).
-fn edit_pane(state: &AppState, edit: &WorkflowEditPanel, k: &Kit, dark: bool) -> El {
+fn edit_pane(
+    state: &AppState,
+    edit: &WorkflowEditPanel,
+    k: &Kit,
+    dark: bool,
+    layer: &mut Vec<El>,
+) -> El {
     let visual = state.workflow_editor_mode == WorkflowEditorMode::Visual;
     let mut pane = col()
         .key("workflow-edit-panel")
@@ -1841,7 +1847,7 @@ fn edit_pane(state: &AppState, edit: &WorkflowEditPanel, k: &Kit, dark: bool) ->
                     .editing_id(edit.editing_id.as_deref())
                     .variant(WorkflowFormVariant::Page)
                     .show_action_bar(false)
-                    .build(state, dark),
+                    .build_into_layer(state, dark, layer),
                 ),
         );
     } else {

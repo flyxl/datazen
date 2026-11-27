@@ -635,12 +635,19 @@ impl<'a, S: 'static> WorkflowForm<'a, S> {
         self
     }
 
-    /// Builds one appearance of the form.
+    /// Builds a standalone form with its own overlay layer.
     pub fn build(&self, s: &S, dark: bool) -> El {
+        let mut layer = Vec::new();
+        let form = self.build_into_layer(s, dark, &mut layer);
+        rune_kit::root(form, layer)
+    }
+
+    /// Builds intrinsic-height form content inside an existing scroll viewport.
+    /// Mount its anchored selects in the caller's layer outside that viewport.
+    pub(super) fn build_into_layer(&self, s: &S, dark: bool, layer: &mut Vec<El>) -> El {
         let k = kit(dark);
         let draft = (self.slots.draft)(s);
         let compact = self.variant == WorkflowFormVariant::Compact;
-        let mut layer = Vec::new();
         let mut root = if compact {
             // `space-y-2 border border-edge rounded-md p-3 bg-surface w-full`
             col()
@@ -760,12 +767,12 @@ impl<'a, S: 'static> WorkflowForm<'a, S> {
         );
 
         if !compact {
-            root = root.child(self.page_connection_section(s, k, &mut layer));
+            root = root.child(self.page_connection_section(s, k, layer));
             root = root.child(self.schedule_box(s, k, dark));
         }
 
-        root = root.child(self.variables_section(s, k, dark, &mut layer));
-        root = root.child(self.steps_section(s, k, dark, &mut layer));
+        root = root.child(self.variables_section(s, k, dark, layer));
+        root = root.child(self.steps_section(s, k, dark, layer));
 
         if compact {
             // React's compact footer: `flex justify-end gap-2 pt-1`.
@@ -784,7 +791,7 @@ impl<'a, S: 'static> WorkflowForm<'a, S> {
             ));
         }
 
-        rune_kit::root(root, layer)
+        root
     }
 
     // ── the page-only connection + database section ────────────────────────

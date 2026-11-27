@@ -11,14 +11,19 @@ class WorkflowJourney:
     def test_workflow_inline_visual_form_fills_pane_and_scrolls_above_fixed_footer(self):
         settings = self.root / "settings.json"
         registry = self.root / "workflows.json"
+        self.store.write_text(json.dumps({"connections": []}), encoding="utf-8")
+        store_before = self.store.read_bytes()
         workflow_id = "layout-fixture"
+        workflow_name = "Layout fixture"
+        # The native workflow list keys its physical row actions by name.
+        workflow_row = f"workflow-{workflow_name}"
         definition = (
-            f"id: {workflow_id}\nname: Layout fixture\nsteps:\n" +
+            f"id: {workflow_id}\nname: {workflow_name}\ndescription: \"\"\nsteps:\n" +
             "".join(f"  - type: query\n    id: step-{i}\n    sql: SELECT {i}\n"
                     for i in range(1, 13))
         )
         registry.write_text(json.dumps([{
-            "id": workflow_id, "name": "Layout fixture", "description": "",
+            "id": workflow_id, "name": workflow_name, "description": "",
             "visibility": "user", "definitionYaml": definition,
             "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z",
         }]), encoding="utf-8")
@@ -64,7 +69,7 @@ class WorkflowJourney:
 
         landing = [tap(.5, "rail-workflows")]
         create = [*landing, tap(1.8, "workflow-create")]
-        edit_long = [*landing, tap(1.8, f"workflow-{workflow_id}-edit")]
+        edit_long = [*landing, tap(1.8, f"{workflow_row}-edit")]
         scroll_long = [*edit_long, {"t": 3.0, "type": "wheel",
                                   "key": "workflow-edit-visual", "dy": -10000}]
         tail = "workflow-form-step-11-id"
@@ -78,6 +83,9 @@ class WorkflowJourney:
                 settings_before = settings.read_bytes()
 
                 initial = self.replay(create, until=2.8, size=size)
+                self.expect_rendered(initial, key=workflow_row)
+                self.expect_rendered(initial, key=f"{workflow_row}-edit",
+                                     within=workflow_row)
                 self.expect_rendered(initial, key="workflow-tab-edit-1", within="workflow-workspace")
                 _, _, create_footer = geometry(initial, viewport, sidebar, "workflow-edit-visual")
                 yaml = self.replay([*create, tap(3.0, "workflow-mode-yaml")], until=4.2, size=size)
@@ -98,10 +106,11 @@ class WorkflowJourney:
                 canceled = self.replay([*scroll_long, tap(4.35, "workflow-editor-cancel")],
                                        until=5.5, size=size)
                 self.expect_rendered(canceled, key="workflow-empty-hint")
-                self.expect_rendered(canceled, key=f"workflow-{workflow_id}")
+                self.expect_rendered(canceled, key=workflow_row)
                 self.assertFalse(visible(canceled, key="workflow-edit-panel"))
                 self.assertAlmostEqual(rect(canceled, "workflow-sidebar")[2], sidebar, delta=0.25)
                 self.assertEqual(registry.read_bytes(), registry_before)
+                self.assertEqual(self.store.read_bytes(), store_before)
                 self.assertEqual(settings.read_bytes(), settings_before)
 
     def test_workflow_yaml_validation_save_and_execute_after_relaunch(self):
