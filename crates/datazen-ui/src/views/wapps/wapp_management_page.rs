@@ -244,27 +244,42 @@ fn page_header(state: &AppState, k: &'static Kit, dark: bool) -> El {
                     .mt(4.0),
             ),
     );
+    // WappManagementPage uses packages/ui Button with its default primary
+    // md variant: 36px, 18px inline padding, 13px semibold and 9px radius.
+    let shadow = Color::BLACK.alpha(26.0 / 255.0);
     header = header.child(
-        // React's 36pt primary button uses the app accent, not the
-        // kit's macOS contrast/submit background.
         row()
             .key("extension-install-button")
             .h(36.0)
-            .px(16.0)
+            .px(18.0)
             .gap(8.0)
             .center()
-            .shrink()
-            .radius(k.radius.md)
+            .radius(9.0)
             .fill(k.c.bg_accent)
-            .hover(k.alpha(k.c.submit_hover, 0.8))
-            .focus_ring(2.0, 2.5, k.c.border_focus)
+            .hover(k.c.submit_hover)
+            .focus_ring(2.0, 0.0, k.c.bg_accent.alpha(0.60))
+            // Exact Tailwind shadow-sm geometry; both layers use #0000001a.
+            .shadow(1.0, 3.0, shadow)
+            .box_shadow(rune::Shadow {
+                y: 1.0,
+                blur: 2.0,
+                spread: -1.0,
+                color: shadow,
+                ..rune::Shadow::default()
+            })
             .role("button")
             .focusable(true)
             .label(t("extensions.page.install"))
-            .child(icon(&ICON_DOWNLOAD, 16.0).color(k.c.submit_icon).a11y_hidden())
+            .child(
+                icon(&ICON_DOWNLOAD, 16.0)
+                    .key("extension-install-button-icon")
+                    .color(k.c.submit_icon)
+                    .a11y_hidden(),
+            )
             .child(
                 text(t("extensions.page.install"))
-                    .font(k.ty.text_xsmall_medium)
+                    .key("extension-install-button-label")
+                    .font(TextStyle::new(13.0, 600.0).lh(19.5))
                     .color(k.c.submit_fg)
                     .a11y_hidden(),
             )

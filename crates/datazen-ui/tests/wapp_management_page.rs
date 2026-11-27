@@ -741,6 +741,62 @@ fn the_install_press_hands_the_t022_dialog_the_page_hosts() {
 }
 
 #[test]
+fn the_stock_extensions_install_button_keeps_the_primary_md_geometry_and_real_dialog() {
+    for dark in [false, true] {
+        let state = AppState::default();
+        let mut rt = Runtime::new(state, view, (1440.0, 900.0), Env { system_dark: dark, scale: 1.0 });
+        rt.state.set_layout_size(SIDEBAR_RAIL_WIDTH_KEY, 40).unwrap();
+        rt.frame(0.0);
+        // Exercise the mounted page and its honest stock-host failure branch.
+        // Do not seed an installed list or pretend package installation works.
+        click(&mut rt, "rail-wapps");
+        rt.settle_all();
+        rt.frame(1.0 / 60.0);
+        assert_eq!(rt.state.active, Section::Wapps);
+        assert!(has_key(&rt, "extension-page-error"));
+        assert!(has_key(&rt, "extension-page-empty"));
+        assert!(!has_key(&rt, "datazen-navigator"));
+        let header = element(&rt, "extension-page-header").rect;
+        let button = element(&rt, "extension-install-button");
+        let glyph = element(&rt, "extension-install-button-icon");
+        let label = element(&rt, "extension-install-button-label");
+        let near = |a: f32, b: f32| (a - b).abs() <= 0.5;
+        let [x, y, w, h] = button.rect;
+        let [gx, gy, gw, gh] = glyph.rect;
+        let [lx, _, lw, _] = label.rect;
+        assert!(near(y, header[1]) && near(h, 36.0) && near(x + w, header[0] + header[2]));
+        assert!(near(gw, 16.0) && near(gh, 16.0) && near(gy, y + 10.0));
+        assert!(near(gx, x + 18.0) && near(lx, gx + gw + 8.0)
+                && near(x + w, lx + lw + 18.0), "18px pads around the actual icon and label");
+        let theme = datazen_ui::ui::kit::kit(dark);
+        assert_eq!(button.fill, theme.c.bg_accent);
+        assert_eq!(label.text_color, Some(theme.c.submit_fg));
+        assert!(button.focusable && button.role == "button");
+
+        for dismiss_with_escape in [false, true] {
+            rt.settle_all();
+            rt.frame(1.0 / 60.0);
+            click(&mut rt, "extension-install-button");
+            rt.settle_all();
+            rt.frame(1.0 / 60.0);
+            assert!(rt.state.install_wapp_open && has_key(&rt, "install-wapp-dialog"));
+            assert!(has_key(&rt, "extension-install-picks"), "real package-select stage");
+            if dismiss_with_escape {
+                escape(&mut rt);
+            } else {
+                click(&mut rt, "extension-install-cancel");
+            }
+            rt.settle_all();
+            rt.frame(1.0 / 60.0);
+            assert!(!rt.state.install_wapp_open && !has_key(&rt, "install-wapp-dialog"));
+            assert_eq!(rt.state.active, Section::Wapps);
+            assert!(has_key(&rt, "extension-page-error"));
+            assert!(rt.state.wapps.is_empty(), "Cancel/Escape does not claim an install");
+        }
+    }
+}
+
+#[test]
 fn the_page_fits_both_window_sizes_and_both_themes() {
     // The DoD's geometry contract: at 960×640 and 1440×816, both themes,
     // every laid card stays inside the window horizontally, and the
