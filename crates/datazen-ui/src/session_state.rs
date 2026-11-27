@@ -235,6 +235,7 @@ impl AppState {
         self.native_query = None;
         self.running_close_request = None;
         self.connect_loading = None;
+        self.sql.clear_catalog_completion();
         self.desktop_catalog = None;
         self.desktop_connection = None;
         self.query_history.reset_context();

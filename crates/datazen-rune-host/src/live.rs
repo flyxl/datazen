@@ -2843,6 +2843,19 @@ impl DesktopAdapter for LiveAdapter {
         self.session.lock().ok()?.query_databases.clone()
     }
 
+    fn native_from_catalog_target(&self) -> Option<datazen_ui_api::NativeQueryDatabase> {
+        let session = self.session.lock().ok()?;
+        if !session.is_open()
+            || !matches!(session.driver.as_ref()?.driver_type().as_str(), "postgresql" | "sqlite")
+        {
+            return None;
+        }
+        Some(datazen_ui_api::NativeQueryDatabase {
+            connection_id: session.connection.clone()?,
+            database: session.database.clone()?,
+        })
+    }
+
     fn begin_native_query_at(
         &mut self, generation: u32, sql: String,
         target: datazen_ui_api::NativeQueryDatabase, script: bool,

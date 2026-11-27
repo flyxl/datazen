@@ -446,6 +446,44 @@ impl AppState {
         Some((tab.id, context))
     }
 
+    pub(crate) fn native_from_completion_scope(&self) -> Option<crate::sql_editor::CompletionScope> {
+        if self.active != Section::Workspace || self.connect_loading.is_some() || self.desktop_catalog.is_none() {
+            return None;
+        }
+        let tab = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query)?;
+        let default = self.desktop.native_from_catalog_target()?;
+        if self.desktop_connection.as_deref() != Some(default.connection_id.as_str()) {
+            return None;
+        }
+        let target = if let Some(target) = self.query_database_targets.get(&tab.id) {
+            let context = self.desktop.native_query_database_context()?;
+            if target.connection_id != default.connection_id
+                || context.current.connection_id != default.connection_id
+                || !context.choices.contains(&target.database)
+            {
+                return None;
+            }
+            target.clone()
+        } else {
+            default
+        };
+        Some((tab.id, target))
+    }
+
+    /// A stale scope may not render, accept a key, or consume a new completion.
+    pub(crate) fn catalog_completion_current(&self) -> bool {
+        self.sql.completion_scope().is_none_or(|old|
+            self.native_from_completion_scope().as_ref() == Some(old))
+    }
+
+    pub(crate) fn refresh_native_from_completion(&mut self) {
+        if let Some(scope) = self.native_from_completion_scope() {
+            if let Some(catalog) = self.desktop_catalog.as_ref() {
+                self.sql.refresh_from_catalog(scope, catalog);
+            }
+        }
+    }
+
     fn query_database_target(&self) -> Option<datazen_ui_api::NativeQueryDatabase> {
         let tab = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query)?;
         // Preserve a previous explicit choice until session replacement clears
@@ -463,6 +501,7 @@ impl AppState {
         if tab == expected_tab && context.choices.iter().any(|choice| choice == database) {
             context.current.database = database.to_owned();
             self.query_database_targets.insert(tab, context.current);
+            self.sql.clear_catalog_completion();
         }
     }
 
@@ -826,6 +865,7 @@ impl AppState {
                         self.query_database_picker_tab = None;
                         self.query_database_targets.clear();
                         self.query_plan = None;
+                        self.sql.clear_catalog_completion();
                         self.desktop_catalog = Some(catalog.clone());
                         self.desktop_connection = Some(id);
                         self.grid = DataGrid::new();
@@ -1081,6 +1121,7 @@ impl AppState {
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
     pub fn sync_grid_to_selected_tab(&mut self) {
+        self.sql.clear_catalog_completion();
         self.active = Section::Workspace;
         self.close_er();
         self.table_page = 0;

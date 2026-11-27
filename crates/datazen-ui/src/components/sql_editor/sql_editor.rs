@@ -570,7 +570,7 @@ impl<'a, S: 'static> SqlEditorComponent<'a, S> {
                 .px(8.0)
                 .center_y()
                 .fill(if selected { sel_bg } else { bg })
-                .child(text(*item).font(sql_editor::editor_font()).color(ink));
+                .child(text(item.clone()).font(sql_editor::editor_font()).color(ink));
             if let Some(accept) = &self.on_completion_accept {
                 let accept = accept.clone();
                 row_el = row_el.on_press(move |s: &mut S| accept(s, index));

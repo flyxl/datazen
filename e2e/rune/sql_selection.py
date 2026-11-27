@@ -1,9 +1,10 @@
 """Native SQLite editor: selected/caret runs and explicit SELECT scripts."""
 from contextlib import closing
+import json
 import sqlite3
 
 from offline import fill, key
-from scenarios import fixture, query_steps, tap, visible
+from scenarios import fixture, query_steps, tap, type_text, visible
 
 
 class SqlSelectionJourneys:
@@ -18,6 +19,46 @@ class SqlSelectionJourneys:
         original = self.sql_customer_rows()
         self.assertEqual(original, [(1, "fixture-ada"), (2, "fixture-lin")])
         return original
+
+    def test_native_sql_editor_keyword_completion_undo_preserves_caret_run(self):
+        """Keyword selection is one undoable edit, not a query execution."""
+        original = self.sql_fixture_before()
+        prefix = "UPDATE customers SET customer_name='must-not-run' WHERE id=1;\n"
+        steps = query_steps(prefix)[:-1]
+        steps[-1] = {"t": 4.8, "type": "paste", "text": prefix}
+        typed = [*steps, type_text(6.0, "s")]
+        offered = self.replay(typed, until=7.0)
+        for i, option in enumerate(("SELECT", "SET", "SUM")):
+            self.expect_rendered(offered, text=option, within=f"sql-completion-item-{i}")
+
+        selected = [*typed, key(7.1, "Down"), key(7.6, "Enter")]
+        insertion = self.replay(selected, until=8.3)
+        self.expect_rendered(insertion, text="SET", within="sql-line-1")
+        self.assertFalse(visible(insertion, key="sql-completion"))
+        self.assertFalse(visible(insertion, key="result-workspace"))
+
+        undone = [*selected, key(8.6, "z", cmd=True)]
+        restored = self.replay(undone, until=9.3)
+        self.expect_rendered(restored, text="s", within="sql-line-1")
+        self.assertFalse(visible(restored, key="sql-completion"))
+
+        narrowed = [*undone, type_text(9.5, "e"), type_text(9.8, "l"), key(10.1, "Escape")]
+        closed = self.replay(narrowed, until=10.8)
+        self.expect_rendered(closed, text="sel", within="sql-line-1")
+        self.assertFalse(visible(closed, key="sql-completion"))
+
+        statement = "SELECT customer_name FROM customers WHERE id=2;"
+        complete = [
+            *narrowed, key(11.0, "Backspace"), type_text(11.3, "l"), key(11.7, "Enter"),
+            {"t": 12.2, "type": "paste", "text": statement[len("SELECT"):]},
+            key(13.2, "Enter", cmd=True),
+        ]
+        result = self.replay(complete, until=15.5)
+        self.expect_rendered(result, text=original[1][1], within="result-cell-0-0")
+        self.assertEqual(self.sql_customer_rows(), original)
+        history = json.loads((self.root / "query-history.json").read_text(encoding="utf-8"))
+        self.assertEqual([(item["success"], item["sql"].rstrip(";")) for item in history],
+                         [(True, statement.rstrip(";"))])
 
     def test_native_sql_editor_executes_only_exact_selection_with_literal_semicolon(self):
         original = self.sql_fixture_before()

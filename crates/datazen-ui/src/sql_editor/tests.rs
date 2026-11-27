@@ -305,3 +305,71 @@ fn typing_is_ignored_while_a_composition_is_open() {
     assert!(!press(&mut editor, KeyEvent { key: Key::Text("A".into()), mods: rune::Mods::default() }));
     assert_eq!(editor.doc(), "ab");
 }
+
+#[test]
+fn native_from_context_is_simple_and_stops_at_the_actual_caret() {
+    use super::from_completion::from_prefix;
+
+    for (input, expected) in [
+        ("SELECT * FROM ca", Some("ca")),
+        (" SELECT café, COUNT(1)\nFROM _ca2", Some("_ca2")),
+        ("SELECT * FROM pub.ca", None),
+        ("SELECT * FROM \"ca", None),
+        ("SELECT 'FROM ca", None),
+        ("SELECT * /* FROM ca", None),
+        ("SELECT * FROM /* comment */ ca", None),
+        ("SELECT (SELECT * FROM ca", None),
+        ("SELECT * FROM x; SELECT * FROM ca", None),
+        ("SELECT * FROM x JOIN y FROM ca", None),
+        ("SELECT FROM ca", None),
+        ("DELETE FROM ca", None),
+    ] {
+        assert_eq!(from_prefix(input, input.len()).map(|(_, prefix)| prefix), expected, "{input}");
+    }
+    let doc = "SELECT * FROM cafe;";
+    assert_eq!(from_prefix(doc, doc.len()-3), None, "don't replace part of an identifier");
+    assert_eq!(from_prefix(doc, doc.len()-1), Some((14, "cafe")));
+}
+
+#[test]
+fn native_from_completion_inserts_exact_quoted_target_as_one_undo_edit() {
+    use datazen_ui_api::{Catalog, DatabaseNode, NativeQueryDatabase, SchemaNode};
+
+    let tables = |name: &str, table: &str| SchemaNode {
+        name: name.into(),
+        tables: vec![table.into()],
+        views: Vec::new(),
+    };
+    let catalog = Catalog {
+        databases: vec![
+            DatabaseNode {
+                name: "decoy".into(),
+                schemas: vec![tables("public", "catalog_decoy")],
+            },
+            DatabaseNode {
+                name: "target".into(),
+                schemas: vec![tables("Quote \"Schema", "Cat \"Relation")],
+            },
+        ],
+    };
+    let scope = (9, NativeQueryDatabase {
+        connection_id: "db".into(),
+        database: "target".into(),
+    });
+    let original = "SELECT * FROM ca";
+    let mut editor = SqlEditor::from_doc(original);
+    editor.set_main_caret(original.len());
+    editor.refresh_from_catalog(scope.clone(), &catalog);
+    assert_eq!(editor.completion_scope(), Some(&scope));
+    let selected = "\"Quote \"\"Schema\".\"Cat \"\"Relation\"";
+    assert_eq!(editor.completion_items(), &[selected] as &[&str]);
+    editor.completion_accept_index(0);
+    assert_eq!(editor.doc(), format!("SELECT * FROM {selected}"));
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), original);
+    assert_eq!(editor.main_head(), original.len());
+    editor.refresh_from_catalog(scope, &catalog);
+    editor.set_main_caret(2);
+    editor.completion_accept_index(0);
+    assert_eq!(editor.doc(), original, "moving the caret invalidates the popup");
+}

@@ -2148,6 +2148,11 @@ pub trait DesktopAdapter {
         None
     }
 
+    /// Exact current SQL catalog route, including profiles without a database picker.
+    fn native_from_catalog_target(&self) -> Option<NativeQueryDatabase> {
+        None
+    }
+
     fn begin_native_query_at(
         &mut self, _generation: u32, _sql: String, _target: NativeQueryDatabase, _script: bool,
     ) -> bool {

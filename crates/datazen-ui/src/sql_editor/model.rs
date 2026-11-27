@@ -121,12 +121,17 @@ pub(super) const HISTORY_LIMIT: usize = 100;
 /// How many keyword completions the canvas list shows at most.
 pub(super) const COMPLETION_LIMIT: usize = 8;
 
-/// The in-canvas completion: the word prefix at the caret and its candidates.
+/// Catalog candidates are tied to one query tab and its exact live database.
+pub(crate) type CompletionScope = (u32, datazen_ui_api::NativeQueryDatabase);
+
+/// The in-canvas completion: the exact original range and its candidates.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Completion {
+    start: usize,
     prefix: String,
-    items: Vec<&'static str>,
+    items: Vec<String>,
     selected: usize,
+    scope: Option<CompletionScope>,
 }
 
 #[derive(Debug)]
@@ -243,7 +248,7 @@ impl SqlEditor {
     }
 
     /// The completion candidates, newest refresh; empty when closed.
-    pub fn completion_items(&self) -> &[&'static str] {
+    pub fn completion_items(&self) -> &[String] {
         self.completion
             .as_ref()
             .map(|c| c.items.as_slice())
@@ -253,6 +258,16 @@ impl SqlEditor {
     /// Which completion item is highlighted.
     pub fn completion_selected(&self) -> usize {
         self.completion.as_ref().map(|c| c.selected).unwrap_or(0)
+    }
+
+    pub(crate) fn completion_scope(&self) -> Option<&CompletionScope> {
+        self.completion.as_ref()?.scope.as_ref()
+    }
+
+    pub(crate) fn clear_catalog_completion(&mut self) {
+        if self.completion_scope().is_some() {
+            self.completion_close();
+        }
     }
 
     pub fn has_completion(&self) -> bool {
@@ -283,17 +298,22 @@ impl SqlEditor {
 
     /// Insert completion item `index` over the prefix (the canvas list's click).
     pub fn completion_accept_index(&mut self, index: usize) {
-        let Some(completion) = self.completion.clone() else {
+        let Some(completion) = self.completion.take() else {
             return;
         };
         let Some(word) = completion.items.get(index) else {
             return;
         };
-        let head = self.selection.main().head;
-        let start = head - completion.prefix.len();
+        let caret = self.selection.main();
+        if caret.anchor != caret.head
+            || (completion.scope.is_some() && self.selection.len() != 1)
+            || self.composition.is_some()
+            || self.doc.get(completion.start..caret.head) != Some(completion.prefix.as_str())
+        {
+            return;
+        }
         self.push_history();
-        self.apply_change(start, head, word);
-        self.completion = None;
+        self.apply_change(completion.start, caret.head, word);
     }
 
     /// Rebuild the completion from the word at the caret; close it when nothing matches.
@@ -305,25 +325,54 @@ impl SqlEditor {
             self.completion = None;
             return;
         }
-        let items: Vec<&'static str> = KEYWORDS
+        let items: Vec<String> = KEYWORDS
             .iter()
             .filter(|keyword| starts_with_ignore_ascii_case(keyword, prefix))
             .take(COMPLETION_LIMIT)
-            .copied()
+            .map(|keyword| (*keyword).to_owned())
             .collect();
         self.completion = if items.is_empty() {
             None
         } else {
             Some(Completion {
+                start,
                 prefix: prefix.to_owned(),
                 items,
                 selected: 0,
+                scope: None,
             })
         };
     }
 
+    /// Replace the ordinary keyword popup only if this exact native catalog can
+    /// actually offer a relation in a supported FROM position.
+    pub(crate) fn refresh_from_catalog(
+        &mut self,
+        scope: CompletionScope,
+        catalog: &datazen_ui_api::Catalog,
+    ) {
+        let caret = self.selection.main();
+        if self.selection.len() != 1 || caret.anchor != caret.head || self.composition.is_some() {
+            return;
+        }
+        let Some((start, prefix)) = super::from_completion::from_prefix(&self.doc, caret.head) else {
+            return;
+        };
+        let items = super::from_completion::relations(catalog, &scope.1.database, prefix);
+        if !items.is_empty() {
+            self.completion = Some(Completion {
+                start,
+                prefix: prefix.to_owned(),
+                items,
+                selected: 0,
+                scope: Some(scope),
+            });
+        }
+    }
+
     /// Put one caret at `byte`, replacing every range (a single selection).
     pub fn set_main_caret(&mut self, byte: usize) {
+        self.completion_close();
         let at = boundary(&self.doc, byte);
         self.selection = Selection::single(at);
     }
@@ -332,6 +381,7 @@ impl SqlEditor {
     /// SqlEditor component port (`toggleLineComment`/`insertAt` land a
     /// selection, CodeMirror's `selection: {anchor, head}` dispatch).
     pub fn set_main_selection(&mut self, anchor: usize, head: usize) {
+        self.completion_close();
         let anchor = boundary(&self.doc, anchor);
         let head = boundary(&self.doc, head);
         self.selection = Selection {
@@ -349,6 +399,7 @@ impl SqlEditor {
 
     /// CodeMirror `addCursor`: a new caret, and it becomes the main range.
     pub fn add_cursor(&mut self, byte: usize) {
+        self.completion_close();
         let at = boundary(&self.doc, byte);
         if let Some(i) = self
             .selection
@@ -394,6 +445,7 @@ impl SqlEditor {
 
     /// Undo the last insert or delete; false when there is nothing to undo.
     pub fn undo(&mut self) -> bool {
+        self.completion_close();
         match self.undo_stack.pop() {
             Some(snapshot) => {
                 self.redo_stack.push(Snapshot {
@@ -410,6 +462,7 @@ impl SqlEditor {
 
     /// Redo the last undone insert or delete; false when there is nothing to redo.
     pub fn redo(&mut self) -> bool {
+        self.completion_close();
         match self.redo_stack.pop() {
             Some(snapshot) => {
                 self.undo_stack.push(Snapshot {
@@ -612,6 +665,7 @@ impl SqlEditor {
 
     /// `Ime::Preedit`. Empty ends the composition and leaves the document alone.
     pub fn preedit(&mut self, text: &str) {
+        self.completion_close();
         self.composition = if text.is_empty() {
             None
         } else {
@@ -640,6 +694,7 @@ impl SqlEditor {
     }
 
     pub fn change_by_range(&mut self, mut change: impl FnMut(Sel) -> (usize, usize, String)) {
+        self.completion_close();
         let snapshot = self.selection.ranges.clone();
         let main_i = self.selection.main;
         let mut specs: Vec<(usize, usize, String, bool)> = snapshot
@@ -673,6 +728,7 @@ impl SqlEditor {
     }
 
     pub fn apply_change(&mut self, from: usize, to: usize, text: &str) {
+        self.completion_close();
         let from = boundary(&self.doc, from);
         let to = boundary(&self.doc, to.max(from));
         let new_len = text.len();

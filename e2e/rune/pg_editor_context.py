@@ -5,7 +5,7 @@ from time import monotonic, sleep
 import uuid
 
 from offline import key
-from scenarios import tap, visible
+from scenarios import tap, type_text, visible
 
 
 def run_legacy_postgres_editor_database_context(self, primary, alternate):
@@ -241,6 +241,75 @@ def run_legacy_postgres_explain_selected_database(self, primary, alternate):
     self.assertEqual(alternate.query(snapshot).splitlines(), expected)
 
 
+def run_legacy_postgres_from_completion_selected_database(self, primary, alternate):
+    """SE-INT-002: real FROM completion selects the exact read-only database relation."""
+    db_order = primary.query(
+        "SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname;"
+    ).splitlines()
+    self.assertEqual(db_order[0], primary.database)
+    tag = "zz_seint_" + uuid.uuid4().hex[:8]
+
+    def identifier(name):
+        return '"' + name.replace('"', '""') + '"'
+
+    decoy_schema = "completion Decoy " + tag[-8:]
+    target_schema = 'Completion "Schema ' + tag[-8:]
+    decoy_table = tag + "_decoy"
+    target_table = tag + ' Mixed "Table'
+    decoy = identifier(decoy_schema) + "." + identifier(decoy_table)
+    target = identifier(target_schema) + "." + identifier(target_table)
+
+    for server, schema, relation, value in (
+        (primary, decoy_schema, decoy, "primary-decoy"),
+        (alternate, target_schema, target, "alternate-chosen"),
+    ):
+        server.query(f"CREATE SCHEMA {identifier(schema)};")
+        self.addCleanup(server.query, f"DROP SCHEMA {identifier(schema)};")
+        server.query(f"CREATE TABLE {relation} (label TEXT NOT NULL);")
+        self.addCleanup(server.query, f"DROP TABLE {relation};")
+        server.query(f"INSERT INTO {relation} VALUES ('{value}');")
+
+    start_sql = "SELECT current_database(), label FROM "
+    primary.write_profile(self, default_database=False, read_only=True)
+    trigger = "query-context-database-trigger"
+    base = [
+        tap(.5, "conn-open-e2e-tcp-sql"), tap(5, "conn-toolbar-new-query"),
+        tap(6.2, "sql-editor-scroll"), key(6.5, "a", cmd=True),
+        {"t": 6.9, "type": "paste", "text": start_sql},
+    ]
+    first = [*base, type_text(7.5, tag)]
+    primary_popup = self.replay(first, until=8.6)
+    self.expect_rendered(primary_popup, text=decoy, within="sql-completion-item-0")
+    self.assertFalse(visible(primary_popup, text=target, within="sql-completion"))
+
+    switched = [*first, tap(9.0, trigger),
+                tap(9.8, f"option{db_order.index(alternate.database)}")]
+    after_switch = self.replay(switched, until=10.7)
+    self.expect_rendered(after_switch, text=alternate.database, within=trigger)
+    self.assertFalse(visible(after_switch, key="sql-completion"))
+
+    # Keep the original typed document. Backspace and retype only its last
+    # character, exercising the new selected scope rather than a fresh editor.
+    refocused = [*switched, tap(11.1, "sql-editor-scroll"),
+                 key(11.4, "Backspace"), type_text(11.7, tag[-1])]
+    selected = self.replay(refocused, until=12.7)
+    self.expect_rendered(selected, text=target, within="sql-completion-item-0")
+    self.assertFalse(visible(selected, text=decoy, within="sql-completion"))
+
+    statement = start_sql + target
+    self.assertEqual(alternate.query(statement), alternate.database + "|alternate-chosen")
+    final = self.replay([*refocused, key(13.0, "Enter"), tap(14.0, "sql-run")], until=17.5)
+    self.expect_rendered(final, text=alternate.database, within="result-cell-0-0")
+    self.expect_rendered(final, text="alternate-chosen", within="result-cell-0-1")
+    self.assertFalse(visible(final, key="sql-completion"))
+    self.assertFalse(visible(final, key="query-error-message"))
+    history = json.loads((self.root / "query-history.json").read_text(encoding="utf-8"))
+    self.assertEqual([(row["database"], row["sql"].rstrip(";"), row["success"]) for row in history],
+                     [(alternate.database, statement, True)])
+    self.assertEqual(primary.query(f"SELECT label FROM {decoy};"), "primary-decoy")
+    self.assertEqual(alternate.query(f"SELECT label FROM {target};"), "alternate-chosen")
+
+
 def register_pg_editor_context_cases(suite, config, fixture_factory):
     """Register only when the explicitly allowlisted alternate is configured."""
     if "alternateDatabase" not in json.loads(config.read_text(encoding="utf-8")):
@@ -263,6 +332,12 @@ def register_pg_editor_context_cases(suite, config, fixture_factory):
         run.__name__ = name
         run.__doc__ = journey.__doc__
         setattr(suite, name, run)
+
+    run_from_completion = case(run_legacy_postgres_from_completion_selected_database)
+    from_name = "test_postgresql_legacy_from_completion_applies_selected_catalog_relation"
+    run_from_completion.__name__ = from_name
+    run_from_completion.__doc__ = run_legacy_postgres_from_completion_selected_database.__doc__
+    setattr(suite, from_name, run_from_completion)
 
     run_explain = case(run_legacy_postgres_explain_selected_database)
     name = "test_postgresql_legacy_editor_explain_selected_database"

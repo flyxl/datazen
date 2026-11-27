@@ -18,6 +18,13 @@ pub fn editor_font() -> TextStyle {
 
 /// The editor page: a scroll view of unwrapped lines. Not a `text_input`.
 pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool) -> El {
+    panel_with_completion_scope(editor, ink, muted, dark, editor.completion_scope().is_none())
+}
+
+pub(crate) fn panel_with_completion_scope(
+    editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool,
+    completion_current: bool,
+) -> El {
     let spans = highlight_sql(editor.doc(), dark);
     let carets: Vec<(usize, bool)> = editor
         .selection
@@ -30,7 +37,7 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
     let mut doc = col().key("sql-editor-field").w(EDITOR_SURFACE_WIDTH).min_h(300.0);
     for (n, (start, line)) in split_lines(editor.doc()).into_iter().enumerate() {
         doc = doc.child(line_row(n, start, line, &spans, &carets, editor, dark));
-        if !editor.completion_items().is_empty()
+        if completion_current && !editor.completion_items().is_empty()
             && main_head >= start
             && main_head <= start + line.len()
         {
@@ -145,17 +152,19 @@ pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: boo
         )
 }
 
-/// The keyword completion, drawn in the canvas below the caret's line.
+/// The completion list, drawn in the canvas below the caret line.
 fn completion_list(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
     let bg = palette::editor_bg(dark);
     let sel_bg = palette::editor_selection_bg(dark);
     let mut list = col()
         .key("sql-completion")
-        .w(170.0)
+        .w(if editor.completion_scope().is_some() { 360.0 } else { 170.0 })
         .radius(6.0)
         .fill(bg);
     for (index, item) in editor.completion_items().iter().enumerate() {
         let selected = index == editor.completion_selected();
+        let scope = editor.completion_scope().cloned();
+        let label = item.clone();
         list = list.child(
             row()
                 .key(format!("sql-completion-item-{index}"))
@@ -164,9 +173,14 @@ fn completion_list(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
                 .px(8.0)
                 .center_y()
                 .fill(if selected { sel_bg } else { bg })
-                .child(text(*item).font(editor_font()).color(ink))
+                .child(text(item.clone()).font(editor_font()).color(ink))
                 .on_press(move |state: &mut crate::AppState| {
-                    state.sql.completion_accept_index(index);
+                    if state.catalog_completion_current()
+                        && state.sql.completion_scope() == scope.as_ref()
+                        && state.sql.completion_items().get(index) == Some(&label)
+                    {
+                        state.sql.completion_accept_index(index);
+                    }
                 }),
         );
     }

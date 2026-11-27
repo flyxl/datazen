@@ -153,7 +153,16 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
                 state.result_focused = false;
             }
         }
-        return sql_editor::on_key(&mut state.sql, ev, tx);
+        if !state.catalog_completion_current() {
+            state.sql.clear_catalog_completion();
+        }
+        let consumed = sql_editor::on_key(&mut state.sql, ev, tx);
+        if consumed && (matches!(ev.key, Key::Backspace)
+            || (matches!(ev.key, Key::Text(_)) && !ev.mods.cmd && !ev.mods.ctrl))
+        {
+            state.refresh_native_from_completion();
+        }
+        return consumed;
     }
     if state.grid.has_page() {
         return crate::data_grid::on_key(&mut state.grid, ev, tx);

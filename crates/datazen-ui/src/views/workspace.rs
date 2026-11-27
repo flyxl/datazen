@@ -351,11 +351,12 @@ pub fn query_workspace(
                 .w_full()
                 .min_w(0.0)
                 .h(editor_h)
-                .child(crate::sql_editor::panel(
+                .child(crate::sql_editor::panel_with_completion_scope(
                     &state.sql,
                     theme.text,
                     theme.text_secondary,
                     dark,
+                    state.catalog_completion_current(),
                 )),
         )
         .child(query_toolbar(state, theme, build_query_database_picker(state, theme, dark, layer)))

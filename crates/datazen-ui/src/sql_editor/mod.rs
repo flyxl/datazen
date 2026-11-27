@@ -7,6 +7,7 @@
 //! the view paints lines, highlight spans and carets. The main caret is an `El::ime_cursor`,
 //! which is what turns the platform input method on.
 
+mod from_completion;
 mod highlight;
 mod input;
 mod model;
@@ -14,11 +15,13 @@ mod view;
 
 pub use highlight::highlight_sql;
 pub use input::{on_ime, on_key};
+pub(crate) use model::CompletionScope;
 pub use model::{Sel, Selection, SqlEditor};
 pub use view::{editor_font, panel, plain_panel, EDITOR_SURFACE_WIDTH};
 // T200: crate-visible row renderers — the workflow yaml editor mounts the
 // same rows the plain panel renders.
 pub use view::{line_row, split_lines};
+pub(crate) use view::panel_with_completion_scope;
 
 #[cfg(test)]
 mod tests;
