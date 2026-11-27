@@ -18,12 +18,13 @@ pub fn editor_font() -> TextStyle {
 
 /// The editor page: a scroll view of unwrapped lines. Not a `text_input`.
 pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool) -> El {
-    panel_with_completion_scope(editor, ink, muted, dark, editor.completion_scope().is_none())
+    panel_with_completion_scope(editor, ink, muted, dark, editor.completion_scope().is_none(), None)
 }
 
 pub(crate) fn panel_with_completion_scope(
     editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool,
     completion_current: bool,
+    viewport: Option<crate::query_editor_tabs::QueryEditorViewport>,
 ) -> El {
     let spans = highlight_sql(editor.doc(), dark);
     let carets: Vec<(usize, bool)> = editor
@@ -44,6 +45,13 @@ pub(crate) fn panel_with_completion_scope(
             doc = doc.child(completion_list(editor, ink, dark));
         }
     }
+    let (doc, scroll) = match viewport {
+        Some(viewport) => (
+            col().key(viewport.anchor).child(doc),
+            Some(viewport.offset),
+        ),
+        None => (doc, None),
+    };
     let count = editor.cursor_count();
     let label = format!(
         "{count} cursor{} · document + selection, IME is not in the document",
@@ -141,6 +149,9 @@ pub(crate) fn panel_with_completion_scope(
                 .grow(1.0)
                 .min_h(60.0)
                 .scroll_xy()
+                .on_scroll_offset(move |at| {
+                    if let Some(scroll) = &scroll { scroll.set(at.offset); }
+                })
                 .radius(8.0)
                 .on_press(|state: &mut crate::AppState| {
                     // T1: pressing the editor surface hands the keyboard back

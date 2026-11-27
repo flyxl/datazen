@@ -74,6 +74,7 @@ pub struct AppState {
     pub active: Section,
     pub(crate) settings_return_section: Option<Section>,
     pub sql: SqlEditor,
+    pub(crate) query_editor_tabs: crate::query_editor_tabs::QueryEditorTabs,
     pub grid: DataGrid,
     pub workspace: MemoryWorkspace,
     /// The desktop host's seam. H3 wired list_connections to the connection
@@ -590,6 +591,7 @@ impl Default for AppState {
             active: Section::Connections,
             settings_return_section: None,
             sql: SqlEditor::new(),
+            query_editor_tabs: Default::default(),
             grid: DataGrid::new(),
             workspace: MemoryWorkspace::new(),
             desktop: Box::new(UnimplementedAdapter),

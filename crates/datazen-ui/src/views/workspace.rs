@@ -357,6 +357,7 @@ pub fn query_workspace(
                     theme.text_secondary,
                     dark,
                     state.catalog_completion_current(),
+                    state.query_editor_viewport(),
                 )),
         )
         .child(query_toolbar(state, theme, build_query_database_picker(state, theme, dark, layer)))

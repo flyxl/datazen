@@ -29,6 +29,9 @@ impl AppState {
         if self.active != section && !self.kv_can_leave() {
             return;
         }
+        if self.active == Section::Workspace && section != Section::Workspace {
+            self.cancel_query_editor_input();
+        }
         self.active = section;
         if section == Section::Connections
             || (section == Section::Tools && self.desktop.supports_native_transfer())
@@ -77,6 +80,9 @@ impl AppState {
         }
         self.settings_return_section = Some(self.active);
         self.set_settings_section(subsection.unwrap_or("general"));
+        if self.active == Section::Workspace {
+            self.cancel_query_editor_input();
+        }
         self.active = Section::Settings;
     }
 
@@ -243,6 +249,7 @@ impl AppState {
         self.close_kv_workbench();
         self.workspace.disconnect();
         self.tabs = Tabs::new();
+        self.reset_query_editor_tabs();
         self.query_database_picker_tab = None;
         self.query_database_targets.clear();
         self.query_plan = None;
@@ -269,7 +276,6 @@ impl AppState {
         self.native_query = None;
         self.running_close_request = None;
         self.connect_loading = None;
-        self.sql.clear_catalog_completion();
         self.desktop_catalog = None;
         self.desktop_connection = None;
         self.query_history.reset_context();

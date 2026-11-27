@@ -292,6 +292,9 @@ impl AppState {
         let Some(tab) = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query).map(|tab| tab.id) else {
             return;
         };
+        if !self.bind_query_editor_for_execution() {
+            return;
+        }
         let sql = match self.sql.query_execution_text(|sql| self.desktop.editor_statement_ranges(sql)) {
             Ok(Some(sql)) => sql,
             Ok(None) => return,
@@ -433,6 +436,9 @@ impl AppState {
     }
 
     pub(crate) fn query_database_selection(&self) -> Option<(u32, datazen_ui_api::QueryDatabaseContext)> {
+        if !self.query_editor_matches_connection() {
+            return None;
+        }
         let tab = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query)?;
         let mut context = self.desktop.native_query_database_context()?;
         if self.desktop_connection.as_deref() != Some(context.current.connection_id.as_str())
@@ -447,7 +453,8 @@ impl AppState {
     }
 
     pub(crate) fn native_from_completion_scope(&self) -> Option<crate::sql_editor::CompletionScope> {
-        if self.active != Section::Workspace || self.connect_loading.is_some() || self.desktop_catalog.is_none() {
+        if self.active != Section::Workspace || self.connect_loading.is_some() || self.desktop_catalog.is_none()
+            || !self.query_editor_matches_connection() {
             return None;
         }
         let tab = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query)?;
@@ -515,9 +522,12 @@ impl AppState {
             self.query_action_notice("A query is still running.");
             return;
         }
-        let Some(tab_id) = self.tabs.selected().map(|tab| tab.id) else {
+        let Some(tab_id) = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query).map(|tab| tab.id) else {
             return;
         };
+        if !self.bind_query_editor_for_execution() {
+            return;
+        }
         let sql = self.sql.doc().to_owned();
         let generation = self.next_query_generation();
         self.query_database_picker_tab = None;
@@ -570,7 +580,7 @@ impl AppState {
     /// remain; unpinned prior tabs are kept for switching). A synchronous
     /// failure restores the previously selected result so the UI stays as it was.
     pub fn run_query(&mut self) {
-        if self.connect_loading.is_some() {
+        if self.connect_loading.is_some() || !self.bind_query_editor_for_execution() {
             return;
         }
         let native = self.desktop.supports_native_query_stop();
@@ -863,9 +873,8 @@ impl AppState {
                             crate::views::native_kv::KvWorkbench::new(kind, id.clone(), generation)
                         });
                         self.query_database_picker_tab = None;
-                        self.query_database_targets.clear();
                         self.query_plan = None;
-                        self.sql.clear_catalog_completion();
+                        self.cancel_query_editor_input();
                         self.desktop_catalog = Some(catalog.clone());
                         self.desktop_connection = Some(id);
                         self.grid = DataGrid::new();
@@ -876,6 +885,8 @@ impl AppState {
                         self.active = Section::Workspace;
                         if self.native_kv.is_some() {
                             self.tabs = Default::default();
+                            self.reset_query_editor_tabs();
+                            self.query_database_targets.clear();
                             self.desktop_error = None;
                             self.kv_next_page();
                             return;
@@ -1121,6 +1132,7 @@ impl AppState {
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
     pub fn sync_grid_to_selected_tab(&mut self) {
+        self.sync_query_editor_to_selected_tab();
         self.sql.clear_catalog_completion();
         self.active = Section::Workspace;
         self.close_er();
@@ -1151,6 +1163,7 @@ impl AppState {
         if !self.tabs.close(id) {
             return false;
         }
+        self.discard_query_editor_tab(id);
         self.query_database_targets.remove(&id);
         if self.query_plan.as_ref().is_some_and(|plan| plan.tab_id == id) {
             self.query_plan = None;

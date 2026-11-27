@@ -101,6 +101,7 @@ pub mod types;
 pub mod panel_close_notifier;
 // T385: the query-run request bridge (queryRunRequestStore.ts).
 mod query_history_state;
+mod query_editor_tabs;
 mod native_query_close;
 mod native_edit_preview;
 pub mod query_run_request_store;

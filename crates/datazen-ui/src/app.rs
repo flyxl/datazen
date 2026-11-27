@@ -189,6 +189,7 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     // T012: the write-proposal host's expiry tick runs on every section —
     // the dialog is mounted at the app root, not inside a section.
     dirty = state.sync_ai_write_proposals() || dirty;
+    dirty |= state.restore_query_editor_scroll(tx);
     // A captured cell might not receive Up once its virtual row or table
     // subtree is gone. Cancel the app's gesture before it can affect a newer grid.
     let table_grid_mounted = state.active == Section::Workspace
