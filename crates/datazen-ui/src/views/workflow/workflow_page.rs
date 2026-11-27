@@ -159,6 +159,8 @@ const SIDEBAR_WIDTH_KEY: &str = "workflow-sidebar-width";
 /// Preserve the existing observer/automation key (React called the region
 /// `workflow.sidebar` in localStorage). This key is not written to settings.
 const SIDEBAR_HANDLE_KEY: &str = "splitter:workflow.sidebar";
+/// React's `w-1` on the actual pointer-capture element (1 × 0.25rem).
+const SIDEBAR_HANDLE_WIDTH: f32 = 4.0;
 /// React `flex-1 min-h-0` (the form area's leftover) capped for the
 /// engine's definite-height rule — see the edit pane's middle column.
 const EDIT_VISUAL_MAX_H: f32 = 500.0;
@@ -664,8 +666,8 @@ pub fn workflow_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let k = kit(dark);
     let mut layer = Vec::new();
     let sidebar_w = splitter::splitter_size(state, SIDEBAR_WIDTH_KEY, SIDEBAR_WIDTH_DEFAULT) as f32;
-    // The real 1pt drag target is transparent until hovered in React.
-    // Keep the shared drag handlers and keyboard actions.
+    // Enlarge the actual drag/cursor target, not a spacer beside it. The
+    // native shared drag handlers, keyboard actions, and width bounds stay.
     let sidebar_resize = splitter::splitter_handle(
         state,
         SIDEBAR_WIDTH_KEY,
@@ -675,6 +677,8 @@ pub fn workflow_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         SIDEBAR_WIDTH_DEFAULT,
     )
     .key(SIDEBAR_HANDLE_KEY)
+    .w(SIDEBAR_HANDLE_WIDTH)
+    .cursor(rune::Cursor::ResizeColumn)
     .fill(Color::TRANSPARENT)
     .hover(k.c.bg_accent.alpha(0.30));
 

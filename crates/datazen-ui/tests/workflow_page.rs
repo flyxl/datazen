@@ -2234,7 +2234,8 @@ fn assert_sidebar_tab_geometry(rt: &rune::Runtime<datazen_ui::AppState>) {
     let [mx, my, _, mh] = element(rt, "workflow-main").rect;
     assert!(close(tx, sx) && close(ty, sy) && close(tw, sw - 1.0) && close(th, 33.0),
             "tab header is two genuine 32px hits + 1px bottom border");
-    assert!(close(dx, sx + sw) && close(dy, sy) && close(dw, 1.0) && close(dh, sh));
+    assert!(close(dx, sx + sw) && close(dy, sy) && close(dw, 4.0) && close(dh, sh),
+            "the only space between the sidebar and main is the real 4px handle");
     assert!(close(mx, dx + dw) && close(my, sy) && close(mh, sh));
     let mut next_x = tx;
     for key in ["workflow-side-tab-workflows", "workflow-side-tab-history"] {
@@ -2290,6 +2291,78 @@ fn workflow_side_tabs_switch_from_their_full_content_width_before_and_after_resi
     assert!(rt.find("workflow-list").is_some());
     assert!(rt.find("workflow-history-list").is_none());
     assert!(indicator_visible(&rt, workflows) && !indicator_visible(&rt, history));
+}
+
+#[test]
+fn workflow_four_point_divider_works_at_its_edges_and_preserves_keyboard_and_cancel() {
+    use rune::{Cursor, Key, KeyEvent, Mods};
+    const HANDLE: &str = "splitter:workflow.sidebar";
+    const WIDTH_KEY: &str = "workflow-sidebar-width";
+    let mut rt = runtime();
+    rt.set_full_keyboard_access(true);
+    rt.state.set_layout_size(datazen_ui::SIDEBAR_RAIL_WIDTH_KEY, 40).unwrap();
+    rt.frame(0.0);
+    enter_workflows(&mut rt);
+    assert_sidebar_tab_geometry(&rt);
+    let main_x = |rt: &rune::Runtime<datazen_ui::AppState>| element(rt, "workflow-main").rect[0];
+    assert_eq!(main_x(&rt), 300.0, "collapsed rail (40) + sidebar (256) + handle (4)");
+    assert_eq!(
+        rt.elements()
+            .iter()
+            .filter(|e| !e.exiting && e.key.as_deref() == Some(HANDLE))
+            .count(),
+        1,
+        "one actionable separator, never a second handle or phantom padding",
+    );
+
+    let [left, top, w, h] = element(&rt, HANDLE).rect;
+    let (x, y) = (left + w - 0.5, top + h / 2.0);
+    rt.pointer_move(x, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.cursor(), Cursor::ResizeColumn, "resize at the rightmost edge");
+    rt.pointer_down(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(x + 24.0, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(main_x(&rt), 324.0, "a real move from the former inert area");
+    rt.pointer_up(x + 24.0, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.layout_size(WIDTH_KEY), Some(280));
+    assert_eq!(main_x(&rt), 324.0);
+
+    let press = |rt: &mut rune::Runtime<datazen_ui::AppState>, key| {
+        rt.key(KeyEvent { key, mods: Mods::default() });
+        rt.frame(1.0 / 60.0);
+    };
+    let [left, top, _, h] = element(&rt, HANDLE).rect;
+    let (x, y) = (left + 0.5, top + h / 2.0);
+    rt.pointer_move(x, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.cursor(), Cursor::ResizeColumn, "resize at the leftmost edge");
+    rt.pointer_down(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(x + 40.0, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(main_x(&rt), 364.0, "second actual drag previews");
+    press(&mut rt, Key::Escape);
+    rt.pointer_up(x + 40.0, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.splitter_preview, None);
+    assert_eq!(rt.state.layout_size(WIDTH_KEY), Some(280), "cancellation does not commit");
+    assert_eq!(main_x(&rt), 324.0);
+
+    for _ in 0..120 {
+        if element(&rt, HANDLE).focused {
+            break;
+        }
+        press(&mut rt, Key::Tab);
+    }
+    assert!(element(&rt, HANDLE).focused, "stable handle still reachable by Tab");
+    press(&mut rt, Key::Right);
+    assert_eq!(rt.state.layout_size(WIDTH_KEY), Some(281), "the shared keyboard step still works");
+    assert_eq!(main_x(&rt), 325.0);
+    assert_eq!(rt.state.active, datazen_ui::Section::Workflows);
+    assert!(rt.find("datazen-navigator").is_none());
 }
 
 /// The sidebar's resizable drag (WorkflowPage.tsx:210-216): `useResizable`
