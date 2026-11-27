@@ -87,32 +87,41 @@ class OfflineJourneys:
         self.assertEqual(list(blocked.iterdir()), [sentinel])
 
     def test_settings_theme_persists_after_relaunch(self):
+        path = self.root / "settings.json"
+        path.write_text(json.dumps({"ui": {"language": "en", "themeMode": "light"}}),
+                        encoding="utf-8")
+        initial = path.read_bytes()
         appearance = tap(1.4, "settings-nav-appearance")
         scheme = "appearance-color-scheme-select-trigger"
-        opened = [SETTINGS, appearance, tap(2.3, scheme)]
+        pack = "appearance-builtin-theme-status"
+        closed = [SETTINGS, appearance]
+        opened = [*closed, tap(2.3, scheme)]
         choices = self.replay(opened, until=3.1)
-        self.expect_rendered(choices, key="option0")
-        self.expect_rendered(choices, key="option1")
-        self.assertFalse(visible(choices, key="option2"))
+        self.expect_rendered(choices, text="Light", within=scheme)
+        self.expect_rendered(choices, text="Light", within="option0")
+        self.expect_rendered(choices, text="Dark", within="option1")
+        self.expect_rendered(choices, text="System", within="option2")
+        self.expect_rendered(choices, text="Built-in default", within=pack)
         self.assertFalse(visible(choices, key="appearance-theme-select-trigger"))
-        self.assertFalse((self.root / "settings.json").exists(), "opening does not save")
+        self.assertEqual(path.read_bytes(), initial, "opening the real scheme selector does not save")
 
-        tree = self.replay([*opened, tap(3.4, "option0")], until=4.6)
-        self.assertFalse(visible(tree, key="option0"))
-        self.expect_rendered(tree, key=scheme)
-        settings = json.loads((self.root / "settings.json").read_text())
-        self.assertIs(settings["ui"]["themeDark"], False)
-
-        relaunched = self.replay([SETTINGS, appearance], until=2.4)
-        self.expect_rendered(relaunched, key=scheme)
-        # Native defaults to dark; persist the explicit opposite choice again
-        # after confirming the new process restored light.
-        self.assertTrue(any(visible(relaunched, text=label, within=scheme)
-                            for label in ("Light", "浅色")))
         dark = self.replay([*opened, tap(3.4, "option1")], until=4.6)
         self.assertFalse(visible(dark, key="option1"))
-        settings = json.loads((self.root / "settings.json").read_text())
-        self.assertIs(settings["ui"]["themeDark"], True)
+        self.expect_rendered(dark, text="Dark", within=scheme)
+        settings = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(settings["ui"]["themeMode"], "dark")
+        self.assertEqual(settings["ui"]["language"], "en")
+        self.assertNotIn("themeDark", settings["ui"], "the current selector writes the canonical mode")
+
+        saved = path.read_bytes()
+        relaunched = self.replay(closed, until=2.8)
+        self.expect_rendered(relaunched, text="Dark", within=scheme)
+        self.expect_rendered(relaunched, text="Built-in default", within=pack)
+        self.assertFalse(visible(relaunched, key="appearance-theme-select-trigger"))
+        titlebar = [node for node in relaunched["elements"] if node.get("key") == "datazen-titlebar"]
+        self.assertEqual([node["fill"] for node in titlebar], ["#0a0d14ff"],
+                         "the reopened host uses the saved mode, not only the select label")
+        self.assertEqual(path.read_bytes(), saved, "relaunch reads, but does not rewrite, the selection")
 
     def test_settings_theme_failed_save_keeps_previous_choice_and_reports_error(self):
         blocked = self.root / "settings.json"
