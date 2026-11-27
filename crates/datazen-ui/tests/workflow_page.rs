@@ -2305,6 +2305,23 @@ fn workflow_four_point_divider_works_at_its_edges_and_preserves_keyboard_and_can
     enter_workflows(&mut rt);
     assert_sidebar_tab_geometry(&rt);
     let main_x = |rt: &rune::Runtime<datazen_ui::AppState>| element(rt, "workflow-main").rect[0];
+    let assert_settled_main_x = |rt: &mut rune::Runtime<datazen_ui::AppState>,
+                                 expected: f32,
+                                 action: &str| {
+        // Releasing the live drag releases its no-motion preview. Escape and
+        // keyboard adjustments can then ease toward the newly laid-out rect.
+        // Assert the exact drawn end point, not an arbitrary in-flight frame.
+        let before = element(rt, "workflow-main");
+        rt.settle_all();
+        rt.frame(1.0 / 60.0);
+        let after = element(rt, "workflow-main");
+        assert_eq!(
+            after.rect[0],
+            expected,
+            "{action}: before drawn x {}, target x {}, moving {}; after target x {}, moving {}",
+            before.rect[0], before.target[0], before.moving, after.target[0], after.moving
+        );
+    };
     assert_eq!(main_x(&rt), 300.0, "collapsed rail (40) + sidebar (256) + handle (4)");
     assert_eq!(
         rt.elements()
@@ -2349,7 +2366,7 @@ fn workflow_four_point_divider_works_at_its_edges_and_preserves_keyboard_and_can
     rt.frame(1.0 / 60.0);
     assert_eq!(rt.state.splitter_preview, None);
     assert_eq!(rt.state.layout_size(WIDTH_KEY), Some(280), "cancellation does not commit");
-    assert_eq!(main_x(&rt), 324.0);
+    assert_settled_main_x(&mut rt, 324.0, "Escape returns to the committed layout");
 
     for _ in 0..120 {
         if element(&rt, HANDLE).focused {
@@ -2360,7 +2377,7 @@ fn workflow_four_point_divider_works_at_its_edges_and_preserves_keyboard_and_can
     assert!(element(&rt, HANDLE).focused, "stable handle still reachable by Tab");
     press(&mut rt, Key::Right);
     assert_eq!(rt.state.layout_size(WIDTH_KEY), Some(281), "the shared keyboard step still works");
-    assert_eq!(main_x(&rt), 325.0);
+    assert_settled_main_x(&mut rt, 325.0, "Right settles one point farther");
     assert_eq!(rt.state.active, datazen_ui::Section::Workflows);
     assert!(rt.find("datazen-navigator").is_none());
 }
