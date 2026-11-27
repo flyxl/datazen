@@ -309,77 +309,44 @@ fn applying_the_drafts_lands_and_a_failure_keeps_them() {
     );
 }
 
+fn click_settings_regression(runtime: &mut Runtime<AppState>, key: &str) {
+    let (x, y) = runtime.find(key).unwrap_or_else(|| panic!("missing {key}"));
+    runtime.pointer_move(x, y);
+    runtime.pointer_down(x, y);
+    runtime.pointer_up(x, y);
+    for _ in 0..30 {
+        runtime.frame(1.0 / 60.0);
+    }
+}
+
 #[test]
 fn the_theme_choice_writes_through_the_port_and_survives_reopening() {
     use datazen_ui_api::{Setting, SettingsApi};
 
     let mut runtime = runtime();
+    runtime.update(|state, _| {
+        state.workspace.write_setting(Setting::ThemeMode { mode: "dark".into() }).unwrap();
+    });
     runtime.frame(0.0);
 
-    let (x, y) = runtime.find("rail-settings").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(1.0);
-    assert!(runtime.find("settings-page").is_some());
-        runtime.state.set_settings_section("appearance");
-        runtime.settle_all();
-        runtime.frame(0.0);
+    click_settings_regression(&mut runtime, "rail-settings");
+    click_settings_regression(&mut runtime, "settings-nav-appearance");
     assert!(runtime.find("appearance-color-scheme-select-trigger").is_some());
 
-    runtime
-        .state
-        .workspace
-        .write_setting(Setting::Theme { dark: true })
-        .unwrap();
-    runtime.frame(0.0);
+    click_settings_regression(&mut runtime, "appearance-color-scheme-select-trigger");
+    click_settings_regression(&mut runtime, "option0");
+    let light = Setting::ThemeMode { mode: "light".into() };
+    assert!(runtime.state.workspace.read_settings().contains(&light), "the explicit choice wrote the port");
 
-    for key in ["appearance-color-scheme-select-trigger", "option0"] {
-        let (x, y) = runtime.find(key).unwrap();
-        runtime.pointer_down(x, y);
-        runtime.pointer_up(x, y);
-        runtime.frame(0.0);
-    }
-    assert!(
-        runtime
-            .state
-            .workspace
-            .read_settings()
-            .contains(&Setting::Theme { dark: false }),
-        "the explicit choice wrote the port"
-    );
+    click_settings_regression(&mut runtime, "settings-back");
+    assert!(runtime.find("settings-page").is_none());
+    click_settings_regression(&mut runtime, "rail-settings");
+    click_settings_regression(&mut runtime, "settings-nav-appearance");
+    assert!(runtime.state.workspace.read_settings().contains(&light), "reopening the page keeps the theme");
 
-    // Leave and come back: the setting is where the port keeps it.
-    let (x, y) = runtime.find("rail-connections").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
-    let (x, y) = runtime.find("rail-settings").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
-        runtime.state.set_settings_section("appearance");
-        runtime.settle_all();
-        runtime.frame(0.0);
-    assert!(
-        runtime
-            .state
-            .workspace
-            .read_settings()
-            .contains(&Setting::Theme { dark: false }),
-        "reopening the page keeps the theme"
-    );
-
-    for key in ["appearance-color-scheme-select-trigger", "option1"] {
-        let (x, y) = runtime.find(key).unwrap();
-        runtime.pointer_down(x, y);
-        runtime.pointer_up(x, y);
-        runtime.frame(0.0);
-    }
-    assert!(runtime
-        .state
-        .workspace
-        .read_settings()
-        .contains(&Setting::Theme { dark: true }));
+    click_settings_regression(&mut runtime, "appearance-color-scheme-select-trigger");
+    click_settings_regression(&mut runtime, "option1");
+    assert!(runtime.state.workspace.read_settings().contains(&Setting::ThemeMode { mode: "dark".into() }));
 }
 
 #[test]
@@ -392,61 +359,31 @@ fn the_page_size_setting_drives_the_grid_paging() {
     runtime.frame(0.0);
     assert_eq!(runtime.state.grid.page_size(), 25, "the default");
 
-    let (x, y) = runtime.find("rail-settings").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(1.0);
-        runtime.state.set_settings_section("dataBrowsing");
-        runtime.settle_all();
-        runtime.frame(0.0);
-    runtime.state.page_size_input = rune::TextEdit::new("10");
-    let (x, y) = runtime.find("settings-page-size-set").expect("set button");
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
+    click_settings_regression(&mut runtime, "rail-settings");
+    click_settings_regression(&mut runtime, "settings-nav-dataBrowsing");
+    runtime.update(|state, _| state.page_size_input = rune::TextEdit::new("10"));
     runtime.frame(0.0);
-    assert!(
-        runtime
-            .state
-            .workspace
-            .read_settings()
-            .contains(&Setting::TablePageSize { rows: 10 }),
-        "the write went through the port"
-    );
+    click_settings_regression(&mut runtime, "settings-page-size-set");
+    let page_size = Setting::TablePageSize { rows: 10 };
+    assert!(runtime.state.workspace.read_settings().contains(&page_size), "the write went through the port");
 
-    // The next page now turns at the new size.
-    runtime.state.active = Section::Workspace;
-    runtime.state.next_table_page();
+    // Leave through the same Settings chrome that the user sees.
+    click_settings_regression(&mut runtime, "settings-back");
+    assert_eq!(runtime.state.active, Section::Workspace);
+    runtime.update(|state, _| state.next_table_page());
     runtime.frame(0.0);
     assert_eq!(runtime.state.grid.page(), 1);
     assert_eq!(runtime.state.grid.rows, 10, "the second page has 10 rows");
     assert_eq!(runtime.state.grid.cell(0, 1), "customer-10");
     assert_eq!(runtime.state.grid.cell(9, 1), "customer-19");
 
-    // An invalid value keeps the old setting and shows the error.
-    let (x, y) = runtime.find("rail-settings").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(1.0);
-        runtime.state.set_settings_section("dataBrowsing");
-        runtime.settle_all();
-        runtime.frame(0.0);
-    runtime.state.page_size_input = rune::TextEdit::new("0");
-    let (x, y) = runtime.find("settings-page-size-set").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
+    click_settings_regression(&mut runtime, "rail-settings");
+    click_settings_regression(&mut runtime, "settings-nav-dataBrowsing");
+    runtime.update(|state, _| state.page_size_input = rune::TextEdit::new("0"));
     runtime.frame(0.0);
-    assert!(
-        runtime
-            .state
-            .workspace
-            .read_settings()
-            .contains(&Setting::TablePageSize { rows: 10 }),
-        "the rejected write changed nothing"
-    );
-    assert!(
-        runtime.find("settings-error").is_some(),
-        "the rejection is visible"
-    );
+    click_settings_regression(&mut runtime, "settings-page-size-set");
+    assert!(runtime.state.workspace.read_settings().contains(&page_size), "the rejected write changed nothing");
+    assert!(runtime.find("settings-error").is_some(), "the rejection is visible");
 }
 
 #[test]
