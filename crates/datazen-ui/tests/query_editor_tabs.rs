@@ -186,7 +186,8 @@ fn sql_gutter_numbers_follow_document_rows_and_stay_left_while_scrolling() {
     rt.poll = Some(app_poll);
     rt.state.workspace.connect("local").unwrap();
     rt.state.open_query_tab("Query").unwrap();
-    let long = format!("SELECT '{}';\n{}", "x".repeat(300), "-- next\n".repeat(30));
+    // Keep enough rows for the full 80pt scroll even with the taller idle editor.
+    let long = format!("SELECT '{}';\n{}", "x".repeat(300), "-- next\n".repeat(64));
     rt.state.sql = sql_editor::SqlEditor::from_doc(long);
     rt.state.sql.set_main_selection(0, 6);
     rt.frame(0.05);
