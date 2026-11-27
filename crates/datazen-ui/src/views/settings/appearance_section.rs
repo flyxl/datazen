@@ -49,17 +49,28 @@
 use std::rc::Rc;
 
 use rune::{col, row, text, tok, El, TextStyle};
+use rune::tok::Family;
 
 use crate::i18n::t;
 use crate::ui::kit::kit;
 use crate::ui::select::Select;
-use crate::views::settings::setting_hint::SettingHint;
 use crate::views::settings::settings_ui::{section_title, setting_row};
 
 // CSS h-9 and text-sm/leading-5 in the original Settings fields.
 const FIELD_HEIGHT: f32 = 36.0;
 const FIELD_RADIUS: f32 = 9.0;
 const FIELD_TEXT: TextStyle = TextStyle::new(14.0, 400.0).lh(20.0);
+
+// Match the original Settings document's platform font preference for this
+// reserved text group only. Rune cannot resolve browser-only aliases such as
+// -apple-system and BlinkMacSystemFont. Use installed named system faces,
+// including Arial and its common Linux metrically compatible fallback, then
+// leave Rune's registered fallback in place for missing glyphs or families.
+const MORE_FAMILY: Family = Family::Named(
+    "SF Pro Display, SF Pro Text, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, Liberation Sans, sans-serif",
+);
+const MORE_TITLE_TEXT: TextStyle = TextStyle::new(14.0, 500.0).lh(20.0).family(MORE_FAMILY);
+const MORE_HELP_TEXT: TextStyle = TextStyle::new(11.0, 500.0).lh(16.0).family(MORE_FAMILY);
 
 /// Appearance uses the original Select's real border box, not the kit's
 /// half-point outside input shadow. Keep the kit's anchored listbox,
@@ -473,17 +484,34 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
         // Rune's painted inside border does not reserve layout space, so the
         // 17pt content inset includes the CSS 1px border plus pt-4.
         let more_label = t("settings.appearance.more");
+        let more_hint = t("settings.appearance.morePlaceholder");
         let more = row()
+            .key(format!("{key}-more-content"))
+            .label(more_label)
+            .description(more_hint)
             .gap(4.0)
             .center_y()
-            .child(text(more_label).font(TextStyle::new(14.0, 500.0).lh(20.0)).color(k.c.text_muted))
             .child(
-                SettingHint::new(
-                    format!("{key}-more"),
-                    more_label,
-                    t("settings.appearance.morePlaceholder"),
-                )
-                .build(&k, layer),
+                text(more_label)
+                    .key(format!("{key}-more-label"))
+                    .font(MORE_TITLE_TEXT)
+                    .color(k.c.text_muted)
+                    .a11y_hidden(),
+            )
+            .child(
+                // Informational, not a control for unavailable settings.
+                // Provide real pointer help and a readable description rather
+                // than mounting a static fake button with no action.
+                row()
+                    .key(format!("{key}-more-mark"))
+                    .size(16.0, 16.0)
+                    .center()
+                    .radius(8.0)
+                    .border(1.0, k.c.border_base)
+                    .help(more_hint)
+                    .help_above()
+                    .child(text("?").font(MORE_HELP_TEXT).color(k.c.text_faint))
+                    .a11y_hidden(),
             );
         section.child(col().pt(16.0).child(
             col()

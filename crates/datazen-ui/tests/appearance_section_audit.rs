@@ -293,6 +293,43 @@ fn keyboard_opens_the_appearance_field_commits_one_mode_and_returns_focus() {
     assert!(rt.state.pack_writes.is_empty());
 }
 
+#[test]
+fn reserved_appearance_help_is_real_and_keeps_the_settings_row_stable() {
+    let mut scene = AuditState::scene();
+    scene.pack_adapter_enabled = false;
+    let mut rt = rt(scene);
+    let bounds = |rt: &Runtime<AuditState>, key: &str| rt.elements().into_iter()
+        .find(|e| !e.exiting && e.key.as_deref() == Some(key))
+        .unwrap_or_else(|| panic!("missing {key}"));
+    let title = bounds(&rt, "appearance-section-more-label");
+    let mark = bounds(&rt, "appearance-section-more-mark");
+    let pack = bounds(&rt, "appearance-builtin-theme-status");
+    assert_eq!(title.rect[3], 20.0);
+    assert_eq!([mark.rect[2], mark.rect[3]], [16.0, 16.0]);
+    assert!((mark.rect[0] - title.rect[0] - title.rect[2] - 4.0).abs() < 0.51);
+    assert!(!mark.focusable);
+    let hint = datazen_ui::i18n::t("settings.appearance.morePlaceholder");
+    assert_eq!(mark.help.as_deref(), Some(hint));
+    assert!(rt.help_tooltip().is_none(), "no hover tooltip while idle");
+
+    let (x, y) = rt.find("appearance-section-more-mark").unwrap();
+    rt.pointer_move(x, y);
+    rt.frame(0.0);
+    for _ in 0..90 {
+        rt.frame(1.0 / 60.0);
+    }
+    let (tip, tip_rect) = rt.help_tooltip().expect("hover shows the real Rune tooltip");
+    assert_eq!(tip, hint);
+    assert!(tip_rect[1] + tip_rect[3] < mark.rect[1], "help opens above the reserved row");
+    assert_eq!(bounds(&rt, "appearance-builtin-theme-status").rect, pack.rect);
+    assert!(rt.state.mode_writes.is_empty());
+    assert!(rt.state.pack_writes.is_empty());
+
+    rt.pointer_move(900.0, 620.0);
+    settle(&mut rt);
+    assert!(rt.help_tooltip().is_none());
+}
+
 /// The live native host supports changing mode but does not apply plugin
 /// themes. Its pack row reports what is actually rendered, never offers an
 /// inert chooser, and leaves the scheme's real listbox functional.
