@@ -677,16 +677,18 @@ use rune::{Env, Runtime};
     #[test]
     fn data_grid_mounts_a_row_window_and_a_column_window() {
         use datazen_ui::app_poll;
-        use datazen_ui_api::TablePage;
+        use datazen_ui_api::{TablePage, WorkspaceApi};
 
         let mut runtime = runtime();
         runtime.poll = Some(app_poll);
+        runtime.state.workspace.connect("local").unwrap();
+        runtime.state.open_table_tab("customers").unwrap();
         let columns: Vec<String> = (0..200).map(|index| format!("c{index}")).collect();
         let rows: Vec<Vec<String>> = (0..6000)
             .map(|row| columns.iter().map(|col| format!("{col}-{row}")).collect())
             .collect();
-        runtime.state.grid.load_page(&TablePage {
-            table: "wide".into(),
+        let page = TablePage {
+            table: "customers".into(),
             columns,
             rows,
             page: 0,
@@ -696,8 +698,8 @@ use rune::{Env, Runtime};
             filter: None,
             primary_key: Vec::new(),
             read_only: None,
-        });
-        runtime.state.active = Section::Workspace;
+        };
+        runtime.update(|state, _| state.grid.load_page(&page));
         runtime.frame(0.0);
 
         assert!(runtime.find("grid-row-0").is_some());
@@ -737,7 +739,19 @@ use rune::{Env, Runtime};
         runtime.pointer_up(x, y);
         runtime.frame(1.0);
 
+        for _ in 0..30 {
+            runtime.frame(1.0 / 60.0);
+        }
+        let (x, y) = runtime.find("tree-table-customers").expect("customers navigator leaf");
+        runtime.pointer_move(x, y);
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        for _ in 0..30 {
+            runtime.frame(1.0 / 60.0);
+        }
+
         let (x, y) = runtime.find("cell-0-1").expect("cell");
+        runtime.pointer_move(x, y);
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
