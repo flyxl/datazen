@@ -243,6 +243,22 @@ fn mount_renders_the_nav_and_the_general_section() {
     assert_eq!(rt.state.content.active_section, "general");
 }
 
+#[test]
+fn general_keeps_language_named_and_omits_empty_contribution_spacing() {
+    let rt = rt(AuditState::empty());
+    let language = rt
+        .elements()
+        .into_iter()
+        .find(|entry| !entry.exiting && entry.key.as_deref() == Some("settings-language-select-trigger"))
+        .expect("the language picker is rendered");
+    assert_eq!(language.role, "combobox");
+    assert_eq!(language.label.as_deref(), Some(datazen_ui::i18n::t("settings.language")));
+    assert!(language.focusable);
+    assert!(!has(&rt, "settings-contributions-General"));
+    assert!(has(&rt, "language-packs-slot"));
+    assert!(has(&rt, "update-section-slot"));
+}
+
 /// The nav press switches the section (the content follows, the
 /// previous section's rows disappear).
 #[test]

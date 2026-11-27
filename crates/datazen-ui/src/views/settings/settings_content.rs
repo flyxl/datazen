@@ -750,6 +750,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         let mut select = Select::new("settings-language-select", &labels)
             .values(&values)
             .current(Some(current_label.as_str()))
+            .label(t("settings.language"))
             .open(self.state.open_select == Some(SettingsSelect::Language));
         select = wire_select(
             select,
@@ -784,7 +785,10 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             }
         }
 
-        body = body.child(self.contributions_block(k, layer, ContributionTarget::General));
+        // An empty optional contribution should not consume a 20pt flex gap.
+        if self.contributions.iter().any(|entry| entry.target == ContributionTarget::General) {
+            body = body.child(self.contributions_block(k, layer, ContributionTarget::General));
+        }
 
         // `{appVersion && <p>DataZen v{appVersion}</p>}` — a rejected
         // (or skipped — the `build-constant` gate) read never lands,

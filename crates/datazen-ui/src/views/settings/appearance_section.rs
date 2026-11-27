@@ -35,8 +35,8 @@
 //!   the "?" tooltip trigger.
 //!
 //! Known deltas (documented, not silent): `text-amber-500` maps the
-//! kit's warning ink; the reserved block renders as a bordered header
-//! without Tailwind's mt-8 spacing scale.
+//! kit's warning ink. Hosts without a theme-pack adapter report the active
+//! built-in palette as read-only, without advertising third-party selection.
 //!
 //! ## Keys
 //!
@@ -48,14 +48,17 @@
 
 use std::rc::Rc;
 
-use rune::{col, row, text, tok, El};
-use rune_kit::{ControlSize, Kit};
+use rune::{col, row, text, tok, El, TextStyle};
 
 use crate::i18n::t;
 use crate::ui::kit::kit;
 use crate::ui::select::Select;
-use crate::ui::tooltip::Tooltip;
-use crate::views::settings::ai_settings_section::section_title;
+use crate::views::settings::setting_hint::SettingHint;
+use crate::views::settings::settings_ui::{section_title, setting_row};
+
+// CSS h-9 and text-sm/leading-5 in the original Settings fields.
+const FIELD_HEIGHT: f32 = 36.0;
+const FIELD_TEXT: TextStyle = TextStyle::new(14.0, 400.0).lh(20.0);
 
 /// The sentinel option value representing the built-in default theme
 /// (packId = null).
@@ -290,7 +293,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
             layer,
             format!("{key}-title"),
             t("settings.appearance"),
-            t("settings.appearance.subtitle"),
+            Some(t("settings.appearance.subtitle")),
         ));
 
         // -- The color scheme row --
@@ -329,13 +332,13 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
                     }
                 });
         }
-        let scheme_control = scheme_select.build(&k, layer);
+        let scheme_control = scheme_select.build(&k, layer).h(FIELD_HEIGHT);
         section = section.child(setting_row(
             &k,
             layer,
             format!("{key}-scheme-row"),
             t("settings.colorScheme"),
-            "",
+            None,
             scheme_control,
         ));
 
@@ -352,7 +355,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
                     theme_options.iter().find(|option| option.pack_id == id).map(|option| option.label.clone())
                 })
                 .unwrap_or_else(|| t("settings.theme.packDefault").to_owned());
-            let pack_hint = if theme_options.is_empty() { t("settings.appearance.emptyHint") } else { "" };
+            let pack_hint = theme_options.is_empty().then(|| t("settings.appearance.emptyHint"));
             let mut pack_select = Select::new("appearance-theme-select", &pack_labels)
                 .values(&pack_values)
                 .current(Some(&current_pack_label))
@@ -383,7 +386,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
                         }
                     });
             }
-            let pack_control = pack_select.build(&k, layer);
+            let pack_control = pack_select.build(&k, layer).h(FIELD_HEIGHT);
             section = section.child(setting_row(
                 &k,
                 layer,
@@ -402,6 +405,28 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
                         .key("appearance-orphan-hint"),
                 );
             }
+        } else if active_pack_id.is_none() {
+            // This host actually uses the built-in palette. State the current
+            // pack without manufacturing a focusable select or promising a
+            // plugin install/apply action the host does not implement.
+            let value = row()
+                .key("appearance-builtin-theme-status")
+                .w_full()
+                .h(FIELD_HEIGHT)
+                .px(11.0)
+                .center_y()
+                .radius(k.radius.md)
+                .fill(k.c.bg_base)
+                .border(1.0, k.c.border_base)
+                .child(text(t("settings.theme.packDefault")).font(FIELD_TEXT).color(k.c.text_base));
+            section = section.child(setting_row(
+                &k,
+                layer,
+                format!("{key}-pack-row"),
+                t("settings.theme.pack"),
+                None,
+                value,
+            ));
         }
 
         // -- The apply error --
@@ -415,33 +440,30 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
             );
         }
 
-        // -- The reserved future block (density, font size, …) --
-        let mut more_row = row().gap(4.0).center_y().child(
-            text(t("settings.appearance.more").to_owned())
-                .font(tok::type_::LABEL)
-                .color(k.c.text_muted) // text-fg-secondary,
-        );
-        let mark = row()
-            .key(format!("{key}-more-mark"))
-            .size(16.0, 16.0)
-            .center()
-            .radius(8.0)
-            .border(1.0, k.c.border_base)
-            .child(text("?".to_owned()).font(tok::type_::LABEL).color(k.c.text_muted));
-        more_row = more_row.child(
-            Tooltip::new(format!("{key}-more-hint"))
-                .trigger(mark)
-                .text(t("settings.appearance.morePlaceholder").to_owned())
+        // The section's 16pt gap plus this 16pt wrapper implements mt-8.
+        // Rune's painted inside border does not reserve layout space, so the
+        // 17pt content inset includes the CSS 1px border plus pt-4.
+        let more_label = t("settings.appearance.more");
+        let more = row()
+            .gap(4.0)
+            .center_y()
+            .child(text(more_label).font(TextStyle::new(14.0, 500.0).lh(20.0)).color(k.c.text_muted))
+            .child(
+                SettingHint::new(
+                    format!("{key}-more"),
+                    more_label,
+                    t("settings.appearance.morePlaceholder"),
+                )
                 .build(&k, layer),
-        );
-        section.child(
+            );
+        section.child(col().pt(16.0).child(
             col()
                 .key(format!("{key}-more"))
                 .w_full()
-                .pt(16.0)
-                .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
-                .child(more_row),
-        )
+                .pt(17.0)
+                .border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base)
+                .child(more),
+        ))
     }
 }
 
@@ -451,41 +473,4 @@ fn open_flag<S: 'static>(
     s: &S,
 ) -> Option<usize> {
     slot.as_ref().and_then(|open| open(s))
-}
-
-/// The SettingRow stand-in (settingsUi.tsx is T399's): a 160pt label
-/// column with the optional "?" hint, the control filling the rest.
-fn setting_row(
-    k: &Kit,
-    layer: &mut Vec<El>,
-    key: String,
-    label: &str,
-    hint: &str,
-    control: El,
-) -> El {
-    let mut label_col = row().key(format!("{key}-label")).w(160.0).gap(4.0).center_y().child(
-        text(label.to_owned()).font(tok::type_::LABEL).color(k.c.text_muted) // text-fg-secondary,
-    );
-    if !hint.is_empty() {
-        let mark = row()
-            .key(format!("{key}-mark"))
-            .size(16.0, 16.0)
-            .center()
-            .radius(8.0)
-            .border(1.0, k.c.border_base)
-            .child(text("?".to_owned()).font(tok::type_::LABEL).color(k.c.text_muted));
-        label_col = label_col.child(
-            Tooltip::new(format!("{key}-hint"))
-                .trigger(mark)
-                .text(hint.to_owned())
-                .build(k, layer),
-        );
-    }
-    row()
-        .key(key)
-        .w_full()
-        .gap(16.0)
-        .center_y()
-        .child(label_col)
-        .child(control.grow(1.0))
 }

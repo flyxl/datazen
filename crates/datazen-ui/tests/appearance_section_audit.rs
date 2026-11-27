@@ -44,6 +44,7 @@ struct AuditState {
     error: Option<String>,
     open: Option<usize>,
     dark: bool,
+    pack_adapter_enabled: bool,
     mode_writes: Vec<ThemeMode>,
     pack_writes: Vec<PackChoice>,
 }
@@ -56,6 +57,7 @@ impl AuditState {
             error: None,
             open: None,
             dark: true,
+            pack_adapter_enabled: true,
             mode_writes: Vec::new(),
             pack_writes: Vec::new(),
         }
@@ -66,6 +68,7 @@ fn view(s: &AuditState, _cx: &mut rune::Cx<AuditState>) -> El {
     let mut layer = Vec::new();
     let section = AppearanceSection::<AuditState>::new(&s.theme, &s.wapps)
         .error(s.error.as_deref())
+        .show_theme_packs(s.pack_adapter_enabled)
         .on_mode_change(|s: &mut AuditState, mode| {
             // The host's `{...theme, mode}`: the pack is kept.
             s.theme.mode = mode;
@@ -211,6 +214,54 @@ fn mount_shows_both_selects_with_the_builtin_default() {
     assert!(option_text(&rt, "内置默认"), "the pack trigger shows the builtin default");
 }
 
+/// The live native host supports changing mode but does not apply plugin
+/// themes. Its pack row reports what is actually rendered, never offers an
+/// inert chooser, and leaves the scheme's real listbox functional.
+#[test]
+fn builtin_only_host_reports_palette_without_offering_pack_changes() {
+    let mut scene = AuditState::scene();
+    scene.pack_adapter_enabled = false;
+    let mut rt = rt(scene);
+    let bounds = |rt: &Runtime<AuditState>, key: &str| {
+        rt.elements()
+            .into_iter()
+            .find(|entry| !entry.exiting && entry.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("{key} is laid out"))
+    };
+    let scheme = bounds(&rt, "appearance-color-scheme-select-trigger");
+    let status = bounds(&rt, "appearance-builtin-theme-status");
+    let footer = bounds(&rt, "appearance-section-more");
+    assert!(!has(&rt, "appearance-theme-select-trigger"));
+    assert!(option_text(&rt, "内置默认"));
+    assert!(!status.focusable);
+    assert_ne!(status.role, "combobox");
+    assert_eq!(scheme.rect[3], 36.0);
+    assert_eq!(status.rect[3], scheme.rect[3]);
+    assert_eq!(status.rect[0], scheme.rect[0]);
+    assert_eq!(status.rect[2], scheme.rect[2]);
+    assert!((status.rect[1] - scheme.rect[1] - scheme.rect[3] - 16.0).abs() < 0.5);
+    assert!((footer.rect[1] - status.rect[1] - status.rect[3] - 32.0).abs() < 0.5);
+
+    press(&mut rt, "appearance-builtin-theme-status");
+    assert!(rt.state.open.is_none());
+    assert!(rt.state.pack_writes.is_empty());
+    press(&mut rt, "appearance-color-scheme-select-trigger");
+    press(&mut rt, "option2");
+    assert_eq!(rt.state.mode_writes, vec![ThemeMode::System]);
+    assert!(rt.state.pack_writes.is_empty());
+}
+
+#[test]
+fn unsupported_pack_is_not_misrepresented_as_the_builtin_palette() {
+    let mut scene = AuditState::scene();
+    scene.pack_adapter_enabled = false;
+    scene.theme.pack_id = Some(encode_wapp_theme_pack_id("acme.bill-audit", "solar"));
+    let rt = rt(scene);
+    assert!(!has(&rt, "appearance-builtin-theme-status"));
+    assert!(!has(&rt, "appearance-theme-select-trigger"));
+    assert!(has(&rt, "appearance-color-scheme-select-trigger"));
+}
+
 /// React tests 2-3: the theme select lists enabled wapps' themes;
 /// a disabled wapp's themes never appear.
 #[test]
@@ -319,8 +370,8 @@ fn the_empty_theme_list_hides_the_pack_hint_tooltip() {
     let bare = rt(scene);
     // The empty hint rides a "?" trigger on the pack row (its tooltip
     // content is hover-gated; the trigger is the mounted half).
-    assert!(has(&bare, "appearance-section-pack-row-mark"));
+    assert!(has(&bare, "appearance-section-pack-row-hint-mark"));
     // With themes contributed, no "?" mark exists (no hint to show).
     let themed = rt(AuditState::scene());
-    assert!(!has(&themed, "appearance-section-pack-row-mark"));
+    assert!(!has(&themed, "appearance-section-pack-row-hint-mark"));
 }
