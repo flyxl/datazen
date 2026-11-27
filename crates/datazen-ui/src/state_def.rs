@@ -311,6 +311,9 @@ pub struct AppState {
     pub import_notice: Option<String>,
     /// T4: the value search's form and state. The value and its mode ride
     /// the job; the hits list is the scan's answer.
+    pub navigator_value_search_session_generation: Option<u32>,
+    pub navigator_value_search_scope: Option<datazen_ui_api::NativeValueSearchScope>,
+    pub navigator_value_search_epoch: u64,
     pub value_search_value: TextEdit,
     pub value_search_mode: u32,
     pub value_search_generation: u32,
@@ -320,6 +323,7 @@ pub struct AppState {
     /// The value the loaded hits answered, so a locate filters by what was
     /// searched, not by whatever the input holds since.
     pub value_search_query: String,
+    pub value_search_query_contains: bool,
     /// T5: the loaded table's inbound references (None until asked for).
     pub inbound_refs: Option<Vec<datazen_ui_api::InboundRef>>,
     pub fk_error: Option<String>,
@@ -717,6 +721,9 @@ impl Default for AppState {
             import_password: TextEdit::new(String::new()),
             import_preview: None,
             import_notice: None,
+            navigator_value_search_session_generation: None,
+            navigator_value_search_scope: None,
+            navigator_value_search_epoch: 0,
             value_search_value: TextEdit::new(String::new()),
             value_search_mode: 0,
             value_search_generation: 0,
@@ -724,6 +731,7 @@ impl Default for AppState {
             value_search_error: None,
             value_search_hits: Vec::new(),
             value_search_query: String::new(),
+            value_search_query_contains: false,
             inbound_refs: None,
             fk_error: None,
             fk_breadcrumbs: Vec::new(),

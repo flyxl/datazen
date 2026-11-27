@@ -29,6 +29,9 @@ impl AppState {
         if self.active != section && !self.kv_can_leave() {
             return;
         }
+        if !matches!(section, Section::Connections | Section::Workspace) {
+            self.close_navigator_value_search();
+        }
         if self.active == Section::Workspace && section != Section::Workspace {
             self.cancel_query_editor_input();
         }
@@ -69,6 +72,7 @@ impl AppState {
     /// its state. A deep link received while already in Settings changes the
     /// subsection without losing the original return route.
     pub fn open_settings(&mut self, subsection: Option<&str>) {
+        self.close_navigator_value_search();
         if self.active == Section::Settings {
             if let Some(subsection) = subsection {
                 self.set_settings_section(subsection);
@@ -169,6 +173,7 @@ impl AppState {
     /// port's own truth and needs no ask.
     pub fn refresh_catalog(&mut self) {
         if let Some(id) = self.desktop_connection.clone() {
+            self.close_navigator_value_search();
             let generation = self.next_read_generation();
             if self
                 .desktop
@@ -201,6 +206,7 @@ impl AppState {
         // the frame loop. Until the catalog (or the failure sentence) lands
         // the page stays put and says the connect is in flight; the memory
         // port's instant path answers when the host declines.
+        self.close_navigator_value_search();
         self.record_recent_connection(id);
         let generation = self.next_read_generation();
         if self.desktop.begin_job(AdapterJob::OpenConnection {
@@ -246,6 +252,7 @@ impl AppState {
         if !self.kv_can_leave() {
             return;
         }
+        self.close_navigator_value_search();
         self.close_kv_workbench();
         self.workspace.disconnect();
         self.tabs = Tabs::new();
@@ -278,6 +285,7 @@ impl AppState {
         self.connect_loading = None;
         self.desktop_catalog = None;
         self.desktop_connection = None;
+        self.navigator_value_search_session_generation = None;
         self.query_history.reset_context();
         self.structures.clear();
         self.widget_bars.clear();

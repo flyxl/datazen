@@ -21,75 +21,117 @@ use crate::ui::palette;
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let mut section = col()
+    col()
         .key("value-search-tool")
         .w_full()
         .gap(8.0)
-        .child(
-            text("Value search".to_owned())
-                .font(type_::TITLE)
-                .color(theme.text),
+        .child(text("Value search").font(type_::TITLE).color(theme.text))
+        .child(value_search_content(state, theme, dark, false))
+}
+
+/// The connected navigator mounts the real native scanner in a scoped modal.
+/// The legacy Tools surface and its action keys remain available as before.
+pub(super) fn navigator_value_search_dialog(
+    state: &AppState,
+    theme: tok::Theme,
+    dark: bool,
+) -> Option<crate::ui::dialog::Dialog> {
+    let scope = state.navigator_value_search_scope.as_ref()?;
+    Some(
+        crate::ui::dialog::Dialog::new(
+            super::navigator::database_value_search_dialog::DIALOG_KEY,
+            t("valueSearch.title"),
         )
+        .open(true)
+        .open_epoch(state.navigator_value_search_epoch)
+        .description(format!("{} · {}", t("valueSearch.description"), scope.database))
+        .fit()
+        .max_height(640.0)
+        .body_max_height(540.0)
+        .on_close(AppState::close_navigator_value_search)
+        .child(value_search_content(state, theme, dark, true)),
+    )
+}
+
+fn value_search_content(state: &AppState, theme: tok::Theme, dark: bool, scoped: bool) -> El {
+    let field = TextField::new("value-search-input", &state.value_search_value)
+        .height(24.0)
+        .on_edit(|state: &mut AppState| &mut state.value_search_value);
+    let field = if scoped {
+        field.grow().placeholder(t("valueSearch.placeholder"))
+    } else {
+        field.width(220.0)
+    };
+    let mut form = row()
+        .key("value-search-form")
+        .w_full()
+        .min_h(28.0)
+        .gap(8.0)
+        .center_y()
+        .child(field.build(dark))
         .child(
             row()
-                .key("value-search-form")
-                .w_full()
-                .h(28.0)
-                .gap(8.0)
+                .key("value-search-mode")
+                .h(24.0)
+                .px(8.0)
                 .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .role("button")
+                .label(t("valueSearch.modeLabel"))
+                .focusable(scoped)
                 .child(
-                    TextField::new("value-search-input", &state.value_search_value)
-                        .height(24.0)
-                        .width(220.0)
-                        .on_edit(|state: &mut AppState| &mut state.value_search_value)
-                        .build(dark),
+                    text(if scoped {
+                        t(&format!("valueSearch.mode.{}", state.value_search_mode())).to_owned()
+                    } else {
+                        format!("mode: {}", state.value_search_mode())
+                    })
+                        .font(type_::LABEL)
+                        .color(theme.text),
                 )
-                .child(
-                    row()
-                        .key("value-search-mode")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(
-                            text(format!("mode: {}", state.value_search_mode()))
-                                .font(type_::LABEL)
-                                .color(theme.text),
-                        )
-                        .on_press(|state: &mut AppState| state.cycle_value_search_mode()),
-                )
-                .child(
-                    row()
-                        .key("value-search-start")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(
-                            text(t("common.search").to_owned())
-                                .font(type_::LABEL)
-                                .color(theme.text),
-                        )
-                        .on_press(|state: &mut AppState| state.begin_value_search()),
-                )
-                .child(
-                    row()
-                        .key("value-search-cancel")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(
-                            text(t("common.cancel").to_owned())
-                                .font(type_::LABEL)
-                                .color(theme.text),
-                        )
-                        .on_press(|state: &mut AppState| state.cancel_value_search()),
-                ),
+                .on_press(AppState::cycle_value_search_mode),
+        )
+        .child({
+            let disabled = scoped
+                && (state.value_search_loading.is_some()
+                    || state.value_search_value.text.trim().is_empty());
+            let start = row()
+                .key("value-search-start")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .role("button")
+                .label(t("valueSearch.start"))
+                .focusable(scoped && !disabled)
+                .disabled(disabled)
+                .child(text(t("valueSearch.start")).font(type_::LABEL).color(theme.text));
+            if disabled {
+                start
+            } else if scoped {
+                start.default_button().on_press(AppState::begin_value_search)
+            } else {
+                start.on_press(AppState::begin_value_search)
+            }
+        });
+    if !scoped {
+        // The existing worker's Cancel only invalidates its delivery. On
+        // the navigator modal, Close/Escape discard the presentation instead
+        // of promising that an in-flight database scan has stopped.
+        form = form.child(
+            row()
+                .key("value-search-cancel")
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(text(t("common.cancel")).font(type_::LABEL).color(theme.text))
+                .on_press(AppState::cancel_value_search),
         );
+    }
+    let mut section = col().w_full().gap(8.0).child(form);
     if state.value_search_loading.is_some() {
         section = section.child(
             row()
@@ -125,30 +167,39 @@ pub fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El 
         let mut list = col().key("value-search-hits").w_full().gap(4.0);
         for (index, hit) in state.value_search_hits.iter().enumerate() {
             let index_for_press = index;
-            list = list.child(
-                row()
-                    .key(format!("value-hit-{index}"))
-                    .w_full()
-                    .h(24.0)
-                    .px(8.0)
-                    .center_y()
-                    .radius(6.0)
-                    .fill(theme.control_off)
-                    .child(
-                        text(format!(
-                            "{} · {} · {} rows",
-                            hit.table, hit.column, hit.matches
-                        ))
+            let result = row()
+                .key(format!("value-hit-{index}"))
+                .w_full()
+                .h(24.0)
+                .px(8.0)
+                .center_y()
+                .radius(6.0)
+                .fill(theme.control_off)
+                .child(
+                    text(if scoped {
+                        format!("{} · {} · {}", hit.table, hit.column, hit.matches)
+                    } else {
+                        format!("{} · {} · {} rows", hit.table, hit.column, hit.matches)
+                    })
                         .font(type_::LABEL)
                         .color(theme.text),
-                    )
+                );
+            list = list.child(if !scoped || state.navigator_value_search_can_locate(&hit.table) {
+                result
+                    .role("button")
+                    .label(format!("{}: {} · {}", t("valueSearch.locate"), hit.table, hit.column))
+                    .focusable(scoped)
                     .on_press(move |state: &mut AppState| {
                         state.locate_value_search_hit(index_for_press);
-                    }),
-            );
+                    })
+            } else {
+                result
+            });
         }
         section = section.child(list);
-    } else if state.value_search_loading.is_none() && state.value_search_error.is_none() {
+    } else if state.value_search_loading.is_none() && state.value_search_error.is_none()
+        && (!scoped || !state.value_search_query.is_empty())
+    {
         section = section.child(
             row()
                 .key("value-search-empty")
@@ -157,7 +208,7 @@ pub fn value_search_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El 
                 .px(8.0)
                 .center_y()
                 .child(
-                    text("No hits yet".to_owned())
+                    text(if scoped { t("valueSearch.noHits") } else { "No hits yet" })
                         .font(type_::LABEL)
                         .color(theme.text_secondary),
                 ),

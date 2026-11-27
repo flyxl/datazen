@@ -1803,6 +1803,15 @@ pub struct NativeQueryDatabase {
     pub database: String,
 }
 
+/// Identity of the database actually opened by the navigator, not a selected
+/// query tab's optional database target.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeValueSearchScope {
+    pub connection_id: String,
+    pub database: String,
+    pub session_generation: u32,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueryDatabaseContext {
     pub current: NativeQueryDatabase,
@@ -2186,6 +2195,22 @@ pub trait DesktopAdapter {
     /// caller falls back to them. The default declines, so every existing
     /// adapter keeps its synchronous behavior unchanged.
     fn begin_job(&mut self, _job: AdapterJob) -> bool {
+        false
+    }
+
+    /// The mounted navigator's supported current database-scan scope.
+    fn native_value_search_scope(&self) -> Option<NativeValueSearchScope> {
+        None
+    }
+
+    /// Start a scan only if this exact opened session is still live.
+    fn begin_scoped_value_search(
+        &mut self,
+        _generation: u32,
+        _scope: NativeValueSearchScope,
+        _value: String,
+        _mode: String,
+    ) -> bool {
         false
     }
 

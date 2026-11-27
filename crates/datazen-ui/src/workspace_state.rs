@@ -843,6 +843,7 @@ impl AppState {
                 }
                 match catalog {
                     Ok(catalog) => {
+                        self.close_navigator_value_search();
                         // The session opened: the live catalog is the truth, the
                         // workspace starts fresh and the first table opens
                         // through the same read path as every other one.
@@ -878,6 +879,7 @@ impl AppState {
                         self.cancel_query_editor_input();
                         self.desktop_catalog = Some(catalog.clone());
                         self.desktop_connection = Some(id);
+                        self.navigator_value_search_session_generation = Some(generation);
                         self.grid = DataGrid::new();
                         self.grid.set_editable(false);
                         self.table_read_error = None;
@@ -909,12 +911,18 @@ impl AppState {
                 }
             }
             AdapterDelivery::ValueSearched { generation, hits } => {
-                if self.value_search_loading == Some(generation) {
-                    self.value_search_loading = None;
-                }
-                if generation != self.value_search_generation {
+                if self.value_search_loading != Some(generation)
+                    || generation != self.value_search_generation
+                {
                     return;
                 }
+                if self.navigator_value_search_scope.is_some()
+                    && !self.navigator_value_search_is_current()
+                {
+                    self.close_navigator_value_search();
+                    return;
+                }
+                self.value_search_loading = None;
                 match hits {
                     Ok(hits) => {
                         self.value_search_hits = hits;

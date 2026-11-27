@@ -48,6 +48,8 @@ pub fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
         // dialog (the chart-frame ruling: the modal layer shows the honest
         // pending state, no dashboard picker is faked).
         Some(workflow_add_dashboard_dialog(state, dark))
+    } else if state.navigator_value_search_is_current() {
+        super::tools_ops::navigator_value_search_dialog(state, theme, dark)
     } else {
         None
     };

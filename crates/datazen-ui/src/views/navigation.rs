@@ -316,18 +316,49 @@ pub fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     // by existing tests), so the React testid is added as a namespaced wrapper
     // instead of renaming either one. The `navigator-` prefix keeps it out of
     // the home page's `connection-*` card-key namespace.
-    let filter = row()
+    let search = search_field(
+        "navigator-filter",
+        &state.navigator_filter,
+        t("main.searchPlaceholder"),
+        theme,
+        dark,
+        |state| &mut state.navigator_filter,
+    );
+    let mut filter = row()
         .key("navigator-connection-search-input")
         .w_full()
-        .h(NAV_SEARCH_H)
-        .child(search_field(
-            "navigator-filter",
-            &state.navigator_filter,
-            t("main.searchPlaceholder"),
-            theme,
-            dark,
-            |state| &mut state.navigator_filter,
-        ));
+        .h(NAV_SEARCH_H);
+    if state.available_navigator_value_search().is_some() {
+        let colors = crate::ui::theme::colors(dark);
+        let label = t("valueSearch.toolbarEntry");
+        filter = filter
+            .center_y()
+            .gap(4.0)
+            // 20pt of navigator padding + 24pt button + 4pt separation.
+            .child(search.w(width - 48.0))
+            .child(
+                row()
+                    .key(super::navigator::navigator_toolbar::SEARCH_VALUES_KEY)
+                    .size(24.0, 24.0)
+                    .center()
+                    .radius(6.0)
+                    .role("button")
+                    .label(label)
+                    .help(label)
+                    .focusable(true)
+                    .hover(colors.surface_raised)
+                    .hover_group()
+                    .child(
+                        rune::icon(&icons::ICON_TEXT_SEARCH, 14.0)
+                            .color(colors.fg_muted)
+                            .group_color(colors.fg)
+                            .a11y_hidden(),
+                    )
+                    .on_press(AppState::open_navigator_value_search),
+            );
+    } else {
+        filter = filter.child(search);
+    }
 
     let mut panel = col()
         .key("datazen-navigator")

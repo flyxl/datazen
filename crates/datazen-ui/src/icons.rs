@@ -78,6 +78,12 @@ pub static ICON_SEARCH: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<circle stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" cx=\"11\" cy=\"11\" r=\"8\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m21 21-4.3-4.3\"/>",
 };
+// Lucide TextSearch (ISC), the original navigator button's glyph.
+pub static ICON_TEXT_SEARCH: rune::Icon = rune::Icon {
+    name: "text-search",
+    view: 24.0,
+    body: r#"<path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M21 6H3"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M10 12H3"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M10 18H3"/><circle stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" cx="17" cy="15" r="3"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="m21 19-1.9-1.9"/>"#,
+};
 pub static ICON_DOWNLOAD: rune::Icon = rune::Icon {
     name: "download",
     view: 24.0,

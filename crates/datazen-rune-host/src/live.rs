@@ -149,6 +149,7 @@ enum HostJob {
     },
     ValueSearch {
         generation: u32,
+        scope: Option<datazen_ui_api::NativeValueSearchScope>,
         value: String,
         mode: String,
     },
@@ -332,6 +333,7 @@ enum HostAnswer {
 /// reads and N6's commits run over the same session.
 #[derive(Default)]
 struct LiveSession {
+    generation: u32,
     kv: Option<(NativeKvDriver, u32)>,
     kv_state: native_kv::KvSessionState,
     driver: Option<Arc<dyn DatabaseDriver>>,
@@ -351,6 +353,19 @@ impl LiveSession {
             self.connection.as_deref() == Some(target.connection_id.as_str())
                 && target.connection_id == context.current.connection_id
                 && context.choices.contains(&target.database)
+        })
+    }
+
+    fn value_search_scope(&self) -> Option<datazen_ui_api::NativeValueSearchScope> {
+        // Only advertise the stock SQLite path exercised by the native scan.
+        // Do not imply the same catalog/filter scope on other driver types.
+        if !self.is_open() || self.driver.as_ref()?.driver_type() != "sqlite" {
+            return None;
+        }
+        Some(datazen_ui_api::NativeValueSearchScope {
+            connection_id: self.connection.clone()?,
+            database: self.database.clone()?,
+            session_generation: self.generation,
         })
     }
 
@@ -724,9 +739,10 @@ impl LiveAdapter {
                             ));
                             HostAnswer::Connection { generation, id: id_for_answer, catalog }
                         }
-                        HostJob::ValueSearch { generation, value, mode } => {
+                        HostJob::ValueSearch { generation, scope, value, mode } => {
                             let hits = runtime.block_on(value_search_scan(
                                 &worker_session,
+                                scope.as_ref(),
                                 &value,
                                 &mode,
                             ));
@@ -1009,6 +1025,7 @@ impl LiveAdapter {
 
         // The source read: one session, the read use case over it.
         let source_session = Arc::new(Mutex::new(LiveSession {
+            generation: 0,
             kv: None,
             kv_state: Default::default(),
             driver: Some(Arc::clone(&source_driver)),
@@ -1300,6 +1317,7 @@ async fn open_connection(
         replace_live_session(
             session,
             LiveSession {
+                generation,
                 kv: Some((kind, generation)),
                 kv_state: native_kv::KvSessionState::new(db, databases, cluster),
                 driver: Some(driver),
@@ -1408,6 +1426,7 @@ async fn open_connection(
     replace_live_session(
         session,
         LiveSession {
+            generation,
             kv: None,
             kv_state: Default::default(),
             driver: Some(driver),
@@ -2380,6 +2399,7 @@ async fn run_workflow_engine(
 
 async fn value_search_scan(
     session: &Arc<Mutex<LiveSession>>,
+    scope: Option<&datazen_ui_api::NativeValueSearchScope>,
     value: &str,
     mode: &str,
 ) -> Result<Vec<ValueSearchHit>, String> {
@@ -2390,6 +2410,9 @@ async fn value_search_scan(
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
             return Err("the live session is not open".into());
+        }
+        if scope.is_some_and(|scope| session.value_search_scope().as_ref() != Some(scope)) {
+            return Err("The navigator search session is no longer open.".into());
         }
         let database = session.database.clone().unwrap_or_else(|| "main".into());
         (
@@ -2862,6 +2885,28 @@ impl DesktopAdapter for LiveAdapter {
         self.enqueue_query(generation, sql, true, None)
     }
 
+    fn native_value_search_scope(&self) -> Option<datazen_ui_api::NativeValueSearchScope> {
+        self.session.lock().ok()?.value_search_scope()
+    }
+
+    fn begin_scoped_value_search(
+        &mut self,
+        generation: u32,
+        scope: datazen_ui_api::NativeValueSearchScope,
+        value: String,
+        mode: String,
+    ) -> bool {
+        if self.native_value_search_scope().as_ref() != Some(&scope) {
+            return false;
+        }
+        self.jobs.lock().is_ok_and(|jobs| jobs.send(HostJob::ValueSearch {
+            generation,
+            scope: Some(scope),
+            value,
+            mode,
+        }).is_ok())
+    }
+
     fn native_query_database_context(&self) -> Option<datazen_ui_api::QueryDatabaseContext> {
         self.session.lock().ok()?.query_databases.clone()
     }
@@ -3010,6 +3055,7 @@ impl DesktopAdapter for LiveAdapter {
                 mode,
             } => HostJob::ValueSearch {
                 generation,
+                scope: None,
                 value,
                 mode,
             },
@@ -5549,6 +5595,49 @@ mod tests {
         }));
         let hits = poll_value_search(&mut adapter, 4).expect("the scan answers");
         assert!(hits.is_empty(), "no column matches: {:?}", hits);
+    }
+
+    #[test]
+    fn scoped_navigator_search_accepts_current_sqlite_and_denies_old_session() {
+        let dir = temp_dir("navigator-value-search");
+        let mut adapter = opened_adapter(&dir);
+        let scope = adapter.native_value_search_scope().expect("current SQLite scope");
+        assert_eq!(scope.connection_id, "live");
+        assert_eq!(scope.session_generation, 1);
+        assert!(adapter.begin_scoped_value_search(
+            7, scope.clone(), "user-42".into(), "contains".into(),
+        ));
+        let hits = poll_value_search(&mut adapter, 7).expect("scoped scan answers");
+        assert!(hits.iter().any(|hit| hit.table == "users"
+            && hit.column == "name" && hit.matches == 1));
+
+        assert!(adapter.begin_job(AdapterJob::OpenConnection {
+            generation: 8,
+            id: "live".into(),
+        }));
+        poll_open(&mut adapter).expect("the same profile opens a new session");
+        assert!(!adapter.begin_scoped_value_search(
+            9, scope.clone(), "user-42".into(), "contains".into(),
+        ));
+        // Simulate the worker receiving a job enqueued just before another
+        // connection job replaced its session: the execution guard must
+        // refuse too, even if the request passed the enqueue-time check.
+        adapter.jobs.lock().unwrap().send(HostJob::ValueSearch {
+            generation: 10,
+            scope: Some(scope),
+            value: "user-42".into(),
+            mode: "contains".into(),
+        }).unwrap();
+        for _ in 0..300 {
+            for delivery in adapter.poll_jobs() {
+                if let AdapterDelivery::ValueSearched { generation: 10, hits } = delivery {
+                    assert!(hits.is_err(), "a stale request must not scan a replacement session");
+                    return;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("no stale-scope rejection delivered");
     }
 
     #[test]

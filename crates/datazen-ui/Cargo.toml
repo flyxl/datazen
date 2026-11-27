@@ -1589,6 +1589,10 @@ name = "navigator_utils"
 path = "tests/navigator_utils.rs"
 
 [[test]]
+name = "navigator_value_search"
+path = "tests/navigator_value_search.rs"
+
+[[test]]
 name = "new_connection_dialog"
 path = "tests/new_connection_dialog.rs"
 

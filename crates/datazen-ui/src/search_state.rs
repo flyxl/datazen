@@ -199,10 +199,91 @@ impl AppState {
             (self.value_search_mode + 1) % Self::VALUE_SEARCH_MODES.len() as u32;
     }
 
+    pub fn available_navigator_value_search(
+        &self,
+    ) -> Option<datazen_ui_api::NativeValueSearchScope> {
+        if !matches!(self.active, Section::Connections | Section::Workspace)
+            || self.connect_loading.is_some()
+            || self.desktop_catalog.is_none()
+            || self.native_kv.is_some()
+        {
+            return None;
+        }
+        let scope = self.desktop.native_value_search_scope()?;
+        (self.desktop_connection.as_deref() == Some(scope.connection_id.as_str())
+            && self.navigator_value_search_session_generation == Some(scope.session_generation)
+            && self.desktop_catalog.as_ref()?.databases.iter()
+                .any(|database| database.name == scope.database))
+            .then_some(scope)
+    }
+
+    pub fn navigator_value_search_is_current(&self) -> bool {
+        self.navigator_value_search_scope.as_ref().is_some_and(|scope| {
+            self.available_navigator_value_search().as_ref() == Some(scope)
+        })
+    }
+
+    pub fn open_navigator_value_search(&mut self) {
+        let Some(scope) = self.available_navigator_value_search() else {
+            return;
+        };
+        self.reset_value_search();
+        self.navigator_value_search_scope = Some(scope);
+        self.navigator_value_search_epoch = self.navigator_value_search_epoch.wrapping_add(1);
+    }
+
+    pub fn close_navigator_value_search(&mut self) {
+        if self.navigator_value_search_scope.take().is_some() {
+            self.reset_value_search();
+        }
+    }
+
+    fn reset_value_search(&mut self) {
+        self.value_search_value = TextEdit::new(String::new());
+        self.value_search_mode = 0;
+        self.value_search_loading = None;
+        self.value_search_error = None;
+        self.value_search_hits.clear();
+        self.value_search_query.clear();
+        self.value_search_query_contains = false;
+    }
+
+    /// The shell can open only unambiguous bare table names and its current
+    /// locate action is a Contains filter. Keep unsupported result rows
+    /// factual and noninteractive rather than open a different table/filter.
+    pub fn navigator_value_search_can_locate(&self, table: &str) -> bool {
+        if !self.value_search_query_contains || !self.navigator_value_search_is_current() {
+            return false;
+        }
+        let (Some(scope), Some(catalog)) =
+            (&self.navigator_value_search_scope, &self.desktop_catalog)
+        else {
+            return false;
+        };
+        let mut databases = catalog.databases.iter().flat_map(|database| {
+            database.schemas.iter().flat_map(move |schema| {
+                schema.tables.iter().chain(&schema.views)
+                    .filter(move |name| name.as_str() == table)
+                    .map(move |_| database.name.as_str())
+            })
+        });
+        databases.next() == Some(scope.database.as_str()) && databases.next().is_none()
+    }
+
     /// Start a value search over the live session (T4): one job for the
     /// whole scan. The demo process has no live session and the memory port
     /// has no scan — the honest refusal names both.
     pub fn begin_value_search(&mut self) {
+        let scope = self.navigator_value_search_scope.clone();
+        if scope.is_some() {
+            if !self.navigator_value_search_is_current() {
+                self.close_navigator_value_search();
+                return;
+            }
+            if self.value_search_loading.is_some() {
+                return;
+            }
+        }
         let value = self.value_search_value.text.trim().to_owned();
         if value.is_empty() {
             self.value_search_error = Some("a value is required".into());
@@ -213,16 +294,22 @@ impl AppState {
             return;
         }
         let generation = self.next_value_search_generation();
-        let job = AdapterJob::ValueSearch {
-            generation,
-            value,
-            mode: self.value_search_mode().to_owned(),
+        let mode = self.value_search_mode().to_owned();
+        let started = if let Some(scope) = scope {
+            self.desktop.begin_scoped_value_search(generation, scope, value.clone(), mode.clone())
+        } else {
+            self.desktop.begin_job(AdapterJob::ValueSearch {
+                generation,
+                value: value.clone(),
+                mode: mode.clone(),
+            })
         };
-        if self.desktop.begin_job(job) {
+        if started {
             self.value_search_loading = Some(generation);
             self.value_search_error = None;
             self.value_search_hits.clear();
-            self.value_search_query = self.value_search_value.text.trim().to_owned();
+            self.value_search_query = value;
+            self.value_search_query_contains = mode == "contains";
         } else {
             self.value_search_error = Some("value search needs the live host".into());
         }
@@ -248,7 +335,13 @@ impl AppState {
         let Some(hit) = self.value_search_hits.get(index).cloned() else {
             return;
         };
+        if self.navigator_value_search_scope.is_some()
+            && !self.navigator_value_search_can_locate(&hit.table)
+        {
+            return;
+        }
         let value = self.value_search_query.clone();
+        self.close_navigator_value_search();
         self.open_table_with_filter(&hit.table, &hit.column, &value);
     }
 }
