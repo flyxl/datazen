@@ -393,9 +393,21 @@ use rune::{Env, Runtime};
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
-        assert!(runtime.state.grid.has_page(), "the table page loaded");
+        assert!(runtime.state.grid.has_page(), "the first table page was prefetched");
 
-        let (x, y) = runtime.find("cell-0-0").expect("first cell");
+        // Opening a connection prefetches data but does not open a table tab.
+        for _ in 0..30 {
+            runtime.frame(1.0 / 60.0);
+        }
+        let (x, y) = runtime.find("tree-table-customers").expect("customers navigator leaf");
+        runtime.pointer_move(x, y);
+        runtime.pointer_down(x, y);
+        runtime.pointer_up(x, y);
+        for _ in 0..30 {
+            runtime.frame(1.0 / 60.0);
+        }
+        let (x, y) = runtime.find("cell-0-0").expect("first cell of the opened table");
+        runtime.pointer_move(x, y);
         runtime.pointer_down(x, y);
         runtime.pointer_up(x, y);
         runtime.frame(0.0);
