@@ -550,7 +550,9 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             .w(NAV_WIDTH)
             .h_full()
             .shrink()
-            .px(8.0)
+            .pl(8.0)
+            // Rune paints border_sides without reserving inline space.
+            .pr(9.0)
             .pb(12.0)
             .gap(2.0)
             .scroll(rune::ScrollSpec { stick_bottom: false })
@@ -611,8 +613,9 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 let mut item = row()
                     .key(format!("settings-nav-{}", section.id))
                     .w_full()
-                    .h(35.5)
+                    .min_h(35.5)
                     .px(12.0)
+                    .py(8.0)
                     .gap(10.0)
                     .center_y()
                     .radius(if self.dark { 10.0 } else { 9.0 })
@@ -625,7 +628,10 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 item = item.child(
                     text(t(section.label_key).to_owned())
                         .font(label_style)
-                        .color(label_color),
+                        .color(label_color)
+                        .grow(1.0)
+                        .min_w(0.0)
+                        .wrap(),
                 );
                 if !is_active {
                     item = item.hover(k.c.surface_hover);
@@ -744,7 +750,6 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         let mut select = Select::new("settings-language-select", &labels)
             .values(&values)
             .current(Some(current_label.as_str()))
-            .width(160.0)
             .open(self.state.open_select == Some(SettingsSelect::Language));
         select = wire_select(
             select,
@@ -758,7 +763,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 f(s, SettingsField::Language(value.to_owned()));
             });
         }
-        let select_el = select.build(k, layer);
+        let select_el = select.build(k, layer).h(36.0);
         body = body.child(setting_row(
             k,
             layer,
