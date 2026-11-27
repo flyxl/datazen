@@ -65,7 +65,6 @@ use crate::commands::ai::wire::{
 use crate::hooks::confirm_dialog::{ConfirmDialogHost, ConfirmDialogState, ConfirmOptionsVm};
 use crate::ui::confirm_dialog::ConfirmKind;
 use crate::i18n::t;
-use crate::ui::badge::{Badge, BadgeTone};
 use crate::ui::kit::kit;
 use crate::ui::select::Select;
 use crate::views::settings::setting_hint::SettingHint;
@@ -449,7 +448,9 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
         let mut card = col()
             .key(format!("prompt-card-{scenario}"))
             .w_full()
-            .padding(12.0)
+            // CSS p-3 is measured inside its 1px border; Rune's border
+            // paints without adding to the element's layout insets.
+            .padding(13.0)
             .gap(8.0)
             .radius(k.radius.md)
             .border(1.0, k.c.border_base)
@@ -474,11 +475,7 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
                 .build(k, layer),
             );
         }
-        meta = meta.child(
-            Badge::new(format!("prompt-card-{scenario}-source"), source_label(prompt.source).to_owned())
-                .tone(source_tone(prompt.source))
-                .build(dark),
-        );
+        meta = meta.child(prompt_source_badge(k, scenario, prompt.source));
         head = head.child(meta);
 
         let mut actions = row().gap(4.0).center_y();
@@ -614,11 +611,34 @@ fn source_label(source: PromptSource) -> &'static str {
     }
 }
 
-/// `SOURCE_BADGE_CLASSES`'s tint trio.
-fn source_tone(source: PromptSource) -> BadgeTone {
-    match source {
-        PromptSource::Default => BadgeTone::Neutral,
-        PromptSource::Driver => BadgeTone::Accent,
-        PromptSource::User => BadgeTone::Success,
-    }
+/// React uses a local borderless source pill, not the shared outlined Badge.
+fn prompt_source_badge(k: &Kit, scenario: &str, source: PromptSource) -> El {
+    let key = format!("prompt-card-{scenario}-source");
+    let label = t(source_label(source));
+    let (fill, fg) = match source {
+        PromptSource::Default => (k.c.border_base, k.c.text_faint),
+        PromptSource::Driver => (k.alpha(k.c.text_accent, 0.15), k.c.text_accent),
+        PromptSource::User => (k.alpha(k.c.success.fg, 0.15), k.c.success.fg),
+    };
+    row()
+        .key(key.clone())
+        .role("status")
+        .label(label)
+        .center_y()
+        .shrink()
+        .min_w(0.0)
+        .px(8.0)
+        .py(2.0)
+        .radius(999.0)
+        .fill(fill)
+        .child(
+            text(label)
+                .key(format!("{key}-text"))
+                .font(TextStyle::new(10.0, 500.0).lh(15.0))
+                .color(fg)
+                .grow(1.0)
+                .min_w(0.0)
+                .truncate()
+                .a11y_hidden(),
+        )
 }

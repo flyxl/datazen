@@ -246,6 +246,52 @@ fn mount_renders_the_cards_by_source() {
     }
 }
 
+/// The original card's box includes its border; badges use the translated
+/// label rather than the translation key shown by the old generic badge.
+#[test]
+fn source_pills_are_localized_and_card_border_reserves_layout() {
+    let rows = [
+        (PromptScenario::Nl2sql, PromptSource::Default, "nl2sql", "default"),
+        (PromptScenario::Chat, PromptSource::User, "chat", "user"),
+        (PromptScenario::ExplainAnalysis, PromptSource::Driver, "explain_analysis", "driver"),
+    ];
+    for dark in [false, true] {
+        let mut scene = AuditState::empty();
+        scene.dark = dark;
+        scene.section.deliver_prompts(rows.iter().map(|&(scenario, source, _, _)| {
+            info(scenario, source, "preview line")
+        }).collect());
+        let rt = rt(scene);
+        let elements = rt.elements();
+        let element = |key: &str| elements.iter()
+            .find(|el| !el.exiting && el.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("missing {key}"));
+        let mut previous_bottom: Option<f32> = None;
+        for &(_, _, scenario, source) in &rows {
+            let base = format!("prompt-card-{scenario}");
+            let source_label = format!("settings.prompts.source.{source}");
+            let badge = element(&format!("{base}-source")).rect;
+            let label = element(&format!("{base}-source-text"));
+            let expected = datazen_ui::i18n::t(&source_label);
+            assert_ne!(expected, source_label.as_str());
+            assert_eq!(label.text.as_deref(), Some(expected));
+            assert!((badge[3] - 19.0).abs() <= 0.25, "{badge:?}");
+
+            let card = element(&base).rect;
+            let head = element(&format!("{base}-head")).rect;
+            let preview = element(&format!("{base}-preview-box")).rect;
+            assert!((head[0] - card[0] - 13.0).abs() <= 0.25, "{head:?} {card:?}");
+            assert!((head[1] - card[1] - 13.0).abs() <= 0.25, "{head:?} {card:?}");
+            assert!((card[1] + card[3] - preview[1] - preview[3] - 13.0).abs() <= 0.25,
+                "{preview:?} {card:?}");
+            if let Some(previous_bottom) = previous_bottom {
+                assert!((card[1] - previous_bottom - 8.0).abs() <= 0.25, "{card:?}");
+            }
+            previous_bottom = Some(card[1] + card[3]);
+        }
+    }
+}
+
 /// The edit flow: pencil → form with the seeded field → save.
 #[test]
 fn the_edit_flow_renders_and_saves() {
