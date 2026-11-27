@@ -58,12 +58,35 @@ impl DesktopAdapter for SearchAdapter {
 }
 
 fn press(rt: &mut Runtime<AppState>, key: &str) {
-    let (x, y) = rt.find(key).unwrap_or_else(|| panic!("missing {key}"));
-    rt.pointer_down(x, y);
-    rt.pointer_up(x, y);
-    rt.frame(0.0);
+    // A scripted click must target the user's settled control: find() also
+    // reports entering boxes, while the old input is still taking its
+    // former width as the search button arrives on connection.
     rt.settle_all();
-    rt.frame(0.0);
+    rt.frame(1.0 / 60.0);
+    let (x, y) = rt.find(key).unwrap_or_else(|| panic!("missing {key}"));
+    let expected = (key == ENTRY).then(|| {
+        rt.state.available_navigator_value_search().expect("settled navigator has a live scope")
+    });
+    let pick = expected.as_ref().map(|_| rt.element_at(x, y));
+    rt.pointer_down(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_up(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.settle_all();
+    rt.frame(1.0 / 60.0);
+    if let Some(expected) = expected {
+        assert_eq!(
+            rt.state.navigator_value_search_scope.as_ref(),
+            Some(&expected),
+            "the real entry click at ({x}, {y}) must call the scoped action; painted pick: {pick:?}",
+        );
+        assert!(
+            rt.find(DIALOG).is_some(),
+            "the accepted click scope must mount the real dialog; active {:?}, still current {}",
+            rt.state.active,
+            rt.state.navigator_value_search_is_current(),
+        );
+    }
 }
 
 fn open_fixture(rt: &mut Runtime<AppState>, scope: &NativeValueSearchScope) {
@@ -128,7 +151,6 @@ fn connected_search_uses_the_navigator_scope_and_rejects_closed_or_replaced_resu
     rt.frame(0.0);
 
     press(&mut rt, ENTRY);
-    assert!(rt.find(DIALOG).is_some());
     assert!(jobs.borrow().is_empty());
     press(&mut rt, "value-search-input");
     rt.ime(Ime::Commit("user-42".into()));
