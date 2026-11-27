@@ -672,45 +672,34 @@ use rune::{Env, Runtime};
         assert!(keys.iter().any(|k| k == "rail-toggle"), "collapse toggle present");
         assert!(!keys.iter().any(|k| k == "datazen-sidebar"), "old sidebar is gone");
 
-        // Default: expanded (112pt).
-        assert!(rt.state.sidebar_expanded(), "expanded by default");
-        assert_eq!(rt.state.sidebar_rail_width(), RAIL_WIDTH_EXPANDED);
-        rt.frame(0.0);
-        let rail_w = rt
-            .elements()
-            .into_iter()
-            .find(|e| e.key.as_deref() == Some("datazen-rail"))
-            .map(|e| e.rect[2])
-            .unwrap_or(0.0);
-        assert!(
-            (rail_w - RAIL_WIDTH_EXPANDED as f32).abs() < 1.0,
-            "expanded rail width, got {rail_w}"
-        );
-
-        // Collapse/expand via the action and verify persistence.
-        rt.state.toggle_sidebar_expanded();
-        assert!(!rt.state.sidebar_expanded(), "collapsed after toggle");
+        // Exact original WorkspaceModeSidebar defaults to icons when no
+        // preference has been stored. Toggle via the mounted UI.
+        assert!(!rt.state.sidebar_expanded(), "icons only on a fresh install");
         assert_eq!(rt.state.sidebar_rail_width(), RAIL_WIDTH_COLLAPSED);
-        assert_eq!(
-            rt.state.layout_size(SIDEBAR_RAIL_WIDTH_KEY),
-            Some(RAIL_WIDTH_COLLAPSED),
-            "collapse persisted"
-        );
-        rt.frame(1.0 / 60.0);
-        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("datazen-rail")));
+        assert_eq!(rt.state.layout_size(SIDEBAR_RAIL_WIDTH_KEY), None);
 
-        rt.state.toggle_sidebar_expanded();
-        assert!(rt.state.sidebar_expanded(), "expanded again");
+        let toggle = |rt: &mut Runtime<AppState>| {
+            let (x, y) = rt.find("rail-toggle").expect("real rail toggle");
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+            rt.frame(1.0 / 60.0);
+        };
+        toggle(&mut rt);
+        assert!(rt.state.sidebar_expanded(), "toggle expands the rail");
         assert_eq!(rt.state.sidebar_rail_width(), RAIL_WIDTH_EXPANDED);
         assert_eq!(rt.state.layout_size(SIDEBAR_RAIL_WIDTH_KEY), Some(RAIL_WIDTH_EXPANDED));
-        rt.frame(1.0 / 60.0);
-        assert!(rt.elements().iter().any(|e| e.key.as_deref() == Some("datazen-rail")));
 
-        // A fresh runtime seeded from the same persisted width reads collapsed.
+        toggle(&mut rt);
+        assert!(!rt.state.sidebar_expanded(), "second toggle returns to icons only");
+        assert_eq!(rt.state.sidebar_rail_width(), RAIL_WIDTH_COLLAPSED);
+        assert_eq!(rt.state.layout_size(SIDEBAR_RAIL_WIDTH_KEY), Some(RAIL_WIDTH_COLLAPSED));
+
+        // Explicit preferences keep winning over the fresh-profile default.
         let mut seeded = AppState::default();
+        seeded.set_layout_size(SIDEBAR_RAIL_WIDTH_KEY, RAIL_WIDTH_EXPANDED).unwrap();
+        assert!(seeded.sidebar_expanded());
         seeded.set_layout_size(SIDEBAR_RAIL_WIDTH_KEY, RAIL_WIDTH_COLLAPSED).unwrap();
         assert!(!seeded.sidebar_expanded());
-        assert_eq!(seeded.sidebar_rail_width(), RAIL_WIDTH_COLLAPSED);
     }
 
     #[test]

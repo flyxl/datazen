@@ -4,39 +4,51 @@
 use datazen_ui::test_support::*;
 
 #[test]
-fn the_rail_orders_sections_like_the_react_sidebar() {
-    let mut runtime = runtime();
-    runtime.frame(0.0);
+fn the_live_rail_matches_the_chromium_rows_at_both_widths() {
+    use datazen_ui::i18n::t;
 
-    // The top group follows React WorkspaceModeSidebar: Databases, Workflow,
-    // Dashboard, Workspace, Extensions; Settings and the toggle sit in the
-    // bottom group.
-    let mut previous_y = f32::NEG_INFINITY;
-    for section in [
+    let sections = [
         Section::Connections,
         Section::Workflows,
         Section::Dashboards,
         Section::Workspace,
         Section::Wapps,
-    ] {
-        let id = format!("rail-{}", section.key());
-        let (_, y) = runtime.find(&id).unwrap_or_else(|| panic!("missing {id}"));
-        assert!(
-            y > previous_y,
-            "{} sits under the item above it",
-            section.key()
-        );
-        previous_y = y;
-    }
+    ];
+    for (width, expanded) in [(40.0, false), (112.0, true)] {
+        let mut rt = runtime();
+        rt.state
+            .set_layout_size(datazen_ui::SIDEBAR_RAIL_WIDTH_KEY, width as u32)
+            .unwrap();
+        rt.frame(0.0);
+        let elements = rt.elements();
+        let item = |key: &str| {
+            elements
+                .iter()
+                .find(|node| !node.exiting && node.key.as_deref() == Some(key))
+                .unwrap_or_else(|| panic!("missing live rail node: {key}"))
+        };
 
-    let (_, wapps_y) = runtime.find("rail-wapps").expect("the extensions entry");
-    let (_, settings_y) = runtime.find("rail-settings").expect("the settings entry");
-    let (_, toggle_y) = runtime.find("rail-toggle").expect("the collapse toggle");
-    assert!(settings_y > wapps_y, "settings is in the bottom group");
-    assert!(
-        toggle_y > settings_y,
-        "the toggle is under settings: settings {settings_y}, toggle {toggle_y}"
-    );
+        let [x, y, w, h] = item("datazen-rail").rect;
+        assert_eq!(w, width);
+        for (index, section) in sections.iter().enumerate() {
+            let id = format!("rail-{}", section.key());
+            let button = item(&id);
+            assert_eq!(button.rect, [x, y + index as f32 * 40.0, w - 1.0, 40.0]);
+            let label_id = format!("{id}-label");
+            assert_eq!(
+                elements.iter().any(|node| node.key.as_deref() == Some(label_id.as_str())),
+                expanded,
+                "{} label follows the persisted mode",
+                section.key()
+            );
+        }
+
+        assert_eq!(item("rail-settings").rect, [x, y + h - 80.0, w - 1.0, 40.0]);
+        let toggle = item("rail-toggle");
+        assert_eq!(toggle.rect, [x, y + h - 40.0, w - 1.0, 40.0]);
+        let label = t(if expanded { "connWin.collapseSidebar" } else { "connWin.expandSidebar" });
+        assert_eq!(toggle.label.as_deref(), Some(label));
+    }
 }
 
 #[test]

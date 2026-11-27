@@ -16,62 +16,66 @@ use datazen_ui_api::{
 };
 use rune::tok::{self, type_};
 use rune::{col, row, text, text_input, Color, Cx, El};
-use rune::{FileDialogOptions, TextEdit, Tx};
+use rune::{FileDialogOptions, TextEdit, TextStyle, Tx};
+
+/// The original `bg-accent/20` over the fixed rail surface. These are
+/// the flat sRGB fills from Chromium in both default themes; a native
+/// compositor's linear-light alpha blend does not produce the same pixels.
+fn rail_selected_fill(dark: bool, accent: Color) -> Color {
+    let painted = if dark { "#1b3546" } else { "#d0ebf8" };
+    rune::color::hex(painted).unwrap_or(accent.alpha(0.20))
+}
+
+const RAIL_ITEM_HEIGHT: f32 = 40.0;
 
 pub fn rail_item(state: &AppState, section: Section, expanded: bool, dark: bool) -> El {
-    let theme = crate::ui::theme::app_theme(dark);
+    let colors = crate::ui::theme::colors(dark);
     let selected = state.active == section;
-    let bg = if selected {
-        crate::ui::theme::accent(dark).alpha(0.2)
-    } else {
-        Color::TRANSPARENT
-    };
-    let fg = if selected {
-        crate::ui::theme::accent(dark)
-    } else {
-        theme.text_secondary
-    };
+    let label = section.label();
+    let fg = if selected { colors.accent } else { colors.fg_secondary };
     let mut item = row()
         .key(format!("rail-{}", section.key()))
         .w_full()
-        .h(40.0)
+        .h(RAIL_ITEM_HEIGHT)
         .px(if expanded { 12.0 } else { 0.0 })
         .center_y()
         .gap(if expanded { 10.0 } else { 0.0 })
         .radius(0.0)
-        .fill(bg)
         .role("tab")
-        .label(section.label())
+        .label(label)
+        .help(label)
         .on_press(move |state: &mut AppState| state.select(section));
-    if !selected {
-        item = item.hover(theme.hover);
-    }
-    if expanded {
-        item = item
-            .child(rune::icon(section_icon(section), 16.0).color(fg))
-            .child(
-                text(section.label())
-                    .font(type_::LABEL)
-                    .color(fg)
-                    .grow(1.0)
-                    .min_w(0.0)
-                    .truncate(),
-            );
+    if selected {
+        item = item.fill(rail_selected_fill(dark, colors.accent));
     } else {
-        item = item
-            .justify_center()
-            .child(rune::icon(section_icon(section), 16.0).color(fg));
+        item = item.hover(colors.surface_raised).hover_group();
     }
-    item
+    // On the inactive original button, :hover changes icon and label ink as
+    // well as its fill. Do not apply the inactive hover style to selected rows.
+    let glyph = rune::icon(section_icon(section), 16.0).color(fg).a11y_hidden();
+    let glyph = if selected { glyph } else { glyph.group_color(colors.fg) };
+    if expanded {
+        let name = text(label)
+            .key(format!("rail-{}-label", section.key()))
+            .font(TextStyle::new(12.0, 400.0).lh(16.0))
+            .color(fg)
+            .grow(1.0)
+            .min_w(0.0)
+            .truncate();
+        let name = if selected { name } else { name.group_color(colors.fg) };
+        item.child(glyph).child(name)
+    } else {
+        item.justify_center().child(glyph)
+    }
 }
 
 pub fn rail_view(state: &AppState, dark: bool) -> El {
-    let theme = crate::ui::theme::app_theme(dark);
+    let colors = crate::ui::theme::colors(dark);
     let expanded = state.sidebar_expanded();
     let width = state.sidebar_rail_width() as f32;
     // React WorkspaceModeSidebar top group: Databases, Workflow, Dashboard,
     // Workspace, Extensions.
-    let mut items = col().w_full().gap(2.0);
+    let mut items = col().w_full();
     for section in [
         Section::Connections,
         Section::Workflows,
@@ -81,60 +85,61 @@ pub fn rail_view(state: &AppState, dark: bool) -> El {
     ] {
         items = items.child(rail_item(state, section, expanded, dark));
     }
+    // Keep the separately capability-gated native Tools route callable.
     if state.desktop.supports_native_transfer() {
         items = items.child(rail_item(state, Section::Tools, expanded, dark));
     }
-    let toggle_icon = if expanded {
-        &ICON_PANEL_LEFT_CLOSE
+    let (toggle_icon, toggle_label) = if expanded {
+        (&ICON_PANEL_LEFT_CLOSE, t("connWin.collapseSidebar"))
     } else {
-        &ICON_PANEL_LEFT_OPEN
+        (&ICON_PANEL_LEFT_OPEN, t("connWin.expandSidebar"))
     };
     let toggle = row()
         .key("rail-toggle")
         .w_full()
-        .h(40.0)
+        .h(RAIL_ITEM_HEIGHT)
+        .center_y()
         .radius(0.0)
-        .hover(theme.hover)
-        .label(if expanded {
-            "Collapse sidebar"
-        } else {
-            "Expand sidebar"
-        })
-        .on_press(|state: &mut AppState| state.toggle_sidebar_expanded());
+        .hover(colors.surface_raised)
+        .hover_group()
+        .role("button")
+        .label(toggle_label)
+        .help(toggle_label)
+        .on_press(AppState::toggle_sidebar_expanded);
+    let glyph = rune::icon(toggle_icon, 16.0)
+        .color(colors.fg_secondary)
+        .group_color(colors.fg)
+        .a11y_hidden();
     let toggle = if expanded {
         toggle
             .px(12.0)
             .gap(10.0)
-            .center_y()
-            .child(rune::icon(toggle_icon, 16.0).color(theme.text_secondary))
+            .child(glyph)
             .child(
-                text("Collapse sidebar")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary)
+                text(toggle_label)
+                    .key("rail-toggle-label")
+                    .font(TextStyle::new(12.0, 400.0).lh(16.0))
+                    .color(colors.fg_secondary)
+                    .group_color(colors.fg)
                     .grow(1.0)
                     .min_w(0.0)
                     .truncate(),
             )
     } else {
-        toggle
-            .justify_center()
-            .center_y()
-            .child(rune::icon(toggle_icon, 16.0).color(theme.text_secondary))
+        toggle.justify_center().child(glyph)
     };
     let bottom = col()
         .key("rail-bottom")
         .w_full()
-        .gap(2.0)
         .child(rail_item(state, Section::Settings, expanded, dark))
         .child(toggle);
     col()
         .key("datazen-rail")
         .w(width)
         .h_full()
-        .py(0.0)
-        .gap(0.0)
-        .fill(theme.card)
-        .border_sides([0.0, 1.0, 0.0, 0.0], theme.card_border)
+        .fill(colors.surface_alt)
+        .border_sides([0.0, 1.0, 0.0, 0.0], colors.edge)
+        .border_layout()
         .child(items)
         .child(col().w_full().grow(1.0))
         .child(bottom)

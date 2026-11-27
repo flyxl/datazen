@@ -251,15 +251,15 @@ impl AppState {
         })
     }
 
-    /// L4: the rail is expanded (icon + label) by default; collapsed shows
-    /// icons only. Persisted as its width in points.
+    /// A fresh app uses icons only, as in the React workspace. The expanded
+    /// icon + label preference is persisted as the rail width in points.
     pub fn sidebar_expanded(&self) -> bool {
         self.sidebar_rail_width() > RAIL_WIDTH_COLLAPSED
     }
     pub fn sidebar_rail_width(&self) -> u32 {
         let w = self
             .layout_size(SIDEBAR_RAIL_WIDTH_KEY)
-            .unwrap_or(RAIL_WIDTH_EXPANDED);
+            .unwrap_or(RAIL_WIDTH_COLLAPSED);
         if w <= RAIL_WIDTH_COLLAPSED {
             RAIL_WIDTH_COLLAPSED
         } else {
