@@ -81,6 +81,7 @@ pub fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         ThemeMode::System => system_dark,
     };
     let theme = crate::ui::theme::app_theme(dark);
+    cx.caption_color(crate::ui::theme::colors(dark).titlebar_fg_muted);
 
     // React `MainPage.tsx:112-133`: the early return renders the chrome, the
     // centered failure screen and the two connection dialog hosts — no
@@ -154,28 +155,18 @@ fn main_titlebar(
     layer: &mut Vec<El>,
 ) -> El {
     let c = crate::ui::theme::colors(dark);
+    let (left_pad, right_pad) = crate::views::shell_menu::titlebar_padding(cx.chrome_insets());
     row()
         .key("datazen-titlebar")
         .window_drag()
         .w_full()
         .h(TITLEBAR_HEIGHT)
         .center_y()
-        .pl(cx.titlebar_inset() + 12.0)
-        .pr(12.0)
-        .gap(12.0)
+        .pl(left_pad)
+        .pr(right_pad)
         .fill(c.titlebar)
         .child(crate::views::shell_menu::titlebar_menu(state, dark, layer))
-        .child(
-            // The label takes the leftover room, not the whole band: a
-            // `w_full` label measures the padding box and pushes the trailing
-            // controls past the window's right edge.
-            text(label)
-                .key("datazen-titlebar-label")
-                .font(type_::TITLE)
-                .color(c.titlebar_fg)
-                .grow(1.0)
-                .min_w(0.0),
-        )
+        .child(crate::views::shell_menu::titlebar_label(label, c.titlebar_fg))
         .child(crate::views::theme_toggle_slot(state, dark, layer))
 }
 

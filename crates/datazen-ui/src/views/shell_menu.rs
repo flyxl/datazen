@@ -2,7 +2,7 @@
 //! instead on macOS. Unported host actions are omitted rather than shown as
 //! functioning controls.
 
-use rune::{row, El, Key, KeyEvent, Tx};
+use rune::{row, text, ChromeInsets, Color, El, Key, KeyEvent, TextStyle, Tx};
 
 use crate::components::menu_bar::{
     build_menus, next_menu_id, route_menu_action, MenuBar, MenuBarAction, MenuBarItem,
@@ -14,6 +14,39 @@ use crate::types::Section;
 use crate::views::appearance_section::ThemeMode;
 
 const REPORT_ISSUE: &str = "https://github.com/flyxl/datazen/issues/new";
+
+/// Match the original chrome's padding while respecting the real platform
+/// buttons. In Linux, captions are in the OS frame rather than our client
+/// area; do not reserve the React web-caption width or draw duplicate buttons.
+pub(super) fn titlebar_padding(insets: ChromeInsets) -> (f32, f32) {
+    let right = if insets.trailing > 0.0 {
+        insets.trailing + 2.0
+    } else if cfg!(target_os = "macos") {
+        14.0
+    } else {
+        12.0
+    };
+    (insets.leading + 12.0, right)
+}
+
+/// The remaining strip centers the title between the actual left and right
+/// controls. Keep the label independently addressable for shell tooling.
+pub(super) fn titlebar_label(label: impl Into<String>, ink: Color) -> El {
+    row()
+        .key("datazen-titlebar-title")
+        .grow(1.0)
+        .min_w(0.0)
+        .center()
+        .child(
+            text(label.into())
+                .key("datazen-titlebar-label")
+                .font(TextStyle::new(12.0, 500.0).lh(18.0))
+                .min_w(0.0)
+                .shrink()
+                .truncate()
+                .color(ink),
+        )
+}
 
 fn in_window_menu() -> bool {
     cfg!(any(target_os = "linux", target_os = "windows"))

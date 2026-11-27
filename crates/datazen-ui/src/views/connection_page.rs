@@ -67,13 +67,13 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         ThemeMode::System => system_dark,
     };
     let theme = crate::ui::theme::app_theme(dark);
-    let titlebar_inset = cx.titlebar_inset();
+    let chrome = cx.chrome_insets();
 
     // One window-level overlay layer: dialogs, select listboxes and the
     // theme toggle's popover mount here (page_body takes the same vec).
     let mut layer = modal_layer(state, theme, dark);
 
-    let titlebar = connection_titlebar(state, dark, titlebar_inset, &mut layer);
+    let titlebar = connection_titlebar(state, dark, chrome, &mut layer);
 
     let body = row()
         .key("datazen-body")
@@ -237,10 +237,11 @@ pub fn connection_content_with_vm(
 fn connection_titlebar(
     state: &AppState,
     dark: bool,
-    titlebar_inset: f32,
+    chrome: rune::ChromeInsets,
     layer: &mut Vec<El>,
 ) -> El {
     let c = crate::ui::theme::colors(dark);
+    let (left_pad, right_pad) = super::shell_menu::titlebar_padding(chrome);
     let mut left = row()
         .key("rune-titlebar-left")
         .gap(4.0)
@@ -268,6 +269,11 @@ fn connection_titlebar(
         );
     }
     left = left.child(super::shell_menu::titlebar_menu(state, dark, layer));
+    let label = if state.active == Section::Settings {
+        t("win.settings")
+    } else {
+        state.active.label()
+    };
 
     row()
         .key("datazen-titlebar")
@@ -275,18 +281,10 @@ fn connection_titlebar(
         .w_full()
         .h(TITLEBAR_HEIGHT)
         .center_y()
-        .pl(titlebar_inset + 12.0)
-        .pr(12.0)
-        .gap(12.0)
+        .pl(left_pad)
+        .pr(right_pad)
         .fill(c.titlebar)
         .child(left)
-        .child(
-            text(state.active.label())
-                .key("datazen-titlebar-label")
-                .font(type_::TITLE)
-                .color(c.titlebar_fg)
-                .grow(1.0)
-                .min_w(0.0),
-        )
+        .child(super::shell_menu::titlebar_label(label, c.titlebar_fg))
         .child(theme_toggle_slot(state, dark, layer))
 }
