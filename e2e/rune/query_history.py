@@ -22,7 +22,7 @@ class QueryHistoryJourney:
 
         successful = "SELECT 'history-success' AS note;"
         failing = "SELECT * FROM missing_history_table;"
-        to_history = tap(6.4, "query-sidebar-tab-history")
+        to_history = tap(6.4, "query-library-history-toggle")
         run_twice = [
             *query_steps(successful)[:-1], to_history, tap(8.5, "sql-run"),
             *fill(10.2, "sql-editor-scroll", failing), tap(13.7, "sql-run"),
@@ -47,7 +47,7 @@ class QueryHistoryJourney:
 
         inspect_history = [
             tap(.5, "conn-open-e2e-sqlite"), tap(3, "conn-toolbar-new-query"),
-            tap(4, "query-sidebar-tab-history"),
+            tap(4, "query-library-history-toggle"),
         ]
         reopened = self.replay(inspect_history, until=6)
         self.expect_rendered(reopened, text=failing.rstrip(";"), within="query-history-entry-0")
@@ -63,7 +63,7 @@ class QueryHistoryJourney:
 
         empty = self.replay([
             tap(.5, "conn-open-e2e-other"), tap(3, "conn-toolbar-new-query"),
-            tap(4, "query-sidebar-tab-history"),
+            tap(4, "query-library-history-toggle"),
         ], until=6)
         self.expect_rendered(empty, key="query-history-empty")
         self.assertFalse(visible(empty, key="query-history-list"))
@@ -79,7 +79,7 @@ class QueryHistoryJourney:
         open_history = [
             tap(.5, "conn-open-e2e-sqlite"),
             tap(3, "conn-toolbar-new-query"),
-            tap(4.5, "query-sidebar-tab-history"),
+            tap(4.5, "query-library-history-toggle"),
         ]
         history_file = self.root / "query-history.json"
 
@@ -117,7 +117,7 @@ class QueryHistoryJourney:
         with sqlite3.connect(self.db) as db:
             expected = db.execute(sql).fetchone()[0]
         execute = query_steps(sql)
-        to_history = tap(10.3, "query-sidebar-tab-history")
+        to_history = tap(10.3, "query-library-history-toggle")
         to_favorites = tap(12, "query-sidebar-tab-favorites")
         to_snippets = tap(14, "query-sidebar-tab-snippets")
         back_to_history = tap(16, "query-sidebar-tab-history")
@@ -141,3 +141,14 @@ class QueryHistoryJourney:
         ], until=18)
         check(history, "history")
         self.expect_rendered(history, text=sql.rstrip(";"), within="query-history-entry-0")
+
+        concealed = self.replay(execute, until=10)
+        self.assertFalse(visible(concealed, key="query-sidebar-pane"))
+        self.assertFalse(visible(concealed, key="splitter:query-sidebar-width"))
+        self.expect_rendered(concealed, text=expected, within="result-cell-0-0")
+        for kind in ("favorites", "history", "snippets"):
+            self.expect_rendered(concealed, key=f"query-library-{kind}-toggle")
+        closed = self.replay([*execute, to_history, tap(12, "query-library-history-toggle")], until=13.2)
+        self.assertFalse(visible(closed, key="query-sidebar-pane"))
+        self.assertFalse(visible(closed, key="query-history-panel"))
+        self.expect_rendered(closed, text=expected, within="result-cell-0-0")

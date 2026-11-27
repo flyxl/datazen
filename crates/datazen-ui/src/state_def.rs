@@ -131,6 +131,8 @@ pub struct AppState {
     pub(crate) query_csv_dialog: Option<u32>,
     /// A3: favorites/history/snippets sidebar inside the query workspace.
     pub query_sidebar_panel: QuerySidebarPanel,
+    /// Session-only disclosure. An idle editor starts with the full pane.
+    pub(crate) query_sidebar_open: bool,
     pub(crate) query_history: crate::query_history_state::QueryHistoryState,
     /// A3: last honest notice from a toolbar action without a host capability.
     pub query_notice: Option<String>,
@@ -634,6 +636,7 @@ impl Default for AppState {
             next_query_result_id: 1,
             query_csv_dialog: None,
             query_sidebar_panel: QuerySidebarPanel::Favorites,
+            query_sidebar_open: false,
             query_history: Default::default(),
             query_notice: None,
             result_view: ResultView::Table,

@@ -522,7 +522,7 @@ class TcpSqlJourneys:
         second = "SELECT current_database(), 'qh_marker_b';"
         executed = self.replay([
             *query_steps(first, "e2e-tcp-sql"), *fill(10.2, "sql-editor-scroll", second),
-            tap(13.5, "sql-run"), tap(15.4, "query-sidebar-tab-history"),
+            tap(13.5, "sql-run"), tap(15.4, "query-library-history-toggle"),
         ], until=18)
         self.expect_rendered(executed, text="qh_marker_b", within="result-workspace")
         path = self.root / "query-history.json"
@@ -537,7 +537,7 @@ class TcpSqlJourneys:
         current, all_db = "history-scope-current", "history-scope-all"
         selector = "query-history-search"
         opened = [tap(.5, "conn-open-e2e-tcp-sql"), tap(3.8, "conn-toolbar-new-query"),
-                  tap(5.0, "query-sidebar-tab-history")]
+                  tap(5.0, "query-library-history-toggle")]
 
         def selected(root, control):
             def find(node):

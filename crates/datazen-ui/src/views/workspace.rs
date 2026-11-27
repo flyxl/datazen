@@ -27,6 +27,7 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 mod native_explain;
 mod native_query_export;
 mod query_history;
+mod query_library;
 pub mod wapp_icon;
 // T067: the host-side shell around a sandboxed wapp page — the lazy entry
 // resolve with its per-wapp cache, the 10s load watchdog, the reload/retry
@@ -257,20 +258,8 @@ pub fn view_switcher(state: &AppState, dark: bool) -> El {
 pub fn query_workspace(
     state: &AppState, theme: tok::Theme, dark: bool, layer: &mut Vec<El>,
 ) -> El {
-    let sidebar_w =
-        splitter::splitter_size(state, QUERY_SIDEBAR_WIDTH_KEY, QUERY_SIDEBAR_WIDTH_DEFAULT) as f32;
     let editor_h =
         splitter::splitter_size(state, QUERY_EDITOR_HEIGHT_KEY, QUERY_EDITOR_HEIGHT_DEFAULT) as f32;
-
-    let sidebar = query_sidebar(state, theme, dark);
-    let sidebar_split = splitter::splitter_handle(
-        state,
-        QUERY_SIDEBAR_WIDTH_KEY,
-        splitter::SplitAxis::Vertical,
-        QUERY_SIDEBAR_WIDTH_MIN,
-        QUERY_SIDEBAR_WIDTH_MAX,
-        QUERY_SIDEBAR_WIDTH_DEFAULT,
-    );
 
     let loading = state.query_loading.is_some().then(|| {
         row()
@@ -411,20 +400,20 @@ pub fn query_workspace(
         );
     }
 
-    row()
-        .key("query-tab")
-        .w_full()
-        .h_full()
-        .gap(0.0)
-        .child(
-            col()
-                .key("query-sidebar-pane")
-                .w(sidebar_w)
-                .h_full()
-                .child(sidebar),
-        )
-        .child(sidebar_split)
-        .child(main)
+    let mut workspace = row().key("query-tab").w_full().h_full().gap(0.0);
+    if state.query_sidebar_open {
+        let width = splitter::splitter_size(
+            state, QUERY_SIDEBAR_WIDTH_KEY, QUERY_SIDEBAR_WIDTH_DEFAULT,
+        );
+        workspace = workspace
+            .child(col().key("query-sidebar-pane").w(width as f32).h_full()
+                .child(query_sidebar(state, theme, dark)))
+            .child(splitter::splitter_handle(
+                state, QUERY_SIDEBAR_WIDTH_KEY, splitter::SplitAxis::Vertical,
+                QUERY_SIDEBAR_WIDTH_MIN, QUERY_SIDEBAR_WIDTH_MAX, QUERY_SIDEBAR_WIDTH_DEFAULT,
+            ));
+    }
+    workspace.child(main)
 }
 
 fn toolbar_button(key: &'static str, label: &str, theme: tok::Theme) -> El {
@@ -524,8 +513,9 @@ fn query_toolbar(state: &AppState, theme: tok::Theme, database_picker: Option<El
         .h(36.0)
         .fill(theme.control_track)
         .border_sides([0.0, 0.0, 1.0, 0.0], theme.separator)
-        .scroll_x()
-        .child(bar)
+        .child(row().key("query-toolbar-scroll").grow(1.0).min_w(0.0).h_full()
+            .scroll_x().child(bar))
+        .child(query_library::controls(state, theme))
 }
 
 fn query_result_tabs_bar(state: &AppState, theme: tok::Theme) -> El {
@@ -616,7 +606,7 @@ fn query_sidebar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     theme.control_off
                 })
                 .child(
-                    text(panel.label().to_owned())
+                    text(t(query_library::label_key(panel)).to_owned())
                         .font(type_::LABEL)
                         .color(theme.text),
                 )
@@ -638,7 +628,7 @@ fn query_sidebar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .px(8.0)
         .py(8.0)
         .fill(theme.control_off)
-        .child(text("Query library").font(type_::TITLE).color(theme.text))
+        .child(query_library::header(state, theme))
         .child(tabs)
         .child(content)
 }

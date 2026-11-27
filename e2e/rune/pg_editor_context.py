@@ -54,7 +54,7 @@ def run_legacy_postgres_editor_database_context(self, primary, alternate):
     script = before + " " + qualified
     actions = [*opened, *choose_alt, *run_sql(8.5, before), *run_sql(13, qualified),
                *run_sql(17.5, before), *run_sql(22, script, script=True),
-               tap(26, "query-sidebar-tab-history")]
+               tap(26, "query-library-history-toggle")]
     # Instrumented parallel replays can render slowly; preserve the UI
     # timeline while allowing a bounded wall-clock margin.
     final = self.replay(actions, until=28.5, timeout=110)

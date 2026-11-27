@@ -84,7 +84,9 @@ fn a3_query_workspace_renders_toolbar_sidebar_and_result_tabs() {
     assert!(runtime.find("sql-run").is_some());
     assert!(runtime.find("sql-format").is_some());
     assert!(runtime.find("sql-explain").is_some());
-    assert!(runtime.find("query-sidebar").is_some(), "favorites/history/snippets sidebar rendered");
+    assert!(runtime.find("query-sidebar").is_none(), "real query library starts collapsed");
+    tap_query(&mut runtime, "query-library-favorites-toggle");
+    assert!(runtime.find("query-sidebar").is_some(), "genuine Favorites disclosure opens the library");
     assert!(runtime.find("query-result-tabs").is_some(), "result tabs bar rendered");
     assert!(runtime.find("query-result-tab-1").is_some(), "first result tab rendered");
 }
@@ -143,8 +145,11 @@ fn query_toolbar_is_above_flex_idle_editor_and_run_preserves_the_selected_statem
     assert!(after_editor[3] <= 350.0, "real results reuse the persisted split");
     assert!(rt.find("result-cell-0-0").is_some());
 
-    tap_query(&mut rt, "query-sidebar-tab-history");
+    tap_query(&mut rt, "query-library-history-toggle");
     assert_eq!(rt.state.query_sidebar_panel, types::QuerySidebarPanel::History);
+    assert!(rt.find("query-history-panel").is_some());
+    tap_query(&mut rt, "query-library-history-toggle");
+    assert!(rt.find("query-sidebar-pane").is_none());
     tap_query(&mut rt, "query-result-close-1");
     assert!(rt.state.result_grid.is_none());
     assert_eq!(query_rect(&rt, "query-editor-pane"), editor);
@@ -159,12 +164,15 @@ fn narrow_query_toolbar_can_scroll_to_its_last_action() {
     rt.state.workspace.connect("local").unwrap();
     rt.state.open_query_tab("Query").unwrap();
     rt.frame(0.1);
+    // The open native library narrows the Query main pane; the scroll
+    // surface still exposes all original controls while disclosure stays pinned.
+    tap_query(&mut rt, "query-library-favorites-toggle");
 
-    let toolbar = query_rect(&rt, "query-toolbar");
+    let toolbar = query_rect(&rt, "query-toolbar-scroll");
     let last_before = query_rect(&rt, "sql-tx-rollback");
     let edge = toolbar[0] + toolbar[2];
     assert!(last_before[0] + last_before[2] > edge, "fixture actually overflows");
-    let (x, y) = rt.find("query-toolbar").unwrap();
+    let (x, y) = rt.find("query-toolbar-scroll").unwrap();
     rt.wheel_xy(x, y, -1000.0, 0.0);
     rt.frame(0.2);
     let last_after = query_rect(&rt, "sql-tx-rollback");
@@ -172,6 +180,57 @@ fn narrow_query_toolbar_can_scroll_to_its_last_action() {
         "last action now accessible in toolbar: {last_after:?} vs {toolbar:?}");
     tap_query(&mut rt, "sql-tx-rollback");
     assert!(rt.state.query_notice.is_some(), "the scrolled action still hits its own callback");
+}
+
+#[test]
+fn real_query_library_disclosures_switch_and_collapse_without_disturbing_the_editor() {
+    use datazen_ui_api::WorkspaceApi;
+
+    let mut rt = runtime();
+    rt.state.workspace.connect("local").unwrap();
+    let query = rt.state.open_query_tab("Existing query").unwrap();
+    rt.state.workspace.save_snippet("Supplier", "SELECT 42;").unwrap();
+    rt.state.sql = sql_editor::SqlEditor::from_doc("");
+    rt.frame(0.1);
+    let full = query_rect(&rt, "query-toolbar");
+    let parent = query_rect(&rt, "query-tab");
+    let actions = [
+        ("query-library-favorites-toggle", "query-favorites-panel"),
+        ("query-library-history-toggle", "query-history-panel"),
+        ("query-library-snippets-toggle", "query-snippets-panel"),
+    ];
+    let assert_closed = |rt: &Runtime<AppState>| {
+        assert!(rt.find("query-sidebar-pane").is_none());
+        assert!(rt.find("splitter:query-sidebar-width").is_none());
+        let toolbar = query_rect(rt, "query-toolbar");
+        assert_eq!([toolbar[0], toolbar[2]], [parent[0], parent[2]]);
+    };
+    assert_closed(&rt);
+    for (toggle, panel) in actions {
+        let action = rt.elements().into_iter().find(|e| !e.exiting
+            && e.key.as_deref() == Some(toggle)).expect("physical toolbar control");
+        assert_eq!(action.role, "button");
+        assert!(action.focusable);
+        tap_query(&mut rt, toggle);
+        assert!(rt.find(panel).is_some());
+        assert!(rt.find("splitter:query-sidebar-width").is_some());
+        let pane = query_rect(&rt, "query-sidebar-pane");
+        let opened = query_rect(&rt, "query-toolbar");
+        assert_eq!(pane[2], QUERY_SIDEBAR_WIDTH_DEFAULT as f32);
+        assert_eq!(opened[0] - full[0], pane[2] + 1.0);
+        for (_, other) in actions.into_iter().filter(|(_, other)| *other != panel) {
+            assert!(rt.find(other).is_none(), "only the selected live panel mounts");
+        }
+        assert_eq!(rt.state.tabs.selected().map(|tab| tab.id), Some(query));
+    }
+    tap_query(&mut rt, "query-snippet-0");
+    assert_eq!(rt.state.sql.doc(), "SELECT 42;");
+    assert!(rt.state.result_grid.is_none(), "insertion does not execute");
+    tap_query(&mut rt, "query-library-close");
+    assert_closed(&rt);
+    assert_eq!(rt.state.sql.doc(), "SELECT 42;");
+    assert_eq!(rt.state.tabs.selected().map(|tab| tab.id), Some(query));
+    assert_eq!(rt.state.layout_size(QUERY_SIDEBAR_WIDTH_KEY), None, "disclosure is session-only");
 }
 
 #[test]

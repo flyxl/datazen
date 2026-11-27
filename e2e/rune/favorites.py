@@ -32,7 +32,7 @@ class FavoritesJourney:
         self.assertTrue(original.endswith(f"{statement}\n"))
 
         load = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "conn-toolbar-new-query"),
-                tap(4.3, "query-favorite-0")]
+                tap(4.3, "query-library-favorites-toggle"), tap(5.1, "query-favorite-0")]
         reopened = self.replay(load, until=6)
         self.expect_rendered(reopened, text=title, within="query-favorites-panel")
         self.assertFalse(visible(reopened, text="fixture-lin", within="result-workspace"))
