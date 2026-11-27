@@ -74,7 +74,7 @@ fn view(s: &Probe, _cx: &mut Cx<Probe>) -> El {
         .w_full()
         .h_full()
         .child(toolbar.build(tok::theme(s.dark)))
-        .child(build_status_bar(&s.status, tok::theme(s.dark)))
+        .child(build_status_bar(&s.status, s.dark))
 }
 
 fn runtime(probe: Probe, size: (f32, f32)) -> Runtime<Probe> {

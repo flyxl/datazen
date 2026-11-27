@@ -23,8 +23,9 @@
 //! * React's `MenuBar` and `WindowChromeSlot` have no Rune counterpart. The
 //!   title bar here is Rune's self-drawn 40pt chrome band; an empty
 //!   `menu-bar-host` slot is kept for structural parity, and the theme toggle
-//!   is the existing `datazen-theme-toggle`. Removal stage: when a Rune menu-bar
-//!   base lands, replace the empty host with it (no key changes needed).
+//!   is the React `ThemeToggle` port under the existing `datazen-theme-toggle`
+//!   key. Removal stage: when a Rune menu-bar base lands, replace the empty
+//!   host with it (no key changes needed).
 //! * The host's `Section` enum combines React's workspace modes and Settings.
 //!   Settings still occupies the entire body, with no mode rail or
 //!   database chrome. Entering it records the previous Section, so Back
@@ -43,6 +44,7 @@
 
 use super::*;
 
+use crate::views::appearance_section::ThemeMode;
 use crate::constants::*;
 use crate::i18n::t;
 use crate::state_def::AppState;
@@ -60,18 +62,19 @@ const TITLEBAR_HEIGHT: f32 = 40.0;
 pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
     let system_dark = cx.system_dark();
     state.system_dark.set(system_dark);
-    let dark = match state.desktop.read_ui_settings() {
-        Ok(settings) => settings.into_iter().find_map(|setting| match setting {
-            datazen_ui_api::Setting::Theme { dark } => Some(dark),
-            _ => None,
-        }),
-        Err(_) => None,
-    }
-    .unwrap_or(system_dark);
+    let dark = match state.theme_mode() {
+        ThemeMode::Light => false,
+        ThemeMode::Dark => true,
+        ThemeMode::System => system_dark,
+    };
     let theme = crate::ui::theme::app_theme(dark);
     let titlebar_inset = cx.titlebar_inset();
 
-    let titlebar = connection_titlebar(state, theme, dark, titlebar_inset);
+    // One window-level overlay layer: dialogs, select listboxes and the
+    // theme toggle's popover mount here (page_body takes the same vec).
+    let mut layer = modal_layer(state, theme, dark);
+
+    let titlebar = connection_titlebar(state, dark, titlebar_inset, &mut layer);
 
     let body = row()
         .key("datazen-body")
@@ -80,8 +83,7 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .min_h(0.0)
         .min_w(0.0);
 
-    // Keep the one window-level overlay layer for either body.
-    let mut layer = modal_layer(state, theme, dark);
+    // One layer serves either body (declared above, before the titlebar).
     let body = if state.active == Section::Settings {
         body.child(settings_page(state, theme, dark).h_full())
     } else {
@@ -235,9 +237,9 @@ pub fn connection_content_with_vm(
 /// and the theme toggle. All chrome keys existing tests pin are kept verbatim.
 fn connection_titlebar(
     state: &AppState,
-    theme: tok::Theme,
     dark: bool,
     titlebar_inset: f32,
+    layer: &mut Vec<El>,
 ) -> El {
     let c = crate::ui::theme::colors(dark);
     let mut left = row()
@@ -288,19 +290,5 @@ fn connection_titlebar(
                 .grow(1.0)
                 .min_w(0.0),
         )
-        .child(
-            row()
-                .key("datazen-theme-toggle")
-                .h(28.0)
-                .px(10.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .on_press(|state: &mut AppState| state.toggle_theme())
-                .child(
-                    text(if dark { "DARK" } else { "LIGHT" })
-                        .font(type_::LABEL)
-                        .color(c.titlebar_fg_muted),
-                ),
-        )
+        .child(theme_toggle_slot(state, dark, layer))
 }

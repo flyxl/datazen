@@ -2523,6 +2523,9 @@ fn ui_write(setting: &datazen_ui_api::Setting) -> UiWrite {
         datazen_ui_api::Setting::Theme { dark } => {
             UiWrite::Scalar("themeDark", serde_json::json!(dark))
         }
+        datazen_ui_api::Setting::ThemeMode { mode } => {
+            UiWrite::Scalar("themeMode", serde_json::json!(mode))
+        }
         datazen_ui_api::Setting::BuiltinLanguage { locale } => {
             UiWrite::Scalar("language", serde_json::json!(locale.code()))
         }
@@ -3141,6 +3144,9 @@ impl DesktopAdapter for LiveAdapter {
             .and_then(|ui| ui.as_object())
             .ok_or_else(|| "no ui settings yet".to_string())?;
         let mut settings = Vec::new();
+        if let Some(mode) = ui.get("themeMode").and_then(|value| value.as_str()) {
+            settings.push(datazen_ui_api::Setting::ThemeMode { mode: mode.to_owned() });
+        }
         if let Some(dark) = ui.get("themeDark").and_then(|value| value.as_bool()) {
             settings.push(datazen_ui_api::Setting::Theme { dark });
         }

@@ -6,6 +6,7 @@ use crate::data_grid::DataGrid;
 use crate::sql_editor::SqlEditor;
 use crate::state_def::*;
 use crate::types::{Section, TableView, Tool};
+use crate::views::appearance_section::ThemeMode;
 use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
 use datazen_ui_api::{
@@ -147,18 +148,40 @@ impl AppState {
         self.settings_error = result.err();
     }
 
-    /// The active appearance: the persisted theme setting (from the desktop
-    /// adapter) or the system preference when none is saved. Memory-workspace
+    /// The active theme mode. React persists `settings.theme.mode`; the Rune
+    /// host keeps the same three-way value in `Setting::ThemeMode`. An older
+    /// install that only has `themeDark` still reads as light/dark, and a
+    /// missing setting is System (follow the OS appearance).
+    pub fn theme_mode(&self) -> ThemeMode {
+        // Like the old `dark_theme`, a memory-workspace fallback is not a
+        // persisted appearance choice: only the real desktop adapter decides
+        // light/dark/system. A host that failed to answer is System.
+        let settings = self.desktop.read_ui_settings().unwrap_or_default();
+        if let Some(mode) = settings.iter().find_map(|setting| match setting {
+            Setting::ThemeMode { mode } => ThemeMode::from_wire(mode),
+            _ => None,
+        }) {
+            return mode;
+        }
+        match settings.into_iter().find_map(|setting| match setting {
+            Setting::Theme { dark } => Some(dark),
+            _ => None,
+        }) {
+            Some(true) => ThemeMode::Dark,
+            Some(false) => ThemeMode::Light,
+            None => ThemeMode::System,
+        }
+    }
+
+    /// The active appearance: the persisted mode resolved to dark/light, or
+    /// the system preference when the mode is System. Memory-workspace
     /// fallback settings are not treated as a persisted theme choice.
     pub fn dark_theme(&self) -> bool {
-        let saved = match self.desktop.read_ui_settings() {
-            Ok(settings) => settings.into_iter().find_map(|setting| match setting {
-                Setting::Theme { dark } => Some(dark),
-                _ => None,
-            }),
-            Err(_) => None,
-        };
-        saved.unwrap_or_else(|| self.system_dark.get())
+        match self.theme_mode() {
+            ThemeMode::Dark => true,
+            ThemeMode::Light => false,
+            ThemeMode::System => self.system_dark.get(),
+        }
     }
 
     /// The snippets in force (T3): the host's once its file store persists
@@ -324,21 +347,20 @@ impl AppState {
     /// and nothing is saved. E5: the six fields travel as one draft — the
     /// live host persists it through its connection use case (the password
     /// lands sealed), the memory port keeps its semantics.
-    /// Flip the theme. The only write goes to the settings in force.
-    pub(crate) fn save_builtin_theme(&mut self, dark: bool) {
-        self.settings_error = self.write_ui_setting(Setting::Theme { dark }).err();
+    /// Persist the React theme mode. The host writes one scalar setting;
+    /// System is the honest "no override" choice, not a forced dark/light.
+    pub(crate) fn save_theme_mode(&mut self, mode: ThemeMode) {
+        self.settings_error = self
+            .write_ui_setting(Setting::ThemeMode { mode: mode.as_str().to_owned() })
+            .err();
     }
 
     pub fn toggle_theme(&mut self) {
-        let dark = self
-            .ui_settings()
-            .iter()
-            .find_map(|setting| match setting {
-                Setting::Theme { dark } => Some(*dark),
-                _ => None,
-            })
-            .unwrap_or(true);
-        let _ = self.write_ui_setting(Setting::Theme { dark: !dark });
+        let next = match self.theme_mode() {
+            ThemeMode::Dark => ThemeMode::Light,
+            _ => ThemeMode::Dark,
+        };
+        self.save_theme_mode(next);
     }
 }
 

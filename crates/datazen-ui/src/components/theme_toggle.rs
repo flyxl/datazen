@@ -49,7 +49,9 @@ use std::rc::Rc;
 use rune::{col, row, text, Color, El};
 use rune_kit::{popover, scrim, Button, ButtonVariant, ControlSize, Kit, Placement};
 
-use crate::components::themed_icon::{IconResolver, ResolvedIcon, ThemedIcon};
+use crate::components::themed_icon::{
+    default_resolver, IconResolver, ResolvedIcon, ThemedIcon,
+};
 use crate::i18n::t;
 use crate::views::appearance_section::ThemeMode;
 
@@ -78,6 +80,19 @@ pub fn current_option(mode: ThemeMode) -> &'static ThemeOption {
         .iter()
         .find(|option| option.value == mode)
         .unwrap_or(&OPTIONS[2])
+}
+
+/// React's default `LUCIDE_MAP` entries for the three theme ids: Sun, Moon and
+/// Monitor. The built-in resolver's empty map would otherwise degrade them to
+/// `?` badges; the host has no theme pack loaded, so this is the honest icon
+/// face for all three options.
+pub fn theme_icon_resolver() -> IconResolver {
+    Rc::new(|id| match id {
+        "theme.light" => ResolvedIcon::Lucide("sun".to_owned()),
+        "theme.dark" => ResolvedIcon::Lucide("moon".to_owned()),
+        "theme.system" => ResolvedIcon::Lucide("monitor".to_owned()),
+        _ => default_resolver(id),
+    })
 }
 
 /// The theme toggle. `S` is the host state that owns the open cell and
@@ -157,7 +172,10 @@ impl<S: 'static> ThemeToggle<S> {
             .variant(ButtonVariant::Ghost)
             .control_size(ControlSize::Regular)
             .help(tooltip.clone())
-            .label_with(move |_, _| icon_el);
+            // React's trigger uses `text-fg-muted`; the kit hands us the
+            // button's ink for exactly this. `rune::icon` starts white, so
+            // leaving it untinted made the light-mode icon invisible.
+            .label_with(move |_, ink| icon_el.color(ink));
         if let Some(on_toggle) = &self.on_toggle {
             let action = Rc::clone(on_toggle);
             trigger = trigger.on_press(move |s: &mut S| action(s));
@@ -221,6 +239,8 @@ impl<S: 'static> ThemeToggle<S> {
             .child(
                 self.icon(option.icon_id, 14.0) // h-3.5 w-3.5
                     .key(format!("theme-option-{}-icon", option.value.as_str()))
+                    // React's option icon inherits the row's ink.
+                    .color(if is_current { k.c.text_accent } else { k.c.text_muted })
                     .a11y_hidden(),
             )
             .child(

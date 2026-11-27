@@ -465,7 +465,7 @@ use rune::{Env, Runtime};
             fn write_ui_setting(&mut self, setting: Setting) -> Result<(), String> {
                 self.writes.push(setting.clone());
                 let slot = |setting: &Setting| match setting {
-                    Setting::Theme { .. } => "theme".to_string(),
+                    Setting::Theme { .. } | Setting::ThemeMode { .. } => "theme".to_string(),
                     Setting::BuiltinLanguage { .. } => "language".to_string(),
                     Setting::TablePageSize { .. } => "tablePageSize".to_string(),
                     Setting::QueryMaxRows { .. } => "queryMaxRows".to_string(),

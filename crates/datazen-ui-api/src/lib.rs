@@ -1959,6 +1959,12 @@ pub enum Setting {
     Theme {
         dark: bool,
     },
+    /// React `settings.theme.mode` (`"light" | "dark" | "system"`). Kept
+    /// beside `Theme` so an older install that only has `themeDark` keeps
+    /// working; when both are present this one wins.
+    ThemeMode {
+        mode: String,
+    },
     BuiltinLanguage {
         locale: BuiltinLanguage,
     },
@@ -2010,6 +2016,14 @@ impl Setting {
     pub fn validate(&self) -> Result<(), String> {
         match self {
             Setting::Theme { .. } | Setting::BuiltinLanguage { .. } => Ok(()),
+            Setting::ThemeMode { mode }
+                if matches!(mode.as_str(), "light" | "dark" | "system") =>
+            {
+                Ok(())
+            }
+            Setting::ThemeMode { mode } => {
+                Err(format!("unsupported theme mode: {mode}"))
+            }
             Setting::TablePageSize { rows } => {
                 if *rows == 0 || *rows > 500 {
                     return Err(format!("table page size must be 1..=500, got {rows}"));
@@ -3096,7 +3110,7 @@ impl SettingsApi for MemoryWorkspace {
 
 fn setting_kind(setting: &Setting) -> u8 {
     match setting {
-        Setting::Theme { .. } => 0,
+        Setting::Theme { .. } | Setting::ThemeMode { .. } => 0,
         Setting::TablePageSize { .. } => 1,
         Setting::QueryMaxRows { .. } => 2,
         Setting::Layout { .. } => 3,

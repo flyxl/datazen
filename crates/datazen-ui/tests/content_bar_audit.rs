@@ -61,7 +61,7 @@ fn view(s: &AuditProbe, _cx: &mut Cx<AuditProbe>) -> El {
         .w_full()
         .h_full()
         .child(ContentToolbar::<AuditProbe>::new(&s.toolbar).build(tok::theme(s.dark)))
-        .child(build_status(&s.status, tok::theme(s.dark)))
+        .child(build_status(&s.status, s.dark))
 }
 
 fn runtime(probe: AuditProbe, size: (f32, f32)) -> Runtime<AuditProbe> {

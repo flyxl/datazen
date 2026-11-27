@@ -215,11 +215,11 @@ pub fn build(
     root = root.child(main);
 
     if vm.react_status_gate && vm.show_status_bar() {
-        root = root.child(super::content_status_bar(state, theme));
+        root = root.child(super::content_status_bar(state, dark));
     } else if vm.react_status_gate {
         root = root.child(row().key("content-status-bar-absent").h(0.0));
     } else {
-        root = root.child(super::content_status_bar(state, theme));
+        root = root.child(super::content_status_bar(state, dark));
     }
 
     // React's seven dialogs. The host has no state slice for their open flags

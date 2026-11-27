@@ -198,27 +198,12 @@ fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &st
 fn appearance_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     use appearance_section::{AppearanceSection, ThemeMode, ThemePreference};
 
-    let persisted_dark = state
-        .ui_settings()
-        .into_iter()
-        .find_map(|setting| match setting {
-            Setting::Theme { dark } => Some(dark),
-            _ => None,
-        })
-        .unwrap_or(dark);
-    let preference = ThemePreference {
-        mode: if persisted_dark {
-            ThemeMode::Dark
-        } else {
-            ThemeMode::Light
-        },
-        pack_id: None,
-    };
+    let preference = ThemePreference { mode: state.theme_mode(), pack_id: None };
     let mut overlays = Vec::new();
     let section = AppearanceSection::new(&preference, &[])
-        .supported_modes(&[ThemeMode::Light, ThemeMode::Dark])
+        .supported_modes(&ThemeMode::MODES)
         .show_theme_packs(false)
-        .on_mode_change(|state: &mut AppState, mode| state.save_builtin_theme(mode == ThemeMode::Dark))
+        .on_mode_change(|state: &mut AppState, mode| state.save_theme_mode(mode))
         .listbox(
             |state| state.appearance_select,
             |state, value| state.appearance_select = value,
