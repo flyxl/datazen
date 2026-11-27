@@ -387,6 +387,46 @@ impl AppState {
         self.dashboard_create_error = self.desktop.create_first_native_dashboard(name).err();
     }
 
+    pub(crate) fn begin_native_dashboard_report(&mut self) {
+        if self.active == Section::Dashboards
+            && !self.dashboard_report_open
+            && matches!(self.desktop.native_dashboard_board(), Ok(Some(_)))
+        {
+            self.clear_dashboard_report_draft();
+            self.dashboard_report_open = true;
+        }
+    }
+
+    pub(crate) fn cancel_native_dashboard_report(&mut self) {
+        if self.active == Section::Dashboards && self.dashboard_report_open {
+            self.clear_dashboard_report_draft();
+            self.dashboard_report_open = false;
+        }
+    }
+
+    pub(crate) fn save_native_dashboard_report(&mut self) {
+        if self.active != Section::Dashboards
+            || !self.dashboard_report_open
+            || !matches!(self.desktop.native_dashboard_board(), Ok(Some(_)))
+            || !self.desktop.native_dashboard_report_session_open()
+        {
+            return;
+        }
+        let saved = self.desktop.save_dashboard_widget(
+            self.widget_title.text.trim(),
+            self.widget_query.text.trim(),
+        );
+        if self.finish_dashboard_report_save(saved) {
+            self.dashboard_report_open = false;
+        }
+    }
+
+    fn clear_dashboard_report_draft(&mut self) {
+        self.widget_error = None;
+        self.widget_title = TextEdit::new(String::new());
+        self.widget_query = TextEdit::new(String::new());
+    }
+
     /// Save the widget form. An empty title is refused. The host's
     /// dashboard use case runs first (N13); its fixed not-implemented error
     /// means the demo process, and the memory port answers instead; any
@@ -401,17 +441,22 @@ impl AppState {
             }
             Err(error) => Err(error),
         };
+        self.finish_dashboard_report_save(saved);
+    }
+
+    fn finish_dashboard_report_save(&mut self, saved: Result<u64, String>) -> bool {
         match saved {
             Ok(_) => {
-                self.widget_error = None;
-                self.widget_title = TextEdit::new(String::new());
-                self.widget_query = TextEdit::new(String::new());
-                // E2: the new widget's bars ask for themselves — every
-                // widget's read restarts, the same refresh the page's
-                // button gives.
+                self.clear_dashboard_report_draft();
+                // E2: the new widget's bars ask for themselves through the
+                // same path as an explicit Refresh.
                 self.refresh_widget_bars();
+                true
             }
-            Err(error) => self.widget_error = Some(error),
+            Err(error) => {
+                self.widget_error = Some(error);
+                false
+            }
         }
     }
 }

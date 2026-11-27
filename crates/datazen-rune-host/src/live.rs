@@ -3419,6 +3419,10 @@ impl DesktopAdapter for LiveAdapter {
         self.dashboard_store.create_first_board(name)
     }
 
+    fn native_dashboard_report_session_open(&self) -> bool {
+        self.session.lock().expect("the live session lock").is_open()
+    }
+
     fn dashboard_widgets(&self) -> Result<Vec<DashboardWidget>, String> {
         // N13: the dashboard rows through the domain rules; a fresh install
         // has no dashboard row yet and answers no widgets.

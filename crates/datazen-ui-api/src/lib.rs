@@ -2490,6 +2490,12 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    /// Can the native SQL report's Save bind to a currently open session?
+    /// A cached UI profile or merely saved connection does not count.
+    fn native_dashboard_report_session_open(&self) -> bool {
+        false
+    }
+
     /// The dashboard's widgets from the host's dashboard use case (N13).
     /// The default answers the fixed error; the UI falls back to the memory
     /// port.

@@ -8,6 +8,7 @@ const pack = {
   'dashboard.missingId': 'No dashboard ID specified.',
   'dashboard.empty': 'No reports yet. Add one to get started.',
   'dashboard.addWidget': 'Add report',
+  'dashboard.reportNeedsConnection': 'Open a database connection before saving this report.',
   'dashboard.newWidget': 'New report',
   'dashboard.editWidget': 'Edit report',
   'dashboard.refreshAll': 'Refresh all',

@@ -13,6 +13,8 @@ class DashboardJourney:
         ], until=3.4)
         self.expect_rendered(created, key="dashboard-selected-board-title")
         self.expect_rendered(created, key="dashboard-empty")
+        self.expect_rendered(created, key="dashboard-add-widget", within="dashboard-empty")
+        self.assertFalse(visible(created, key="widget-form"))
         return (self.root / "dashboards.json").read_bytes()
 
     def test_create_first_dashboard_without_database_then_restore_exact_board(self):
@@ -43,7 +45,8 @@ class DashboardJourney:
         restored = self.replay(enter, until=1.8)
         self.expect_rendered(restored, key="dashboard-selected-board-title", text="New Dashboard")
         self.expect_rendered(restored, key="dashboard-empty")
-        self.expect_rendered(restored, key="widget-save")
+        self.expect_rendered(restored, key="dashboard-add-widget", within="dashboard-empty")
+        self.assertFalse(visible(restored, key="widget-form"))
         self.assertFalse(visible(restored, key="dashboard-create-first"))
         self.assertEqual(path.read_bytes(), before)
 
@@ -52,8 +55,51 @@ class DashboardJourney:
         ], until=4.5)
         self.expect_rendered(back, key="dashboard-selected-board-title", text="New Dashboard")
         self.expect_rendered(back, key="dashboard-empty")
+        self.expect_rendered(back, key="dashboard-add-widget", within="dashboard-empty")
+        self.assertFalse(visible(back, key="widget-form"))
         self.assertEqual(path.read_bytes(), before)
         self.assertFalse(workflows.exists())
+
+    def test_dashboard_add_report_cancel_is_unsaved_without_database(self):
+        (self.root / "settings.json").write_text(
+            json.dumps({"ui": {"language": "en"}}), encoding="utf-8",
+        )
+        before = self._create_local_dashboard_fixture()
+        path = self.root / "dashboards.json"
+        open_report = [tap(.55, "rail-dashboards"), tap(2.05, "dashboard-add-widget")]
+        title = "Discard draft title"
+        sql = "SELECT 42"
+        typed = [*open_report, *fill(3.25, "widget-title-input", title),
+                 *fill(4.8, "widget-query-input", sql)]
+        back = [*typed, tap(6.5, "rail-settings"), tap(8.0, "settings-back")]
+        open_draft = self.replay([*back, tap(9.5, "widget-save")], until=10.8)
+        self.expect_rendered(open_draft, key="dashboard-selected-board-title", text="New Dashboard")
+        self.expect_rendered(open_draft, key="widget-form")
+        self.expect_rendered(open_draft, key="dashboard-report-needs-connection",
+                             text="Open a database connection before saving this report.")
+        self.expect_rendered(open_draft, key="input", text=title, within="widget-title-input")
+        self.expect_rendered(open_draft, key="input", text=sql, within="widget-query-input")
+        self.expect_rendered(open_draft, key="widget-cancel")
+        self.assertFalse(visible(open_draft, key="dashboard-add-widget"))
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse((self.root / "workflows.json").exists())
+
+        cancelled = self.replay([*back, tap(9.5, "widget-cancel")], until=10.8)
+        self.expect_rendered(cancelled, key="dashboard-add-widget", within="dashboard-empty")
+        self.assertFalse(visible(cancelled, key="widget-form"))
+        self.assertFalse(visible(cancelled, key="widget-form-error"))
+        self.assertEqual(path.read_bytes(), before)
+
+        reopened = self.replay(
+            [*back, tap(9.5, "widget-cancel"), tap(11, "dashboard-add-widget")], until=12.4,
+        )
+        self.expect_rendered(reopened, key="widget-form")
+        self.expect_rendered(reopened, key="input", text="", within="widget-title-input")
+        self.expect_rendered(reopened, key="input", text="", within="widget-query-input")
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse((self.root / "workflows.json").exists())
+        self.assertFalse(self.store.exists())
+        self.assertFalse(self.db.exists())
 
     def test_dashboard_does_not_present_unknown_record_as_create_first(self):
         path = self.root / "dashboards.json"
@@ -75,6 +121,7 @@ class DashboardJourney:
         self.expect_rendered(tree, key="dashboard-board-error")
         self.assertFalse(visible(tree, key="dashboard-create-first"))
         self.assertFalse(visible(tree, key="dashboard-empty-boards"))
+        self.assertFalse(visible(tree, key="dashboard-add-widget"))
         self.assertFalse(visible(tree, key="widget-save"))
         self.assertEqual(path.read_bytes(), before)
         self.assertFalse((self.root / "workflows.json").exists())
@@ -85,24 +132,21 @@ class DashboardJourney:
         sql = "SELECT customer_name, id FROM customers ORDER BY id"
         empty_board = self._create_local_dashboard_fixture()
         start = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-dashboards")]
-        invalid = self.replay([*start, tap(4.2, "widget-save")], until=5.4)
-        self.expect_rendered(invalid, key="widget-form-error")
+        open_report = [*start, tap(4.2, "dashboard-add-widget")]
+        invalid = self.replay([*open_report, tap(5.6, "widget-save")], until=6.9)
+        self.expect_rendered(invalid, key="widget-form-error", text="a widget needs a title")
+        self.expect_rendered(invalid, key="widget-form")
+        self.expect_rendered(invalid, key="widget-cancel")
         self.expect_rendered(invalid, key="dashboard-empty")
-        self.expect_rendered(invalid, key="dashboard-empty-icon", within="dashboard-empty")
-        self.expect_rendered(invalid, key="dashboard-empty-message", within="dashboard-empty")
-        rect = {node["key"]: node["rect"] for node in invalid["elements"] if node.get("key")}
-        empty_x, empty_y, empty_w, empty_h = rect["dashboard-empty"]
-        icon_x, icon_y, icon_w, icon_h = rect["dashboard-empty-icon"]
-        self.assertAlmostEqual(icon_x + icon_w / 2, empty_x + empty_w / 2, delta=2)
-        self.assertGreater(icon_y + icon_h / 2, empty_y + empty_h * 0.35)
-        self.assertLess(icon_y + icon_h / 2, empty_y + empty_h * 0.65)
+        self.assertFalse(visible(invalid, key="dashboard-add-widget"))
+        self.assertFalse(visible(invalid, key="dashboard-report-needs-connection"))
         self.assertEqual((self.root / "dashboards.json").read_bytes(), empty_board)
         self.assertFalse((self.root / "workflows.json").exists())
 
         created = self.replay([
-            *start, *fill(4.1, "widget-title-input", title),
-            *fill(5.5, "widget-query-input", sql), tap(8, "widget-save"),
-        ], until=10)
+            *open_report, *fill(5.5, "widget-title-input", title),
+            *fill(7, "widget-query-input", sql), tap(9.6, "widget-save"),
+        ], until=11.6)
         widgets = json.loads((self.root / "dashboards.json").read_text())["widgets"]
         self.assertEqual(len(widgets), 1)
         self.assertEqual(widgets[0]["title"], title)
@@ -113,7 +157,10 @@ class DashboardJourney:
         self.expect_rendered(created, text="fixture-lin 2", within="dashboards-page")
         self.assertFalse(visible(created, key="widget-form-error"))
         self.assertFalse(visible(created, key="dashboard-empty"))
+        self.assertFalse(visible(created, key="widget-form"))
         self.expect_rendered(created, key="dashboard-widget-list")
+        self.expect_rendered(created, key="dashboard-add-widget", within="dashboard-report-actions")
+        self.expect_rendered(created, key="widget-refresh", within="dashboard-report-actions")
 
         with sqlite3.connect(self.db) as connection:
             connection.execute("UPDATE customers SET customer_name='dashboard-fresh' WHERE id=2")
@@ -131,11 +178,12 @@ class DashboardJourney:
         sql = "SELECT customer_name, id FROM customers ORDER BY id"
         title, shared = "Referenced Widget", "shared-e2e-workflow"
         self._create_local_dashboard_fixture()
-        dashboard_start = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-dashboards")]
+        dashboard_start = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-dashboards"),
+                           tap(4.2, "dashboard-add-widget")]
         created = self.replay([
-            *dashboard_start, *fill(4.1, "widget-title-input", title),
-            *fill(5.5, "widget-query-input", sql), tap(8, "widget-save"),
-        ], until=10)
+            *dashboard_start, *fill(5.5, "widget-title-input", title),
+            *fill(7, "widget-query-input", sql), tap(9.6, "widget-save"),
+        ], until=11.6)
         self.expect_rendered(created, text="fixture-ada 1", within="dashboards-page")
         dashboard_file = self.root / "dashboards.json"
         registry = self.root / "workflows.json"

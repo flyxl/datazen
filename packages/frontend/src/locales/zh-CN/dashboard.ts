@@ -8,6 +8,7 @@ const pack = {
   'dashboard.missingId': '未指定看板 ID。',
   'dashboard.empty': '暂无报表，添加一个开始监控。',
   'dashboard.addWidget': '添加报表',
+  'dashboard.reportNeedsConnection': '保存此报表前，请先打开数据库连接。',
   'dashboard.newWidget': '新报表',
   'dashboard.editWidget': '编辑报表',
   'dashboard.refreshAll': '全部刷新',
