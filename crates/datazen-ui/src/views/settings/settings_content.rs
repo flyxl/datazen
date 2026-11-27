@@ -764,7 +764,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 f(s, SettingsField::Language(value.to_owned()));
             });
         }
-        let select_el = select.build(k, layer).h(36.0);
+        let select_el = language_select(select, k, layer);
         body = body.child(setting_row(
             k,
             layer,
@@ -1963,6 +1963,32 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
     }
 }
 
+/// The live General language field uses the browser Select's 1px inside
+/// edge, not the generic kit's outside input elevation. Keep the anchored
+/// listbox and the original bindings, changing only this field's skin.
+fn language_select(select: Select, kit: &Kit, layer: &mut Vec<El>) -> El {
+    select
+        .build(&language_field_kit(kit), layer)
+        .h(36.0)
+        .radius(9.0)
+        .border(1.0, kit.c.border_base)
+        // CSS px-2.5 plus its inset edge places the text 11px in. The
+        // kit already contributes 8pt and a wider chevron frame.
+        .pl(3.0)
+        .pr(8.0)
+}
+
+fn language_field_kit(kit: &Kit) -> Kit {
+    let mut field = (*kit).clone();
+    // Empty input elevation falls back to a neutral button shadow; clear
+    // both locally without changing the floating listbox or shared kit.
+    field.elevation = field.elevation.with_input(Vec::<rune::Shadow>::new());
+    field.elevation.button_neutral.clear();
+    field.ty.ui_compact = TEXT_SM.lh(20.0);
+    field.c.icon_muted = kit.c.text_faint;
+    field
+}
+
 /// `String(Number(v))` — JavaScript's number-to-string (integers
 /// without a decimal part).
 fn format_number(value: f64) -> String {
@@ -2006,4 +2032,26 @@ fn wire_select<S: 'static>(
         }
     });
     select
+}
+
+
+#[cfg(test)]
+mod general_language_field_tests {
+    use super::*;
+
+    #[test]
+    fn language_field_replaces_the_kit_fallback_shadow_only_locally() {
+        for dark in [false, true] {
+            let shared = kit(dark);
+            let field = language_field_kit(shared);
+
+            assert!(field.elevation.input().is_empty());
+            assert!(!shared.elevation.input().is_empty());
+            assert!(!shared.elevation.button_neutral.is_empty());
+            assert_eq!(field.elevation.floating.len(), shared.elevation.floating.len());
+            assert_eq!(field.c.border_base, shared.c.border_base);
+            assert_eq!(field.c.border_focus, shared.c.border_focus);
+            assert_eq!(field.c.icon_muted, shared.c.text_faint);
+        }
+    }
 }

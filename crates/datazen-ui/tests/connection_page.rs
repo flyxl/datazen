@@ -513,3 +513,73 @@ fn the_connection_page_fits_both_windows_in_both_themes() {
         }
     }
 }
+
+#[test]
+fn general_language_keeps_the_real_combobox_through_the_local_field_skin() {
+    use datazen_ui_api::{BuiltinLanguage, Setting};
+    use rune::{Env, Key, KeyEvent, Mods};
+
+    fn node(rt: &Runtime<AppState>, key: &str) -> rune::ElementInfo {
+        rt.elements()
+            .into_iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("missing {key}"))
+    }
+
+    fn settle(rt: &mut Runtime<AppState>) {
+        rt.settle_all();
+        rt.frame(1.0 / 60.0);
+    }
+
+    fn press(rt: &mut Runtime<AppState>, key: &str) {
+        settle(rt);
+        let (x, y) = rt.find(key).unwrap_or_else(|| panic!("missing live {key}"));
+        rt.pointer_down(x, y);
+        rt.frame(1.0 / 60.0);
+        rt.pointer_up(x, y);
+        rt.frame(1.0 / 60.0);
+        settle(rt);
+    }
+
+    for (dark, theme) in [(false, "light"), (true, "dark")] {
+        let mut state = AppState::default();
+        state.write_ui_setting(Setting::ThemeMode { mode: theme.into() }).unwrap();
+        state.write_ui_setting(Setting::BuiltinLanguage { locale: BuiltinLanguage::English }).unwrap();
+        let mut rt = Runtime::new(
+            state, view, (1440.0, 900.0), Env { scale: 1.0, system_dark: !dark },
+        );
+        rt.frame(0.0);
+        press(&mut rt, "rail-settings");
+        assert_eq!(rt.state.settings_section(), "general");
+        assert_eq!(rt.state.dark_theme(), dark);
+
+        const TRIGGER: &str = "settings-language-select-trigger";
+        const LISTBOX: &str = "settings-language-select-content";
+        let field = node(&rt, TRIGGER);
+        assert_eq!(field.role, "combobox");
+        assert_eq!(field.label.as_deref(), Some("Language"));
+        assert!(field.focusable);
+        assert_eq!(field.expanded, Some(false));
+        assert_eq!(field.rect, [650.0, 103.5, 496.0, 36.0]);
+
+        press(&mut rt, TRIGGER);
+        assert!(key_set(&rt).contains(LISTBOX));
+        assert_eq!(node(&rt, TRIGGER).expanded, Some(true));
+
+        rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        settle(&mut rt);
+        assert!(!key_set(&rt).contains(LISTBOX));
+        assert_eq!(rt.state.builtin_language(), BuiltinLanguage::English);
+
+        press(&mut rt, TRIGGER);
+        let choice = rt.elements().into_iter()
+            .find(|e| !e.exiting && e.role == "option" && e.label.as_deref() == Some("简体中文"))
+            .expect("the actual Chinese option is visible");
+        // Match the option by its observed label, with its own listbox path.
+        press(&mut rt, &choice.path);
+        assert_eq!(rt.state.builtin_language(), BuiltinLanguage::SimplifiedChinese);
+        assert_eq!(node(&rt, TRIGGER).expanded, Some(false));
+        assert!(!key_set(&rt).contains(LISTBOX));
+        assert_eq!(node(&rt, "datazen-titlebar-label").text.as_deref(), Some("偏好设置 - DataZen"));
+    }
+}
