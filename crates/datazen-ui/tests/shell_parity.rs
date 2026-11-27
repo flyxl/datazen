@@ -95,7 +95,7 @@ fn live_shell_and_settings_use_original_react_surface_roles_in_both_appearances(
         };
         let mut rt = Runtime::new(AppState::default(), view, (1440.0, 900.0), env);
         rt.frame(0.0);
-        let check = |rt, key, expected| {
+        let check = |rt: &Runtime<AppState>, key: &str, expected: &str| {
             assert_eq!(
                 element_by_key(rt, key).fill,
                 rune::color::hex(expected).expect("known CSS color"),
