@@ -2296,18 +2296,11 @@ fn workflow_side_tabs_switch_from_their_full_content_width_before_and_after_resi
 /// holds the sidebar between 180 and 420 around its 256 default, and the
 /// drag previews live — the sidebar's own width follows the gesture and clamps
 /// inside the bounds.
-///
-/// Audit-round find (reported, not fixed): the commit half is broken — the
-/// port passes React's own storage key `workflow.sidebar`
-/// (`SIDEBAR_WIDTH_KEY`) to the settings layer, whose `Setting::Layout`
-/// grammar accepts only lowercase letters, digits and hyphens (every other
-/// splitter ships a hyphenated key, e.g. `query-sidebar-width`), so the write
-/// is rejected and `finish_drag`'s `let _ =` swallows the error: nothing
-/// persists and the released drag snaps the sidebar back to the 256 default.
-/// The pins hold the live halves and the current snap-back; the fix (a
-/// hyphenated key) flips the release half.
+/// Releasing the real handle commits using the native layout key, without
+/// changing its React-derived selector or the independent shell widths.
 #[test]
-fn the_sidebar_drag_previews_live_and_the_release_snaps_back() {
+fn the_sidebar_drag_previews_live_and_the_release_keeps_the_clamped_width() {
+    const WIDTH_KEY: &str = "workflow-sidebar-width";
     let mut rt = runtime();
     rt.frame(0.0);
     enter_workflows(&mut rt);
@@ -2321,7 +2314,7 @@ fn the_sidebar_drag_previews_live_and_the_release_snaps_back() {
             .unwrap_or_default()
     };
     assert_eq!(
-        rt.state.layout_size("workflow.sidebar"),
+        rt.state.layout_size(WIDTH_KEY),
         None,
         "the un-resized sidebar holds no persisted size"
     );
@@ -2334,14 +2327,14 @@ fn the_sidebar_drag_previews_live_and_the_release_snaps_back() {
     rt.frame(1.0 / 60.0);
     assert_eq!(
         rt.state.splitter_preview,
-        Some(("workflow.sidebar".to_owned(), 256)),
+        Some((WIDTH_KEY.to_owned(), 256)),
         "the press seeds the preview at the start size"
     );
     rt.pointer_move(x + 100.0, y);
     rt.frame(1.0 / 60.0);
     assert_eq!(
         rt.state.splitter_preview,
-        Some(("workflow.sidebar".to_owned(), 356)),
+        Some((WIDTH_KEY.to_owned(), 356)),
         "the move previews 256 + 100"
     );
     assert_eq!(sidebar(&rt), 356.0, "the sidebar's width follows the preview");
@@ -2351,7 +2344,7 @@ fn the_sidebar_drag_previews_live_and_the_release_snaps_back() {
     rt.frame(1.0 / 60.0);
     assert_eq!(
         rt.state.splitter_preview,
-        Some(("workflow.sidebar".to_owned(), 180)),
+        Some((WIDTH_KEY.to_owned(), 180)),
         "React 213: the min bound clamps the live preview"
     );
     assert_eq!(sidebar(&rt), 180.0);
@@ -2361,14 +2354,13 @@ fn the_sidebar_drag_previews_live_and_the_release_snaps_back() {
     rt.frame(1.0 / 60.0);
     assert_eq!(
         rt.state.splitter_preview,
-        Some(("workflow.sidebar".to_owned(), 420)),
+        Some((WIDTH_KEY.to_owned(), 420)),
         "React 214: the max bound clamps the live preview"
     );
     assert_eq!(sidebar(&rt), 420.0);
 
-    // The release: the settings layer rejects the dotted key (the audit
-    // find above), the commit is dropped, and the sidebar snaps back to the
-    // default — nothing persists.
+    assert_eq!(rt.state.layout_size(WIDTH_KEY), None, "preview does not write settings");
+    // Release commits the actual clamped width and clears the preview.
     rt.pointer_up(x + 2000.0, y);
     rt.frame(1.0 / 60.0);
     rt.settle_all();
@@ -2376,15 +2368,13 @@ fn the_sidebar_drag_previews_live_and_the_release_snaps_back() {
     rt.frame(1.0 / 60.0);
     assert_eq!(rt.state.splitter_preview, None, "the release clears the preview");
     assert_eq!(
-        rt.state.layout_size("workflow.sidebar"),
-        None,
-        "the dotted key's commit was rejected — nothing persisted"
+        rt.state.layout_size(WIDTH_KEY),
+        Some(420),
+        "the native layout setting records the completed drag"
     );
-    assert_eq!(
-        sidebar(&rt),
-        256.0,
-        "the released drag snaps back to the default (the un-persisted commit)"
-    );
+    assert_eq!(rt.state.layout_size("workflow.sidebar"), None, "no dotted key is written");
+    assert_eq!(sidebar(&rt), 420.0, "released pane stays at the committed width");
+    assert_sidebar_tab_geometry(&rt);
 }
 
 /// The confirm dialog's Escape path — the Dialog base's key route rides the

@@ -19,7 +19,7 @@
 //! | the edit panel's `draft`/`yamlText`/`editorMode` | `AppState::workflow_draft` / `workflow_yaml` / `workflow_editor_mode` — one live edit panel's backing (see the seams below) |
 //! | `appSettings.workflowStepResultOrder` + `updateSettings` | `AppState::workflow_step_order` + `toggle_workflow_step_order` (the settingsStore persistence is the settings track's seam) |
 //! | `useConfirmDialog()`'s pending `{options, resolve}` | `AppState::workflow_confirm_request` (+ `workflow_confirm_epoch`, each ask a fresh mount) and `answer_workflow_confirm` — the wapps remove pattern |
-//! | `useResizable` (256/180/420, `workflow.sidebar`) | `splitter::splitter_handle` over the same bounds and React's own storage key |
+//! | `useResizable` (256/180/420, `workflow.sidebar`) | `splitter::splitter_handle` over the same bounds and a valid native layout key |
 //! | `useEffect` mount (loadSettings/loadConfig/loadWorkflows/getDir/reloadConnections/listeners) | `AppState::select`'s `Section::Workflows` arm — the real halves (list + connections) run, the command seams below stay |
 //! | `viewStateRef` unmount snapshot (`workspacePanelStateStore`) | the `AppState` fields simply persist — the section switch cannot drop Rune state, so the round-trip is a no-op of the same observable behaviour (the wapps ruling) |
 //! | the `localesReady` gate (`useLocaleDomains(['workflows'])`) | nothing — the zh-CN table is compiled in (`i18n.rs`), so the pack is always ready |
@@ -154,8 +154,11 @@ use crate::views::workflow::workflow_form::{
 const SIDEBAR_WIDTH_DEFAULT: u32 = 256;
 const SIDEBAR_WIDTH_MIN: u32 = 180;
 const SIDEBAR_WIDTH_MAX: u32 = 420;
-/// React's `storageKey: 'workflow.sidebar'` — the splitter's layout key.
-const SIDEBAR_WIDTH_KEY: &str = "workflow.sidebar";
+/// Native layout settings accept lowercase letters, digits and hyphens.
+const SIDEBAR_WIDTH_KEY: &str = "workflow-sidebar-width";
+/// Preserve the existing observer/automation key (React called the region
+/// `workflow.sidebar` in localStorage). This key is not written to settings.
+const SIDEBAR_HANDLE_KEY: &str = "splitter:workflow.sidebar";
 /// React `flex-1 min-h-0` (the form area's leftover) capped for the
 /// engine's definite-height rule — see the edit pane's middle column.
 const EDIT_VISUAL_MAX_H: f32 = 500.0;
@@ -671,6 +674,7 @@ pub fn workflow_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         SIDEBAR_WIDTH_MAX,
         SIDEBAR_WIDTH_DEFAULT,
     )
+    .key(SIDEBAR_HANDLE_KEY)
     .fill(Color::TRANSPARENT)
     .hover(k.c.bg_accent.alpha(0.30));
 

@@ -4492,6 +4492,81 @@ mod tests {
     }
 
     #[test]
+    fn workflow_sidebar_drag_commits_to_file_and_remounts_at_the_saved_width() {
+        fn mount_workflow(dir: &std::path::Path) -> rune::Runtime<datazen_ui::AppState> {
+            let mut rt = datazen_ui::test_support::runtime();
+            let repo = FileConnectionRepository::open(&dir.join("connections.json"))
+                .expect("isolated connection repository");
+            rt.state.desktop = Box::new(LiveAdapter::with_data_dir(Arc::new(repo), dir));
+            rt.frame(0.0);
+            let (x, y) = rt.find("rail-workflows").expect("live Workflow rail route");
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+            rt.frame(1.0);
+            rt
+        }
+
+        let dir = tempfile::tempdir().expect("isolated native data folder");
+        let settings = dir.path().join("settings.json");
+        let initial_layout = serde_json::json!({
+            "sidebar-rail-width": 112,
+            "navigator-width": 334,
+        });
+        std::fs::write(
+            &settings,
+            serde_json::json!({ "ui": { "layout": initial_layout.clone() } }).to_string(),
+        )
+        .expect("seed unrelated layout settings");
+        let read_layout = || {
+            let raw = std::fs::read_to_string(&settings).expect("real settings file");
+            let doc: serde_json::Value = serde_json::from_str(&raw).expect("valid settings JSON");
+            doc["ui"]["layout"].clone()
+        };
+        let width = |rt: &rune::Runtime<datazen_ui::AppState>| {
+            rt.elements()
+                .into_iter()
+                .find(|e| !e.exiting && e.key.as_deref() == Some("workflow-sidebar"))
+                .expect("real workflow pane")
+                .rect[2]
+        };
+
+        let mut app = mount_workflow(dir.path());
+        assert_eq!(width(&app), 256.0);
+        let (x, y) = app.find("splitter:workflow.sidebar").expect("unchanged drag handle");
+        app.pointer_down(x, y);
+        app.frame(1.0 / 60.0);
+        app.pointer_move(x + 100.0, y);
+        app.frame(1.0 / 60.0);
+        assert_eq!(width(&app), 356.0, "actual rendered drag preview");
+        assert_eq!(read_layout(), initial_layout, "drag preview is not a durable write");
+
+        app.pointer_up(x + 100.0, y);
+        app.frame(1.0 / 60.0);
+        app.settle_all();
+        app.frame(1.0 / 60.0);
+        assert_eq!(width(&app), 356.0, "no snap-back on release");
+        assert_eq!(app.state.splitter_preview, None, "no preview is propping up the width");
+        assert_eq!(
+            read_layout(),
+            serde_json::json!({
+                "sidebar-rail-width": 112,
+                "navigator-width": 334,
+                "workflow-sidebar-width": 356,
+            }),
+            "native disk write changes only the Workflow width",
+        );
+
+        drop(app);
+        // Rebuild both host and UI; neither shares the old settings cache,
+        // pane layout, drag state, or any AppState from the first mount.
+        let reopened = mount_workflow(dir.path());
+        assert_eq!(reopened.state.splitter_preview, None);
+        assert_eq!(width(&reopened), 356.0, "new mount reads the committed disk value");
+        assert_eq!(reopened.state.sidebar_rail_width(), 112);
+        assert_eq!(reopened.state.navigator_width(), 334);
+    }
+
+    #[test]
     fn ui_settings_persist_through_the_file_and_survive_a_reopen() {
         let dir = temp_dir("settings");
         let store_path = dir.join("connections.json");
