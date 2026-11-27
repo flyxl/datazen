@@ -189,6 +189,10 @@ pub struct AppState {
     /// the settings page. Addressable by key so a specific section can be opened.
     pub(crate) settings_content: crate::views::settings_content_state::SettingsContentState,
     pub(crate) appearance_select: Option<usize>,
+    /// The theme toggle's popover state (React `ThemeToggle`'s `open` cell).
+    /// The titlebar owns the toggle, so the flag lives here next to the other
+    /// chrome cells instead of in a component that is rebuilt every frame.
+    pub theme_toggle_open: bool,
     /// A1: the connections home's filter input (name/engine/id search).
     pub connection_search: TextEdit,
     /// A1: the connections card list's expanded state (show all / show less).
@@ -650,6 +654,7 @@ impl Default for AppState {
             settings_error: None,
             settings_content: Default::default(),
             appearance_select: None,
+            theme_toggle_open: false,
             connection_search: TextEdit::new(String::new()),
             connections_show_all: false,
             home_copied_id: None,

@@ -4,6 +4,7 @@
 use super::*;
 use crate::i18n::t;
 
+use crate::components::theme_toggle::{theme_icon_resolver, ThemeToggle};
 use crate::constants::*;
 use crate::icons::{self, section_icon, ICON_PANEL_LEFT_CLOSE, ICON_PANEL_LEFT_OPEN};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
@@ -237,12 +238,40 @@ pub fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
     strip
 }
 
+/// The titlebar's theme toggle: React `ThemeToggle` in the chrome slot's
+/// right side. The old binary DARK/LIGHT text button had no System option and
+/// no icon; this is the 1:1 port — a square icon trigger with a
+/// light/dark/system popover mounted in the page's overlay layer.
+pub fn theme_toggle_slot(state: &AppState, dark: bool, layer: &mut Vec<El>) -> El {
+    let k = crate::ui::kit::kit(dark);
+    row()
+        .key("datazen-theme-toggle")
+        .w(32.0)
+        .h(32.0)
+        .center_y()
+        .child(
+            ThemeToggle::<AppState>::new(state.theme_mode(), state.theme_toggle_open)
+                .resolver(theme_icon_resolver())
+                .on_toggle(|state: &mut AppState| {
+                    state.theme_toggle_open = !state.theme_toggle_open;
+                })
+                .on_select(|state: &mut AppState, mode| {
+                    state.theme_toggle_open = false;
+                    state.save_theme_mode(mode);
+                })
+                .on_close(|state: &mut AppState| {
+                    state.theme_toggle_open = false;
+                })
+                .build(k, layer),
+        )
+}
+
 /// L5: 48pt content toolbar per section (action row). Actions are those
 /// already wired in the Rune UI for the active section.
 /// L6: 40pt content status bar — replaces the migration preview banner.
 /// Shows connection state, context counts (table/columns/rows) when available,
 /// and shortcut hints.
-pub fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
+pub fn content_status_bar(state: &AppState, dark: bool) -> El {
     // Kept in this file because the T0-03 sweep pins the call count here.
     let connected_label = t("conn.connected").to_owned();
     let profile = state.desktop_connection.as_ref().and_then(|id| {
@@ -297,5 +326,5 @@ pub fn content_status_bar(state: &AppState, theme: tok::Theme) -> El {
         // Keeps the legacy English shortcut copy pinned by chrome_metrics.
         shortcuts_override: Some("⌘N New query · ⌘W Close".to_owned()),
     };
-    crate::views::content_status_bar::build(&vm, theme)
+    crate::views::content_status_bar::build(&vm, dark)
 }

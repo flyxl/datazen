@@ -30,8 +30,8 @@
 //!   T197). The titlebar keeps the window-title label in the lead position
 //!   until the menu bar lands.
 //! - `ThemeToggle` — the chrome slot's right content
-//!   (`components/ThemeToggle.tsx` is T284). The binary DARK/LIGHT toggle the
-//!   shell already carries stands in.
+//!   (`components/ThemeToggle.tsx` is T284), now wired into the titlebar with
+//!   the light/dark/system popover and the icon face.
 //! - the `listenCrossWindow` effect family (`datazen:connections-changed`
 //!   refresh, `menu:new-connection`, `menu:export-connections` and the
 //!   import-connections sources) — `lib/crossWindowBus.ts` is T437; the share
@@ -58,6 +58,7 @@
 
 use crate::constants::*;
 use crate::i18n::t;
+use crate::views::appearance_section::ThemeMode;
 use crate::state_def::AppState;
 use crate::types::Section;
 use crate::ui::kit::kit;
@@ -75,14 +76,11 @@ use rune_kit::{Button, ButtonVariant, ControlSize};
 pub fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
     let system_dark = cx.system_dark();
     state.system_dark.set(system_dark);
-    let dark = match state.desktop.read_ui_settings() {
-        Ok(settings) => settings.into_iter().find_map(|setting| match setting {
-            Setting::Theme { dark } => Some(dark),
-            _ => None,
-        }),
-        Err(_) => None,
-    }
-    .unwrap_or(system_dark);
+    let dark = match state.theme_mode() {
+        ThemeMode::Light => false,
+        ThemeMode::Dark => true,
+        ThemeMode::System => system_dark,
+    };
     let theme = tok::theme(dark);
 
     // React `MainPage.tsx:112-133`: the early return renders the chrome, the
@@ -90,7 +88,7 @@ pub fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
     // `ConnectionPage` and no `RunningExecutionCloseHost`. The gate belongs to
     // MainPage, not to the page it replaces, so it stays here.
     if main_load_failed(state) {
-        let layer = modal_layer(state, theme, dark);
+        let mut layer = modal_layer(state, theme, dark);
         return col()
             .key("datazen-root")
             .w_full()
@@ -107,7 +105,13 @@ pub fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
                     state.sql.insert(text);
                 }
             })
-            .child(main_titlebar(dark, cx, t("menu.appName").to_owned()))
+            .child(main_titlebar(
+                state,
+                dark,
+                cx,
+                t("menu.appName").to_owned(),
+                &mut layer,
+            ))
             .child(main_load_error_body(state, dark))
             .children(layer);
     }
@@ -143,7 +147,13 @@ fn main_load_failed(state: &AppState) -> bool {
 /// inside the drag band and keeps its press. The label is the title the
 /// calling branch chose (the section title, or the app name on the failure
 /// screen).
-fn main_titlebar(dark: bool, cx: &mut Cx<AppState>, label: String) -> El {
+fn main_titlebar(
+    state: &AppState,
+    dark: bool,
+    cx: &mut Cx<AppState>,
+    label: String,
+    layer: &mut Vec<El>,
+) -> El {
     let theme = tok::theme(dark);
     row()
         .key("datazen-titlebar")
@@ -166,21 +176,7 @@ fn main_titlebar(dark: bool, cx: &mut Cx<AppState>, label: String) -> El {
                 .grow(1.0)
                 .min_w(0.0),
         )
-        .child(
-            row()
-                .key("datazen-theme-toggle")
-                .h(28.0)
-                .px(10.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .on_press(|state: &mut AppState| state.toggle_theme())
-                .child(
-                    text(if dark { "DARK" } else { "LIGHT" })
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        )
+        .child(crate::views::theme_toggle_slot(state, dark, layer))
 }
 
 /// React's `main-load-error` (`MainPage.tsx:120-128`): the centered danger

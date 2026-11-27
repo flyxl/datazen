@@ -10,10 +10,11 @@
 //! otherwise the centre context cluster renders, byte-identical to the pre-slot
 //! footer. No inline colour or glyph is added.
 
-use rune::tok::{self, type_};
+use rune::tok::type_;
 use rune::{row, text, El};
 
 use crate::i18n::t;
+use crate::ui::kit::kit;
 
 /// React `CountStrategy` — the footer never turns "unknown" into a zero.
 #[allow(dead_code)] // VM surface; built by chrome::content_status_bar and the tests
@@ -135,21 +136,26 @@ impl StatusBarVm {
 }
 
 /// Build the footer as a `role="status"` 40pt row.
+///
+/// React `ContentStatusBar.tsx:69`: `border-t border-edge bg-surface-alt px-4
+/// text-xs text-fg-secondary`, with the centre and shortcut clusters in
+/// `text-fg-muted` and the state dot in `bg-success`. The kit mapping is the
+/// same one `components/status_bar.rs` uses (`surface-alt` → `layer_01`,
+/// `edge` → `border_base`), so light and dark both resolve from one palette.
 #[allow(dead_code)] // reusable component; mounted by chrome::content_status_bar
-pub fn build(vm: &StatusBarVm, theme: tok::Theme) -> El {
-    let dot = if vm.connected {
-        tok::accent(2, true)
-    } else {
-        theme.text_secondary
-    };
+pub fn build(vm: &StatusBarVm, dark: bool) -> El {
+    let k = kit(dark);
+    let dot = if vm.connected { k.c.success.bg } else { k.c.text_faint };
     let mut bar = row()
         .key("content-status-bar")
         .role("status")
         .w_full()
         .h(40.0)
+        .min_h(40.0)
         .px(16.0)
         .center_y()
-        .fill(theme.control_off)
+        .border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base)
+        .fill(k.c.layer_01)
         .child(
             row()
                 .gap(8.0)
@@ -172,7 +178,7 @@ pub fn build(vm: &StatusBarVm, theme: tok::Theme) -> El {
                     })
                     .key("status-connection-label")
                     .font(type_::LABEL)
-                    .color(theme.text),
+                    .color(k.c.text_muted),
                 ),
         );
 
@@ -187,25 +193,30 @@ pub fn build(vm: &StatusBarVm, theme: tok::Theme) -> El {
         );
     } else {
         bar = bar.child(
-            row().grow(1.0).min_w(0.0).justify_center().child(
-                text(vm.context_text())
-                    .key("status-context")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary)
-                    .truncate(),
-            ),
+            row()
+                .grow(1.0)
+                .min_w(0.0)
+                .px(16.0)
+                .justify_center()
+                .child(
+                    text(vm.context_text())
+                        .key("status-context")
+                        .font(type_::LABEL)
+                        .color(k.c.text_muted)
+                        .truncate(),
+                ),
         );
     }
 
     bar.child(
-        row().gap(8.0).center_y().child(
+        row().gap(8.0).center_y().shrink().child(
             text(vm
                 .shortcuts_override
                 .clone()
                 .unwrap_or_else(|| vm.shortcuts_text()))
                 .key("status-shortcuts")
                 .font(type_::LABEL)
-                .color(theme.text_secondary),
+                .color(k.c.text_muted),
         ),
     )
 }

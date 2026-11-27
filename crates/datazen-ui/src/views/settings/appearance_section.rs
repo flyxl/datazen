@@ -98,6 +98,17 @@ impl ThemeMode {
         }
     }
 
+    /// The wire spelling back into a mode. An unknown value is refused by
+    /// `Setting::validate`, so this is only the read side's honest fallback.
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "light" => Some(Self::Light),
+            "dark" => Some(Self::Dark),
+            "system" => Some(Self::System),
+            _ => None,
+        }
+    }
+
     /// The i18n key of the select's label.
     fn label_key(self) -> &'static str {
         match self {
