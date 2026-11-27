@@ -43,9 +43,8 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
             if let Some(theme) = SqlSyntaxTheme::from_id(value) {
                 state.save_sql_syntax_theme(theme);
             }
-        })
-        .build(kit, overlays)
-        .h(36.0);
+        });
+    let select = syntax_theme_trigger(select, kit, overlays);
     setting_row(
         kit,
         overlays,
@@ -54,6 +53,35 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
         Some(t("settings.sqlSyntaxThemeHint")),
         col().w_full().gap(8.0).child(select).child(preview(theme, dark, kit)),
     )
+}
+
+/// The original setting uses a 1pt inside edge on a 36pt field, not
+/// the generic Kit control's softer outside elevation.
+fn syntax_theme_trigger(select: Select, kit: &Kit, overlays: &mut Vec<El>) -> El {
+    select
+        .build(&syntax_field_kit(kit), overlays)
+        .h(36.0)
+        .radius(9.0)
+        .border(1.0, kit.c.border_base)
+        // Match the original px-2.5 plus its border; the inner Kit
+        // value slot already contributes most of the leading inset.
+        .pl(3.0)
+        .pr(8.0)
+}
+
+fn syntax_field_kit(kit: &Kit) -> Kit {
+    let mut field = (*kit).clone();
+    field.elevation = field.elevation.with_input(Vec::<rune::Shadow>::new());
+    // The kit uses button-neutral as a fallback for an empty input list.
+    field.elevation.button_neutral.clear();
+    field.ty.ui_compact = TextStyle::new(14.0, 400.0).lh(20.0);
+    field.c.icon_muted = kit.c.text_faint;
+    field
+}
+
+fn preview_radius(dark: bool) -> f32 {
+    // The original rounded-lg follows each stock appearance token.
+    if dark { 12.0 } else { 11.0 }
 }
 
 fn preview(theme: SqlSyntaxTheme, dark: bool, kit: &Kit) -> El {
@@ -92,12 +120,16 @@ fn preview(theme: SqlSyntaxTheme, dark: bool, kit: &Kit) -> El {
         );
         start = end + 1;
     }
+    let radius = preview_radius(dark);
     col()
         .key("settings-sql-syntax-preview")
         .w_full()
-        .radius(kit.radius.md)
-        .clip_rounded(kit.radius.md)
+        .radius(radius)
+        .clip_rounded(radius)
         .border(1.0, kit.c.border_base)
+        // CSS puts the five-line pre inside a 1px border box. Rune
+        // paints the edge but does not add it to the child's quadrant.
+        .padding(1.0)
         .fill(colors.background.unwrap_or(kit.c.bg_base))
         .child(
             col()
@@ -106,4 +138,36 @@ fn preview(theme: SqlSyntaxTheme, dark: bool, kit: &Kit) -> El {
                 .scroll_x()
                 .child(lines),
         )
+}
+
+#[cfg(test)]
+mod visual_tests {
+    use super::*;
+
+    #[test]
+    fn editor_skin_preserves_original_local_select_and_five_live_preview_lines() {
+        for dark in [false, true] {
+            let shared = crate::ui::kit::kit(dark);
+            let trigger = syntax_field_kit(shared);
+            assert!(trigger.elevation.input().is_empty());
+            assert!(!shared.elevation.input().is_empty());
+            assert_eq!(trigger.elevation.floating.len(), shared.elevation.floating.len());
+            assert_eq!(trigger.c.border_focus, shared.c.border_focus);
+            assert_eq!(trigger.c.icon_muted, shared.c.text_faint);
+
+            fn view(dark: &bool, _: &mut rune::Cx<bool>) -> El {
+                preview(SqlSyntaxTheme::DEFAULT, *dark, crate::ui::kit::kit(*dark))
+            }
+            let mut rt = rune::Runtime::new(dark, view, (496.0, 240.0), rune::Env::new(dark, 1.0));
+            rt.frame(0.0);
+            let outer = rt.presented("settings-sql-syntax-preview").unwrap().0;
+            let inner = rt.presented("settings-sql-syntax-preview-scroll").unwrap().0;
+            assert_eq!(inner[0] - outer[0], 1.0);
+            assert_eq!(inner[1] - outer[1], 1.0);
+            assert_eq!(outer[2] - inner[2], 2.0);
+            for line in 0..5 {
+                assert!(rt.presented(&format!("settings-sql-syntax-preview-line-{line}")).is_some());
+            }
+        }
+    }
 }
