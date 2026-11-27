@@ -74,6 +74,10 @@ fn sheet(
                 .virtual_rows_version(1u32),
         );
     let (focus_row, focus_col) = grid.focus();
+    let active = grid.selected_row().map_or_else(
+        || format!("cell-{focus_row}-{focus_col}"),
+        |row| format!("rownum-{row}"),
+    );
     col()
         .key(slot.key("data-grid-scroll"))
         .w_full()
@@ -83,7 +87,7 @@ fn sheet(
         .role("grid")
         .label(grid.table_label())
         .a11y_value(format!("{} rows × {} columns", grid.rows, grid.cols))
-        .active_descendant(slot.key(&format!("cell-{focus_row}-{focus_col}")))
+        .active_descendant(slot.key(&active))
         .scroll_xy()
         .on_scroll_offset(move |at: ScrollPos| {
             scroll_x.set(at.offset[0]);
@@ -347,7 +351,9 @@ pub fn result_panel(
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.
 pub fn status_line(grid: &DataGrid) -> String {
-    let selection = if grid.has_selection() {
+    let selection = if let Some(row) = grid.selected_row() {
+        format!("row {}", grid.page().saturating_mul(grid.page_size()).saturating_add(row + 1))
+    } else if grid.has_selection() {
         let (r0, r1, c0, c1) = grid.rect();
         format!("r{r0}c{c0}..r{r1}c{c1}")
     } else {
@@ -535,17 +541,22 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
     } else {
         row_index + 1
     };
-    line = line.child(
-        row()
-            .key(slot.key(&format!("rownum-{row_index}")))
-            .role("rowheader")
-            .w(GUTTER_W)
-            .h(ROW_H)
-            .px(6.0)
-            .center_y()
-            .fill(gp.gutter_bg)
-            .child(text(num.to_string()).font(label_style()).color(ink)),
-    );
+    let row_selected = grid.selected_row() == Some(row_index);
+    let mut gutter = row()
+        .key(slot.key(&format!("rownum-{row_index}")))
+        .role("rowheader")
+        .w(GUTTER_W)
+        .h(ROW_H)
+        .px(6.0)
+        .center_y()
+        .fill(if row_selected { gp.selected } else { gp.gutter_bg })
+        .child(text(num.to_string()).font(label_style()).color(ink));
+    if slot == GridSlot::Table {
+        gutter = gutter.on_press(move |state: &mut crate::AppState| {
+            state.grid.select_row(row_index);
+        });
+    }
+    line = line.child(gutter);
     let mut cursor = 0u32;
     for col_index in cols {
         if col_index > cursor {
@@ -604,7 +615,7 @@ fn cell(
     dark: bool,
 ) -> El {
     let selected = grid.covers(row_index, col_index);
-    let active = selected && grid.focus == (row_index, col_index);
+    let active = selected && grid.selected_row().is_none() && grid.focus == (row_index, col_index);
     let frozen = col_index == 0;
     let current_hit = grid.is_current_find_hit(row_index, col_index);
     let any_hit = grid.is_find_hit(row_index, col_index);
@@ -637,9 +648,14 @@ fn cell(
         .fill(fill);
     if slot == GridSlot::Table {
         box_el = box_el
-            .on_press(move |state: &mut crate::AppState| state.grid.select(row_index, col_index))
-            .on_double_press(move |state: &mut crate::AppState| {
-                if state.grid.focus() != (row_index, col_index) {
+            .on_press_tx(move |state: &mut crate::AppState, tx| {
+                state.grid.click_cell(row_index, col_index, tx.mods().shift);
+            })
+            .on_double_press_tx(move |state: &mut crate::AppState, tx| {
+                if tx.mods().shift {
+                    return;
+                }
+                if state.grid.selected_row().is_some() || state.grid.focus() != (row_index, col_index) {
                     state.grid.select(row_index, col_index);
                 }
                 if !state.grid.editing {

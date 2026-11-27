@@ -41,3 +41,73 @@ class DashboardJourney:
         self.assertEqual(json.loads((self.root / "dashboards.json").read_text())["widgets"], widgets)
         workflow = self.replay([tap(.5, "rail-workflows")], until=2.5)
         self.expect_rendered(workflow, key="workflow-list-empty")
+
+    def test_legacy_dashboard_reference_prevents_deleting_shared_workflow(self):
+        """Migrate UJ-10 against an actual persisted dashboard and workflow registry."""
+        fixture(self.store, self.db)
+        sql = "SELECT customer_name, id FROM customers ORDER BY id"
+        title, shared = "Referenced Widget", "shared-e2e-workflow"
+        dashboard_start = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-dashboards")]
+        created = self.replay([
+            *dashboard_start, *fill(4.1, "widget-title-input", title),
+            *fill(5.5, "widget-query-input", sql), tap(8, "widget-save"),
+        ], until=10)
+        self.expect_rendered(created, text="fixture-ada 1", within="dashboards-page")
+        dashboard_file = self.root / "dashboards.json"
+        registry = self.root / "workflows.json"
+        dashboards = json.loads(dashboard_file.read_text(encoding="utf-8"))
+        (widget,) = dashboards["widgets"]
+        (hidden,) = json.loads(registry.read_text(encoding="utf-8"))
+        self.assertEqual(widget["workflowId"], hidden["id"])
+        self.assertEqual(widget["title"], title)
+        widget_id = int(widget["id"].replace("-", "")[:16], 16)
+
+        # The original fixture creates a widget reference through the old
+        # desktop IPC. Use the same persisted foreign key with the native
+        # dashboard writer's actual record shape. This journey covers the
+        # deletion guard, not the distinct create-from-workflow UI journey.
+        def record(name):
+            return {
+                "id": name, "name": name, "description": "", "visibility": "user",
+                "definitionYaml": f'id: {name}\nname: {name}\n'
+                                  'description: Persisted dashboard reference fixture\n'
+                                  'connection: e2e-sqlite\nsteps:\n'
+                                  f'  - type: query\n    id: lookup\n    sql: {sql}\n',
+                "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z",
+            }
+        unrelated = "unreferenced-e2e-workflow"
+        widget["workflowId"] = shared
+        dashboards["dashboards"][0]["name"] = "Shared E2E Dashboard"
+        dashboard_file.write_text(json.dumps(dashboards), encoding="utf-8")
+        registry.write_text(json.dumps([hidden, record(shared), record(unrelated)]), encoding="utf-8")
+        initial_dashboard = dashboard_file.read_bytes()
+        initial_workflows = registry.read_bytes()
+
+        prefix = [tap(.5, "rail-workflows")]
+        def deleting(name):
+            return [*prefix, tap(2.5, f"workflow-{name}-delete"),
+                    tap(4, "workflow-confirm-dialog-confirm")]
+
+        refused = self.replay(deleting(shared), until=5.5)
+        self.expect_rendered(refused, key=f"workflow-{shared}")
+        self.expect_rendered(refused, key="workflow-operation-error")
+        errors = [node.get("text", "") for node in refused["elements"]
+                  if (node.get("key") or "").startswith("workflow-operation-error")]
+        self.assertTrue(any(title in error and "Shared E2E Dashboard" in error for error in errors))
+        self.assertEqual(registry.read_bytes(), initial_workflows)
+        self.assertEqual(dashboard_file.read_bytes(), initial_dashboard)
+
+        allowed = self.replay(deleting(unrelated), until=5.5)
+        self.expect_rendered(allowed, key=f"workflow-{shared}")
+        self.assertFalse(visible(allowed, key=f"workflow-{unrelated}"))
+        self.assertFalse(visible(allowed, key="workflow-operation-error"))
+        self.assertEqual([item["id"] for item in json.loads(registry.read_bytes())],
+                         [hidden["id"], shared])
+        self.assertEqual(dashboard_file.read_bytes(), initial_dashboard)
+        restored = self.replay([*dashboard_start, tap(4.5, "widget-refresh")], until=6.5)
+        self.expect_rendered(
+            restored, text=f"#{widget_id} · {title} · bar", within=f"widget-head-{widget_id}",
+        )
+        self.expect_rendered(restored, text="fixture-lin 2", within="dashboards-page")
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as database:
+            self.assertEqual(database.execute(sql).fetchall(), [("fixture-ada", 1), ("fixture-lin", 2)])

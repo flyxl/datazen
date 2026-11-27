@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 
+from connection_landing import ConnectionLandingJourney
 from csv_import import CsvImportJourneys
 from dashboard import DashboardJourney
 from data_sync import DataSyncJourneys
@@ -26,7 +27,7 @@ from transfer import TransferJourneys
 from workflow import WorkflowJourney
 
 
-class NativeJourneys(DashboardJourney, FavoritesJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, unittest.TestCase):
+class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourney, OfflineJourneys, QueryHistoryJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="datazen-native-e2e-")
         self.addCleanup(tmp.cleanup)

@@ -11,6 +11,13 @@ pub const COL_COUNT: u32 = 200;
 /// Cells built for one mounted row, besides the frozen first column.
 pub const COL_WINDOW: u32 = 12;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Selection {
+    None,
+    Cells,
+    Row(u32),
+}
+
 pub struct DataGrid {
     pub rows: u32,
     pub cols: u32,
@@ -21,7 +28,7 @@ pub struct DataGrid {
     col_widths: Vec<u32>,
     pub anchor: (u32, u32),
     pub focus: (u32, u32),
-    selection_active: bool,
+    selection: Selection,
     pub editing: bool,
     editable: bool,
     page: u32,
@@ -79,7 +86,7 @@ impl DataGrid {
             col_widths: Vec::new(),
             anchor: (0, 0),
             focus: (0, 0),
-            selection_active: true,
+            selection: Selection::Cells,
             editing: false,
             editable: true,
             page: 0,
@@ -303,27 +310,62 @@ impl DataGrid {
         let col = col.min(self.cols.saturating_sub(1));
         self.anchor = (row, col);
         self.focus = (row, col);
-        self.selection_active = self.rows > 0 && self.cols > 0;
+        self.selection = if self.rows > 0 && self.cols > 0 {
+            Selection::Cells
+        } else {
+            Selection::None
+        };
     }
 
-    /// Navigation coordinates can exist even though no cells are selected.
-    pub fn has_selection(&self) -> bool {
-        self.selection_active && self.rows > 0 && self.cols > 0
+    /// Extend an existing cell range from its original anchor. A row
+    /// selection is not a cell anchor, so shift-click starts a new range.
+    pub fn click_cell(&mut self, row: u32, col: u32, extend: bool) {
+        if !extend || self.selection != Selection::Cells || self.editing
+            || row >= self.rows || col >= self.cols
+        {
+            self.select(row, col);
+            return;
+        }
+        self.focus = (row, col);
     }
 
-    pub fn clear_selection(&mut self) {
-        self.selection_active = false;
-        self.anchor = self.focus;
-    }
-
-    pub fn begin_edit(&mut self) {
-        if !self.editable || self.rows == 0 || self.cols == 0 {
+    /// Row selection has no active cell; anchor and focus remain navigation
+    /// coordinates, not endpoints of the selected row.
+    pub fn select_row(&mut self, row: u32) {
+        if row >= self.rows || self.cols == 0 {
             return;
         }
         if self.editing {
             self.commit_edit();
         }
-        self.selection_active = true;
+        self.selection = Selection::Row(row);
+    }
+
+    pub fn selected_row(&self) -> Option<u32> {
+        match self.selection {
+            Selection::Row(row) => Some(row),
+            _ => None,
+        }
+    }
+
+    /// Navigation coordinates can exist even though no cells are selected.
+    pub fn has_selection(&self) -> bool {
+        self.selection != Selection::None && self.rows > 0 && self.cols > 0
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selection = Selection::None;
+        self.anchor = self.focus;
+    }
+
+    pub fn begin_edit(&mut self) {
+        if !self.editable || self.rows == 0 || self.cols == 0 || self.selected_row().is_some() {
+            return;
+        }
+        if self.editing {
+            self.commit_edit();
+        }
+        self.selection = Selection::Cells;
         self.editor = TextEdit::new(self.cell(self.focus.0, self.focus.1));
         self.editor.focused = true;
         self.editing = true;
@@ -455,6 +497,9 @@ impl DataGrid {
 
     /// Paste TSV with the focus cell as the top-left. Cells outside the grid are dropped.
     pub fn paste_tsv(&mut self, text: &str) {
+        if self.selected_row().is_some() {
+            return;
+        }
         if self.editing {
             self.commit_edit();
         }
@@ -510,13 +555,14 @@ impl DataGrid {
         if self.editing || self.rows == 0 || self.cols == 0 {
             return;
         }
-        let r = (self.focus.0 as i32 + dr).clamp(0, self.rows as i32 - 1) as u32;
+        let row = self.selected_row().unwrap_or(self.focus.0);
+        let r = (row as i32 + dr).clamp(0, self.rows as i32 - 1) as u32;
         let c = (self.focus.1 as i32 + dc).clamp(0, self.cols as i32 - 1) as u32;
         self.focus = (r, c);
-        if !extend || !self.selection_active {
+        if !extend || self.selection != Selection::Cells {
             self.anchor = (r, c);
         }
-        self.selection_active = true;
+        self.selection = Selection::Cells;
         self.reveal_focus();
     }
 
@@ -530,6 +576,9 @@ impl DataGrid {
     }
 
     pub fn rect(&self) -> (u32, u32, u32, u32) {
+        if let Some(row) = self.selected_row() {
+            return (row, row, 0, self.cols.saturating_sub(1));
+        }
         let r0 = self.anchor.0.min(self.focus.0);
         let r1 = self.anchor.0.max(self.focus.0);
         let c0 = self.anchor.1.min(self.focus.1);
@@ -643,7 +692,7 @@ impl DataGrid {
         if let Some((r, c)) = self.current_find_hit() {
             self.anchor = (r, c);
             self.focus = (r, c);
-            self.selection_active = true;
+            self.selection = Selection::Cells;
             self.reveal_focus();
         }
     }

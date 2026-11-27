@@ -3550,6 +3550,18 @@ impl DesktopAdapter for LiveAdapter {
         if matches.next().is_some() {
             return Err("Several workflows have that name; nothing was deleted.".into());
         }
+        let refs = dashboard_rules::find_workflow_refs(
+            &scope,
+            self.dashboard_store.as_ref(),
+            &selected.id,
+        )
+        .map_err(|_| "Dashboard references could not be checked; nothing was deleted.")?;
+        if let Some(reference) = refs.first() {
+            return Err(format!(
+                "This workflow is referenced by widget '{}' in dashboard '{}'. Remove the dashboard reference before deleting it.",
+                reference.widget_title, reference.dashboard_name,
+            ));
+        }
         futures_executor::block_on(self.workflows.delete(&scope, &selected.id))
             .map_err(|_| "The selected workflow could not be deleted.".into())
     }

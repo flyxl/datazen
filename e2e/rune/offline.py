@@ -251,6 +251,105 @@ class OfflineJourneys:
         self.expect_rendered(next_page, text=second, within="cell-0-1")
         self.assertFalse(visible(next_page, text=first, within="data-grid"))
 
+    def test_legacy_table_row_gutter_selects_exactly_one_complete_row(self):
+        """Migrate TC-SEL-005 with a real three-column, paged SQLite table."""
+        fixture(self.store, self.db)
+        self.root.joinpath("settings.json").write_text(
+            json.dumps({"ui": {"tablePageSize": 2}}), encoding="utf-8")
+        with sqlite3.connect(self.db) as database:
+            database.executescript(
+                "ALTER TABLE customers ADD COLUMN score INTEGER NOT NULL DEFAULT 0;"
+                "UPDATE customers SET score = 100 + id;"
+                "INSERT INTO customers VALUES (3, 'fixture-next-page', 103);")
+            expected = database.execute("SELECT * FROM customers ORDER BY id").fetchall()
+
+        def paints(tree, index):
+            grid = {node.get("key"): node["fill"] for node in tree["elements"]
+                    if node.get("role") in {"rowheader", "gridcell"}}
+            return [grid[f"cell-{index}-{col}"] for col in range(3)], grid[f"rownum-{index}"]
+
+        plain = self.replay(OPEN, until=4.8)
+        for row, values in enumerate(expected[:2]):
+            self.expect_rendered(plain, text=str(row+1), within=f"rownum-{row}")
+            for col, value in enumerate(values):
+                self.expect_rendered(plain, text=str(value), within=f"cell-{row}-{col}")
+        original = [paints(plain, i) for i in range(2)]
+        selected = [*OPEN, tap(5, "rownum-1")]
+        one = self.replay(selected, until=6.2)
+        self.expect_rendered(one, key="data-grid-status",
+                             text="2×3 · window at column 0 · selection row 2 · 0 dirty")
+        self.assertEqual(paints(one, 0), original[0])
+        target_cells, target_gutter = paints(one, 1)
+        self.assertTrue(all(a != b for a, b in zip(target_cells, original[1][0])))
+        self.assertNotEqual(target_gutter, original[1][1])
+        self.assertEqual(target_cells, [target_gutter] * 3, "no distinct active cell in row mode")
+        self.assertFalse(visible(one, key="grid-editor"))
+
+        single = self.replay([*selected, tap(6.5, "cell-0-2")], until=7.6)
+        self.expect_rendered(single, key="data-grid-status",
+                             text="2×3 · window at column 0 · selection r0c2..r0c2 · 0 dirty")
+        self.assertEqual(paints(single, 1), original[1])
+        self.assertEqual(paints(single, 0)[0][:2], original[0][0][:2])
+        self.assertNotEqual(paints(single, 0)[0][2], original[0][0][2])
+
+        cleared = self.replay([*selected, key(6.5, "Escape")], until=7.6)
+        self.expect_rendered(cleared, key="data-grid-status",
+                             text="2×3 · window at column 0 · selection none · 0 dirty")
+        self.assertEqual([paints(cleared, i) for i in range(2)], original)
+        paged = self.replay([*selected, tap(6.5, "page-next")], until=8.2)
+        self.expect_rendered(paged, key="grid-page-label", text="Page 2 / 2")
+        self.expect_rendered(paged, key="data-grid-status",
+                             text="1×3 · window at column 0 · selection none · 0 dirty")
+        self.assertEqual(paints(paged, 0), original[0])
+        self.expect_rendered(paged, text=expected[2][1], within="cell-0-1")
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as database:
+            self.assertEqual(database.execute("SELECT * FROM customers ORDER BY id").fetchall(), expected)
+
+    def test_legacy_table_shift_click_extends_from_original_cell_anchor(self):
+        """Port TC-SEL-003 with native modifier events and a real SQLite grid."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.executescript(
+                "ALTER TABLE customers ADD COLUMN score INTEGER NOT NULL DEFAULT 0;"
+                "UPDATE customers SET score=100+id;"
+                "INSERT INTO customers VALUES (3, 'fixture-grace', 103), (4, 'fixture-decoy', 104);")
+            expected = db.execute("SELECT * FROM customers ORDER BY id").fetchall()
+
+        def paints(tree):
+            return {node["key"]: node["fill"] for node in tree["elements"]
+                    if node.get("role") == "gridcell" and (node.get("key") or "").startswith("cell-")}
+
+        plain = self.replay(OPEN, until=4.8)
+        normal = paints(plain)
+        start = [*OPEN, tap(5.0, "cell-0-1")]
+        shift = [{"t": 6.1, "hold": "shift"}, tap(6.4, "cell-2-2"),
+                 {"t": 6.8, "hold": ""}]
+        expanded = self.replay([*start, *shift], until=7.9)
+        self.expect_rendered(expanded, key="data-grid-status",
+                             text="4×3 · window at column 0 · selection r0c1..r2c2 · 0 dirty")
+        actual = paints(expanded)
+        self.assertEqual(set(actual), set(normal))
+        self.assertEqual({name for name in actual if actual[name] != normal[name]},
+                         {f"cell-{r}-{c}" for r in range(3) for c in (1, 2)})
+        self.expect_rendered(expanded, text=str(expected[2][2]), within="cell-2-2")
+        self.expect_rendered(expanded, text=expected[3][1], within="cell-3-1")
+        self.assertFalse(visible(expanded, key="grid-editor"))
+
+        shrink = [{"t": 8.0, "hold": "shift"}, tap(8.3, "cell-1-1"),
+                  {"t": 8.7, "hold": ""}]
+        shrunk = self.replay([*start, *shift, *shrink], until=9.7)
+        self.expect_rendered(shrunk, key="data-grid-status",
+                             text="4×3 · window at column 0 · selection r0c1..r1c1 · 0 dirty")
+        shrunk_paints = paints(shrunk)
+        self.assertEqual({name for name in normal if shrunk_paints[name] != normal[name]},
+                         {"cell-0-1", "cell-1-1"})
+
+        clicked = self.replay([*start, *shift, tap(8.1, "cell-3-0")], until=9.6)
+        self.expect_rendered(clicked, key="data-grid-status",
+                             text="4×3 · window at column 0 · selection r3c0..r3c0 · 0 dirty")
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+            self.assertEqual(db.execute("SELECT * FROM customers ORDER BY id").fetchall(), expected)
+
     def test_grid_next_and_previous_page_use_saved_page_size(self):
         fixture(self.store, self.db)
         self.root.joinpath("settings.json").write_text(
