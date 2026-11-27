@@ -118,8 +118,11 @@ impl AppState {
     pub fn set_settings_section(&mut self, section: &str) {
         self.appearance_select = None;
         self.settings_content.close_select();
-        self.settings_content
-            .select_section(parse_settings_section(section));
+        let section = parse_settings_section(section);
+        if section != "prompts" || self.active != crate::types::Section::Settings {
+            self.retire_native_prompt_confirmation();
+        }
+        self.settings_content.select_section(section);
     }
 
     pub fn ui_settings(&self) -> Vec<Setting> {

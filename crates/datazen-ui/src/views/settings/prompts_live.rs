@@ -7,7 +7,7 @@ use datazen_ui_api::{
 use rune::{col, text, El, TextEdit};
 
 use super::prompt_settings_section::{PromptSettingsSection, PromptSettingsSectionState};
-use crate::{i18n::t, state_def::AppState, types::Section, ui::kit::kit};
+use crate::{hooks::confirm_dialog::ConfirmDialogHost, i18n::t, state_def::AppState, types::Section, ui::kit::kit};
 
 const UNAVAILABLE: &str = "Local prompt settings are unavailable.";
 
@@ -133,8 +133,21 @@ impl AppState {
         ui.reset_plan = Some(scenario);
     }
 
-    fn answer_native_prompt_reset(&mut self, dialog: u64, ok: bool) {
+    pub(crate) fn retire_native_prompt_confirmation(&mut self) {
         let ui = &mut self.prompt_settings;
+        ui.editor.confirm.pending = None;
+        ui.editor.pending_reset = None;
+        ui.reset_plan = None;
+    }
+
+    fn answer_native_prompt_reset(&mut self, epoch: u64, dialog: u64, ok: bool) {
+        if self.active != Section::Settings || self.settings_section() != "prompts" {
+            return;
+        }
+        let ui = &mut self.prompt_settings;
+        if !ui.mounted || ui.epoch != epoch || ui.pending.is_some() || ui.reset_plan.is_none() {
+            return;
+        }
         if ui.editor.confirm.answer(dialog, ok) != Some(ok) {
             return;
         }
@@ -144,6 +157,22 @@ impl AppState {
             self.start_prompt_change(NativePromptChange::Reset { scenario });
         }
     }
+}
+
+/// The window modal layer owns reset geometry and native Escape/focus handling.
+pub(crate) fn mount_reset_confirmation(state: &AppState, dark: bool, layer: &mut Vec<El>) {
+    let ui = &state.prompt_settings;
+    if state.active != Section::Settings || state.settings_section() != "prompts"
+        || !ui.mounted || ui.pending.is_some() || ui.reset_plan.is_none()
+        || !ui.editor.confirm.is_open()
+    {
+        return;
+    }
+    let epoch = ui.epoch;
+    let request = ui.editor.confirm.pending_id;
+    ConfirmDialogHost::<AppState>::new(&ui.editor.confirm)
+        .on_resolved(move |state, ok| state.answer_native_prompt_reset(epoch, request, ok))
+        .build(dark, layer);
 }
 
 pub(super) fn view(state: &AppState, dark: bool) -> El {
@@ -167,7 +196,6 @@ pub(super) fn view(state: &AppState, dark: bool) -> El {
         }
     }
     let expected = ui.epoch;
-    let confirmation = ui.editor.confirm.pending_id;
     let ready = move |state: &AppState| {
         state.active == Section::Settings && state.settings_section() == "prompts"
             && state.prompt_settings.epoch == expected && state.prompt_settings.pending.is_none()
@@ -178,6 +206,7 @@ pub(super) fn view(state: &AppState, dark: bool) -> El {
         |state| &mut state.prompt_settings.editor.edit_system,
     )
     .busy(ui.pending.is_some())
+    .without_inline_reset_confirmation()
     .on_set_driver_type(move |state, value| {
         if ready(state) { state.choose_prompt_driver(&value); }
     })
@@ -207,9 +236,6 @@ pub(super) fn view(state: &AppState, dark: bool) -> El {
     })
     .on_begin_reset(move |state, idx| {
         if ready(state) { state.ask_native_prompt_reset(idx); }
-    })
-    .on_reset_resolved(move |state, ok| {
-        if ready(state) { state.answer_native_prompt_reset(confirmation, ok); }
     })
     .build(&mut layer);
     let k = kit(dark);
@@ -273,4 +299,123 @@ mod tests {
         state.receive_native_prompts(8, Ok(reply("stale after leaving")));
         assert!(state.prompt_settings.editor.prompts.is_empty());
     }
+    #[test]
+    fn window_prompt_reset_fits_and_only_clicked_ok_commits() {
+        use datazen_ui_api::{ColumnFilter, ColumnSort, DesktopAdapter, TablePage};
+        use rune::{Env, Key, KeyEvent, Mods, Runtime};
+        use std::{cell::RefCell, rc::Rc};
+
+        struct RecordingPort(Rc<RefCell<Vec<NativePromptRequest>>>);
+        impl DesktopAdapter for RecordingPort {
+            fn list_connections(&mut self) -> Result<Vec<datazen_ui_api::ConnectionProfile>, String> {
+                Ok(Vec::new())
+            }
+
+            fn read_table_page(
+                &mut self, _: &str, _: u32, _: u32, _: Option<&ColumnSort>, _: Option<&ColumnFilter>,
+            ) -> Result<TablePage, String> {
+                Err("not a table fixture".into())
+            }
+
+            fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+                Err("not a table fixture".into())
+            }
+
+            fn begin_job(&mut self, job: AdapterJob) -> bool {
+                match job {
+                    AdapterJob::NativePrompts { request, .. } => {
+                        self.0.borrow_mut().push(request);
+                        true
+                    }
+                    _ => false,
+                }
+            }
+        }
+
+        const ASK: &str = "prompt-card-nl2sql-reset";
+        const CANCEL: &str = "confirm-dialog-cancel";
+        const OK: &str = "confirm-dialog-ok";
+        let mut state = AppState::default();
+        state.active = Section::Settings;
+        state.set_settings_section("prompts");
+        let requests = Rc::new(RefCell::new(Vec::new()));
+        state.desktop = Box::new(RecordingPort(requests.clone()));
+        let ui = &mut state.prompt_settings;
+        ui.mounted = true;
+        ui.epoch = 12;
+        let mut answer = reply("first fixture preview");
+        for scenario in [
+            PromptScenario::Diagnose, PromptScenario::NlFilter, PromptScenario::SchemaDoc,
+            PromptScenario::SchemaDocSelectTables, PromptScenario::ConnectionDiagnose,
+            PromptScenario::QuerySummary, PromptScenario::ExplainAnalysis, PromptScenario::Chat,
+            PromptScenario::WorkflowGenerate,
+        ] {
+            answer.prompts.push(PromptInfo {
+                scenario,
+                label: "Additional fixture scenario".into(),
+                source: PromptSource::Default,
+                system: "one\ntwo\nthree\nfour\nfive\nsix\nseven".into(),
+                default_system: String::new(),
+            });
+        }
+        ui.editor = PromptSettingsSectionState::new();
+        ui.editor.deliver_prompts(answer.prompts);
+        ui.editor.resettable = Some(answer.resettable);
+        let mut rt = Runtime::new(state, crate::app::view, (1440.0, 900.0), Env {
+            system_dark: false, scale: 1.0,
+        });
+        let settle = |rt: &mut Runtime<AppState>| {
+            for _ in 0..24 { rt.frame(1.0 / 60.0); }
+        };
+        let press = |rt: &mut Runtime<AppState>, key: &str| {
+            let (x, y) = rt.find(key).unwrap_or_else(|| panic!("missing {key}"));
+            assert!((0.0..1440.0).contains(&x) && (0.0..900.0).contains(&y), "{key} outside viewport");
+            rt.pointer_move(x, y);
+            rt.frame(1.0 / 60.0);
+            rt.pointer_down(x, y);
+            rt.pointer_up(x, y);
+            settle(rt);
+        };
+        settle(&mut rt);
+        press(&mut rt, ASK);
+        let nodes = rt.elements();
+        for key in [CANCEL, OK] {
+            let node = nodes.iter().find(|node| node.key.as_deref() == Some(key) && !node.exiting).unwrap();
+            assert!(!node.path.contains("settings-content"), "dialog must not ride the settings scroll");
+            let [x, y, w, h] = node.visible;
+            assert!(w > 0.0 && h > 0.0 && x >= 0.0 && y >= 0.0 && x + w <= 1440.0 && y + h <= 900.0);
+        }
+        rt.key(KeyEvent { key: Key::Enter, mods: Mods::default() });
+        settle(&mut rt);
+        assert!(requests.borrow().is_empty(), "no default Enter may reset");
+        if rt.find(OK).is_none() {
+            press(&mut rt, ASK);
+        }
+        rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+        settle(&mut rt);
+        assert!(rt.find(OK).is_none() && requests.borrow().is_empty());
+        press(&mut rt, ASK);
+        press(&mut rt, CANCEL);
+        assert!(rt.find(OK).is_none() && requests.borrow().is_empty());
+
+        press(&mut rt, ASK);
+        let retired = rt.state.prompt_settings.editor.confirm.pending_id;
+        rt.state.set_settings_section("general");
+        rt.state.answer_native_prompt_reset(12, retired, true);
+        rt.state.set_settings_section("prompts");
+        settle(&mut rt);
+        assert!(rt.find(OK).is_none() && requests.borrow().is_empty());
+        press(&mut rt, ASK);
+        let current = rt.state.prompt_settings.editor.confirm.pending_id;
+        rt.state.answer_native_prompt_reset(12, retired, true);
+        rt.state.answer_native_prompt_reset(11, current, true);
+        assert!(requests.borrow().is_empty());
+        press(&mut rt, OK);
+        rt.state.answer_native_prompt_reset(12, current, true);
+        assert_eq!(requests.borrow().as_slice(), &[NativePromptRequest {
+            driver: "*".into(),
+            change: NativePromptChange::Reset { scenario: PromptScenario::Nl2sql },
+        }]);
+    }
+
 }

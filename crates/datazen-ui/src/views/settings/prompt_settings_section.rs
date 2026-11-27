@@ -260,6 +260,7 @@ pub struct PromptSettingsSection<'a, S: 'static> {
     on_save: Option<Rc<dyn Fn(&mut S)>>,
     on_cancel: Option<Rc<dyn Fn(&mut S)>>,
     busy: bool,
+    inline_reset_confirmation: bool,
     on_begin_reset: Option<Rc<dyn Fn(&mut S, usize)>>,
     on_reset_resolved: Option<Rc<dyn Fn(&mut S, bool)>>,
 }
@@ -287,6 +288,7 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
             on_save: None,
             on_cancel: None,
             busy: false,
+            inline_reset_confirmation: true,
             on_begin_reset: None,
             on_reset_resolved: None,
         }
@@ -324,6 +326,13 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
 
     pub(super) fn busy(mut self, busy: bool) -> Self {
         self.busy = busy;
+        self
+    }
+
+    /// The real Settings page uses the window-level modal route. Keep the
+    /// standalone port's inline host for its other callers.
+    pub(super) fn without_inline_reset_confirmation(mut self) -> Self {
+        self.inline_reset_confirmation = false;
         self
     }
 
@@ -411,13 +420,14 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
         }
         body = body.child(list);
 
-        // The reset confirm dialog (the hook's own mount).
-        let mut dialog = ConfirmDialogHost::<S>::new(&state.confirm);
-        if let Some(f) = &self.on_reset_resolved {
-            let f = Rc::clone(f);
-            dialog = dialog.on_resolved(move |s: &mut S, ok| f(s, ok));
+        if self.inline_reset_confirmation {
+            let mut dialog = ConfirmDialogHost::<S>::new(&state.confirm);
+            if let Some(f) = &self.on_reset_resolved {
+                let f = Rc::clone(f);
+                dialog = dialog.on_resolved(move |s: &mut S, ok| f(s, ok));
+            }
+            dialog.build(dark, layer);
         }
-        dialog.build(dark, layer);
 
         body
     }

@@ -53,6 +53,9 @@ pub fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
     };
     if let Some(dialog) = dialog {
         dialog.build(kit(dark), &mut layer);
+    } else {
+        // Prompt cards scroll inside Settings; the reset dialog must not.
+        crate::views::prompts_live::mount_reset_confirmation(state, dark, &mut layer);
     }
     if let Some(plan) = state.active_cell_preview() {
         use crate::views::pending_plan_dialog::{self, PendingPlanAction, PendingPlanActionFn};
