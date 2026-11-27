@@ -217,13 +217,6 @@ fn embedded_workflow_is_flush_to_the_rail_and_keeps_its_own_controls() {
     assert!(key_set(&rt).contains("content-status-bar"));
     let selected = rt.state.tabs.selected().expect("the table tab").id;
 
-    let click = |rt: &mut Runtime<AppState>, key: &str| {
-        let (x, y) = rt.find(key).unwrap_or_else(|| panic!("missing visible control {key}"));
-        rt.pointer_down(x, y);
-        rt.pointer_up(x, y);
-        rt.frame(0.0);
-        rt.frame(0.0);
-    };
     click(&mut rt, "rail-workflows");
 
     let keys = key_set(&rt);
@@ -273,13 +266,6 @@ fn dashboard_and_extensions_own_their_full_page_and_keep_their_controls() {
     let stored_tab = rt.state.open_table_tab("customers").expect("database table tab");
     rt.frame(0.0);
 
-    let click = |rt: &mut Runtime<AppState>, key: &str| {
-        let (x, y) = rt.find(key).unwrap_or_else(|| panic!("missing visible control {key}"));
-        rt.pointer_down(x, y);
-        rt.pointer_up(x, y);
-        rt.frame(0.0);
-        rt.frame(0.0);
-    };
     let assert_owned_page = |rt: &Runtime<AppState>, page: &str| {
         let keys = key_set(rt);
         for key in ["content-toolbar", "content-toolbar-title", "content-status-bar",
@@ -399,12 +385,24 @@ fn tabs_and_toolbar_follow_the_content_workspace_contract() {
     );
 }
 
+// Geometry and hit-testing follow the drawn boxes, not the new layout
+// targets. Zero-delta frames commit a route but freeze its transition at the
+// previous screen's coordinates. Progress the deterministic test clock.
+fn settle_route(rt: &mut Runtime<AppState>) {
+    for _ in 0..48 {
+        rt.frame(1.0 / 60.0);
+    }
+}
+
 fn click(rt: &mut Runtime<AppState>, key: &str) {
+    settle_route(rt);
     let (x, y) = rt.find(key).unwrap_or_else(|| panic!("{key} is reachable"));
+    rt.pointer_move(x, y);
+    rt.frame(1.0 / 60.0);
+    let (x, y) = rt.find(key).unwrap_or_else(|| panic!("{key} remains reachable after pointer move"));
     rt.pointer_down(x, y);
     rt.pointer_up(x, y);
-    rt.frame(0.0);
-    rt.frame(0.0);
+    settle_route(rt);
 }
 
 #[test]
