@@ -170,14 +170,26 @@ fn connection_content(state: &AppState, theme: tok::Theme, dark: bool, layer: &m
     connection_content_with_vm(state, theme, dark, &vm, layer)
 }
 
-/// React's plain table pane starts immediately below its toolbar and tabs.
-fn plain_live_sqlite_table(state: &AppState, vm: &crate::views::content_view::ContentViewVm) -> bool {
-    super::workspace::live_sqlite_table_page(state)
-        && !vm.show_drawers()
+fn plain_content_view(vm: &crate::views::content_view::ContentViewVm) -> bool {
+    !vm.show_drawers()
         && !vm.split_secondary
         && vm.object_vm.is_none()
         && vm.document_vm.is_none()
         && vm.dialogs_vm.is_none()
+}
+
+/// React's plain table pane starts immediately below its toolbar and tabs.
+fn plain_live_sqlite_table(state: &AppState, vm: &crate::views::content_view::ContentViewVm) -> bool {
+    super::workspace::live_sqlite_table_page(state) && plain_content_view(vm)
+}
+
+/// The original selected Query panel fills its database content lane.
+fn plain_query_workspace(state: &AppState, vm: &crate::views::content_view::ContentViewVm) -> bool {
+    state.active == Section::Workspace
+        && state.native_kv.is_none()
+        && !state.ai_chat_open
+        && super::workspace::query_selected(state)
+        && plain_content_view(vm)
 }
 
 /// The same content column with an explicit view model, so a host that owns an
@@ -204,7 +216,15 @@ pub fn connection_content_with_vm(
     } else {
         slot = slot.size(0.0, 0.0);
     }
-    let page_inset = if plain_live_sqlite_table(state, vm) { 0.0 } else { 24.0 };
+    let plain_query = plain_query_workspace(state, vm);
+    let page_inset = if plain_query || plain_live_sqlite_table(state, vm) {
+        0.0
+    } else {
+        24.0
+    };
+    // The Query occupies ContentView's whole lane. Its inactive object and
+    // document slots are zero-sized and must not reserve sibling spacing.
+    let sibling_gap = if plain_query { 0.0 } else { 16.0 };
     col()
         .key("datazen-page")
         .grow(1.0)
@@ -212,7 +232,7 @@ pub fn connection_content_with_vm(
         .h_full()
         .px(page_inset)
         .py(page_inset)
-        .gap(16.0)
+        .gap(sibling_gap)
         .fill(theme.bg)
         // Thread the single overlay layer through the ContentView port down to
         // `page_body`, so workspace select listboxes mount into the same layer

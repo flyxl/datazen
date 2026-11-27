@@ -415,6 +415,73 @@ fn click(rt: &mut Runtime<AppState>, key: &str) {
 }
 
 #[test]
+fn plain_query_fills_its_lane_without_changing_other_tabs_or_drawers() {
+    use datazen_ui::constants::{NAVIGATOR_WIDTH_KEY, SIDEBAR_RAIL_WIDTH_KEY};
+
+    let rect = |rt: &Runtime<AppState>, key: &str| {
+        rt.elements()
+            .into_iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("missing visible content geometry {key}"))
+            .rect
+    };
+    let mut rt = runtime();
+    rt.state.set_layout_size(NAVIGATOR_WIDTH_KEY, 280).unwrap();
+    rt.state.set_layout_size(SIDEBAR_RAIL_WIDTH_KEY, 40).unwrap();
+    settle_route(&mut rt);
+    let landing = rect(&rt, "content-view");
+    let nav = rect(&rt, "datazen-navigator");
+    let rail = rect(&rt, "datazen-rail");
+    let divider = rect(&rt, "splitter:navigator-width");
+    let titlebar = rect(&rt, "datazen-titlebar");
+    let body = rect(&rt, "datazen-body");
+    assert_eq!(landing[0], divider[0] + divider[2] + 24.0);
+    assert_eq!(landing[1], body[1] + 24.0);
+
+    rt.state.workspace.connect("local").unwrap();
+    let table = rt.state.open_table_tab("customers").unwrap();
+    settle_route(&mut rt);
+    let table_box = rect(&rt, "content-view");
+
+    click(&mut rt, "toolbar-new-query");
+    let query_id = rt.state.tabs.selected().expect("selected Query tab").id;
+    assert_ne!(table, query_id);
+    let view = rect(&rt, "content-view");
+    let page = rect(&rt, "datazen-page");
+    let content_toolbar = rect(&rt, "content-toolbar");
+    let tabs = rect(&rt, "tab-strip");
+    let query = rect(&rt, "query-tab");
+    let footer = rect(&rt, "content-status-bar");
+    assert_eq!(view, page, "no outer inset or invisible-sibling gaps on plain Query");
+    assert_eq!(page[0], divider[0] + divider[2], "keep the real resizable divider");
+    assert_eq!(page[1], titlebar[1] + titlebar[3]);
+    assert_eq!(content_toolbar, [page[0], page[1], page[2], 48.0]);
+    assert_eq!(tabs, [page[0], content_toolbar[1] + content_toolbar[3], page[2], 48.0]);
+    assert_eq!([query[0], query[1], query[2]], [page[0], tabs[1] + tabs[3], page[2]]);
+    assert_eq!(query[1] + query[3], footer[1], "retain the single status bar below Query");
+    assert_eq!(footer, [page[0], body[1] + body[3] - 40.0, page[2], 40.0]);
+    for key in ["db-object-host", "doc-view-host"] {
+        let slot = rect(&rt, key);
+        assert_eq!([slot[1], slot[2], slot[3]], [page[1] + page[3], 0.0, 0.0]);
+    }
+    assert_eq!(rect(&rt, "datazen-rail"), rail);
+    assert_eq!(rect(&rt, "datazen-navigator"), nav);
+    assert_eq!(rect(&rt, "splitter:navigator-width"), divider);
+
+    click(&mut rt, "conn-toolbar-ai");
+    assert!(rt.state.ai_chat_open, "the real drawer button still opens the drawer");
+    assert_eq!(rect(&rt, "content-view")[1], body[1] + 24.0, "drawer layout is not changed");
+    click(&mut rt, "conn-toolbar-ai");
+    assert!(!rt.state.ai_chat_open);
+    assert_eq!(rect(&rt, "content-view"), view, "closing the drawer restores plain Query");
+    click(&mut rt, &format!("tab-{table}"));
+    assert_eq!(rt.state.tabs.selected().map(|tab| tab.id), Some(table));
+    assert_eq!(rect(&rt, "content-view"), table_box, "non-Query tab retains its shell");
+    assert_eq!(rt.state.layout_size(NAVIGATOR_WIDTH_KEY), Some(280));
+    assert_eq!(rt.state.layout_size(SIDEBAR_RAIL_WIDTH_KEY), Some(40));
+}
+
+#[test]
 fn settings_back_restores_the_actual_screen_and_preserves_its_state() {
     let mut rt = runtime();
     rt.frame(0.0);
