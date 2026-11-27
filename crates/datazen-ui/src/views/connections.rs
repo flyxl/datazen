@@ -236,6 +236,15 @@ fn form_input(
     dark: bool,
     edit: fn(&mut AppState) -> &mut rune::TextEdit,
 ) -> El {
+    connection_text_field(key, value, theme, edit).build(dark)
+}
+
+fn connection_text_field<'a>(
+    key: &str,
+    value: &'a rune::TextEdit,
+    theme: tok::Theme,
+    edit: fn(&mut AppState) -> &mut rune::TextEdit,
+) -> TextField<'a> {
     TextField::new(key.to_owned(), value)
         .height(36.0)
         .pad_x(12.0)
@@ -244,7 +253,6 @@ fn form_input(
         .border(1.0, theme.card_border)
         .on_edit(edit)
         .on_change(|state: &mut AppState, _| state.invalidate_connection_probe())
-        .build(dark)
 }
 
 fn password_input(
@@ -292,6 +300,52 @@ fn section_toggle(key: &str, title: &str, subtitle: Option<&str>, theme: tok::Th
 /// Connection form body (React-aligned grid/sections) with preserved keys for
 /// tests and flows.
 pub fn connection_form_fields(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    // In the original SQLite form, the sidebar is the engine picker and the
+    // name and local path each occupy a full row. Do not offer an unrelated
+    // editable engine input in this file form; other engines are unchanged.
+    let engine = state.connection_engine.text.trim();
+    if engine.eq_ignore_ascii_case("sqlite") && state.desktop.connection_uses_file_path(engine) {
+        let field = |label: &str, input: El| {
+            col()
+                .w_full()
+                .gap(6.0)
+                .child(field_label(&format!("{label} *"), theme))
+                .child(input)
+        };
+        return connection_form_body(
+            state,
+            theme,
+            [
+                field(
+                    t("newConn.connName"),
+                    connection_text_field(
+                        "connection-name-input",
+                        &state.connection_name,
+                        theme,
+                        |state| &mut state.connection_name,
+                    )
+                    .label(t("newConn.connName"))
+                    .placeholder(t("newConn.namePlaceholder"))
+                    .build(dark),
+                )
+                .key("connection-section-basic"),
+                field(
+                    t("newConn.dbFilePath"),
+                    connection_text_field(
+                        "connection-database-input",
+                        &state.connection_database,
+                        theme,
+                        |state| &mut state.connection_database,
+                    )
+                    .label(t("newConn.dbFilePath"))
+                    .placeholder("/path/to/db.sqlite")
+                    .build(dark),
+                )
+                .key("connection-section-file"),
+            ],
+        );
+    }
+
     // Basic: name + engine (engine also selectable from sidebar).
     let basic = col()
         .key("connection-section-basic")

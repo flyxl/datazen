@@ -679,7 +679,9 @@ class OfflineJourneys:
         opened = [tap(.5, "connections-create-first"),
                   tap(1.5, "connection-engine-option-sqlite")]
         tree = self.replay(opened, until=2.5)
+        self.expect_rendered(tree, key="connection-name-input", within="connection-section-basic")
         self.expect_rendered(tree, key="connection-database-input", within="connection-section-file")
+        self.assertFalse(visible(tree, key="connection-engine-input"))
         for network_field in ("address", "username", "password"):
             self.assertFalse(visible(tree, key=f"connection-{network_field}-input"))
 

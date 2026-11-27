@@ -54,7 +54,22 @@ pub fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
         None
     };
     if let Some(dialog) = dialog {
-        dialog.build(kit(dark), &mut layer);
+        let base = kit(dark);
+        let engine = state.connection_engine.text.trim();
+        if state.connection_dialog_open
+            && !state.import_dialog_open
+            && engine.eq_ignore_ascii_case("sqlite")
+            && state.desktop.connection_uses_file_path(engine)
+        {
+            // The original NewConnectionDialog paints its panel with
+            // bg-surface-alt. Keep the file form's inset input surface and
+            // apply this panel palette only to the linked SQLite create form.
+            let mut sqlite_panel = base.clone();
+            sqlite_panel.c.bg_base = crate::ui::theme::colors(dark).surface_alt;
+            dialog.build(&sqlite_panel, &mut layer);
+        } else {
+            dialog.build(base, &mut layer);
+        }
     } else {
         // Prompt cards scroll inside Settings; the reset dialog must not.
         crate::views::prompts_live::mount_reset_confirmation(state, dark, &mut layer);
