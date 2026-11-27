@@ -142,9 +142,18 @@ fn every_section_stays_reachable_after_the_port() {
             .filter(|e| !e.exiting)
             .find(|e| e.key.as_deref() == Some("datazen-titlebar-label"))
             .expect("the title band is composed on every section");
+        let expected_title = if *section == Section::Settings {
+            // The original dedicated Settings window uses win.settings, not the nav label.
+            match rt.state.builtin_language() {
+                datazen_ui_api::BuiltinLanguage::English => "Settings - DataZen",
+                datazen_ui_api::BuiltinLanguage::SimplifiedChinese => "偏好设置 - DataZen",
+            }
+        } else {
+            section.label()
+        };
         assert_eq!(
             title.text.as_deref(),
-            Some(section.label()),
+            Some(expected_title),
             "{section:?}: the titlebar follows the dispatched section"
         );
     }
