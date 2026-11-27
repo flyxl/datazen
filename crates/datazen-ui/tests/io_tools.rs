@@ -400,12 +400,12 @@ fn a_foreign_key_cell_navigates_to_the_referenced_row() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(0.0);
-    runtime.state.open_table_tab("orders").unwrap();
+    runtime.update(|state, _| { state.open_table_tab("orders").unwrap(); });
     runtime.frame(1.0);
     assert!(runtime.state.grid.has_page(), "the orders page loaded");
 
     // The focused cell's column (id) carries the demo's outbound key.
-    runtime.state.grid.select(0, 0);
+    runtime.update(|state, _| state.grid.select(0, 0));
     runtime.frame(0.0);
     assert!(
         runtime.find("fk-go-to").is_some(),
@@ -434,9 +434,9 @@ fn a_foreign_key_cell_navigates_to_the_referenced_row() {
     );
 
     // A table without outbound keys shows no chip.
-    runtime.state.open_table_tab("catalog").unwrap();
+    runtime.update(|state, _| { state.open_table_tab("catalog").unwrap(); });
     runtime.frame(1.0);
-    runtime.state.grid.select(0, 0);
+    runtime.update(|state, _| state.grid.select(0, 0));
     runtime.frame(0.0);
     assert!(
         runtime.find("fk-go-to").is_none(),
@@ -456,9 +456,9 @@ fn the_referenced_by_list_opens_the_referencing_table_filtered() {
     runtime.pointer_down(x, y);
     runtime.pointer_up(x, y);
     runtime.frame(0.0);
-    runtime.state.open_table_tab("customers").unwrap();
+    runtime.update(|state, _| { state.open_table_tab("customers").unwrap(); });
     runtime.frame(1.0);
-    runtime.state.grid.select(0, 0);
+    runtime.update(|state, _| state.grid.select(0, 0));
     runtime.frame(0.0);
 
     // The unwired adapter refuses honestly: the demo world has no scan.
