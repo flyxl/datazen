@@ -12,7 +12,7 @@
 //! | `PRODUCT_FEATURES` / `isProductFeatureEnabled` | [`PRODUCT_FEATURES`] / [`product_feature_enabled`] (the static const table) |
 //! | `handleMenuAction(id)` | [`route_menu_action`] — the pure router; the side effects (windowManager opens, cross-window emit, fullscreen toggle, `openLogDir`, `openPath`) are the host's seams |
 //! | `MenuBar()` (the bar + open state) | [`MenuBar`] — the component over a host-owned open-menu id |
-//! | `MenuButton` (trigger + portal dropdown) | the [`crate::ui::menu::Menu`] wrapper (T0-07): the trigger is the bar button, the dropdown anchors below-left with React's `mt-1` gutter (4pt) and 200pt min width |
+//! | `MenuButton` (trigger + portal dropdown) | the [`crate::ui::menu::Menu`] wrapper (T0-07): the trigger is the bar button, the dropdown anchors below-left with the trigger's measured 2pt gutter and 200pt min width |
 //! | `MenuEntry` (separator / submenu / leaf with checked + shortcut) | the wrapper's separator / submenu / checked / shortcut entries |
 //! | `navigateMenu` (Left/Right wrap-around) | the host's Left/Right handling over [`next_menu_id`] (the pure wrap arithmetic) |
 //! | `isMac` early return | the host's decision to mount the bar at all (the port renders what it is given) |
@@ -39,10 +39,9 @@
 //!   open (its React guard makes it inert then anyway).
 //! * **The portal is the kit's anchored overlay** — `createPortal` +
 //!   `document.body` + `position: fixed` is exactly the problem the T0-07
-//!   wrapper (the kit `Menu` at a trigger, gutter 4pt, min width 200pt)
+//!   wrapper (the kit `Menu` at a trigger, gutter 2pt, min width 200pt)
 //!   already solves; React's measured `rect.left / rect.bottom + 2`
-//!   positioning is the wrapper's anchor (2pt ≈ the kit's 4pt gutter
-//!   under `mt-1`; the 2pt-vs-4pt delta is the kit's own baseline).
+//!   positioning is the wrapper's anchor.
 //! * **DOM focus walking is the kit's keyboard model** — React's
 //!   `querySelector('[role^="menuitem"]').focus()` family (first item on
 //!   open, Up/Down/Home/End cycling, Escape returning focus to the
@@ -63,7 +62,7 @@
 
 use std::rc::Rc;
 
-use rune::{row, text, El};
+use rune::{row, text, El, Tx};
 use rune_kit::Placement;
 
 use crate::i18n::t;
@@ -351,6 +350,7 @@ pub struct MenuBarState {
 }
 
 type ActionFn<S> = Rc<dyn Fn(&mut S)>;
+type SelectFn<S> = Rc<dyn Fn(&mut S, &str, &mut Tx)>;
 type OpenFn<S> = Rc<dyn Fn(&mut S, &str)>;
 type HoverFn<S> = Rc<dyn Fn(&mut S, &str)>;
 type NavigateFn<S> = Rc<dyn Fn(&mut S, &str, bool)>;
@@ -362,7 +362,7 @@ pub struct MenuBar<'a, S: 'static> {
     menus: &'a [MenuBarMenu],
     open_menu: Option<&'a str>,
     on_open: Option<OpenFn<S>>,
-    on_select: Option<ActionFn<S>>,
+    on_select: Option<SelectFn<S>>,
     on_close: Option<ActionFn<S>>,
     on_hover: Option<HoverFn<S>>,
     on_navigate: Option<NavigateFn<S>>,
@@ -392,7 +392,12 @@ impl<'a, S: 'static> MenuBar<'a, S> {
     /// One leaf item was selected: run the host's action (React runs
     /// `handleMenuAction` then closes — the kit menu's close_on_select
     /// owns the close half).
-    pub fn on_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select(self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_select_action(move |s, _, _| f(s))
+    }
+
+    /// Deliver the selected leaf's real action id, including submenu leaves.
+    pub fn on_select_action(mut self, f: impl Fn(&mut S, &str, &mut Tx) + 'static) -> Self {
         self.on_select = Some(Rc::new(f));
         self
     }
@@ -431,7 +436,7 @@ impl<'a, S: 'static> MenuBar<'a, S> {
             .gap(2.0)
             .label(t("menu.appName"));
 
-        for (index, menu) in self.menus.iter().enumerate() {
+        for menu in self.menus {
             let open = self.open_menu == Some(menu.id.as_str());
             let key = format!("menu-bar-{}", menu.id);
             let menu_id = menu.id.clone();
@@ -446,6 +451,9 @@ impl<'a, S: 'static> MenuBar<'a, S> {
                 .px(8.0)
                 .py(2.0)
                 .focusable(true)
+                .label(menu.label.clone())
+                .expanded(open)
+                .hover(k.c.surface_raised)
                 .on_press(move |s: &mut S| {
                     if open {
                         if let Some(close) = on_close.clone() {
@@ -468,19 +476,35 @@ impl<'a, S: 'static> MenuBar<'a, S> {
                 });
             }
 
-            // Left/Right on the bar buttons (React's navigateMenu).
-            if let Some(navigate) = self.on_navigate.clone() {
-                let menu_id = menu.id.clone();
-                button = button.on_key(move |s: &mut S, ev: &rune::KeyEvent, _tx: &mut rune::Tx| {
-                    let forward = match ev.key {
-                        rune::Key::Right => true,
-                        rune::Key::Left => false,
-                        _ => return false,
-                    };
-                    navigate(s, &menu_id, forward);
-                    true
-                });
-            }
+            // Keyboard entry and adjacent-trigger navigation reuse the
+            // actual menu model; the popup still owns vertical focus walking.
+            let navigate = self.on_navigate.clone();
+            let on_open = self.on_open.clone();
+            let menu_id = menu.id.clone();
+            let forwards = next_menu_id(self.menus, &menu_id, true);
+            let backwards = next_menu_id(self.menus, &menu_id, false);
+            button = button.on_key(move |s: &mut S, ev: &rune::KeyEvent, tx: &mut Tx| {
+                match ev.key {
+                    rune::Key::Down if !open => {
+                        if let Some(on_open) = &on_open {
+                            on_open(s, &menu_id);
+                            return true;
+                        }
+                    }
+                    rune::Key::Right | rune::Key::Left => {
+                        let forward = matches!(ev.key, rune::Key::Right);
+                        if let Some(navigate) = &navigate {
+                            navigate(s, &menu_id, forward);
+                            if let Some(next) = if forward { &forwards } else { &backwards } {
+                                tx.focus(format!("menu-bar-{next}-trigger"), true);
+                            }
+                            return true;
+                        }
+                    }
+                    _ => {}
+                }
+                false
+            });
 
             let trigger_text = text(menu.label.clone())
                 .font(k.ty.text_xsmall)
@@ -496,7 +520,6 @@ impl<'a, S: 'static> MenuBar<'a, S> {
             } else {
                 rune::Color::TRANSPARENT
             });
-            let _ = index;
 
             // The dropdown itself: the T0-07 wrapper anchored under the
             // trigger, only while open.
@@ -504,7 +527,7 @@ impl<'a, S: 'static> MenuBar<'a, S> {
                 .trigger(button)
                 .open(open)
                 .placement(Placement::BottomStart)
-                .gutter(4.0)
+                .gutter(2.0)
                 .min_width(200.0);
             if let Some(close) = self.on_close.clone() {
                 dropdown = dropdown.on_close(move |s: &mut S| close(s));
@@ -545,10 +568,7 @@ impl<'a, S: 'static> MenuBar<'a, S> {
         }
         if let Some(select) = self.on_select.clone() {
             let id = item.id.clone();
-            entry = entry.on_select(move |s: &mut S| {
-                let _ = id;
-                select(s);
-            });
+            entry = entry.on_select_tx(move |s: &mut S, tx| select(s, &id, tx));
         }
         entry
     }
@@ -566,7 +586,8 @@ impl<'a, S: 'static> MenuBar<'a, S> {
             entry = entry.checked(checked);
         }
         if let Some(select) = self.on_select.clone() {
-            entry = entry.on_select(move |s: &mut S| select(s));
+            let id = item.id.clone();
+            entry = entry.on_select_tx(move |s: &mut S, tx| select(s, &id, tx));
         }
         crate::ui::menu::Entry::Item(entry)
     }

@@ -26,9 +26,9 @@
 //! ## Honest seams (dependencies this port does not include; each belongs to
 //! its own later task in the migration ledger)
 //!
-//! - `MenuBar` — the chrome slot's left content (`components/MenuBar.tsx` is
-//!   T197). The titlebar keeps the window-title label in the lead position
-//!   until the menu bar lands.
+//! - `MenuBar` — the chrome slot's left content uses the available native
+//!   actions on Windows/Linux. A macOS app-menu port and unwired actions are
+//!   still separate capabilities.
 //! - `ThemeToggle` — the chrome slot's right content
 //!   (`components/ThemeToggle.tsx` is T284), now wired into the titlebar with
 //!   the light/dark/system popover and the icon face.
@@ -164,6 +164,7 @@ fn main_titlebar(
         .pr(12.0)
         .gap(12.0)
         .fill(c.titlebar)
+        .child(crate::views::shell_menu::titlebar_menu(state, dark, layer))
         .child(
             // The label takes the leftover room, not the whole band: a
             // `w_full` label measures the padding box and pushes the trailing

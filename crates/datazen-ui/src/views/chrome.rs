@@ -253,6 +253,7 @@ pub fn theme_toggle_slot(state: &AppState, dark: bool, layer: &mut Vec<El>) -> E
             ThemeToggle::<AppState>::new(state.theme_mode(), state.theme_toggle_open)
                 .resolver(theme_icon_resolver())
                 .on_toggle(|state: &mut AppState| {
+                    state.titlebar_menu.open_menu = None;
                     state.theme_toggle_open = !state.theme_toggle_open;
                 })
                 .on_select(|state: &mut AppState, mode| {

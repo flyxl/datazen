@@ -117,6 +117,9 @@ pub fn init_state() -> AppState {
 }
 
 pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if crate::views::shell_menu::shortcut(state, ev, tx) {
+        return true;
+    }
     if state.active != Section::Workspace {
         // T145: the workflow page's yaml document takes the keyboard while
         // the edit pane's yaml mode is the active panel (the lite editor's

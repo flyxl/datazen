@@ -20,9 +20,8 @@
 //! Adaptations forced by the host contract (recorded as leftovers, not silent
 //! drops):
 //!
-//! * React's `MenuBar` and `WindowChromeSlot` have no Rune counterpart. The
-//!   title bar here is Rune's self-drawn 40pt chrome band; an empty
-//!   `menu-bar-host` slot is kept for structural parity, and the theme toggle
+//! * React's `WindowChromeSlot` maps to Rune's self-drawn 40pt band. The
+//!   titlebar menu uses only actions the native host can perform, and the theme toggle
 //!   is the React `ThemeToggle` port under the existing `datazen-theme-toggle`
 //!   key. Removal stage: when a Rune menu-bar base lands, replace the empty
 //!   host with it (no key changes needed).
@@ -268,8 +267,7 @@ fn connection_titlebar(
                 ),
         );
     }
-    // Structural slot for React's MenuBar; empty until a Rune menu base lands.
-    left = left.child(row().key("menu-bar-host").h(28.0).min_w(0.0));
+    left = left.child(super::shell_menu::titlebar_menu(state, dark, layer));
 
     row()
         .key("datazen-titlebar")

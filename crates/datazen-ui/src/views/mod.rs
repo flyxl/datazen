@@ -4,6 +4,7 @@ mod ai_chat;
 mod app_root;
 mod backup;
 mod chrome;
+pub(crate) mod shell_menu;
 pub mod content_status_bar;
 pub mod content_toolbar;
 mod connection_page;

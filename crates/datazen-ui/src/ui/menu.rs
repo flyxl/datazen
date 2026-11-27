@@ -19,7 +19,7 @@
 
 use std::rc::Rc;
 
-use rune::{El, Icon, PointerPress};
+use rune::{El, Icon, PointerPress, Tx};
 use rune_kit::Kit;
 
 pub use rune_kit::Placement;
@@ -32,6 +32,7 @@ pub enum Entry<S: 'static> {
 }
 
 type SelectFn<S> = Box<dyn Fn(&mut S) + 'static>;
+type SelectTxFn<S> = Box<dyn Fn(&mut S, &mut Tx) + 'static>;
 
 /// A menu item or submenu trigger.
 pub struct Item<S: 'static> {
@@ -46,7 +47,7 @@ pub struct Item<S: 'static> {
     submenu: Option<(Vec<Entry<S>>, bool)>,
     state: Option<State>,
     disabled: bool,
-    on_select: Option<SelectFn<S>>,
+    on_select: Option<SelectTxFn<S>>,
 }
 
 impl<S: 'static> Item<S> {
@@ -118,7 +119,12 @@ impl<S: 'static> Item<S> {
         self
     }
 
-    pub fn on_select(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+    pub fn on_select(self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_select_tx(move |s, _| f(s))
+    }
+
+    /// A leaf action that also asks the runtime to perform a platform operation.
+    pub fn on_select_tx(mut self, f: impl Fn(&mut S, &mut Tx) + 'static) -> Self {
         self.on_select = Some(Box::new(f));
         self
     }
@@ -178,15 +184,15 @@ impl<S: 'static> Item<S> {
         if let Some(f) = on_select {
             if is_leaf {
                 if let Some(close) = close {
-                    mi = mi.on_select(move |s: &mut S| {
-                        f(s);
+                    mi = mi.on_select_tx(move |s: &mut S, tx| {
+                        f(s, tx);
                         close(s);
                     });
                 } else {
-                    mi = mi.on_select(f);
+                    mi = mi.on_select_tx(f);
                 }
             } else {
-                mi = mi.on_select(f);
+                mi = mi.on_select_tx(f);
             }
         }
 

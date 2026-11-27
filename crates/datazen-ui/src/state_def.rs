@@ -193,6 +193,8 @@ pub struct AppState {
     /// The titlebar owns the toggle, so the flag lives here next to the other
     /// chrome cells instead of in a component that is rebuilt every frame.
     pub theme_toggle_open: bool,
+    /// The root owns menu state; both successful and failed loads use the same chrome.
+    pub(crate) titlebar_menu: crate::components::menu_bar::MenuBarState,
     /// A1: the connections home's filter input (name/engine/id search).
     pub connection_search: TextEdit,
     /// A1: the connections card list's expanded state (show all / show less).
@@ -655,6 +657,7 @@ impl Default for AppState {
             settings_content: Default::default(),
             appearance_select: None,
             theme_toggle_open: false,
+            titlebar_menu: Default::default(),
             connection_search: TextEdit::new(String::new()),
             connections_show_all: false,
             home_copied_id: None,
