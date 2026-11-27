@@ -58,7 +58,7 @@
 
 use std::rc::Rc;
 
-use rune::{col, row, text, tok, El, Ime, KeyEvent, Span, Tx};
+use rune::{col, row, text, El, Ime, KeyEvent, Span, Tx};
 
 #[allow(unused_imports)] // re-export keeps the pre-T105 paths (mod.rs, completion) stable
 pub use super::contracts::{CompletionQuotePolicy, ExecutionStatus};
@@ -488,7 +488,7 @@ impl<'a, S: 'static> SqlEditorComponent<'a, S> {
     }
 
     pub fn build(self, dark: bool) -> El {
-        let theme = tok::theme(dark);
+        let theme = crate::ui::theme::app_theme(dark);
         let ink = theme.text;
         let muted = theme.text_secondary;
         let editor = &self.state.editor;

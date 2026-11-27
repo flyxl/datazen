@@ -94,7 +94,7 @@ fn banners(state: &AppState, theme: tok::Theme) -> Vec<El> {
 
 /// React State 1: no connections at all — a centered card with the actions.
 fn empty_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let accent = tok::accent(0, dark);
+    let accent = crate::ui::theme::accent(dark);
     let mut page = col()
         .key("connection-list")
         .grow(1.0)
@@ -332,7 +332,7 @@ fn badge_cluster(theme: tok::Theme, dark: bool, engines: &[String]) -> El {
 
 /// The header row: section label left, filter / import / new connection right.
 fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let accent = tok::accent(0, dark);
+    let accent = crate::ui::theme::accent(dark);
     let filter_active = !state.connection_search.text.is_empty();
     row()
         .key("connections-header")
@@ -509,7 +509,7 @@ fn connection_cards(
                     .fill(if open {
                         theme.control_off
                     } else {
-                        tok::accent(0, dark)
+                        crate::ui::theme::accent(dark)
                     })
                     .border(
                         1.0,
@@ -581,7 +581,7 @@ fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: 
                 .child(
                     text(show_all_label)
                         .font(type_::LABEL)
-                        .color(tok::accent(0, true)),
+                        .color(crate::ui::theme::accent(true)),
                 )
                 .on_press(|state: &mut AppState| {
                     state.connections_show_all = !state.connections_show_all;
@@ -649,13 +649,13 @@ fn recent_queries_card(theme: tok::Theme) -> El {
                         .child(
                             text("View all")
                                 .font(type_::LABEL)
-                                .color(tok::accent(0, true)),
+                                .color(crate::ui::theme::accent(true)),
                         )
                         .child(
                             text(t("connWin.home.viewAll"))
                                 .key("home-recent-view-all-i18n")
                                 .font(type_::LABEL)
-                                .color(tok::accent(0, true)),
+                                .color(crate::ui::theme::accent(true)),
                         ),
                 ),
         )
@@ -693,7 +693,7 @@ fn recent_queries_card(theme: tok::Theme) -> El {
 
 /// MCP promo bar, layout-aligned with React's McpPromoBar.
 fn mcp_promo_bar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let accent = tok::accent(0, dark);
+    let accent = crate::ui::theme::accent(dark);
     // React's `formatMcpCliCommand` default is `datazen --mcp`.
     let command = "datazen --mcp";
     row()
@@ -827,8 +827,8 @@ fn status_pill(state: &AppState, theme: tok::Theme, dark: bool, id: &str) -> El 
     } else if connecting {
         (
             palette::status_pill_connecting_bg(dark),
-            tok::accent(0, dark),
-            tok::accent(0, dark),
+            crate::ui::theme::accent(dark),
+            crate::ui::theme::accent(dark),
             t("conn.connecting"),
         )
     } else {

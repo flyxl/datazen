@@ -29,7 +29,7 @@ pub fn tools_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             .center_y()
             .radius(6.0)
             .fill(if active {
-                tok::accent(0, true)
+                crate::ui::theme::accent(true)
             } else {
                 theme.control_off
             })
@@ -163,7 +163,7 @@ pub fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(if selected {
-                            tok::accent(0, true)
+                            crate::ui::theme::accent(true)
                         } else {
                             theme.control_off
                         })
@@ -240,7 +240,7 @@ pub fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         .center_y()
                         .radius(6.0)
                         .fill(if on {
-                            tok::accent(0, true)
+                            crate::ui::theme::accent(true)
                         } else {
                             theme.control_off
                         })

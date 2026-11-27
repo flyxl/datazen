@@ -18,15 +18,15 @@ use rune::{col, row, text, text_input, Color, Cx, El};
 use rune::{FileDialogOptions, TextEdit, Tx};
 
 pub fn rail_item(state: &AppState, section: Section, expanded: bool, dark: bool) -> El {
-    let theme = tok::theme(dark);
+    let theme = crate::ui::theme::app_theme(dark);
     let selected = state.active == section;
     let bg = if selected {
-        tok::accent(0, dark).alpha(0.2)
+        crate::ui::theme::accent(dark).alpha(0.2)
     } else {
         Color::TRANSPARENT
     };
     let fg = if selected {
-        tok::accent(0, dark)
+        crate::ui::theme::accent(dark)
     } else {
         theme.text_secondary
     };
@@ -65,7 +65,7 @@ pub fn rail_item(state: &AppState, section: Section, expanded: bool, dark: bool)
 }
 
 pub fn rail_view(state: &AppState, dark: bool) -> El {
-    let theme = tok::theme(dark);
+    let theme = crate::ui::theme::app_theme(dark);
     let expanded = state.sidebar_expanded();
     let width = state.sidebar_rail_width() as f32;
     // React WorkspaceModeSidebar top group: Databases, Workflow, Dashboard,
@@ -188,7 +188,7 @@ pub fn tab_strip(state: &AppState, theme: tok::Theme) -> El {
         let id = tab.id;
         let selected = state.tabs.selected().is_some_and(|open| open.id == id);
         let underline = if selected {
-            tok::accent(0, true)
+            crate::ui::theme::accent(true)
         } else {
             Color::TRANSPARENT
         };

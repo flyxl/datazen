@@ -198,7 +198,7 @@ pub fn er_box(
         .w(200.0)
         .radius(8.0)
         .fill(box_fill)
-        .border(1.0, if selected { tok::accent(0, dark) } else { Color::TRANSPARENT })
+        .border(1.0, if selected { crate::ui::theme::accent(dark) } else { Color::TRANSPARENT })
         .role("button")
         .label(table.clone())
         .checked(selected)

@@ -184,7 +184,7 @@ pub fn view_switcher(state: &AppState, theme: tok::Theme) -> El {
             .center_y()
             .radius(6.0)
             .fill(if active {
-                tok::accent(0, true)
+                crate::ui::theme::accent(true)
             } else {
                 theme.control_off
             })
@@ -695,7 +695,7 @@ fn result_view_toggle(state: &AppState, theme: tok::Theme) -> El {
             .center_y()
             .radius(6.0)
             .fill(if active {
-                tok::accent(0, true)
+                crate::ui::theme::accent(true)
             } else {
                 theme.control_off
             })

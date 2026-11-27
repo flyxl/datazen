@@ -535,7 +535,8 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             .px(8.0)
             .pb(12.0)
             .gap(2.0)
-            .fill(k.c.surface_weak); // bg-surface-alt
+            .fill(k.c.surface_weak) // bg-surface-alt
+            .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base);
 
         // The back button renders only when the host supplies the
         // `onBack` prop.
@@ -568,7 +569,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                     .child(
                         text(t(group_label).to_owned())
                             .font(NAV_GROUP_TEXT)
-                            .color(k.c.text_muted), // text-fg-muted
+                            .color(k.c.text_faint), // text-fg-muted
                     ),
             );
             for section in sections
@@ -597,13 +598,16 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                     .radius(6.0)
                     .fill(fill);
                 if let Some(icon_el) = settings_section_icon(section.id) {
-                    item = item.child(icon(icon_el, 16.0));
+                    item = item.child(icon(icon_el, 16.0).color(label_color));
                 }
                 item = item.child(
                     text(t(section.label_key).to_owned())
                         .font(label_style)
                         .color(label_color),
                 );
+                if !is_active {
+                    item = item.hover(k.c.surface_hover);
+                }
                 if let Some(f) = &self.on_select_section {
                     let f = Rc::clone(f);
                     let id = section.id;

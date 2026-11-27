@@ -415,7 +415,7 @@ fn shell<S: 'static>(
     confirm: El,
     dark: bool,
 ) {
-    let theme = tok::theme(dark);
+    let theme = crate::ui::theme::app_theme(dark);
     let text_key = context_key
         .map(str::to_owned)
         .unwrap_or_else(|| format!("{key}-context"));

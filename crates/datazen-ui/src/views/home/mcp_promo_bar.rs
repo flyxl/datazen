@@ -113,7 +113,7 @@ pub fn build_mcp_promo_bar(
     theme: tok::Theme,
     dark: bool,
 ) -> El {
-    let accent = tok::accent(0, dark);
+    let accent = crate::ui::theme::accent(dark);
     let command = vm.cli_command.clone();
     row()
         .key("home-mcp-promo-bar")

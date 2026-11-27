@@ -83,7 +83,7 @@ pub fn main_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         Err(_) => None,
     }
     .unwrap_or(system_dark);
-    let theme = tok::theme(dark);
+    let theme = crate::ui::theme::app_theme(dark);
 
     // React `MainPage.tsx:112-133`: the early return renders the chrome, the
     // centered failure screen and the two connection dialog hosts — no
@@ -144,7 +144,7 @@ fn main_load_failed(state: &AppState) -> bool {
 /// calling branch chose (the section title, or the app name on the failure
 /// screen).
 fn main_titlebar(dark: bool, cx: &mut Cx<AppState>, label: String) -> El {
-    let theme = tok::theme(dark);
+    let theme = crate::ui::theme::app_theme(dark);
     row()
         .key("datazen-titlebar")
         .window_drag()

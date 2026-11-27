@@ -68,7 +68,7 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         Err(_) => None,
     }
     .unwrap_or(system_dark);
-    let theme = tok::theme(dark);
+    let theme = crate::ui::theme::app_theme(dark);
     let titlebar_inset = cx.titlebar_inset();
 
     let titlebar = connection_titlebar(state, theme, dark, titlebar_inset);
@@ -239,6 +239,7 @@ fn connection_titlebar(
     dark: bool,
     titlebar_inset: f32,
 ) -> El {
+    let c = crate::ui::theme::colors(dark);
     let mut left = row()
         .key("rune-titlebar-left")
         .gap(4.0)
@@ -254,14 +255,14 @@ fn connection_titlebar(
                 .w(28.0)
                 .center()
                 .radius(6.0)
-                .hover(theme.hover)
+                .hover(c.titlebar_hover)
                 .role("button")
                 .label(t("common.back"))
                 .focusable(true)
                 .on_press(AppState::leave_settings)
                 .child(
                     rune::icon(&crate::icons::ICON_CHEVRON_LEFT, 16.0)
-                        .color(theme.text_secondary),
+                        .color(c.titlebar_fg_muted),
                 ),
         );
     }
@@ -277,13 +278,13 @@ fn connection_titlebar(
         .pl(titlebar_inset + 12.0)
         .pr(12.0)
         .gap(12.0)
-        .fill(theme.bg)
+        .fill(c.titlebar)
         .child(left)
         .child(
             text(state.active.label())
                 .key("datazen-titlebar-label")
                 .font(type_::TITLE)
-                .color(theme.text)
+                .color(c.titlebar_fg)
                 .grow(1.0)
                 .min_w(0.0),
         )
@@ -299,7 +300,7 @@ fn connection_titlebar(
                 .child(
                     text(if dark { "DARK" } else { "LIGHT" })
                         .font(type_::LABEL)
-                        .color(theme.text_secondary),
+                        .color(c.titlebar_fg_muted),
                 ),
         )
 }
