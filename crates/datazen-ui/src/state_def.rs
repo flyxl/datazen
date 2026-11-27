@@ -20,6 +20,21 @@ use crate::views::{
 };
 use std::cell::Cell;
 
+#[derive(Debug)]
+pub(crate) enum NativeQueryCsvStatus {
+    ChoosingFile,
+    Saving,
+    Saved,
+    Cancelled,
+    Failed(String),
+}
+
+impl NativeQueryCsvStatus {
+    pub(crate) fn busy(&self) -> bool {
+        matches!(self, Self::ChoosingFile | Self::Saving)
+    }
+}
+
 /// A3: one query result tab. Multiple executions produce multiple tabs; pinned
 /// tabs stay across later runs.
 #[derive(Debug)]
@@ -30,6 +45,8 @@ pub struct QueryResultTab {
     pub execution_stats: Option<datazen_ui_api::QueryExecutionStats>,
     pub error_key: Option<&'static str>,
     pub error_copied_until: Option<f64>,
+    pub(crate) csv_source: Option<datazen_ui_api::NativeQueryCsvSource>,
+    pub(crate) csv_status: Option<NativeQueryCsvStatus>,
     pub grid: Option<DataGrid>,
     pub pinned: bool,
 }
@@ -108,6 +125,7 @@ pub struct AppState {
     pub query_result_tabs: Vec<QueryResultTab>,
     pub selected_query_result: Option<u32>,
     pub next_query_result_id: u32,
+    pub(crate) query_csv_dialog: Option<u32>,
     /// A3: favorites/history/snippets sidebar inside the query workspace.
     pub query_sidebar_panel: QuerySidebarPanel,
     pub(crate) query_history: crate::query_history_state::QueryHistoryState,
@@ -593,6 +611,7 @@ impl Default for AppState {
             query_result_tabs: Vec::new(),
             selected_query_result: None,
             next_query_result_id: 1,
+            query_csv_dialog: None,
             query_sidebar_panel: QuerySidebarPanel::Favorites,
             query_history: Default::default(),
             query_notice: None,

@@ -22,6 +22,7 @@ fn job_adapter_delivers_only_the_work_it_accepts() {
             generation: 2,
             page: Ok(_),
             execution_stats: None,
+            csv_source: None,
         }]
     ));
 }

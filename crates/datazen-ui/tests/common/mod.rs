@@ -531,6 +531,7 @@ impl DesktopAdapter for JobAdapter {
             | AdapterJob::CompareNativeSchema { .. }
             | AdapterJob::RunNativeTransfer { .. }
             | AdapterJob::ReadQueryHistory { .. }
+            | AdapterJob::SaveNativeQueryCsv { .. }
             | AdapterJob::ReadKv(_)
             | AdapterJob::CloseKv { .. } => return false,
             AdapterJob::RunWorkflow { generation, .. } => AdapterDelivery::WorkflowRun {
@@ -650,6 +651,7 @@ impl DesktopAdapter for JobAdapter {
             AdapterJob::RunQuery { generation, .. } => AdapterDelivery::QueryPage {
                 generation,
                 execution_stats: None,
+                csv_source: None,
                 page: Ok(TablePage {
                     table: "result".into(),
                     columns: vec!["job".into()],

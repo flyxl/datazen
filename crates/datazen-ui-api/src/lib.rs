@@ -1785,6 +1785,17 @@ pub struct ConnectionProfile {
     pub host: Option<String>,
 }
 
+/// A successful, retained native query result. It refers to existing published
+/// data; saving this result must not reconnect or run its SQL again.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeQueryCsvSource {
+    pub execution_id: String,
+    pub artifact_id: String,
+    pub statement_index: u32,
+    pub columns: Vec<String>,
+    pub row_count: u32,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NativeQueryDatabase {
     pub connection_id: String,
@@ -2546,6 +2557,11 @@ pub enum AdapterJob {
         variables: std::collections::BTreeMap<String, serde_json::Value>,
     },
     /// Load the newest persisted query history for one open connection.
+    SaveNativeQueryCsv {
+        result_id: u32,
+        source: NativeQueryCsvSource,
+        destination: std::path::PathBuf,
+    },
     ReadQueryHistory {
         generation: u32,
         connection_id: String,
@@ -2675,6 +2691,11 @@ pub enum AdapterDelivery {
         generation: u32,
         page: Result<TablePage, String>,
         execution_stats: Option<QueryExecutionStats>,
+        csv_source: Option<NativeQueryCsvSource>,
+    },
+    NativeQueryCsvSaved {
+        result_id: u32,
+        result: Result<(), String>,
     },
     QueryExplained {
         generation: u32,

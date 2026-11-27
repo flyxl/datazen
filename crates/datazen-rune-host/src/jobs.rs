@@ -99,13 +99,26 @@ fn stage_output(path: &Path, body: &str) -> io::Result<(PathBuf, NamedTempFile)>
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent)?;
-    let mut staged = NamedTempFile::new_in(parent)?;
-    staged.write_all(body.as_bytes())?;
+    let staged = stage_body(parent, body)?;
     if let Some(permissions) = permissions {
         staged.as_file().set_permissions(permissions)?;
     }
 
     Ok((destination, staged))
+}
+
+fn stage_body(parent: &Path, body: &str) -> io::Result<NamedTempFile> {
+    let mut staged = NamedTempFile::new_in(parent)?;
+    staged.write_all(body.as_bytes())?;
+    Ok(staged)
+}
+
+/// Results require a user-picked destination, and cannot replace an existing
+/// file. Atomic no-clobber applies even if the path changes after selection.
+pub(super) fn save_new_file(path: &Path, body: &str) -> io::Result<()> {
+    let parent = path.parent().ok_or_else(|| io::Error::other("missing save directory"))?;
+    stage_body(parent, body)?.persist_noclobber(path).map_err(|error| error.error)?;
+    Ok(())
 }
 
 pub struct HostJobs {

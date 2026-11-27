@@ -25,6 +25,7 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 // first port — the manifest-icon-or-puzzle glyph the wapp page shell,
 // default cards, navigator and tab bar reuse).
 mod native_explain;
+mod native_query_export;
 mod query_history;
 pub mod wapp_icon;
 // T067: the host-side shell around a sandboxed wapp page — the lazy entry
@@ -329,6 +330,7 @@ pub fn query_workspace(
             ),
     };
 
+    native_query_export::dialog(state, dark, layer);
     let editor_split = splitter::splitter_handle(
         state,
         QUERY_EDITOR_HEIGHT_KEY,
@@ -671,6 +673,7 @@ fn result_workspace(
         .w_full()
         .gap(6.0)
         .child(toggle)
+        .children(native_query_export::status(state, theme))
         .child(find_bar)
         .child(status)
         .children(truncated_to.map(|limit| {
@@ -715,6 +718,7 @@ fn result_view_toggle(state: &AppState, theme: tok::Theme) -> El {
             ResultView::Chart,
             state.result_view == ResultView::Chart,
         ))
+        .children(native_query_export::trigger(state, theme))
 }
 
 /// A5: find bar for the query result grid — search, next/prev, match count.

@@ -76,3 +76,57 @@ class QueryRowLimitJourney:
         self.assertFalse(visible(all_rows, key="result-truncated"))
         with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
             self.assertEqual([row[0] for row in db.execute(sql)], expected)
+
+    def test_legacy_query_truncated_result_disables_csv_export_for_identical_prefix(self):
+        """Compare the actual complete/capped native grid and its export control."""
+        fixture(self.store, self.db)
+        exact_sql = "SELECT id, customer_name FROM customers WHERE id <= 2 ORDER BY id;"
+        longer_sql = "SELECT id, customer_name FROM customers WHERE id <= 3 ORDER BY id;"
+        with sqlite3.connect(self.db) as db:
+            db.execute("INSERT INTO customers VALUES (?, ?)", (3, "must-be-outside-cap"))
+            exact = db.execute(exact_sql).fetchall()
+            longer = db.execute(longer_sql).fetchall()
+        self.assertEqual(exact, longer[:2])
+        self.assertEqual(len(exact), 2)
+        self.assertEqual(len(longer), 3)
+
+        settings = self.root / "settings.json"
+        settings.write_text(json.dumps({"ui": {"language": "en", "queryMaxRows": 2}}),
+                            encoding="utf-8")
+
+        def steps(statement):
+            actions = query_steps(statement)
+            actions[-2] = {"t": 5.2, "type": "paste", "text": statement}
+            return actions
+
+        def prefix(tree):
+            self.expect_rendered(tree, key="result-grid", within="result-workspace")
+            self.expect_rendered(tree, key="result-grid-status", text="result · 2 rows × 2 cols")
+            for row, values in enumerate(exact):
+                for col, value in enumerate(values):
+                    self.expect_rendered(tree, text=str(value), within=f"result-cell-{row}-{col}")
+            self.assertFalse(visible(tree, key="result-cell-2-0"))
+            self.assertFalse(visible(tree, text=longer[2][1], within="result-workspace"))
+
+        complete = self.replay(steps(exact_sql), until=11.0)
+        prefix(complete)
+        self.assertFalse(visible(complete, key="result-truncated", within="result-workspace"))
+        self.expect_rendered(complete, key="data-table-export", within="result-workspace")
+
+        capped = self.replay(steps(longer_sql), until=11.0)
+        prefix(capped)
+        self.expect_rendered(capped, key="result-truncated", within="result-workspace")
+        # Stronger than invisibility: no export control or modal is constructed
+        # at all, including outside the viewport or in an exiting frame.
+        self.assertFalse(any(node.get("key") in {"data-table-export", "data-export-dialog"}
+                             for node in capped["elements"]))
+
+        reviewed = self.replay([
+            *steps(exact_sql),
+            tap(11.5, "data-table-export"),
+        ], until=13.0)
+        self.expect_rendered(reviewed, key="data-export-dialog")
+        self.expect_rendered(reviewed, text="CSV · 2 × 2", within="data-export-dialog")
+        self.assertFalse(list(self.root.rglob("*.csv")))
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+            self.assertEqual(db.execute(longer_sql).fetchall(), longer)

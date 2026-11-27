@@ -39,7 +39,7 @@ use datazen_ui_api::native_kv::{native_kv_driver, KvRead, KvReply, NativeKvDrive
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionDraft,
     ConnectionProbeError, ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter,
-    ProgressSnapshot, QueryExecutionStats, SchemaNode,
+    NativeQueryCsvSource, ProgressSnapshot, QueryExecutionStats, SchemaNode,
     Snippet, TablePage, TableStructure, ValueSearchHit, Workflow, WorkflowStepResult,
     DESKTOP_NOT_IMPLEMENTED,
 };
@@ -81,6 +81,8 @@ mod live_csv_import;
 mod live_sql_transfer;
 #[path = "live_query_command.rs"]
 mod live_query_command;
+#[path = "live_query_export.rs"]
+mod live_query_export;
 #[path = "live_sqlite_script.rs"]
 mod live_sqlite_script;
 #[path = "live_sync.rs"]
@@ -185,6 +187,11 @@ enum HostJob {
         review: Option<datazen_ui_api::CellEditReview>,
     },
     PreviewCells { nonce: u32, batch: datazen_ui_api::CellEditBatch },
+    SaveNativeQueryCsv {
+        result_id: u32,
+        source: NativeQueryCsvSource,
+        destination: PathBuf,
+    },
     ReadQueryHistory {
         generation: u32,
         connection_id: String,
@@ -301,6 +308,11 @@ enum HostAnswer {
         generation: u32,
         page: Result<TablePage, String>,
         execution_stats: Option<QueryExecutionStats>,
+        csv_source: Option<NativeQueryCsvSource>,
+    },
+    NativeQueryCsvSaved {
+        result_id: u32,
+        result: Result<(), String>,
     },
     QueryScriptPages {
         generation: u32,
@@ -613,6 +625,11 @@ impl LiveAdapter {
                                     nonce,
                                     result: Err("The preview worker did not start.".into()),
                                 },
+                                HostJob::SaveNativeQueryCsv { result_id, .. } =>
+                                    HostAnswer::NativeQueryCsvSaved {
+                                        result_id,
+                                        result: Err("The result export worker did not start.".into()),
+                                    },
                                 HostJob::ReadQueryHistory { generation, .. } =>
                                     HostAnswer::QueryHistoryRead {
                                         generation,
@@ -630,6 +647,7 @@ impl LiveAdapter {
                                     generation,
                                     page: Err(format!("the job runtime did not start: {error}")),
                                     execution_stats: None,
+                                    csv_source: None,
                                 },
                                 HostJob::ValueSearch { generation, .. } => {
                                     HostAnswer::ValueSearched {
@@ -761,6 +779,14 @@ impl LiveAdapter {
                             ));
                             HostAnswer::CellPreviewRead { nonce, result }
                         }
+                        HostJob::SaveNativeQueryCsv { result_id, source, destination } => {
+                            let result = runtime.block_on(live_query_export::save(
+                                &worker_runtime,
+                                source,
+                                &destination,
+                            ));
+                            HostAnswer::NativeQueryCsvSaved { result_id, result }
+                        }
                         HostJob::ReadQueryHistory { generation, connection_id } => {
                             let database = worker_session.lock().ok().and_then(|session| {
                                 (session.connection.as_deref() == Some(connection_id.as_str()))
@@ -817,7 +843,7 @@ impl LiveAdapter {
                         }
                         HostJob::RunQuery { generation, sql, stop, script, target, configured_limit } => {
                             let started = std::time::Instant::now();
-                            let pages = runtime.block_on(run_query_observed(
+                            let output = runtime.block_on(run_query_observed(
                                 &worker_runtime,
                                 &worker_profiles,
                                 &worker_session,
@@ -852,6 +878,10 @@ impl LiveAdapter {
                                 }
                             };
                             let elapsed_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+                            let (pages, artifact) = match output {
+                                Ok((pages, artifact)) => (Ok(pages), artifact),
+                                Err(error) => (Err(error), None),
+                            };
                             let execution_stats = if script {
                                 None
                             } else {
@@ -883,7 +913,21 @@ impl LiveAdapter {
                                     pages: pages.map(|pages| pages.into_iter().map(|result| result.page).collect()),
                                 }
                             } else {
-                                HostAnswer::QueryPage { generation, page: first_query_page(pages), execution_stats }
+                                let page = first_query_page(pages);
+                                // A display cap can leave one additional probe row
+                                // in an otherwise complete retained artifact.
+                                let fully_displayed = execution_stats
+                                    .is_none_or(|stats| stats.truncated_to.is_none());
+                                let csv_source = artifact.filter(|_| fully_displayed).zip(page.as_ref().ok())
+                                    .filter(|(_, page)| !page.columns.is_empty())
+                                    .map(|(artifact, page)| NativeQueryCsvSource {
+                                        execution_id: artifact.execution_id,
+                                        artifact_id: artifact.artifact_id,
+                                        statement_index: 0,
+                                        columns: page.columns.clone(),
+                                        row_count: page.total_rows,
+                                    });
+                                HostAnswer::QueryPage { generation, page, execution_stats, csv_source }
                             }
                         }
                     };
@@ -2398,7 +2442,10 @@ async fn run_query(
     sql: &str,
 ) -> Result<TablePage, String> {
     let stop = std::sync::atomic::AtomicBool::new(false);
-    first_query_page(run_query_observed(runtime, profiles, session, sql, false, None, None, &stop, |_| {}).await)
+    first_query_page(
+        run_query_observed(runtime, profiles, session, sql, false, None, None, &stop, |_| {})
+            .await.map(|(pages, _)| pages),
+    )
 }
 
 fn first_query_page(
@@ -2418,7 +2465,10 @@ async fn run_query_observed(
     configured_limit: Option<u32>,
     stop: &std::sync::atomic::AtomicBool,
     note_execution: impl Fn(bool),
-) -> Result<Vec<live_sqlite_script::CollectedPage>, String> {
+) -> Result<(
+    Vec<live_sqlite_script::CollectedPage>,
+    Option<live_query_command::PublishedQueryArtifact>,
+), String> {
     let (connection, database, dialect) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
@@ -2453,11 +2503,11 @@ async fn run_query_observed(
     });
     let probe = display_limit.and_then(|rows| rows.checked_add(1));
     let mut pages = live_sqlite_script::ResultPages::new(page_count, script, display_limit);
-    live_query_command::consume_query_command(
+    let artifact = live_query_command::consume_query_command(
         runtime, profiles, connection, database, "query", sql, probe, stop,
         note_execution, |output| pages.push(output),
     ).await?;
-    pages.finish()
+    Ok((pages.finish()?, artifact))
 }
 
 /// What one setting write does to the document's ui object (L1): the
@@ -2905,6 +2955,8 @@ impl DesktopAdapter for LiveAdapter {
             AdapterJob::CommitReviewedCells { generation, batch, review } => {
                 HostJob::CommitCells { generation, batch, review: Some(review) }
             }
+            AdapterJob::SaveNativeQueryCsv { result_id, source, destination } =>
+                HostJob::SaveNativeQueryCsv { result_id, source, destination },
             AdapterJob::ReadQueryHistory {
                 generation,
                 connection_id,
@@ -3056,9 +3108,12 @@ impl DesktopAdapter for LiveAdapter {
                     self.query_stops.remove(&generation);
                     deliveries.push(AdapterDelivery::QueryScriptPages { generation, pages });
                 }
-                HostAnswer::QueryPage { generation, page, execution_stats } => {
+                HostAnswer::QueryPage { generation, page, execution_stats, csv_source } => {
                     self.query_stops.remove(&generation);
-                    deliveries.push(AdapterDelivery::QueryPage { generation, page, execution_stats });
+                    deliveries.push(AdapterDelivery::QueryPage { generation, page, execution_stats, csv_source });
+                }
+                HostAnswer::NativeQueryCsvSaved { result_id, result } => {
+                    deliveries.push(AdapterDelivery::NativeQueryCsvSaved { result_id, result });
                 }
             }
         }

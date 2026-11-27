@@ -85,7 +85,7 @@ pub(super) async fn consume_query_command(
     stop: &std::sync::atomic::AtomicBool,
     note_execution: impl Fn(bool),
     mut consume: impl FnMut(serde_json::Value) -> Result<(), String>,
-) -> Result<(), String> {
+) -> Result<Option<PublishedQueryArtifact>, String> {
     let ctx = crate::host_request_context().clone();
     let token = runtime
         .issue_submission_token(
@@ -156,11 +156,18 @@ pub(super) async fn consume_query_command(
             None => "the statement failed".to_string(),
         });
     }
+    let mut retained = None;
     for artifact in &view.artifact_ids {
         let first = runtime
             .read_artifact_chunk(&ctx, artifact.clone(), Counter::ZERO)
             .await
             .map_err(|error| error.to_string())?;
+        if view.artifact_ids.len() == 1 && first.complete {
+            retained = Some(PublishedQueryArtifact {
+                execution_id: receipt.execution_id.as_str().to_owned(),
+                artifact_id: artifact.as_str().to_owned(),
+            });
+        }
         for index in 0..first.published_chunk_count.get() {
             let chunk = if index == 0 {
                 first.clone()
@@ -175,5 +182,10 @@ pub(super) async fn consume_query_command(
             }
         }
     }
-    Ok(())
+    Ok(retained)
+}
+
+pub(super) struct PublishedQueryArtifact {
+    pub execution_id: String,
+    pub artifact_id: String,
 }

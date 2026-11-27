@@ -223,6 +223,8 @@ impl AppState {
             execution_stats: None,
             error_key: None,
             error_copied_until: None,
+            csv_source: None,
+            csv_status: None,
             grid: None,
             pinned: false,
         });
@@ -1010,13 +1012,33 @@ impl AppState {
                 self.deliver_query_script(generation, pages);
                 self.refresh_query_history_if_open();
             }
-            AdapterDelivery::QueryPage { generation, page, execution_stats } => {
+            AdapterDelivery::NativeQueryCsvSaved { result_id, result } => {
+                if let Some(tab) = self.query_result_tabs.iter_mut().find(|tab| tab.id == result_id) {
+                    use crate::state_def::NativeQueryCsvStatus;
+                    if matches!(tab.csv_status, Some(NativeQueryCsvStatus::Saving)) {
+                        tab.csv_status = Some(match result {
+                            Ok(()) => NativeQueryCsvStatus::Saved,
+                            Err(error) => NativeQueryCsvStatus::Failed(error),
+                        });
+                    }
+                }
+            }
+            AdapterDelivery::QueryPage { generation, page, execution_stats, csv_source } => {
                 self.finish_running_query(generation, false);
                 if self.query_loading == Some(generation) {
                     self.query_loading = None;
                 }
                 match page {
-                    Ok(page) => self.deliver_query_result_with_stats(generation, page, execution_stats),
+                    Ok(page) => {
+                        self.deliver_query_result_with_stats(generation, page, execution_stats);
+                        if self.query_generation == generation {
+                            if let Some(tab) = self.query_result_tabs.iter_mut()
+                                .find(|tab| tab.generation == Some(generation))
+                            {
+                                tab.csv_source = csv_source;
+                            }
+                        }
+                    }
                     Err(error) => self.deliver_query_failure(generation, &error),
                 }
                 self.refresh_query_history_if_open();

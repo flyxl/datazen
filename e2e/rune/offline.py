@@ -594,6 +594,81 @@ class OfflineJourneys:
         self.expect_rendered(tree, text="Ada", within="result-cell-0-0")
         self.expect_rendered(tree, text="2", within="result-cell-1-1")
 
+    def test_legacy_query_chart_table_exports_selected_retained_sqlite_result(self):
+        """Migrate query-result-chart-journey.ts with real CSV and independent SQLite oracles."""
+        fixture(self.store, self.db)
+        statement = ("SELECT category, amount, missing, empty FROM export_probe "
+                     "WHERE amount != 99 ORDER BY id;")
+        mutation = "UPDATE export_probe SET category='changed after SELECT' WHERE id=1;"
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TABLE export_probe (id INTEGER PRIMARY KEY, category TEXT NOT NULL, "
+                       "amount INTEGER NOT NULL, missing TEXT, empty TEXT NOT NULL)")
+            db.executemany("INSERT INTO export_probe VALUES (?, ?, ?, ?, ?)", [
+                (1, '雪, "quoted"\r\nsecond line', 12, None, ""),
+                (2, "negative", -7, "set", ""),
+                (3, "excluded", 99, None, "control"),
+            ])
+            headers = [column[0] for column in db.execute(statement).description]
+            before = db.execute(statement).fetchall()
+        destination = self.root / "retained.csv"
+        overwrite = self.root / "protected.csv"
+
+        initial = [*query_steps(statement)[:-2],
+                   {"t": 4.9, "type": "paste", "text": statement},
+                   tap(8, "sql-run")]
+        chart_steps = [*initial, tap(10.8, "result-view-chart")]
+        chart = self.replay(chart_steps, until=12.2)
+        self.expect_rendered(chart, key="result-block-0", within="result-chart")
+        self.expect_rendered(chart, key="result-block-1", within="result-chart")
+        self.assertFalse(visible(chart, key="result-grid"))
+        self.assertFalse(visible(chart, key="data-table-export"))
+        to_table = [*chart_steps, tap(12.4, "result-view-table")]
+        review = [*to_table, tap(14.2, "data-table-export")]
+        dialog = self.replay(review, until=15.7)
+        self.expect_rendered(dialog, key="data-export-dialog")
+        self.expect_rendered(dialog, text="CSV · 2 × 4", within="data-export-dialog")
+        self.expect_rendered(dialog, text="12", within="result-cell-0-1")
+        self.assertFalse(list(self.root.rglob("*.csv")))
+        cancelled = self.replay([
+            *review, tap(16, "query-csv-dialog-confirm"),
+            {"t": 17.2, "type": "file-dialog-cancel"},
+        ], until=19)
+        self.expect_rendered(cancelled, key="query-csv-cancelled", within="result-workspace")
+        self.assertFalse(visible(cancelled, key="query-csv-saved"))
+        self.assertFalse(list(self.root.rglob("*.csv")))
+
+        restore = [*to_table, *fill(14.6, "sql-editor-scroll", mutation), tap(18, "sql-run"),
+                   tap(21.2, "query-result-tab-1"), tap(22.8, "data-table-export")]
+        # Distinct new and old tab contents: the save is of the first retained
+        # result, not the editor's current SQL, a fresh DB read, or the later tab.
+        saved = self.replay([
+            *restore, tap(24.6, "query-csv-dialog-confirm"),
+            {"t": 25.7, "type": "file-dialog", "path": str(destination)},
+        ], until=29, timeout=95)
+        self.expect_rendered(saved, key="query-csv-saved", within="result-workspace")
+        self.expect_rendered(saved, text="12", within="result-cell-0-1")
+        self.assertFalse(visible(saved, key="query-csv-error"))
+        with destination.open(newline="", encoding="utf-8") as stream:
+            records = list(csv.reader(stream))
+        self.assertEqual(records, [headers, *[
+            ["" if value is None else str(value) for value in row] for row in before
+        ]])
+        self.assertIn(b'12,,""\n', destination.read_bytes())  # SQL NULL vs literal ""
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+            after = db.execute(statement).fetchall()
+        self.assertEqual(after, [("changed after SELECT", *before[0][1:]), before[1]])
+        recorded = json.loads((self.root / "query-history.json").read_text(encoding="utf-8"))
+        self.assertEqual([row["sql"].rstrip(";") for row in recorded[-2:]],
+                         [statement.rstrip(";"), mutation.rstrip(";")])
+
+        overwrite.write_bytes(b"existing value")
+        refused = self.replay([
+            *review, tap(16, "query-csv-dialog-confirm"),
+            {"t": 17.2, "type": "file-dialog", "path": str(overwrite)},
+        ], until=20, timeout=80)
+        self.expect_rendered(refused, key="query-csv-error", within="result-workspace")
+        self.assertEqual(overwrite.read_bytes(), b"existing value")
+
     def test_sqlite_read_only_profile_rejects_query_writes(self):
         fixture(self.store, self.db)
         profile = json.loads(self.store.read_text())
