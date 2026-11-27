@@ -207,6 +207,64 @@ fn switching_to_workflow_and_back_preserves_the_database_navigator_state() {
 }
 
 #[test]
+fn embedded_workflow_is_flush_to_the_rail_and_keeps_its_own_controls() {
+    use datazen_ui_api::WorkspaceApi;
+
+    let mut rt = runtime();
+    rt.state.workspace.connect("local").expect("memory database session");
+    rt.state.open_table_tab("customers").expect("an open database tab");
+    rt.frame(0.0);
+    assert!(key_set(&rt).contains("content-status-bar"));
+    let selected = rt.state.tabs.selected().expect("the table tab").id;
+
+    let click = |rt: &mut Runtime<AppState>, key: &str| {
+        let (x, y) = rt.find(key).unwrap_or_else(|| panic!("missing visible control {key}"));
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.frame(0.0);
+        rt.frame(0.0);
+    };
+    click(&mut rt, "rail-workflows");
+
+    let keys = key_set(&rt);
+    for key in ["content-toolbar", "content-toolbar-title", "content-status-bar",
+                "status-connection-label", "datazen-navigator"] {
+        assert!(!keys.contains(key), "workflow has no database chrome: {key}");
+    }
+
+    let elements = rt.elements();
+    let rect = |key: &str| {
+        elements.iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("missing workflow geometry {key}"))
+            .rect
+    };
+    let close = |a: f32, b: f32| (a - b).abs() <= 0.5;
+    let [rx, ry, rw, rh] = rect("datazen-rail");
+    let [wx, wy, ww, wh] = rect("workflow-workspace");
+    let [tx, ty, tw, th] = rect("workflow-toolbar");
+    let [sx, sy, _, sh] = rect("workflow-sidebar");
+    assert!(close(wx, rx + rw) && close(wy, ry) && close(wh, rh));
+    assert!(close(wx + ww, 1440.0), "workflow reaches the right edge");
+    assert!(close(tx, wx) && close(ty, wy) && close(tw, ww));
+    assert!(close(th, 40.0), "one 40pt workflow toolbar");
+    assert!(close(sx, wx) && close(sy, ty + th) && close(sy + sh, wy + wh),
+            "workflow sidebar fills the area below its own toolbar");
+
+    click(&mut rt, "workflow-side-tab-history");
+    assert!(key_set(&rt).contains("workflow-history-list"));
+    click(&mut rt, "workflow-side-tab-workflows");
+    click(&mut rt, "workflow-create");
+    assert!(key_set(&rt).contains("workflow-form-root"));
+    click(&mut rt, "workflow-editor-cancel");
+    click(&mut rt, "rail-workspace");
+    let keys = key_set(&rt);
+    assert!(keys.contains("datazen-navigator") && keys.contains("content-status-bar"));
+    assert!(!keys.contains("workflow-sidebar"));
+    assert_eq!(rt.state.tabs.selected().map(|tab| tab.id), Some(selected));
+}
+
+#[test]
 fn tabs_and_toolbar_follow_the_content_workspace_contract() {
     let mut rt = runtime();
     rt.state.active = Section::Workspace;

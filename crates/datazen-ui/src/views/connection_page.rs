@@ -100,7 +100,22 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
                     NAVIGATOR_WIDTH_DEFAULT,
                 ));
         }
-        body.child(connection_content(state, theme, dark, &mut layer))
+        if state.active == Section::Workflows {
+            // Like React's embedded WorkflowPage, this page owns its
+            // toolbar, history sidebar and editor. Do not wrap it in the
+            // database ContentView's inset, title or status footer.
+            body.child(
+                col()
+                    .key("datazen-page")
+                    .grow(1.0)
+                    .min_w(0.0)
+                    .min_h(0.0)
+                    .h_full()
+                    .child(super::workflow::workflow_page::workflow_page(state, theme, dark)),
+            )
+        } else {
+            body.child(connection_content(state, theme, dark, &mut layer))
+        }
     };
 
     col()
