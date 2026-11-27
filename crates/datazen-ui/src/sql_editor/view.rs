@@ -167,21 +167,38 @@ pub(crate) fn panel_with_completion_scope(
         )
         .child(
             col()
-                .key("sql-editor-scroll")
+                .key("sql-editor-body")
                 .w_full()
                 .grow(1.0)
                 .min_h(60.0)
-                .scroll_xy()
-                .on_scroll_offset(move |at| {
-                    if let Some(scroll) = &scroll { scroll.set(at.offset); }
-                })
-                .on_press(|state: &mut crate::AppState| {
-                    // T1: pressing the editor surface hands the keyboard back
-                    // from the result grid.
-                    state.result_focused = false;
-                    state.sql.focus();
-                })
-                .child(doc),
+                // The numbered sheet can be shorter than the idle canvas.
+                // Keep the gutter chrome visible to the viewport's bottom
+                // without padding the document or changing scroll offsets.
+                .child(
+                    col()
+                        .key("sql-editor-gutter-track")
+                        .pin(Some(0.0), Some(0.0), None, Some(0.0))
+                        .w(gutter_width)
+                        .fill(gutter_bg)
+                        .border_sides([0.0, 1.0, 0.0, 0.0], gutter_edge),
+                )
+                .child(
+                    col()
+                        .key("sql-editor-scroll")
+                        .w_full()
+                        .grow(1.0)
+                        .min_h(0.0)
+                        .scroll_xy()
+                        .on_scroll_offset(move |at| {
+                            if let Some(scroll) = &scroll { scroll.set(at.offset); }
+                        })
+                        .on_press(|state: &mut crate::AppState| {
+                            // The editor takes keyboard input back from the result grid.
+                            state.result_focused = false;
+                            state.sql.focus();
+                        })
+                        .child(doc),
+                ),
         )
 }
 

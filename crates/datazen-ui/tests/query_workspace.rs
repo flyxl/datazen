@@ -88,3 +88,88 @@ fn a3_query_workspace_renders_toolbar_sidebar_and_result_tabs() {
     assert!(runtime.find("query-result-tabs").is_some(), "result tabs bar rendered");
     assert!(runtime.find("query-result-tab-1").is_some(), "first result tab rendered");
 }
+fn query_rect(runtime: &Runtime<AppState>, key: &str) -> [f32; 4] {
+    runtime.presented(key).unwrap_or_else(|| panic!("visible {key}")).0
+}
+
+fn tap_query(runtime: &mut Runtime<AppState>, key: &str) {
+    let (x, y) = runtime.find(key).unwrap_or_else(|| panic!("visible {key}"));
+    runtime.pointer_down(x, y);
+    runtime.pointer_up(x, y);
+    runtime.settle_all();
+    runtime.frame(0.1);
+}
+
+#[test]
+fn query_toolbar_is_above_flex_idle_editor_and_run_preserves_the_selected_statement() {
+    let mut rt = runtime();
+    rt.poll = Some(datazen_ui::app_poll);
+    rt.state.workspace.connect("local").unwrap();
+    rt.state.open_query_tab("Query").unwrap();
+    rt.state.set_layout_size(QUERY_EDITOR_HEIGHT_KEY, 350).unwrap();
+    let sql = "SELECT 99;\nSELECT 1";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(sql);
+    rt.state.sql.set_main_selection(11, sql.len());
+    rt.frame(0.1);
+
+    let toolbar = query_rect(&rt, "query-toolbar");
+    let editor = query_rect(&rt, "query-editor-pane");
+    let viewport = query_rect(&rt, "sql-editor-scroll");
+    let gutter_track = query_rect(&rt, "sql-editor-gutter-track");
+    let footer = query_rect(&rt, "query-results");
+    let main = query_rect(&rt, "query-main");
+    assert_eq!(toolbar[3], 36.0);
+    assert_eq!(toolbar[1] + toolbar[3], editor[1], "no gap under the top toolbar");
+    assert_eq!(editor[1] + editor[3], footer[1]);
+    assert_eq!(footer[3], 30.0, "compact idle footer, not an empty result card");
+    assert_eq!(footer[1] + footer[3], main[1] + main[3]);
+    assert!(editor[3] > 450.0, "idle canvas uses available height: {editor:?}");
+    assert_eq!([gutter_track[0], gutter_track[1], gutter_track[3]], [viewport[0], viewport[1], viewport[3]]);
+    assert!(rt.find("query-idle-hint").is_some());
+    assert!(rt.find("query-result-tabs").is_none());
+    assert!(rt.find("splitter:query-editor-height").is_none());
+    assert!(rt.find("sql-find-input").is_some());
+    assert!(rt.find("sql-replace-input").is_some());
+
+    tap_query(&mut rt, "sql-run");
+    let grid = rt.state.result_grid.as_ref().expect("toolbar executes the selected statement");
+    assert_eq!(grid.cell(0, 0), "1");
+    assert_eq!(rt.state.sql.doc(), sql);
+    assert!(rt.find("query-idle-hint").is_none());
+    assert_eq!(query_rect(&rt, "splitter:query-editor-height")[3], 6.0);
+    let after_toolbar = query_rect(&rt, "query-toolbar");
+    let after_editor = query_rect(&rt, "query-editor-pane");
+    assert_eq!(after_toolbar[1] + after_toolbar[3], after_editor[1]);
+    assert!(after_editor[3] <= 350.0, "real results reuse the persisted split");
+    assert!(rt.find("result-cell-0-0").is_some());
+
+    tap_query(&mut rt, "query-sidebar-tab-history");
+    assert_eq!(rt.state.query_sidebar_panel, types::QuerySidebarPanel::History);
+    tap_query(&mut rt, "query-result-close-1");
+    assert!(rt.state.result_grid.is_none());
+    assert_eq!(query_rect(&rt, "query-editor-pane"), editor);
+    assert_eq!(rt.state.layout_size(QUERY_EDITOR_HEIGHT_KEY), Some(350));
+    assert!(rt.find("query-idle-hint").is_some());
+}
+
+#[test]
+fn narrow_query_toolbar_can_scroll_to_its_last_action() {
+    let mut rt = runtime();
+    rt.set_viewport((900.0, 900.0), 1.0);
+    rt.state.workspace.connect("local").unwrap();
+    rt.state.open_query_tab("Query").unwrap();
+    rt.frame(0.1);
+
+    let toolbar = query_rect(&rt, "query-toolbar");
+    let last_before = query_rect(&rt, "sql-tx-rollback");
+    let edge = toolbar[0] + toolbar[2];
+    assert!(last_before[0] + last_before[2] > edge, "fixture actually overflows");
+    let (x, y) = rt.find("query-toolbar").unwrap();
+    rt.wheel_xy(x, y, -1000.0, 0.0);
+    rt.frame(0.2);
+    let last_after = query_rect(&rt, "sql-tx-rollback");
+    assert!(last_after[0] >= toolbar[0] && last_after[0] + last_after[2] <= edge,
+        "last action now accessible in toolbar: {last_after:?} vs {toolbar:?}");
+    tap_query(&mut rt, "sql-tx-rollback");
+    assert!(rt.state.query_notice.is_some(), "the scrolled action still hits its own callback");
+}

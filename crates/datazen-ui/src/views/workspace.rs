@@ -271,7 +271,6 @@ pub fn query_workspace(
         )
     });
 
-    let result_tabs = query_result_tabs_bar(state, theme);
     let selected_result = state.selected_query_result.and_then(|id| {
         state.query_result_tabs.iter().find(|tab| tab.id == id)
     });
@@ -286,7 +285,7 @@ pub fn query_workspace(
     let result_body = match (selected_error, command_stats, &state.result_grid) {
         (Some((tab, key, copied)), _, _) => {
             use crate::ui::{copyable::CopyableError, kit::kit};
-            col().key("result-workspace").w_full().px(8.0).py(6.0).child(
+            Some(col().key("result-workspace").w_full().px(8.0).py(6.0).child(
                 CopyableError::new("query-error-message", t(key))
                     .copy_button(true)
                     .copied(copied)
@@ -294,7 +293,7 @@ pub fn query_workspace(
                         s.mark_query_error_copied(tab, tx.clock());
                     })
                     .build::<AppState>(kit(dark)),
-            )
+            ))
         }
         (None, Some((affected_rows, execution_time_ms)), _) => {
             use crate::views::result_workspace::execution_summary_card::{
@@ -308,65 +307,84 @@ pub fn query_workspace(
                 },
                 copied: false,
             };
-            col().key("result-workspace").w_full()
-                .child(build::<AppState>(&summary, None, None, dark))
+            Some(col().key("result-workspace").w_full()
+                .child(build::<AppState>(&summary, None, None, dark)))
         }
-        (None, None, Some(grid)) => result_workspace(
+        (None, None, Some(grid)) => Some(result_workspace(
             state, grid, theme, dark, elapsed_ms,
             execution_stats.and_then(|stats| stats.truncated_to),
-        ),
-        (None, None, None) => col()
-            .key("query-results")
-            .w_full()
-            .h(120.0)
-            .px(12.0)
-            .py(8.0)
-            .radius(8.0)
-            .fill(theme.control_off)
-            .child(
-                text("No results")
-                    .font(type_::LABEL)
-                    .color(theme.text_secondary),
-            ),
+        )),
+        (None, None, None) => None,
     };
 
-    native_query_export::dialog(state, dark, layer);
-    let editor_split = splitter::splitter_handle(
-        state,
-        QUERY_EDITOR_HEIGHT_KEY,
-        splitter::SplitAxis::Horizontal,
-        QUERY_EDITOR_HEIGHT_MIN,
-        QUERY_EDITOR_HEIGHT_MAX,
-        QUERY_EDITOR_HEIGHT_DEFAULT,
-    );
+    let explain = native_explain::panel(state, theme);
+    // A saved/user-adjusted split only applies when something actually owns
+    // the space below it. The idle view has a single shortcut footer.
+    let split = loading.is_some()
+        || state.native_query_selected()
+        || !state.query_result_tabs.is_empty()
+        || explain.is_some()
+        || result_body.is_some();
+    let editor = col()
+        .key("query-editor-pane")
+        .w_full()
+        .min_w(0.0)
+        .min_h(QUERY_EDITOR_HEIGHT_MIN as f32)
+        .border_sides([0.0, 0.0, 1.0, 0.0], theme.separator)
+        .child(crate::sql_editor::panel_with_completion_scope(
+            &state.sql,
+            theme.text,
+            theme.text_secondary,
+            dark,
+            state.catalog_completion_current(),
+            state.query_editor_viewport(),
+        ));
+    let editor = if split { editor.h(editor_h).shrink() } else { editor.grow(1.0) };
 
-    let main = col()
+    native_query_export::dialog(state, dark, layer);
+    let mut main = col()
         .key("query-main")
         .grow(1.0)
         .min_w(0.0)
-        .gap(6.0)
-        .child(
-            col()
-                .key("query-editor-pane")
-                .w_full()
-                .min_w(0.0)
-                .h(editor_h)
-                .child(crate::sql_editor::panel_with_completion_scope(
-                    &state.sql,
-                    theme.text,
-                    theme.text_secondary,
-                    dark,
-                    state.catalog_completion_current(),
-                    state.query_editor_viewport(),
-                )),
-        )
+        .min_h(0.0)
+        .h_full()
         .child(query_toolbar(state, theme, build_query_database_picker(state, theme, dark, layer)))
-        .child(editor_split)
-        .children(notice)
-        .children(loading)
-        .child(result_tabs)
-        .children(native_explain::panel(state, theme))
-        .child(result_body);
+        .child(editor)
+        .children(notice);
+
+    if split {
+        let editor_split = splitter::splitter_handle(
+            state,
+            QUERY_EDITOR_HEIGHT_KEY,
+            splitter::SplitAxis::Horizontal,
+            QUERY_EDITOR_HEIGHT_MIN,
+            QUERY_EDITOR_HEIGHT_MAX,
+            QUERY_EDITOR_HEIGHT_DEFAULT,
+        )
+        .h(6.0)
+        .fill(theme.separator.alpha(0.25));
+        main = main
+            .child(editor_split)
+            .children(loading)
+            .child(query_result_tabs_bar(state, theme))
+            .children(explain)
+            .children(result_body);
+    } else {
+        main = main.child(
+            row()
+                .key("query-results")
+                .w_full()
+                .h(30.0)
+                .center_y()
+                .justify_center()
+                .child(
+                    text(t("query.shortcutHint"))
+                        .key("query-idle-hint")
+                        .color(crate::ui::kit::kit(dark).c.text_muted)
+                        .font(rune::TextStyle::new(12.0, 400.0)),
+                ),
+        );
+    }
 
     row()
         .key("query-tab")
@@ -424,10 +442,10 @@ fn build_query_database_picker(
 
 fn query_toolbar(state: &AppState, theme: tok::Theme, database_picker: Option<El>) -> El {
     let mut bar = row()
-        .key("query-toolbar")
-        .w_full()
-        .h(28.0)
-        .gap(6.0)
+        .key("query-toolbar-content")
+        .h_full()
+        .gap(8.0)
+        .px(12.0)
         .center_y()
         .child(toolbar_button("sql-run", t("query.run"), theme).on_press(|s: &mut AppState| s.run_query()));
     if state.desktop.supports_native_query_script() {
@@ -442,7 +460,7 @@ fn query_toolbar(state: &AppState, theme: tok::Theme, database_picker: Option<El
                 .on_press(|s: &mut AppState| s.cancel_query()),
         );
     }
-    bar.children(database_picker).child(
+    bar = bar.children(database_picker).child(
             toolbar_button("sql-format", t("query.format"), theme)
                 .on_press(|s: &mut AppState| s.format_query()),
         )
@@ -463,12 +481,26 @@ fn query_toolbar(state: &AppState, theme: tok::Theme, database_picker: Option<El
         .child(
             toolbar_button("sql-tx-rollback", t("query.rollbackTx"), theme)
                 .on_press(|s: &mut AppState| s.query_transaction("Rollback")),
-        )
-        .child(
+        );
+    if state.native_query_selected() || state.query_loading.is_some() {
+        bar = bar.child(
             text("Command+Enter runs the statement at the cursor")
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
-        )
+        );
+    }
+    // Keep every existing action reachable on narrow panes instead of
+    // clipping trailing controls (same geometry/overflow rule as React).
+    row()
+        .key("query-toolbar")
+        .role("toolbar")
+        .w_full()
+        .min_w(0.0)
+        .h(36.0)
+        .fill(theme.control_track)
+        .border_sides([0.0, 0.0, 1.0, 0.0], theme.separator)
+        .scroll_x()
+        .child(bar)
 }
 
 fn query_result_tabs_bar(state: &AppState, theme: tok::Theme) -> El {
