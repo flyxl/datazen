@@ -157,6 +157,17 @@ pub fn grid_palette(dark: bool) -> GridPalette {
     }
 }
 
+/// CodeMirror's explicit editor gutter colors (background, text, divider).
+pub(crate) fn sql_editor_gutter(dark: bool) -> (Color, Color, Color) {
+    let [background, text, edge] = if dark {
+        ["#111827", "#9ca3af", "#374151"]
+    } else {
+        ["#f1f5f9", "#64748b", "#cbd5e1"]
+    };
+    let color = |value| rune::color::hex(value).expect("literal SQL gutter color");
+    (color(background), color(text), color(edge))
+}
+
 /// SQL editor surface/completion/caret colors.
 pub fn editor_bg(dark: bool) -> Color {
     if dark {

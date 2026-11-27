@@ -179,3 +179,47 @@ fn refreshed_catalog_preserves_draft_and_explicit_target_but_new_profile_cannot_
     assert_eq!(s.sql.doc(), "");
     assert!(!s.query_database_targets.contains_key(&b));
 }
+
+#[test]
+fn sql_gutter_numbers_follow_document_rows_and_stay_left_while_scrolling() {
+    let mut rt = runtime();
+    rt.poll = Some(app_poll);
+    rt.state.workspace.connect("local").unwrap();
+    rt.state.open_query_tab("Query").unwrap();
+    let long = format!("SELECT '{}';\n{}", "x".repeat(300), "-- next\n".repeat(30));
+    rt.state.sql = sql_editor::SqlEditor::from_doc(long);
+    rt.state.sql.set_main_selection(0, 6);
+    rt.frame(0.05);
+    assert!(rt.find("sql-cursor-count").is_none(), "no development status row");
+    for key in ["sql-add-cursor", "sql-find-input", "sql-replace-input", "sql-selected-0-0"] {
+        assert!(rt.find(key).is_some(), "existing {key} affordance still mounted");
+    }
+
+    let box_of = |rt: &Runtime<AppState>, key: &str| rt.presented(key).expect(key).0;
+    let view = box_of(&rt, "sql-editor-scroll");
+    let gutter = box_of(&rt, "sql-editor-gutter");
+    let first = box_of(&rt, "sql-gutter-line-0");
+    assert_eq!(first[1] - view[1], 12.0, "document and gutter share top padding");
+    for index in [0, 1, 9, 11, 31] {
+        let line = box_of(&rt, &format!("sql-line-{index}"));
+        let number = box_of(&rt, &format!("sql-gutter-line-{index}"));
+        assert_eq!([line[1], line[3]], [number[1], number[3]], "line {index}");
+        let number_key = format!("sql-gutter-number-{index}");
+        let n = rt.elements().into_iter()
+            .find(|el| el.key.as_deref() == Some(number_key.as_str())).expect("number mounted");
+        assert_eq!(n.text.as_deref(), Some((index + 1).to_string().as_str()));
+    }
+
+    let (x, y) = rt.find("sql-editor-scroll").unwrap();
+    rt.wheel_xy(x, y, -100.0, 0.0);
+    rt.frame(0.15);
+    let moved = box_of(&rt, "sql-line-11");
+    assert_eq!(box_of(&rt, "sql-editor-gutter")[0], gutter[0], "sticky horizontal gutter");
+    assert!(moved[0] < first[0], "code actually scrolled under the gutter");
+    rt.wheel_xy(x, y, 0.0, -80.0);
+    rt.frame(0.15);
+    let number = box_of(&rt, "sql-gutter-line-11");
+    let document = box_of(&rt, "sql-line-11");
+    assert_eq!(moved[1] - document[1], 80.0);
+    assert_eq!(number[1], document[1], "vertical scroll stays aligned");
+}

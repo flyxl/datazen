@@ -7,10 +7,17 @@ use super::highlight::highlight_sql;
 use super::model::SqlEditor;
 use crate::ui::field::TextField;
 
-/// Editing surface width. The scroll viewport is narrower, so a long line moves sideways
-/// instead of wrapping. CodeMirror's `lineWrapping` off does this inside the line layout;
-/// Rune's multi-line field cannot turn wrapping off, so the view is not a text field.
+/// The current Native editing surface scrolls long lines horizontally.
+/// React enables soft wrap; it needs shared render/caret geometry and is not
+/// approximated by independently wrapping the text fragments here.
 pub const EDITOR_SURFACE_WIDTH: f32 = 2800.0;
+const SQL_LINE_HEIGHT: f32 = 18.2;
+const SQL_BODY_PADDING: f32 = 12.0;
+const COMPLETION_ROW_HEIGHT: f32 = 18.0;
+
+fn sql_font() -> TextStyle {
+    TextStyle::new(13.0, 400.0).mono()
+}
 
 pub fn editor_font() -> TextStyle {
     TextStyle::new(13.0, 400.0)
@@ -35,54 +42,63 @@ pub(crate) fn panel_with_completion_scope(
         .map(|(i, sel)| (sel.head, i == editor.selection().main_index()))
         .collect();
     let main_head = editor.main_head();
-    let mut doc = col().key("sql-editor-field").w(EDITOR_SURFACE_WIDTH).min_h(300.0);
-    for (n, (start, line)) in split_lines(editor.doc()).into_iter().enumerate() {
-        doc = doc.child(line_row(n, start, line, &spans, &carets, editor, dark));
+    let lines = split_lines(editor.doc());
+    let gutter_width = 13.0 + 8.0 * (lines.len().max(1).ilog10() + 1) as f32;
+    let (gutter_bg, gutter_ink, gutter_edge) = palette::sql_editor_gutter(dark);
+    let mut gutter = col()
+        .key("sql-editor-gutter")
+        .w(gutter_width)
+        .py(SQL_BODY_PADDING)
+        .sticky_left(0.0)
+        .fill(gutter_bg)
+        .border_sides([0.0, 1.0, 0.0, 0.0], gutter_edge);
+    let mut doc = col()
+        .key("sql-editor-field")
+        .w(EDITOR_SURFACE_WIDTH)
+        .min_h(300.0)
+        .py(SQL_BODY_PADDING);
+    for (n, (start, line)) in lines.into_iter().enumerate() {
+        gutter = gutter.child(
+            row()
+                .key(format!("sql-gutter-line-{n}"))
+                .h(SQL_LINE_HEIGHT)
+                .w_full()
+                .px(6.0)
+                .center_y()
+                .justify_end()
+                .child(
+                    text((n + 1).to_string())
+                        .key(format!("sql-gutter-number-{n}"))
+                        .font(sql_font())
+                        .color(gutter_ink),
+                ),
+        );
+        doc = doc.child(line_row_with_style(
+            n, start, line, &spans, &carets, editor, dark,
+            LineStyle { font: sql_font(), height: SQL_LINE_HEIGHT, ink: Some(ink) },
+        ));
         if completion_current && !editor.completion_items().is_empty()
             && main_head >= start
             && main_head <= start + line.len()
         {
+            gutter = gutter.child(col().h(COMPLETION_ROW_HEIGHT * editor.completion_items().len() as f32));
             doc = doc.child(completion_list(editor, ink, dark));
         }
     }
+    let sheet = row().key("sql-editor-sheet").child(gutter).child(doc);
     let (doc, scroll) = match viewport {
         Some(viewport) => (
-            col().key(viewport.anchor).child(doc),
+            col().key(viewport.anchor).child(sheet),
             Some(viewport.offset),
         ),
-        None => (doc, None),
+        None => (sheet, None),
     };
-    let count = editor.cursor_count();
-    let label = format!(
-        "{count} cursor{} · document + selection, IME is not in the document",
-        if count == 1 { "" } else { "s" }
-    );
     col()
         .key("sql-editor")
         .w_full()
         .h_full()
         .min_h(120.0)
         .gap(8.0)
-        .child(
-            row()
-                .w_full()
-                .h(28.0)
-                .gap(12.0)
-                .center_y()
-                .child(text(label).font(rune::tok::type_::LABEL).color(ink).key("sql-cursor-count"))
-                .child(
-                    text("Add cursor")
-                        .font(rune::tok::type_::LABEL)
-                        .color(ink)
-                        .key("sql-add-cursor")
-                        .on_press(|state: &mut crate::AppState| state.sql.add_cursor_at_end()),
-                )
-                .child(
-                    text(muted_note(editor))
-                        .font(rune::tok::type_::LABEL)
-                        .color(muted),
-                ),
-        )
         .child(
             row()
                 .key("sql-find-bar")
@@ -140,6 +156,13 @@ pub(crate) fn panel_with_completion_scope(
                         .on_press(|state: &mut crate::AppState| {
                             state.sql.replace_all_from_bar();
                         }),
+                )
+                .child(
+                    text("Add cursor")
+                        .font(rune::tok::type_::LABEL)
+                        .color(muted)
+                        .key("sql-add-cursor")
+                        .on_press(|state: &mut crate::AppState| state.sql.add_cursor_at_end()),
                 ),
         )
         .child(
@@ -152,7 +175,6 @@ pub(crate) fn panel_with_completion_scope(
                 .on_scroll_offset(move |at| {
                     if let Some(scroll) = &scroll { scroll.set(at.offset); }
                 })
-                .radius(8.0)
                 .on_press(|state: &mut crate::AppState| {
                     // T1: pressing the editor surface hands the keyboard back
                     // from the result grid.
@@ -180,7 +202,7 @@ fn completion_list(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
             row()
                 .key(format!("sql-completion-item-{index}"))
                 .w_full()
-                .h(18.0)
+                .h(COMPLETION_ROW_HEIGHT)
                 .px(8.0)
                 .center_y()
                 .fill(if selected { sel_bg } else { bg })
@@ -235,11 +257,11 @@ pub fn plain_panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dar
         .child(text(" ".to_owned()).w(0.0).h(0.0).color(ink))
 }
 
-fn muted_note(editor: &SqlEditor) -> String {
-    match editor.composition() {
-        Some(text) => format!("composing: {text}"),
-        None => "composition draws on the main caret and commits into the document".to_owned(),
-    }
+#[derive(Clone, Copy)]
+struct LineStyle {
+    font: TextStyle,
+    height: f32,
+    ink: Option<rune::Color>,
 }
 
 pub fn line_row(
@@ -251,6 +273,20 @@ pub fn line_row(
     editor: &SqlEditor,
     dark: bool,
 ) -> El {
+    line_row_with_style(index, start, line, spans, carets, editor, dark,
+        LineStyle { font: editor_font(), height: 18.0, ink: None })
+}
+
+fn line_row_with_style(
+    index: usize,
+    start: usize,
+    line: &str,
+    spans: &[Span],
+    carets: &[(usize, bool)],
+    editor: &SqlEditor,
+    dark: bool,
+    style: LineStyle,
+) -> El {
     let end = start + line.len();
     let mut here: Vec<(usize, bool)> = carets
         .iter()
@@ -259,7 +295,10 @@ pub fn line_row(
         .collect();
     here.sort_by_key(|(at, _)| *at);
     here.dedup_by_key(|(at, _)| *at);
-    let mut row = row().key(format!("sql-line-{index}")).h(18.0);
+    let mut row = row().key(format!("sql-line-{index}")).h(style.height);
+    if style.ink.is_some() {
+        row = row.center_y();
+    }
     let selected = editor.selection().ranges();
     let append = |mut row: El, from: usize, to: usize| {
         let mut edges = vec![from, to];
@@ -274,7 +313,7 @@ pub fn line_row(
         edges.dedup();
         for pair in edges.windows(2) {
             let [a, b] = [pair[0], pair[1]];
-            let mut fragment = slice_text(line, start, a, b, spans);
+            let mut fragment = slice_text(line, start, a, b, spans, style);
             if selected.iter().any(|sel| sel.from() <= start + a && start + b <= sel.to()) {
                 fragment = fragment
                     .key(format!("sql-selected-{index}-{a}"))
@@ -295,7 +334,7 @@ pub fn line_row(
                 let underline = palette::editor_composition_underline(dark);
                 row = row.child(
                     text(composed)
-                        .font(editor_font())
+                        .font(style.font)
                         .spans(vec![Span::new(0, composed.len()).underline(underline)]),
                 );
             }
@@ -313,12 +352,16 @@ pub fn line_row(
     row
 }
 
-fn slice_text(line: &str, abs: usize, from: usize, to: usize, spans: &[Span]) -> El {
+fn slice_text(line: &str, abs: usize, from: usize, to: usize, spans: &[Span], style: LineStyle) -> El {
     let local: Vec<Span> = spans
         .iter()
         .filter_map(|span| clip_span(span, abs + from, abs + to, from))
         .collect();
-    text(&line[from..to]).font(editor_font()).spans(local)
+    let fragment = text(&line[from..to]).font(style.font).spans(local);
+    match style.ink {
+        Some(ink) => fragment.color(ink),
+        None => fragment,
+    }
 }
 
 fn clip_span(span: &Span, abs_from: usize, abs_to: usize, origin: usize) -> Option<Span> {
