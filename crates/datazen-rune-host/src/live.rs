@@ -150,6 +150,7 @@ enum HostJob {
     RunWorkflow {
         generation: u32,
         name: String,
+        variables: std::collections::BTreeMap<String, serde_json::Value>,
     },
     ReadTable {
         generation: u32,
@@ -695,12 +696,13 @@ impl LiveAdapter {
                             ));
                             HostAnswer::ValueSearched { generation, hits }
                         }
-                        HostJob::RunWorkflow { generation, name } => {
+                        HostJob::RunWorkflow { generation, name, variables } => {
                             let results = runtime.block_on(run_workflow_engine(
                                 &worker_workflows,
                                 &worker_repository,
                                 &worker_session,
                                 &name,
+                                variables,
                             ));
                             HostAnswer::WorkflowRun { generation, results }
                         }
@@ -2216,6 +2218,7 @@ async fn run_workflow_engine(
     repository: &Arc<dyn ConnectionRepository>,
     session: &Arc<Mutex<LiveSession>>,
     name: &str,
+    mut variables: std::collections::BTreeMap<String, serde_json::Value>,
 ) -> Result<datazen_ui_api::NativeWorkflowRun, String> {
     use datazen::workflow::domain::model::StepStatus;
     use datazen::workflow::engine::executor::WorkflowExecutor;
@@ -2239,11 +2242,15 @@ async fn run_workflow_engine(
         session: Arc::clone(session),
         repository: Arc::clone(repository),
     };
+    // Only currently declared parameters can bind into the production context.
+    let bindings = definition.variables.iter().filter_map(|definition| {
+        variables.remove(&definition.name).map(|value| (definition.name.clone(), value))
+    }).collect();
     let result = WorkflowExecutor::execute(
         &definition,
         &host,
         connection.as_deref(),
-        &serde_json::json!({}),
+        &serde_json::Value::Object(bindings),
     )
     .await
     .map_err(|error| error)?;
@@ -2883,8 +2890,8 @@ impl DesktopAdapter for LiveAdapter {
                 value,
                 mode,
             },
-            AdapterJob::RunWorkflow { generation, name } => {
-                HostJob::RunWorkflow { generation, name }
+            AdapterJob::RunWorkflow { generation, name, variables } => {
+                HostJob::RunWorkflow { generation, name, variables }
             }
         };
         self.jobs.lock().expect("the job channel").send(job).is_ok()
@@ -3417,6 +3424,25 @@ impl DesktopAdapter for LiveAdapter {
             landed += 1;
         }
         Ok(landed)
+    }
+
+    fn native_workflow_list(&self) -> Result<Vec<datazen_ui_api::WorkflowListItem>, String> {
+        let scope = crate::dashboards::host_scope();
+        let mut definitions = futures_executor::block_on(self.workflows.list_definitions(&scope));
+        definitions.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(definitions.into_iter().map(|flow| datazen_ui_api::WorkflowListItem {
+            id: flow.id,
+            name: flow.name,
+            description: flow.description,
+            scheduled: flow.schedule.map(|schedule| schedule.enabled),
+            variables: flow.variables.into_iter().map(|variable| datazen_ui_api::WorkflowVariable {
+                name: variable.name,
+                r#type: variable.var_type,
+                description: variable.description,
+                required: variable.required,
+                default: variable.default,
+            }).collect(),
+        }).collect())
     }
 
     fn workflows(&self) -> Result<Vec<Workflow>, String> {
@@ -4786,6 +4812,7 @@ mod tests {
         assert!(adapter.begin_job(AdapterJob::RunWorkflow {
             generation: 1,
             name: "engine test".into(),
+            variables: Default::default(),
         }));
         let results = poll_workflow_run(&mut adapter, 1)
             .expect("the run answers")
@@ -4859,6 +4886,7 @@ mod tests {
         assert!(adapter.begin_job(AdapterJob::RunWorkflow {
             generation: 1,
             name: "ai test".into(),
+            variables: Default::default(),
         }));
         let results = poll_workflow_run(&mut adapter, 1)
             .expect("the run answers")

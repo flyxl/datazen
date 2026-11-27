@@ -14,7 +14,7 @@
 //! |---|---|
 //! | `useAiStore` (`workflows`/`workflowsLoading`/`workflowError`) | `AppState::workflow_list` / `workflow_list_loading` / `workflow_store_error`, filled by `fetch_workflow_list` — the host's workflow registry (`host_workflows()`) stands in for `aiCommands.workflowList` |
 //! | `panels`/`activePanelId`/`activeStepIndex` `useState`s | `AppState::workflow_panels` / `workflow_active_panel` / `workflow_active_step` |
-//! | `operationError`/`feedback`/`sideTab`/`historyItems`/`variables` `useState`s | the same-named `AppState` fields (`workflow_operation_error` … `workflow_variables`) |
+//! | Run inputs | Declaration and editor pairs owned by each open run panel |
 //! | `savedConnections` (connectionCommands.getConnections) | `AppState::workflow_form_connections` — T070's slot, filled by `reload_workflow_connections` (the adapter's `list_connections`) |
 //! | the edit panel's `draft`/`yamlText`/`editorMode` | `AppState::workflow_draft` / `workflow_yaml` / `workflow_editor_mode` — one live edit panel's backing (see the seams below) |
 //! | `appSettings.workflowStepResultOrder` + `updateSettings` | `AppState::workflow_step_order` + `toggle_workflow_step_order` (the settingsStore persistence is the settings track's seam) |
@@ -217,6 +217,25 @@ pub struct WorkflowListItem {
 }
 
 impl WorkflowListItem {
+    pub(crate) fn from_native(flow: datazen_ui_api::WorkflowListItem) -> Self {
+        Self {
+            // The existing native editor/run/remove routes are name keyed.
+            id: flow.name.clone(),
+            name: flow.name,
+            description: (!flow.description.is_empty()).then_some(flow.description),
+            variables: flow.variables.into_iter().map(|variable| WorkflowVariableItem {
+                name: variable.name,
+                var_type: variable.r#type,
+                description: (!variable.description.is_empty()).then_some(variable.description),
+                required: variable.required.unwrap_or(false),
+                default: variable.default.filter(|value| !value.is_null()).map(|value| {
+                    value.as_str().map(str::to_owned).unwrap_or_else(|| value.to_string())
+                }),
+            }).collect(),
+            scheduled: flow.scheduled.unwrap_or(false),
+        }
+    }
+
     /// The honest projection of the host's lite workflow shape.
     pub fn from_workflow(flow: &datazen_ui_api::Workflow) -> Self {
         Self {
@@ -239,6 +258,7 @@ pub struct WorkflowRunPanel {
     pub started_at: String,
     pub result: Option<WorkflowExecutionResult>,
     pub is_executing: bool,
+    pub variables: Vec<(WorkflowVariableItem, TextEdit)>,
 }
 
 /// The edit panel (React `EditPanel`). The draft, the yaml text and the editor
@@ -1263,27 +1283,19 @@ fn variables_row(state: &AppState, k: &Kit, dark: bool, layer: &mut Vec<El>) -> 
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
         .fill(k.c.bg_base);
 
-    let active_workflow = active.and_then(|run| {
-        state
-            .workflow_list
-            .iter()
-            .find(|workflow| workflow.id == run.workflow_id)
-            .cloned()
-    });
-    if let Some(workflow) = active_workflow {
-        if !workflow.variables.is_empty() {
-            let mut fields = row()
-                .key("workflow-variables-fields")
-                .w_full()
-                .mb(VARIABLES_GAP)
-                .gap(VARIABLES_GAP)
-                .flex_wrap()
-                .items_end();
-            for variable in &workflow.variables {
-                fields = fields.child(variable_field(state, variable, k, dark, layer));
-            }
-            body = body.child(fields);
+    if let Some(run) = active.filter(|run| !run.variables.is_empty()
+        && state.workflow_list.iter().any(|flow| flow.id == run.workflow_id)) {
+        let mut fields = row()
+            .key("workflow-variables-fields")
+            .w_full()
+            .mb(VARIABLES_GAP)
+            .gap(VARIABLES_GAP)
+            .flex_wrap()
+            .items_end();
+        for (variable, edit) in &run.variables {
+            fields = fields.child(variable_field(state, &run.id, variable, edit, k, dark, layer));
         }
+        body = body.child(fields);
     }
 
     let execute = Button::new(if executing {
@@ -1320,12 +1332,15 @@ fn variables_row(state: &AppState, k: &Kit, dark: bool, layer: &mut Vec<El>) -> 
 /// connections, the rest are text inputs bound into the variables map.
 fn variable_field(
     state: &AppState,
+    panel_id: &str,
     variable: &WorkflowVariableItem,
+    edit: &TextEdit,
     k: &Kit,
     dark: bool,
     layer: &mut Vec<El>,
 ) -> El {
     let name = variable.name.clone();
+    let panel_id = panel_id.to_owned();
     let mut label = row().items_center().gap(2.0);
     label = label.child(
         text(variable.name.clone())
@@ -1371,15 +1386,10 @@ fn variable_field(
             .collect();
         labels.insert(0, String::new());
         values.insert(0, String::new());
-        let current = state
-            .workflow_variables
-            .get(&variable.name)
-            .map(|edit| edit.text.clone())
-            .unwrap_or_default();
         let chosen = state
             .workflow_form_connections
             .iter()
-            .find(|connection| connection.id == current)
+            .find(|connection| connection.id == edit.text)
             .map(|connection| connection.name.clone());
         let select_name = variable.name.clone();
         crate::ui::select::Select::new(format!("workflow-variable-{}", variable.name), &labels)
@@ -1397,28 +1407,23 @@ fn variable_field(
             })
             .on_close(|state: &mut AppState| state.workflow_variable_select = None)
             .on_choose(move |state: &mut AppState, value: &str, _: &mut rune::Tx| {
-                state.set_workflow_variable(&name, value.to_owned());
+                if let Some(edit) = state.edit_workflow_variable(&panel_id, &name) {
+                    *edit = TextEdit::new(value.to_owned());
+                }
                 state.workflow_variable_select = None;
             })
             .build(k, layer)
     } else {
-        let edit = state
-            .workflow_variables
-            .get(&variable.name)
-            .cloned()
-            .unwrap_or_default();
         let field_name = variable.name.clone();
-        TextField::new(format!("workflow-variable-{}", variable.name), &edit)
+        TextField::new(format!("workflow-variable-{}", variable.name), edit)
             .height(VARIABLE_INPUT_H)
             .placeholder(variable.description.clone().unwrap_or_default())
             .on_edit(move |state: &mut AppState| {
                 // The field edits a variable the run panel carried at open;
                 // the panel owns the name for its lifetime (the family's
                 // row-binding precedent).
-                match state.workflow_variables.get_mut(&field_name) {
-                    Some(edit) => edit,
-                    None => panic!("variable {field_name} edits a live run panel"),
-                }
+                state.edit_workflow_variable(&panel_id, &field_name)
+                    .expect("workflow variable edits a live run panel")
             })
             .build(dark)
     };

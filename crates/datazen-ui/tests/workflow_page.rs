@@ -409,6 +409,7 @@ fn the_step_detail_table_and_chart_view_wiring() {
         started_at: "2026-11-05T09:04:00+08:00".to_owned(),
         result: Some(result),
         is_executing: false,
+        variables: Vec::new(),
     })];
     rt.state.workflow_active_panel = Some("wf-9".to_owned());
     // React's execute seeds `activeStepIndex` at the order's first step; the
@@ -508,7 +509,7 @@ fn the_variables_row_renders_the_declared_inputs() {
     // The variable's commit writes the run's map (React's `setVariables`).
     rt.state.set_workflow_variable("city", "上海".to_owned());
     assert_eq!(
-        rt.state.workflow_variables.get("city").map(|edit| edit.text.as_str()),
+        rt.state.workflow_variable("city"),
         Some("上海")
     );
 }
@@ -911,6 +912,7 @@ fn the_panel_tab_status_mark_the_spinner_and_the_label_reads() {
         started_at: "2026-11-05T09:04:00Z".to_owned(),
         result: None,
         is_executing: true,
+        variables: Vec::new(),
     })];
     rt.state.workflow_active_panel = Some("wf-9".to_owned());
     rt.settle_all();
@@ -1279,6 +1281,7 @@ fn the_step_detail_header_reads_and_the_ai_and_no_result_arms() {
         started_at: "2026-11-05T09:04:00Z".to_owned(),
         result: Some(result),
         is_executing: false,
+        variables: Vec::new(),
     })];
     rt.state.workflow_active_panel = Some("wf-9".to_owned());
     rt.state.workflow_active_step = Some(0);
@@ -1388,6 +1391,7 @@ fn the_chart_mode_warns_only_past_the_thousandth_row() {
         started_at: "2026-11-05T09:04:00Z".to_owned(),
         result: Some(result),
         is_executing: false,
+        variables: Vec::new(),
     })];
     rt.state.workflow_active_panel = Some("wf-9".to_owned());
     rt.state.workflow_active_step = Some(0);
@@ -1509,7 +1513,7 @@ fn the_variable_default_seeds_and_the_ghost_panel_hides_the_row() {
     rt.settle_all();
     rt.frame(0.0);
     assert_eq!(
-        rt.state.workflow_variables.get("city").map(|e| e.text.as_str()),
+        rt.state.workflow_variable("city"),
         Some("上海"),
         "the declared default seeded the input"
     );
@@ -1521,7 +1525,7 @@ fn the_variable_default_seeds_and_the_ghost_panel_hides_the_row() {
     assert!(rt.find("option1").is_some(), "the connection listbox opened");
     click(&mut rt, "option1");
     assert_eq!(
-        rt.state.workflow_variables.get("warehouse").map(|e| e.text.as_str()),
+        rt.state.workflow_variable("warehouse"),
         Some("local"),
         "the choose wrote the connection's id, not its label"
     );
@@ -1535,6 +1539,7 @@ fn the_variable_default_seeds_and_the_ghost_panel_hides_the_row() {
         started_at: "2026-11-05T09:04:00Z".to_owned(),
         result: None,
         is_executing: false,
+        variables: Vec::new(),
     })];
     rt.state.workflow_active_panel = Some("wf-9".to_owned());
     rt.settle_all();
@@ -1692,6 +1697,7 @@ fn the_run_status_reads_the_total_and_gates_the_dashboard_press() {
         started_at: "2026-11-05T09:04:00Z".to_owned(),
         result: Some(failed),
         is_executing: false,
+        variables: Vec::new(),
     })];
     rt.state.workflow_active_panel = Some("wf-9".to_owned());
     rt.settle_all();
@@ -1917,6 +1923,7 @@ fn the_step_detail_gates_the_toggle_the_sentence_and_the_sql() {
         started_at: "2026-11-05T09:04:00Z".to_owned(),
         result: Some(result),
         is_executing: false,
+        variables: Vec::new(),
     })];
     rt.state.workflow_active_panel = Some("wf-9".to_owned());
     rt.state.workflow_active_step = Some(0);
@@ -2015,6 +2022,7 @@ fn the_rows_count_prefers_the_declared_count_and_gates_on_zero() {
         started_at: "2026-11-05T09:04:00Z".to_owned(),
         result: Some(result),
         is_executing: false,
+        variables: Vec::new(),
     })];
     rt.state.workflow_active_panel = Some("wf-9".to_owned());
     rt.state.workflow_active_step = Some(0);
@@ -2093,6 +2101,7 @@ fn the_status_ladder_keeps_the_icon_arms_and_the_type_chip() {
         started_at: "2026-11-05T09:04:00Z".to_owned(),
         result: Some(result),
         is_executing: false,
+        variables: Vec::new(),
     })];
     rt.state.workflow_active_panel = Some("wf-9".to_owned());
     rt.state.workflow_active_step = Some(0);

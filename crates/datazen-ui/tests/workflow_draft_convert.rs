@@ -476,6 +476,7 @@ fn the_panel_guards_narrow_the_union_and_the_result_read() {
         started_at: "2026-01-02T10:30:00Z".to_owned(),
         result: Some(result()),
         is_executing: false,
+        variables: Vec::new(),
     });
     let run_pending = WorkflowPanel::Run(WorkflowRunPanel {
         id: "wf-2".to_owned(),
@@ -484,6 +485,7 @@ fn the_panel_guards_narrow_the_union_and_the_result_read() {
         started_at: "2026-01-02T10:31:00Z".to_owned(),
         result: None,
         is_executing: true,
+        variables: Vec::new(),
     });
     let edit = WorkflowPanel::Edit(WorkflowEditPanel {
         id: "edit-1".to_owned(),
@@ -546,6 +548,7 @@ fn the_tab_label_reads_the_labels_bag_the_draft_name_and_the_clocks() {
         started_at: "2026-01-02T10:30:00Z".to_owned(),
         result: None,
         is_executing: true,
+        variables: Vec::new(),
     });
     let label = panel_tab_label(&run, &labels, "");
     assert!(label.starts_with("nightly-etl "), "{label}");
@@ -566,6 +569,7 @@ fn the_tab_label_reads_the_labels_bag_the_draft_name_and_the_clocks() {
         started_at: "not-a-clock".to_owned(),
         result: None,
         is_executing: false,
+        variables: Vec::new(),
     });
     assert_eq!(panel_tab_label(&run_odd, &labels, ""), "nightly-etl not-a-clock");
     assert_eq!(tab_clock("not-a-clock"), "not-a-clock");

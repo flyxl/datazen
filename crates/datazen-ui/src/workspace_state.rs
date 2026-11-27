@@ -1030,7 +1030,10 @@ impl AppState {
                 }
                 match results {
                     Ok(result) => self.set_native_workflow_report(result),
-                    Err(_) => self.clear_workflow_results(),
+                    Err(error) => {
+                        self.clear_workflow_results();
+                        self.workflow_operation_error = Some(error);
+                    }
                 }
             }
             AdapterDelivery::WorkflowRun {

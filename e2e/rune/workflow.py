@@ -69,6 +69,15 @@ steps:
         ], until=9.7)
         self.assertTrue(any(node.get("text", "").startswith("✗")
                             for node in result["elements"] if node.get("key") == "workflow-run-status"))
+        # SW-06: the shared engine's failed step and concrete SQLite error.
+        self.expect_rendered(result, key="workflow-step-detail-id", text="s2")
+        self.expect_rendered(result, key="workflow-step-s2-status", text="✗")
+        self.expect_rendered(result, key="workflow-step-error-text",
+                             within="workflow-step-error")
+        error = next(node.get("text", "") for node in result["elements"]
+                     if node.get("key") == "workflow-step-error-text")
+        self.assertIn("fixture_missing_table", error)
+        self.assertFalse(visible(result, key="workflow-step-s3-status", text="✓"))
         with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as database:
             after = database.execute("SELECT * FROM customers ORDER BY id").fetchall()
         self.assertEqual(after, [(1, "first-step-committed"), (2, "fixture-lin")])
@@ -210,6 +219,14 @@ steps:
         self.expect_rendered(result, key="workflow-tab-wf-1")
         self.expect_rendered(result, key="workflow-tab-wf-1-close")
         self.expect_rendered(result, key="workflow-steps")
+        # Default descending order means the first displayed step (s2) is
+        # already selected; the Run control is above the step navigation.
+        self.expect_rendered(result, key="workflow-step-detail-id", text="s2")
+        positions = {node["key"]: node["rect"] for node in result["elements"]
+             if node.get("key") in {"workflow-step-s1", "workflow-step-s2",
+                                    "workflow-execute-button"}}
+        self.assertLess(positions["workflow-execute-button"][1], positions["workflow-step-s2"][1])
+        self.assertLess(positions["workflow-step-s2"][0], positions["workflow-step-s1"][0])
         for step in ("s1", "s2"):
             self.expect_rendered(result, key=f"workflow-step-{step}")
             self.expect_rendered(result, key=f"workflow-step-{step}-status", text="✓")
@@ -237,3 +254,130 @@ steps:
             self.assertFalse(visible(closed, key=gone))
         with sqlite3.connect(fixture_uri, uri=True) as db:
             self.assertEqual(db.execute(first).fetchall(), [("fixture-ada",), ("fixture-lin",)])
+
+    def test_legacy_workflow_binds_required_values_per_run_tab(self):
+        """Migrate SW-04: run the native registry's declared variable against real SQLite."""
+        fixture(self.store, self.db)
+        first, other = "e2e-variable-main", "e2e-variable-default"
+        with sqlite3.connect(self.db) as database:
+            database.executescript(
+                "ALTER TABLE customers ADD COLUMN score INTEGER NOT NULL DEFAULT 0;"
+                "INSERT INTO customers VALUES (3, 'fixture-decoy', 99);")
+
+        def record(name, row, default):
+            default_line = f"\n    default: {json.dumps(default)}" if default else ""
+            definition = (
+                f"id: {name}\nname: {name}\ndescription: Native run bindings\n"
+                "variables:\n"
+                "  - name: val\n    type: string\n    description: Customer name\n"
+                f"    required: true{default_line}\n"
+                "  - name: score\n    type: number\n    description: Numeric score\n"
+                "    required: true\n    default: 14\n"
+                "steps:\n  - type: query\n    id: update\n    sql: >-\n"
+                "      UPDATE customers SET customer_name='{{val}}', score={{score}}\n"
+                f"      WHERE id={row} AND typeof({{{{score}}}})='integer'"
+            )
+            return {"id": name, "name": name, "description": "Native run bindings",
+                    "visibility": "user", "definitionYaml": definition,
+                    "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z"}
+
+        # The prior suite seeded the definition through workflow_save IPC.
+        # Here the native production registry loads equivalent records from its
+        # real store. This does not assert unsupported visual authoring.
+        registry = self.root / "workflows.json"
+        registry.write_text(json.dumps([record(first, 1, None),
+                                        record(other, 2, "default-lin")]), encoding="utf-8")
+        start = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-workflows"),
+                 tap(4.5, f"workflow-{first}")]
+        missing = self.replay([*start, tap(6, "workflow-execute-button")], until=9)
+        self.expect_rendered(missing, key="workflow-variable-val-required")
+        self.expect_rendered(missing, key="workflow-operation-error-text")
+        text = next(node.get("text", "") for node in missing["elements"]
+                    if node.get("key") == "workflow-operation-error-text")
+        self.assertIn("val", text)
+        self.assertFalse(visible(missing, key="workflow-run-status"))
+        select = "SELECT id, customer_name, score, typeof(score) FROM customers ORDER BY id"
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as database:
+            self.assertEqual(database.execute(select).fetchall(),
+                             [(1, "fixture-ada", 0, "integer"),
+                              (2, "fixture-lin", 0, "integer"),
+                              (3, "fixture-decoy", 99, "integer")])
+
+        label = "夜班 O'Neil"
+        run = self.replay([
+            *start, tap(6, "workflow-variable-val"), type_text(6.4, label),
+            tap(7.9, "workflow-variable-score"), key(8.2, "a", cmd=True), type_text(8.5, "42"),
+            tap(10, f"workflow-{other}"), tap(11.5, "workflow-execute-button"),
+            tap(15, f"workflow-{first}"), tap(16.5, "workflow-execute-button"),
+        ], until=20.5)
+        self.expect_rendered(run, key="workflow-run-status")
+        self.expect_rendered(run, key="workflow-step-detail-id", text="update")
+        self.expect_rendered(run, key="workflow-step-sql-text")
+        executed = next(node.get("text", "") for node in run["elements"]
+                        if node.get("key") == "workflow-step-sql-text")
+        self.assertIn("O''Neil", executed)
+        self.assertFalse(visible(run, key="workflow-operation-error-text"))
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as database:
+            self.assertEqual(database.execute(select).fetchall(),
+                             [(1, label, 42, "integer"),
+                              (2, "default-lin", 14, "integer"),
+                              (3, "fixture-decoy", 99, "integer")])
+
+    def test_legacy_workflow_condition_routes_on_live_sqlite_rows(self):
+        """Migrate SW-05 using both determinate branches and a real query result."""
+        fixture(self.store, self.db)
+        name = "e2e-native-condition"
+        definition = f"""id: {name}
+name: {name}
+description: Run a branch from a live SQL count
+steps:
+  - type: query
+    id: count_check
+    sql: SELECT id FROM customers WHERE id=1 AND customer_name='choose-then'
+  - type: condition
+    id: branch
+    if: steps.count_check.rows_count > 0
+    then_steps:
+      - type: query
+        id: when_true
+        sql: UPDATE customers SET customer_name='then-committed' WHERE id=2
+    else_steps:
+      - type: query
+        id: when_false
+        sql: UPDATE customers SET customer_name='else-committed' WHERE id=2
+"""
+        registry = self.root / "workflows.json"
+        registry.write_text(json.dumps([{
+            "id": name, "name": name, "description": "Run a branch from a live SQL count",
+            "visibility": "user", "definitionYaml": definition,
+            "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z",
+        }]), encoding="utf-8")
+        select = "SELECT id, customer_name FROM customers ORDER BY id"
+        source = "SELECT id FROM customers WHERE id=1 AND customer_name='choose-then'"
+        fixture_uri = f"{self.db.as_uri()}?mode=ro"
+        with sqlite3.connect(self.db) as database:
+            database.execute("UPDATE customers SET customer_name='choose-then' WHERE id=1")
+            database.execute("INSERT INTO customers VALUES (3, 'fixture-decoy')")
+            self.assertEqual(database.execute(source).fetchall(), [(1,)])
+
+        def run_branch(wanted, not_wanted):
+            tree = self.replay([
+                tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-workflows"),
+                tap(4.5, f"workflow-{name}"), tap(6, "workflow-execute-button"),
+            ], until=9.5)
+            self.expect_rendered(tree, key="workflow-step-count_check-status", text="✓")
+            self.expect_rendered(tree, key=f"workflow-step-{wanted}-status", text="✓")
+            self.assertFalse(visible(tree, key=f"workflow-step-{not_wanted}"))
+
+        run_branch("when_true", "when_false")
+        with sqlite3.connect(fixture_uri, uri=True) as database:
+            self.assertEqual(database.execute(select).fetchall(),
+                             [(1, "choose-then"), (2, "then-committed"), (3, "fixture-decoy")])
+
+        with sqlite3.connect(self.db) as database:
+            database.execute("UPDATE customers SET customer_name='choose-else' WHERE id=1")
+            self.assertEqual(database.execute(source).fetchall(), [])
+        run_branch("when_false", "when_true")
+        with sqlite3.connect(fixture_uri, uri=True) as database:
+            self.assertEqual(database.execute(select).fetchall(),
+                             [(1, "choose-else"), (2, "else-committed"), (3, "fixture-decoy")])

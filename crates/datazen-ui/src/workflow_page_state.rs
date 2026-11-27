@@ -36,11 +36,10 @@ impl AppState {
     /// answer, the wapps fetch's shape.
     pub fn fetch_workflow_list(&mut self) {
         self.workflow_list_loading = true;
-        let flows = self.host_workflows();
-        self.workflow_list = flows
-            .iter()
-            .map(WorkflowListItem::from_workflow)
-            .collect();
+        self.workflow_list = match self.desktop.native_workflow_list() {
+            Ok(flows) => flows.into_iter().map(WorkflowListItem::from_native).collect(),
+            Err(_) => self.host_workflows().iter().map(WorkflowListItem::from_workflow).collect(),
+        };
         self.workflow_list_loading = false;
         self.workflow_store_error = None;
     }
@@ -115,6 +114,10 @@ impl AppState {
             started_at: chrono::Local::now().to_rfc3339(),
             result: None,
             is_executing: false,
+            variables: workflow.variables.iter().cloned().map(|definition| {
+                let initial = TextEdit::new(definition.default.clone().unwrap_or_default());
+                (definition, initial)
+            }).collect(),
             id,
         }));
         let active = self.workflow_panels.last().map(|panel| panel.id().to_owned());
@@ -126,22 +129,10 @@ impl AppState {
         self.workflow_execution = None;
     }
 
-    /// React's `handleSelectWorkflow` — the run panel, then the variable
-    /// defaults for the workflow's declared variables (the lite projection
-    /// carries none, so the map is exactly React's empty-variables case).
+    /// Each run tab keeps its own input state when another tab is selected.
     pub fn select_workflow_list_item(&mut self, workflow: &WorkflowListItem) {
+        self.workflow_variable_select = None;
         self.open_workflow_run_panel(workflow);
-        self.workflow_variables.clear();
-        for variable in &workflow.variables {
-            // React: `defaults[v.name] = v.default != null ? String(v.default) : ''`.
-            let default = variable
-                .default
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_default();
-            self.workflow_variables
-                .insert(variable.name.clone(), TextEdit::new(default));
-        }
     }
 
     /// React's `handleAiCreate` — the ai-create panel opens once; a second
@@ -306,6 +297,7 @@ impl AppState {
                 });
             self.workflow_active_panel = neighbour;
             // The active panel's content unmounts with it.
+            self.workflow_variable_select = None;
             self.workflow_step_expanded.clear();
             self.workflow_step_chart.clear();
             self.workflow_chart_expanded.clear();
@@ -321,6 +313,7 @@ impl AppState {
     /// step view re-seeds at the result's first shown step.
     pub fn select_workflow_panel(&mut self, panel_id: &str) {
         self.workflow_active_panel = Some(panel_id.to_owned());
+        self.workflow_variable_select = None;
         self.workflow_active_step = self
             .workflow_panels
             .iter()
@@ -332,17 +325,33 @@ impl AppState {
     // ── the run flow ──────────────────────────────────────────────────────────
 
     /// React's `handleExecute` → `runWorkflowInPanel(panelId, workflowId,
-    /// vars)`: the panel takes its executing mark, the step view clears, and
-    /// the run goes to the host's engine (the T8 job path, the sync fallback
-    /// below it). The variables' engine binding is the host's seam — the lite
-    /// runner takes only the workflow name, so the input values are real
-    /// state the wiring will bind.
+    /// vars)`: the native job uses only this panel's declarations and inputs.
+    /// Empty inputs are left to the engine's default/required handling.
     pub fn execute_active_workflow(&mut self) {
         let Some(run) = self.active_workflow_run_panel() else {
             return;
         };
         let panel_id = run.id.clone();
         let workflow_id = run.workflow_id.clone();
+        let mut variables = std::collections::BTreeMap::new();
+        for (definition, edit) in &run.variables {
+            if edit.text.is_empty() {
+                continue;
+            }
+            let value = if definition.var_type == "number" {
+                match edit.text.parse::<serde_json::Number>() {
+                    Ok(number) => serde_json::Value::Number(number),
+                    Err(_) => {
+                        self.workflow_operation_error = Some(format!("Invalid number: {}", definition.name));
+                        return;
+                    }
+                }
+            } else {
+                serde_json::Value::String(edit.text.clone())
+            };
+            variables.insert(definition.name.clone(), value);
+        }
+        self.workflow_operation_error = None;
         if let Some(panel) = self.workflow_panels.iter_mut().find(|panel| panel.id() == panel_id) {
             if let WorkflowPanel::Run(run) = panel {
                 run.is_executing = true;
@@ -352,7 +361,7 @@ impl AppState {
         // React's `clearWorkflowResult()` before the run.
         self.workflow_results.clear();
         self.workflow_execution = None;
-        self.run_workflow_by_name(&workflow_id);
+        self.run_workflow_by_name(&workflow_id, variables);
     }
 
     /// The run's engine half (the lite editor's `run_edited_workflow` core,
@@ -360,11 +369,16 @@ impl AppState {
     /// N13 runner, then the memory port's demo runner). The answer lands
     /// through `set_workflow_results` (the delivery arm and this fallback
     /// share it), which also resolves the executing panel.
-    fn run_workflow_by_name(&mut self, name: &str) {
+    fn run_workflow_by_name(
+        &mut self,
+        name: &str,
+        variables: std::collections::BTreeMap<String, serde_json::Value>,
+    ) {
         let generation = self.next_workflow_generation();
         let job = AdapterJob::RunWorkflow {
             generation,
             name: name.to_owned(),
+            variables,
         };
         if self.desktop.begin_job(job) {
             self.workflow_loading = Some(generation);
@@ -383,11 +397,27 @@ impl AppState {
         }
     }
 
-    /// One variable input's commit (React's `setVariables({...variables,
-    /// [v.name]: val})`, or the Select's choose).
+    pub fn workflow_variable(&self, name: &str) -> Option<&str> {
+        self.active_workflow_run_panel()?.variables.iter()
+            .find(|(definition, _)| definition.name == name)
+            .map(|(_, edit)| edit.text.as_str())
+    }
+
     pub fn set_workflow_variable(&mut self, name: &str, value: String) {
-        self.workflow_variables
-            .insert(name.to_owned(), TextEdit::new(value));
+        if let Some(panel_id) = self.workflow_active_panel.clone() {
+            if let Some(edit) = self.edit_workflow_variable(&panel_id, name) {
+                *edit = TextEdit::new(value);
+            }
+        }
+    }
+
+    pub(crate) fn edit_workflow_variable(&mut self, panel_id: &str, name: &str) -> Option<&mut TextEdit> {
+        self.workflow_panels.iter_mut().find_map(|panel| match panel {
+            WorkflowPanel::Run(run) if run.id == panel_id => {
+                run.variables.iter_mut().find(|(definition, _)| definition.name == name).map(|(_, edit)| edit)
+            }
+            _ => None,
+        })
     }
 
     // ── the edit flow ─────────────────────────────────────────────────────────

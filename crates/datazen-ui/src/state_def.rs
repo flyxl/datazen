@@ -446,7 +446,6 @@ pub struct AppState {
     pub workflow_history_items: Vec<HistoryListItem>,
     /// T145: the run's variable inputs (React `variables`) — the field values
     /// the run panel's inputs edit.
-    pub workflow_variables: std::collections::BTreeMap<String, TextEdit>,
     /// T145: the connection variable's select — the open dropdown's
     /// variable name (the workflow form's select slots pattern).
     pub workflow_variable_select: Option<String>,
@@ -766,7 +765,6 @@ impl Default for AppState {
             workflow_feedback: String::new(),
             workflow_side_tab: WorkflowSideTab::Workflows,
             workflow_history_items: Vec::new(),
-            workflow_variables: std::collections::BTreeMap::new(),
             workflow_variable_select: None,
             workflow_dir: None,
             workflow_editor_mode: WorkflowEditorMode::Visual,

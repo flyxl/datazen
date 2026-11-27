@@ -2398,6 +2398,11 @@ pub trait DesktopAdapter {
     /// The host's saved workflows through the registry use case (N13),
     /// sorted by name. The default answers the fixed error; the UI falls
     /// back to the memory port.
+    /// User-visible workflow definitions projected for the native run picker.
+    fn native_workflow_list(&self) -> Result<Vec<WorkflowListItem>, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.to_owned())
+    }
+
     fn workflows(&self) -> Result<Vec<Workflow>, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
@@ -2527,6 +2532,7 @@ pub enum AdapterJob {
     RunWorkflow {
         generation: u32,
         name: String,
+        variables: std::collections::BTreeMap<String, serde_json::Value>,
     },
     /// Load the newest persisted query history for one open connection.
     ReadQueryHistory {
