@@ -523,7 +523,8 @@ impl DesktopAdapter for JobAdapter {
 
     fn begin_job(&mut self, job: AdapterJob) -> bool {
         let delivery = match job {
-            AdapterJob::ReadNativeTransfer { .. }
+            AdapterJob::NativePrompts { .. }
+            | AdapterJob::ReadNativeTransfer { .. }
             | AdapterJob::ReviewNativeTransfer { .. }
             | AdapterJob::ReviewNativeCsv { .. }
             | AdapterJob::AppendNativeCsv { .. }

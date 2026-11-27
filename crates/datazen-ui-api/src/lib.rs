@@ -160,6 +160,7 @@ mod migration_job_verdict;
 mod named_views;
 mod native_context_menu;
 pub mod native_csv_import;
+pub mod native_prompts;
 pub mod native_kv;
 pub mod native_transfer;
 mod object_browser_context_menu;
@@ -2475,6 +2476,7 @@ pub trait DesktopAdapter {
 /// deliveries whose generation the state has moved past (plan invariant 3).
 #[derive(Clone, Debug, PartialEq)]
 pub enum AdapterJob {
+    NativePrompts { epoch: u64, request: native_prompts::NativePromptRequest },
     ReadNativeTransfer {
         epoch: u32,
         side: native_transfer::TransferSide,
@@ -2606,6 +2608,7 @@ pub struct QueryExecutionStats {
 /// matches it against the live one before writing any state.
 #[derive(Clone, Debug, PartialEq)]
 pub enum AdapterDelivery {
+    NativePrompts { epoch: u64, result: Result<native_prompts::NativePromptView, String> },
     NativeTransferRead {
         epoch: u32,
         side: native_transfer::TransferSide,

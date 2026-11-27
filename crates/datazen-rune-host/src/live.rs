@@ -89,6 +89,8 @@ mod live_sqlite_script;
 mod live_sync;
 #[path = "live_transfer.rs"]
 mod live_transfer;
+#[path = "live_prompts.rs"]
+mod live_prompts;
 use datazen_ui_api::native_csv_import::{CsvImportChoice, CsvImportReview};
 use datazen_ui_api::native_transfer::{
     NativeSchemaDiff, NativeSyncPreview, NativeTransferRequest, SqliteReadComparison,
@@ -97,6 +99,7 @@ use datazen_ui_api::native_transfer::{
 
 /// A job on the worker's channel, with the generation the UI expects back.
 enum HostJob {
+    NativePrompts { epoch: u64, request: datazen_ui_api::native_prompts::NativePromptRequest },
     ReadNativeTransfer {
         epoch: u32,
         side: TransferSide,
@@ -214,6 +217,7 @@ enum HostJob {
 
 /// A finished job on the answer channel.
 enum HostAnswer {
+    NativePrompts { epoch: u64, result: Result<datazen_ui_api::native_prompts::NativePromptView, String> },
     NativeTransferRead {
         epoch: u32,
         side: TransferSide,
@@ -547,6 +551,7 @@ impl LiveAdapter {
         let worker_registry = Arc::clone(&registry);
         let worker_workflows = Arc::clone(&workflows);
         let worker_dashboard_store = Arc::clone(&dashboard_store);
+        let worker_prompt_data_dir = data_dir.to_path_buf();
         thread::Builder::new()
             .name("datazen-live-jobs".into())
             .spawn(move || {
@@ -561,6 +566,9 @@ impl LiveAdapter {
                         // instead of dying silently.
                         while let Some(job) = job_rx.blocking_recv() {
                             let answer = match job {
+                                HostJob::NativePrompts { epoch, .. } => HostAnswer::NativePrompts {
+                                    epoch, result: Err(live_prompts::UNAVAILABLE.into()),
+                                },
                                 HostJob::ReadNativeTransfer { epoch, side, .. } => HostAnswer::NativeTransferRead {
                                     epoch, side, result: Err("The transfer worker could not start.".into()),
                                 },
@@ -675,6 +683,10 @@ impl LiveAdapter {
                 };
                 while let Some(job) = runtime.block_on(job_rx.recv()) {
                     let answer = match job {
+                        HostJob::NativePrompts { epoch, request } => HostAnswer::NativePrompts {
+                            epoch,
+                            result: runtime.block_on(live_prompts::run(&worker_prompt_data_dir, &worker_registry, request)),
+                        },
                         HostJob::CloseKv { connection_id, session_generation } => {
                             runtime.block_on(native_kv::close(
                                 &worker_session, &connection_id, session_generation,
@@ -2902,6 +2914,7 @@ impl DesktopAdapter for LiveAdapter {
 
     fn begin_job(&mut self, job: AdapterJob) -> bool {
         let job = match job {
+            AdapterJob::NativePrompts { epoch, request } => HostJob::NativePrompts { epoch, request },
             AdapterJob::ReadNativeTransfer {
                 epoch,
                 side,
@@ -3004,6 +3017,9 @@ impl DesktopAdapter for LiveAdapter {
         let mut deliveries = Vec::new();
         while let Ok(answer) = answers.try_recv() {
             match answer {
+                HostAnswer::NativePrompts { epoch, result } => {
+                    deliveries.push(AdapterDelivery::NativePrompts { epoch, result });
+                }
                 HostAnswer::NativeTransferRead {
                     epoch,
                     side,

@@ -48,19 +48,14 @@
 //! `prompt-edit-cancel`), and the confirm dialog the
 //! [`ConfirmDialogHost`]'s own keys.
 //!
-//! Known deltas: the edit `<textarea rows={8}>` renders as the kit's
-//! single-line [`TextField`] (the value keeps the multi-line template
-//! form — the React file's own `resize-y` affordance has no atom
-//! either); the source badge's tint trio maps to the Badge atom's
-//! Neutral/Accent/Success tones.
+//! Multi-line Rune input preserves the textarea content and selection; the
+//! browser's drag resize handle is not part of this port.
 
-// No production consumer yet (the settings view wiring track mounts
-// the section); this crate's tests are the callers meanwhile.
 #![allow(dead_code)]
 
 use std::rc::Rc;
 
-use rune::{col, row, text, El, TextEdit, TextStyle};
+use rune::{col, row, text, text_input, El, ScrollSpec, TextEdit, TextStyle};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, State};
 
 use crate::commands::ai::wire::{
@@ -71,7 +66,6 @@ use crate::hooks::confirm_dialog::{ConfirmDialogHost, ConfirmDialogState, Confir
 use crate::ui::confirm_dialog::ConfirmKind;
 use crate::i18n::t;
 use crate::ui::badge::{Badge, BadgeTone};
-use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 use crate::ui::select::Select;
 use crate::views::settings::setting_hint::SettingHint;
@@ -109,6 +103,9 @@ pub struct PromptSettingsSectionState {
     pub driver_type: String,
     /// `prompts` (the loaded list).
     pub prompts: Vec<PromptInfo>,
+    /// Native host identifies exact resettable scopes. The standalone
+    /// legacy-shaped component accepts its original source-only default.
+    pub(super) resettable: Option<Vec<PromptScenario>>,
     /// `editingIdx`.
     pub editing_idx: Option<usize>,
     /// `editSystem`.
@@ -184,13 +181,20 @@ impl PromptSettingsSectionState {
         Some((entry, request))
     }
 
+    pub(super) fn can_reset(&self, scenario: PromptScenario) -> bool {
+        self.resettable.as_ref().map_or_else(
+            || self.prompts.iter().any(|p| p.scenario == scenario && p.source == PromptSource::User),
+            |scoped| scoped.contains(&scenario),
+        )
+    }
+
     /// `handleReset(p)`: the warning confirm's gate — `None` refuses
     /// (the dialog opened), `Some(request)` proceeds.
     pub fn begin_reset(&mut self, idx: usize) -> Option<crate::commands::ai::AiRequest> {
         let prompt = self.prompts.get(idx)?;
         // Only a user source may reset (the button's own rule; the
         // guard here keeps the plan total).
-        if prompt.source != PromptSource::User {
+        if !self.can_reset(prompt.scenario) {
             return None;
         }
         let request = prompt_remove_override_request(&self.driver_type, prompt.scenario);
@@ -254,6 +258,8 @@ pub struct PromptSettingsSection<'a, S: 'static> {
     on_close_driver_select: Option<Rc<dyn Fn(&mut S)>>,
     on_begin_edit: Option<Rc<dyn Fn(&mut S, usize)>>,
     on_save: Option<Rc<dyn Fn(&mut S)>>,
+    on_cancel: Option<Rc<dyn Fn(&mut S)>>,
+    busy: bool,
     on_begin_reset: Option<Rc<dyn Fn(&mut S, usize)>>,
     on_reset_resolved: Option<Rc<dyn Fn(&mut S, bool)>>,
 }
@@ -279,6 +285,8 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
             on_close_driver_select: None,
             on_begin_edit: None,
             on_save: None,
+            on_cancel: None,
+            busy: false,
             on_begin_reset: None,
             on_reset_resolved: None,
         }
@@ -309,6 +317,16 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
         self.on_save = Some(Rc::new(f));
         self
     }
+    pub(super) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
+        self.on_cancel = Some(Rc::new(f));
+        self
+    }
+
+    pub(super) fn busy(mut self, busy: bool) -> Self {
+        self.busy = busy;
+        self
+    }
+
     /// One card's reset button (opens the confirm).
     pub fn on_begin_reset(mut self, f: impl Fn(&mut S, usize) + 'static) -> Self {
         self.on_begin_reset = Some(Rc::new(f));
@@ -326,7 +344,7 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
         let k = kit(dark);
         let state = self.state;
 
-        let mut body = col().key("prompt-settings-section").w_full().gap(16.0);
+        let mut body = col().key("prompt-settings-section").w_full().gap(20.0);
 
         body = body.child(section_title(
             &k,
@@ -353,6 +371,7 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
             .values(&values)
             .current(Some(&current))
             .label(t("settings.prompts.driver"))
+            .disabled(self.busy)
             .open(state.open_driver_select);
         if let Some(f) = &self.on_toggle_driver_select {
             let f = Rc::clone(f);
@@ -368,7 +387,7 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
                 f(s, value.to_owned());
             });
         }
-        let select_el = select.build(&k, layer);
+        let select_el = select.build(&k, layer).h(36.0);
         body = body.child(setting_row(
             &k,
             layer,
@@ -456,16 +475,18 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
         if !is_editing {
             let mut edit = Button::new(t("settings.prompts.edit"))
                 .variant(ButtonVariant::Outline) // React secondary
-                .control_size(ControlSize::Regular);
+                .control_size(ControlSize::ExtraLarge)
+                .disabled(self.busy);
             if let Some(f) = &self.on_begin_edit {
                 let f = Rc::clone(f);
                 edit = edit.on_press(move |s: &mut S| f(s, idx));
             }
             actions = actions.child(edit.build(k).key(format!("prompt-card-{scenario}-edit")));
-            if prompt.source == PromptSource::User {
+            if state.can_reset(prompt.scenario) {
                 let mut reset = Button::new(t("settings.prompts.reset"))
                     .variant(ButtonVariant::Outline) // React secondary
-                    .control_size(ControlSize::Regular);
+                    .control_size(ControlSize::ExtraLarge)
+                    .disabled(self.busy);
                 if let Some(f) = &self.on_begin_reset {
                     let f = Rc::clone(f);
                     reset = reset.on_press(move |s: &mut S| f(s, idx));
@@ -478,27 +499,48 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
 
         // The body: the edit form, or the 260-char preview.
         if is_editing {
-            let lens = Rc::clone(&self.edit_system_edit);
-            let field = TextField::new("prompt-edit-system", &state.edit_system)
+            let mut field = text_input(&state.edit_system, TextStyle { size: 12.0, ..k.ty.mono })
+                .key("prompt-edit-system")
+                .label(t("settings.prompts.template"))
                 .w_full()
-                .on_edit::<S>(move |s: &mut S| lens(s));
+                .min_h(120.0)
+                .px(12.0)
+                .py(8.0)
+                .radius(k.radius.md)
+                .fill(k.c.surface_base)
+                .border(1.0, k.c.border_base)
+                .focus_ring(2.0, 0.0, k.c.border_focus)
+                .color(k.c.text_base);
+            if !self.busy {
+                let lens = Rc::clone(&self.edit_system_edit);
+                let line_break_lens = Rc::clone(&self.edit_system_edit);
+                field = field
+                    .on_edit::<S>(move |s: &mut S| lens(s))
+                    .on_submit::<S>(move |s: &mut S, _| { line_break_lens(s).insert("\n"); });
+            }
+            let field = rune::auto_grow(field, 8, 8).key("prompt-edit-system-scroll");
             let mut save = Button::new(t("common.save"))
-                .variant(ButtonVariant::Submit) // React primary
-                .control_size(ControlSize::Regular);
+                .variant(ButtonVariant::Submit)
+                .control_size(ControlSize::ExtraLarge)
+                .disabled(self.busy);
             if let Some(f) = &self.on_save {
                 let f = Rc::clone(f);
                 save = save.on_press(move |s: &mut S| f(s));
             }
             let mut cancel = Button::new(t("common.cancel"))
-                .variant(ButtonVariant::Outline) // React secondary
-                .control_size(ControlSize::Regular);
-            cancel = cancel.on_press(|_s: &mut S| {});
+                .variant(ButtonVariant::Outline)
+                .control_size(ControlSize::ExtraLarge)
+                .disabled(self.busy);
+            if let Some(f) = &self.on_cancel {
+                let f = Rc::clone(f);
+                cancel = cancel.on_press(move |s: &mut S| f(s));
+            }
             card = card.child(
                 col().key(format!("prompt-card-{scenario}-form")).w_full().gap(8.0)
                     .child(
                         col().gap(4.0)
                             .child(text(t("settings.prompts.template")).font(TextStyle::new(12.0, 400.0)).color(k.c.text_muted))
-                            .child(field.build(dark)),
+                            .child(field),
                     )
                     .child(
                         row().gap(8.0)
@@ -512,10 +554,23 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
                 preview.push('…');
             }
             card = card.child(
-                text(preview)
-                    .key(format!("prompt-card-{scenario}-preview"))
-                    .font(TextStyle { size: 11.0, ..k.ty.mono })
-                    .color(k.c.text_muted),
+                col()
+                    .key(format!("prompt-card-{scenario}-preview-box"))
+                    .w_full()
+                    .max_h(96.0)
+                    .padding(8.0)
+                    .radius(k.radius.sm)
+                    .fill(k.c.surface_weak)
+                    .scroll(ScrollSpec { stick_bottom: false })
+                    .child(
+                        text(preview)
+                            .key(format!("prompt-card-{scenario}-preview"))
+                            .w_full()
+                            .font(TextStyle { size: 11.0, line_height: 16.5, ..k.ty.mono })
+                            .color(k.c.text_faint)
+                            .wrap()
+                            .selectable(true),
+                    ),
             );
         }
 

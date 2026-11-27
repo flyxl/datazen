@@ -789,6 +789,7 @@ impl AppState {
     /// when the delivery's generation is still the current one.
     pub fn deliver_host_job(&mut self, delivery: AdapterDelivery) {
         match delivery {
+            AdapterDelivery::NativePrompts { epoch, result } => self.receive_native_prompts(epoch, result),
             AdapterDelivery::NativeTransferRead {
                 epoch,
                 side,

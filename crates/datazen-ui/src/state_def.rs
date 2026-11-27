@@ -188,6 +188,7 @@ pub struct AppState {
     /// Selected settings section (A6): grouped navigation + deep-link within
     /// the settings page. Addressable by key so a specific section can be opened.
     pub(crate) settings_content: crate::views::settings_content_state::SettingsContentState,
+    pub(crate) prompt_settings: crate::views::prompts_live::LivePromptSettings,
     pub(crate) appearance_select: Option<usize>,
     /// The theme toggle's popover state (React `ThemeToggle`'s `open` cell).
     /// The titlebar owns the toggle, so the flag lives here next to the other
@@ -655,6 +656,7 @@ impl Default for AppState {
             max_rows_input: TextEdit::new(String::new()),
             settings_error: None,
             settings_content: Default::default(),
+            prompt_settings: Default::default(),
             appearance_select: None,
             theme_toggle_open: false,
             titlebar_menu: Default::default(),

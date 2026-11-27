@@ -76,6 +76,7 @@ pub mod mcp_client_section_state;
 /// variables hints and source badges, the override save, the reset
 /// confirm).
 pub mod prompt_settings_section;
+pub(crate) mod prompts_live;
 pub mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
@@ -182,7 +183,7 @@ fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &st
         "behavior" => behavior_section(state, theme),
         "logging" => placeholder_section("logging", t("settings.logging"), theme),
         "ai" => placeholder_section("ai", t("common.aiAssistant"), theme),
-        "prompts" => placeholder_section("prompts", t("settings.prompts"), theme),
+        "prompts" => prompts_live::view(state, dark),
         "mcpServer" => placeholder_section("mcpServer", t("settings.mcp.title"), theme),
         "mcpClient" => placeholder_section("mcpClient", t("settings.mcpClient.title"), theme),
         "tunnels" => placeholder_section("tunnels", t("settings.tunnels.title"), theme),
