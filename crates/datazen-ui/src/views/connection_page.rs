@@ -25,14 +25,10 @@
 //!   `menu-bar-host` slot is kept for structural parity, and the theme toggle
 //!   is the existing `datazen-theme-toggle`. Removal stage: when a Rune menu-bar
 //!   base lands, replace the empty host with it (no key changes needed).
-//! * React's `mainView` (`workspace` | `settings`) and `workspaceMode`
-//!   (`connections` | `workflow` | `dashboard` | `workspace` | `extension`) are
-//!   flattened into the single `Section` enum (`crate::types::Section`). Every
-//!   React mode maps to a Section, so all of them stay reachable from the rail;
-//!   the settings "back" button returns to `Section::Connections` (React
-//!   restores the previous workspace mode, which Rune's flat Section state
-//!   does not keep). Removal stage: when a workspace-mode slice exists, restore
-//!   the previous mode instead of hard-coding Connections.
+//! * The host's `Section` enum combines React's workspace modes and Settings.
+//!   Settings still occupies the entire body, with no mode rail or
+//!   database chrome. Entering it records the previous Section, so Back
+//!   restores that mode and its existing state.
 //! * React's per-tab connection state machine (`connecting` / `connected` /
 //!   `error`), panel store and cross-window bus are not modelled in Rune's
 //!   `AppState`; the connecting spinner and the error/retry overlay are
@@ -77,34 +73,35 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
 
     let titlebar = connection_titlebar(state, theme, dark, titlebar_inset);
 
-    // The mode rail is independent of the database navigator. React
-    // mounts ConnectionNavigatorTree in its connection workspace only;
-    // Rune splits that workspace between the landing and the live tabs.
-    // Workflow and the other sections keep their own content/sidebar.
-    let mut body = row()
+    let body = row()
         .key("datazen-body")
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .min_w(0.0)
-        .child(rail_view(state, dark));
-    if matches!(state.active, Section::Connections | Section::Workspace) {
-        body = body
-            .child(navigator_panel(state, theme, dark))
-            .child(splitter::splitter_handle(
-                state,
-                NAVIGATOR_WIDTH_KEY,
-                splitter::SplitAxis::Vertical,
-                NAVIGATOR_WIDTH_MIN,
-                NAVIGATOR_WIDTH_MAX,
-                NAVIGATOR_WIDTH_DEFAULT,
-            ));
-    }
+        .min_w(0.0);
 
-    // Single window-level overlay layer: dialogs and select listboxes mount
-    // here (page_body takes the same vec). Appended once at the root below.
+    // Keep the one window-level overlay layer for either body.
     let mut layer = modal_layer(state, theme, dark);
-    let body = body.child(connection_content(state, theme, dark, &mut layer));
+    let body = if state.active == Section::Settings {
+        body.child(settings_page(state, theme, dark).h_full())
+    } else {
+        // React mounts ConnectionNavigatorTree in its database workspace only;
+        // Rune splits that workspace between the landing and the live tabs.
+        let mut body = body.child(rail_view(state, dark));
+        if matches!(state.active, Section::Connections | Section::Workspace) {
+            body = body
+                .child(navigator_panel(state, theme, dark))
+                .child(splitter::splitter_handle(
+                    state,
+                    NAVIGATOR_WIDTH_KEY,
+                    splitter::SplitAxis::Vertical,
+                    NAVIGATOR_WIDTH_MIN,
+                    NAVIGATOR_WIDTH_MAX,
+                    NAVIGATOR_WIDTH_DEFAULT,
+                ));
+        }
+        body.child(connection_content(state, theme, dark, &mut layer))
+    };
 
     col()
         .key("datazen-root")
@@ -114,6 +111,9 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .on_paste(|state: &mut AppState, text, _| {
             // Same routing as the React page's focused editor/grid: an OS paste
             // lands here when no platform text field owns the focus.
+            if state.active == Section::Settings {
+                return;
+            }
             if state.active == Section::Workspace
                 && !query_selected(state)
                 && state.grid.has_page()
@@ -234,8 +234,10 @@ fn connection_titlebar(
                 .center()
                 .radius(6.0)
                 .hover(theme.hover)
+                .role("button")
                 .label(t("common.back"))
-                .on_press(|state: &mut AppState| state.select(Section::Connections))
+                .focusable(true)
+                .on_press(AppState::leave_settings)
                 .child(
                     rune::icon(&crate::icons::ICON_CHEVRON_LEFT, 16.0)
                         .color(theme.text_secondary),

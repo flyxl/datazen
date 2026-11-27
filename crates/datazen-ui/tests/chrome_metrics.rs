@@ -364,42 +364,46 @@ use rune::{Env, Runtime};
     }
 
     #[test]
-    fn the_settings_page_ends_above_the_status_bar() {
-        // The page is one row of the page column, next to the toolbar and the
-        // status bar: measuring it against the whole column (h_full) pushed
-        // the status bar out of the window.
-        let mut rt = Runtime::new(
-            AppState::default(),
-            view,
-            (960.0, 640.0),
-            Env {
-                system_dark: true,
-                scale: 1.0,
-            },
-        );
-        rt.state.active = Section::Settings;
-        rt.frame(0.0);
-        let elements = rt.elements();
-        let rect = |key: &str| {
-            elements
-                .iter()
-                .find(|e| e.key.as_deref() == Some(key))
-                .unwrap_or_else(|| panic!("{key} present"))
-                .rect
-        };
-        let page = rect("settings-page");
-        let bar = rect("content-status-bar");
-        assert!(
-            page[1] + page[3] <= bar[1] + 0.5,
-            "settings page {:?} overlaps the status bar {:?}",
-            page,
-            bar
-        );
-        assert!(
-            bar[1] + bar[3] <= 640.5,
-            "status bar {:?} leaves the 640pt window",
-            bar
-        );
+    fn the_settings_page_fills_the_body_without_database_chrome() {
+        for (width, height) in [(960.0, 640.0), (1440.0, 816.0)] {
+            for dark in [true, false] {
+                let mut rt = Runtime::new(
+                    AppState::default(),
+                    view,
+                    (width, height),
+                    Env {
+                        system_dark: dark,
+                        scale: 1.0,
+                    },
+                );
+                rt.state.open_settings(None);
+                rt.frame(0.0);
+                let elements = rt.elements();
+                let node = |key: &str| {
+                    elements
+                        .iter()
+                        .find(|e| !e.exiting && e.key.as_deref() == Some(key))
+                };
+                let page = node("settings-page").expect("Settings body").rect;
+                let title = node("datazen-titlebar").expect("Retained titlebar").rect;
+                assert!(node("datazen-theme-toggle").is_some());
+                assert!(node("settings-nav").is_some());
+                assert!((page[0] - title[0]).abs() <= 0.5, "{page:?} vs {title:?}");
+                assert!((page[1] - title[1] - title[3]).abs() <= 0.5, "{page:?} vs {title:?}");
+                assert!((page[0] + page[2] - width).abs() <= 0.5, "{page:?} width");
+                assert!((page[1] + page[3] - height).abs() <= 0.5, "{page:?} height");
+                for key in [
+                    "datazen-rail",
+                    "datazen-navigator",
+                    "splitter:navigator-width",
+                    "content-toolbar",
+                    "content-status-bar",
+                    "tab-strip",
+                ] {
+                    assert!(node(key).is_none(), "Settings must not mount {key}");
+                }
+            }
+        }
     }
 
     /// Both dialogs must stay inside the window, keep their footer pinned to

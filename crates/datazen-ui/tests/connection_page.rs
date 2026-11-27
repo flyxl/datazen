@@ -131,7 +131,11 @@ fn every_section_stays_reachable_after_the_port() {
             assert_eq!(keys.contains(key), database, "{section:?}: {key}");
         }
         assert_eq!(keys.contains("workflow-sidebar"), *section == Section::Workflows);
-        assert!(keys.contains("datazen-rail"), "the mode rail still navigates sections");
+        assert_eq!(
+            keys.contains("datazen-rail"),
+            *section != Section::Settings,
+            "{section:?}: Settings has its own full-window body"
+        );
         let title = rt
             .elements()
             .into_iter()
@@ -271,31 +275,77 @@ fn tabs_and_toolbar_follow_the_content_workspace_contract() {
     );
 }
 
-#[test]
-fn the_settings_back_button_returns_to_connections() {
-    let mut rt = runtime();
-    rt.state.active = Section::Settings;
-    rt.invalidate();
-    rt.frame(0.0);
-    assert!(
-        rt.find("settings-back").is_some(),
-        "the settings view carries the React page's back arrow"
-    );
-    let (x, y) = rt
-        .find("settings-back")
-        .expect("the settings back arrow is on the title band");
+fn click(rt: &mut Runtime<AppState>, key: &str) {
+    let (x, y) = rt.find(key).unwrap_or_else(|| panic!("{key} is reachable"));
     rt.pointer_down(x, y);
     rt.pointer_up(x, y);
     rt.frame(0.0);
+    rt.frame(0.0);
+}
+
+#[test]
+fn settings_back_restores_the_actual_screen_and_preserves_its_state() {
+    let mut rt = runtime();
+    rt.frame(0.0);
+    click(&mut rt, "rail-dashboards");
+    rt.state.widget_title = rune::TextEdit::new("Unsubmitted dashboard title");
+    rt.invalidate();
+    rt.frame(0.0);
+
+    click(&mut rt, "rail-settings");
+    assert!(key_set(&rt).contains("settings-section-general"));
+    assert!(!key_set(&rt).contains("dashboards-page"));
+    click(&mut rt, "settings-nav-dataBrowsing");
+    assert!(key_set(&rt).contains("settings-section-dataBrowsing"));
+    click(&mut rt, "settings-back");
+
+    let keys = key_set(&rt);
+    assert_eq!(rt.state.active, Section::Dashboards);
+    assert!(keys.contains("dashboards-page") && keys.contains("datazen-rail"));
+    assert!(!keys.contains("settings-page") && !keys.contains("settings-back"));
+    assert_eq!(rt.state.widget_title.text, "Unsubmitted dashboard title");
+
+    click(&mut rt, "rail-settings");
+    assert!(key_set(&rt).contains("settings-section-general"));
+    click(&mut rt, "settings-back");
+    assert_eq!(rt.state.active, Section::Dashboards);
+
+    click(&mut rt, "rail-connections");
+    rt.state.desktop_error = Some("retained connection state".to_owned());
+    click(&mut rt, "rail-settings");
+    click(&mut rt, "settings-back");
+    assert_eq!(rt.state.active, Section::Connections);
     assert_eq!(
-        rt.state.active,
-        Section::Connections,
-        "back leaves settings for the connections page"
+        rt.state.desktop_error.as_deref(),
+        Some("retained connection state"),
+        "returning does not re-run the connection list refresh"
     );
-    assert!(
-        rt.find("settings-back").is_none(),
-        "the back arrow is settings-only"
-    );
+}
+
+#[test]
+fn settings_deep_link_keeps_the_original_workspace_and_selected_tab() {
+    let mut rt = runtime();
+    rt.frame(0.0);
+    click(&mut rt, "rail-workspace");
+    let tab = rt
+        .state
+        .tabs
+        .open(TabKind::Table, "customers")
+        .expect("retained workspace tab");
+    rt.state.open_settings(Some("ai"));
+    rt.invalidate();
+    rt.frame(0.0);
+    assert!(key_set(&rt).contains("settings-section-ai"));
+
+    rt.state.open_settings(Some("dataBrowsing"));
+    rt.invalidate();
+    rt.frame(0.0);
+    assert!(key_set(&rt).contains("settings-section-dataBrowsing"));
+    click(&mut rt, "settings-back");
+
+    assert_eq!(rt.state.active, Section::Workspace);
+    assert_eq!(rt.state.tabs.selected().map(|selected| selected.id), Some(tab));
+    assert!(key_set(&rt).contains(&format!("tab-{tab}")));
 }
 
 #[test]

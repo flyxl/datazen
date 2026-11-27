@@ -22,6 +22,10 @@ use rune::{
 
 impl AppState {
     pub fn select(&mut self, section: Section) {
+        if section == Section::Settings {
+            self.open_settings(None);
+            return;
+        }
         if self.active != section && !self.kv_can_leave() {
             return;
         }
@@ -55,6 +59,36 @@ impl AppState {
             // mount — so no `loaded` guard here (the wapps page's own).
             self.fetch_workflow_list();
             self.reload_workflow_connections();
+        }
+    }
+
+    /// Enter the full-window settings view, retaining the current mode and
+    /// its state. A deep link received while already in Settings changes the
+    /// subsection without losing the original return route.
+    pub fn open_settings(&mut self, subsection: Option<&str>) {
+        if self.active == Section::Settings {
+            if let Some(subsection) = subsection {
+                self.set_settings_section(subsection);
+            }
+            return;
+        }
+        if !self.kv_can_leave() {
+            return;
+        }
+        self.settings_return_section = Some(self.active);
+        self.set_settings_section(subsection.unwrap_or("general"));
+        self.active = Section::Settings;
+    }
+
+    /// Reveal the previous mode without re-running the rail's explicit entry
+    /// actions (e.g. fetching dashboard widgets or refreshing connections).
+    pub fn leave_settings(&mut self) {
+        if self.active == Section::Settings {
+            self.active = self
+                .settings_return_section
+                .take()
+                .unwrap_or(Section::Connections);
+            self.set_settings_section("general");
         }
     }
 

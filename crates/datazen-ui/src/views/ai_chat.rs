@@ -48,7 +48,6 @@ use crate::components::ai::AiChatPanel;
 use crate::constants::*;
 use crate::splitter;
 use crate::state_def::AppState;
-use crate::types::Section;
 use rune::tok;
 use rune::{col, row, El};
 
@@ -74,10 +73,7 @@ pub fn ai_chat_aside(
         .panel_mut(|state: &mut AppState| &mut state.ai_chat_panel)
         .on_insert_sql(AppState::insert_ai_sql)
         .on_new_query(AppState::open_ai_new_query)
-        .on_open_settings(|state: &mut AppState| {
-            state.active = Section::Settings;
-            state.set_settings_section("ai");
-        })
+        .on_open_settings(|state: &mut AppState| state.open_settings(Some("ai")))
         .build(dark, layer);
     row().key("ai-chat-aside").h_full().child(handle).child(
         col()

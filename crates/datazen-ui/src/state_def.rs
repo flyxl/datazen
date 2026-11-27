@@ -72,6 +72,7 @@ pub(crate) struct NativeExplainState {
 
 pub struct AppState {
     pub active: Section,
+    pub(crate) settings_return_section: Option<Section>,
     pub sql: SqlEditor,
     pub grid: DataGrid,
     pub workspace: MemoryWorkspace,
@@ -587,6 +588,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             active: Section::Connections,
+            settings_return_section: None,
             sql: SqlEditor::new(),
             grid: DataGrid::new(),
             workspace: MemoryWorkspace::new(),
