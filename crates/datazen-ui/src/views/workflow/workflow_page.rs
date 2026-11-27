@@ -161,9 +161,6 @@ const SIDEBAR_WIDTH_KEY: &str = "workflow-sidebar-width";
 const SIDEBAR_HANDLE_KEY: &str = "splitter:workflow.sidebar";
 /// React's `w-1` on the actual pointer-capture element (1 × 0.25rem).
 const SIDEBAR_HANDLE_WIDTH: f32 = 4.0;
-/// React `flex-1 min-h-0` (the form area's leftover) capped for the
-/// engine's definite-height rule — see the edit pane's middle column.
-const EDIT_VISUAL_MAX_H: f32 = 500.0;
 /// The panel-content ladder's cap (the step detail and the interim
 /// panel mount below it) — see the edit pane's middle column.
 const PANEL_CONTENT_MAX_H: f32 = 360.0;
@@ -1833,15 +1830,8 @@ fn edit_pane(state: &AppState, edit: &WorkflowEditPanel, k: &Kit, dark: bool) ->
                 .key("workflow-edit-visual")
                 .grow(1.0)
                 .min_h(0.0)
-                // The engine has no flex-shrink below a column's content
-                // height, so React's `flex-1 min-h-0` leftover cannot be
-                // spelled with grow alone (the action bar would be pushed
-                // past the window — the settings `h_full` lesson). The
-                // grid's `h(560)` / the execution panel's `max_h(160)`
-                // precedent instead: a definite cap that keeps the pane
-                // inside a default-window slot; the dynamic leftover is the
-                // window-resize track's seam.
-                .max_h(EDIT_VISUAL_MAX_H)
+                // The bounded edit pane lends its remaining height to
+                // this scroll body, not to a fixed-height form or footer.
                 .scroll(ScrollSpec { stick_bottom: false })
                 .child(
                     WorkflowForm::new(

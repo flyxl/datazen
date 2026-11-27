@@ -8,6 +8,102 @@ from scenarios import fixture, tap, type_text, visible
 
 
 class WorkflowJourney:
+    def test_workflow_inline_visual_form_fills_pane_and_scrolls_above_fixed_footer(self):
+        settings = self.root / "settings.json"
+        registry = self.root / "workflows.json"
+        workflow_id = "layout-fixture"
+        definition = (
+            f"id: {workflow_id}\nname: Layout fixture\nsteps:\n" +
+            "".join(f"  - type: query\n    id: step-{i}\n    sql: SELECT {i}\n"
+                    for i in range(1, 13))
+        )
+        registry.write_text(json.dumps([{
+            "id": workflow_id, "name": "Layout fixture", "description": "",
+            "visibility": "user", "definitionYaml": definition,
+            "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z",
+        }]), encoding="utf-8")
+        registry_before = registry.read_bytes()
+
+        def rect(tree, key, *, optional=False):
+            nodes = [node for node in tree["elements"]
+                     if node.get("key") == key and not node.get("exiting")
+                     and node.get("opacity", 0) > 0]
+            if optional and not nodes:
+                return None
+            self.assertEqual(len(nodes), 1, key)
+            return nodes[0]["rect"]
+
+        def inside(child, container):
+            if child is None:
+                return False
+            x, y, w, h = child
+            xx, yy, ww, hh = container
+            return (w > 0 and h > 0 and x >= xx - 0.25 and y >= yy - 0.25
+                    and x + w <= xx + ww + 0.25 and y + h <= yy + hh + 0.25)
+
+        def geometry(tree, viewport, sidebar, middle):
+            self.assertEqual(tree["viewport"], viewport)
+            self.assertAlmostEqual(rect(tree, "workflow-sidebar")[2], sidebar, delta=0.25)
+            pane = rect(tree, "workflow-edit-panel")
+            main = rect(tree, "workflow-main")
+            tabs = rect(tree, "workflow-editor-mode-tabs")
+            body = rect(tree, middle)
+            footer = rect(tree, "workflow-editor-action-bar")
+            self.assertTrue(inside(pane, (0, 0, *viewport)), pane)
+            for child in (tabs, body, footer):
+                self.assertTrue(inside(child, pane), (child, pane))
+            self.assertAlmostEqual(tabs[1], pane[1], delta=0.25)
+            self.assertAlmostEqual(tabs[1] + tabs[3], body[1], delta=0.25)
+            self.assertAlmostEqual(body[1] + body[3], footer[1], delta=0.25)
+            self.assertAlmostEqual(footer[1] + footer[3], pane[1] + pane[3], delta=0.25)
+            self.assertAlmostEqual(footer[1] + footer[3], main[1] + main[3], delta=0.25)
+            self.assertAlmostEqual(footer[1] + footer[3], viewport[1], delta=0.25)
+            for key in ("workflow-editor-cancel", "workflow-yaml-save"):
+                self.assertTrue(inside(rect(tree, key), footer), key)
+            return tabs, body, footer
+
+        landing = [tap(.5, "rail-workflows")]
+        create = [*landing, tap(1.8, "workflow-create")]
+        edit_long = [*landing, tap(1.8, f"workflow-{workflow_id}-edit")]
+        scroll_long = [*edit_long, {"t": 3.0, "type": "wheel",
+                                  "key": "workflow-edit-visual", "dy": -10000}]
+        tail = "workflow-form-step-11-id"
+        for width, height, sidebar in [(1440, 900, 256), (960, 640, 320)]:
+            with self.subTest(width=width, height=height, sidebar=sidebar):
+                size = f"{width}x{height}"
+                viewport = [width, height]
+                settings.write_text(json.dumps({"ui": {"language": "en", "layout": {
+                    "workflow-sidebar-width": sidebar,
+                }}}), encoding="utf-8")
+                settings_before = settings.read_bytes()
+
+                initial = self.replay(create, until=2.8, size=size)
+                self.expect_rendered(initial, key="workflow-tab-edit-1", within="workflow-workspace")
+                _, _, create_footer = geometry(initial, viewport, sidebar, "workflow-edit-visual")
+                yaml = self.replay([*create, tap(3.0, "workflow-mode-yaml")], until=4.2, size=size)
+                self.expect_rendered(yaml, key="workflow-yaml-editor")
+                self.assertFalse(visible(yaml, key="workflow-edit-visual"))
+                _, _, yaml_footer = geometry(yaml, viewport, sidebar, "workflow-edit-yaml")
+                self.assertEqual(create_footer, yaml_footer)
+
+                long = self.replay(edit_long, until=2.8, size=size)
+                top_geometry = geometry(long, viewport, sidebar, "workflow-edit-visual")
+                self.assertFalse(inside(rect(long, tail, optional=True), top_geometry[1]))
+                bottom = self.replay(scroll_long, until=4.2, size=size)
+                bottom_geometry = geometry(bottom, viewport, sidebar, "workflow-edit-visual")
+                self.assertEqual(top_geometry, bottom_geometry, "scroll must not move the footer")
+                self.assertTrue(inside(rect(bottom, tail), bottom_geometry[1]),
+                                "the wheel must reveal the real last editable step")
+
+                canceled = self.replay([*scroll_long, tap(4.35, "workflow-editor-cancel")],
+                                       until=5.5, size=size)
+                self.expect_rendered(canceled, key="workflow-empty-hint")
+                self.expect_rendered(canceled, key=f"workflow-{workflow_id}")
+                self.assertFalse(visible(canceled, key="workflow-edit-panel"))
+                self.assertAlmostEqual(rect(canceled, "workflow-sidebar")[2], sidebar, delta=0.25)
+                self.assertEqual(registry.read_bytes(), registry_before)
+                self.assertEqual(settings.read_bytes(), settings_before)
+
     def test_workflow_yaml_validation_save_and_execute_after_relaunch(self):
         fixture(self.store, self.db)
         name = "e2e-workflow"
