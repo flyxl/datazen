@@ -31,7 +31,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             _ => None,
         })
         .unwrap_or(TABLE_PAGE_SIZE);
-    let max_rows = settings
+    let legacy_max_rows = settings
         .iter()
         .find_map(|setting| match setting {
             Setting::QueryMaxRows { rows } => Some(*rows),
@@ -56,6 +56,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let row_count = state.desktop.read_native_row_count_mode().ok();
     let default_sort = state.desktop.read_native_default_table_sort().ok();
     let striped = state.desktop.read_native_grid_alternating_rows().ok();
+    let select_limit = state.desktop.read_native_select_limit().ok();
     section = section
         .child(setting_row(
             &k,
@@ -76,8 +77,21 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     if let Some(striped) = striped {
         section = section.child(grid_alternating_rows(striped, &k, &mut overlays));
     }
-    section = section
-        .child(
+    if let Some(limit) = select_limit {
+        section = section.child(select_limit_row(limit.effective_rows.is_some(), &k));
+    }
+    if select_limit.is_none_or(|limit| limit.explicit != Some(false)) {
+        let max_rows_label = match select_limit {
+            None => format!("Query max rows: {legacy_max_rows}"),
+            Some(limit) => match limit.effective_rows {
+                Some(rows) => format!("Query max rows: {rows}"),
+                None => match state.builtin_language() {
+                    BuiltinLanguage::English => "Query max rows: not set".to_owned(),
+                    BuiltinLanguage::SimplifiedChinese => "查询最大行数：未设置".to_owned(),
+                },
+            },
+        };
+        section = section.child(
             col()
                 .key("settings-data")
                 .w_full()
@@ -86,7 +100,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     &k,
                     &mut overlays,
                     "settings-max-rows-row".to_owned(),
-                    &format!("Query max rows: {max_rows}"),
+                    &max_rows_label,
                     None,
                     number_row(
                         &k,
@@ -102,27 +116,30 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                         },
                     ),
                 )),
-        )
-        .child(workflow_step_order_row(state, &k, &mut overlays));
+        );
+    }
+    section = section.child(workflow_step_order_row(state, &k, &mut overlays));
     if state.settings_error.is_some() {
         section = section.child(settings_error_row(state, theme));
     }
 
     let unavailable = match state.builtin_language() {
         BuiltinLanguage::English => format!(
-            "Settings not available here: {}{}{}, time display, connection pool, the SELECT-limit toggle, and auto-chart.{}",
+            "Settings not available here: {}{}{}, time display, connection pool, {}and auto-chart.{}",
             if row_count.is_none() { "row count mode, " } else { "" },
             if default_sort.is_none() { "default sorting, " } else { "" },
             if striped.is_none() { "grid settings" } else { "other grid settings" },
+            if select_limit.is_none() { "the SELECT-limit toggle, " } else { "" },
             if row_count == Some(RowCountMode::Auto) {
                 " Automatic uses the database's default counting strategy; the estimate threshold is not configurable in Native."
             } else { "" },
         ),
         BuiltinLanguage::SimplifiedChinese => format!(
-            "此处暂不支持{}{}{}、时间显示、连接池、SELECT 限制开关及自动图表设置。{}",
+            "此处暂不支持{}{}{}、时间显示、连接池、{}自动图表设置。{}",
             if row_count.is_none() { "行数统计、" } else { "" },
             if default_sort.is_none() { "默认排序、" } else { "" },
             if striped.is_none() { "表格设置" } else { "其他表格设置" },
+            if select_limit.is_none() { "SELECT 限制开关、" } else { "" },
             if row_count == Some(RowCountMode::Auto) {
                 "自动模式使用数据库默认的计数策略；Native 暂不支持设置估算阈值。"
             } else { "" },
@@ -150,6 +167,35 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .wrap(),
         )
         .children(overlays)
+}
+
+fn select_limit_row(checked: bool, k: &Kit) -> El {
+    let label = t("settings.limitSelect");
+    let switch = row()
+        .key("settings-limit-select-results")
+        .size(36.0, 20.0)
+        .shrink()
+        .radius(10.0)
+        .fill(if checked { k.c.bg_accent } else { k.c.border_base })
+        .pl(if checked { 18.0 } else { 3.0 })
+        .center_y()
+        .role("switch")
+        .label(label)
+        .checked(checked)
+        .focusable(true)
+        .focus_ring(2.0, 1.0, k.c.border_focus)
+        .child(col().size(14.0, 14.0).radius(7.0).fill(rune::Color::WHITE).a11y_hidden())
+        .on_press(|state: &mut AppState| {
+            if state.active == crate::types::Section::Settings && state.settings_section() == "dataBrowsing" {
+                state.settings_error = match state.desktop.read_native_select_limit() {
+                    Ok(limit) => state.desktop.write_native_select_limit(limit.effective_rows.is_none()).err(),
+                    Err(error) => Some(error),
+                };
+            }
+        });
+    row().key("settings-limit-select-results-row").w_full().justify_between().center_y()
+        .child(text(label).font(TextStyle::new(14.0, 400.0).lh(20.0)).color(k.c.text_muted))
+        .child(switch)
 }
 
 fn grid_alternating_rows(checked: bool, k: &Kit, overlays: &mut Vec<El>) -> El {

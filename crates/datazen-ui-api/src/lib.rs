@@ -1293,7 +1293,8 @@ pub use settings_store::{
     next_value_presentation_revision, normalize_loaded_settings, normalize_settings_language,
     parse_stored_value_presentation, persist_merge, resolve_ui_language, settings_changed,
     theme_recovery, update_settings_merge, value_presentation_fresh, LoadRecovery,
-    SETTINGS_CHANGED_EVENT, SETTINGS_STORE_GAP, SETTINGS_STORE_SURFACE, SETTINGS_THEME_STORAGE_KEY,
+    DEFAULT_QUERY_RESULT_LIMIT, SETTINGS_CHANGED_EVENT, SETTINGS_STORE_GAP, SETTINGS_STORE_SURFACE,
+    SETTINGS_THEME_STORAGE_KEY,
     THEME_CHANGED_EVENT, VALUE_PRESENTATION_VERSION,
 };
 pub use sql_path_prefix::{
@@ -1907,6 +1908,15 @@ pub struct NativeTablePage {
     pub bounded_offset: bool,
 }
 
+/// The native single-SELECT publication preference. No configured limit is
+/// not a guarantee of unlimited results: existing engine and transport limits
+/// still apply.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NativeSelectLimit {
+    pub explicit: Option<bool>,
+    pub effective_rows: Option<u32>,
+}
+
 /// One job's progress, in one piece. The port hands these out when asked;
 /// the UI never streams.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2384,7 +2394,15 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
-    /// The effective global row count preference for interactive table reads.
+    /// The effective custom single-SELECT publication limit, if configured.
+    fn read_native_select_limit(&self) -> Result<NativeSelectLimit, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn write_native_select_limit(&mut self, _enabled: bool) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// The actual Table and Query Result zebra paint preference.
     fn read_native_grid_alternating_rows(&self) -> Result<bool, String> {
         Err("Grid appearance is not implemented by this desktop adapter".into())
@@ -2394,6 +2412,7 @@ pub trait DesktopAdapter {
         Err("Grid appearance is not implemented by this desktop adapter".into())
     }
 
+    /// The effective global row count preference for interactive table reads.
     fn read_native_row_count_mode(&self) -> Result<types::RowCountMode, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }

@@ -7,6 +7,99 @@ from scenarios import fixture, query_steps, tap, visible
 
 
 class QueryRowLimitJourney:
+    def _expect_select_limit_switch(self, tree, checked):
+        target = "settings-limit-select-results"
+        self.expect_rendered(tree, key=target)
+        def visit(node):
+            if node.get("key") == target:
+                yield node
+            for child in node.get("children", []):
+                yield from visit(child)
+        matches = list(visit(tree["accessibility"]))
+        self.assertEqual(len(matches), 1)
+        item = matches[0]
+        self.assertEqual(item.get("role"), "switch")
+        self.assertIn("click", item.get("actions", []))
+        self.assertIn("checked" if checked else "unchecked", item.get("states", []))
+
+    def test_select_limit_toggle_controls_real_readonly_sqlite_and_survives_restart(self):
+        fixture(self.store, self.db)
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        sql = "SELECT customer_name FROM customers ORDER BY id;"
+        authored = "SELECT customer_name FROM customers ORDER BY id LIMIT 1 OFFSET 2;"
+        with sqlite3.connect(self.db) as db:
+            db.executemany("INSERT INTO customers VALUES (?, ?)", [
+                (3, "outside-select-cap"), (4, "last-select-row"),
+            ])
+        with sqlite3.connect(self.db.as_uri() + "?mode=ro", uri=True) as db:
+            full = [row[0] for row in db.execute(sql)]
+            limited = [row[0] for row in db.execute(authored)]
+        self.assertEqual((len(full), limited), (4, [full[2]]))
+        before_db = self.db.read_bytes()
+        config = self.root / "settings.json"
+        original = {"ui": {"language": "en", "tablePageSize": 25},
+                    "queryResultLimit": 2, "unrelated": ["keep"]}
+        config.write_text(json.dumps(original), encoding="utf-8")
+        initial_bytes = config.read_bytes()
+        route = [SETTINGS, DATA_SETTINGS]
+        change = [*route, tap(2.5, "settings-limit-select-results")]
+
+        def check_query(statement, expected, truncated):
+            tree = self.replay(query_steps(statement), until=10.6)
+            self.expect_rendered(tree, key="result-grid-status",
+                                 text=f"result · {len(expected)} rows × 1 cols")
+            for i, cell in enumerate(expected):
+                self.expect_rendered(tree, text=cell, within=f"result-cell-{i}-0")
+            self.assertFalse(visible(tree, key=f"result-cell-{len(expected)}-0"))
+            self.assertEqual(visible(tree, key="result-truncated", within="result-workspace"), truncated)
+
+        initial = self.replay(route, until=2.4)
+        self._expect_select_limit_switch(initial, False)
+        self.assertEqual(config.read_bytes(), initial_bytes)
+        self.expect_rendered(initial, key="settings-max-rows-input")
+        enabled = self.replay(change, until=3.7)
+        self._expect_select_limit_switch(enabled, True)
+        self.expect_rendered(enabled, text="Query max rows: 2", within="settings-data")
+        self.assertFalse(visible(enabled, key="settings-error"))
+        self.assertEqual(json.loads(config.read_text(encoding="utf-8")),
+                         {**original, "limitSelectResults": True})
+        restarted_on = self.replay(route, until=2.4)
+        self._expect_select_limit_switch(restarted_on, True)
+        check_query(sql, full[:2], True)
+        check_query(authored, limited, False)
+
+        disabled = self.replay(change, until=3.7)
+        self._expect_select_limit_switch(disabled, False)
+        self.assertFalse(visible(disabled, key="settings-max-rows-input"))
+        self.assertFalse(visible(disabled, key="settings-error"))
+        self.assertEqual(json.loads(config.read_text(encoding="utf-8")),
+                         {**original, "limitSelectResults": False})
+        restarted_off = self.replay(route, until=2.4)
+        self._expect_select_limit_switch(restarted_off, False)
+        check_query(sql, full, False)
+        check_query(authored, limited, False)
+        self.assertEqual(self.db.read_bytes(), before_db)
+
+    def test_select_limit_failed_save_does_not_change_switch_or_replace_file(self):
+        blocked = self.root / "settings.json"
+        blocked.mkdir()
+        keep = blocked / "keep"
+        keep.write_bytes(b"keep-this")
+        state = (blocked.stat().st_ino, keep.stat().st_ino, keep.read_bytes())
+        route = [SETTINGS, DATA_SETTINGS]
+        before = self.replay(route, until=2.4)
+        self._expect_select_limit_switch(before, False)
+        self.assertFalse(visible(before, key="settings-error"))
+        failed = self.replay([*route, tap(2.5, "settings-limit-select-results")], until=4.0)
+        self._expect_select_limit_switch(failed, False)
+        self.expect_rendered(failed, key="settings-error")
+        self.expect_rendered(failed, text="Could not save the SELECT result limit.",
+                             within="settings-error")
+        self.assertEqual(list(blocked.iterdir()), [keep])
+        self.assertEqual((blocked.stat().st_ino, keep.stat().st_ino, keep.read_bytes()), state)
+
     def test_legacy_query_configured_row_limit_preserves_exact_boundary_and_warns(self):
         """Configure actual settings; distinguish equal and over-limit real SELECTs."""
         fixture(self.store, self.db)

@@ -2750,18 +2750,36 @@ fn connection_draft_record(
     })
 }
 
+fn effective_native_select_limit(settings: &serde_json::Value) -> datazen_ui_api::NativeSelectLimit {
+    // The current SQLite and PostgreSQL publication cap admits one extra
+    // row for the truncation probe. Keep the existing 1..=10000 display
+    // range, including for top-level values imported from React.
+    fn valid(value: Option<&serde_json::Value>) -> Option<u32> {
+        value.and_then(serde_json::Value::as_u64)
+            .and_then(|rows| u32::try_from(rows).ok())
+            .filter(|rows| (datazen_ui_api::Setting::QueryMaxRows { rows: *rows }).validate().is_ok())
+    }
+
+    let explicit = settings.get("limitSelectResults").and_then(serde_json::Value::as_bool);
+    let native = valid(settings.get("ui").and_then(|ui| ui.get("queryMaxRows")));
+    let effective_rows = match explicit {
+        Some(false) => None,
+        Some(true) => native
+            .or_else(|| valid(settings.get("queryResultLimit")))
+            .or(Some(datazen_ui_api::DEFAULT_QUERY_RESULT_LIMIT as u32)),
+        None => native,
+    };
+    datazen_ui_api::NativeSelectLimit { explicit, effective_rows }
+}
+
 impl LiveAdapter {
     fn enqueue_query(
         &mut self, generation: u32, sql: String, script: bool,
         target: Option<datazen_ui_api::NativeQueryDatabase>,
     ) -> bool {
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let configured_limit = self.settings_document.lock().ok().and_then(|settings| {
-            settings["ui"]["queryMaxRows"]
-                .as_u64()
-                .and_then(|rows| u32::try_from(rows).ok())
-                .filter(|rows| (datazen_ui_api::Setting::QueryMaxRows { rows: *rows }).validate().is_ok())
-        });
+        let configured_limit = self.settings_document.lock().ok()
+            .and_then(|settings| effective_native_select_limit(&settings).effective_rows);
         let job = HostJob::RunQuery {
             generation, sql, stop: Arc::clone(&stop), script, target, configured_limit,
         };
@@ -3460,6 +3478,25 @@ impl DesktopAdapter for LiveAdapter {
         let stored = futures_executor::block_on(self.settings.save_app_settings(document))
             .map_err(|_| error())?;
         *cache = stored;
+        Ok(())
+    }
+
+    fn read_native_select_limit(&self) -> Result<datazen_ui_api::NativeSelectLimit, String> {
+        let cache = self.settings_document.lock()
+            .map_err(|_| "Could not read the SELECT result limit.".to_owned())?;
+        Ok(effective_native_select_limit(&cache))
+    }
+
+    fn write_native_select_limit(&mut self, enabled: bool) -> Result<(), String> {
+        let error = || "Could not save the SELECT result limit.".to_owned();
+        let mut cache = self.settings_document.lock().map_err(|_| error())?;
+        let mut document = futures_executor::block_on(self.settings.read_app_settings())
+            .map_err(|_| error())?;
+        let object = document.as_object_mut().ok_or_else(error)?;
+        object.insert("limitSelectResults".into(), serde_json::Value::Bool(enabled));
+        let persisted = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|_| error())?;
+        *cache = persisted;
         Ok(())
     }
 
@@ -4450,6 +4487,61 @@ mod tests {
         }));
         poll_open(&mut adapter).expect("the session opens");
         adapter
+    }
+
+    #[test]
+    fn native_select_limit_preserves_legacy_and_validates_explicit_overrides() {
+        let cap = |settings| effective_native_select_limit(&settings).effective_rows;
+        for (settings, expected) in [
+            (serde_json::json!({}), None),
+            (serde_json::json!({"queryResultLimit": 7}), None),
+            (serde_json::json!({"limitSelectResults":"false","ui":{"queryMaxRows":21}}), Some(21)),
+            (serde_json::json!({"ui":{"queryMaxRows":13},"queryResultLimit":7}), Some(13)),
+            (serde_json::json!({"limitSelectResults":false,"ui":{"queryMaxRows":13},"queryResultLimit":7}), None),
+            (serde_json::json!({"limitSelectResults":true,"ui":{"queryMaxRows":13},"queryResultLimit":7}), Some(13)),
+            (serde_json::json!({"limitSelectResults":true,"ui":{"queryMaxRows":0},"queryResultLimit":7}), Some(7)),
+            (serde_json::json!({"limitSelectResults":true,"queryResultLimit":10000}), Some(10000)),
+            (serde_json::json!({"limitSelectResults":true,"queryResultLimit":10001}), Some(5000)),
+            (serde_json::json!({"limitSelectResults":true,"queryResultLimit":50000}), Some(5000)),
+            (serde_json::json!({"limitSelectResults":true,"queryResultLimit":"7"}), Some(5000)),
+            (serde_json::json!({"limitSelectResults":true}), Some(5000)),
+        ] {
+            assert_eq!(cap(settings), expected);
+        }
+    }
+
+    #[test]
+    fn native_select_limit_persists_top_level_and_refuses_corrupt_save() {
+        let root = tempfile::tempdir().expect("isolated settings");
+        let path = root.path().join("settings.json");
+        let initial = serde_json::json!({
+            "queryResultLimit": 7,
+            "ui": {"queryMaxRows": 13, "language": "en"},
+            "unrelated": ["keep"],
+        });
+        std::fs::write(&path, initial.to_string()).unwrap();
+        let repo = Arc::new(
+            FileConnectionRepository::open(&root.path().join("connections.json")).unwrap(),
+        );
+        let mut live = LiveAdapter::with_data_dir(repo.clone(), root.path());
+        assert_eq!(live.read_native_select_limit().unwrap().effective_rows, Some(13));
+        live.write_native_select_limit(false).unwrap();
+        assert_eq!(live.read_native_select_limit().unwrap().effective_rows, None);
+        let mut expected = initial;
+        expected["limitSelectResults"] = serde_json::json!(false);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(),
+            expected,
+        );
+
+        drop(live);
+        let mut reopened = LiveAdapter::with_data_dir(repo, root.path());
+        assert_eq!(reopened.read_native_select_limit().unwrap().explicit, Some(false));
+        let corrupt = b"{keep this invalid document";
+        std::fs::write(&path, corrupt).unwrap();
+        assert!(reopened.write_native_select_limit(true).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), corrupt);
+        assert_eq!(reopened.read_native_select_limit().unwrap().effective_rows, None);
     }
 
     #[test]
