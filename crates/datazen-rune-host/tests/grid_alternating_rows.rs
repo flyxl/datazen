@@ -117,7 +117,7 @@ fn live_grid_striping_switch_uses_exact_key_and_rejects_failed_atomic_write() {
 
 #[test]
 fn live_row_number_setting_changes_the_actual_table_and_query_grids_without_changing_cells() {
-    use datazen_ui::{data_grid::DataGrid, Section, TableView};
+    use datazen_ui::{Section, TableView};
     use datazen_ui_api::{TabKind, TablePage};
 
     const ROW_NUMBERS: &str = "settings-grid-row-numbers";
@@ -239,16 +239,27 @@ fn live_row_number_setting_changes_the_actual_table_and_query_grids_without_chan
 
     rt.update(|state, _| {
         let _ = state.tabs.open(TabKind::Query, "Result").expect("result tab");
-        // Exercise the same stock Cmd+C after the live query grid takes
-        // the pinned pane's available height.
-        state.set_layout_size(datazen_ui::constants::QUERY_EDITOR_HEIGHT_KEY, 240).unwrap();
-        let mut results = DataGrid::new();
-        results.load_page(&page);
-        state.result_grid = Some(results);
+        // Mount a delivered result in the real host's saved-connection path.
+        state.desktop_connection = Some("mounted-saved-query".into());
+        let generation = state.next_query_generation();
+        state.deliver_query_result(generation, page.clone());
     });
     settled(&mut rt);
     assert!(rt.find("result-head-rownum").is_none() && rt.find("result-rownum-0").is_none());
+    let original_cell = find(&rt, "result-cell-1-1");
+    assert!(original_cell.path.contains("query-results-host"));
+    assert!(rt.state.layout_size(datazen_ui::constants::QUERY_EDITOR_HEIGHT_KEY).is_none());
     press(&mut rt, "result-cell-1-1");
+    assert_eq!(rt.state.result_grid.as_ref().unwrap().copy_tsv(), "Bob");
+    assert_eq!(copy_by_key(&mut rt, &clipboard).as_deref(), Some("Bob"));
+    // Persist a split, without recreating the result tree or reselecting a cell.
+    rt.update(|state, _| {
+        state.set_layout_size(datazen_ui::constants::QUERY_EDITOR_HEIGHT_KEY, 240).unwrap();
+    });
+    settled(&mut rt);
+    let pinned_cell = find(&rt, "result-cell-1-1");
+    assert_eq!(pinned_cell.path, original_cell.path);
+    assert_ne!(pinned_cell.rect[1], original_cell.rect[1]);
     assert_eq!(rt.state.result_grid.as_ref().unwrap().copy_tsv(), "Bob");
     assert_eq!(copy_by_key(&mut rt, &clipboard).as_deref(), Some("Bob"));
 

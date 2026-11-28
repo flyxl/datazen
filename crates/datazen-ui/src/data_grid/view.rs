@@ -152,6 +152,29 @@ impl CellPaint {
     }
 }
 
+const EMPTY_QUERY_RESULT_HEIGHT: f32 = 112.0;
+const STANDARD_QUERY_ROW_HEIGHT: f32 = 32.0;
+
+/// Height estimate for the outer sheet before the whole Query pane is capped.
+/// React estimates regular rows at the standard density even when the user's
+/// actual grid density changes; a single real row must still be usable.
+pub(crate) fn query_result_auto_grid_height(
+    state: &crate::AppState, grid: &DataGrid, dark: bool, frame_width: f32,
+) -> f32 {
+    let paint = CellPaint::for_slot(state, GridSlot::Result, dark);
+    let body = if grid.rows == 0 {
+        EMPTY_QUERY_RESULT_HEIGHT
+    } else {
+        (grid.rows as f32 * STANDARD_QUERY_ROW_HEIGHT).max(paint.row_height)
+    };
+    let strip = if grid.sheet_data_width() + paint.gutter_width() > frame_width {
+        scrollbars::STRIP
+    } else {
+        0.0
+    };
+    ROW_H + body + strip
+}
+
 /// The scrolling sheet the table page and the query result share: a sticky header
 /// over a window of virtual rows.
 fn sheet(
@@ -182,9 +205,11 @@ fn sheet(
             [rect[2], fixed_height.unwrap_or(rect[3])]
         })
     }).flatten();
+    let query_empty = slot == GridSlot::Result && fixed_height.is_none() && grid.rows == 0;
+    let body_h = if query_empty { EMPTY_QUERY_RESULT_HEIGHT } else { grid.rows as f32 * paint.row_height };
     let gutters = scrollbars::Gutters::for_content(
         frame,
-        [paint.gutter_width() + data_width, header_h + grid.rows as f32 * paint.row_height],
+        [paint.gutter_width() + data_width, header_h + body_h],
     );
     paint.table_viewport_width = frame.map(|[width, _]| (width - gutters.right()).max(0.0));
     if !paint.show_row_numbers && slot == GridSlot::Table && grid.cols > 0 {
@@ -194,6 +219,11 @@ fn sheet(
         paint.row_tail_width = (viewport_width - data_width).max(0.0);
     }
     let width = paint.gutter_width() + data_width + paint.row_tail_width;
+    let width = if query_empty {
+        width.max(frame.map_or(0.0, |[w, _]| w - gutters.right()))
+    } else {
+        width
+    };
     // Changing the estimated height alone keeps old measured heights in Rune's
     // ledger. Key the virtual stack by its geometry, not the data it paints:
     // row/cell keys, the viewport, and keyed reveals keep their identities.
@@ -205,8 +235,13 @@ fn sheet(
     let sheet = col()
         .key(slot.key("data-grid-sheet"))
         .w(width)
-        .child(header_row(grid, slot, ink, paint, header_h).sticky_top(0.0))
-        .child(
+        .child(header_row(grid, slot, ink, paint, header_h).sticky_top(0.0));
+    let sheet = if query_empty {
+        sheet.child(row().key("result-grid-empty").w_full().h(EMPTY_QUERY_RESULT_HEIGHT)
+            .justify_center().center_y().role("status")
+            .child(text(crate::i18n::t("sqlFile.noResults")).font(label_style()).color(ink)))
+    } else {
+        sheet.child(
             col()
                 .key(rows_key)
                 .w(width)
@@ -222,7 +257,8 @@ fn sheet(
                     },
                 )
                 .virtual_rows_version(1u32),
-        );
+        )
+    };
     let (focus_row, focus_col) = grid.focus();
     let active = grid.selected_row().map_or_else(
         || format!("cell-{focus_row}-{focus_col}"),
@@ -511,9 +547,9 @@ pub fn result_panel(
     result_panel_with_height(state, grid, slot, ink, muted, well, dark, Some(200.0))
 }
 
-/// The pinned Query splitter owns the Result table's available height. The
-/// unpinned Query and Sync Preview still call the regular fixed-height entry.
-pub(crate) fn pinned_query_result_panel(
+/// The live Query split owns the Result table's available height, whether
+/// estimated from its content or pinned. Sync Preview stays fixed.
+pub(crate) fn flexible_query_result_panel(
     state: &crate::AppState,
     grid: &DataGrid,
     ink: rune::Color,

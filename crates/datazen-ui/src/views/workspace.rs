@@ -26,6 +26,7 @@ use rune::{FileDialogOptions, TextEdit, Tx};
 // default cards, navigator and tab bar reuse).
 mod native_explain;
 mod native_query_export;
+mod query_result_layout;
 mod query_history;
 mod query_library;
 mod query_snippets_menu;
@@ -307,7 +308,9 @@ pub fn query_workspace(
         && state.result_view == ResultView::Table && state.result_grid.is_some();
     let explicit_split = state.layout_size(QUERY_EDITOR_HEIGHT_KEY).is_some()
         || state.splitter_preview.as_ref().is_some_and(|(region, _)| region == QUERY_EDITOR_HEIGHT_KEY);
-    let pinned_table = uses_table_result && explicit_split;
+    let live_table = uses_table_result && selected_result.is_some() && state.desktop_connection.is_some();
+    let adaptive_table = live_table || (uses_table_result && explicit_split);
+    let auto_table = live_table && !explicit_split;
     let result_body = match (selected_error, command_stats, &state.result_grid) {
         (Some((tab, key, copied)), _, _) => {
             use crate::ui::{copyable::CopyableError, kit::kit};
@@ -339,7 +342,7 @@ pub fn query_workspace(
         (None, None, Some(grid)) => Some(result_workspace(
             state, grid, theme, dark, elapsed_ms,
             execution_stats.and_then(|stats| stats.truncated_to),
-            pinned_table,
+            adaptive_table,
         )),
         (None, None, None) => None,
     };
@@ -368,7 +371,7 @@ pub fn query_workspace(
             state.editor_font_family(),
             state.sql_syntax_theme(),
         ));
-    let editor = if split { editor.h(editor_h).shrink() } else { editor.grow(1.0) };
+    let editor = if split && !auto_table { editor.h(editor_h).shrink() } else { editor.grow(1.0) };
 
     query_snippets_menu::mount(state, dark, layer);
     native_query_export::dialog(state, dark, layer);
@@ -400,10 +403,15 @@ pub fn query_workspace(
         };
         main = main
             .child(editor_split.h(6.0).fill(theme.separator.alpha(0.25)))
-            .children(loading)
-            .child(query_result_tabs_bar(state, theme))
-            .children(explain)
-            .children(result_body);
+            .children(loading);
+        let tabs = query_result_tabs_bar(state, theme);
+        if let Some(grid) = state.result_grid.as_ref().filter(|_| adaptive_table) {
+            main = main.child(query_result_layout::table_host(
+                state, grid, dark, auto_table, tabs, result_body,
+            ));
+        } else {
+            main = main.child(tabs).children(explain).children(result_body);
+        }
     } else {
         main = main.child(
             row()
@@ -757,13 +765,13 @@ fn result_workspace(
     dark: bool,
     elapsed_ms: Option<u64>,
     truncated_to: Option<u32>,
-    pinned_table: bool,
+    adaptive_table: bool,
 ) -> El {
     let toggle = result_view_toggle(state, theme, dark);
     let find_bar = native_result_find::panel(state, grid, dark);
     let status = result_status_bar(state, grid, theme, elapsed_ms);
     let body = match state.result_view {
-        ResultView::Table if pinned_table => crate::data_grid::pinned_query_result_panel(
+        ResultView::Table if adaptive_table => crate::data_grid::flexible_query_result_panel(
             state, grid, theme.text, theme.text_secondary, theme.control_off, dark,
         ),
         ResultView::Table => crate::data_grid::result_panel(
@@ -778,20 +786,7 @@ fn result_workspace(
         ResultView::Chart => result_chart_view(grid, theme),
     };
     let workspace = col().key("result-workspace").w_full().gap(6.0);
-    let workspace = if pinned_table {
-        // The editor may shrink at a small window; the result keeps its
-        // actual toolbar, status, optional Find/notices and a usable row.
-        // Read the existing outer area so the 9pt scrollbars do not enter
-        // the chrome measurement; their possible lower strip is in the floor.
-        let chrome = rune::memo::layout_size("result-workspace")
-            .zip(rune::memo::layout_size("result-data-grid-scroll-scroll-area"))
-            .map_or(0.0, |([_, host], [_, sheet])| (host - sheet).max(0.0));
-        let floor = (chrome + crate::data_grid::query_result_viewport_floor(state, dark))
-            .max(140.0);
-        workspace.grow(1.0).min_h(floor)
-    } else {
-        workspace
-    };
+    let workspace = if adaptive_table { workspace.grow(1.0).min_h(0.0) } else { workspace };
     workspace
         .child(toggle)
         .children(native_query_export::status(state, theme))
