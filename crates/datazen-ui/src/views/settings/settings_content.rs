@@ -133,6 +133,37 @@ const TEXT_10_MONO: TextStyle = TextStyle::new(10.0, 400.0);
 const TEXT_SM: TextStyle = TextStyle::new(14.0, 400.0);
 const TEXT_SM_SEMIBOLD: TextStyle = TextStyle::new(14.0, 600.0);
 
+// Shared chrome for the authored shortcut card and its live supported subset.
+pub(super) fn shortcut_card(k: &Kit, heading: El, rows: El) -> El {
+    col()
+        .key("settings-keymap-customize")
+        .w_full()
+        .gap(12.0)
+        .padding(14.0)
+        .radius(8.0)
+        .fill(k.c.surface_weak)
+        .border(1.0, k.c.border_muted)
+        .child(heading)
+        .child(rows)
+}
+
+pub(super) fn shortcut_card_heading(k: &Kit) -> El {
+    row()
+        .key("settings-keymap-customize-header")
+        .w_full()
+        .justify_between()
+        .center_y()
+        .child(
+            text(t("settings.keymap.customize").to_owned())
+                .font(TEXT_XS_SEMIBOLD)
+                .color(k.c.text_muted),
+        )
+}
+
+pub(super) fn shortcut_card_rows() -> El {
+    col().key("settings-keymap-customize-rows").w_full().gap(8.0)
+}
+
 /// The nav rail's width (`w-[180px]`).
 const NAV_WIDTH: f32 = 180.0;
 /// `max-w-2xl` — the section body's column.
@@ -1426,27 +1457,9 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
     /// and one input + kbd chip row per `KEYMAP_ACTIONS` entry.
     fn keymap_card(&self, k: &Kit, _layer: &mut Vec<El>) -> El {
         let mirror = &self.state.mirror;
-        let mut card = col()
-            .key("settings-keymap-customize")
-            .w_full()
-            .gap(12.0)
-            .padding(14.0)
-            .radius(8.0)
-            .fill(k.c.surface_weak) // bg-surface-alt
-            .border(1.0, k.c.border_muted);
-
-        // The header row: the label + the reset button (only while a
-        // custom entry exists).
-        let mut header = row()
-            .key("settings-keymap-customize-header")
-            .w_full()
-            .justify_between()
-            .center_y()
-            .child(
-                text(t("settings.keymap.customize").to_owned())
-                    .font(TEXT_XS_SEMIBOLD)
-                    .color(k.c.text_muted),
-            );
+        // A reset is available only on the full keymap view, while a
+        // custom entry exists.
+        let mut header = shortcut_card_heading(k);
         if !mirror.custom_keymap.is_empty() {
             let mut reset = Button::new(t("settings.keymap.resetCustom"))
                 .variant(ButtonVariant::Ghost)
@@ -1459,10 +1472,8 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             }
             header = header.child(reset.build(k).key("settings-keymap-reset"));
         }
-        card = card.child(header);
-
         // One row per action: the label, the input, the kbd chip.
-        let mut rows = col().key("settings-keymap-customize-rows").w_full().gap(8.0);
+        let mut rows = shortcut_card_rows();
         for (action, label_key) in KEYMAP_ACTIONS.iter() {
             let current =
                 get_action_shortcut(action, &mirror.keymap_preset, &mirror.custom_keymap);
@@ -1529,8 +1540,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             row_el = row_el.child(controls);
             rows = rows.child(row_el);
         }
-        card = card.child(rows);
-        card
+        shortcut_card(k, header, rows)
     }
 
     /// The behavior section.

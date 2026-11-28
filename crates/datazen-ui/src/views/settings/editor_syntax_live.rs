@@ -3,7 +3,11 @@ use datazen_ui_api::{EditorFontFamily, NativeExecuteShortcut, SqlSyntaxTheme, SQ
 use rune::{col, text, Color, El, Span, TextStyle};
 use rune_kit::Kit;
 
-use super::{settings_content_state::SettingsSelect, settings_ui::setting_row};
+use super::{
+    settings_content::{shortcut_card, shortcut_card_heading, shortcut_card_rows},
+    settings_content_state::SettingsSelect,
+    settings_ui::setting_row,
+};
 use crate::i18n::t;
 use crate::components::sql_syntax_preview::live_sample_spans;
 use crate::sql_editor::SyntaxPalette;
@@ -88,8 +92,9 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
     )
 }
 
-/// Mount only the existing Execute SQL action, not inactive keymap rows.
-pub(super) fn execute_shortcut_row(state: &AppState, kit: &Kit, overlays: &mut Vec<El>) -> Option<El> {
+/// The real Execute SQL action belongs to Customize Shortcuts. Mount
+/// no preset, other actions, or whole-keymap reset in the live subset.
+pub(super) fn execute_shortcut_card(state: &AppState, kit: &Kit, overlays: &mut Vec<El>) -> Option<El> {
     let binding = state.desktop.native_execute_shortcut()?;
     let label = t("settings.nativeExecuteShortcut.label");
     let which = SettingsSelect::ExecuteShortcut;
@@ -126,8 +131,9 @@ pub(super) fn execute_shortcut_row(state: &AppState, kit: &Kit, overlays: &mut V
             }
         });
     let field = editor_preference_trigger(select, &editor_field_kit(kit), overlays);
-    Some(setting_row(kit, overlays, "settings-execute-shortcut-row".to_owned(), label,
-                   Some(t("settings.nativeExecuteShortcut.hint")), field))
+    let execute = setting_row(kit, overlays, "settings-execute-shortcut-row".to_owned(), label,
+                              Some(t("settings.nativeExecuteShortcut.hint")), field);
+    Some(shortcut_card(kit, shortcut_card_heading(kit), shortcut_card_rows().child(execute)))
 }
 
 /// The original setting uses a 1pt inside edge on a 36pt field, not

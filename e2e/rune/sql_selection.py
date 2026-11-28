@@ -35,7 +35,18 @@ class SqlSelectionJourneys:
         route = [tap(.5, "rail-settings"), tap(1.4, "settings-nav-editor")]
         default = self.replay(route, until=2.5)
         self.expect_rendered(default, text="Mod+Enter", within=trigger)
-        self.assertFalse(visible(default, key="settings-keymap-preset-trigger"))
+        card = "settings-keymap-customize"
+        self.expect_rendered(default, key=card, within="settings-section-editor")
+        self.expect_rendered(default, text="Customize Shortcuts", within="settings-keymap-customize-header")
+        self.expect_rendered(default, key="settings-execute-shortcut-row", within="settings-keymap-customize-rows")
+        self.expect_rendered(default, key=trigger, within=card)
+        _, top, _, height = self._settled_rect(default, card)
+        _, syntax_top, _, syntax_height = self._settled_rect(default, "settings-live-syntax-theme")
+        _, snippets_top, _, _ = self._settled_rect(default, "settings-snippets")
+        self.assertLessEqual(syntax_top + syntax_height, top)
+        self.assertLessEqual(top + height, snippets_top)
+        for absent in ("settings-keymap-preset-trigger", "settings-keymap-reset", "settings-keymap-row-formatSql"):
+            self.assertFalse(visible(default, key=absent))
         self.assertEqual(settings.read_bytes(), initial)
 
         # Fail a real atomic file-stage write; the UI must still show Mod+Enter.
