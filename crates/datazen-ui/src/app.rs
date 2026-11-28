@@ -30,6 +30,8 @@
 //!   `app_with_adapter`) are this barrel's Rune counterpart: the shared-app
 //!   launch surface, kept apart from the light port/contract surface.
 
+mod query_shortcuts;
+
 use crate::constants::{APP_FONTS, APP_FONT_FAMILIES};
 use crate::sql_editor;
 use crate::state_def::AppState;
@@ -125,7 +127,7 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
     {
         return true;
     }
-    if crate::views::shell_menu::shortcut(state, ev, tx) {
+    if query_shortcuts::new_query(state, ev, tx) || crate::views::shell_menu::shortcut(state, ev, tx) {
         return true;
     }
     if state.active != Section::Workspace {

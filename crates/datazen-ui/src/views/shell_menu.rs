@@ -89,11 +89,16 @@ fn menus(state: &AppState) -> Vec<MenuBarMenu> {
         // separators when the intervening unsupported actions are hidden.
         let mut items = Vec::new();
         let mut separator: Option<MenuBarItem> = None;
-        for item in std::mem::take(&mut menu.items) {
+        for mut item in std::mem::take(&mut menu.items) {
             if item.separator && !items.is_empty() {
                 separator = Some(item);
             } else if keep(&item.id) {
                 items.extend(separator.take());
+                if item.id == "new-connection" && state.has_query_shortcut_context() {
+                    // File still offers the explicit action, but Ctrl+N now
+                    // belongs to the connected SQL workspace.
+                    item.shortcut = None;
+                }
                 items.push(item);
             }
         }
@@ -181,6 +186,9 @@ pub(crate) fn shortcut(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool
         Key::Command(',') => "open-settings",
         _ => return false,
     };
+    if tx.key_repeat() {
+        return true;
+    }
     state.titlebar_menu.open_menu = None;
     state.theme_toggle_open = false;
     dispatch(state, id, tx);
