@@ -1,7 +1,7 @@
 //! The mounted Find commands submit only an immutable, bounded draft. A
 //! completion has no authority to focus the editor or edit a different tab.
 use std::{ops::Range, rc::Rc, time::Duration};
-use datazen_ui_api::native_query_regex::{self as api, Edit, Error, Operation, Outcome};
+use datazen_ui_api::native_query_regex::{self as api, projection::Projection, Edit, Error, Operation, Outcome};
 use rune::Tx;
 use crate::{AppState, query_editor_tabs::QueryEditorViewport};
 use super::{Selection, Sel, SqlEditor};
@@ -20,10 +20,27 @@ impl Lease {
         if e.doc().len() > api::MAX_DOC || e.find_input.text.len() > api::MAX_PATTERN
             || e.replace_input.text.len() > api::MAX_TEMPLATE || e.selection.len() > api::MAX_RANGES { return Err(Error::Limit); }
         if e.find_input.text.is_empty() { return Err(Error::Empty); }
-        if e.doc().contains('\r') || e.selection.ranges.get(e.selection.main).is_none()
-            || e.selection.ranges.iter().any(|r| e.doc().get(r.from()..r.to()).is_none()) { return Err(Error::UnsupportedRange); }
+        if e.selection.ranges.get(e.selection.main).is_none() { return Err(Error::UnsupportedRange); }
         Ok(Self { identity:e.identity.clone(),revision:e.document_revision,doc:e.doc.clone(),selection:e.selection.clone(),
             pattern:e.find_input.text.clone(),replacement:e.replace_input.text.clone(),case_sensitive:e.find_match_case,whole_word:e.find_whole_word })
+    }
+    fn request(&self, id: u64, op: Operation) -> Result<api::Request, Error> {
+        let doc = Projection::new(&self.doc)?;
+        // A compound selection must not smuggle an edge inside a CRLF pair
+        // into the persisted undo state or an atomic replacement.
+        for r in &self.selection.ranges { doc.to_normalized(r.from()..r.to())?; }
+        let main = self.selection.main();
+        Ok(api::Request {
+            id, operation: op, selection: doc.to_normalized(main.from()..main.to())?,
+            document: doc.normalized().to_owned(), pattern: self.pattern.clone(),
+            replacement: if op.replacing() { self.replacement.clone() } else { String::new() },
+            case_sensitive: self.case_sensitive, whole_word: self.whole_word,
+        })
+    }
+    fn project(&self, current: &str, op: Operation, out: Outcome) -> Result<Option<Outcome>, Error> {
+        let doc = Projection::new(&self.doc)?;
+        let main = self.selection.main();
+        doc.checked_outcome(current, op, main.from()..main.to(), out)
     }
     fn owns(&self,e:&SqlEditor)->bool {
         e.find_regex && e.find_open && e.goto_lease.is_none() && e.composition().is_none()
@@ -45,10 +62,7 @@ impl AppState {
         let lease=match Lease::capture(&self.sql) { Ok(l)=>l,Err(e)=>{self.sql.regex_error=Some(e);return} };
         let Some(id)=self.query_regex.last_id.checked_add(1) else {self.sql.regex_error=Some(Error::Unavailable);return};
         self.query_regex.last_id=id;
-        let main=lease.selection.main();
-        let request=api::Request {id,operation:op,document:lease.doc.clone(),selection:main.from()..main.to(),
-            pattern:lease.pattern.clone(),replacement:if op.replacing(){lease.replacement.clone()}else{String::new()},
-            case_sensitive:lease.case_sensitive,whole_word:lease.whole_word };
+        let request=match lease.request(id, op) { Ok(r)=>r,Err(e)=>{self.sql.regex_error=Some(e);return} };
         if let Err(e)=self.desktop.begin_native_query_regex(request){self.sql.regex_error=Some(e);return}
         self.query_regex.pending=Some(Pending{from_canvas:tx.focused()==Some("sql-editor-scroll"),id,op,lease,owner,deadline:tx.clock()+2.0,session:self.navigator_value_search_session_generation});
         tx.wake_after(Duration::from_millis(20));
@@ -73,7 +87,11 @@ impl AppState {
         if now >= p.deadline {self.cancel_query_regex();self.sql.regex_error=Some(Error::Timeout);return true}
         if let Some(done)=self.desktop.poll_native_query_regex().filter(|d| d.id==p.id) {
             let Some(p)=self.query_regex.pending.take() else{return false};
-            let result=done.result.and_then(|out| self.sql.apply_regex(p.op,out));
+            let result=done.result.and_then(|out| p.lease.project(self.sql.doc(),p.op,out))
+                .and_then(|mapped| match mapped {
+                    Some(out) => self.sql.apply_regex(p.op,out),
+                    None => Ok(false),
+                });
             match result {
                 Ok(true)=>{ super::find_dock::reveal_selection(&self.sql,tx); true },
                 Ok(false)=>false,Err(e)=>{self.sql.regex_error=Some(e);true}

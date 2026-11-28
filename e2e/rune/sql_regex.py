@@ -52,6 +52,16 @@ class RegexJourneys:
         self.assertEqual(selection(restored), [(0,"A1")])
         self.untouched(initial, found, changed, restored)
 
+    def test_mixed_crlf_original_offsets_replace_and_undo(self):
+        sql = "猫\r\nleft\r\nright\n😀 cat!"
+        initial, route = self.route(sql, r"(left)\n(right)")
+        cmd = [*route, *fill(9.0, "sql-replace-input", "$2/$1"), tap(10.2, "sql-replace-all")]
+        changed = self.replay(cmd, until=11.7)
+        self.assertEqual(draft(changed), "猫\r\nright/left\n😀 cat!")
+        restored = self.replay([*cmd, tap(12.1, "sql-find-close"), key(12.75, "z", cmd=True)], until=13.6)
+        self.assertEqual(draft(restored), sql)
+        self.untouched(initial, changed, restored)
+
     def test_invalid_pattern_does_not_fall_back_to_literal(self):
         sql = "SELECT '(';"
         initial, route = self.route(sql,"(")
