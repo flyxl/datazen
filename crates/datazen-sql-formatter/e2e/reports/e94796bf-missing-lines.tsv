@@ -1,0 +1,19 @@
+file	line	column	scope	physical_DA	context	LLVM mangled context	reason
+layout.rs	400	19	context-only	26	Parser::expression	_RNvMs0_NtCs6oLEqrSJ7MP_21datazen_sql_formatter6layoutNtB5_6Parser10expression	BETWEEN lower-bound sequence early return; its closure also maps this physical line
+layout.rs	583	18	physical-zero	0	Layout::weight	_RNvMs3_NtCs6oLEqrSJ7MP_21datazen_sql_formatter6layoutNtB5_6Layout6weight	Fallback for unpaintable layout markers
+layout.rs	603	13	physical-zero	0	Layout::trim	_RNvMs3_NtCs6oLEqrSJ7MP_21datazen_sql_formatter6layoutNtB5_6Layout4trim	Closing-brace region for the empty pop arm after the preceding loop condition observed last()
+layout.rs	631	36	context-only	434	Layout::add<[Part; 3]>	_RINvMs3_NtCs6oLEqrSJ7MP_21datazen_sql_formatter6layoutNtB6_6Layout3addANtB6_4Partj3_EB8_	NoNewline arm for the three-Part instantiation; other instantiations hit this line
+layout.rs	759	27	physical-zero	0	Layout::group	_RNvMs3_NtCs6oLEqrSJ7MP_21datazen_sql_formatter6layoutNtB5_6Layout5group	Propagate an inline trial error other than NotInline
+layout.rs	847	22	physical-zero	0	Layout::append	_RNvMs3_NtCs6oLEqrSJ7MP_21datazen_sql_formatter6layoutNtB5_6Layout6append	Fallback for unpaintable marks in stored layout output
+layout.rs	871	14	physical-zero	0	format_admitted_tokens	_RNvNtCs6oLEqrSJ7MP_21datazen_sql_formatter6layout22format_admitted_tokens	Redundant private invalid-indent guard after public validation
+layout.rs	899	43	physical-zero	0	format_admitted_tokens	_RNvNtCs6oLEqrSJ7MP_21datazen_sql_formatter6layout22format_admitted_tokens	Outer NonInline propagation arm; full layout normally absorbs the inline-only signal
+layout/ddl.rs	158	17	physical-zero	0	Parser::alter_actions	_RNvMNtNtCs6oLEqrSJ7MP_21datazen_sql_formatter6layout3ddlNtB4_6Parser13alter_actions	Reject a second ALTER action outside the MySQL family
+layout/ddl/postgres.rs	61	29	physical-zero	0	accepts	_RNvNtNtNtCs6oLEqrSJ7MP_21datazen_sql_formatter6layout3ddl8postgres7accepts	Delimiter case already handled by earlier dedicated branch
+layout/ddl/postgres.rs	126	21	physical-zero	0	Parser::pg_options	_RNvMNtNtNtCs6oLEqrSJ7MP_21datazen_sql_formatter6layout3ddl8postgresNtB6_6Parser10pg_options	Reject Clause kind except allowed ANALYZE/ANALYSE in EXPLAIN flavor
+layout/statement.rs	87	43	physical-zero	0	Dml::clause	_RNvMNtNtCs6oLEqrSJ7MP_21datazen_sql_formatter6layout9statementNtB2_3Dml6clause	Single-token DO NOTHING alternative; SQLite accepted split-token alternative separately
+lexer.rs	115	9	physical-zero	0	tokenize	_RNvNtCs6oLEqrSJ7MP_21datazen_sql_formatter5lexer8tokenize	Duplicate 256 KiB bound after the public API preflight and trim
+lexer.rs	124	13	physical-zero	0	tokenize	_RNvNtCs6oLEqrSJ7MP_21datazen_sql_formatter5lexer8tokenize	Trailing-whitespace-only tail after public input was already trimmed
+lexer/keywords.rs	80	11	context-only	15510	keyword	_RNvNtNtCs6oLEqrSJ7MP_21datazen_sql_formatter5lexer8keywords7keyword	Outer try_fold short-circuit region; the fold closure also maps this physical line
+lexer/scan.rs	413	17	physical-zero	0	number	_RNvNtNtCs6oLEqrSJ7MP_21datazen_sql_formatter5lexer4scan6number	Closing-brace region of exponent-dot suffix when fractional digits do not qualify
+lib.rs	60	31	physical-zero	0	Error::fmt	_RNvXs_Cs6oLEqrSJ7MP_21datazen_sql_formatterNtB4_5ErrorNtNtCs8uuN1nrGffB_4core3fmt7Display3fmt	Display text for a real Deadline outcome
+lib.rs	82	5	physical-zero	0	Limits::default	_RNvXs1_Cs6oLEqrSJ7MP_21datazen_sql_formatterNtB5_6LimitsNtNtCs8uuN1nrGffB_4core7default7Default7default	Default constructor only called from private unit helpers outside this gate

@@ -85,6 +85,67 @@ query result/history, no settings change, and an unchanged SQLite file or TCP
 fixture marker. These cases cover neither every upstream statement nor a
 stock SQL Server session.
 
+### Formatter-only line coverage on Linux
+Use the Rust toolchain which built the binary (including `llvm-tools-preview`).
+The ordinary host coverage runner at the top of this page measures **different
+crates**. For the formatter gate, the wrapper below instruments only the
+production formatter library; the final Native executable only links the Rust
+profiling runtime. Use a new Cargo target or an exact, previously verified
+instrumented binary. Do not set global instrumentation in `RUSTFLAGS`.
+
+```bash
+export CARGO_TARGET_DIR="$PWD/target/formatter-ui-cov"
+export RUSTC_WORKSPACE_WRAPPER="$PWD/e2e/rune/formatter_coverage_rustc.sh"
+mkdir -p "$CARGO_TARGET_DIR"
+export DZ_FORMATTER_PROFILE_RUSTC_LOG="$CARGO_TARGET_DIR/compiler-events.tsv"
+profiler=("$(rustc --print target-libdir)"/libprofiler_builtins-*.rlib)
+test "${#profiler[@]}" = 1 && test -f "${profiler[0]}" || exit 1
+export DZ_FORMATTER_PROFILE_RLIB="${profiler[0]}"
+cargo build --locked -p datazen-rune-host --bin datazen-native --message-format=json \
+  > "$CARGO_TARGET_DIR/native-build.jsonl" || exit 1
+# Read the actual dependency artifact from this successful Cargo invocation.
+rlib=$(python3 - "$CARGO_TARGET_DIR/native-build.jsonl" <<'PYTHON'
+import json, sys
+rows = (json.loads(line) for line in open(sys.argv[1]))
+[rlib] = [f for row in rows if row.get("reason") == "compiler-artifact"
+          and row["target"]["name"].replace("-", "_") == "datazen_sql_formatter"
+          for f in row["filenames"] if f.endswith(".rlib")]
+print(rlib)
+PYTHON
+) || exit 1
+python3 e2e/rune/formatter_coverage.py "$CARGO_TARGET_DIR/debug/datazen-native" \
+  --formatter-rlib "$rlib" --reference "$REFERENCE" \
+  --output target/formatter-e2e-report \
+  --postgresql-fixture "$PG_FIXTURE" --mysql-fixture "$MYSQL_FIXTURE" \
+  --mariadb-fixture "$MARIA_FIXTURE" --mysql-log "$MYSQL_GENERAL_LOG" \
+  --mariadb-log "$MARIA_GENERAL_LOG"
+```
+
+The three marked disposable servers must be running throughout the gate.
+`REFERENCE` is the installed project-locked sql-formatter 15.8.2 package directory,
+used only as an outside oracle. For the MySQL-family refusal checks, enable their general query logs and
+provide read-only paths to those logs, not credentials or logs from a real
+service. These checks compare only the fresh log suffix to verify a positive
+metadata read and absence of the authored SQL. The output directory must
+**not exist**. The gate runs the mounted suites, requires every unittest group
+to pass with no skips and one fresh nonempty profile per captured tree,
+checks that the binary did not change and that **all** LLVM mappings belong to
+the formatter's exact local production sources. It writes the per-file report,
+line counts, annotated source, and exact binary digest. The requested 99%
+threshold applies **only to the combined, deduplicated result** on all mapped
+production lines. It is not a 99% threshold for stock Native alone. The gate
+builds an external public API test consumer and an isolated three-test T-SQL
+unit binary against the same instrumented rlib. No general-purpose unit suite
+or T-SQL E2E is included. It reports Native-only, public-process-only, E2E union,
+T-SQL-unit-only, and final union; validates the exact function/region mapping and
+counter sums; and hashes the input binaries and each counted raw profile.
+The mixed total is not an E2E-only percentage. Use `--native-only` without
+`--formatter-rlib` and `--reference` for the Native diagnostic, or
+`--report-only` to report a below-threshold mixed measurement without accepting
+a failed case. See [public consumer acceptance](../../crates/datazen-sql-formatter/e2e/README.md).
+`llvm-cov`'s file-summary lines and the distinct physical line keys in exported
+LCOV `DA` records are different metrics; never add their counts.
+
 ## Opt-in real Redis UI
 
 Pass both `--redis-server PATH` and `--redis-cli PATH` to either native

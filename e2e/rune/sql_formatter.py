@@ -248,6 +248,7 @@ class SqlFormatterDdlJourney:
 
 def main():
     import run as native
+    from sql_formatter_selections import SelectionRepairJourney
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
@@ -258,13 +259,14 @@ def main():
                         help="run only the multi-statement DML/PRAGMA/disabled region gate")
     parser.add_argument("--definitions", action="store_true",
                         help="run only the multi-statement DDL/EXPLAIN/savepoint gate")
+    parser.add_argument("--selection-repair", action="store_true", help="range-local refusal and recovery")
     parser.add_argument("--dialect", choices=("sqlite", "postgresql", "mysql", "mariadb"),
                         help="run the independent dialect suite for an actual connected engine")
     parser.add_argument("--fixture", type=Path, help="marked disposable TCP configuration for --dialect")
     parser.add_argument("--case", help="named case for the chosen dialect suite")
     args = parser.parse_args()
     if args.dialect:
-        if any((args.size_bound, args.statements, args.definitions)):
+        if any((args.size_bound, args.statements, args.definitions, args.selection_repair)):
             parser.error("choose one specialized acceptance group at a time")
         import sql_formatter_dialects
         argv = [str(args.binary), args.dialect]
@@ -280,12 +282,12 @@ def main():
         native.ARTIFACTS = native.ARTIFACTS.resolve()
         native.ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
-    class FormatAcceptance(SqlFormatterLimitJourney, SqlFormatterDmlJourney, SqlFormatterDdlJourney, SqlFormatterJourneys, native.NativeJourneys):
+    class FormatAcceptance(SelectionRepairJourney, SqlFormatterLimitJourney, SqlFormatterDmlJourney, SqlFormatterDdlJourney, SqlFormatterJourneys, native.NativeJourneys):
         pass
 
-    if sum((args.size_bound, args.statements, args.definitions)) > 1:
+    if sum((args.size_bound, args.statements, args.definitions, args.selection_repair)) > 1:
         parser.error("choose one specialized acceptance group at a time")
-    group = (SqlFormatterLimitJourney if args.size_bound else
+    group = (SelectionRepairJourney if args.selection_repair else SqlFormatterLimitJourney if args.size_bound else
              SqlFormatterDmlJourney if args.statements else
              SqlFormatterDdlJourney if args.definitions else SqlFormatterJourneys)
     suite = unittest.TestSuite(FormatAcceptance(name)
