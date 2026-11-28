@@ -44,7 +44,7 @@ class ShellFooterJourneys(run.NativeJourneys):
 
         opened = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "tree-table-customers")]
         def panel(tree):
-            self.expect_rendered(tree, key="cell-0-1", text="fixture-ada")
+            self.expect_rendered(tree, within="cell-0-1", text="fixture-ada")
             self.expect_rendered(tree, key="status-connection-label", text="Connected")
             context = next(n["text"] for n in tree["elements"]
                            if n.get("key") == "status-context" and not n.get("exiting"))

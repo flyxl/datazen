@@ -80,14 +80,13 @@ impl ContentViewVm {
         (self.detail_open && self.detail_panel_applicable) || self.ai_chat_open
     }
 
-    /// The host currently keeps the toolbar/status keys mounted in every
-    /// section (pinned by `tests/connection_page.rs`). React's gates are kept
-    /// in the VM for a view that ports the panel store.
+    /// An active database panel owns its status; a saved tab on another
+    /// section or a disconnected landing is not an active database panel.
     #[allow(dead_code)] // VM surface; consumed by connection_page
     pub fn from_host(state: &crate::state_def::AppState) -> Self {
         let has_active_panel = state.active == crate::types::Section::Workspace
             && state.connect_loading.is_none()
-            && (state.tabs.selected().is_some() || state.native_kv.is_some());
+            && (state.tabs.selected().is_some() || state.native_kv.is_some() || state.er_schema.is_some());
         Self {
             has_active_panel,
             is_kv_panel: false,

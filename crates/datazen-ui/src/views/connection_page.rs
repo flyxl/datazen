@@ -239,12 +239,11 @@ pub fn connection_content_with_vm(
     let plain_query = plain_query_workspace(state, vm);
     let plain_table = plain_live_sqlite_table(state, vm);
     let plain_home = plain_connections_home(state, vm);
-    let page_inset = if plain_query || plain_table || plain_home { 0.0 } else { 24.0 };
-    let plain_table_data = plain_table && state.table_view == crate::types::TableView::Data;
-    // Plain Query and live Table Data fill the lane. Their inactive object
-    // and document hosts are zero-sized; no gap should stand below the status
-    // bar just because those hosts keep their stable keys.
-    let sibling_gap = if plain_query || plain_table_data || plain_home { 0.0 } else { 16.0 };
+    // The status belongs to the database content lane, outside panel scroll.
+    // Never add outer padding or empty-slot gaps below a live panel footer.
+    let flush_panel = state.active == Section::Workspace && vm.has_active_panel && plain_content_view(vm);
+    let page_inset = if plain_query || plain_table || plain_home || flush_panel { 0.0 } else { 24.0 };
+    let sibling_gap = if plain_query || plain_home || flush_panel { 0.0 } else { 16.0 };
     col()
         .key("datazen-page")
         .grow(1.0)

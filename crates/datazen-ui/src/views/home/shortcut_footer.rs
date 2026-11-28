@@ -161,7 +161,6 @@ pub(crate) fn resolved_shortcut_footer(
     let k = kit(dark);
     let mut footer = row()
         .key(FOOTER_KEY)
-
         .w_full()
         .gap(20.0)
         .justify_center()
