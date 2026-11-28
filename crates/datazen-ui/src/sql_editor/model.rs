@@ -682,11 +682,12 @@ impl SqlEditor {
         self.find_next(&needle)
     }
 
-    /// The find bar's Replace: read the bar's needle and replacement.
+    /// The find bar's Replace: select the next occurrence or edit the one
+    /// already selected. True means the dock should reveal the selection.
     pub fn replace_current_from_bar(&mut self) -> bool {
         let needle = self.find_input.text.clone();
         let replacement = self.replace_input.text.clone();
-        self.replace_current(&needle, &replacement)
+        self.replace_next_literal(&needle, &replacement)
     }
 
     /// The find bar's Replace all.

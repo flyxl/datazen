@@ -524,3 +524,47 @@ class SqlSelectionJourneys:
                              within="query-notice")
         self.assertFalse(visible(blocked, key="result-workspace"))
         self.assertEqual(counts(), expected)
+
+    def test_editor_replace_first_seeks_then_only_plain_enter_replaces_the_current_match(self):
+        original_rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        original_bytes = self.db.read_bytes()
+        sql = "SELECT 'cat' AS first_value, 'cat' AS second_value;"
+        before = [
+            *query_steps(sql)[:-1], tap(8.3, "sql-find-open"),
+            *fill(8.9, "sql-find-input", "cat"),
+            *fill(9.7, "sql-replace-input", "dog"),
+            tap(10.8, "sql-replace-current"),
+        ]
+        selected = self.replay(before, until=11.4)
+        self.expect_rendered(selected, key="sql-selected-0-8", text="cat")
+        self.assertFalse(visible(selected, key="result-workspace"))
+        history_path = self.root / "query-history.json"
+        self.assertEqual(json.loads(history_path.read_bytes()) if history_path.exists() else [],
+                         [], "seeking never executes")
+        replace = [
+            *before, tap(11.4, "sql-replace-input"),
+            key(11.8, "Enter", cmd=True),
+            key(12.2, "Enter"),
+        ]
+        changed = self.replay(replace, until=12.8)
+        next_offset = sql.rfind("cat")
+        self.expect_rendered(changed, key=f"sql-selected-0-{next_offset}", text="cat")
+        self.assertFalse(visible(changed, key="result-workspace"))
+
+        run = self.replay([
+            *replace, key(12.8, "Escape"), key(13.15, "Left"), tap(13.6, "sql-run"),
+        ], until=15.5)
+        with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as db:
+            expected = db.execute(sql.replace("cat", "dog", 1)).fetchone()
+        self.assertEqual(expected, ("dog", "cat"))
+        for index, value in enumerate(expected):
+            self.expect_rendered(run, text=value, within=f"result-cell-0-{index}")
+        self.assertEqual(self.sql_customer_rows(), original_rows)
+        self.assertEqual(self.db.read_bytes(), original_bytes)
+        self.assertEqual(len(json.loads(history_path.read_bytes())), 1)

@@ -474,3 +474,61 @@ fn canceled_ime_and_noop_boundary_edits_do_not_invalidate_history() {
     assert!(editor.redo());
     assert_eq!(editor.doc(), "prefix");
 }
+
+#[test]
+fn dock_replace_next_seeks_first_and_maps_the_original_next_match() {
+    let mut editor = SqlEditor::from_doc("猫 one one");
+    editor.find_input = TextEdit::new("one");
+    editor.replace_input = TextEdit::new("gone");
+    assert!(editor.replace_current_from_bar());
+    assert_eq!(editor.doc(), "猫 one one");
+    assert_eq!(editor.selection().main(), Sel { anchor: 4, head: 7 });
+    assert!(editor.undo_stack.is_empty(), "seeking adds no document undo");
+    assert!(editor.replace_current_from_bar());
+    assert_eq!(editor.doc(), "猫 gone one");
+    assert_eq!(editor.selection().main(), Sel { anchor: 9, head: 12 });
+    assert!(editor.replace_current_from_bar());
+    assert_eq!(editor.doc(), "猫 gone gone");
+    // The first replacement was already in the document before this change.
+    // Like CM6, only the current insertion is excluded from the next search.
+    assert_eq!(editor.selection().main(), Sel { anchor: 5, head: 8 });
+    assert_eq!(editor.selected_text(), "one");
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), "猫 gone one");
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), "猫 one one");
+    assert!(!editor.undo());
+}
+
+#[test]
+fn dock_replace_next_keeps_the_replacement_selected_when_no_old_match_remains() {
+    let mut editor = SqlEditor::from_doc("one");
+    editor.find_input = TextEdit::new("one");
+    editor.replace_input = TextEdit::new("extra");
+    editor.set_main_selection(0, 3);
+    assert!(editor.replace_current_from_bar());
+    assert_eq!(editor.doc(), "extra");
+    assert_eq!(editor.selection().main(), Sel { anchor: 0, head: 5 });
+}
+
+#[test]
+fn dock_replace_next_does_not_search_new_text_after_replacement() {
+    let mut editor = SqlEditor::from_doc("x found x");
+    editor.find_input = TextEdit::new("x");
+    editor.replace_input = TextEdit::new("xx");
+    editor.set_main_selection(0, 1);
+    assert!(editor.replace_current_from_bar());
+    assert_eq!(editor.doc(), "xx found x");
+    assert_eq!(editor.selection().main(), Sel { anchor: 9, head: 10 });
+    assert!(editor.replace_current_from_bar());
+    assert_eq!(editor.doc(), "xx found xx");
+    assert_eq!(editor.selection().main(), Sel { anchor: 0, head: 1 });
+
+    let mut overlap = SqlEditor::from_doc("aaa");
+    overlap.find_input = TextEdit::new("aa");
+    overlap.replace_input = TextEdit::new("L");
+    overlap.set_main_selection(1, 3);
+    assert!(overlap.replace_current_from_bar());
+    assert_eq!(overlap.doc(), "aL");
+    assert_eq!(overlap.selected_text(), "a", "map the previously overlapping range");
+}

@@ -415,3 +415,55 @@ fn native_execute_shortcut_requires_the_focused_tab_and_no_ime_composition() {
     assert_ne!(rt.state.query_generation, unchanged_generation);
     assert_eq!(rt.state.result_grid.as_ref().unwrap().cell(0, 0), "1");
 }
+
+#[test]
+fn dock_replace_seeks_then_edits_through_real_button_and_replacement_enter() {
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.state.workspace.connect("local").unwrap();
+    let a = rt.state.open_query_tab("A").unwrap();
+    let sql = "SELECT 'one one';";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(sql);
+    rt.frame(0.0);
+
+    tap(&mut rt, "sql-find-open");
+    key(&mut rt, Key::Text("one".into()), Mods::default());
+    tap(&mut rt, "sql-replace-input");
+    key(&mut rt, Key::Text("gone".into()), Mods::default());
+    tap(&mut rt, "sql-replace-current");
+    assert_eq!(rt.state.sql.doc(), sql);
+    assert_eq!(rt.state.sql.selected_text(), "one");
+    assert_eq!(rt.state.sql.selection().main().from(), 8);
+    assert!(rt.state.sql.undo_stack.is_empty());
+
+    tap(&mut rt, "sql-replace-input");
+    key(&mut rt, Key::Enter, Mods { cmd: true, ..Mods::default() });
+    assert_eq!(rt.state.sql.doc(), sql, "the replacement field cannot execute SQL");
+    assert!(rt.state.query_result_tabs.is_empty());
+    key(&mut rt, Key::Enter, Mods::default());
+    assert_eq!(rt.state.sql.doc(), "SELECT 'gone one';");
+    assert_eq!(rt.state.sql.selection().main().from(), 13);
+    assert_eq!(rt.state.sql.selected_text(), "one");
+    assert!(rt.state.sql.replace_input.focused);
+
+    key(&mut rt, Key::Escape, Mods::default());
+    assert!(rt.find("sql-find-bar").is_none());
+    assert!(rt.state.sql.focused());
+    let replaced_range = rt.state.sql.selection().main();
+    tap(&mut rt, "toolbar-new-query");
+    let b = rt.state.tabs.selected().unwrap().id;
+    assert_ne!(a, b);
+    assert_eq!(rt.state.sql.doc(), "");
+    assert!(rt.state.sql.replace_input.text.is_empty());
+    tap_tab(&mut rt, a);
+    assert_eq!(rt.state.sql.doc(), "SELECT 'gone one';");
+    assert_eq!(rt.state.sql.selection().main(), replaced_range);
+    assert_eq!(rt.state.sql.replace_input.text, "gone");
+
+    tap(&mut rt, "sql-editor-scroll");
+    key(&mut rt, Key::Command('z'), Mods { cmd: true, ..Mods::default() });
+    assert_eq!(rt.state.sql.doc(), sql);
+    assert!(rt.state.sql.undo_stack.is_empty());
+    tap_tab(&mut rt, b);
+    assert_eq!(rt.state.sql.doc(), "", "replacement undo belongs to A only");
+}

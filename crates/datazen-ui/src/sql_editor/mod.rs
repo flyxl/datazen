@@ -15,6 +15,7 @@ mod input;
 mod line_comment;
 mod model;
 mod navigation;
+mod plain_find;
 mod syntax_theme;
 mod view;
 
