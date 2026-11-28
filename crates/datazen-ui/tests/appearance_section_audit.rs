@@ -352,6 +352,37 @@ fn keyboard_opens_the_appearance_field_commits_one_mode_and_returns_focus() {
 }
 
 #[test]
+fn mounted_appearance_title_hint_uses_original_muted_ink_only() {
+    for (dark, muted, secondary) in [
+        (false, "#8498afff", "#58708dff"),
+        (true, "#5f6879ff", "#8b94a7ff"),
+    ] {
+        let mut scene = AuditState::scene();
+        scene.dark = dark;
+        scene.pack_adapter_enabled = false;
+        let rt = rt(scene);
+        let nodes = rt.elements();
+        let mark = nodes.iter().find(|e| !e.exiting
+            && e.key.as_deref() == Some("appearance-section-title-hint-mark"))
+            .expect("live Appearance heading help mark");
+        let ink_under = |root: &str, value: &str| {
+            nodes.iter().find(|e| !e.exiting && e.path.starts_with(root)
+                && e.text.as_deref() == Some(value))
+                .and_then(|e| e.text_color)
+                .expect("rendered foreground").hex()
+        };
+        assert_eq!([mark.rect[2], mark.rect[3]], [16.0, 16.0]);
+        assert_eq!(ink_under(&(mark.path.clone() + "/"), "?"), muted);
+        let scheme = nodes.iter().find(|e| !e.exiting
+            && e.key.as_deref() == Some("appearance-section-scheme-row-label"))
+            .expect("live scheme setting label");
+        let scheme_label = datazen_ui::i18n::t("settings.colorScheme");
+        assert_eq!(ink_under(&(scheme.path.clone() + "/"), scheme_label), secondary);
+        assert!(rt.state.mode_writes.is_empty() && rt.state.pack_writes.is_empty());
+    }
+}
+
+#[test]
 fn reserved_appearance_help_is_real_and_keeps_the_settings_row_stable() {
     let mut scene = AuditState::scene();
     scene.pack_adapter_enabled = false;

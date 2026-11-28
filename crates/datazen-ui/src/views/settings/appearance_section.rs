@@ -328,8 +328,14 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
         let active_plugin_theme_missing = parse_wapp_theme_pack_id(active_pack_id).is_some()
             && !theme_options.iter().any(|option| Some(option.pack_id.as_str()) == active_pack_id);
 
+        // Original SettingHint's glyph uses text-fg-muted. The shared
+        // Settings helper reads text_muted, which DataZen maps to React's
+        // fg-secondary. Remap only the kit passed to this caption; its
+        // header text already uses text_faint and all field kits stay real.
+        let mut title_kit = (*k).clone();
+        title_kit.c.text_muted = k.c.text_faint;
         let mut section = col().key(key.to_owned()).w_full().gap(16.0).child(section_title(
-            &k,
+            &title_kit,
             layer,
             format!("{key}-title"),
             t("settings.appearance"),
