@@ -13,6 +13,8 @@ pub mod jobs;
 pub mod live;
 mod live_tunnels;
 pub mod logging;
+#[cfg(feature = "native-sql-formatter")]
+pub mod native_sql_format;
 pub mod secrets;
 pub mod settings;
 pub mod snippets;

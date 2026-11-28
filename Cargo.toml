@@ -32,6 +32,7 @@ license = "MIT OR Apache-2.0"
 # Path crates — the only place a member's relative path is spelled out.
 datazen-ui-api = { path = "crates/datazen-ui-api" }
 datazen-sql = { path = "crates/datazen-sql", version = "0.0.1" }
+datazen-sql-formatter = { path = "crates/datazen-sql-formatter" }
 datazen-driver-api = { path = "crates/datazen-driver-api" }
 datazen = { path = "crates/datazen", default-features = false }
 datazen-infra = { path = "crates/datazen-infra" }

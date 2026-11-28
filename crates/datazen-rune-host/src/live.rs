@@ -81,6 +81,9 @@ use live_table_targets::LiveTableTargets;
 mod live_csv_import;
 #[path = "live_sql_transfer.rs"]
 mod live_sql_transfer;
+#[cfg(feature = "native-sql-formatter")]
+#[path = "live_sql_format.rs"]
+mod live_sql_format;
 #[path = "live_query_command.rs"]
 mod live_query_command;
 #[path = "live_query_export.rs"]
@@ -404,6 +407,8 @@ pub struct LiveAdapter {
     /// cached in memory — reads are memory-speed, writes go through.
     settings: datazen::settings::application::SettingsService,
     settings_document: Arc<Mutex<serde_json::Value>>,
+    #[cfg(feature = "native-sql-formatter")]
+    native_sql_formatter: Option<live_sql_format::LiveSqlFormatter>,
     /// The query history use case over the history files (N9): every executed
     /// statement lands in it, success or failure.
     history: datazen::history::HistoryService,
@@ -512,9 +517,17 @@ impl LiveAdapter {
             &crate::settings::settings_path(data_dir),
         ));
         let settings = datazen::settings::application::SettingsService::new(settings_repository);
+        let loaded_settings = futures_executor::block_on(settings.read_app_settings());
+        #[cfg(feature = "native-sql-formatter")]
+        let native_sql_formatter = if loaded_settings.as_ref().is_ok_and(serde_json::Value::is_object) {
+            live_sql_format::LiveSqlFormatter::launch()
+        } else {
+            // Don't expose a formatter built on synthetic defaults after a
+            // failed authoritative settings read. Normal host UI can still load.
+            None
+        };
         let settings_document = Arc::new(Mutex::new(
-            futures_executor::block_on(settings.read_app_settings())
-                .unwrap_or_else(|_| serde_json::json!({})),
+            loaded_settings.unwrap_or_else(|_| serde_json::json!({})),
         ));
         // N9: the history use case over the two history files.
         let history = datazen::history::HistoryService::new(
@@ -987,6 +1000,8 @@ impl LiveAdapter {
             runtime,
             settings,
             settings_document,
+            #[cfg(feature = "native-sql-formatter")]
+            native_sql_formatter,
             history,
             schemas,
             sync_runtime,
@@ -3027,6 +3042,29 @@ impl DesktopAdapter for LiveAdapter {
         Some(datazen_driver_sqlite::sqlite_statement_ranges(sql).map_err(|error| error.to_string()))
     }
 
+    #[cfg(feature = "native-sql-formatter")]
+    fn native_sql_format_context(&self) -> Option<datazen_ui_api::native_sql_format::NativeSqlFormatContext> {
+        self.local_format_context()
+    }
+
+    #[cfg(feature = "native-sql-formatter")]
+    fn begin_native_sql_format(
+        &mut self,
+        request: datazen_ui_api::native_sql_format::NativeSqlFormatRequest,
+    ) -> Result<(), datazen_ui_api::native_sql_format::NativeSqlFormatError> {
+        self.begin_local_format(request)
+    }
+
+    #[cfg(feature = "native-sql-formatter")]
+    fn poll_native_sql_format(&mut self) -> Option<datazen_ui_api::native_sql_format::NativeSqlFormatDelivery> {
+        self.poll_local_format()
+    }
+
+    #[cfg(feature = "native-sql-formatter")]
+    fn cancel_native_sql_format(&mut self, generation: u64) {
+        self.cancel_local_format(generation);
+    }
+
     fn supports_native_transfer(&self) -> bool {
         true
     }
@@ -4661,6 +4699,154 @@ mod tests {
         }));
         poll_open(&mut adapter).expect("the session opens");
         adapter
+    }
+
+    #[cfg(feature = "native-sql-formatter")]
+    mod sql_format {
+        use super::*;
+        use datazen_ui_api::native_sql_format::{
+            NativeSqlFormatContext, NativeSqlFormatDelivery, NativeSqlFormatError,
+            NativeSqlFormatLanguage, NativeSqlFormatRequest,
+        };
+
+        fn request(ctx: &NativeSqlFormatContext, generation: u64, sql: &str) -> NativeSqlFormatRequest {
+            NativeSqlFormatRequest {
+                generation,
+                session_generation: ctx.session_generation,
+                target: ctx.default_target.clone(),
+                sql: sql.into(),
+                options: ctx.engine_options(),
+            }
+        }
+
+        fn poll_format(adapter: &mut LiveAdapter) -> NativeSqlFormatDelivery {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                if let Some(delivery) = adapter.poll_native_sql_format() {
+                    return delivery;
+                }
+                assert!(std::time::Instant::now() < deadline, "formatter request did not deliver");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+
+        #[test]
+        fn live_formatter_admits_real_read_only_sqlite_and_canonical_preferences_without_execution() {
+            let root = tempfile::tempdir().unwrap();
+            std::fs::write(root.path().join("settings.json"), br#"{
+              "customKeymap":{"formatSql":"Mod+Alt+F8"},
+              "sqlFormatOptions":{"keywordCase":"lower","indentStyle":"4spaces",
+                "breakBeforeBooleanOperators":false,"linesBetweenQueries":2}
+            }"#).unwrap();
+            let mut host = opened_sqlite_adapter(root.path(), "read-only.sqlite", true);
+            let ctx = host.native_sql_format_context().expect("real SQL session");
+            assert_eq!(ctx.session_generation, 1);
+            assert_eq!(ctx.default_target.connection_id, "live");
+            assert_eq!(ctx.default_target.database, "main");
+            assert_eq!(ctx.language, NativeSqlFormatLanguage::Sqlite);
+            assert_eq!(ctx.shortcut.as_deref(), Some("Mod-Alt-F8"));
+            assert_eq!(ctx.engine_options().keyword_case, "lower");
+            assert_eq!(ctx.engine_options().tab_width, 4);
+            assert_eq!(ctx.engine_options().logical_operator_newline, "after");
+
+            let sql = "select 'q;z', lower('M') where true and false;";
+            let mut bad = request(&ctx, 2, sql);
+            bad.target.connection_id = "other-profile".into();
+            assert_eq!(host.begin_native_sql_format(bad), Err(NativeSqlFormatError::Cancelled));
+            let mut bad = request(&ctx, 3, sql);
+            bad.target.database.push_str("-not-in-live-catalog");
+            assert_eq!(host.begin_native_sql_format(bad), Err(NativeSqlFormatError::Cancelled));
+            let mut bad = request(&ctx, 4, sql);
+            bad.session_generation += 1;
+            assert_eq!(host.begin_native_sql_format(bad), Err(NativeSqlFormatError::Cancelled));
+            let mut bad = request(&ctx, 5, sql);
+            bad.options.language = "postgresql".into();
+            assert_eq!(host.begin_native_sql_format(bad), Err(NativeSqlFormatError::Cancelled));
+            assert_eq!(host.begin_native_sql_format(request(&ctx, 6, " select 1")), Err(NativeSqlFormatError::Rejected));
+            assert_eq!(host.begin_native_sql_format(request(&ctx, 7, "select\r1")), Err(NativeSqlFormatError::Rejected));
+            let oversize = format!("select 1 /*{}*/", "x".repeat(128 * 1024 + 1 - "select 1 /**/".len()));
+            assert_eq!(host.begin_native_sql_format(request(&ctx, 8, &oversize)), Err(NativeSqlFormatError::Limit));
+            assert!(host.poll_native_sql_format().is_none());
+
+            let db = root.path().join("read-only.sqlite");
+            let history = root.path().join("query-history.json");
+            let before = std::fs::read(&db).unwrap();
+            let before_history = std::fs::read(&history).ok();
+            assert_eq!(host.begin_native_sql_format(request(&ctx, 9, sql)), Ok(()));
+            let delivery = poll_format(&mut host);
+            assert_eq!(delivery.generation, 9);
+            // Exact lower/4-space SQLite witness from pinned sql-formatter
+            // 15.8.2. The adapter returns data, not a DB execution result.
+            assert_eq!(delivery.result.as_deref(), Ok(
+                "select\n    'q;z',\n    lower('M')\nwhere\n    true and\n    false;"
+            ));
+            assert_eq!(std::fs::read(&db).unwrap(), before);
+            assert_eq!(std::fs::read(&history).ok(), before_history);
+            assert!(host.poll_jobs().is_empty());
+
+            host.native_sql_formatter = None;
+            assert_eq!(host.begin_native_sql_format(request(&ctx, 10, sql)), Err(NativeSqlFormatError::Unavailable));
+            assert!(host.poll_native_sql_format().is_none());
+        }
+
+        #[test]
+        fn live_formatter_drops_changed_settings_or_a_reopened_session_before_delivery() {
+            let root = tempfile::tempdir().unwrap();
+            let mut host = opened_sqlite_adapter(root.path(), "readonly.sqlite", true);
+            let original = host.native_sql_format_context().unwrap();
+            assert_eq!(host.begin_native_sql_format(request(&original, 9, "select 1;")), Ok(()));
+
+            let settings = root.path().join("settings.json");
+            std::fs::write(settings, br#"{"sqlFormatOptions":{"keywordCase":"lower"}}"#).unwrap();
+            // Existing native Settings write rereads and merges the file,
+            // and updates the same authoritative cache on success.
+            host.write_native_execute_shortcut(datazen_ui_api::NativeExecuteShortcut::ModR).unwrap();
+            let refreshed = host.native_sql_format_context().unwrap();
+            assert_ne!(original.engine_options(), refreshed.engine_options());
+            let obsolete = poll_format(&mut host);
+            assert_eq!(obsolete.generation, 9);
+            assert_eq!(obsolete.result, Err(NativeSqlFormatError::Cancelled));
+
+            assert_eq!(host.begin_native_sql_format(request(&refreshed, 10, "select 2;")), Ok(()));
+            // Reopen with even the same public generation and profile; the
+            // actual SQLite pool handle is new and retires the old lease.
+            assert!(host.begin_job(AdapterJob::OpenConnection {
+                generation: refreshed.session_generation, id: "live".into(),
+            }));
+            poll_open(&mut host).expect("the new real session opened");
+            assert_eq!(host.native_sql_format_context().unwrap(), refreshed);
+            let obsolete = poll_format(&mut host);
+            assert_eq!(obsolete.generation, 10);
+            assert_eq!(obsolete.result, Err(NativeSqlFormatError::Cancelled));
+
+            assert_eq!(host.begin_native_sql_format(request(&refreshed, 11, "select 3;")), Ok(()));
+            host.cancel_native_sql_format(11);
+            assert!(host.poll_native_sql_format().is_none());
+        }
+
+        #[test]
+        fn live_formatter_uses_linked_alias_metadata_and_refuses_unreadable_preferences() {
+            use NativeSqlFormatLanguage::*;
+            // Static registry metadata only. No network or remote DB fixtures.
+            let registry = host_registry();
+            for (id, wanted) in [
+                ("postgresql", Some(PostgreSql)), ("questdb", Some(PostgreSql)),
+                ("cloudberry", Some(PostgreSql)), ("mysql", Some(MySql)),
+                ("mariadb", Some(MariaDb)), ("doris", Some(MySql)),
+                ("starrocks", Some(MySql)), ("manticore", Some(MySql)),
+                ("ob_oracle", Some(MySql)), ("sqlite", Some(Sqlite)), ("redis", None),
+            ] {
+                let driver = futures_executor::block_on(registry.get(&id.to_owned())).unwrap();
+                assert_eq!(live_sql_format::language_for_sql_driver(driver.as_ref()), wanted, "{id}");
+            }
+
+            let root = tempfile::tempdir().unwrap();
+            let settings = root.path().join("settings.json");
+            std::fs::write(&settings, b"{broken").unwrap();
+            let host = opened_sqlite_adapter(root.path(), "readonly.sqlite", true);
+            assert!(host.native_sql_format_context().is_none());
+            assert_eq!(std::fs::read(settings).unwrap(), b"{broken");
+        }
     }
 
     #[test]
