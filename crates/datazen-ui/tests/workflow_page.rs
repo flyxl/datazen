@@ -424,6 +424,12 @@ fn the_step_detail_table_and_chart_view_wiring() {
     assert!(rt.find("workflow-step-table").is_some());
     assert!(rt.find("workflow-step-table-col-0").is_some());
     assert!(rt.find("workflow-step-table-cell-0-0").is_some());
+    let nodes = rt.elements();
+    let text = |key| nodes.iter().find(|node| node.key.as_deref() == Some(key))
+        .and_then(|node| node.text.as_deref());
+    assert_eq!(text("workflow-step-table-col-type-0"), Some("text"));
+    assert_eq!(text("workflow-step-table-col-type-1"), Some("int8"));
+    assert_eq!(text("workflow-step-table-row-index-1"), Some("2"));
     // The chartable result renders the view toggle.
     assert!(rt.find("workflow-step-view-toggle").is_some());
     assert!(rt.find("workflow-view-table").is_some());

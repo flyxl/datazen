@@ -133,7 +133,7 @@ use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 use crate::views::workflow::editor_action_bar::workflow_editor_action_bar;
 use crate::views::workflow::history_section::{HistoryListSlots, WorkflowHistoryList};
 use crate::views::workflow::step_result_utils::{
-    column_infers_numeric, is_chartable_preview, js_string, step_to_statement_preview,
+    column_infers_numeric, extract_step_column_names, is_chartable_preview, js_string, step_to_statement_preview,
     step_to_statement_result, StatementResult, StepExecutionResult, WorkflowExecutionResult,
     WorkflowStepStatus,
 };
@@ -2072,7 +2072,7 @@ fn step_detail_view(
             view = view.child(chart_view_mount(state, step, statement, dark, layer));
         }
     } else if let Some(statement) = statement.as_ref().filter(|_| has_data) {
-        view = view.child(step_table(statement, k));
+        view = view.child(step_table(step, statement, k));
     } else if step.step_type.as_deref() == Some("query") && step.error.is_none() {
         view = view.child(
             col()
@@ -2314,53 +2314,83 @@ fn chart_view_mount(
     view.build(dark, layer)
 }
 
-/// The lean step-result table — the same stand-in the execution-result
-/// panel's preview took (the DataTable container's task swaps it): the column
-/// header row and every row (React renders all rows through the virtualised
-/// grid; the lean table lays them out directly, no virtualisation).
-fn step_table(statement: &StatementResult, k: &Kit) -> El {
+/// Read-only preview of the real result, with the original DataTable's
+/// 40pt index lane/header and the workflow's 32pt body rows. The grid does
+/// not expose the unported export, virtualisation, or column-menu controls.
+fn step_table(step: &StepExecutionResult, statement: &StatementResult, k: &Kit) -> El {
+    // The statement converter supplies "text" for chart compatibility when
+    // the source carries no type. Do not present that fallback as a declared
+    // driver type or guess a type from one sampled value.
+    let metadata = step.result.as_ref().map(|result| {
+        let view = result.get("rows").filter(|rows| rows.is_object()).unwrap_or(result);
+        extract_step_column_names(view)
+    }).unwrap_or_default();
     let cell = |element: El| element.w(0.0).grow(1.0).shrink().min_w(0.0);
+    let index_cell = |label: String, key: String, height: f32| {
+        row().w(40.0).min_w(40.0).h(height).shrink()
+            .center()
+            .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
+            .child(text(label).key(key).font(k.ty.text_xsmall).color(k.c.text_muted))
+    };
     let mut head = row()
         .key("workflow-step-table-head")
-        .w_full()
-        .shrink()
-        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base);
+        .w_full().h(40.0).shrink().items_center()
+        .fill(k.c.layer_01)
+        .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
+        .child(index_cell("#".to_owned(), "workflow-step-table-index-header".to_owned(), 40.0));
     for (column_index, column) in statement.columns.iter().enumerate() {
-        head = head.child(
-            cell(
+        let mut caption = col().h(40.0).px(12.0).center_y()
+            .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
+            .child(
                 text(column.name.clone())
                     .key(format!("workflow-step-table-col-{column_index}"))
                     .font(k.ty.text_xsmall_medium)
-                    .color(k.c.text_muted)
+                    .color(k.c.text_base)
                     .shrink()
                     .truncate(),
-            )
-            .px(6.0),
-        );
+            );
+        if let Some(kind) = metadata.get(column_index)
+            .filter(|field| field.name == column.name)
+            .and_then(|field| field.data_type.as_deref())
+            .filter(|kind| !kind.trim().is_empty())
+        {
+            caption = caption.child(
+                text(kind.to_owned())
+                    .key(format!("workflow-step-table-col-type-{column_index}"))
+                    .font(k.ty.text_xsmall)
+                    .color(k.c.text_faint)
+                    .truncate(),
+            );
+        }
+        head = head.child(cell(caption));
     }
     let mut table = col()
         .key("workflow-step-table")
-        .grow(1.0)
-        .min_h(0.0)
+        .w_full().grow(1.0).min_h(0.0).min_w(0.0).pr(4.0)
         .scroll(ScrollSpec { stick_bottom: false })
         .child(head);
     for (row_index, cells) in statement.rows.iter().enumerate() {
-        let mut row_el = row().key(format!("workflow-step-table-row-{row_index}")).w_full().shrink();
+        let mut row_el = row()
+            .key(format!("workflow-step-table-row-{row_index}"))
+            .w_full().h(32.0).shrink().items_center()
+            .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
+            .child(index_cell(
+                (row_index + 1).to_string(),
+                format!("workflow-step-table-row-index-{row_index}"),
+                32.0,
+            ));
         for (column_index, value) in cells.iter().enumerate() {
-            let display = match value.as_ref() {
-                Some(value) => js_string(value),
-                None => String::new(),
-            };
+            let display = value.as_ref().map(js_string).unwrap_or_default();
             row_el = row_el.child(
-                cell(
-                    text(display)
+                cell(row().h(32.0).px(12.0).center_y()
+                    .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
+                    .child(text(display)
                         .key(format!("workflow-step-table-cell-{row_index}-{column_index}"))
                         .font(k.ty.text_xsmall)
-                        .color(k.c.text_muted)
+                        .color(k.c.text_base)
+                        .min_w(0.0)
                         .shrink()
-                        .truncate(),
-                )
-                .px(6.0),
+                        .truncate())),
             );
         }
         table = table.child(row_el);

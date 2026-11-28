@@ -504,6 +504,15 @@ steps:
         from_second = self.replay([*opened, tap(8.7, "workflow-step-s2")], until=10.0)
         self.expect_rendered(from_second, key="workflow-step-detail-id", text="s2")
         self.expect_rendered(from_second, key="workflow-step-sql-text", text=second)
+        self.expect_rendered(from_second, key="workflow-step-table-index-header", text="#")
+        self.expect_rendered(from_second, key="workflow-step-table-row-index-0", text="1")
+        head = self._settled_rect(from_second, "workflow-step-table-head")
+        first_row = self._settled_rect(from_second, "workflow-step-table-row-0")
+        chosen = self._settled_rect(from_second, "workflow-step-table-col-0")
+        self.assertAlmostEqual(head[3], 40, delta=1)
+        self.assertAlmostEqual(first_row[3], 32, delta=1)
+        self.assertAlmostEqual(first_row[1], head[1] + head[3], delta=1)
+        self.assertGreaterEqual(chosen[0] - head[0], 39)
         self.expect_rendered(from_second, key="workflow-step-table-col-0", text="chosen")
         self.expect_rendered(from_second, key="workflow-step-table-cell-0-0", text="2")
         self.assertFalse(visible(from_second, key="workflow-step-table-row-1"))
@@ -514,6 +523,7 @@ steps:
         self.expect_rendered(switched, key="workflow-step-sql-text", text=first)
         self.expect_rendered(switched, key="workflow-step-table-col-0", text="person")
         self.expect_rendered(switched, key="workflow-step-table-cell-0-0", text="fixture-ada")
+        self.expect_rendered(switched, key="workflow-step-table-row-index-1", text="2")
         self.expect_rendered(switched, key="workflow-step-table-cell-1-0", text="fixture-lin")
 
         # React mounts one selected-step detail, not the aggregate history
