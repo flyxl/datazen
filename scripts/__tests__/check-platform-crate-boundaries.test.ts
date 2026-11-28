@@ -101,6 +101,7 @@ const CORE = [
   { name: 'datazen-ui-api', dir: 'crates/datazen-ui-api' },
   { name: 'datazen-rune-host', dir: 'crates/datazen-rune-host' },
   { name: 'datazen-sql', dir: 'crates/datazen-sql' },
+  { name: 'datazen-sql-formatter', dir: 'crates/datazen-sql-formatter' },
   { name: 'rune', dir: 'vendor/rune/crates/rune' },
   { name: 'opencode', dir: 'vendor/rune/themes/opencode' },
   { name: 'datazen-driver-redis', dir: 'crates/drivers/redis' },
@@ -171,6 +172,7 @@ describe('classifyMemberDir', () => {
     expect(layerIdOf('crates/datazen-rune-host')).toBe('host');
     expect(layerIdOf('crates/datazen-ui-api')).toBe('ui-api');
     expect(layerIdOf('crates/datazen-sql')).toBe('sql');
+    expect(layerIdOf('crates/datazen-sql-formatter')).toBe('sql');
     expect(layerIdOf('vendor/rune/crates/rune')).toBe('ui-runtime');
     expect(layerIdOf('vendor/rune/themes/opencode')).toBe('ui-runtime');
     expect(classifyMemberDir('vendor/rune/tools/example')).toHaveProperty('unclassified');
@@ -282,6 +284,18 @@ describe('checkSpecConsistency', () => {
     expect(checkSpecConsistency(widened).join('\n')).toContain('F-03');
   });
 
+  it.each(['crates/datazen-sql', 'crates/datazen-sql-formatter'])(
+    'fails when F-16 omits the exact subject path %s',
+    (path) => {
+      const row = specRow('F-16');
+      const weakened = SPEC.replace(row, row.replace(`\`${path}\``, '（省略）'));
+      expect(weakened).not.toBe(SPEC);
+      expect(checkSpecConsistency(weakened)).toEqual([
+        expect.stringContaining(`F-16: ${SPEC_PATH} §2.4 no longer mentions \`${path}\``),
+      ]);
+    },
+  );
+
   it('fails when an F-row disappears entirely', () => {
     const withoutF06 = SPEC.split('\n')
       .filter((l) => !l.startsWith('| F-06 '))
@@ -356,6 +370,30 @@ describe('checkPlatformCrateBoundaries', () => {
     );
     expect(result.violations.join('\n')).toMatch(/F-15.*opencode.*datazen-rune-host/);
     expect(result.violations.join('\n')).toMatch(/F-16.*datazen-sql.*datazen-driver-api/);
+  });
+
+  it('allows the Native host to use the formatter and checks both SQL leaves', () => {
+    const result = run(fixture(CORE, { ...clean, 'datazen-rune-host': ['datazen-sql-formatter'] }));
+    expect(result.errors).toEqual([]);
+    expect(result.violations).toEqual([]);
+    expect(result.evaluated.find(({ rule }) => rule === 'F-16')?.subjects).toEqual([
+      'datazen-sql',
+      'datazen-sql-formatter',
+    ]);
+  });
+
+  it.each([
+    ['datazen-sql-formatter', 'datazen-rune-host', 'normal'],
+    ['datazen-sql-formatter', 'datazen-sql', 'build'],
+    ['datazen-sql', 'datazen-sql-formatter', 'normal'],
+  ] as const)('F-16 forbids %s → %s (%s)', (from, to, kind) => {
+    // Cargo encodes a normal edge as null; the fixture's default does that.
+    const kinds: Record<string, 'build'> = kind === 'build' ? { [`${from}->${to}`]: kind } : {};
+    const result = run(fixture(CORE, { ...clean, [from]: [to] }, [], kinds));
+    expect(result.errors).toEqual([]);
+    expect(result.violations).toEqual([
+      expect.stringContaining(`F-16  ${from} (crates/${from}/Cargo.toml) → ${to}`),
+    ]);
   });
 
   it('allows both UI and drivers to use the shared SQL contract', () => {

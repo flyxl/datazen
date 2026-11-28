@@ -258,11 +258,13 @@ export const RULES = Object.freeze([
     id: 'F-16',
     subjects: ['sql'],
     subjectsFromSpec: true,
-    allowedLayers: ['sql'],
+    // The closure walk skips its root. The two SQL crates are leaves even
+    // with respect to each other; co-classification doesn't permit an edge.
+    allowedLayers: [],
     forbiddenCrates: 'spec',
-    specTokens: ['crates/datazen-sql'],
+    specTokens: ['crates/datazen-sql', 'crates/datazen-sql-formatter'],
     specCrates: ['tauri*', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
-    note: 'shared SQL types and text utilities have no other workspace dependency',
+    note: 'each shared SQL crate has no other workspace dependency',
   },
 ]);
 
@@ -356,8 +358,12 @@ export function checkSpecConsistency(specText, rules = RULES) {
       );
       continue;
     }
+    const parsed = parseSpecRow(row);
     for (const token of rule.specTokens ?? []) {
-      if (!row.includes(token)) {
+      // Layer paths must be complete tokens: datazen-sql-formatter does
+      // not stand in for the separately governed datazen-sql crate.
+      const layerPath = LAYERS.some((layer) => layer.path === token);
+      if (!(layerPath ? parsed.paths.includes(token) : row.includes(token))) {
         violations.push(
           `${rule.id}: ${SPEC_PATH} §2.4 no longer mentions \`${token}\`, which this guard enforces.`,
         );
@@ -365,7 +371,6 @@ export function checkSpecConsistency(specText, rules = RULES) {
     }
     if (!rule.subjectsFromSpec) continue;
 
-    const parsed = parseSpecRow(row);
     const specLayers = [];
     for (const token of parsed.paths) {
       const id = specLayerId(token);

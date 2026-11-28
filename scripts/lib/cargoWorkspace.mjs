@@ -79,6 +79,7 @@ export const LAYERS = Object.freeze([
   { id: 'ui-runtime', path: 'vendor/rune/crates/*', kind: 'rust' },
   { id: 'ui-runtime', path: 'vendor/rune/themes/*', kind: 'rust' },
   { id: 'sql', path: 'crates/datazen-sql', kind: 'rust' },
+  { id: 'sql', path: 'crates/datazen-sql-formatter', kind: 'rust' },
   { id: 'driver-api', path: 'crates/datazen-driver-api', kind: 'rust' },
   { id: 'driver-api', path: 'crates/datazen-driver-support', kind: 'rust' },
   { id: 'driver', path: 'crates/drivers/*', kind: 'rust' },
