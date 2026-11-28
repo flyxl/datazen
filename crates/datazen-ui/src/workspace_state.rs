@@ -10,7 +10,7 @@ use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DesktopAdapter, MemoryWorkspace, NativeTablePage, NativeTableRowCount,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, NativeQueryPage, NativeTablePage, NativeTableRowCount,
     ProgressSnapshot, QueryApi, Setting,
     SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
     WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
@@ -501,6 +501,13 @@ impl AppState {
         self.reset_native_result_find();
     }
 
+    fn load_native_query_result(&mut self, result: NativeQueryPage) {
+        self.load_result_page(result.page.columns, result.page.rows);
+        if let Some(grid) = self.result_grid.as_mut() {
+            grid.set_query_column_types(result.column_types);
+        }
+    }
+
     /// Bump and return the next query generation. Every run and every cancel
     /// starts one.
     pub fn next_query_generation(&mut self) -> u32 {
@@ -512,13 +519,13 @@ impl AppState {
     /// a newer run or invalidated by a cancel — are dropped on the floor.
     /// A3: lands in the matching result tab and makes it selected.
     pub fn deliver_query_result(&mut self, generation: u32, page: TablePage) {
-        self.deliver_query_result_with_stats(generation, page, None);
+        self.deliver_query_result_with_stats(generation, page.into(), None);
     }
 
     fn deliver_query_result_with_stats(
         &mut self,
         generation: u32,
-        page: TablePage,
+        page: NativeQueryPage,
         execution_stats: Option<datazen_ui_api::QueryExecutionStats>,
     ) {
         if generation != self.query_generation {
@@ -535,7 +542,7 @@ impl AppState {
             self.result_grid = None;
             self.result_focused = false;
         } else {
-            self.load_result_page(page.columns, page.rows);
+            self.load_native_query_result(page);
         }
         // Only a fresh, complete native single-statement publication can
         // auto-open Chart. Keep this preference scoped to its own result tab
@@ -720,7 +727,7 @@ impl AppState {
         }
     }
 
-    fn deliver_query_script(&mut self, generation: u32, pages: Result<Vec<TablePage>, String>) {
+    fn deliver_query_script(&mut self, generation: u32, pages: Result<Vec<NativeQueryPage>, String>) {
         self.finish_running_query(generation, false);
         if self.query_loading == Some(generation) {
             self.query_loading = None;
@@ -737,12 +744,12 @@ impl AppState {
         };
         let mut pages = pages.into_iter();
         let Some(first) = pages.next() else { return };
-        self.deliver_query_result(generation, first);
+        self.deliver_query_result_with_stats(generation, first, None);
         let first_id = self.selected_query_result;
         for page in pages {
             self.park_selected_query_result_grid();
             self.selected_query_result = Some(self.add_query_result_tab(None));
-            self.load_result_page(page.columns, page.rows);
+            self.load_native_query_result(page);
         }
         if let Some(first_id) = first_id {
             self.select_query_result_tab(first_id);

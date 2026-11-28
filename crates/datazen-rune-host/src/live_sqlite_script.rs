@@ -3,7 +3,7 @@
 use datazen::execution::domain::sql_guard::{check_sql, sql_main_keyword, tokenize_sql};
 use datazen_driver_api::resource::{ResultChunk, StatementSummary};
 use datazen_driver_api::Value as Cell;
-use datazen_ui_api::TablePage;
+use datazen_ui_api::{NativeQueryPage, TablePage};
 use serde_json::Value;
 
 #[derive(Clone, Copy)]
@@ -87,11 +87,57 @@ fn exact_bar_value(cell: Option<&Cell>) -> bool {
     }
 }
 
+/// Metadata for a statement is admissible only if every observation agrees.
+/// A contradictory late observation must not repurpose already collected rows.
+#[derive(Default)]
+enum ColumnTypes {
+    #[default]
+    Missing,
+    Aligned(Vec<(String, String)>),
+    Rejected,
+}
+
+impl ColumnTypes {
+    fn observe(&mut self, header: &[Value], indexed: bool) {
+        if matches!(self, Self::Rejected) {
+            return;
+        }
+        let columns: Option<Vec<_>> = indexed.then(|| {
+            header.iter().map(|column| {
+                let name = column.get("name")?.as_str()?;
+                let data_type = match column.get("dataType") {
+                    None | Some(Value::Null) => "",
+                    Some(Value::String(value)) => value.as_str(),
+                    _ => return None,
+                };
+                Some((name.to_owned(), data_type.to_owned()))
+            }).collect::<Option<Vec<_>>>()
+        }).flatten();
+        match (columns, &*self) {
+            (Some(columns), Self::Missing) => *self = Self::Aligned(columns),
+            (Some(columns), Self::Aligned(previous)) if previous == &columns => {}
+            _ => *self = Self::Rejected,
+        }
+    }
+
+    fn for_page(self, names: &[String], rows: &[Vec<String>]) -> Vec<String> {
+        let Self::Aligned(columns) = self else { return Vec::new(); };
+        if columns.len() != names.len()
+            || !columns.iter().zip(names).all(|((name, _), shown)| name == shown)
+            || !rows.iter().all(|row| row.len() == names.len())
+        {
+            return Vec::new();
+        }
+        columns.into_iter().map(|(_, data_type)| data_type).collect()
+    }
+}
+
 #[derive(Default)]
 struct Page {
     columns: Vec<String>,
     rows: Vec<Vec<String>>,
     has_metadata: bool,
+    column_types: ColumnTypes,
     has_rows: bool,
     summary: Option<StatementSummary>,
     truncated: bool,
@@ -129,7 +175,7 @@ impl Page {
 }
 
 pub(super) struct CollectedPage {
-    pub(super) page: TablePage,
+    pub(super) page: NativeQueryPage,
     pub(super) affected_rows: Option<u64>,
     pub(super) truncated_to: Option<u32>,
     pub(super) chartable_values: bool,
@@ -192,10 +238,13 @@ impl ResultPages {
                 if self.script && page.has_metadata && page.columns != names {
                     return Err("Conflicting statement metadata.".into());
                 }
+                page.column_types.observe(columns, index.is_some());
                 page.columns = names;
                 page.has_metadata = true;
             } else if self.script {
                 return Err("Statement metadata has no column list.".into());
+            } else {
+                page.column_types = ColumnTypes::Rejected;
             }
             return Ok(());
         }
@@ -244,6 +293,7 @@ impl ResultPages {
             .map(|page| {
                 let total = page.rows.len() as u32;
                 let chartable_values = page.has_chartable_values();
+                let column_types = page.column_types.for_page(&page.columns, &page.rows);
                 let affected_rows = if page.has_metadata && page.columns.is_empty() && total == 0 {
                     page.summary.and_then(|summary| {
                         let verb = sql_main_keyword(&summary.sql)?;
@@ -254,17 +304,20 @@ impl ResultPages {
                     None
                 };
                 CollectedPage {
-                    page: TablePage {
-                        table: "result".into(),
-                        columns: page.columns,
-                        rows: page.rows,
-                        page: 0,
-                        page_size: total.max(1),
-                        total_rows: total,
-                        sort: None,
-                        filter: None,
-                        primary_key: Vec::new(),
-                        read_only: Some("query result".into()),
+                    page: NativeQueryPage {
+                        page: TablePage {
+                            table: "result".into(),
+                            columns: page.columns,
+                            rows: page.rows,
+                            page: 0,
+                            page_size: total.max(1),
+                            total_rows: total,
+                            sort: None,
+                            filter: None,
+                            primary_key: Vec::new(),
+                            read_only: Some("query result".into()),
+                        },
+                        column_types,
                     },
                     affected_rows,
                     chartable_values,
@@ -329,5 +382,87 @@ mod auto_chart_tests {
         };
         page.push_row(vec![Some(Cell::String("42".into())), Some(Cell::Integer(2))], true);
         assert!(!page.has_chartable_values(), "the manual renderer chooses column 0");
+    }
+}
+
+#[cfg(test)]
+mod query_type_tests {
+    use super::*;
+    use datazen_driver_api::Value as Cell;
+
+    fn header(statement: usize, columns: &[(&str, Option<&str>)]) -> Value {
+        let columns: Vec<_> = columns.iter().map(|(name, data_type)| {
+            serde_json::json!({ "name": name, "dataType": data_type })
+        }).collect();
+        serde_json::json!({
+            "kind": "statementMetadata", "statementIndex": statement, "columns": columns,
+        })
+    }
+
+    fn chunk(statement: usize, rows: Vec<Vec<Option<Cell>>>) -> Value {
+        serde_json::to_value(ResultChunk {
+            statement_index: statement, rows, sql: "SELECT 1".into(), rows_affected: None,
+        }).unwrap()
+    }
+
+    fn same_text() -> Vec<Option<Cell>> {
+        let raw = "2024-02-29T16:34:56.000001+00:00".to_owned();
+        vec![Some(Cell::String(raw.clone())), Some(Cell::String(raw))]
+    }
+
+    #[test]
+    fn query_metadata_is_ordinal_and_survives_appended_chunks_and_duplicate_headers() {
+        let mut collector = ResultPages::new(2, true, None, false);
+        // PG can deliver row batches before statementMetadata, and the host
+        // can subsequently emit the identical metadata from the final receipt.
+        collector.push(chunk(0, vec![same_text()])).unwrap();
+        collector.push(header(0, &[("duplicate", Some("TIMESTAMPTZ")), ("duplicate", Some("TEXT"))])).unwrap();
+        collector.push(chunk(1, vec![vec![Some(Cell::String("unknown".into()))]])).unwrap();
+        collector.push(header(1, &[("unknown", None)])).unwrap();
+        collector.push(chunk(0, vec![same_text()])).unwrap();
+        collector.push(header(0, &[("duplicate", Some("TIMESTAMPTZ")), ("duplicate", Some("TEXT"))])).unwrap();
+
+        let pages = collector.finish().unwrap();
+        assert_eq!(pages[0].page.column_types, ["TIMESTAMPTZ", "TEXT"]);
+        assert_eq!(pages[0].page.page.columns, ["duplicate", "duplicate"]);
+        assert_eq!(pages[0].page.page.rows.len(), 2);
+        for row in &pages[0].page.page.rows {
+            assert_eq!(row.iter().map(String::as_str).collect::<Vec<_>>(), ["2024-02-29T16:34:56.000001+00:00"; 2]);
+        }
+        assert_eq!(pages[1].page.column_types, [""]);
+        assert_eq!(pages[1].page.page.rows.len(), 1);
+        assert_eq!(pages[1].page.page.rows[0], ["unknown"]);
+    }
+
+    #[test]
+    fn query_metadata_fails_closed_for_missing_conflicting_or_misaligned_receipts() {
+        let good = header(0, &[("clock", Some("TIMESTAMPTZ")), ("note", Some("TEXT"))]);
+        let conflict = header(0, &[("clock", Some("TEXT")), ("note", Some("TEXT"))]);
+        let unordered = header(0, &[("note", Some("TEXT")), ("clock", Some("TIMESTAMPTZ"))]);
+        let mut unindexed = good.clone();
+        unindexed.as_object_mut().unwrap().remove("statementIndex");
+        let mut malformed = good.clone();
+        malformed["columns"][0]["dataType"] = serde_json::json!(123);
+        for headers in [
+            vec![],
+            vec![unindexed],
+            vec![malformed],
+            vec![good.clone(), conflict, good.clone()],
+            vec![good.clone(), unordered],
+        ] {
+            let mut collector = ResultPages::new(1, false, None, false);
+            collector.push(chunk(0, vec![same_text()])).unwrap();
+            for receipt in headers { collector.push(receipt).unwrap(); }
+            let pages = collector.finish().unwrap();
+            assert!(pages[0].page.column_types.is_empty());
+            assert_eq!(pages[0].page.page.rows[0], ["2024-02-29T16:34:56.000001+00:00"; 2]);
+        }
+
+        let mut collector = ResultPages::new(1, false, None, false);
+        collector.push(good).unwrap();
+        collector.push(chunk(0, vec![vec![Some(Cell::String("short row".into()))]])).unwrap();
+        let pages = collector.finish().unwrap();
+        assert!(pages[0].page.column_types.is_empty());
+        assert_eq!(pages[0].page.page.rows[0], ["short row"]);
     }
 }

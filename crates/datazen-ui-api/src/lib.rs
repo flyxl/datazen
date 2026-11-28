@@ -1901,6 +1901,22 @@ pub enum NativeTableRowCount {
     Unknown,
 }
 
+/// A native query result plus the reporting driver's type names in exact
+/// column order. No names are inferred from SQL, labels, or cell strings.
+/// An empty vector means there was no trustworthy header; a blank entry
+/// means the attached header reported no type for that column.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeQueryPage {
+    pub page: TablePage,
+    pub column_types: Vec<String>,
+}
+
+impl From<TablePage> for NativeQueryPage {
+    fn from(page: TablePage) -> Self {
+        Self { page, column_types: Vec::new() }
+    }
+}
+
 /// An interactive desktop table page; legacy and query/result pages do not
 /// need a count-quality or offset-continuation channel.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3105,7 +3121,7 @@ pub enum AdapterDelivery {
     QueryStopRejected { generation: u32 },
     QueryPage {
         generation: u32,
-        page: Result<TablePage, String>,
+        page: Result<NativeQueryPage, String>,
         execution_stats: Option<QueryExecutionStats>,
         csv_source: Option<NativeQueryCsvSource>,
     },
@@ -3120,7 +3136,7 @@ pub enum AdapterDelivery {
     /// Ordered result pages from one explicitly submitted SELECT script.
     QueryScriptPages {
         generation: u32,
-        pages: Result<Vec<TablePage>, String>,
+        pages: Result<Vec<NativeQueryPage>, String>,
     },
     /// A workflow run's step report (or its failure sentence) (T8).
     WorkflowRun {

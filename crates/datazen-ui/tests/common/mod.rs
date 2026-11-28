@@ -669,7 +669,7 @@ impl DesktopAdapter for JobAdapter {
                     filter: None,
                     primary_key: Vec::new(),
                     read_only: None,
-                }),
+                }.into()),
             },
         };
         self.pending.push(delivery);

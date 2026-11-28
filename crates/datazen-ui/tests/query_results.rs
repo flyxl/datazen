@@ -230,6 +230,61 @@ use rune::{Env, Runtime};
     }
 
     #[test]
+    fn query_result_type_receipts_follow_their_generation_and_each_retained_script_tab() {
+        use datazen_ui_api::{AdapterDelivery, NativeQueryPage, TablePage, WorkspaceApi};
+
+        let stamp = "2024-02-29T16:34:56.000001+00:00";
+        let page = |types: &[&str]| NativeQueryPage {
+            page: TablePage {
+                table: "result".into(), columns: vec!["sample".into(), "literal".into()],
+                rows: vec![vec![stamp.into(), stamp.into()]], page: 0, page_size: 1, total_rows: 1,
+                sort: None, filter: None, primary_key: Vec::new(), read_only: None,
+            },
+            column_types: types.iter().map(|name| (*name).into()).collect(),
+        };
+        let deliver = |generation, page| AdapterDelivery::QueryPage {
+            generation, page: Ok(page), execution_stats: None, csv_source: None,
+        };
+        let mut rt = runtime();
+        rt.state.workspace.connect("local").unwrap();
+        rt.state.open_query_tab("Query").unwrap();
+
+        let stale = rt.state.next_query_generation();
+        let current = rt.state.next_query_generation();
+        rt.state.deliver_host_job(deliver(stale, page(&["TIMESTAMPTZ", "TEXT"])));
+        assert!(rt.state.result_grid.is_none());
+        rt.state.deliver_host_job(deliver(current, page(&["TEXT", "TIMESTAMPTZ"])));
+        rt.state.deliver_host_job(deliver(stale, page(&["TIMESTAMPTZ", "TEXT"])));
+        let grid = rt.state.result_grid.as_mut().unwrap();
+        assert_eq!(grid.query_column_type(0), Some("TEXT"));
+        assert_eq!(grid.query_column_type(1), Some("TIMESTAMPTZ"));
+        assert_eq!((grid.cell(0, 0), grid.cell(0, 1)), (stamp.to_owned(), stamp.to_owned()));
+        grid.select(0, 1);
+        assert_eq!(grid.copy_tsv(), stamp, "the receipt is not copied into the cell");
+
+        let generation = rt.state.next_query_generation();
+        rt.state.deliver_host_job(AdapterDelivery::QueryScriptPages {
+            generation, pages: Ok(vec![
+                page(&["TIMESTAMPTZ", "TEXT"]),
+                page(&["TEXT", ""]),
+                page(&["BAD_LENGTH"]),
+            ]),
+        });
+        let first = rt.state.selected_query_result.unwrap();
+        let following: Vec<_> = rt.state.query_result_tabs.iter().filter(|tab| tab.generation.is_none())
+            .map(|tab| tab.id).collect();
+        assert_eq!(following.len(), 2);
+        assert_eq!(rt.state.result_grid.as_ref().unwrap().query_column_type(0), Some("TIMESTAMPTZ"));
+        assert!(rt.state.select_query_result_tab(following[0]));
+        assert_eq!(rt.state.result_grid.as_ref().unwrap().query_column_type(0), Some("TEXT"));
+        assert_eq!(rt.state.result_grid.as_ref().unwrap().query_column_type(1), None);
+        assert!(rt.state.select_query_result_tab(following[1]));
+        assert_eq!(rt.state.result_grid.as_ref().unwrap().query_column_type(0), None);
+        assert!(rt.state.select_query_result_tab(first));
+        assert_eq!(rt.state.result_grid.as_ref().unwrap().query_column_type(0), Some("TIMESTAMPTZ"));
+    }
+
+    #[test]
     fn a_cancelled_generation_never_reaches_the_grid() {
         use datazen_ui_api::{QueryApi, WorkspaceApi};
 

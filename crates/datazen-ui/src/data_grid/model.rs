@@ -36,6 +36,7 @@ pub struct DataGrid {
     source: Option<Vec<Vec<String>>>,
     columns: Vec<String>,
     column_types: Vec<String>,
+    query_column_types: Vec<String>,
     numeric_columns: Vec<bool>,
     displayed: Option<Vec<u32>>,
     display_revision: u64,
@@ -105,6 +106,7 @@ impl DataGrid {
             source: None,
             columns: Vec::new(),
             column_types: Vec::new(),
+            query_column_types: Vec::new(),
             numeric_columns: Vec::new(),
             displayed: None,
             display_revision: 0,
@@ -321,6 +323,18 @@ impl DataGrid {
         self.column_types.get(col as usize).map(String::as_str).filter(|ty| !ty.trim().is_empty())
     }
 
+    /// The exact driver type from the selected native query receipt, without
+    /// any inference from rendered text. Legacy and malformed results give None.
+    pub fn query_column_type(&self, col: u32) -> Option<&str> {
+        self.query_column_types.get(col as usize).map(String::as_str)
+            .filter(|name| !name.trim().is_empty())
+    }
+
+    pub(crate) fn set_query_column_types(&mut self, types: Vec<String>) {
+        // Do not attach a partial header by position.
+        self.query_column_types = if types.len() == self.columns.len() { types } else { Vec::new() };
+    }
+
     pub(crate) fn is_declared_numeric(&self, col: u32) -> bool {
         self.numeric_columns.get(col as usize).copied().unwrap_or(false)
     }
@@ -376,6 +390,7 @@ impl DataGrid {
         self.displayed = None;
         self.display_revision = self.display_revision.wrapping_add(1);
         self.column_types.clear();
+        self.query_column_types.clear();
         self.numeric_columns.clear();
         self.rows = page.rows.len() as u32;
         self.cols = page.columns.len() as u32;

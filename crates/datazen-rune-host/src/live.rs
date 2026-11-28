@@ -40,7 +40,7 @@ use datazen_ui_api::native_kv::{native_kv_driver, KvRead, KvReply, NativeKvDrive
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionDraft,
     ConnectionProbeError, ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter,
-    NativeQueryCsvSource, NativeTablePage, NativeTableRowCount, ProgressSnapshot,
+    NativeQueryCsvSource, NativeQueryPage, NativeTablePage, NativeTableRowCount, ProgressSnapshot,
     QueryExecutionStats, SchemaNode,
     Snippet, TablePage, TableStructure, ValueSearchHit, Workflow, WorkflowStepResult,
     DESKTOP_NOT_IMPLEMENTED,
@@ -321,7 +321,7 @@ enum HostAnswer {
     QueryStopRejected { generation: u32 },
     QueryPage {
         generation: u32,
-        page: Result<TablePage, String>,
+        page: Result<NativeQueryPage, String>,
         execution_stats: Option<QueryExecutionStats>,
         csv_source: Option<NativeQueryCsvSource>,
     },
@@ -331,7 +331,7 @@ enum HostAnswer {
     },
     QueryScriptPages {
         generation: u32,
-        pages: Result<Vec<TablePage>, String>,
+        pages: Result<Vec<NativeQueryPage>, String>,
     },
     QueryExplained {
         generation: u32,
@@ -981,13 +981,13 @@ impl LiveAdapter {
                                 let fully_displayed = execution_stats
                                     .is_none_or(|stats| stats.truncated_to.is_none());
                                 let csv_source = artifact.filter(|_| fully_displayed).zip(page.as_ref().ok())
-                                    .filter(|(_, page)| !page.columns.is_empty())
-                                    .map(|(artifact, page)| NativeQueryCsvSource {
+                                    .filter(|(_, result)| !result.page.columns.is_empty())
+                                    .map(|(artifact, result)| NativeQueryCsvSource {
                                         execution_id: artifact.execution_id,
                                         artifact_id: artifact.artifact_id,
                                         statement_index: 0,
-                                        columns: page.columns.clone(),
-                                        row_count: page.total_rows,
+                                        columns: result.page.columns.clone(),
+                                        row_count: result.page.total_rows,
                                     });
                                 HostAnswer::QueryPage { generation, page, execution_stats, csv_source }
                             }
@@ -2565,12 +2565,12 @@ async fn run_query(
     first_query_page(
         run_query_observed(runtime, profiles, session, sql, false, None, None, &stop, |_| {})
             .await.map(|(pages, _)| pages),
-    )
+    ).map(|result| result.page)
 }
 
 fn first_query_page(
     result: Result<Vec<live_sqlite_script::CollectedPage>, String>,
-) -> Result<TablePage, String> {
+) -> Result<NativeQueryPage, String> {
     result?.into_iter().next().map(|result| result.page)
         .ok_or_else(|| "no query result page".into())
 }
@@ -5556,6 +5556,10 @@ mod tests {
 
     /// Poll the adapter until its query job answers.
     fn poll_query(adapter: &mut LiveAdapter) -> Result<TablePage, String> {
+        poll_native_query(adapter).map(|result| result.page)
+    }
+
+    fn poll_native_query(adapter: &mut LiveAdapter) -> Result<NativeQueryPage, String> {
         for _ in 0..300 {
             for delivery in adapter.poll_jobs() {
                 if let AdapterDelivery::QueryPage { page, .. } = delivery {
@@ -5565,6 +5569,28 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         panic!("the query job never answered");
+    }
+
+    #[test]
+    fn query_job_keeps_sqlite_driver_type_names_even_for_identical_display_text() {
+        let dir = temp_dir("query-column-type-receipt");
+        let mut adapter = opened_adapter(&dir);
+        assert!(adapter.begin_job(AdapterJob::RunQuery {
+            generation: 2,
+            sql: "UPDATE users SET name = '0' WHERE id = 0".into(),
+        }));
+        poll_native_query(&mut adapter).expect("fixture update finishes");
+        assert!(adapter.begin_job(AdapterJob::RunQuery {
+            generation: 3,
+            sql: "SELECT id AS value, name AS value FROM users WHERE id = 0".into(),
+        }));
+        let result = poll_native_query(&mut adapter).expect("real SQLite job returns");
+        assert_eq!(result.page.columns, ["value", "value"]);
+        assert_eq!(result.page.rows.len(), 1);
+        assert_eq!(result.page.rows[0], ["0", "0"]);
+        assert_eq!(result.column_types.len(), 2);
+        assert!(result.column_types[0].eq_ignore_ascii_case("integer"));
+        assert!(result.column_types[1].eq_ignore_ascii_case("text"));
     }
 
     #[test]
