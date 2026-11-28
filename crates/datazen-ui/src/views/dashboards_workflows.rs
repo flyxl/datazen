@@ -45,7 +45,7 @@ pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             Ok(widgets) => widgets,
             Err(error) => return page.child(dashboard_read_error("dashboard-report-read-error", error, k)),
         };
-        page = page.child(native_report_toolbar(widgets.len(), state.dashboard_report_open, k));
+        page = page.child(native_report_toolbar(widgets.len(), k));
         widgets
     } else {
         state.host_widgets()
@@ -75,14 +75,12 @@ pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .selectable(true),
         );
     }
+    // In the real board Add is the final grid cell, including when no
+    // reports exist; opening an inline draft suppresses just that cell.
+    if native {
+        return page.child(native_report_grid(state, &widgets, theme, k));
+    }
     if widgets.is_empty() {
-        if native {
-            let mut empty = col().key("dashboard-empty").w_full().grow(1.0).min_h(0.0);
-            if !state.dashboard_report_open {
-                empty = empty.child(row().w_full().padding(16.0).child(add_first_report(k)));
-            }
-            return page.child(empty);
-        }
         // The demo's original widget-empty treatment.
         return page.child(
             col()
@@ -117,36 +115,72 @@ pub fn dashboards_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .padding(16.0)
         .scroll(ScrollSpec { stick_bottom: false });
     for widget in &widgets {
-        list = list.child(
-            col()
-                .key(format!("widget-{}", widget.id))
-                .w_full()
-                .gap(4.0)
-                .px(8.0)
-                .py(6.0)
-                .radius(8.0)
-                .shrink()
-                .fill(k.c.bg_base)
-                .border(1.0, k.c.border_base)
-                .child(
-                    row()
-                        .key(format!("widget-head-{}", widget.id))
-                        .w_full()
-                        .h(24.0)
-                        .center_y()
-                        .child(
-                            text(format!(
-                                "#{} · {} · {}",
-                                widget.id, widget.title, widget.kind
-                            ))
-                            .font(type_::LABEL)
-                            .color(theme.text),
-                        ),
-                )
-                .child(bar_chart(state, widget.id, theme)),
-        );
+        list = list.child(report_tile(state, widget, theme, k, None));
     }
     page.child(list)
+}
+
+fn report_tile(
+    state: &AppState, widget: &DashboardWidget, theme: tok::Theme, k: &rune_kit::Kit,
+    width: Option<f32>,
+) -> El {
+    let tile = col()
+        .key(format!("widget-{}", widget.id))
+        .gap(4.0)
+        .px(8.0)
+        .py(6.0)
+        .radius(8.0)
+        .shrink()
+        .fill(k.c.bg_base)
+        .border(1.0, k.c.border_base)
+        .child(
+            row()
+                .key(format!("widget-head-{}", widget.id))
+                .w_full()
+                .h(24.0)
+                .center_y()
+                .child(
+                    text(if width.is_some() { widget.title.clone() } else {
+                        format!("#{} · {} · {}", widget.id, widget.title, widget.kind)
+                    })
+                    .min_w(0.0).truncate()
+                    .font(type_::LABEL)
+                    .color(theme.text),
+                ),
+        )
+        .child(bar_chart(state, widget.id, theme));
+    match width {
+        Some(width) => tile.w(width).min_w(width).h(320.0),
+        None => tile.w_full(),
+    }
+}
+
+fn native_report_grid(
+    state: &AppState, widgets: &[DashboardWidget], theme: tok::Theme, k: &rune_kit::Kit,
+) -> El {
+    // CSS repeat(auto-fill, minmax(420px, 1fr)); reserve empty tracks on
+    // the last row. Measure the mounted content box, never the OS window.
+    const GAP: f32 = 12.0;
+    const MIN: f32 = 420.0;
+    let available = rune::memo::layout_with("dashboard-report-grid", |rect| rect[2])
+        .filter(|w| w.is_finite()).unwrap_or(MIN).max(MIN);
+    let columns = ((available + GAP) / (MIN + GAP)).floor() as usize;
+    let width = (available - GAP * (columns - 1) as f32) / columns as f32;
+    let count = widgets.len() + usize::from(!state.dashboard_report_open);
+    let mut grid = col().key("dashboard-report-grid").w_full().gap(GAP);
+    for from in (0..count).step_by(columns) {
+        let mut line = row().key(format!("dashboard-report-row-{from}")).w_full().min_h(320.0).gap(GAP);
+        for index in from..(from + columns).min(count) {
+            line = line.child(match widgets.get(index) {
+                Some(widget) => report_tile(state, widget, theme, k, Some(width)),
+                None => add_report_tile(k, width),
+            });
+        }
+        grid = grid.child(line);
+    }
+    col().key(if widgets.is_empty() { "dashboard-empty" } else { "dashboard-widget-list" })
+        .w_full().grow(1.0).min_h(0.0).padding(16.0)
+        .scroll(ScrollSpec { stick_bottom: false }).child(grid)
 }
 
 fn dashboard_read_error(key: &str, error: String, k: &rune_kit::Kit) -> El {
@@ -177,10 +211,10 @@ fn selected_board_marker(board: datazen_ui_api::NativeDashboardBoard, k: &rune_k
         )
 }
 
-fn native_report_toolbar(count: usize, composing: bool, k: &rune_kit::Kit) -> El {
+fn native_report_toolbar(count: usize, k: &rune_kit::Kit) -> El {
     // React's existing report toolbar is 28pt controls + 6pt vertical insets
     // + 1pt bottom edge. Keep real count/actions in that space, not filler.
-    let mut actions = row().key("dashboard-report-actions").w_full().h(41.0).shrink()
+    let actions = row().key("dashboard-report-actions").w_full().h(41.0).shrink()
         .px(12.0).gap(4.0).center_y()
         .fill(k.c.page).border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
         .child(
@@ -190,14 +224,6 @@ fn native_report_toolbar(count: usize, composing: bool, k: &rune_kit::Kit) -> El
                     .font(k.ty.text_xsmall_medium).color(k.c.text_muted).truncate(),
             ),
         );
-    if count != 0 && !composing {
-        actions = actions.child(
-            Button::new(t("dashboard.addWidget")).variant(ButtonVariant::Ghost)
-                .control_size(ControlSize::Large).icon(&ICON_PLUS)
-                .on_press(|state: &mut AppState| state.begin_native_dashboard_report())
-                .build(k).key("dashboard-add-widget"),
-        );
-    }
     let mut refresh = Button::new(t("dashboard.refreshAll"))
         .variant(ButtonVariant::Ghost).control_size(ControlSize::Large).icon(&ICON_REFRESH);
     if count == 0 {
@@ -219,11 +245,9 @@ fn widget_refresh(k: &rune_kit::Kit) -> El {
         .key("widget-refresh")
 }
 
-fn add_first_report(k: &rune_kit::Kit) -> El {
+fn add_report_tile(k: &rune_kit::Kit, width: f32) -> El {
     let label = t("dashboard.addWidget");
-    // Same 16pt board inset, 320pt height and 12pt internal spacing as
-    // React; a shrinkable bounded tile rather than a fake multi-board grid.
-    col().key("dashboard-add-widget").w(448.0).min_w(0.0).shrink().h(320.0)
+    col().key("dashboard-add-widget").w(width).min_w(width).h(320.0)
         .gap(12.0).center().radius(k.radius.lg)
         .border(2.0, k.alpha(k.c.border_base, 0.6))
         .hover(k.alpha(k.c.bg_accent, 0.05))

@@ -36,7 +36,35 @@ class DashboardJourney:
             self.expect_rendered(tree, key="dashboard-add-widget", within="dashboard-empty")
             (add,) = [n for n in tree["elements"] if n.get("key") == "dashboard-add-widget"
                       and not n.get("exiting")]
-            self.assertEqual(add["rect"], [x + 16, y + 33 + 41 + 16, 448, 320])
+            self.assertEqual(add["rect"][:2], [x + 16, y + 33 + 41 + 16])
+            self.assertEqual(add["rect"][3], 320)
+            self._expect_dashboard_tracks(tree)
+
+    def _expect_dashboard_tracks(self, tree, *, first_report=None, columns=None):
+        # Measure from the page independently, not the production helper.
+        x, _, page_width, _ = self._settled_rect(tree, "dashboards-page")
+        gx, gy, gw, _ = self._settled_rect(tree, "dashboard-report-grid")
+        self.assertAlmostEqual(gx, x + 16, delta=1)
+        self.assertAlmostEqual(gw, page_width - 32, delta=1)
+        tracks = max(1, int((gw + 12) // 432))
+        if columns is not None:
+            self.assertEqual(tracks, columns)
+        width = (max(420, gw) - (tracks - 1) * 12) / tracks
+        ax, ay, aw, ah = self._settled_rect(tree, "dashboard-add-widget")
+        self.assertAlmostEqual(aw, width, delta=1)
+        self.assertEqual(ah, 320)
+        if first_report is None:
+            self.assertAlmostEqual(ax, gx, delta=1)
+            self.assertAlmostEqual(ay, gy, delta=1)
+            return
+        # One real report. Add follows it in the same row or the next
+        # according to real track capacity, not a duplicate toolbar button.
+        rx, ry, rw, rh = self._settled_rect(tree, f"widget-{first_report}")
+        for actual, expected in zip([rx, ry, rw, rh], [gx, gy, width, 320]):
+            self.assertAlmostEqual(actual, expected, delta=1)
+        self.assertAlmostEqual(ax, rx + (width + 12 if tracks > 1 else 0), delta=1)
+        self.assertAlmostEqual(ay, ry + (0 if tracks > 1 else 332), delta=1)
+        self.assertFalse(visible(tree, key="dashboard-add-widget", within="dashboard-report-actions"))
 
     def _create_local_dashboard_fixture(self):
         created = self.replay([
@@ -193,9 +221,23 @@ class DashboardJourney:
         self.assertFalse(visible(created, key="dashboard-empty"))
         self.assertFalse(visible(created, key="widget-form"))
         self.expect_rendered(created, key="dashboard-widget-list")
-        self.expect_rendered(created, key="dashboard-add-widget", within="dashboard-report-actions")
+        self.expect_rendered(created, key="dashboard-add-widget", within="dashboard-report-grid")
+        native_id = int(widgets[0]["id"].replace("-", "")[:16], 16)
+        self._expect_dashboard_tracks(created, first_report=native_id, columns=3)
         self.expect_rendered(created, key="widget-refresh", within="dashboard-report-actions")
         self._expect_selected_dashboard_chrome(created, 1)
+
+        board_bytes = (self.root / "dashboards.json").read_bytes()
+        workflow_bytes = (self.root / "workflows.json").read_bytes()
+        for size, columns in [("1000x900", 2), ("800x900", 1)]:
+            with self.subTest(size=size):
+                resized = self.replay(start, until=4.5, size=size)
+                self._expect_dashboard_tracks(resized, first_report=native_id, columns=columns)
+        draft = self.replay([*start, tap(4.5, "dashboard-add-widget")], until=5.9)
+        self.expect_rendered(draft, key="widget-form")
+        self.assertFalse(visible(draft, key="dashboard-add-widget"))
+        self.assertEqual((self.root / "dashboards.json").read_bytes(), board_bytes)
+        self.assertEqual((self.root / "workflows.json").read_bytes(), workflow_bytes)
 
         with sqlite3.connect(self.db) as connection:
             connection.execute("UPDATE customers SET customer_name='dashboard-fresh' WHERE id=2")
@@ -274,7 +316,7 @@ class DashboardJourney:
         self.assertEqual(dashboard_file.read_bytes(), initial_dashboard)
         restored = self.replay([*dashboard_start, tap(4.5, "widget-refresh")], until=6.5)
         self.expect_rendered(
-            restored, text=f"#{widget_id} · {title} · bar", within=f"widget-head-{widget_id}",
+            restored, text=title, within=f"widget-head-{widget_id}",
         )
         self.expect_rendered(restored, text="fixture-lin 2", within="dashboards-page")
         with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as database:
