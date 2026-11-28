@@ -476,8 +476,12 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
         .px(8.0)
         .center_y()
         .radius(6.0)
-        .child(text("Next ›").font(label_style()).color(if next_enabled { ink } else { muted }))
-        .on_press(|state: &mut crate::AppState| state.next_table_page());
+        .child(text("Next ›").font(label_style()).color(if next_enabled { ink } else { muted }));
+    let next = if next_enabled {
+        next.on_press(|state: &mut crate::AppState| state.next_table_page())
+    } else {
+        next
+    };
     footer = footer
         .child(
             row()
