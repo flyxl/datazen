@@ -188,6 +188,12 @@ pub(super) fn panel(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
                         state.sql.find_match_case = !state.sql.find_match_case;
                         state.sql.find_unsafe_range = false;
                     }).build(k).h(22.0))
+                .child(Checkbox::new("sql-find-whole-word", editor.find_whole_word)
+                    .label(t("query.nativeFind.wholeWord"))
+                    .on_toggle(|state: &mut AppState| {
+                        state.sql.find_whole_word = !state.sql.find_whole_word;
+                        state.sql.find_unsafe_range = false;
+                    }).build(k).h(22.0))
                 .child(button("sql-find-close", t("resultFind.close"), ink, dark).on_press_tx(close))
                 .children(warning)
         )

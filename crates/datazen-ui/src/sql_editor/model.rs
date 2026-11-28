@@ -152,6 +152,7 @@ pub struct SqlEditor {
     /// The Query-only find dock opens on demand; each draft owns its needle.
     pub(super) find_open: bool,
     pub(super) find_match_case: bool,
+    pub(super) find_whole_word: bool,
     pub(super) find_unsafe_range: bool,
     pub find_input: TextEdit,
     pub replace_input: TextEdit,
@@ -186,6 +187,7 @@ impl SqlEditor {
             redo_stack: Vec::new(),
             find_open: false,
             find_match_case: false,
+            find_whole_word: false,
             find_unsafe_range: false,
             find_input: TextEdit::new(String::new()),
             replace_input: TextEdit::new(String::new()),

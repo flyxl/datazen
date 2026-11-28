@@ -70,6 +70,7 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         "query.nativeFind.previous" => Some(("上一处", "Find previous")),
         "query.nativeFind.replaceAll" => Some(("全部替换", "Replace all")),
         "query.nativeFind.matchCase" => Some(("区分大小写", "Match case")),
+        "query.nativeFind.wholeWord" => Some(("全字匹配", "Whole word")),
         "query.nativeFind.unsafeUnicode" => Some((
             "此匹配会拆分一个 Unicode 字符。未更改文档。",
             "This match would split a Unicode character. The document was not changed.",

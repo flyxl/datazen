@@ -87,8 +87,8 @@ enum ReplacePlan {
 
 impl SqlEditor {
     fn search_plan(&self, raw: &str, forward: bool) -> Result<Option<Range<usize>>, UnrepresentableRange> {
-        let Some(query) = LiteralQuery::new(raw, self.find_match_case) else { return Ok(None) };
-        let doc = LiteralDocument::new(&self.doc);
+        let Some(query) = LiteralQuery::new(raw, self.find_match_case, self.find_whole_word) else { return Ok(None) };
+        let doc = LiteralDocument::new(&self.doc, self.find_whole_word);
         let main = self.selection.main();
         let cursor = doc.offset(main.from())?..doc.offset(main.to())?;
         let matched = if forward { query.next(&doc, cursor) } else { query.previous(&doc, cursor) };
@@ -111,8 +111,8 @@ impl SqlEditor {
     }
 
     fn replace_plan(&self, raw: &str) -> Result<Option<ReplacePlan>, UnrepresentableRange> {
-        let Some(query) = LiteralQuery::new(raw, self.find_match_case) else { return Ok(None) };
-        let doc = LiteralDocument::new(&self.doc);
+        let Some(query) = LiteralQuery::new(raw, self.find_match_case, self.find_whole_word) else { return Ok(None) };
+        let doc = LiteralDocument::new(&self.doc, self.find_whole_word);
         let main = self.selection.main();
         let first = doc.offset(main.from())?;
         let Some(found) = query.next(&doc, first..first) else { return Ok(None) };
@@ -154,8 +154,8 @@ impl SqlEditor {
 
     pub(super) fn replace_all_dock_literal(&mut self, raw: &str, replacement: &str) -> usize {
         self.find_unsafe_range = false;
-        let Some(query) = LiteralQuery::new(raw, self.find_match_case) else { return 0 };
-        let ranges = match query.all(&LiteralDocument::new(&self.doc)) {
+        let Some(query) = LiteralQuery::new(raw, self.find_match_case, self.find_whole_word) else { return 0 };
+        let ranges = match query.all(&LiteralDocument::new(&self.doc, self.find_whole_word)) {
             Ok(ranges) if ranges.is_empty() => return 0,
             Ok(ranges) => ranges,
             Err(_) => {

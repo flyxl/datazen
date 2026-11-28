@@ -20,6 +20,8 @@ mod plain_find;
 mod bracket_pairs;
 mod syntax_theme;
 mod view;
+mod whole_word;
+mod whole_word_data;
 
 pub use highlight::highlight_sql;
 pub(crate) use highlight::highlight_with_palette;

@@ -600,8 +600,8 @@ fn dock_unicode_literal_matches_original_normalized_ranges() {
         ("İ i\u{0307} I", "i\u{0307}", false, &[(0, 2), (3, 6)]),
     ];
     for &(text, needle, case, expected) in cases {
-        let doc = LiteralDocument::new(text);
-        let actual = LiteralQuery::new(needle, case).unwrap().all(&doc).unwrap()
+        let doc = LiteralDocument::new(text, false);
+        let actual = LiteralQuery::new(needle, case, false).unwrap().all(&doc).unwrap()
             .into_iter().map(|range| (range.start, range.end)).collect::<Vec<_>>();
         assert_eq!(actual.as_slice(), expected, "{text:?} {needle:?}, match case = {case}");
     }
@@ -685,4 +685,91 @@ fn dock_unicode_literal_replace_all_does_not_select_inverted_mapped_bounds() {
     assert!(editor.undo());
     assert_eq!(editor.doc(), "abcdef");
     assert_eq!(editor.selection().main(), Sel { anchor: 2, head: 3 });
+}
+
+#[test]
+fn dock_whole_word_matches_the_locked_codemirror_literal_cursor() {
+    use super::literal_cursor::{LiteralDocument, LiteralQuery};
+    #[derive(serde::Deserialize)]
+    struct Fixtures {
+        documents: Vec<String>,
+        cases: Vec<Lane>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Lane {
+        document: usize,
+        needle: String,
+        #[serde(rename = "case")]
+        match_case: bool,
+        selection: [usize; 2],
+        all: Vec<[i64; 2]>,
+        next: Option<[i64; 2]>,
+        previous: Option<[i64; 2]>,
+    }
+
+    let fixtures: Fixtures = serde_json::from_str(include_str!("testdata/cm6_whole_word.json"))
+        .expect("generated from the pinned original SQL/CM6 modules");
+    assert_eq!(fixtures.cases.len(), 476);
+    for (lane, original) in fixtures.cases.iter().zip(0..) {
+        let source = &fixtures.documents[lane.document];
+        let doc = LiteralDocument::new(source, true);
+        let query = LiteralQuery::new(&lane.needle, lane.match_case, true).unwrap();
+        let range = doc.offset(lane.selection[0]).unwrap()..doc.offset(lane.selection[1]).unwrap();
+
+        let bytes = |range: Option<std::ops::Range<usize>>| {
+            range.map(|range| doc.bytes(range).map(|r| [r.start as i64, r.end as i64]))
+        };
+        let verify = |label, actual: Option<Result<[i64; 2], _>>, expected: Option<[i64; 2]>| {
+            if expected.is_some_and(|r| r.into_iter().any(|i| i < 0)) {
+                assert!(actual.is_some_and(|r| r.is_err()), "{label} reject split scalar in lane {original}");
+            } else {
+                assert_eq!(actual.transpose().unwrap(), expected, "{label} at lane {original}");
+            }
+        };
+        verify("next", bytes(query.next(&doc, range.clone())), lane.next);
+        verify("previous", bytes(query.previous(&doc, range)), lane.previous);
+        let all = query.all(&doc);
+        if lane.all.iter().flatten().any(|&i| i < 0) {
+            assert!(all.is_err(), "Replace All must fail before editing at lane {original}");
+        } else {
+            let actual: Vec<_> = all.unwrap().into_iter().map(|r| [r.start as i64, r.end as i64]).collect();
+            assert_eq!(actual, lane.all, "all at lane {original}");
+        }
+    }
+}
+
+#[test]
+fn dock_whole_word_replace_all_is_undoable_without_rewriting_neighboring_crlf() {
+    let before = "xcat CAT cat_ _cat cat cat-cat\r\nkeep\r\ncat";
+    let mut editor = SqlEditor::from_doc(before);
+    editor.find_input = TextEdit::new("cat");
+    editor.replace_input = TextEdit::new("dog");
+    let original_selection = editor.selection().clone();
+    editor.find_whole_word = true;
+
+    assert!(editor.find_from_bar());
+    assert_eq!(editor.selected_text(), "CAT");
+    assert!(editor.find_from_bar());
+    assert_eq!(editor.selected_text(), "cat");
+    assert!(editor.find_previous_from_bar());
+    assert_eq!(editor.selected_text(), "CAT");
+    assert!(editor.undo_stack.is_empty());
+
+    editor.selection = original_selection.clone();
+    assert_eq!(editor.replace_all_from_bar(), 5);
+    assert_eq!(editor.doc(), "xcat dog cat_ _cat dog dog-dog\r\nkeep\r\ndog");
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), before);
+    assert_eq!(editor.selection(), &original_selection);
+    assert!(editor.find_whole_word);
+    assert!(!editor.undo());
+
+    let mut multiline = SqlEditor::from_doc("a\r\nb keep\r\nx");
+    multiline.find_whole_word = true;
+    multiline.find_input = TextEdit::new(r"a\nb");
+    multiline.replace_input = TextEdit::new("C");
+    assert!(multiline.find_from_bar());
+    assert_eq!(multiline.selected_text(), "a\r\nb");
+    assert_eq!(multiline.replace_all_from_bar(), 1);
+    assert_eq!(multiline.doc(), "C keep\r\nx");
 }

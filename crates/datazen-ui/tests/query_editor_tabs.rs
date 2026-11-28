@@ -565,3 +565,49 @@ fn dock_unicode_literal_reports_invalid_selection_without_changing_the_editor() 
     key(&mut rt, Key::Escape, Mods::default());
     assert!(rt.find("sql-find-unsafe-unicode").is_none());
 }
+
+#[test]
+fn find_whole_word_and_case_are_live_per_query_draft_options() {
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.poll = Some(app_poll);
+    rt.state.workspace.connect("local").unwrap();
+    let a = rt.state.open_query_tab("whole word draft").unwrap();
+    let text = "xcat CAT cat_ cat";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(text);
+    rt.settle_all();
+    rt.frame(0.0);
+    tap(&mut rt, "sql-find-open");
+    rt.paste("cat");
+    rt.frame(0.0);
+    assert!(rt.elements().iter().any(|n| !n.exiting
+        && n.key.as_deref() == Some("sql-find-whole-word") && n.role == "checkbox"));
+    tap(&mut rt, "sql-find-whole-word");
+    tap(&mut rt, "sql-find-next");
+    assert_eq!(rt.state.sql.selected_text(), "CAT");
+    tap(&mut rt, "sql-find-match-case");
+    tap(&mut rt, "sql-find-next");
+    assert_eq!(rt.state.sql.selection().main().from(), 14);
+    assert_eq!(rt.state.sql.selected_text(), "cat");
+    assert_eq!(rt.state.sql.doc(), text);
+    assert!(rt.state.sql.undo_stack.is_empty());
+
+    let b = rt.state.open_query_tab("untouched options").unwrap();
+    rt.state.sql = sql_editor::SqlEditor::from_doc(text);
+    rt.frame(0.0);
+    tap(&mut rt, "sql-find-open");
+    rt.paste("cat");
+    rt.frame(0.0);
+    tap(&mut rt, "sql-find-next");
+    assert_eq!(rt.state.sql.selection().main().from(), 1, "new tab defaults to substring mode");
+    assert_eq!(rt.state.tabs.selected().unwrap().id, b);
+
+    assert!(rt.state.select_tab(a));
+    rt.state.sql.set_main_caret(0);
+    rt.frame(0.0);
+    tap(&mut rt, "sql-find-open");
+    tap(&mut rt, "sql-find-next");
+    assert_eq!(rt.state.sql.selection().main().from(), 14, "A kept both checked options");
+    assert_eq!(rt.state.sql.doc(), text);
+    assert!(rt.state.sql.undo_stack.is_empty());
+}

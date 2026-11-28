@@ -4,6 +4,8 @@ use std::ops::Range;
 
 use unicode_normalization::UnicodeNormalization;
 
+use super::whole_word;
+
 const INSIDE_SCALAR: usize = usize::MAX;
 const PREVIOUS_CHUNK: usize = 10_000;
 
@@ -16,14 +18,29 @@ pub(super) struct LiteralDocument<'a> {
     /// UTF-16 boundary -> UTF-8 boundary; the middle of a surrogate pair
     /// does not correspond to *any* valid byte offset.
     byte_boundary: Vec<usize>,
+    newlines: Vec<usize>,
+    projected_breaks: bool,
 }
 
 impl<'a> LiteralDocument<'a> {
-    pub(super) fn new(raw: &'a str) -> Self {
+    pub(super) fn new(raw: &'a str, whole_word: bool) -> Self {
         let mut units = Vec::new();
         let mut byte_boundary = Vec::new();
-        for (byte, scalar) in raw.char_indices() {
+        let mut newlines = Vec::new();
+        let mut projected_breaks = false;
+        let mut input = raw.char_indices().peekable();
+        while let Some((byte, mut scalar)) = input.next() {
             byte_boundary.push(byte);
+            if whole_word && scalar == '\r' {
+                // CM's Text has LF line breaks. Map the entire original
+                // CR/CRLF to one search unit without rewriting stored SQL.
+                scalar = '\n';
+                projected_breaks = true;
+                if input.peek().is_some_and(|&(_, c)| c == '\n') {
+                    input.next();
+                }
+            }
+            if whole_word && scalar == '\n' { newlines.push(units.len()); }
             let mut encoded = [0; 2];
             let utf16 = scalar.encode_utf16(&mut encoded);
             units.extend_from_slice(utf16);
@@ -32,15 +49,22 @@ impl<'a> LiteralDocument<'a> {
             }
         }
         byte_boundary.push(raw.len());
-        Self { raw, units, byte_boundary }
+        Self { raw, units, byte_boundary, newlines, projected_breaks }
     }
 
     pub(super) fn offset(&self, byte: usize) -> Result<usize, UnrepresentableRange> {
         // The editor selection is given as UTF-8 bytes, but CodeMirror's
         // wrapping and its 10k backward chunks are in original UTF-16 units.
-        self.raw.get(..byte)
-            .map(|s| s.encode_utf16().count())
-            .ok_or(UnrepresentableRange)
+        if self.projected_breaks {
+            if !self.raw.is_char_boundary(byte) {
+                return Err(UnrepresentableRange);
+            }
+            self.byte_boundary.iter().position(|&b| b == byte).ok_or(UnrepresentableRange)
+        } else {
+            self.raw.get(..byte)
+                .map(|s| s.encode_utf16().count())
+                .ok_or(UnrepresentableRange)
+        }
     }
 
     pub(super) fn bytes(&self, range: Range<usize>) -> Result<Range<usize>, UnrepresentableRange> {
@@ -62,6 +86,7 @@ pub(super) struct LiteralQuery {
     prefix_fallback: Vec<usize>,
     raw_len: usize,
     match_case: bool,
+    whole_word: bool,
 }
 
 fn normalize(value: &str, match_case: bool) -> Vec<u16> {
@@ -74,7 +99,7 @@ fn normalize(value: &str, match_case: bool) -> Vec<u16> {
 }
 
 impl LiteralQuery {
-    pub(super) fn new(raw: &str, match_case: bool) -> Option<Self> {
+    pub(super) fn new(raw: &str, match_case: bool, whole_word: bool) -> Option<Self> {
         // Normalize the entire query, but the cursor below normalizes one
         // *source scalar* at a time. Whole-string lowercase on the document
         // would disagree on contextual Greek final sigma, for example.
@@ -93,7 +118,7 @@ impl LiteralQuery {
             }
             prefix_fallback[i] = matched;
         }
-        Some(Self { target, prefix_fallback, raw_len: raw.encode_utf16().count(), match_case })
+        Some(Self { target, prefix_fallback, raw_len: raw.encode_utf16().count(), match_case, whole_word })
     }
 
     /// Visit matches without allocating a normalized copy of the document.
@@ -110,6 +135,7 @@ impl LiteralQuery {
         let mut cursor = from;
         let size = self.target.len();
         let mut starts = vec![0; size];
+        let mut words = whole_word::Filter::default();
         let (mut written, mut matched) = (0, 0);
         while cursor < to {
             let original = doc.units[cursor];
@@ -152,8 +178,13 @@ impl LiteralQuery {
                     matched = self.prefix_fallback[matched - 1];
                     // The CM cursor publishes only a match ending on the
                     // last projected unit of this source scalar.
-                    if i + 1 == projection.len() {
-                        if visit(starts[written]..end) {
+                    let candidate = starts[written]..end;
+                    if i + 1 == projection.len()
+                        && (!self.whole_word || words.accepts(
+                            &doc.units, &doc.newlines, from..to, cursor, candidate.clone(),
+                        ))
+                    {
+                        if visit(candidate) {
                             return;
                         }
                         if !overlapping {
