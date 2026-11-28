@@ -200,6 +200,7 @@ pub struct AppState {
     pub(crate) native_tunnels: crate::views::tunnels_live::NativeTunnels,
     pub(crate) prompt_settings: crate::views::prompts_live::LivePromptSettings,
     pub(crate) appearance_select: Option<usize>,
+    pub(crate) appearance_error: Option<String>,
     /// The theme toggle's popover state (React `ThemeToggle`'s `open` cell).
     /// The titlebar owns the toggle, so the flag lives here next to the other
     /// chrome cells instead of in a component that is rebuilt every frame.
@@ -689,6 +690,7 @@ impl Default for AppState {
             native_tunnels: Default::default(),
             prompt_settings: Default::default(),
             appearance_select: None,
+            appearance_error: None,
             theme_toggle_open: false,
             titlebar_menu: Default::default(),
             connection_search: TextEdit::new(String::new()),

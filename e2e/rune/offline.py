@@ -189,6 +189,12 @@ class OfflineJourneys:
 
         tree = self.replay([*open_scheme, tap(3.4, "option0")], until=4.8)
         self.expect_rendered(tree, key="settings-error")
+        self.expect_rendered(tree, key="appearance-error", within="settings-error")
+        pack_box = self._settled_rect(tree, "appearance-builtin-theme-status")
+        error_box = self._settled_rect(tree, "settings-error")
+        footer = self._settled_rect(tree, "appearance-section-more")
+        self.assertAlmostEqual(error_box[1] - pack_box[1] - pack_box[3], 12, delta=1)
+        self.assertAlmostEqual(footer[1] - error_box[1] - error_box[3], 32, delta=1)
         error_texts = [node["text"] for node in tree["elements"]
                        if "Is a directory" in (node.get("text") or "")]
         self.assertTrue(any(visible(tree, text=text, within="settings-error") for text in error_texts),
@@ -196,6 +202,16 @@ class OfflineJourneys:
         self.assertEqual(expect_previous_scheme(tree), before_label)
         self.assertFalse(visible(tree, text=light_label, within=scheme))
         self.assertFalse(visible(tree, key=popup))
+        expect_file_blocker_intact()
+
+        # As in React, leaving unmounts Appearance and retires its error.
+        revisit = self.replay([
+            *open_scheme, tap(3.4, "option0"), tap(4.6, "settings-nav-general"),
+            tap(5.7, "settings-nav-appearance"),
+        ], until=6.7)
+        self.assertFalse(visible(revisit, key="settings-error"))
+        self.assertFalse(visible(revisit, key="appearance-error"))
+        self.assertEqual(expect_previous_scheme(revisit), before_label)
         expect_file_blocker_intact()
 
     def test_extensions_without_driver_settings_contributors_is_localized_and_read_only(self):

@@ -483,13 +483,16 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
 
         // -- The apply error --
         if let Some(error) = self.error {
-            section = section.child(
-                text(t("settings.appearance.applyError").replace("{error}", error))
-                    .font(tok::type_::LABEL)
+            // The section uses gap-4 for its fields, but React's error is mt-3.
+            // Let filesystem diagnostics wrap instead of clipping a fixed row.
+            section = section.child(col().key("settings-error").role("alert").w_full().mt(-4.0)
+                .child(text(t("settings.appearance.applyError").replace("{error}", error))
+                    .key("appearance-error")
+                    .w_full()
+                    .wrap()
+                    .font(TextStyle::new(12.0, 400.0).lh(16.0))
                     .color(k.c.danger.fg)
-                    .selectable(true)
-                    .key("appearance-error"),
-            );
+                    .selectable(true)));
         }
 
         // The section's 16pt gap plus this 16pt wrapper implements mt-8.

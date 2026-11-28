@@ -204,7 +204,7 @@ pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool, layer: &mu
 
 fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &str, layer: &mut Vec<El>) -> El {
     let body = match active {
-        "appearance" => appearance_section(state, theme, dark),
+        "appearance" => appearance_section(state, dark),
         "dataBrowsing" => data_browsing_live::view(state, theme, dark),
         "editor" => editor_section(state, theme, dark),
         "behavior" => behavior_live::view(state, dark),
@@ -231,7 +231,7 @@ fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &st
         .child(body)
 }
 
-fn appearance_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+fn appearance_section(state: &AppState, dark: bool) -> El {
     use appearance_section::{AppearanceSection, ThemeMode, ThemePreference};
 
     let preference = ThemePreference { mode: state.theme_mode(), pack_id: None };
@@ -239,6 +239,7 @@ fn appearance_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let section = AppearanceSection::new(&preference, &[])
         .supported_modes(&ThemeMode::MODES)
         .show_theme_packs(false)
+        .error(state.appearance_error.as_deref())
         .on_mode_change(|state: &mut AppState, mode| state.save_theme_mode(mode))
         .listbox(
             |state| state.appearance_select,
@@ -250,7 +251,6 @@ fn appearance_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .key("settings-section-appearance")
         .w_full()
         .child(section)
-        .child(settings_error_row(state, theme))
         .children(overlays)
 }
 

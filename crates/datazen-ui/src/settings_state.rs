@@ -119,6 +119,9 @@ impl AppState {
         self.appearance_select = None;
         self.settings_content.close_select();
         let section = parse_settings_section(section);
+        if section != "appearance" || self.active != crate::types::Section::Settings {
+            self.appearance_error = None;
+        }
         if section != "prompts" || self.active != crate::types::Section::Settings {
             self.retire_native_prompt_confirmation();
         }
@@ -414,9 +417,12 @@ impl AppState {
     /// Persist the React theme mode. The host writes one scalar setting;
     /// System is the honest "no override" choice, not a forced dark/light.
     pub(crate) fn save_theme_mode(&mut self, mode: ThemeMode) {
-        self.settings_error = self
-            .write_ui_setting(Setting::ThemeMode { mode: mode.as_str().to_owned() })
-            .err();
+        let error = self.write_ui_setting(Setting::ThemeMode { mode: mode.as_str().to_owned() }).err();
+        if self.active == crate::types::Section::Settings && self.settings_section() == "appearance" {
+            self.appearance_error = error;
+        } else {
+            self.settings_error = error;
+        }
     }
 
     pub fn toggle_theme(&mut self) {
