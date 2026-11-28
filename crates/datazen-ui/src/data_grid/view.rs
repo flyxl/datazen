@@ -8,6 +8,7 @@ use datazen_ui_api::{
 use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, row, text};
 
 use crate::i18n::t;
+use crate::icons::{ICON_ARROW_DOWN_WIDE_NARROW, ICON_ARROW_UP_DOWN, ICON_ARROW_UP_NARROW_WIDE};
 use crate::ui::palette;
 
 use super::{scrollbars, DataGrid, GUTTER_W, ROW_H};
@@ -16,6 +17,11 @@ use crate::ui::field::TextField;
 // Chromium TableHeader uses h-10 (40px) for the two-line metadata header.
 // Only a typed Table Data page opts into it; row density is independent.
 const TYPED_TABLE_HEADER_H: f32 = 40.0;
+const TABLE_HEADER_PAD: f32 = 8.0;
+const TABLE_SORT_GAP: f32 = 4.0;
+const TABLE_SORT_SLOT: f32 = 20.0;
+const TABLE_SORT_GLYPH: f32 = 14.0;
+const TABLE_SORT_MIN_LABEL: f32 = 36.0;
 
 /// Which grid a render call targets: the table page's or the query result's.
 /// The result keys are prefixed so both can be mounted in one frame.
@@ -56,6 +62,7 @@ struct CellPaint {
     row_tail_width: f32,
     row_height: f32,
     sqlite_number_ink: Option<rune::Color>,
+    sqlite_sort_indicators: bool,
 }
 
 impl CellPaint {
@@ -81,6 +88,7 @@ impl CellPaint {
         Self {
             dark,
             sqlite_number_ink: sqlite_table.then(|| palette::sqlite_table_number_ink(dark)),
+            sqlite_sort_indicators: sqlite_table && state.can_cycle_table_sort(),
             alternating_rows: !shared || state.desktop.read_native_grid_alternating_rows().unwrap_or(true),
             show_row_numbers: !shared || state.desktop.read_native_grid_row_numbers()
                 .unwrap_or(DEFAULT_GRID_ROW_NUMBERS),
@@ -754,40 +762,71 @@ fn header_cell(
     paint: CellPaint,
     header_h: f32,
 ) -> El {
-    let label = grid
+    let name = grid
         .column_name(col_index)
         .map(str::to_owned)
         .unwrap_or_else(|| format!("c{col_index}"));
-    let label = match grid.sort() {
-        Some((col, true)) if col == col_index => format!("{label} ↓"),
-        Some((col, false)) if col == col_index => format!("{label} ↑"),
-        _ => label,
+    // This is the sort echoed with the painted rows, never a pending request
+    // or the configured implicit primary-key order.
+    let direction = grid.sort().filter(|&(col, _)| col == col_index).map(|(_, descending)| descending);
+    let w = grid.col_w(col_index);
+    let sort_label_room = w - 2.0 * TABLE_HEADER_PAD - TABLE_SORT_SLOT - TABLE_SORT_GAP;
+    // A 40px persisted width cannot spare the whole indicator slot without
+    // hiding the label. Keep its previous inline cue and still expose a11y.
+    let show_glyph = paint.sqlite_sort_indicators && sort_label_room >= TABLE_SORT_MIN_LABEL;
+    let label = match (show_glyph, direction) {
+        (false, Some(true)) => format!("{name} ↓"),
+        (false, Some(false)) => format!("{name} ↑"),
+        _ => name.clone(),
     };
     let sql_type = if slot == GridSlot::Table { grid.column_type(col_index) } else { None };
-    let content = if let Some(ty) = sql_type {
-        col()
-            .w_full()
-            .min_w(0.0)
-            .child(text(label).font(TextStyle::new(12.0, 500.0).lh(16.0)).color(ink).truncate())
-            .child(
-                text(ty)
-                    .key(slot.key(&format!("head-type-{col_index}")))
-                    .font(TextStyle::new(11.0, 400.0).lh(16.0).mono())
-                    .color(palette::table_header_type_ink(ty, paint.dark))
-                    .truncate(),
-            )
+    let content = if sql_type.is_some() || show_glyph {
+        let block = if show_glyph { col().w(sort_label_room) } else { col().w_full() };
+        let mut title = text(label).font(TextStyle::new(12.0, 500.0).lh(16.0)).color(ink).truncate();
+        if show_glyph {
+            title = title.help(name.clone());
+        }
+        let mut block = block.min_w(0.0).child(title);
+        if let Some(ty) = sql_type {
+            let mut type_label = text(ty)
+                .key(slot.key(&format!("head-type-{col_index}")))
+                .font(TextStyle::new(11.0, 400.0).lh(16.0).mono())
+                .color(palette::table_header_type_ink(ty, paint.dark))
+                .truncate();
+            if show_glyph {
+                type_label = type_label.help(ty.to_owned());
+            }
+            block = block.child(type_label);
+        }
+        block
     } else {
         text(label).font(label_style()).color(ink)
     };
-    let w = grid.col_w(col_index);
     let mut cell = row()
         .key(slot.key(&format!("head-{col_index}")))
         .role("columnheader")
         .w(w)
         .h(header_h)
-        .px(8.0)
+        .px(TABLE_HEADER_PAD)
         .center_y()
         .child(content);
+    if paint.sqlite_sort_indicators {
+        cell = cell.label(name).sorted(direction.map(|descending| !descending));
+    }
+    if show_glyph {
+        let (glyph, state) = match direction {
+            None => (&ICON_ARROW_UP_DOWN, "neutral"),
+            Some(false) => (&ICON_ARROW_UP_NARROW_WIDE, "ascending"),
+            Some(true) => (&ICON_ARROW_DOWN_WIDE_NARROW, "descending"),
+        };
+        cell = cell.gap(TABLE_SORT_GAP).child(
+            row().size(TABLE_SORT_SLOT, TABLE_SORT_SLOT).center().a11y_hidden()
+                .child(rune::icon(glyph, TABLE_SORT_GLYPH)
+                    .key(format!("head-sort-{state}-{col_index}"))
+                    .color(palette::sqlite_header_sort_ink(paint.dark, direction.is_some()))
+                    .a11y_hidden()),
+        );
+    }
     if slot == GridSlot::Table {
         cell = cell.on_press(move |state: &mut crate::AppState| state.cycle_sort(col_index));
     }

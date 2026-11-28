@@ -345,19 +345,101 @@ class OfflineJourneys:
         for suffix in ("-wal", "-shm", "-journal"):
             self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
 
+    def _expect_table_header_sort(self, tree, col, name, direction=None):
+        keyname = f"head-{col}"
+        self.expect_rendered(tree, text=name, within=keyname)
+        self.expect_rendered(tree, key=f"head-sort-{direction or 'neutral'}-{col}", within=keyname)
+
+        def find(node):
+            if node.get("key") == keyname:
+                yield node
+            for child in node.get("children", ()):
+                yield from find(child)
+
+        headers = list(find(tree["accessibility"]))
+        self.assertEqual(len(headers), 1, keyname)
+        self.assertEqual(headers[0].get("sort"), direction)
+
     def test_grid_header_cycles_sort_order(self):
         fixture(self.store, self.db)
         with sqlite3.connect(self.db) as db:
-            asc, desc = [row[0] for row in db.execute(
-                "SELECT customer_name FROM customers ORDER BY customer_name")]
+            db.execute("UPDATE customers SET customer_name='zulu' WHERE id=1")
+            db.execute("UPDATE customers SET customer_name='alpha' WHERE id=2")
+            db.execute("INSERT INTO customers VALUES (3,'mike')")
+            for idx in range(15):
+                db.execute(f"ALTER TABLE customers ADD COLUMN amount_{idx} INTEGER DEFAULT {idx}")
+            expected = {
+                tag: [row[0] for row in db.execute(sql)]
+                for tag, sql in (
+                    (None, "SELECT customer_name FROM customers ORDER BY id DESC"),
+                    ("ascending", "SELECT customer_name FROM customers ORDER BY customer_name ASC"),
+                    ("descending", "SELECT customer_name FROM customers ORDER BY customer_name DESC"),
+                )
+            }
+        self.assertEqual(len({tuple(rows) for rows in expected.values()}), 3)
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        (self.root/"settings.json").write_text(json.dumps({
+            "ui": {"language": "en"},
+            "defaultTableSort": "primaryKeyDesc",
+            "rowCountMode": "exact",
+        }), encoding="utf-8")
+        before = self.db.read_bytes()
+
+        def header(tree, direction):
+            self._expect_table_header_sort(tree, 1, "customer_name", direction)
+            self._expect_table_header_sort(tree, 0, "id")
+            self.expect_rendered(tree, key="head-type-1", text="TEXT", within="head-1")
+            frame = self._settled_rect(tree, "data-grid-scroll")
+            frozen = self._settled_rect(tree, "head-0")
+            col = self._settled_rect(tree, "head-1")
+            tx, ty, tw, th = self._settled_rect(tree, "head-type-1")
+            gx, gy, gw, gh = self._settled_rect(tree, f"head-sort-{direction or 'neutral'}-1")
+            self.assertEqual(col[3], 40)
+            self.assertEqual((gw, gh), (14, 14))
+            self.assertAlmostEqual(frozen[0], frame[0]+40, delta=.25)
+            self.assertAlmostEqual(frozen[1], frame[1], delta=.25)
+            self.assertGreaterEqual(gx + .25, tx + tw)
+            self.assertLessEqual(gx + gw, col[0]+col[2])
+            self.assertGreaterEqual(gy, col[1])
+            self.assertLessEqual(gy + gh, col[1]+col[3])
+            self.assertGreaterEqual(ty, col[1])
+            self.assertLessEqual(ty + th, col[1]+col[3])
+            for row, value in enumerate(expected[direction]):
+                self.expect_rendered(tree, text=value, within=f"cell-{row}-1")
+            return col
+
         actions = list(OPEN)
-        for count, (direction, first) in enumerate(((" ↑", asc), (" ↓", desc), ("", asc)), 1):
-            with self.subTest(direction=direction or "unsorted"):
+        baseline = header(self.replay(actions, until=4.8, size="1440x640"), None)
+        for count, direction in enumerate(("ascending", "descending", None), 1):
+            with self.subTest(direction=direction or "neutral"):
                 at = 3.8 + count * 1.35
                 actions.append(tap(at, "head-1"))
-                tree = self.replay(actions, until=at + 1.2)
-                self.expect_rendered(tree, text=f"customer_name{direction}", within="head-1")
-                self.expect_rendered(tree, text=first, within="cell-0-1")
+                tree = self.replay(actions, until=at + 1.2, size="1440x640")
+                self.assertEqual(header(tree, direction), baseline)
+
+        scrolled = self.replay([*actions, {
+            "t": 9.4, "type": "drag", "key": "horizontal-scrollbar/thumb", "dx": 195, "dur": .4,
+        }], until=10.4, size="1440x640")
+        def walk(node):
+            yield node
+            for child in node.get("children", ()):
+                yield from walk(child)
+
+        grid = next(node for node in walk(scrolled["accessibility"])
+                    if node.get("key") == "data-grid-scroll")
+        self.assertGreater(grid["scroll"][0], 0)
+        frame = self._settled_rect(scrolled, "data-grid-scroll")
+        self.assertAlmostEqual(self._settled_rect(scrolled, "head-0")[0], frame[0]+40, delta=.25)
+        self._expect_table_header_sort(scrolled, 0, "id")
+        self.expect_rendered(scrolled, key="head-type-0", text="INTEGER", within="head-0")
+
+        result = self.replay(query_steps("SELECT customer_name FROM customers ORDER BY id;"), until=10.5)
+        self.expect_rendered(result, text="zulu", within="result-cell-0-0")
+        self.assertFalse(any((node.get("key") or "").startswith("head-sort-")
+                             for node in result["elements"]))
+        self.assertEqual(self.db.read_bytes(), before)
 
     def test_legacy_table_cell_selection_clears_on_escape_and_page_change(self):
         """Migrate TC-SEL-001/004/006 on a real paged SQLite table."""
@@ -1388,9 +1470,9 @@ class OfflineJourneys:
             self.assertEqual(json.loads(settings.read_text(encoding="utf-8")),
                              {**initial, "defaultTableSort": wire})
 
-        def expect_page(tree, rows, header="name", col=1):
+        def expect_page(tree, rows, col=1, direction=None):
             self.expect_rendered(tree, key="grid-readonly", within="data-grid")
-            self.expect_rendered(tree, text=header, within=f"head-{col}")
+            self._expect_table_header_sort(tree, col, "name", direction)
             for i, (name,) in enumerate(rows):
                 self.expect_rendered(tree, text=name, within=f"cell-{i}-{col}")
 
@@ -1403,11 +1485,11 @@ class OfflineJourneys:
         expect_page(paged, desc_next)
 
         sort_a = [*OPEN, tap(5.2, "head-1")]
-        expect_page(self.replay(sort_a, until=6.8), manual, "name ↑")
+        expect_page(self.replay(sort_a, until=6.8), manual, direction="ascending")
         b = [*sort_a, tap(7.0, "tree-table-orders")]
         expect_page(self.replay(b, until=8.8), driver_orders, col=0)
         a_again = self.replay([*b, tap(9.1, "tab-1")], until=10.9)
-        expect_page(a_again, manual, "name ↑")
+        expect_page(a_again, manual, direction="ascending")
         # Clear through the two remaining real header cycle presses.
         expect_page(self.replay([*sort_a, tap(7.0, "head-1"), tap(8.5, "head-1")],
                                 until=10.2), desc)
@@ -1441,33 +1523,33 @@ class OfflineJourneys:
         self.assertNotEqual(customers_default, customers_asc)
         self.assertNotEqual(orders_default, orders_desc)
 
-        def expect_order(tree, rows, header):
+        def expect_order(tree, rows, direction=None):
             self.expect_rendered(tree, key="grid-readonly", within="data-grid")
-            self.expect_rendered(tree, text=header, within="head-1")
+            self._expect_table_header_sort(tree, 1, "name", direction)
             for i, (name,) in enumerate(rows):
                 self.expect_rendered(tree, text=name, within=f"cell-{i}-1")
 
         a = [*OPEN, tap(5.2, "head-1")]
-        expect_order(self.replay(a, until=6.8), customers_asc, "name ↑")
+        expect_order(self.replay(a, until=6.8), customers_asc, "ascending")
         b = [*a, tap(7.0, "tree-table-orders")]
         unsorted_b = self.replay(b, until=8.8)
         self.expect_rendered(unsorted_b, text="customers", within="tab-1")
         self.expect_rendered(unsorted_b, text="orders", within="tab-2")
-        expect_order(unsorted_b, orders_default, "name")
+        expect_order(unsorted_b, orders_default)
         ordered_b = [*b, tap(9.1, "head-1"), tap(10.6, "head-1")]
-        expect_order(self.replay(ordered_b, until=12), orders_desc, "name ↓")
+        expect_order(self.replay(ordered_b, until=12), orders_desc, "descending")
 
         back_a = [*ordered_b, tap(12.3, "tab-1")]
-        expect_order(self.replay(back_a, until=13.9), customers_asc, "name ↑")
+        expect_order(self.replay(back_a, until=13.9), customers_asc, "ascending")
         back_b = [*back_a, tap(14.1, "tab-2")]
-        expect_order(self.replay(back_b, until=15.6), orders_desc, "name ↓")
+        expect_order(self.replay(back_b, until=15.6), orders_desc, "descending")
 
         reopened_a = self.replay([
             *back_b, tap(16, "tab-close-1"), tap(17, "tree-table-customers"),
         ], until=18.7, timeout=75)
         self.assertFalse(visible(reopened_a, key="tab-1"))
         self.expect_rendered(reopened_a, text="customers", within="tab-3")
-        expect_order(reopened_a, customers_default, "name")
+        expect_order(reopened_a, customers_default)
         self.assertEqual(self.db.read_bytes(), before)
 
     def test_sqlite_query_retains_rows_across_result_batches(self):

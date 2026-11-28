@@ -236,15 +236,18 @@ impl AppState {
         }
     }
 
-    /// A header click cycles its column: none, ascending, descending, back to none.
-    pub fn cycle_sort(&mut self, column: u32) {
-        if self.active != Section::Workspace
-            || self.connect_loading.is_some()
-            || !self.grid.has_page()
-            || !self.tabs.selected().is_some_and(|tab| {
+    pub(crate) fn can_cycle_table_sort(&self) -> bool {
+        self.active == Section::Workspace
+            && self.connect_loading.is_none()
+            && self.grid.has_page()
+            && self.tabs.selected().is_some_and(|tab| {
                 tab.kind == TabKind::Table && tab.title == self.grid.table_label()
             })
-        {
+    }
+
+    /// A header click cycles its column: none, ascending, descending, back to none.
+    pub fn cycle_sort(&mut self, column: u32) {
+        if !self.can_cycle_table_sort() {
             return;
         }
         let Some(name) = self.grid.column_name(column).map(str::to_owned) else {

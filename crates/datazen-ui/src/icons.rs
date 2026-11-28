@@ -297,6 +297,22 @@ pub static ICON_ARROW_DOWN: rune::Icon = rune::Icon {
     view: 24.0,
     body: "<path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 5v14\"/><path stroke=\"currentColor\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m19 12-7 7-7-7\"/>",
 };
+// The exact Lucide 0.487 sort indicators used by Chromium TableHeader.
+pub static ICON_ARROW_UP_DOWN: rune::Icon = rune::Icon {
+    name: "arrow-up-down",
+    view: 24.0,
+    body: r#"<path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="m21 16-4 4-4-4"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M17 20V4"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="m3 8 4-4 4 4"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M7 4v16"/>"#,
+};
+pub static ICON_ARROW_UP_NARROW_WIDE: rune::Icon = rune::Icon {
+    name: "arrow-up-narrow-wide",
+    view: 24.0,
+    body: r#"<path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="m3 8 4-4 4 4"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M7 4v16"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M11 12h4"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M11 16h7"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M11 20h10"/>"#,
+};
+pub static ICON_ARROW_DOWN_WIDE_NARROW: rune::Icon = rune::Icon {
+    name: "arrow-down-wide-narrow",
+    view: 24.0,
+    body: r#"<path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="m3 16 4 4 4-4"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M7 20V4"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M11 4h10"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M11 8h7"/><path stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M11 12h4"/>"#,
+};
 pub static ICON_FILTER: rune::Icon = rune::Icon {
     name: "filter",
     view: 24.0,

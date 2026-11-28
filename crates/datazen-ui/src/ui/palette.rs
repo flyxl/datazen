@@ -105,6 +105,12 @@ pub(crate) fn sqlite_table_number_ink(dark: bool) -> Color {
     rune::color::hex(if dark { "#fbbf24" } else { "#b86d12" }).expect("literal numeric cell color")
 }
 
+/// Chromium's stock muted/active ink for the SQLite Table Data sort glyph.
+pub(crate) fn sqlite_header_sort_ink(dark: bool, active: bool) -> Color {
+    let hex = if active { "#4fc3f7" } else if dark { "#5f6879" } else { "#8498af" };
+    rune::color::hex(hex).expect("literal header sort color")
+}
+
 /// Data-grid chrome and cell background colors.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GridPalette {
