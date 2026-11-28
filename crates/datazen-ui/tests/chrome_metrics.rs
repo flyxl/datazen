@@ -82,9 +82,12 @@ use rune::{Env, Runtime};
 
     #[test]
     fn content_status_bar_replaces_migration_preview_with_context() {
+        use datazen_ui_api::WorkspaceApi;
         // L6: 40pt status bar shows connection state, context and shortcuts;
         // the migration preview banner is removed.
         let mut rt = runtime();
+        rt.state.workspace.connect("local").expect("open fixture");
+        rt.state.open_table_tab("customers").expect("active panel");
         rt.frame(0.0);
         let bar = rt
             .elements()
@@ -124,7 +127,8 @@ use rune::{Env, Runtime};
             "migration preview banner removed: {texts:?}"
         );
         assert!(
-            texts.iter().any(|t| t.contains("New query") && t.contains("Close")),
+            texts.iter().any(|line| line.contains(datazen_ui::i18n::t("common.newQuery"))
+                && line.contains(datazen_ui::i18n::t("common.close")) && line.contains("Space")),
             "shortcut hints rendered: {texts:?}"
         );
     }

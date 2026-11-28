@@ -26,10 +26,7 @@ const SHELL_KEYS: &[&str] = &[
     "navigator-filter-input",
     "datazen-page",
     "content-toolbar",
-    "content-status-bar",
-    "status-connection-label",
-    "status-context",
-    "status-shortcuts",
+    "content-status-bar-absent",
 ];
 
 fn key_set(rt: &Runtime<AppState>) -> std::collections::HashSet<String> {
@@ -566,7 +563,7 @@ fn the_connection_page_fits_both_windows_in_both_themes() {
             rt.frame(0.0);
 
             let keys = key_set(&rt);
-            for key in ["rune-connection-page", "datazen-body", "content-status-bar"] {
+            for key in ["rune-connection-page", "datazen-body", "content-status-bar-absent"] {
                 assert!(
                     keys.contains(key),
                     "{width}x{height} dark={dark}: shell key {key:?} missing"

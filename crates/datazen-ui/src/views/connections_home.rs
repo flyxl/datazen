@@ -249,7 +249,15 @@ fn landing(
     };
     let content = content.child(recent_queries_card(theme))
         .child(mcp_promo_bar(state, theme, dark))
-        .child(shortcut_footer(theme));
+        .children(super::home::shortcut_footer::resolved_shortcut_footer(
+            dark, cfg!(target_os = "macos"), |action, _| match action {
+                super::home::shortcut_footer::KeymapAction::FormatSql => state.desktop.native_format_shortcut()
+                    .map(|binding| (binding, t("keymap.action.formatSql").to_owned())),
+                // Never advertise the shell's New Connection chord as New Query,
+                // or promise Save Query without a focused-editor command.
+                _ => None,
+            },
+        ));
     page.child(content)
 }
 
@@ -789,45 +797,6 @@ fn mcp_promo_bar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             t("common.copy"),
             dark,
         ))
-}
-
-/// Shortcut hints footer aligned with React's ShortcutFooter.
-fn shortcut_footer(theme: tok::Theme) -> El {
-    row()
-        .key("connections-shortcut-footer")
-        .child(react_key("home-shortcut-footer"))
-        .w_full()
-        .py(2.0)
-        .gap(18.0)
-        .justify_center()
-        .center_y()
-        .flex_wrap()
-        .child(shortcut_hint("connections-shortcut-key", "⌘↩", "Run query", theme))
-        .child(shortcut_hint("connections-shortcut-save", "⌘S", "Save query", theme))
-        .child(shortcut_hint("connections-shortcut-format", "⇧⌥F", t("keymap.action.formatSql"), theme))
-}
-
-fn shortcut_hint(key: &str, keys: &str, label: &str, theme: tok::Theme) -> El {
-    row()
-        .key(key)
-        .h(22.0)
-        .gap(6.0)
-        .center_y()
-        .child(
-            row()
-                .h(20.0)
-                .px(6.0)
-                .center_y()
-                .radius(5.0)
-                .fill(theme.bg)
-                .border(1.0, theme.card_border)
-                .child(
-                    text(keys)
-                        .font(type_::MONO_CAPTION)
-                        .color(theme.text_secondary),
-                ),
-        )
-        .child(text(label).font(type_::LABEL).color(theme.text_secondary))
 }
 
 /// The per-connection status pill: connected (green), connecting (accent) or

@@ -46,7 +46,7 @@ fn the_port_keeps_the_contract_key_families_composed() {
         "datazen-page",
         "content-toolbar",
         "content-toolbar-title",
-        "content-status-bar",
+        "content-status-bar-absent",
     ] {
         assert!(
             keys.contains(key),
@@ -66,7 +66,7 @@ fn the_port_keeps_the_contract_key_families_composed() {
     rt.invalidate();
     rt.frame(0.0);
     let keys = key_set(&rt);
-    for key in ["tab-strip", "content-toolbar", "datazen-page"] {
+    for key in ["tab-strip", "content-toolbar", "datazen-page", "content-status-bar"] {
         assert!(
             keys.contains(key),
             "Workspace contract key {key:?} is missing: {keys:?}"

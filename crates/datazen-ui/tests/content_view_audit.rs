@@ -91,9 +91,7 @@ fn ai_drawer_does_not_depend_on_detail_applicability() {
 }
 
 #[test]
-fn host_mode_keeps_both_bands_mounted_in_every_section() {
-    // from_host pins the two React gates to false so existing pinned keys
-    // (`content-toolbar` / `content-status-bar`) survive in all sections.
+fn host_does_not_mount_database_status_without_an_active_panel() {
     for section in [
         datazen_ui::types::Section::Workspace,
         datazen_ui::types::Section::Connections,
@@ -102,14 +100,14 @@ fn host_mode_keeps_both_bands_mounted_in_every_section() {
         let mut state = AppState::default();
         state.active = section;
         let vm = datazen_ui::views::content_view::ContentViewVm::from_host(&state);
-        assert!(!vm.react_toolbar_gate && !vm.react_status_gate, "host keeps both bands");
+        assert!(!vm.react_toolbar_gate && vm.react_status_gate);
         AUDIT_FIXTURE.with(|f| *f.borrow_mut() = (vm, true));
         let mut rt = Runtime::new(state, view, (960.0, 640.0), env());
         rt.frame(0.0);
         assert!(has_key(&rt, "content-toolbar"), "{section:?}: pinned toolbar");
-        assert!(has_key(&rt, "content-status-bar"), "{section:?}: pinned status bar");
+        assert!(!has_key(&rt, "content-status-bar"), "{section:?}: no active panel");
         assert!(!has_key(&rt, "content-toolbar-absent"));
-        assert!(!has_key(&rt, "content-status-bar-absent"));
+        assert!(has_key(&rt, "content-status-bar-absent"));
     }
 }
 

@@ -42,7 +42,7 @@ fn shell_ts_is_x_class_and_the_rune_root_carries_its_four_concerns() {
         "datazen-titlebar-label",
         "datazen-theme-toggle",
         "datazen-body",
-        "content-status-bar",
+        "datazen-page",
     ] {
         assert!(rt.find(key).is_some(), "shell chrome node missing: {key}");
     }

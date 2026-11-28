@@ -85,7 +85,9 @@ impl ContentViewVm {
     /// in the VM for a view that ports the panel store.
     #[allow(dead_code)] // VM surface; consumed by connection_page
     pub fn from_host(state: &crate::state_def::AppState) -> Self {
-        let has_active_panel = state.tabs.selected().is_some();
+        let has_active_panel = state.active == crate::types::Section::Workspace
+            && state.connect_loading.is_none()
+            && (state.tabs.selected().is_some() || state.native_kv.is_some());
         Self {
             has_active_panel,
             is_kv_panel: false,
@@ -93,10 +95,9 @@ impl ContentViewVm {
             ai_chat_open: false,
             detail_panel_applicable: has_active_panel,
             split_secondary: false,
-            // Host mode keeps both keys mounted in every section, exactly as
-            // the pre-port connection_content did (tests/connection_page.rs).
+            // A retained DB tab is not an active panel on the Connections landing.
             react_toolbar_gate: false,
-            react_status_gate: false,
+            react_status_gate: true,
             dialogs_vm: None,
             object_vm: None,
             document_vm: None,
@@ -121,7 +122,7 @@ pub fn build(
         .min_w(0.0)
         .min_h(0.0);
 
-    let plain_home = super::connection_page::plain_light_connections_home(state, vm, dark);
+    let plain_home = super::connection_page::plain_connections_home(state, vm);
     // 48pt toolbar: React omits it entirely on a KV panel.
     if plain_home {
         root = root.child(row().key("content-toolbar-absent").h(0.0));
@@ -218,10 +219,9 @@ pub fn build(
     root = root.child(main);
 
     if !plain_home && (!vm.react_status_gate || vm.show_status_bar()) {
-        let live_table_data = state.table_view == crate::types::TableView::Data
-            && super::connection_page::plain_live_sqlite_table(state, vm);
+        let live_panel = state.active == crate::types::Section::Workspace && vm.has_active_panel;
         root = root.child(super::chrome::content_status_bar_with_live_table_paint(
-            state, dark, live_table_data,
+            state, dark, live_panel,
         ));
     } else {
         root = root.child(row().key("content-status-bar-absent").h(0.0));

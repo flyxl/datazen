@@ -148,10 +148,20 @@ const CANDIDATES: [(KeymapAction, &str, &str); 3] = [
 
 #[allow(dead_code)] // view entry point; consumer: the landing page host (not wired).
 pub fn shortcut_footer(vm: &ShortcutFooterVm, dark: bool, is_mac: bool) -> Option<El> {
+    resolved_shortcut_footer(dark, is_mac, |action, label| {
+        Some((get_action_shortcut(action, vm.preset, &vm.custom), t(label).to_owned()))
+    })
+}
+
+/// Same registered action chips as React. The live host supplies only
+/// bindings it can actually dispatch in the appropriate editor context.
+pub(crate) fn resolved_shortcut_footer(
+    dark: bool, is_mac: bool, binding: impl Fn(KeymapAction, &str) -> Option<(String, String)>,
+) -> Option<El> {
     let k = kit(dark);
     let mut footer = row()
         .key(FOOTER_KEY)
-        .child(row().key(REACT_KEY).a11y_hidden())
+
         .w_full()
         .gap(20.0)
         .justify_center()
@@ -160,7 +170,7 @@ pub fn shortcut_footer(vm: &ShortcutFooterVm, dark: bool, is_mac: bool) -> Optio
 
     let mut mounted = 0usize;
     for (action, label_key, item_key) in CANDIDATES {
-        let shortcut = get_action_shortcut(action, vm.preset, &vm.custom);
+        let Some((shortcut, label)) = binding(action, label_key) else { continue; };
         if shortcut.is_empty() {
             continue;
         }
@@ -182,17 +192,17 @@ pub fn shortcut_footer(vm: &ShortcutFooterVm, dark: bool, is_mac: bool) -> Optio
                         .child(
                             text(format_shortcut_for_display(&shortcut, is_mac))
                                 .key(format!("{item_key}-kbd"))
-                                .font(k.ty.text_xsmall)
+                                .font(rune::TextStyle::new(10.0, 400.0).mono())
                                 .color(k.c.text_base),
                         ),
                 )
                 .child(
-                    text(t(label_key))
+                    text(label)
                         .key(format!("{item_key}-label"))
                         .font(k.ty.text_xsmall)
                         .color(k.c.text_muted),
                 ),
         );
     }
-    (mounted > 0).then_some(footer)
+    (mounted > 0).then(|| footer.child(row().key(REACT_KEY).absolute(0.0, 0.0).size(0.0, 0.0).a11y_hidden()))
 }

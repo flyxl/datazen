@@ -106,7 +106,7 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         // ContentView. Each existing Rune page owns its own controls and
         // any padding, with no generic database title or status footer.
         let embedded = match state.active {
-            Section::Workflows | Section::Dashboards | Section::Wapps => {
+            Section::Workflows | Section::Dashboards | Section::Wapps | Section::Tools => {
                 Some(page_body(state, theme, dark, &mut layer))
             }
             _ => None,
@@ -192,8 +192,8 @@ fn plain_content_view(vm: &crate::views::content_view::ContentViewVm) -> bool {
 }
 
 /// React’s populated disconnected landing occupies the full content lane.
-pub(super) fn plain_light_connections_home(state: &AppState, vm: &crate::views::content_view::ContentViewVm, dark: bool) -> bool {
-    !dark && state.active == Section::Connections && state.home_slot.is_none()
+pub(super) fn plain_connections_home(state: &AppState, vm: &crate::views::content_view::ContentViewVm) -> bool {
+    state.active == Section::Connections && state.home_slot.is_none()
         && state.desktop_connections.is_some() && !state.visible_connections().is_empty()
         && state.connect_loading.is_none() && plain_content_view(vm)
 }
@@ -238,7 +238,7 @@ pub fn connection_content_with_vm(
     }
     let plain_query = plain_query_workspace(state, vm);
     let plain_table = plain_live_sqlite_table(state, vm);
-    let plain_home = plain_light_connections_home(state, vm, dark);
+    let plain_home = plain_connections_home(state, vm);
     let page_inset = if plain_query || plain_table || plain_home { 0.0 } else { 24.0 };
     let plain_table_data = plain_table && state.table_view == crate::types::TableView::Data;
     // Plain Query and live Table Data fill the lane. Their inactive object

@@ -293,12 +293,13 @@ pub(super) fn content_status_bar_with_live_table_paint(
             .and_then(|list| list.iter().find(|c| &c.id == id))
     });
     let connection_name = profile.map(|c| c.name.clone());
-    let database_label = profile.map(|c| c.engine.clone());
-    let current_database = state
-        .desktop_catalog
-        .as_ref()
-        .and_then(|catalog| catalog.databases.first())
-        .map(|db| db.name.clone());
+    let database_label = profile.map(|c| crate::views::backup::db_label(&c.engine));
+    // The first catalog item need not be the database the user opened.
+    let current_database = state.query_database_selection()
+        .map(|(_, context)| context.current.database)
+        .or_else(|| state.desktop.native_value_search_scope()
+            .filter(|scope| state.desktop_connection.as_deref() == Some(&scope.connection_id[..]))
+            .map(|scope| scope.database));
 
     let mut table_name: Option<String> = None;
     let mut column_count = 0u64;
@@ -337,11 +338,10 @@ pub(super) fn content_status_bar_with_live_table_paint(
         total_rows,
         total_rows_kind,
         has_kv_slot: false,
-        mod_key: "⌘".to_owned(),
-        key_sep: String::new(),
+        mod_key: if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" }.to_owned(),
+        key_sep: if cfg!(target_os = "macos") { "" } else { "+" }.to_owned(),
         connected_label,
-        // Keeps the legacy English shortcut copy pinned by chrome_metrics.
-        shortcuts_override: Some("⌘N New query · ⌘W Close".to_owned()),
+        shortcuts_override: None,
     };
     crate::views::content_status_bar::build_with_live_table_paint(&vm, dark, live_table_data)
 }

@@ -200,10 +200,10 @@ fn landing_keeps_all_react_section_and_action_keys() {
         "view-all-history-button",
         "home-mcp-promo-bar",
         "home-mcp-copy-button",
-        "home-shortcut-footer",
     ] {
         assert!(has(&rt, key), "{key} is mounted on the landing page");
     }
+    assert!(!has(&rt, "connections-shortcut-footer"), "mock host exposes no effective bindings");
     assert!(texts(&rt).iter().any(|x| x == "datazen --mcp"), "the MCP CLI command is shown");
     for key in [
         "connWin.home.recentQueries",
