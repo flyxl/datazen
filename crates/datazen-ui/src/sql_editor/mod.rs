@@ -22,6 +22,7 @@ mod model;
 mod navigation;
 mod plain_find;
 mod select_occurrences;
+pub(crate) mod select_next_occurrence;
 mod bracket_pairs;
 mod syntax_theme;
 mod view;

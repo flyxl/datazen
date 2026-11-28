@@ -332,7 +332,9 @@ fn line_row_with_style(
         .copied()
         .filter(|(at, _)| *at >= start && *at <= end)
         .collect();
-    here.sort_by_key(|(at, _)| *at);
+    // Keep the real main/IME caret when two directional Query selections
+    // put their heads at the same position. YAML keeps its existing renderer.
+    here.sort_by_key(|(at, is_main)| (*at, style.ink.is_some() && !*is_main));
     here.dedup_by_key(|(at, _)| *at);
     let mut row = row().key(format!("sql-line-{index}")).h(style.height);
     if style.ink.is_some() {
@@ -381,7 +383,12 @@ fn line_row_with_style(
                 row = row.child(caret(true, dark, style.caret_height));
             }
         } else {
-            row = row.child(caret(false, dark, style.caret_height));
+            let secondary = caret(false, dark, style.caret_height);
+            row = row.child(if style.ink.is_some() {
+                secondary.key(super::select_next_occurrence::secondary_caret_key(at))
+            } else {
+                secondary
+            });
         }
         cursor = rel;
     }

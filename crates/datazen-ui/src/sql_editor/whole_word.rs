@@ -75,6 +75,44 @@ impl ClusterWindow {
     }
 }
 
+/// CodeMirror EditorState.wordAt uses the entire logical line, rather than
+/// the clipped buffer/boundaries used for the Find dock's Whole Word filter.
+#[derive(Default)]
+pub(super) struct WordAt {
+    line: Option<ClusterWindow>,
+}
+
+impl WordAt {
+    pub(super) fn at(
+        &mut self, input: &[u16], newlines: &[usize], at: usize, require_start: bool,
+    ) -> Option<Range<usize>> {
+        if at > input.len() { return None; }
+        let n = newlines.partition_point(|&newline| newline < at);
+        let extent = n.checked_sub(1).map_or(0, |i| newlines[i] + 1)
+            ..newlines.get(n).copied().unwrap_or(input.len());
+        if self.line.as_ref().is_none_or(|line| line.extent != extent) {
+            self.line = Some(ClusterWindow::build(input, extent));
+        }
+        let line = self.line.as_ref().expect("the logical line was built");
+        let pos = at - line.extent.start;
+        let (mut from, mut to) = (pos, pos);
+        let mut left = line.breaks.partition_point(|&edge| edge < pos);
+        while left > 0 && line.has_word(line.breaks[left - 1], from) {
+            // Most rejected whole-word hits lie inside a longer identifier.
+            // Don't walk its length repeatedly looking for its true start.
+            if require_start { return None; }
+            left -= 1;
+            from = line.breaks[left];
+        }
+        let mut right = line.breaks.partition_point(|&edge| edge <= pos);
+        while right < line.breaks.len() && line.has_word(to, line.breaks[right]) {
+            to = line.breaks[right];
+            right += 1;
+        }
+        (from != to).then(|| from + line.extent.start..to + line.extent.start)
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Filter {
     line: Option<ClusterWindow>,

@@ -194,6 +194,9 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
             .with(ChordMod::Primary).with(ChordMod::Shift);
         let owns_select_occurrences = select_occurrences.matches_tx(ev, tx)
             && state.owns_query_document_shortcut(tx);
+        let select_next_occurrence = Chord::new(ChordKey::Char('d')).with(ChordMod::Primary);
+        let owns_next_occurrence = select_next_occurrence.matches_tx(ev, tx)
+            && state.owns_query_document_shortcut(tx);
         // T1: after a result cell is pressed the result grid holds the
         // keyboard: arrows walk its selection, Command-C copies TSV. Typing
         // or Escape hands the keys back to the editor, and so does any key
@@ -231,6 +234,16 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         // Use the focus at arrival, not one released by handling Results.
         if !consumed && owns_select_occurrences && state.owns_query_document_shortcut(tx) {
             return state.sql.select_current_occurrences();
+        }
+        if !consumed && owns_next_occurrence && state.owns_query_document_shortcut(tx) {
+            use sql_editor::select_next_occurrence::SelectionAdvance;
+            let Some(viewport) = state.query_editor_viewport() else { return false };
+            if let Some(SelectionAdvance::Added(target)) = state.sql.select_next_query_occurrence() {
+                tx.scroll_into_view_in(viewport.anchor, target);
+            }
+            // The stock binding prevents its default even if all matches
+            // were already picked; only the focused Query owns that policy.
+            return true;
         }
         return consumed;
     }

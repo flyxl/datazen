@@ -76,6 +76,28 @@ impl<'a> LiteralDocument<'a> {
         Ok(at(range.start)?..at(range.end)?)
     }
 
+    /// Project a possibly large set of selections without rescanning the
+    /// SQL prefix for each edge. The surrogate slots sort with their scalar's
+    /// start; lower_bound chooses the first (representable) one.
+    pub(super) fn occurrence_offset(&self, byte: usize) -> Option<usize> {
+        let (mut lo, mut hi) = (0, self.byte_boundary.len());
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            let slot = self.byte_boundary[mid];
+            let mapped = if slot == INSIDE_SCALAR { self.byte_boundary[mid - 1] } else { slot };
+            if mapped < byte { lo = mid + 1; } else { hi = mid; }
+        }
+        (self.byte_boundary.get(lo) == Some(&byte)).then_some(lo)
+    }
+
+    pub(super) fn selected_units(&self, range: Range<usize>) -> Option<&[u16]> {
+        self.units.get(range)
+    }
+
+    pub(super) fn word_at(&self, words: &mut whole_word::WordAt, at: usize) -> Option<Range<usize>> {
+        words.at(&self.units, &self.newlines, at, false)
+    }
+
     fn len(&self) -> usize {
         self.units.len()
     }
@@ -234,6 +256,31 @@ impl LiteralQuery {
         self.latest(doc, 0, cursor.start)
             .or_else(|| self.latest(doc, cursor.end.saturating_sub(self.raw_len), doc.len()))
             .filter(|range| range != &cursor)
+    }
+
+    /// The stock Select Next Occurrence cursor has directional ranges of its
+    /// own, not the Find-next wrap length or dock's Whole Word predicate.
+    pub(super) fn next_occurrence(
+        &self, doc: &LiteralDocument<'_>, words: &mut whole_word::WordAt,
+        main: Range<usize>, main_head: usize, last: Range<usize>,
+        has_start: impl Fn(usize) -> bool,
+    ) -> Option<Range<usize>> {
+        let full_word = doc.word_at(words, main_head).as_ref() == Some(&main);
+        for (cycle, extent) in [(false, last.end..doc.len()), (true, 0..last.start.saturating_sub(1))] {
+            let mut found = None;
+            self.scan(doc, extent.start, extent.end, false, |matched| {
+                if (cycle && has_start(matched.start))
+                    || (full_word && words.at(&doc.units, &doc.newlines, matched.start, true)
+                        .as_ref() != Some(&matched))
+                {
+                    return false;
+                }
+                found = Some(matched);
+                true
+            });
+            if found.is_some() { return found; }
+        }
+        None
     }
 
     /// CodeMirror StringQuery.highlight: non-overlapping from the start

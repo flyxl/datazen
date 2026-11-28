@@ -1247,3 +1247,112 @@ class SqlSelectionJourneys:
         self.assertEqual(self.sql_customer_rows(), rows)
         history = self.root / "query-history.json"
         self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+
+    def test_editor_select_next_occurrence_uses_physical_mod_d_without_typing_or_running(self):
+        rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        before = self.db.read_bytes()
+        lines = ["SELECT 'cat' AS first_v,", " 'CAT' AS upper_v, 'xcat' AS embedded_v,",
+                 " 'cat' AS middle_v,", " 'cat' AS last_v;"]
+        sql = "\n".join(lines)
+        first = f"sql-selected-0-{lines[0].index('cat')}"
+        upper = f"sql-selected-1-{lines[1].index('CAT')}"
+        embedded = f"sql-selected-1-{lines[1].index('xcat') + 1}"
+        middle = f"sql-selected-2-{lines[2].index('cat')}"
+        last = f"sql-selected-3-{lines[3].index('cat')}"
+        mod_d = {"type": "key", "name": "d", "code": "KeyD", "base": "d", "cmd": True}
+        route = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": sql},
+                 key(5.8, "Home"), *(key(6.05 + i * .14, "Right") for i in range(4))]
+
+        def draft(tree):
+            def line_text(i):
+                row = next(n for n in tree["elements"]
+                           if n.get("key") == f"sql-line-{i}" and not n.get("exiting"))
+                return "".join(n.get("text") or "" for n in tree["elements"]
+                               if n["path"].startswith(row["path"] + "/")
+                               and n.get("role") != "mark" and not n.get("exiting"))
+            return "\n".join(line_text(i) for i in range(len(lines)))
+
+        expanded = [*route, {"t": 7.0, **mod_d}]
+        word = self.replay(expanded, until=7.6)
+        self.expect_rendered(word, key=last, text="cat")
+        self.assertFalse(visible(word, key=first))
+        self.assertFalse(visible(word, key=middle))
+
+        wrapped = [*expanded, {"t": 7.8, **mod_d}]
+        second = self.replay(wrapped, until=8.35)
+        for target in (first, last):
+            self.expect_rendered(second, key=target, text="cat")
+        self.assertFalse(visible(second, key=middle))
+
+        all_equal = [*wrapped, {"t": 8.55, **mod_d}, {"t": 8.95, **mod_d}]
+        third = self.replay(all_equal, until=9.5)
+        for target in (first, middle, last):
+            self.expect_rendered(third, key=target, text="cat")
+        for target in (upper, embedded):
+            self.assertFalse(visible(third, key=target))
+        self.expect_rendered(third, key="sql-caret", within="sql-line-3")
+
+        typed = [*all_equal, {"t": 9.7, "type": "key", "name": "z", "code": "z"}]
+        changed = self.replay(typed, until=10.35)
+        self.assertEqual(draft(changed), sql.replace("'cat'", "'z'"))
+        undone = self.replay([*typed, key(10.55, "z", cmd=True)], until=11.2)
+        for target in (first, middle, last):
+            self.expect_rendered(undone, key=target, text="cat")
+
+        find = self.replay([*expanded, key(7.8, "f", cmd=True), {"t": 8.45, **mod_d}], until=9.15)
+        self.expect_rendered(find, key="sql-find-input")
+        goto = {"type": "key", "name": "g", "code": "KeyG", "base": "g", "cmd": True, "alt": True}
+        go = self.replay([*expanded, {"t": 7.8, **goto}, {"t": 8.45, **mod_d}], until=9.15)
+        self.expect_rendered(go, key="sql-goto-line-input")
+        for tree in (find, go):
+            self.assertFalse(visible(tree, key=first), "focused dock cannot modify the draft selection")
+            self.assertFalse(visible(tree, key=middle))
+        for tree in (word, second, third, undone, find, go):
+            self.assertEqual(draft(tree), sql)
+        for tree in (word, second, third, changed, undone, find, go):
+            self.assertFalse(visible(tree, key="result-workspace"))
+        self.assertEqual(self.sql_customer_rows(), rows)
+        self.assertEqual(self.db.read_bytes(), before)
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+
+    def test_editor_select_next_occurrence_reveals_secondary_caret_without_moving_main(self):
+        rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        before = self.db.read_bytes()
+        lines = ["SELECT 'cat' AS first_v,", *["-- filler, no matching word"] * 77, " 'cat' AS last_v;"]
+        sql = "\n".join(lines)
+        chosen = sum(len(line.encode("utf-8")) + 1 for line in lines[:-1]) + lines[-1].index("cat") + 3
+        revealed_key = f"sql-secondary-caret-{chosen}"
+        mod_d = {"type": "key", "name": "d", "code": "KeyD", "base": "d", "cmd": True}
+        seeded = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": sql},
+                  key(5.8, "Home", cmd=True),
+                  *(key(6.05 + i * .14, "Right") for i in range(9)),
+                  {"t": 7.65, **mod_d}]
+        word = self.replay(seeded, until=8.2)
+        self.expect_rendered(word, key="sql-caret", within="sql-line-0")
+        self.assertFalse(visible(word, key=revealed_key))
+        old_y = self._settled_rect(word, "sql-line-0")[1]
+
+        added = self.replay([*seeded, {"t": 8.45, **mod_d}], until=9.45)
+        self.expect_rendered(added, key=revealed_key, within=f"sql-line-{len(lines) - 1}")
+        _, y, _, h = self._settled_rect(added, revealed_key)
+        _, top, _, height = self._settled_rect(added, "sql-editor-scroll")
+        self.assertGreaterEqual(y, top - .2)
+        self.assertLessEqual(y + h, top + height + .2)
+        # The real primary caret stays on row zero but is now clipped out
+        # of the window. The recorded layout still includes both raw nodes.
+        row0 = next(n for n in added["elements"] if n.get("key") == "sql-line-0" and not n.get("exiting"))
+        main = next(n for n in added["elements"] if n.get("key") == "sql-caret" and not n.get("exiting"))
+        self.assertTrue(main["path"].startswith(row0["path"] + "/"))
+        self.assertLess(row0["rect"][1], old_y - 400)
+        self.assertFalse(visible(added, key="result-workspace"))
+        self.assertEqual(self.db.read_bytes(), before)
+        self.assertEqual(self.sql_customer_rows(), rows)
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
