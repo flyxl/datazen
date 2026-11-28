@@ -1,6 +1,7 @@
 //! The live Query editor's scoped, opt-in Find/Replace panel. This is
 //! independent of searching loaded result rows and of the plain YAML editor.
 
+use datazen_ui_api::native_query_regex::Operation;
 use rune::{col, row, text, El, Key, KeyEvent, Mods, Tx};
 
 use crate::{i18n::t, ui::{field::TextField, toggle::Checkbox}, AppState};
@@ -54,13 +55,14 @@ pub(crate) fn open(state: &mut AppState, tx: &mut Tx) {
 
 fn close(state: &mut AppState, tx: &mut Tx) {
     tx.instant();
+    state.cancel_query_regex();
     state.sql.dismiss_find();
     state.result_focused = false;
     state.sql.focus();
     tx.focus(EDITOR_VIEWPORT, false);
 }
 
-fn reveal_selection(editor: &SqlEditor, tx: &mut Tx) {
+pub(super) fn reveal_selection(editor: &SqlEditor, tx: &mut Tx) {
     let main = editor.selection().main();
     if main.from() == main.to() {
         return;
@@ -78,6 +80,11 @@ fn reveal_selection(editor: &SqlEditor, tx: &mut Tx) {
 }
 
 fn navigate(state: &mut AppState, tx: &mut Tx, next: bool) {
+    if state.sql.find_regex {
+        if !state.sql.find_open { open(state,tx); return; }
+        state.begin_query_regex(if next { Operation::Next } else { Operation::Previous },tx);
+        return;
+    }
     let found = if next {
         state.sql.find_from_bar()
     } else {
@@ -143,7 +150,9 @@ fn replace_key(state: &mut AppState, event: &KeyEvent, tx: &mut Tx) -> bool {
 }
 
 fn replace_next(state: &mut AppState, tx: &mut Tx) {
-    if state.sql.replace_current_from_bar() {
+    if state.sql.find_regex {
+        state.begin_query_regex(Operation::ReplaceNext,tx);
+    } else if state.sql.replace_current_from_bar() {
         reveal_selection(&state.sql, tx);
     }
 }
@@ -164,7 +173,7 @@ fn field<'a>(key: &'static str, edit: &'a rune::TextEdit, label: &str, dark: boo
 
 pub(super) fn panel(
     editor: &SqlEditor, ink: rune::Color, dark: bool,
-    owner: Option<crate::query_editor_tabs::QueryEditorViewport>,
+    owner: Option<crate::query_editor_tabs::QueryEditorViewport>, supports_regex: bool,
 ) -> El {
     const INSET_X: f32 = 6.0;
     const INSET_Y: f32 = 3.0;
@@ -174,13 +183,35 @@ pub(super) fn panel(
         let label = t("query.nativeFind.selectAllMatches");
         button("sql-find-select-all-matches", t("query.nativeFind.all"), ink, dark)
             .label(label).help(label)
-            .on_press(move |state: &mut AppState| {
+            .on_press_tx(move |state: &mut AppState, tx| {
                 if state.sql.find_open && owner.owns_current_query(state) {
-                    state.sql.select_all_literal_matches_from_bar();
+                    if state.sql.find_regex { state.begin_query_regex(Operation::SelectAll, tx); }
+                    else { state.sql.select_all_literal_matches_from_bar(); }
                 }
             })
     });
     let k = crate::ui::kit::kit(dark);
+    let regex = owner.clone().filter(|_| supports_regex).map(|owner| {
+        Checkbox::new("sql-find-regex",editor.find_regex).label(t("query.nativeFind.regex"))
+            .on_toggle(move |state: &mut AppState| {
+                if owner.owns_current_query(state) && state.sql.find_open {
+                    state.cancel_query_regex();
+                    state.sql.find_regex = !state.sql.find_regex;
+                    state.sql.find_unsafe_range = false;
+                }
+            }).build(k).h(22.0)
+    });
+    let regex_status=editor.regex_error.and_then(super::regex_find::status).map(|message| {
+        text(t(message)).key("sql-find-regex-status").role("status")
+            .font(rune::tok::type_::LABEL).color(k.c.danger.fg)
+    });
+    // Pointer closures are built for one mounted draft. An old tree's action
+    // must not start a new request against the newly mounted Query.
+    let owns=|owner:Option<crate::query_editor_tabs::QueryEditorViewport>| move |s:&AppState| {
+        s.sql.find_open && owner.as_ref().is_none_or(|o|o.owns_current_query(s))
+    };
+    let next=owns(owner.clone());let prev=owns(owner.clone());
+    let current=owns(owner.clone());let replace_all=owns(owner.clone());
     let warning = editor.find_unsafe_range.then(|| {
         text(t("query.nativeFind.unsafeUnicode")).key("sql-find-unsafe-unicode")
             .role("status").font(rune::tok::type_::LABEL).color(k.c.danger.fg)
@@ -209,36 +240,44 @@ pub(super) fn panel(
                 .gap(INSET_X).center_y().scroll_x()
                 .child(field(FIND_INPUT, &editor.find_input, t("query.nativeFind.find"), dark)
                     .on_edit(|state: &mut AppState| &mut state.sql.find_input)
-                    .on_change(|state: &mut AppState, _| state.sql.find_unsafe_range = false)
+                    .on_change(|state: &mut AppState, _| { state.cancel_query_regex(); state.sql.find_unsafe_range = false; })
                     .on_key(find_key).build(dark))
                 .child(button("sql-find-next", t("query.nativeFind.next"), ink, dark)
-                    .on_press_tx(|state: &mut AppState, tx| navigate(state, tx, true)))
+                    .on_press_tx(move |state: &mut AppState, tx| { if next(state) { navigate(state,tx,true); } }))
                 .child(button("sql-find-prev", t("query.nativeFind.previous"), ink, dark)
-                    .on_press_tx(|state: &mut AppState, tx| navigate(state, tx, false)))
+                    .on_press_tx(move |state: &mut AppState, tx| { if prev(state) { navigate(state,tx,false); } }))
                 .children(all)
                 .child(Checkbox::new("sql-find-match-case", editor.find_match_case)
                     .label(t("query.nativeFind.matchCase"))
                     .on_toggle(|state: &mut AppState| {
+                        state.cancel_query_regex();
                         state.sql.find_match_case = !state.sql.find_match_case;
                         state.sql.find_unsafe_range = false;
                     }).build(k).h(22.0))
+                .children(regex)
                 .child(Checkbox::new("sql-find-whole-word", editor.find_whole_word)
                     .label(t("query.nativeFind.wholeWord"))
                     .on_toggle(|state: &mut AppState| {
+                        state.cancel_query_regex();
                         state.sql.find_whole_word = !state.sql.find_whole_word;
                         state.sql.find_unsafe_range = false;
                     }).build(k).h(22.0))
-                .children(warning)
+                .children(warning).children(regex_status)
         ))
         .child(
             row().w_full().min_w(0.0).h(22.0).gap(6.0).center_y().scroll_x()
                 .child(field("sql-replace-input", &editor.replace_input, t("resultFind.replacementPlaceholder"), dark)
                     .on_edit(|state: &mut AppState| &mut state.sql.replace_input)
+                    .on_change(|state: &mut AppState, _| state.cancel_query_regex())
                     .on_key(replace_key).build(dark))
                 .child(button("sql-replace-current", t("resultFind.replaceNext"), ink, dark)
-                    .on_press_tx(replace_next))
+                    .on_press_tx(move |state: &mut AppState,tx| { if current(state) { replace_next(state,tx); } }))
                 .child(button("sql-replace-all", t("query.nativeFind.replaceAll"), ink, dark)
-                    .on_press(|state: &mut AppState| { state.sql.replace_all_from_bar(); }))
+                    .on_press_tx(move |state: &mut AppState, tx| {
+                        if !replace_all(state) {return}
+                        if state.sql.find_regex {state.begin_query_regex(Operation::ReplaceAll,tx);}
+                        else {state.sql.replace_all_from_bar();}
+                    }))
                 .child(button("sql-add-cursor", t("query.nativeFind.addCursor"), ink, dark)
                     .on_press(|state: &mut AppState| state.sql.add_cursor_at_end()))
         )

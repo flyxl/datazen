@@ -31,6 +31,12 @@ fn replace_saved_passwords() -> Result<(), &'static str> {
 }
 
 fn main() {
+    #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
+    if std::env::args_os().nth(1).is_some_and(|arg| arg == datazen_regex_worker::WORKER_ARG) {
+        // Before logging, opening user data, constructing a driver or starting Rune.
+        use std::process::Termination;
+        std::process::exit(if datazen_regex_worker::worker_main().report() == std::process::ExitCode::SUCCESS { 0 } else { 1 });
+    }
     if std::env::args_os()
         .nth(1)
         .is_some_and(|arg| arg == "--replace-saved-passwords")

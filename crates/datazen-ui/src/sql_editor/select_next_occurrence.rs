@@ -18,7 +18,7 @@ pub(super) fn secondary_caret_key(at: usize) -> String {
 
 /// CM EditorSelection.create: stable sort by start, merging overlaps
 /// (but not adjacent nonempty ranges), with the later range's direction.
-fn normalized(mut ranges: Vec<(Sel, bool)>) -> Option<Selection> {
+pub(super) fn normalized(mut ranges: Vec<(Sel, bool)>) -> Option<Selection> {
     ranges.sort_by_key(|(sel, _)| sel.from());
     let mut ordered: Vec<(Sel, bool)> = Vec::with_capacity(ranges.len());
     for (sel, main) in ranges {

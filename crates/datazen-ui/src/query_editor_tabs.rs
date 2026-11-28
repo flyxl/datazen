@@ -100,12 +100,14 @@ impl AppState {
 
     pub(crate) fn reset_query_editor_tabs(&mut self) {
         self.cancel_native_query_format();
+        self.cancel_query_regex();
         self.sql = SqlEditor::from_doc("");
         self.query_editor_tabs = QueryEditorTabs::default();
     }
 
     pub(crate) fn cancel_query_editor_input(&mut self) {
         self.cancel_native_query_format();
+        self.cancel_query_regex();
         self.query_editor_tabs.snippets_menu = None;
         self.sql.preedit("");
         self.sql.dismiss_find();

@@ -89,7 +89,7 @@ impl SqlEditor {
     /// Find-dock Select All Matches changes only the selection. The matches
     /// are fully checked before installing any Native byte range.
     pub(super) fn select_all_literal_matches_from_bar(&mut self) -> bool {
-        if self.composition().is_some() {
+        if self.find_regex || self.composition().is_some() {
             return false;
         }
         const LIMIT: usize = 1_000;

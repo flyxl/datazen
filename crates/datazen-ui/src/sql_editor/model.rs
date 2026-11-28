@@ -164,6 +164,8 @@ pub struct SqlEditor {
     pub(super) identity: std::rc::Rc<()>,
     pub(super) find_open: bool,
     pub(super) find_match_case: bool,
+    pub(super) find_regex: bool,
+    pub(super) regex_error: Option<datazen_ui_api::native_query_regex::Error>,
     pub(super) find_whole_word: bool,
     pub(super) find_unsafe_range: bool,
     pub find_input: TextEdit,
@@ -203,6 +205,8 @@ impl SqlEditor {
             identity: std::rc::Rc::new(()),
             find_open: false,
             find_match_case: false,
+            find_regex: false,
+            regex_error: None,
             find_whole_word: false,
             find_unsafe_range: false,
             find_input: TextEdit::new(String::new()),
@@ -696,12 +700,14 @@ impl SqlEditor {
     }
 
     pub(super) fn find_previous_from_bar(&mut self) -> bool {
+        if self.find_regex { return false; }
         let needle = self.find_input.text.clone();
         self.find_dock_literal(&super::plain_find::decode_input(&needle), false)
     }
 
     pub(crate) fn dismiss_find(&mut self) {
         self.find_open = false;
+        self.regex_error = None;
         self.find_unsafe_range = false;
         self.find_input.focused = false;
         self.replace_input.focused = false;
@@ -746,6 +752,7 @@ impl SqlEditor {
 
     /// The find bar's Find: read the bar's needle.
     pub fn find_from_bar(&mut self) -> bool {
+        if self.find_regex { return false; }
         let needle = self.find_input.text.clone();
         self.find_dock_literal(&super::plain_find::decode_input(&needle), true)
     }
@@ -753,6 +760,7 @@ impl SqlEditor {
     /// The find bar's Replace: select the next occurrence or edit the one
     /// already selected. True means the dock should reveal the selection.
     pub fn replace_current_from_bar(&mut self) -> bool {
+        if self.find_regex { return false; }
         let needle = self.find_input.text.clone();
         let replacement = self.replace_input.text.clone();
         self.replace_next_literal(
@@ -763,6 +771,7 @@ impl SqlEditor {
 
     /// The find bar's Replace all.
     pub fn replace_all_from_bar(&mut self) -> usize {
+        if self.find_regex { return 0; }
         let needle = self.find_input.text.clone();
         let replacement = self.replace_input.text.clone();
         self.replace_all_dock_literal(

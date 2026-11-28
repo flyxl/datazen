@@ -290,6 +290,7 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     dirty |= crate::data_grid::field_filter::retire_stale_popup(state);
     dirty |= state.restore_query_editor_scroll(tx);
     dirty |= state.poll_native_query_format(now, tx);
+    dirty |= state.poll_query_regex(now, tx);
     // A captured cell might not receive Up once its virtual row or table
     // subtree is gone. Cancel the app's gesture before it can affect a newer grid.
     let table_grid_mounted = state.active == Section::Workspace
@@ -324,6 +325,7 @@ pub fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
         && crate::sql_editor::on_ime(&mut state.sql, ev);
     if handled && matches!(ev, Ime::Preedit(text, _) if !text.is_empty()) {
         state.cancel_native_query_format();
+        state.cancel_query_regex();
     }
     handled
 }

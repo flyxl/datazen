@@ -4,6 +4,7 @@
 //! [`MemoryWorkspace`] for its in-memory data.
 
 mod native_saved_tunnels;
+pub mod native_query_regex;
 pub mod native_sql_format;
 pub use native_saved_tunnels::{NativeHttpProxyDefinition, NativeTunnelPassword, NativeTunnelStoreError};
 
@@ -2400,6 +2401,12 @@ pub trait DesktopAdapter {
     ) -> Option<Result<Vec<std::ops::Range<usize>>, String>> {
         None
     }
+
+    /// The optional local, isolated Native Find worker; never an in-process fallback.
+    fn supports_native_query_regex(&self) -> bool { false }
+    fn begin_native_query_regex(&mut self, _request: native_query_regex::Request) -> Result<(), native_query_regex::Error> { Err(native_query_regex::Error::Unavailable) }
+    fn poll_native_query_regex(&mut self) -> Option<native_query_regex::Delivery> { None }
+    fn cancel_native_query_regex(&mut self, _id: u64) {}
 
     /// Exact live SQL session/configuration only when the local formatter
     /// has been installed. Default adapters do not claim a formatter.

@@ -10,6 +10,7 @@
 mod function_completion;
 pub(crate) mod find_dock;
 mod find_paint;
+pub(crate) mod regex_find;
 pub(crate) mod builtin_snippets;
 mod from_completion;
 pub(crate) mod format_draft;

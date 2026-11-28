@@ -368,6 +368,7 @@ pub fn query_workspace(
             dark,
             state.catalog_completion_current(),
             state.query_editor_viewport(),
+            state.desktop.supports_native_query_regex(),
             state.editor_font_size(),
             state.editor_font_family(),
             state.sql_syntax_theme(),

@@ -88,7 +88,7 @@ impl FindPaint {
 fn within_budget(editor: &SqlEditor) -> bool {
     // Go to Line has presentation priority over Find. Do not paint hidden
     // Find state during a transition between the two scoped panels.
-    editor.find_open && editor.goto_lease.is_none() && !editor.find_input.text.is_empty()
+    !editor.find_regex && editor.find_open && editor.goto_lease.is_none() && !editor.find_input.text.is_empty()
         && editor.find_input.text.len() <= QUERY_LIMIT && editor.doc().len() <= DOCUMENT_LIMIT
 }
 

@@ -29,7 +29,7 @@ pub(crate) fn query_font_family(family: datazen_ui_api::EditorFontFamily) -> run
 /// The editor page: a scroll view of unwrapped lines. Not a `text_input`.
 pub fn panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dark: bool) -> El {
     panel_with_completion_scope(
-        editor, ink, muted, dark, editor.completion_scope().is_none(), None,
+        editor, ink, muted, dark, editor.completion_scope().is_none(), None, false,
         datazen_ui_api::DEFAULT_EDITOR_FONT_SIZE,
         datazen_ui_api::EditorFontFamily::Bundled,
         datazen_ui_api::SqlSyntaxTheme::DEFAULT,
@@ -40,6 +40,7 @@ pub(crate) fn panel_with_completion_scope(
     editor: &SqlEditor, ink: rune::Color, _muted: rune::Color, dark: bool,
     completion_current: bool,
     viewport: Option<crate::query_editor_tabs::QueryEditorViewport>,
+    supports_regex: bool,
     font_size: u32,
     font_family: datazen_ui_api::EditorFontFamily,
     syntax_theme: datazen_ui_api::SqlSyntaxTheme,
@@ -173,7 +174,7 @@ pub(crate) fn panel_with_completion_scope(
     if editor.goto_lease.is_some() && viewport.is_some() {
         panel.child(super::goto_line::panel(editor, document_ink, dark))
     } else if editor.find_open {
-        panel.child(super::find_dock::panel(editor, document_ink, dark, viewport))
+        panel.child(super::find_dock::panel(editor, document_ink, dark, viewport, supports_regex))
     } else {
         panel
     }

@@ -76,6 +76,12 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         "query.nativeFind.selectAllMatches" => Some(("选择所有匹配项", "Select all matches")),
         "query.nativeFind.matchCase" => Some(("区分大小写", "Match case")),
         "query.nativeFind.wholeWord" => Some(("全字匹配", "Whole word")),
+        "query.nativeFind.regex" => Some(("正则表达式", "Regular expression")),
+        "query.nativeFind.invalidRegex" => Some(("正则表达式无效。", "Invalid regular expression.")),
+        "query.nativeFind.regexRange" => Some(("无法安全表示此匹配范围。", "This document or selection cannot be searched safely.")),
+        "query.nativeFind.regexLimit" => Some(("搜索超出大小限制。", "Search exceeded its size limit.")),
+        "query.nativeFind.regexTimeout" => Some(("搜索超时。", "Search timed out.")),
+        "query.nativeFind.regexUnavailable" => Some(("无法使用本地正则搜索。", "Local regular expression search is unavailable.")),
         "query.nativeFind.unsafeUnicode" => Some((
             "此匹配会拆分一个 Unicode 字符。未更改文档。",
             "This match would split a Unicode character. The document was not changed.",

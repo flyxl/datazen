@@ -44,6 +44,13 @@ impl BracketClosers {
         });
     }
 
+    pub(super) fn map_batch(&mut self, mut map: impl FnMut(usize) -> Option<usize>) {
+        self.marks.retain_mut(|mark| match map(mark.byte) {
+            Some(at) => { mark.byte = at; true }
+            None => false,
+        });
+    }
+
     fn contains(&self, byte: usize, closer: u8) -> bool {
         self.marks.iter().any(|mark| mark.byte == byte && mark.closer == closer)
     }
