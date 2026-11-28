@@ -1471,6 +1471,10 @@ fn run_status_row(state: &AppState, result: &WorkflowExecutionResult, k: &Kit) -
     row()
         .key("workflow-run-status-row")
         .w_full()
+        // React's compact action is 20.5pt high, with 8pt of band
+        // padding and a bottom rule. Preserve that structural rhythm
+        // independently of native glyph metrics.
+        .min_h(30.0)
         .shrink()
         .items_center()
         .justify_between()
@@ -1489,6 +1493,7 @@ fn run_status_row(state: &AppState, result: &WorkflowExecutionResult, k: &Kit) -
         .child(
             row()
                 .key("workflow-step-order-toggle")
+                .min_h(20.5)
                 .shrink()
                 .items_center()
                 .gap(4.0)
