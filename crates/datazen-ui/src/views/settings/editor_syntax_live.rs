@@ -40,7 +40,7 @@ pub(super) fn font_family_row(state: &AppState, kit: &Kit, overlays: &mut Vec<El
                 state.save_editor_font_family(family);
             }
         });
-    let field = editor_preference_trigger(select, kit, overlays);
+    let field = editor_preference_trigger(select, &editor_field_kit(kit), overlays);
     setting_row(kit, overlays, "settings-editor-font-family-row".to_owned(), label, None, field)
 }
 
@@ -71,7 +71,7 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
                 state.save_sql_syntax_theme(theme);
             }
         });
-    let select = editor_preference_trigger(select, kit, overlays);
+    let select = editor_preference_trigger(select, &syntax_field_kit(kit), overlays);
     setting_row(
         kit,
         overlays,
@@ -92,7 +92,7 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
 /// the generic Kit control's softer outside elevation.
 fn editor_preference_trigger(select: Select, kit: &Kit, overlays: &mut Vec<El>) -> El {
     select
-        .build(&syntax_field_kit(kit), overlays)
+        .build(kit, overlays)
         .h(36.0)
         .radius(9.0)
         .border(1.0, kit.c.border_base)
@@ -102,13 +102,34 @@ fn editor_preference_trigger(select: Select, kit: &Kit, overlays: &mut Vec<El>) 
         .pr(8.0)
 }
 
-fn syntax_field_kit(kit: &Kit) -> Kit {
+fn editor_field_kit(kit: &Kit) -> Kit {
     let mut field = (*kit).clone();
     field.elevation = field.elevation.with_input(Vec::<rune::Shadow>::new());
     // The kit uses button-neutral as a fallback for an empty input list.
     field.elevation.button_neutral.clear();
     field.ty.ui_compact = TextStyle::new(14.0, 400.0).lh(20.0);
     field.c.icon_muted = kit.c.text_faint;
+    field
+}
+
+// Chromium's Select paints the 14px Lucide chevron inside the trigger.
+// Rune Kit's centered canvas is 16px; the paths below are the stock
+// 24-unit Lucide paths scaled to 14px and inset 1px on this canvas.
+static SYNTAX_CHEVRON_DOWN: rune::Icon = rune::Icon {
+    name: "settings-syntax-chevron-down",
+    view: 16.0,
+    body: r#"<path d="M4.5 6.25L8 9.75L11.5 6.25" fill="none" stroke="currentColor" stroke-width="1.166667" stroke-linecap="round" stroke-linejoin="round"/>"#,
+};
+static SYNTAX_CHEVRON_UP: rune::Icon = rune::Icon {
+    name: "settings-syntax-chevron-up",
+    view: 16.0,
+    body: r#"<path d="M11.5 9.75L8 6.25L4.5 9.75" fill="none" stroke="currentColor" stroke-width="1.166667" stroke-linecap="round" stroke-linejoin="round"/>"#,
+};
+
+fn syntax_field_kit(kit: &Kit) -> Kit {
+    let mut field = editor_field_kit(kit);
+    field.glyph.chevron_down = &SYNTAX_CHEVRON_DOWN;
+    field.glyph.chevron_up = &SYNTAX_CHEVRON_UP;
     field
 }
 
@@ -202,6 +223,21 @@ mod visual_tests {
                 }
                 assert!(spans[0].italic && spans[1].italic);
             }
+        }
+    }
+
+    #[test]
+    fn only_the_syntax_theme_field_uses_the_original_select_chevrons() {
+        for dark in [false, true] {
+            let shared = crate::ui::kit::kit(dark);
+            let font_family = editor_field_kit(shared);
+            let syntax = syntax_field_kit(shared);
+            assert!(std::ptr::eq(font_family.glyph.chevron_down, shared.glyph.chevron_down));
+            assert!(std::ptr::eq(font_family.glyph.chevron_up, shared.glyph.chevron_up));
+            assert!(std::ptr::eq(syntax.glyph.chevron_down, &SYNTAX_CHEVRON_DOWN));
+            assert!(std::ptr::eq(syntax.glyph.chevron_up, &SYNTAX_CHEVRON_UP));
+            assert_eq!(syntax.c.icon_muted, font_family.c.icon_muted);
+            assert_eq!(syntax.radius.md, font_family.radius.md);
         }
     }
 
