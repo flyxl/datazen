@@ -2325,7 +2325,24 @@ fn step_table(step: &StepExecutionResult, statement: &StatementResult, k: &Kit) 
         let view = result.get("rows").filter(|rows| rows.is_object()).unwrap_or(result);
         extract_step_column_names(view)
     }).unwrap_or_default();
-    let cell = |element: El| element.w(0.0).grow(1.0).shrink().min_w(0.0);
+    use crate::hooks::use_column_resize::{
+        compute_initial_column_widths, ColumnWidthInput, SAMPLE_ROWS,
+    };
+
+    // The original read-only DataTable estimates from metadata and at most
+    // its first 20 rows. Size headers and values from the same estimate;
+    // display the actual type badge separately (never a guessed type).
+    let columns: Vec<_> = statement.columns.iter()
+        .map(|column| ColumnWidthInput::new(&column.name, Some(&column.data_type)))
+        .collect();
+    let samples: Vec<_> = statement.rows.iter().take(SAMPLE_ROWS)
+        .map(|row| row.iter().map(|value| value.clone().unwrap_or_default()).collect())
+        .collect();
+    let widths = compute_initial_column_widths(&columns, &samples);
+    let grid_width = 40.0 + widths.iter().sum::<f32>();
+    let cell = |index: usize, element: El| {
+        element.w(widths[index]).min_w(widths[index]).shrink()
+    };
     let index_cell = |label: String, key: String, height: f32| {
         row().w(40.0).min_w(40.0).h(height).shrink()
             .center()
@@ -2339,7 +2356,7 @@ fn step_table(step: &StepExecutionResult, statement: &StatementResult, k: &Kit) 
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
         .child(index_cell("#".to_owned(), "workflow-step-table-index-header".to_owned(), 40.0));
     for (column_index, column) in statement.columns.iter().enumerate() {
-        let mut caption = col().h(40.0).px(12.0).justify_center()
+        let mut caption = col().key(format!("workflow-step-table-col-slot-{column_index}")).h(40.0).px(12.0).justify_center()
             .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
             .child(
                 text(column.name.clone())
@@ -2362,12 +2379,11 @@ fn step_table(step: &StepExecutionResult, statement: &StatementResult, k: &Kit) 
                     .truncate(),
             );
         }
-        head = head.child(cell(caption));
+        head = head.child(cell(column_index, caption));
     }
-    let mut table = col()
-        .key("workflow-step-table")
-        .w_full().grow(1.0).min_h(0.0).min_w(0.0).pr(4.0)
-        .scroll(ScrollSpec { stick_bottom: false })
+    let mut content = col()
+        .key("workflow-step-table-content")
+        .w_full().min_w(grid_width).shrink()
         .child(head);
     for (row_index, cells) in statement.rows.iter().enumerate() {
         let mut row_el = row()
@@ -2379,10 +2395,11 @@ fn step_table(step: &StepExecutionResult, statement: &StatementResult, k: &Kit) 
                 format!("workflow-step-table-row-index-{row_index}"),
                 32.0,
             ));
-        for (column_index, value) in cells.iter().enumerate() {
-            let display = value.as_ref().map(js_string).unwrap_or_default();
+        for column_index in 0..widths.len() {
+            let display = cells.get(column_index).and_then(Option::as_ref)
+                .map(js_string).unwrap_or_default();
             row_el = row_el.child(
-                cell(row().h(32.0).px(12.0).center_y()
+                cell(column_index, row().h(32.0).px(12.0).center_y()
                     .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
                     .child(text(display)
                         .key(format!("workflow-step-table-cell-{row_index}-{column_index}"))
@@ -2393,7 +2410,10 @@ fn step_table(step: &StepExecutionResult, statement: &StatementResult, k: &Kit) 
                         .truncate())),
             );
         }
-        table = table.child(row_el);
+        content = content.child(row_el);
     }
-    table
+    col().key("workflow-step-table")
+        .w_full().grow(1.0).min_h(0.0).min_w(0.0).pr(4.0)
+        .scroll_xy()
+        .child(content)
 }

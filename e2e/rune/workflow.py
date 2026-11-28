@@ -453,7 +453,7 @@ steps:
         """Migrate the original workflow run-tab and step-navigation journey."""
         fixture(self.store, self.db)
         name = "e2e-workflow-run-tabs"
-        first = "SELECT customer_name AS person FROM customers ORDER BY id"
+        first = "SELECT customer_name AS person, id AS customer_id FROM customers ORDER BY id"
         second = "SELECT id AS chosen FROM customers WHERE id=2"
         document = f"name: {name}\nsteps:\n  - {first}\n  - {second}\n"
         save_at = 4.4 + .027 * len(document) + 2
@@ -466,7 +466,7 @@ steps:
         self.expect_rendered(saved, key=f"workflow-{name}")
         fixture_uri = f"{self.db.as_uri()}?mode=ro"
         with sqlite3.connect(fixture_uri, uri=True) as db:
-            self.assertEqual(db.execute(first).fetchall(), [("fixture-ada",), ("fixture-lin",)])
+            self.assertEqual(db.execute(first).fetchall(), [("fixture-ada", 1), ("fixture-lin", 2)])
             self.assertEqual(db.execute(second).fetchall(), [(2,)])
 
         opened = [
@@ -528,6 +528,18 @@ steps:
         self.expect_rendered(switched, key="workflow-step-table-row-index-1", text="2")
         self.expect_rendered(switched, key="workflow-step-table-cell-1-0", text="fixture-lin")
 
+        self.expect_rendered(switched, key="workflow-step-table-col-1", text="customer_id")
+        self.expect_rendered(switched, key="workflow-step-table-cell-1-1", text="2")
+        grid = self._settled_rect(switched, "workflow-step-table")
+        first_col = self._settled_rect(switched, "workflow-step-table-col-slot-0")
+        second_col = self._settled_rect(switched, "workflow-step-table-col-slot-1")
+        second_label = self._settled_rect(switched, "workflow-step-table-col-1")
+        second_value = self._settled_rect(switched, "workflow-step-table-cell-1-1")
+        self.assertAlmostEqual(first_col[2], 150, delta=1)
+        self.assertAlmostEqual(second_col[0], first_col[0] + first_col[2], delta=1)
+        self.assertAlmostEqual(second_label[0], second_value[0], delta=1)
+        self.assertLess(second_col[0] + second_col[2], grid[0] + grid[2] - 40)
+
         # React mounts one selected-step detail, not the aggregate history
         # report. Check the actual tree, not just visibility below the fold.
         for snapshot in (result, from_second, switched):
@@ -542,7 +554,7 @@ steps:
         for gone in ("workflow-tab-wf-1", "workflow-steps", "workflow-step-detail"):
             self.assertFalse(visible(closed, key=gone))
         with sqlite3.connect(fixture_uri, uri=True) as db:
-            self.assertEqual(db.execute(first).fetchall(), [("fixture-ada",), ("fixture-lin",)])
+            self.assertEqual(db.execute(first).fetchall(), [("fixture-ada", 1), ("fixture-lin", 2)])
 
     def test_legacy_workflow_binds_required_values_per_run_tab(self):
         """Migrate SW-04: run the native registry's declared variable against real SQLite."""
