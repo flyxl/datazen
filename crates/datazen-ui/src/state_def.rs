@@ -398,6 +398,7 @@ pub struct AppState {
     pub compare_error: Option<String>,
     /// The transfer tool's tables, pairing chips and the pairs themselves.
     pub(crate) native_transfer: crate::native_transfer_state::NativeTransferState,
+    pub(crate) native_tools_backup_open: bool,
     pub transfer_left: String,
     pub transfer_right: String,
     pub transfer_pair_left: String,
@@ -792,6 +793,7 @@ impl Default for AppState {
             compare_snapshot: None,
             compare_error: None,
             native_transfer: Default::default(),
+            native_tools_backup_open: false,
             transfer_left: "customers".into(),
             transfer_right: "orders".into(),
             transfer_pair_left: "id".into(),

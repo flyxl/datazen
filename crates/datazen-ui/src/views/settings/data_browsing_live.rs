@@ -175,19 +175,22 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             } else { "" },
         ),
     };
-    // Keep the working native actions, even though React places them elsewhere.
+    // Export and Import keep their existing entry until their replacement
+    // paths are wired. Demo hosts without the Tools Backup destination also
+    // keep their existing backup form.
+    let mut file_tools = col()
+        .key("settings-data-tools")
+        .w_full()
+        .gap(12.0)
+        .pt(16.0)
+        .border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base)
+        .child(export_section(state, theme, dark))
+        .child(import_section(state, theme, dark));
+    if !state.supports_tools_backup() {
+        file_tools = file_tools.child(backup_section(state, theme));
+    }
     section
-        .child(
-            col()
-                .key("settings-data-tools")
-                .w_full()
-                .gap(12.0)
-                .pt(16.0)
-                .border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base)
-                .child(export_section(state, theme, dark))
-                .child(import_section(state, theme, dark))
-                .child(backup_section(state, theme)),
-        )
+        .child(file_tools)
         .child(
             text(unavailable)
                 .key("settings-data-unsupported")

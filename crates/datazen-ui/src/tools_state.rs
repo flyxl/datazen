@@ -21,6 +21,34 @@ use rune::{
 };
 
 impl AppState {
+    pub(crate) fn supports_tools_backup(&self) -> bool {
+        // The native Tools rail is only reachable with transfer capability.
+        self.desktop.supports_native_transfer() && self.desktop.supports_native_backup()
+    }
+
+    pub(crate) fn open_native_backup_tool(&mut self) {
+        if self.supports_tools_backup() {
+            if self.active != Section::Tools {
+                // Preserve the same unsaved-edit guard as receipt of a
+                // normal Tools rail/menu action.
+                self.select(Section::Tools);
+            }
+            if self.active == Section::Tools {
+                // Opening Backup never calls set_native_tool: that would
+                // replace transfer/diff mode and could discard its draft.
+                self.native_tools_backup_open = true;
+            }
+        }
+    }
+
+    pub(crate) fn show_native_transfer_tool(
+        &mut self,
+        tool: crate::native_transfer_state::NativeTool,
+    ) {
+        self.native_tools_backup_open = false;
+        self.set_native_tool(tool);
+    }
+
     /// The import wizard's step 1: a source is required to move on.
     pub fn import_next(&mut self) {
         if self.import_source.text.trim().is_empty() {

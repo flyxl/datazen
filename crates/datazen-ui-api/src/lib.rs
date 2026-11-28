@@ -2610,6 +2610,12 @@ pub trait DesktopAdapter {
     /// Start a backup of the live database through the host (N11). `path`
     /// (T2) is the user's picked save location; `None` keeps the host's
     /// default directory.
+    /// A live database dump is available through the native backup job port.
+    /// Does not imply database restore or backup support for every driver.
+    fn supports_native_backup(&self) -> bool {
+        false
+    }
+
     fn start_backup(&mut self, _path: Option<&str>) -> Result<u64, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }

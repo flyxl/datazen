@@ -3715,6 +3715,10 @@ impl DesktopAdapter for LiveAdapter {
         ))
     }
 
+    fn supports_native_backup(&self) -> bool {
+        true
+    }
+
     fn start_backup(&mut self, path: Option<&str>) -> Result<u64, String> {
         let connection = {
             let session = self.session.lock().expect("the live session lock");

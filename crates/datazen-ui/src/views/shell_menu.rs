@@ -66,6 +66,7 @@ fn menus(state: &AppState) -> Vec<MenuBarMenu> {
         "new-connection" | "open-settings" | "theme-light" | "theme-dark" | "theme-system"
         | "workflow" | "dashboard" | "help-report" => true,
         "schema-diff" | "data-sync" | "data-transfer" => native_tools,
+        "backup" => state.supports_tools_backup(),
         _ => false,
     };
     let mut menus = build_menus(theme(state));
@@ -123,6 +124,7 @@ fn dispatch(state: &mut AppState, id: &str, tx: &mut Tx) {
         MenuBarAction::OpenSchemaDiff => native_tool(state, NativeTool::SchemaDiff),
         MenuBarAction::OpenDataSync => native_tool(state, NativeTool::SyncPreview),
         MenuBarAction::OpenDataTransfer => native_tool(state, NativeTool::Transfer),
+        MenuBarAction::OpenBackup { restore: false } => state.open_native_backup_tool(),
         MenuBarAction::OpenReportIssue => {
             // Fixed public destination, handled by Rune's URL policy.
             let _ = tx.open_url(REPORT_ISSUE);
@@ -144,7 +146,7 @@ fn native_tool(state: &mut AppState, tool: NativeTool) {
     }
     state.select(Section::Tools);
     if state.active == Section::Tools {
-        state.set_native_tool(tool);
+        state.show_native_transfer_tool(tool);
     }
 }
 

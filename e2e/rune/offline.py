@@ -3,6 +3,7 @@ import csv
 import json
 import socket
 import sqlite3
+import sys
 
 from scenarios import fixture, query_steps, tap, type_text, visible
 
@@ -555,12 +556,60 @@ class OfflineJourneys:
 
     def test_sqlite_backup_restores_in_an_independent_database(self):
         fixture(self.store, self.db)
+        (self.root / "settings.json").write_text(
+            json.dumps({"ui": {"language": "en"}}), encoding="utf-8")
+        driver_menu = sys.platform.startswith("linux") or sys.platform == "win32"
+        settings = [SETTINGS, DATA_SETTINGS]
+        if driver_menu:
+            settings.append(tap(2.5, "menu-bar-tools-trigger"))
+        idle = self.replay(settings, until=3.6)
+        self.assertFalse(visible(idle, key="backup-section"), "no duplicate in live Settings")
+        self.expect_rendered(idle, key="export-start")
+        self.expect_rendered(idle, key="import-browse")
+        self.expect_rendered(idle, key="settings-workflow-step-order-trigger")
+
+        menu_key = None
+        if driver_menu:
+            self.expect_rendered(idle, key="menu-bar-tools-menu")
+            entries = {e["key"] for e in idle["elements"]
+                       if (e.get("key") or "").startswith("menu-bar-tools-item")
+                       and visible(idle, text="Backup Database", within=e["key"])}
+            self.assertEqual(len(entries), 1, "Tools has a real Backup Database item")
+            menu_key = entries.pop()
+            self.assertFalse(visible(idle, text="Restore Database", within="menu-bar-tools-menu"))
+
+        original = self.db.read_bytes()
         destination = self.root / "customers.sql"
-        self.replay([
-            *OPEN, tap(4.4, "rail-settings"), tap(5.2, "settings-nav-dataBrowsing"),
-            tap(6.4, "backup-start"),
-            {"t": 7.3, "type": "file-dialog", "path": str(destination)},
-        ], until=10.5)
+        entry = [*OPEN, tap(4.4, "rail-tools"),
+                 tap(5.2, "native-transfer-source-profile-e2e-sqlite"),
+                 tap(6.6, "native-tool-backup")]
+        transfer = self.replay([*entry, tap(7.4, "native-tool-transfer")], until=8.6)
+        self.expect_rendered(transfer, key="native-transfer-selected-table", text="customers",
+                             within="native-transfer-source")
+        self.assertFalse(visible(transfer, key="backup-section"))
+
+        tools = [*entry, tap(7.4, "backup-start")]
+        cancelled = self.replay([
+            *tools, {"t": 8.2, "type": "file-dialog-cancel"},
+        ], until=9.4)
+        self.expect_rendered(cancelled, key="backup-section")
+        self.expect_rendered(cancelled, text="the backup was cancelled; nothing was written",
+                             within="backup-error")
+        self.assertFalse(list(self.root.rglob("*.sql")))
+
+        actions = [*tools, {"t": 8.2, "type": "file-dialog", "path": str(destination)},
+                   tap(11.5, "backup-refresh"), tap(12.1, "rail-connections")]
+        # Reopen via the actual menu when present, or the same public Tools
+        # surface on hosts without an in-window menubar. This is one process.
+        if menu_key:
+            actions += [tap(12.8, "menu-bar-tools-trigger"), tap(13.6, menu_key)]
+        else:
+            actions += [tap(12.8, "rail-tools"), tap(13.6, "native-tool-backup")]
+        actions.append(tap(14.4, "backup-refresh"))
+        finished = self.replay(actions, until=15.8)
+        self.expect_rendered(finished, key="backup-section")
+        self.expect_rendered(finished, text="completed · 100%", within="backup-status")
+        self.assertEqual(self.db.read_bytes(), original, "backup is read-only on the live DB")
         with sqlite3.connect(self.db) as db:
             expected = db.execute("SELECT id, customer_name FROM customers ORDER BY id").fetchall()
         with sqlite3.connect(":memory:") as restored:

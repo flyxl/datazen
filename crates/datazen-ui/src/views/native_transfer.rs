@@ -1,5 +1,6 @@
 //! Live SQLite transfer, schema diff and sync preview, separate from demo tools.
-use super::data_transfer::column_mapping_editor::ColumnMappingEditor;
+use super::{data_transfer::column_mapping_editor::ColumnMappingEditor, settings::backup_section};
+use crate::i18n::t;
 use crate::{native_transfer_state::NativeTool, state_def::AppState};
 use datazen_ui_api::native_transfer::{TransferChoice, TransferSide, NATIVE_SYNC_ROW_LIMIT};
 use rune::tok::{self, type_};
@@ -170,6 +171,25 @@ fn endpoint(state: &AppState, side: TransferSide, theme: tok::Theme) -> El {
 
 pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let transfer = &state.native_transfer;
+    let mut tools = row()
+        .gap(8.0)
+        .child(button("native-tool-transfer", "Data Transfer", theme, |s| {
+            s.show_native_transfer_tool(NativeTool::Transfer);
+        }))
+        .child(button("native-tool-schema-diff", "Schema Diff", theme, |s| {
+            s.show_native_transfer_tool(NativeTool::SchemaDiff);
+        }))
+        .child(button("native-tool-data-sync", "Data Sync", theme, |s| {
+            s.show_native_transfer_tool(NativeTool::SyncPreview);
+        }));
+    if state.supports_tools_backup() {
+        tools = tools.child(button(
+            "native-tool-backup",
+            t("common.backupDatabase"),
+            theme,
+            AppState::open_native_backup_tool,
+        ));
+    }
     let page = col()
         .key("native-transfer")
         .w_full()
@@ -180,25 +200,10 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .scroll(ScrollSpec {
             stick_bottom: false,
         })
-        .child(
-            row()
-                .gap(8.0)
-                .child(button(
-                    "native-tool-transfer",
-                    "Data Transfer",
-                    theme,
-                    |s| s.set_native_tool(NativeTool::Transfer),
-                ))
-                .child(button(
-                    "native-tool-schema-diff",
-                    "Schema Diff",
-                    theme,
-                    |s| s.set_native_tool(NativeTool::SchemaDiff),
-                ))
-                .child(button("native-tool-data-sync", "Data Sync", theme, |s| {
-                    s.set_native_tool(NativeTool::SyncPreview)
-                })),
-        );
+        .child(tools);
+    if state.native_tools_backup_open && state.supports_tools_backup() {
+        return page.child(backup_section(state, theme));
+    }
     match transfer.tool {
         NativeTool::SchemaDiff => return schema_diff_view(page, state, theme),
         NativeTool::SyncPreview => return sync_preview_view(page, state, theme),
