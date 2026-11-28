@@ -56,6 +56,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let row_count = state.desktop.read_native_row_count_mode().ok();
     let default_sort = state.desktop.read_native_default_table_sort().ok();
     let striped = state.desktop.read_native_grid_alternating_rows().ok();
+    let row_numbers = state.desktop.read_native_grid_row_numbers().ok();
     let select_limit = state.desktop.read_native_select_limit().ok();
     section = section
         .child(setting_row(
@@ -75,7 +76,32 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         section = section.child(default_table_sort_row(state, order, &k, &mut overlays));
     }
     if let Some(striped) = striped {
-        section = section.child(grid_alternating_rows(striped, &k, &mut overlays));
+        section = section.child(grid_appearance_toggle(
+            "settings-grid-alternating-rows",
+            t("settings.gridAlternatingRows"),
+            t("settings.gridAlternatingRows.hint"),
+            striped,
+            &k,
+            &mut overlays,
+            |state| {
+                let current = state.desktop.read_native_grid_alternating_rows()?;
+                state.desktop.write_native_grid_alternating_rows(!current)
+            },
+        ));
+    }
+    if let Some(visible) = row_numbers {
+        section = section.child(grid_appearance_toggle(
+            "settings-grid-row-numbers",
+            t("settings.gridRowNumbers"),
+            t("settings.gridRowNumbers.hint"),
+            visible,
+            &k,
+            &mut overlays,
+            |state| {
+                let current = state.desktop.read_native_grid_row_numbers()?;
+                state.desktop.write_native_grid_row_numbers(!current)
+            },
+        ));
     }
     if let Some(limit) = select_limit {
         section = section.child(select_limit_row(limit.effective_rows.is_some(), &k));
@@ -128,7 +154,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             "Settings not available here: {}{}{}, time display, connection pool, {}and auto-chart.{}",
             if row_count.is_none() { "row count mode, " } else { "" },
             if default_sort.is_none() { "default sorting, " } else { "" },
-            if striped.is_none() { "grid settings" } else { "other grid settings" },
+            if striped.is_none() && row_numbers.is_none() { "grid settings" } else { "other grid settings" },
             if select_limit.is_none() { "the SELECT-limit toggle, " } else { "" },
             if row_count == Some(RowCountMode::Auto) {
                 " Automatic uses the database's default counting strategy; the estimate threshold is not configurable in Native."
@@ -138,7 +164,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             "此处暂不支持{}{}{}、时间显示、连接池、{}自动图表设置。{}",
             if row_count.is_none() { "行数统计、" } else { "" },
             if default_sort.is_none() { "默认排序、" } else { "" },
-            if striped.is_none() { "表格设置" } else { "其他表格设置" },
+            if striped.is_none() && row_numbers.is_none() { "表格设置" } else { "其他表格设置" },
             if select_limit.is_none() { "SELECT 限制开关、" } else { "" },
             if row_count == Some(RowCountMode::Auto) {
                 "自动模式使用数据库默认的计数策略；Native 暂不支持设置估算阈值。"
@@ -198,12 +224,17 @@ fn select_limit_row(checked: bool, k: &Kit) -> El {
         .child(switch)
 }
 
-fn grid_alternating_rows(checked: bool, k: &Kit, overlays: &mut Vec<El>) -> El {
-    const KEY: &str = "settings-grid-alternating-rows";
-    let label = t("settings.gridAlternatingRows");
-    let hint = t("settings.gridAlternatingRows.hint");
+fn grid_appearance_toggle(
+    key: &str,
+    label: &str,
+    hint: &str,
+    checked: bool,
+    k: &Kit,
+    overlays: &mut Vec<El>,
+    toggle_preference: impl Fn(&mut AppState) -> Result<(), String> + 'static,
+) -> El {
     let toggle = row()
-        .key(KEY)
+        .key(key)
         .size(36.0, 20.0)
         .shrink()
         .radius(10.0)
@@ -216,18 +247,15 @@ fn grid_alternating_rows(checked: bool, k: &Kit, overlays: &mut Vec<El>) -> El {
         .focusable(true)
         .focus_ring(2.0, 1.0, k.c.border_focus)
         .child(col().size(14.0, 14.0).radius(7.0).fill(rune::Color::WHITE).a11y_hidden())
-        .on_press(|state: &mut AppState| {
+        .on_press(move |state: &mut AppState| {
             if state.active == crate::types::Section::Settings && state.settings_section() == "dataBrowsing" {
-                state.settings_error = match state.desktop.read_native_grid_alternating_rows() {
-                    Ok(current) => state.desktop.write_native_grid_alternating_rows(!current).err(),
-                    Err(error) => Some(error),
-                };
+                state.settings_error = toggle_preference(state).err();
             }
         });
-    row().key(format!("{KEY}-row")).w_full().justify_between().center_y()
+    row().key(format!("{key}-row")).w_full().justify_between().center_y()
         .child(row().gap(4.0).center_y()
             .child(text(label).font(TextStyle::new(14.0, 400.0).lh(20.0)).color(k.c.text_muted))
-            .child(SettingHint::new(format!("{KEY}-hint"), label.to_owned(), hint.to_owned())
+            .child(SettingHint::new(format!("{key}-hint"), label.to_owned(), hint.to_owned())
                 .build(k, overlays)))
         .child(toggle)
 }

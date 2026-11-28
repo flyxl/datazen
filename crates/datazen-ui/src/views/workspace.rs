@@ -735,13 +735,13 @@ fn result_workspace(
     let status = result_status_bar(state, grid, theme, elapsed_ms);
     let body = match state.result_view {
         ResultView::Table => crate::data_grid::result_panel(
+            state,
             grid,
             crate::data_grid::GridSlot::Result,
             theme.text,
             theme.text_secondary,
             theme.control_off,
             dark,
-            state.desktop.read_native_grid_alternating_rows().unwrap_or(true),
         ),
         ResultView::Chart => result_chart_view(grid, theme),
     };

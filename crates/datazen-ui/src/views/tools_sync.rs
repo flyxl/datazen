@@ -280,13 +280,13 @@ pub fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             );
             if let Some(grid) = &state.sync_preview_grid {
                 section = section.child(crate::data_grid::result_panel(
+                    state,
                     grid,
                     crate::data_grid::GridSlot::SyncPreview,
                     theme.text,
                     theme.text_secondary,
                     theme.control_off,
                     dark,
-                    true, // Sync preview keeps its independent appearance.
                 ));
             }
             section = section.child(

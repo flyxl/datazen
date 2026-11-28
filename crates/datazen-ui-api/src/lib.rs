@@ -2412,6 +2412,15 @@ pub trait DesktopAdapter {
         Err("Grid appearance is not implemented by this desktop adapter".into())
     }
 
+    /// The row-number gutter in the actual Table and Query Result grids.
+    fn read_native_grid_row_numbers(&self) -> Result<bool, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn write_native_grid_row_numbers(&mut self, _enabled: bool) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// The effective global row count preference for interactive table reads.
     fn read_native_row_count_mode(&self) -> Result<types::RowCountMode, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use datazen_ui_api::NativeTableRowCount;
+use datazen_ui_api::{types::DEFAULT_GRID_ROW_NUMBERS, NativeTableRowCount};
 use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, row, text};
 
 use crate::i18n::t;
@@ -44,6 +44,37 @@ pub fn grid_of<'a>(state: &'a crate::AppState, slot: GridSlot) -> &'a DataGrid {
 struct CellPaint {
     dark: bool,
     alternating_rows: bool,
+    show_row_numbers: bool,
+    row_tail_width: f32,
+}
+
+impl CellPaint {
+    fn for_slot(state: &crate::AppState, slot: GridSlot, dark: bool) -> Self {
+        // Settings applies to the two user-facing data grids, not Sync's
+        // independent comparison preview.
+        let shared = slot != GridSlot::SyncPreview;
+        Self {
+            dark,
+            alternating_rows: !shared || state.desktop.read_native_grid_alternating_rows().unwrap_or(true),
+            show_row_numbers: !shared || state.desktop.read_native_grid_row_numbers()
+                .unwrap_or(DEFAULT_GRID_ROW_NUMBERS),
+            row_tail_width: 0.0,
+        }
+    }
+
+    fn gutter_width(self) -> f32 {
+        if self.show_row_numbers { GUTTER_W } else { 0.0 }
+    }
+
+    fn row_background(self, row_index: u32, gp: palette::GridPalette) -> rune::Color {
+        if !self.alternating_rows || row_index % 2 == 0 {
+            gp.zebra_even
+        } else if self.dark {
+            gp.zebra_odd_dark
+        } else {
+            gp.zebra_odd_light
+        }
+    }
 }
 
 /// The scrolling sheet the table page and the query result share: a sticky header
@@ -54,16 +85,24 @@ fn sheet(
     ink: rune::Color,
     well: rune::Color,
     height: f32,
-    paint: CellPaint,
+    mut paint: CellPaint,
 ) -> El {
     let scroll_x = grid.scroll_x();
     let table_scroll_y = (slot == GridSlot::Table).then(|| grid.table_scroll_y());
+    let scroll_key = slot.key("data-grid-scroll");
     let data_width = grid.sheet_data_width();
-    let width = GUTTER_W + data_width;
+    if !paint.show_row_numbers && slot == GridSlot::Table && grid.cols > 0 {
+        // React still selects the whole row when the pointer hits real row
+        // background outside the data cells. Do not assign this action to
+        // the cells or virtual-column spacers: those have different semantics.
+        let viewport_width = rune::memo::layout_with(&scroll_key, |rect| rect[2]).unwrap_or(0.0);
+        paint.row_tail_width = (viewport_width - data_width).max(0.0);
+    }
+    let width = paint.gutter_width() + data_width + paint.row_tail_width;
     let sheet = col()
         .key(slot.key("data-grid-sheet"))
         .w(width)
-        .child(header_row(grid, slot, ink, paint.dark).sticky_top(0.0))
+        .child(header_row(grid, slot, ink, paint).sticky_top(0.0))
         .child(
             col()
                 .key(slot.key("data-grid-rows"))
@@ -84,10 +123,10 @@ fn sheet(
     let (focus_row, focus_col) = grid.focus();
     let active = grid.selected_row().map_or_else(
         || format!("cell-{focus_row}-{focus_col}"),
-        |row| format!("rownum-{row}"),
+        |row| if paint.show_row_numbers { format!("rownum-{row}") } else { format!("grid-row-{row}") },
     );
     col()
-        .key(slot.key("data-grid-scroll"))
+        .key(scroll_key)
         .w_full()
         .h(height)
         .fill(well)
@@ -126,10 +165,8 @@ pub fn panel(
         .child(pending_changes_bar(state, muted, well))
         .child(filter_bar(state, ink, muted, well, dark))
         .child(fk_bar(state, ink, muted, well))
-        .child(sheet(grid, GridSlot::Table, ink, viewport, 380.0, CellPaint {
-            dark,
-            alternating_rows: state.desktop.read_native_grid_alternating_rows().unwrap_or(true),
-        }))
+        .child(sheet(grid, GridSlot::Table, ink, viewport, 380.0,
+            CellPaint::for_slot(state, GridSlot::Table, dark)))
         .child(footer(state, ink, muted))
 }
 
@@ -344,13 +381,13 @@ fn fk_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: r
 /// The query result area: the same sheet as the table page, without the filter
 /// bar and the footer, and not editable. The sync preview reuses it.
 pub fn result_panel(
+    state: &crate::AppState,
     grid: &DataGrid,
     slot: GridSlot,
     ink: rune::Color,
     muted: rune::Color,
     well: rune::Color,
     dark: bool,
-    alternating_rows: bool,
 ) -> El {
     col()
         .key("result-grid")
@@ -362,7 +399,7 @@ pub fn result_panel(
                 .color(muted)
                 .key("result-grid-status"),
         )
-        .child(sheet(grid, slot, ink, well, 200.0, CellPaint { dark, alternating_rows }))
+        .child(sheet(grid, slot, ink, well, 200.0, CellPaint::for_slot(state, slot, dark)))
 }
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.
@@ -538,26 +575,27 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
     footer
 }
 
-fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, dark: bool) -> El {
-    let gp = palette::grid_palette(dark);
+fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, paint: CellPaint) -> El {
+    let gp = palette::grid_palette(paint.dark);
     let mut line = row().key(slot.key("data-grid-header")).h(ROW_H).fill(gp.header_bg);
-    // A4: row-number gutter header.
-    line = line.child(
-        row()
-            .key(slot.key("head-rownum"))
-            .w(GUTTER_W)
-            .h(ROW_H)
-            .px(6.0)
-            .center_y()
-            .fill(gp.header_gutter_bg)
-            .child(text("#").font(label_style()).color(ink)),
-    );
+    if paint.show_row_numbers {
+        line = line.child(
+            row()
+                .key(slot.key("head-rownum"))
+                .w(GUTTER_W)
+                .h(ROW_H)
+                .px(6.0)
+                .center_y()
+                .fill(gp.header_gutter_bg)
+                .child(text("#").font(label_style()).color(ink)),
+        );
+    }
     let mut cursor = 0u32;
     for col_index in grid.built_columns() {
         if col_index > cursor {
             line = line.child(el().w(grid.span_width(cursor, col_index)).h(ROW_H));
         }
-        line = line.child(header_cell(grid, slot, col_index, ink, dark));
+        line = line.child(header_cell(grid, slot, col_index, ink, paint));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
@@ -573,28 +611,26 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
         .key(slot.key(&format!("grid-row-{row_index}")))
         .role("row")
         .h(ROW_H);
-    // A4: row-number gutter (global 1-based).
-    let num = if grid.page_size() > 0 {
-        grid.page().saturating_mul(grid.page_size()).saturating_add(row_index + 1)
-    } else {
-        row_index + 1
-    };
     let row_selected = grid.selected_row() == Some(row_index);
-    let mut gutter = row()
-        .key(slot.key(&format!("rownum-{row_index}")))
-        .role("rowheader")
-        .w(GUTTER_W)
-        .h(ROW_H)
-        .px(6.0)
-        .center_y()
-        .fill(if row_selected { gp.selected } else { gp.gutter_bg })
-        .child(text(num.to_string()).font(label_style()).color(ink));
-    if slot == GridSlot::Table {
-        gutter = gutter.on_press(move |state: &mut crate::AppState| {
-            state.grid.select_row(row_index);
-        });
+    if paint.show_row_numbers {
+        // The existing A4 numbering stays global and 1-based.
+        let num = grid.page().saturating_mul(grid.page_size()).saturating_add(row_index + 1);
+        let mut gutter = row()
+            .key(slot.key(&format!("rownum-{row_index}")))
+            .role("rowheader")
+            .w(GUTTER_W)
+            .h(ROW_H)
+            .px(6.0)
+            .center_y()
+            .fill(if row_selected { gp.selected } else { gp.gutter_bg })
+            .child(text(num.to_string()).font(label_style()).color(ink));
+        if slot == GridSlot::Table {
+            gutter = gutter.on_press(move |state: &mut crate::AppState| {
+                state.grid.select_row(row_index);
+            });
+        }
+        line = line.child(gutter);
     }
-    line = line.child(gutter);
     let mut cursor = 0u32;
     for col_index in cols {
         if col_index > cursor {
@@ -606,6 +642,16 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
     if cursor < grid.cols {
         line = line.child(el().w(grid.span_width(cursor, grid.cols)).h(ROW_H));
     }
+    if paint.row_tail_width > 0.0 {
+        line = line.child(
+            el().key(format!("grid-row-background-{row_index}"))
+                .w(paint.row_tail_width)
+                .h(ROW_H)
+                .fill(if row_selected { gp.selected } else { paint.row_background(row_index, gp) })
+                .a11y_hidden()
+                .on_press(move |state: &mut crate::AppState| state.grid.select_row(row_index)),
+        );
+    }
     line
 }
 
@@ -614,7 +660,7 @@ fn header_cell(
     slot: GridSlot,
     col_index: u32,
     ink: rune::Color,
-    dark: bool,
+    paint: CellPaint,
 ) -> El {
     let label = grid
         .column_name(col_index)
@@ -638,8 +684,8 @@ fn header_cell(
         cell = cell.on_press(move |state: &mut crate::AppState| state.cycle_sort(col_index));
     }
     if col_index == 0 {
-        let gp = palette::grid_palette(dark);
-        cell = cell.sticky_left(GUTTER_W).fill(gp.frozen_bg);
+        let gp = palette::grid_palette(paint.dark);
+        cell = cell.sticky_left(paint.gutter_width()).fill(gp.frozen_bg);
     }
     cell
 }
@@ -678,12 +724,8 @@ fn cell(
         gp.selected
     } else if frozen {
         gp.frozen_cell
-    } else if !paint.alternating_rows || row_index % 2 == 0 {
-        gp.zebra_even
-    } else if dark {
-        gp.zebra_odd_dark
     } else {
-        gp.zebra_odd_light
+        paint.row_background(row_index, gp)
     };
     let w = grid.col_w(col_index);
     let mut box_el = row()
@@ -756,7 +798,7 @@ fn cell(
         });
     }
     if frozen {
-        box_el = box_el.sticky_left(GUTTER_W);
+        box_el = box_el.sticky_left(paint.gutter_width());
     }
     if active && grid.editing {
         box_el.child(

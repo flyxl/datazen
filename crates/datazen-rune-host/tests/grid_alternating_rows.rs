@@ -114,3 +114,132 @@ fn live_grid_striping_switch_uses_exact_key_and_rejects_failed_atomic_write() {
         assert_eq!(fs::read(&path).unwrap(), corrupt);
     }
 }
+
+#[test]
+fn live_row_number_setting_changes_the_actual_table_and_query_grids_without_changing_cells() {
+    use datazen_ui::{data_grid::DataGrid, Section, TableView};
+    use datazen_ui_api::{TabKind, TablePage};
+
+    const ROW_NUMBERS: &str = "settings-grid-row-numbers";
+    let profile = tempfile::tempdir().unwrap();
+    let path = profile.path().join("settings.json");
+    let original = json!({
+        "ui": {"language":"en", "themeMode":"light"},
+        "gridAlternatingRows": false, "unrelated":{"pin":1}
+    });
+    let initial = serde_json::to_vec(&original).unwrap();
+    fs::write(&path, &initial).unwrap();
+
+    let page = TablePage {
+        table: "sample".into(),
+        columns: vec!["id".into(), "name".into()],
+        rows: vec![vec!["1".into(), "Ada".into()], vec!["2".into(), "Bob".into()]],
+        page: 0,
+        page_size: 25,
+        total_rows: 2,
+        sort: None,
+        filter: None,
+        primary_key: vec!["id".into()],
+        read_only: None,
+    };
+    let mut rt = open(profile.path(), false);
+    let toggle = find(&rt, ROW_NUMBERS);
+    assert_eq!(toggle.role, "switch");
+    assert_eq!(toggle.label.as_deref(), Some("Row numbers"));
+    assert!(toggle.focusable);
+    assert_eq!(toggle.fill, datazen_ui::ui::kit::kit(false).c.bg_accent);
+    assert!(toggle.rect[1] > find(&rt, SWITCH).rect[1]);
+    assert_eq!(fs::read(&path).unwrap(), initial, "mount must not write the default");
+
+    rt.update(|state, _| {
+        state.active = Section::Workspace;
+        let _ = state.tabs.open(TabKind::Table, "sample").expect("sample table tab");
+        state.table_view = TableView::Data;
+        state.grid.load_page(&page);
+    });
+    settled(&mut rt);
+    assert!(rt.find("head-rownum").is_some() && rt.find("rownum-0").is_some());
+    let first_before = find(&rt, "cell-0-0").rect;
+    let second_before = find(&rt, "cell-0-1").rect;
+    press(&mut rt, "rownum-1");
+    assert_eq!(rt.state.grid.selected_row(), Some(1));
+    assert_eq!(rt.state.grid.copy_tsv(), "2\tBob");
+
+    rt.update(|state, _| state.active = Section::Settings);
+    settled(&mut rt);
+    press(&mut rt, ROW_NUMBERS);
+    assert_eq!(find(&rt, ROW_NUMBERS).fill, datazen_ui::ui::kit::kit(false).c.border_base);
+    let mut expected = original.clone();
+    expected["gridRowNumbers"] = json!(false);
+    let disabled = fs::read(&path).unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&disabled).unwrap(), expected);
+
+    let collision = path.with_extension("json.tmp");
+    fs::create_dir(&collision).unwrap();
+    press(&mut rt, ROW_NUMBERS);
+    assert_eq!(find(&rt, ROW_NUMBERS).fill, datazen_ui::ui::kit::kit(false).c.border_base);
+    assert!(rt.find("settings-error").is_some());
+    assert_eq!(fs::read(&path).unwrap(), disabled);
+    fs::remove_dir(collision).unwrap();
+
+    rt.update(|state, _| state.active = Section::Workspace);
+    settled(&mut rt);
+    assert!(rt.find("head-rownum").is_none() && rt.find("rownum-0").is_none());
+    let first_after = find(&rt, "cell-0-0").rect;
+    let second_after = find(&rt, "cell-0-1").rect;
+    assert_eq!(first_before[0] - first_after[0], 40.0);
+    assert_eq!(second_before[0] - second_after[0], 40.0);
+    assert_eq!(first_before[2..], first_after[2..]);
+    assert_eq!(rt.state.grid.selected_row(), Some(1), "appearance does not clear selection");
+    assert_eq!(rt.state.grid.copy_tsv(), "2\tBob");
+
+    // Both row-background and ordinary cell clicks go through actual pointer
+    // hit testing with the gutter off. A cell drag remains a cell range.
+    press(&mut rt, "grid-row-background-0");
+    assert_eq!(rt.state.grid.selected_row(), Some(0));
+    assert_eq!(rt.state.grid.copy_tsv(), "1\tAda");
+    press(&mut rt, "cell-0-0");
+    assert_eq!(rt.state.grid.selected_row(), None);
+    assert_eq!(rt.state.grid.focus(), (0, 0));
+    let (x, y) = rt.find("cell-0-0").unwrap();
+    let (end_x, end_y) = rt.find("cell-1-1").unwrap();
+    rt.pointer_move(x, y);
+    rt.pointer_down(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(end_x, end_y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_up(end_x, end_y);
+    settled(&mut rt);
+    assert_eq!(rt.state.grid.rect(), (0, 1, 0, 1));
+    assert_eq!(rt.state.grid.copy_tsv(), "1\tAda\n2\tBob");
+
+    let mut wide_page = page.clone();
+    wide_page.columns = (0..20).map(|index| format!("column{index}")).collect();
+    wide_page.rows = (0..2)
+        .map(|row| (0..20).map(|col| format!("{row}:{col}")).collect())
+        .collect();
+    rt.update(|state, _| state.grid.load_page(&wide_page));
+    settled(&mut rt);
+    assert!(rt.find("grid-row-background-0").is_none(), "no fake tail on a full-width row");
+    let scroll_key = "data-grid-scroll";
+    let left = find(&rt, scroll_key).rect[0];
+    rt.update(|_, tx| tx.scroll_to_x(scroll_key, 300.0));
+    settled(&mut rt);
+    assert_eq!(find(&rt, "head-0").rect[0], left, "frozen header has no hidden gutter");
+    assert_eq!(find(&rt, "cell-0-0").rect[0], left, "frozen cell has no hidden gutter");
+
+    rt.update(|state, _| {
+        let _ = state.tabs.open(TabKind::Query, "Result").expect("result tab");
+        let mut results = DataGrid::new();
+        results.load_page(&page);
+        state.result_grid = Some(results);
+    });
+    settled(&mut rt);
+    assert!(rt.find("result-head-rownum").is_none() && rt.find("result-rownum-0").is_none());
+    press(&mut rt, "result-cell-1-1");
+    assert_eq!(rt.state.result_grid.as_ref().unwrap().copy_tsv(), "Bob");
+
+    drop(rt);
+    let reopened = open(profile.path(), false);
+    assert_eq!(find(&reopened, ROW_NUMBERS).fill, datazen_ui::ui::kit::kit(false).c.border_base);
+}
