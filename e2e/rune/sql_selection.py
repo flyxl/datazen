@@ -417,6 +417,95 @@ class SqlSelectionJourneys:
         self.assertFalse(visible(tree, text="unselected sibling", within="result-workspace"))
         self.assertEqual(self.sql_customer_rows(), original)
 
+    def test_editor_literal_find_passive_marks_preserve_shape_focus_and_original_selection(self):
+        """Typing updates passive highlights; only Next changes the real selection."""
+        self.sql_fixture_before()
+        settings = self.root / "settings.json"
+        settings.write_text('{"ui":{"language":"en","themeMode":"light"}}', encoding="utf-8")
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        db_bytes = self.db.read_bytes()
+        sql = "SELECT 'FI' AS upper_tag, 'ﬃ' AS lig_tag, 'first' AS long_tag;\nSELECT 'fi' AS exact_tag;"
+        entry = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": sql},
+                 tap(7.3, "sql-find-open")]
+
+        def marks(tree):
+            return [n for n in tree["elements"]
+                    if n.get("role") == "mark" and (n.get("key") or "").startswith("sql-find-hit-")
+                    and not n.get("exiting") and n.get("opacity", 0) > .95]
+
+        def editing_shape(tree):
+            return [(node["path"], node.get("text"), node["rect"])
+                    for node in tree["elements"] if "/sql-editor-field/" in node["path"]
+                    and node.get("role") != "mark" and not node.get("exiting")]
+
+        empty = self.replay(entry, until=8.0)
+        self.assertEqual(marks(empty), [])
+        typed = [*entry, type_text(8.25, "fi")]
+        passive = self.replay(typed, until=9.1)
+        self.assertEqual([(n["text"], n["fill"]) for n in marks(passive)],
+                         [("FI", "#ffff0054"), ("ﬃ", "#ffff0054"),
+                          ("fi", "#ffff0054"), ("fi", "#ffff0054")])
+        self.assertEqual(editing_shape(passive), editing_shape(empty))
+        self.assertTrue(next(n for n in passive["elements"] if n.get("key") == "sql-find-input")["focused"])
+        self.assertFalse(any((n.get("key") or "").startswith("sql-selected-")
+                             for n in passive["elements"]))
+        self.assertFalse(visible(passive, key="result-workspace"))
+
+        toggles = [*typed, tap(9.4, "sql-find-match-case"), tap(9.95, "sql-find-whole-word")]
+        narrowed = self.replay(toggles, until=10.55)
+        self.assertEqual([(n["text"], n["fill"]) for n in marks(narrowed)],
+                         [("ﬃ", "#ffff0054"), ("fi", "#ffff0054")])
+        self.assertEqual(editing_shape(narrowed), editing_shape(empty))
+
+        next_hit = [*toggles, tap(10.85, "sql-find-next")]
+        selected = self.replay(next_hit, until=11.55)
+        self.assertEqual([(n["text"], n["fill"]) for n in marks(selected)],
+                         [("ﬃ", "#ff6a0054"), ("fi", "#ffff0054")])
+        self.expect_rendered(selected, key="sql-selected-0-27", text="ﬃ")
+
+        dismissed = self.replay([*next_hit, key(11.8, "Escape")], until=12.5)
+        self.assertEqual(marks(dismissed), [])
+        self.expect_rendered(dismissed, key="sql-selected-0-27", text="ﬃ")
+        self.assertFalse(visible(dismissed, key="result-workspace"))
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+        self.assertEqual(self.db.read_bytes(), db_bytes)
+
+    def test_editor_literal_find_passive_marks_follow_the_real_scroll_viewport(self):
+        self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        db_bytes = self.db.read_bytes()
+        sql = ("SELECT 'needle' AS first_tag;\n" + "".join(f"-- gap line {i}\n" for i in range(90))
+               + "SELECT 'needle' AS last_tag;")
+        first = len("SELECT '".encode("utf-8"))
+        last = len(sql[:sql.rindex("needle")].encode("utf-8"))
+        start = f"sql-find-hit-{first}-{first + 6}-{first}"
+        end = f"sql-find-hit-{last}-{last + 6}-{last}"
+        entry = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": sql},
+                 key(6.0, "Home", cmd=True), tap(7.0, "sql-find-open"), type_text(8.0, "needle")]
+        before = self.replay(entry, until=9.0, size="960x640")
+        self.expect_rendered(before, key=start, text="needle")
+        self.assertFalse(any(n.get("key") == end for n in before["elements"]))
+
+        scroll = {"t": 9.2, "type": "wheel", "key": "sql-editor-scroll", "dy": -4800}
+        after = self.replay([*entry, scroll], until=10.7, size="960x640")
+        self.expect_rendered(after, key=end, text="needle")
+        self.assertFalse(any(n.get("key") == start for n in after["elements"]))
+        self.assertTrue(next(n for n in after["elements"] if n.get("key") == "sql-find-input")["focused"])
+        self.assertFalse(any((n.get("key") or "").startswith("sql-selected-")
+                             for n in after["elements"]))
+        self.assertFalse(visible(after, key="result-workspace"))
+        self.assertEqual(self.db.read_bytes(), db_bytes)
+
     def test_native_sql_editor_find_dock_is_opt_in_then_focuses_next_and_escapes(self):
         """The live Query dock is scoped and search never runs or edits a draft."""
         self.sql_fixture_before()
@@ -983,7 +1072,8 @@ class SqlSelectionJourneys:
                 row = next(n for n in tree["elements"]
                            if n.get("key") == f"sql-line-{index}" and not n.get("exiting"))
                 return "".join(n.get("text") or "" for n in tree["elements"]
-                               if n["path"].startswith(row["path"] + "/") and not n.get("exiting"))
+                               if n["path"].startswith(row["path"] + "/")
+                               and n.get("role") != "mark" and not n.get("exiting"))
             return "\n".join(line_text(index) for index in range(len(lines)))
 
         opened = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": sql},

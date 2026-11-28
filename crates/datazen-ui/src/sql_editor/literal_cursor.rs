@@ -236,6 +236,38 @@ impl LiteralQuery {
             .filter(|range| range != &cursor)
     }
 
+    /// CodeMirror StringQuery.highlight: non-overlapping from the start
+    /// of this viewport's search-length margin, not from document zero.
+    /// Keep paint-only safe hits even when another range splits a surrogate.
+    pub(super) fn visible_matches(
+        &self, doc: &LiteralDocument<'_>, window: Range<usize>, limit: usize,
+    ) -> Option<Vec<Range<usize>>> {
+        let from = doc.offset(window.start).ok()?;
+        let to = doc.offset(window.end).ok()?;
+        if from >= to {
+            return Some(Vec::new());
+        }
+        let mut out = Some(Vec::new());
+        self.scan(
+            doc, from.saturating_sub(self.raw_len), to.saturating_add(self.raw_len).min(doc.len()),
+            false, |hit| {
+                if hit.end <= from || hit.start >= to {
+                    return false;
+                }
+                if let Ok(bytes) = doc.bytes(hit) {
+                    let Some(ranges) = &mut out else { return true };
+                    if ranges.len() == limit {
+                        out = None;
+                        return true;
+                    }
+                    ranges.push(bytes);
+                }
+                false
+            },
+        );
+        out
+    }
+
     /// Non-overlapping matches for an explicit multi-selection. Exactly
     /// limit is allowed. The next match aborts rather than truncating, as
     /// CodeMirror's StringQuery.matchAll does for Select All Matches.

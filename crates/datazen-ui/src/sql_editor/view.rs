@@ -2,6 +2,7 @@ use rune::{El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx, col, row, text
 
 use crate::ui::palette;
 
+use super::find_paint::FindPaint;
 use super::highlight::highlight_with_palette;
 use super::syntax_theme::SyntaxPalette;
 use super::model::SqlEditor;
@@ -60,6 +61,14 @@ pub(crate) fn panel_with_completion_scope(
         .collect();
     let main_head = editor.main_head();
     let lines = split_lines(editor.doc());
+    let popup_height = completion_height * editor.completion_items().len() as f32;
+    let popup_after = if completion_current && popup_height > 0.0 {
+        Some(lines.partition_point(|(start, _)| *start <= main_head) as f32 * row_height)
+    } else {
+        None
+    };
+    let find = FindPaint::mounted(editor, viewport.as_ref(), &lines, row_height,
+        SQL_BODY_PADDING, popup_after.map(|after| (after, popup_height)), dark);
     let gutter_width =
         13.0 + size * (8.0 / DEFAULT_SIZE) * (lines.len().max(1).ilog10() + 1) as f32;
     let (gutter_bg, gutter_ink, gutter_edge) = palette::sql_editor_gutter(dark);
@@ -95,7 +104,7 @@ pub(crate) fn panel_with_completion_scope(
             n, start, line, &spans, &carets, editor, dark,
             LineStyle {
                 font, height: row_height, caret_height, ink: Some(document_ink),
-                selection: syntax.selection,
+                selection: syntax.selection, find: find.as_ref(),
             },
         ));
         if completion_current && !editor.completion_items().is_empty()
@@ -285,12 +294,13 @@ pub fn plain_panel(editor: &SqlEditor, ink: rune::Color, muted: rune::Color, dar
 }
 
 #[derive(Clone, Copy)]
-struct LineStyle {
+struct LineStyle<'a> {
     font: TextStyle,
     height: f32,
     caret_height: f32,
     ink: Option<rune::Color>,
     selection: Option<rune::Color>,
+    find: Option<&'a FindPaint>,
 }
 
 pub fn line_row(
@@ -303,7 +313,7 @@ pub fn line_row(
     dark: bool,
 ) -> El {
     line_row_with_style(index, start, line, spans, carets, editor, dark,
-        LineStyle { font: editor_font(), height: 18.0, caret_height: 16.0, ink: None, selection: None })
+        LineStyle { font: editor_font(), height: 18.0, caret_height: 16.0, ink: None, selection: None, find: None })
 }
 
 fn line_row_with_style(
@@ -314,7 +324,7 @@ fn line_row_with_style(
     carets: &[(usize, bool)],
     editor: &SqlEditor,
     dark: bool,
-    style: LineStyle,
+    style: LineStyle<'_>,
 ) -> El {
     let end = start + line.len();
     let mut here: Vec<(usize, bool)> = carets
@@ -381,12 +391,15 @@ fn line_row_with_style(
     row
 }
 
-fn slice_text(line: &str, abs: usize, from: usize, to: usize, spans: &[Span], style: LineStyle) -> El {
+fn slice_text(line: &str, abs: usize, from: usize, to: usize, spans: &[Span], style: LineStyle<'_>) -> El {
     let local: Vec<Span> = spans
         .iter()
         .filter_map(|span| clip_span(span, abs + from, abs + to, from))
         .collect();
-    let fragment = text(&line[from..to]).font(style.font).spans(local);
+    let mut fragment = text(&line[from..to]).font(style.font).spans(local);
+    if let Some(find) = style.find {
+        fragment = fragment.text_highlights(find.fragment(abs + from..abs + to));
+    }
     match style.ink {
         Some(ink) => fragment.color(ink),
         None => fragment,
