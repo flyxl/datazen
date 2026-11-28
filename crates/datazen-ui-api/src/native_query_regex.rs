@@ -2,6 +2,8 @@
 //! may advertise this capability. Ranges refer to the admitted LF UTF-8 draft.
 use std::ops::Range;
 
+pub mod projection;
+
 pub const MAX_DOC: usize = 128 * 1024;
 pub const MAX_PATTERN: usize = 1024;
 pub const MAX_TEMPLATE: usize = 4096;
