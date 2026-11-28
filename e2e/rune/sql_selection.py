@@ -31,7 +31,7 @@ class SqlSelectionJourneys:
         saved_sql = "SELECT '${1:literal} 中文';"
         self.replay([
             tap(.5, "rail-settings"), tap(1.4, "settings-nav-editor"),
-            *fill(2.3, "snippet-name-input", saved_name),
+            tap(1.95, "snippet-add"), *fill(2.65, "snippet-name-input", saved_name),
             tap(3.8, "snippet-sql-input"), key(4.05, "a", cmd=True),
             {"t":4.25,"type":"paste","text":saved_sql}, tap(5.4, "snippet-save"),
         ], until=6.6)

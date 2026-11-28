@@ -458,6 +458,25 @@ fn connection_dialog_renders_grouped_sections_and_ssh_ui() {
     assert!(runtime.find("connection-new").is_some(), "new connection action remains available");
 }
 
+fn snippet_press(runtime: &mut Runtime<AppState>, key: &str) {
+    let (x, y) = runtime.find(key).unwrap_or_else(|| panic!("mounted {key}"));
+    runtime.pointer_down(x, y);
+    runtime.pointer_up(x, y);
+    runtime.settle_all();
+    runtime.frame(0.0);
+}
+
+fn fill_snippet_add(runtime: &mut Runtime<AppState>, name: &str, sql: &str) {
+    let paste = |rt: &mut Runtime<AppState>, key, value| {
+        snippet_press(rt, key);
+        rt.paste(value);
+        rt.frame(0.0);
+    };
+    snippet_press(runtime, "snippet-add");
+    paste(runtime, "snippet-name-input", name);
+    paste(runtime, "snippet-sql-input", sql);
+}
+
 #[test]
 fn snippets_add_update_delete_and_duplicate_names_are_refused() {
     use datazen_ui_api::{SettingsApi, WorkspaceApi};
@@ -473,27 +492,25 @@ fn snippets_add_update_delete_and_duplicate_names_are_refused() {
         runtime.frame(0.0);
     assert!(runtime.find("settings-snippets").is_some());
 
-    runtime.state.snippet_name = rune::TextEdit::new("top");
-    runtime.state.snippet_sql = rune::TextEdit::new("SELECT * FROM customers LIMIT 10");
-    let (x, y) = runtime.find("snippet-save").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
+    fill_snippet_add(&mut runtime, "cancelled name", "SELECT 0");
+    snippet_press(&mut runtime, "snippet-cancel");
+    assert!(runtime.find("snippet-edit-dialog").is_none());
+    assert!(runtime.state.workspace.snippets().is_empty());
+
+    fill_snippet_add(&mut runtime, "top", "SELECT * FROM customers LIMIT 10");
+    snippet_press(&mut runtime, "snippet-save");
     assert!(
         runtime.find("snippet-row-0").is_some(),
         "the snippet is listed"
     );
 
-    runtime.state.snippet_name = rune::TextEdit::new("top");
-    runtime.state.snippet_sql = rune::TextEdit::new("SELECT 1");
-    let (x, y) = runtime.find("snippet-save").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
+    fill_snippet_add(&mut runtime, "top", "SELECT 1");
+    snippet_press(&mut runtime, "snippet-save");
     assert!(
-        runtime.find("snippet-error").is_some(),
-        "the duplicate name is refused"
+        runtime.find("snippet-add-error").is_some(),
+        "the duplicate name is refused without dropping the draft"
     );
+    snippet_press(&mut runtime, "snippet-cancel");
     assert!(runtime.find("snippet-row-1").is_none(), "still one snippet");
 
     runtime.state.snippet_name = rune::TextEdit::new("top");
@@ -570,12 +587,8 @@ fn the_snippets_panel_reads_and_writes_the_host_store_first() {
     );
 
     // A save reaches the host, not the port.
-    runtime.state.snippet_name = rune::TextEdit::new("from the form");
-    runtime.state.snippet_sql = rune::TextEdit::new("SELECT 2");
-    let (x, y) = runtime.find("snippet-save").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
+    fill_snippet_add(&mut runtime, "from the form", "SELECT 2");
+    snippet_press(&mut runtime, "snippet-save");
     assert!(
         runtime.find("snippet-row-1").is_some(),
         "the new snippet is listed"

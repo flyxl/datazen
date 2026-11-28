@@ -71,6 +71,8 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         "query.nativeFind.replaceAll" => Some(("全部替换", "Replace all")),
         "query.nativeFind.addCursor" => Some(("添加光标", "Add cursor")),
         "settings.nativeEditorFont.bundled" => Some(("内置等宽字体（IBM Plex Mono）", "Bundled monospace (IBM Plex Mono)")),
+        "settings.nativeSnippet.name" => Some(("片段名称", "Snippet name")),
+        "settings.nativeSnippet.update" => Some(("更新片段", "Update snippet")),
         "settings.nativeEditorFont.system" => Some(("系统等宽字体（不可用时使用内置字体）", "System monospace (bundled fallback)")),
         "extensions.page.nativeListUnavailable" => Some((
             "当前平台无法读取本地扩展列表。",

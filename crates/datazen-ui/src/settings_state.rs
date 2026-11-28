@@ -123,6 +123,7 @@ impl AppState {
             self.retire_native_prompt_confirmation();
         }
         if section != "editor" || self.active != crate::types::Section::Settings {
+            self.retire_native_snippet_add();
             self.retire_snippet_delete_confirmation();
         }
         self.settings_content.select_section(section);

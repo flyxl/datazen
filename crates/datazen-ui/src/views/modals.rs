@@ -75,6 +75,7 @@ pub fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
     } else {
         // Prompt cards scroll inside Settings; the reset dialog must not.
         crate::views::prompts_live::mount_reset_confirmation(state, dark, &mut layer);
+        super::settings::snippet_add_live::mount(state, dark, &mut layer);
         crate::snippets_state::mount_snippet_delete_confirmation(state, dark, &mut layer);
     }
     if let Some(plan) = state.active_cell_preview() {

@@ -84,6 +84,7 @@ pub mod language_packs_card;
 pub mod setting_hint;
 // T417: the SQL snippet add/edit/duplicate dialog.
 pub mod snippet_edit_dialog;
+pub(super) mod snippet_add_live;
 // T426: the SQL snippets card (the custom list, the builtin list,
 // the export/import row) over the T417 dialog + the confirm hook.
 pub mod sql_snippets_card;
@@ -242,8 +243,7 @@ fn editor_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .child(editor_syntax_live::font_family_row(state, &k, &mut overlays))
         .child(editor_syntax_live::row(state, dark, &k, &mut overlays))
         .children(state.settings_error.as_ref().map(|_| settings_error_row(state, theme)))
-        // Keep the current native inline snippet controls as-is, with no newly
-        // mounted card, modal, empty list, or unsupported React control.
+        // Add uses the native name/SQL store; keep existing update and delete.
         .child(snippets_section(state, theme, dark))
         .children(overlays)
 }
@@ -334,17 +334,13 @@ fn settings_error_row(state: &AppState, theme: tok::Theme) -> El {
 }
 
 fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    // SQL snippets: add, update, delete.
-    let mut snippets = col()
-        .key("settings-snippets")
-        .w_full()
-        .gap(6.0)
-        .child(
-            text("SQL snippets".to_owned())
-                .font(type_::TITLE)
-                .color(theme.text),
-        )
-        .child(
+    let k = crate::ui::kit::kit(dark);
+    let saved = state.host_snippets();
+    let mut snippets = snippet_add_live::card_header(k, dark, saved.len());
+    if !saved.is_empty() {
+        // Existing Native update workflow: key by the saved name, not React's
+        // unsupported persistent ID or rename contract.
+        snippets = snippets.child(
             row()
                 .key("snippet-form")
                 .w_full()
@@ -353,46 +349,36 @@ fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .center_y()
                 .flex_wrap()
                 .child(
-                    TextField::new("snippet-name-input", &state.snippet_name)
-                        .height(24.0)
-                        .width(140.0)
+                    TextField::new("snippet-update-name", &state.snippet_name)
+                        .height(24.0).width(140.0).pad_x(8.0).radius(7.0)
+                        .fill(k.c.surface_base).border(1.0, k.c.border_base)
+                        .label(t("settings.nativeSnippet.name")).placeholder(t("settings.nativeSnippet.name"))
                         .on_edit(|state: &mut AppState| &mut state.snippet_name)
                         .build(dark),
                 )
                 .child(
-                    TextField::new("snippet-sql-input", &state.snippet_sql)
-                        .height(24.0)
-                        .width(280.0)
-                        .min_width(0.0)
+                    TextField::new("snippet-update-sql", &state.snippet_sql)
+                        .height(24.0).width(280.0).min_width(0.0).pad_x(8.0).radius(7.0)
+                        .fill(k.c.surface_base).border(1.0, k.c.border_base)
+                        .label(t("query.snippets.template")).placeholder(t("query.snippets.template"))
                         .on_edit(|state: &mut AppState| &mut state.snippet_sql)
                         .build(dark),
                 )
                 .child(
                     row()
-                        .key("snippet-save")
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text(t("common.save")).font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.save_snippet_form()),
-                )
-                .child(
-                    row()
                         .key("snippet-update")
+                        .role("button").focusable(true).label(t("settings.nativeSnippet.update"))
                         .h(24.0)
                         .px(8.0)
                         .center_y()
                         .radius(6.0)
                         .fill(theme.control_off)
-                        .child(
-                            text(t("common.save")).font(type_::LABEL).color(theme.text),
-                        )
+                        .child(text(t("settings.nativeSnippet.update")).font(type_::LABEL).color(theme.text))
                         .on_press(|state: &mut AppState| state.update_snippet_form()),
                 ),
         );
-    for (index, snippet) in state.host_snippets().iter().enumerate() {
+    }
+    for (index, snippet) in saved.iter().enumerate() {
         let target = snippet.clone();
         snippets = snippets.child(
             row()

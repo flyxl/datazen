@@ -739,11 +739,18 @@ class OfflineJourneys:
         settings.write_text(json.dumps({"ui": {"language": "en"}}), encoding="utf-8")
         original_settings = (settings.read_bytes(), settings.stat().st_mtime_ns)
         editor = tap(1.4, "settings-nav-editor")
-        self.replay([
-            SETTINGS, editor, *fill(2.3, "snippet-name-input", "Rune local snippet"),
-            *fill(3.8, "snippet-sql-input", "SELECT 42;"), tap(5.1, "snippet-save"),
-        ], until=6.3)
         target = self.root / "snippets.json"
+        add = [SETTINGS, editor, tap(2.3, "snippet-add")]
+        pending_add = self.replay(add, until=3)
+        self.expect_rendered(pending_add, key="snippet-edit-dialog")
+        self.expect_rendered(pending_add, text="Add Snippet", within="snippet-edit-dialog")
+        draft = [*add, *fill(3.2, "snippet-name-input", "Rune local snippet"),
+                 *fill(4.6, "snippet-sql-input", "SELECT 42;")]
+        canceled_add = self.replay([*draft, key(5.85, "Escape")], until=6.6)
+        self.assertFalse(visible(canceled_add, key="snippet-edit-dialog"))
+        self.assertFalse(target.exists(), "opening, entering draft and Escape must not create the store")
+        added = self.replay([*draft, tap(5.85, "snippet-save")], until=6.6)
+        self.assertFalse(visible(added, key="snippet-edit-dialog"))
         self.assertIn("SELECT 42;", target.read_text(encoding="utf-8"))
         tree = self.replay([SETTINGS, editor], until=3)
         self.expect_rendered(tree, text="Rune local snippet", within="settings-snippets")

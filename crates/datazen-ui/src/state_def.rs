@@ -306,6 +306,7 @@ pub struct AppState {
     pub snippet_name: TextEdit,
     pub snippet_sql: TextEdit,
     pub snippet_error: Option<String>,
+    pub(crate) native_snippet_add: crate::snippets_state::NativeSnippetAdd,
     pub(crate) native_snippet_delete: crate::snippets_state::NativeSnippetDelete,
     /// T6: the favorites form's title input and its last rejected write. The
     /// statement comes from the current query editor — "save current SQL".
@@ -734,6 +735,7 @@ impl Default for AppState {
             snippet_name: TextEdit::new(String::new()),
             snippet_sql: TextEdit::new(String::new()),
             snippet_error: None,
+            native_snippet_add: crate::snippets_state::NativeSnippetAdd::default(),
             native_snippet_delete: crate::snippets_state::NativeSnippetDelete::default(),
             favorite_title: TextEdit::new(String::new()),
             favorite_error: None,

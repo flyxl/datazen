@@ -480,12 +480,10 @@ fn mounted_editor_font_slider_resizes_sql_glyphs_caret_and_gutter() {
         "default thumb={thumb_at_13:?}, expected x={center_at_13:.2}, track={:?}",
         [x, y, width, height],
     );
-    // This slice does not replace the pre-existing live snippets workflow.
     assert!(rt.find("settings-snippets").is_some());
-    for key in ["snippet-name-input", "snippet-sql-input", "snippet-save", "snippet-update"] {
-        assert!(rt.find(key).is_some(), "existing snippet control disappeared: {key}");
-    }
+    assert!(rt.find("snippet-add").is_some());
     assert!(rt.find("snippet-edit-dialog").is_none());
+    assert!(rt.find("snippet-update").is_none(), "nothing has been saved to update");
     let pos = x + width * (10.0 / 14.0);
     rt.pointer_down(pos, y + height * 0.5);
     rt.pointer_up(pos, y + height * 0.5);

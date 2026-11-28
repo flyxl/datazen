@@ -31,9 +31,19 @@ pub(crate) struct NativeSnippetDelete {
     target: Option<datazen_ui_api::Snippet>,
 }
 
+/// An ephemeral Add draft, separate from the existing Update fields.
+#[derive(Default)]
+pub(crate) struct NativeSnippetAdd {
+    pub(crate) open: bool,
+    pub(crate) epoch: u64,
+    pub(crate) name: TextEdit,
+    pub(crate) sql: TextEdit,
+    pub(crate) error: Option<String>,
+}
+
 pub(crate) fn mount_snippet_delete_confirmation(state: &AppState, dark: bool, layer: &mut Vec<El>) {
     let pending = &state.native_snippet_delete;
-    if !state.owns_snippet_delete_confirmation() || pending.target.is_none() || !pending.confirm.is_open() {
+    if !state.on_editor_settings() || pending.target.is_none() || !pending.confirm.is_open() {
         return;
     }
     let id = pending.confirm.pending_id;
@@ -49,31 +59,57 @@ impl AppState {
             .unwrap_or_else(|_| self.workspace.snippets())
     }
 
-    /// The workflows in force (N13): the host's once its registry persists
-    /// them, the memory port's while it does not. The host's read answers
-    /// from its loaded files — the same memory-speed class as the settings
-    /// read.
-    pub fn save_snippet_form(&mut self) {
-        let name = self.snippet_name.text.trim().to_owned();
-        let sql = self.snippet_sql.text.trim().to_owned();
-        // T3: the host's file store first; its fixed not-implemented error
-        // means the demo process, and the memory port answers instead.
-        let saved = match self.desktop.save_snippet(&name, &sql) {
-            Ok(()) => Ok(()),
-            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
-                self.workspace.save_snippet(&name, &sql)
-            }
-            Err(error) => Err(error),
+    pub(crate) fn open_native_snippet_add(&mut self) {
+        if !self.on_editor_settings() || self.native_snippet_add.open || self.native_snippet_delete.confirm.is_open() {
+            return;
+        }
+        self.native_snippet_add = NativeSnippetAdd {
+            open: true,
+            epoch: self.native_snippet_add.epoch.wrapping_add(1),
+            ..Default::default()
         };
-        match saved {
-            Ok(()) => {
-                self.snippet_error = None;
-                self.snippet_name = TextEdit::new(String::new());
-                self.snippet_sql = TextEdit::new(String::new());
-            }
-            Err(error) => self.snippet_error = Some(error),
+    }
+
+    pub(crate) fn close_native_snippet_add(&mut self, epoch: u64) {
+        if self.native_snippet_add.epoch == epoch {
+            self.retire_native_snippet_add();
         }
     }
+
+    pub(crate) fn retire_native_snippet_add(&mut self) {
+        self.native_snippet_add = NativeSnippetAdd {
+            epoch: self.native_snippet_add.epoch,
+            ..Default::default()
+        };
+    }
+
+    pub(crate) fn submit_native_snippet_add(&mut self, epoch: u64) {
+        let draft = &self.native_snippet_add;
+        if !self.on_editor_settings() || !draft.open || draft.epoch != epoch {
+            return;
+        }
+        let name = draft.name.text.trim().to_owned();
+        let sql = draft.sql.text.trim().to_owned();
+        // The exact same host-first persistence route, including duplicate-name
+        // handling and the demo-only in-memory fallback. No React metadata is
+        // invented or written into the separate settings file.
+        let result = if sql.is_empty() {
+            Err(crate::i18n::with_language(self.builtin_language(), || t("query.snippets.templateRequired")).to_owned())
+        } else {
+            match self.desktop.save_snippet(&name, &sql) {
+                Err(error) if error == DESKTOP_NOT_IMPLEMENTED => self.workspace.save_snippet(&name, &sql),
+                result => result,
+            }
+        };
+        match result {
+            Ok(()) => {
+                self.snippet_error = None;
+                self.retire_native_snippet_add();
+            }
+            Err(error) => self.native_snippet_add.error = Some(error),
+        }
+    }
+
     pub fn update_snippet_form(&mut self) {
         let name = self.snippet_name.text.trim().to_owned();
         let sql = self.snippet_sql.text.trim().to_owned();
@@ -94,12 +130,13 @@ impl AppState {
             Err(error) => self.snippet_error = Some(error),
         }
     }
-    fn owns_snippet_delete_confirmation(&self) -> bool {
+    pub(crate) fn on_editor_settings(&self) -> bool {
         self.active == Section::Settings && self.settings_section() == "editor"
     }
 
     pub(crate) fn request_snippet_delete(&mut self, target: &datazen_ui_api::Snippet) {
-        if !self.owns_snippet_delete_confirmation()
+        if !self.on_editor_settings()
+            || self.native_snippet_add.open
             || self.native_snippet_delete.confirm.is_open()
             || !self.host_snippets().contains(target)
         {
@@ -117,7 +154,7 @@ impl AppState {
     }
 
     fn answer_snippet_delete(&mut self, id: u64, result: bool) {
-        if !self.owns_snippet_delete_confirmation() {
+        if !self.on_editor_settings() {
             return;
         }
         let Some(ok) = self.native_snippet_delete.confirm.answer(id, result) else { return; };
