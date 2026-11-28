@@ -121,8 +121,11 @@ pub fn build(
         .min_w(0.0)
         .min_h(0.0);
 
+    let plain_home = super::connection_page::plain_light_connections_home(state, vm, dark);
     // 48pt toolbar: React omits it entirely on a KV panel.
-    if state.native_kv.is_some() && state.active == crate::types::Section::Workspace {
+    if plain_home {
+        root = root.child(row().key("content-toolbar-absent").h(0.0));
+    } else if state.native_kv.is_some() && state.active == crate::types::Section::Workspace {
         root = root.child(row().key("content-toolbar-absent").h(0.0));
     } else if vm.react_toolbar_gate && vm.show_toolbar() {
         root = root.child(super::content_toolbar(state, theme));
@@ -214,7 +217,7 @@ pub fn build(
     }
     root = root.child(main);
 
-    if !vm.react_status_gate || vm.show_status_bar() {
+    if !plain_home && (!vm.react_status_gate || vm.show_status_bar()) {
         let live_table_data = state.table_view == crate::types::TableView::Data
             && super::connection_page::plain_live_sqlite_table(state, vm);
         root = root.child(super::chrome::content_status_bar_with_live_table_paint(

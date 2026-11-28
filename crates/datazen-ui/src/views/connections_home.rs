@@ -217,13 +217,14 @@ fn landing(
     dark: bool,
     connections: Vec<ConnectionProfile>,
 ) -> El {
+    let light_landing = !dark && state.desktop_connections.is_some() && state.connect_loading.is_none();
     let mut page = col()
         .key("connection-list")
         .grow(1.0)
         .min_h(0.0)
         .w_full()
-        .px(24.0)
-        .py(20.0)
+        .px(if light_landing { 32.0 } else { 24.0 })
+        .py(if light_landing { 32.0 } else { 20.0 })
         .scroll(ScrollSpec {
             stick_bottom: false,
         });
@@ -233,15 +234,20 @@ fn landing(
     // The React root testid is carried by the empty and KV states only: the
     // landing already has `connection-list`, and a second `connection-*` key
     // there would be counted as a card by the legacy A1 paging probe.
-    let content = col()
+    let mut content = col()
         .w_full()
         .max_w(CONTENT_WIDTH)
         .self_center()
-        .gap(22.0)
-        .child(home_hero(state, theme, dark, &connections))
-        .child(home_header(state, theme, dark))
-        .child(connection_cards(state, theme, dark, &connections))
-        .child(recent_queries_card(theme))
+        .gap(if light_landing { 24.0 } else { 22.0 })
+        .child(home_hero(state, theme, dark, &connections, light_landing));
+    let header = home_header(state, theme, dark, light_landing);
+    let cards = connection_cards(state, theme, dark, &connections, light_landing);
+    content = if light_landing {
+        content.child(col().w_full().gap(10.0).child(header).child(cards))
+    } else {
+        content.child(header).child(cards)
+    };
+    let content = content.child(recent_queries_card(theme))
         .child(mcp_promo_bar(state, theme, dark))
         .child(shortcut_footer(theme));
     page.child(content)
@@ -253,6 +259,7 @@ fn home_hero(
     theme: tok::Theme,
     dark: bool,
     connections: &[ConnectionProfile],
+    light_landing: bool,
 ) -> El {
     let mut engines: Vec<String> = connections.iter().map(|c| c.engine.clone()).collect();
     engines.sort();
@@ -276,13 +283,13 @@ fn home_hero(
                 .child(
                     text(t("connWin.home.selectConnectionTitle"))
                         .key("connections-home-title")
-                        .font(TextStyle::new(20.0, 700.0))
+                        .font(if light_landing { TextStyle::new(20.0, 700.0).lh(28.0) } else { TextStyle::new(20.0, 700.0) })
                         .color(theme.text),
                 )
                 .child(
                     rich(count_text, count_spans)
                         .key("connections-home-subtitle")
-                        .font(TextStyle::new(13.0, 400.0))
+                        .font(if light_landing { TextStyle::new(13.0, 400.0).lh(20.0) } else { TextStyle::new(13.0, 400.0) })
                         .color(theme.text_secondary),
                 )
                 .child(react_key("home-hero-subtitle")),
@@ -336,7 +343,7 @@ fn badge_cluster(theme: tok::Theme, dark: bool, engines: &[String]) -> El {
 }
 
 /// The header row: section label left, filter / import / new connection right.
-fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+fn home_header(state: &AppState, theme: tok::Theme, dark: bool, light_landing: bool) -> El {
     let accent = crate::ui::theme::accent(dark);
     let filter_active = !state.connection_search.text.is_empty();
     row()
@@ -354,36 +361,32 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .grow(1.0),
         )
         .child({
-            let mut filter = row()
-                .w(220.0)
-                .h(28.0)
-                .px(9.0)
-                .gap(6.0)
-                .center_y()
-                .radius(7.0)
-                .fill(theme.card)
-                .border(1.0, theme.card_border)
-                .child(icon(&ICON_SEARCH, 13.0).color(theme.text_secondary))
-                .child(
-                    TextField::new("home-connections-filter", &state.connection_search)
-                        .height(28.0)
-                        .grow()
-                        .placeholder(t("connWin.home.connections.filter"))
-                        .on_edit(|state: &mut AppState| &mut state.connection_search)
-                        .build(dark),
-                );
+            let field = TextField::new("home-connections-filter", &state.connection_search)
+                .height(28.0)
+                .placeholder(t("connWin.home.connections.filter"))
+                .on_edit(|state: &mut AppState| &mut state.connection_search);
+            let mut filter = if light_landing {
+                row().w(224.0).h(28.0)
+                    .child(field.w_full().pad_x(28.0).build(dark))
+                    .child(icon(&ICON_SEARCH, 13.0).color(theme.text_secondary)
+                        .absolute(9.0, 7.5).a11y_hidden())
+            } else {
+                row().w(220.0).h(28.0).px(9.0).gap(6.0).center_y().radius(7.0)
+                    .fill(theme.card).border(1.0, theme.card_border)
+                    .child(icon(&ICON_SEARCH, 13.0).color(theme.text_secondary))
+                    .child(field.grow().build(dark))
+            };
             if filter_active {
-                filter = filter.child(
-                    row()
-                        .key("home-connections-filter-clear")
-                        .role("button")
-                        .focusable(true)
-                        .focus_ring(2.0, 0.0, accent)
-                        .size(16.0, 16.0)
-                        .center()
-                        .label(t("connWin.home.connections.clearFilter"))
-                        .on_press(|state: &mut AppState| state.connection_search.clear()),
-                );
+                let clear = row()
+                    .key("home-connections-filter-clear")
+                    .role("button")
+                    .focusable(true)
+                    .focus_ring(2.0, 0.0, accent)
+                    .size(16.0, 16.0)
+                    .center()
+                    .label(t("connWin.home.connections.clearFilter"))
+                    .on_press(|state: &mut AppState| state.connection_search.clear());
+                filter = filter.child(if light_landing { clear.absolute(201.0, 6.0) } else { clear });
             }
             filter
         })
@@ -431,6 +434,7 @@ fn connection_cards(
     theme: tok::Theme,
     dark: bool,
     connections: &[ConnectionProfile],
+    light_landing: bool,
 ) -> El {
     let display_query = state.connection_search.display().0;
     let entered = display_query.trim();
@@ -456,7 +460,7 @@ fn connection_cards(
     let mut section = col()
         .key("connections-cards-section")
         .w_full()
-        .gap(8.0)
+        .gap(if light_landing { 0.0 } else { 8.0 })
         .child(react_key("home-connections-section"));
     let mut cards = col()
         .key("connections-card-list")
@@ -464,7 +468,9 @@ fn connection_cards(
         .radius(12.0)
         .fill(theme.card)
         .border(1.0, theme.card_border)
-        .clip_rounded(12.0);
+        .clip_rounded(12.0)
+        .px(if light_landing { 1.0 } else { 0.0 })
+        .py(if light_landing { 1.0 } else { 0.0 });
     if total == 0 {
         cards = cards.child(no_match_state(theme, entered));
         return section.child(cards);
@@ -476,7 +482,7 @@ fn connection_cards(
             .key(format!("connection-{id}"))
             .child(react_key(&format!("home-conn-card-{id}")))
             .w_full()
-            .min_h(62.0)
+            .min_h(if light_landing { 64.0 } else { 62.0 })
             .px(14.0)
             .py(11.0)
             .gap(12.0)
@@ -550,13 +556,13 @@ fn connection_cards(
     }
     section = section.child(cards);
     if total > COLLAPSED_COUNT || state.connections_show_all {
-        section = section.child(paging_row(state, theme, visible_count, total));
+        section = section.child(paging_row(state, theme, visible_count, total, light_landing));
     }
     section
 }
 
 /// "Showing X of Y · Show all" (React's paging row).
-fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: usize) -> El {
+fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: usize, light_landing: bool) -> El {
     let show_all_label = if state.connections_show_all {
         t("connWin.home.connections.showLess").to_owned()
     } else {
@@ -564,9 +570,10 @@ fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: 
     };
     row()
         .key("connections-paging")
+        .mt(if light_landing { 10.0 } else { 0.0 })
         .w_full()
         .px(2.0)
-        .h(24.0)
+        .h(if light_landing { 16.0 } else { 24.0 })
         .gap(8.0)
         .center_y()
         .child(
@@ -587,8 +594,8 @@ fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: 
                 .focusable(true)
                 .focus_ring(2.0, 0.0, theme.text_secondary)
                 .child(react_key("home-connections-show-all"))
-                .h(22.0)
-                .px(8.0)
+                .h(if light_landing { 16.0 } else { 22.0 })
+                .px(if light_landing { 0.0 } else { 8.0 })
                 .center_y()
                 .radius(6.0)
                 .hover(theme.hover)

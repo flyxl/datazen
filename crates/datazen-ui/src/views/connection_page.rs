@@ -190,6 +190,13 @@ fn plain_content_view(vm: &crate::views::content_view::ContentViewVm) -> bool {
         && vm.dialogs_vm.is_none()
 }
 
+/// React’s populated disconnected landing occupies the full content lane.
+pub(super) fn plain_light_connections_home(state: &AppState, vm: &crate::views::content_view::ContentViewVm, dark: bool) -> bool {
+    !dark && state.active == Section::Connections && state.home_slot.is_none()
+        && state.desktop_connections.is_some() && !state.visible_connections().is_empty()
+        && state.connect_loading.is_none() && plain_content_view(vm)
+}
+
 /// React's plain table pane starts immediately below its toolbar and tabs.
 pub(super) fn plain_live_sqlite_table(state: &AppState, vm: &crate::views::content_view::ContentViewVm) -> bool {
     super::workspace::live_sqlite_table_page(state) && plain_content_view(vm)
@@ -230,12 +237,13 @@ pub fn connection_content_with_vm(
     }
     let plain_query = plain_query_workspace(state, vm);
     let plain_table = plain_live_sqlite_table(state, vm);
-    let page_inset = if plain_query || plain_table { 0.0 } else { 24.0 };
+    let plain_home = plain_light_connections_home(state, vm, dark);
+    let page_inset = if plain_query || plain_table || plain_home { 0.0 } else { 24.0 };
     let plain_table_data = plain_table && state.table_view == crate::types::TableView::Data;
     // Plain Query and live Table Data fill the lane. Their inactive object
     // and document hosts are zero-sized; no gap should stand below the status
     // bar just because those hosts keep their stable keys.
-    let sibling_gap = if plain_query || plain_table_data { 0.0 } else { 16.0 };
+    let sibling_gap = if plain_query || plain_table_data || plain_home { 0.0 } else { 16.0 };
     col()
         .key("datazen-page")
         .grow(1.0)
