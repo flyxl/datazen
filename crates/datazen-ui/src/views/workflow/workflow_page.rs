@@ -2339,7 +2339,7 @@ fn step_table(step: &StepExecutionResult, statement: &StatementResult, k: &Kit) 
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
         .child(index_cell("#".to_owned(), "workflow-step-table-index-header".to_owned(), 40.0));
     for (column_index, column) in statement.columns.iter().enumerate() {
-        let mut caption = col().h(40.0).px(12.0).center_y()
+        let mut caption = col().h(40.0).px(12.0).justify_center()
             .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
             .child(
                 text(column.name.clone())
