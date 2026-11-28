@@ -5,17 +5,10 @@ use rune_kit::Kit;
 
 use super::{settings_content_state::SettingsSelect, settings_ui::setting_row};
 use crate::i18n::t;
-use crate::sql_editor::{highlight_with_palette, SyntaxPalette};
+use crate::components::sql_syntax_preview::live_sample_spans;
+use crate::sql_editor::SyntaxPalette;
 use crate::state_def::AppState;
 use crate::ui::select::Select;
-
-const PREVIEW_SQL: &str = concat!(
-    "-- Sample query preview\n",
-    "SELECT u.name, COUNT(o.id) AS total\n",
-    "FROM users u\n",
-    "WHERE u.status = 'active' AND u.age > 18\n",
-    "ORDER BY total DESC;",
-);
 
 fn font_label(family: EditorFontFamily) -> &'static str {
     match family {
@@ -85,7 +78,13 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
         "settings-live-syntax-theme".to_owned(),
         label,
         Some(t("settings.sqlSyntaxThemeHint")),
-        col().w_full().gap(8.0).child(select).child(preview(theme, state.editor_font_family(), dark, kit)),
+        col().w_full().gap(8.0).child(select).child(preview(
+            SyntaxPalette::preview(theme, dark),
+            if dark { current.dark } else { current.light },
+            state.editor_font_family(),
+            dark,
+            kit,
+        )),
     )
 }
 
@@ -118,9 +117,15 @@ fn preview_radius(dark: bool) -> f32 {
     if dark { 12.0 } else { 11.0 }
 }
 
-fn preview(theme: SqlSyntaxTheme, family: EditorFontFamily, dark: bool, kit: &Kit) -> El {
-    let colors = SyntaxPalette::preview(theme, dark);
-    let spans = highlight_with_palette(PREVIEW_SQL, colors);
+fn preview(
+    colors: SyntaxPalette,
+    palette: datazen_ui_api::Palette,
+    family: EditorFontFamily,
+    dark: bool,
+    kit: &Kit,
+) -> El {
+    let foreground = colors.foreground.unwrap_or(Color::BLACK);
+    let (source, spans) = live_sample_spans(palette, foreground);
     // A horizontal viewport lays its direct children out side by side.
     // Give it one naturally sized, vertical code block, so the longest
     // line can scroll without turning the five lines into a filmstrip.
@@ -132,8 +137,7 @@ fn preview(theme: SqlSyntaxTheme, family: EditorFontFamily, dark: bool, kit: &Ki
     let mut start = 0usize;
     let font = TextStyle::new(12.0, 400.0).lh(20.4)
         .family(crate::sql_editor::query_font_family(family));
-    let foreground = colors.foreground.unwrap_or(Color::BLACK);
-    for (index, line) in PREVIEW_SQL.split('\n').enumerate() {
+    for (index, line) in source.split('\n').enumerate() {
         let end = start + line.len();
         let row_spans: Vec<_> = spans.iter().filter_map(|span| {
             let lo = (span.start as usize).max(start);
@@ -180,6 +184,28 @@ mod visual_tests {
     use super::*;
 
     #[test]
+    fn picker_sample_preserves_chromium_token_roles_for_all_live_palettes() {
+        for preset in SQL_SYNTAX_PRESETS {
+            for palette in [preset.light, preset.dark] {
+                let (source, spans) = live_sample_spans(palette, Color::BLACK);
+                for (word, role) in [
+                    ("COUNT", "name"), ("name", "propertyName"), ("status", "propertyName"),
+                    ("age", "propertyName"), ("id", "propertyName"), ("DESC", "keyword"),
+                    ("ORDER BY", "keyword"), ("'active'", "string"),
+                ] {
+                    let offset = source.find(word).unwrap();
+                    let span = spans.iter().find(|s| s.start as usize == offset).unwrap();
+                    let (_, hex) = palette.entries.iter().find(|(name, _)| *name == role).unwrap();
+                    assert_eq!(span.end as usize, offset + word.len());
+                    assert_eq!(span.color, rune::color::hex(hex), "{} {word}", preset.id);
+                    assert!(!span.italic);
+                }
+                assert!(spans[0].italic && spans[1].italic);
+            }
+        }
+    }
+
+    #[test]
     fn editor_skin_preserves_original_local_select_and_five_live_preview_lines() {
         for dark in [false, true] {
             let shared = crate::ui::kit::kit(dark);
@@ -191,7 +217,14 @@ mod visual_tests {
             assert_eq!(trigger.c.icon_muted, shared.c.text_faint);
 
             fn view(dark: &bool, _: &mut rune::Cx<bool>) -> El {
-                preview(SqlSyntaxTheme::DEFAULT, EditorFontFamily::Bundled, *dark, crate::ui::kit::kit(*dark))
+                let preset = &SQL_SYNTAX_PRESETS[0];
+                preview(
+                    SyntaxPalette::preview(SqlSyntaxTheme::DEFAULT, *dark),
+                    if *dark { preset.dark } else { preset.light },
+                    EditorFontFamily::Bundled,
+                    *dark,
+                    crate::ui::kit::kit(*dark),
+                )
             }
             let mut rt = rune::Runtime::new(dark, view, (496.0, 240.0), rune::Env::new(dark, 1.0));
             rt.frame(0.0);

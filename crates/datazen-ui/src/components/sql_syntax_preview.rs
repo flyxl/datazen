@@ -42,11 +42,9 @@
 //! | root | `sql-syntax-preview` |
 //! | pre | `sql-syntax-preview-pre` |
 //!
-//! No production consumer yet: the settings theme picker task is the
-//! mount point (T632's own wiring lands it).
+//! The live Settings picker shares this token map, with its own horizontally
+//! scrolling layout and the runtime palette from datazen-ui-api.
 
-// The production consumer is the settings theme picker wiring task;
-// until then the component tests are the only callers.
 #![allow(dead_code)]
 
 use rune::{col, text, Color, El, Span};
@@ -522,16 +520,30 @@ pub fn sample_token_spans(
     palette: &SqlSyntaxPalette,
     fg: Color,
 ) -> (String, Vec<Span>) {
+    sample_spans_with(|slot| slot.map_or(fg, |slot| slot_of(palette, slot, fg)))
+}
+
+/// Use the same sample and token roles in the live picker without switching
+/// away from its canonical runtime theme palette to the standalone port's copy.
+pub(crate) fn live_sample_spans(
+    palette: datazen_ui_api::Palette,
+    fg: Color,
+) -> (String, Vec<Span>) {
+    sample_spans_with(|slot| {
+        slot.and_then(|key| palette.entries.iter().find(|(name, _)| *name == key))
+            .and_then(|(_, value)| rune::color::hex(value))
+            .unwrap_or(fg)
+    })
+}
+
+fn sample_spans_with(color_for: impl Fn(Option<&str>) -> Color) -> (String, Vec<Span>) {
     let mut source = String::new();
     let mut spans = Vec::with_capacity(SAMPLE_TOKENS.len());
     for token in SAMPLE_TOKENS.iter() {
         let start = source.len();
         source.push_str(token.text);
         let end = source.len();
-        let color = match token.color.slot() {
-            Some(slot) => slot_of(palette, slot, fg),
-            None => fg,
-        };
+        let color = color_for(token.color.slot());
         let mut span = Span::new(start, end).color(color);
         if token.color == TokenColor::Comment {
             span = span.italic();
