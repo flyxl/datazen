@@ -1085,6 +1085,40 @@ class OfflineJourneys:
         self.assertEqual((self.root / "settings.json").read_bytes(), settings)
         self.assertEqual(self.db.read_bytes(), database)
 
+    def test_settings_no_count_full_page_probe_preserves_data_and_resets_on_filter(self):
+        settings, database = self._open_real_row_count_boundary_page(50, mode="none")
+        first = self.replay(OPEN, until=4.9)
+        self.expect_rendered(first, key="grid-page-label", text="Page 1")
+        self.expect_rendered(first, text="50 per page · Row count unavailable", within="grid-footer")
+        self.expect_rendered(first, text="boundary-001", within="cell-0-1")
+        self._expect_row_count_next_action(first, True)
+        probe = [*OPEN, self._row_count_next_at(first, 5.2)]
+        retained = self.replay(probe, until=6.9)
+        self.expect_rendered(retained, key="grid-page-label", text="Page 1")
+        self.expect_rendered(retained, text="boundary-001", within="cell-0-1")
+        self.expect_rendered(retained, text="50 per page · Row count unavailable", within="grid-footer")
+        self.assertFalse(visible(retained, text="50 rows", within="grid-footer"))
+        self._expect_row_count_next_action(retained, False)
+
+        # A genuine empty result from a normal filter must still replace the
+        # old rows. Clearing that filter resets the exhausted probe state.
+        filtered = [*probe, tap(7.35, "filter-column"),
+                    *fill(8.0, "filter-input", "missing-boundary"), key(9.0, "Enter")]
+        empty = self.replay(filtered, until=10.4)
+        self.expect_rendered(empty, key="grid-page-label", text="Page 1")
+        self.expect_rendered(empty, key="grid-filter-active")
+        self.assertFalse(visible(empty, text="boundary-001", within="data-grid"))
+        self._expect_row_count_next_action(empty, False)
+
+        clear = [*filtered, tap(10.8, "filter-input"), key(11.05, "a", cmd=True),
+                 key(11.3, "Backspace"), key(11.55, "Enter")]
+        again = self.replay(clear, until=13.1)
+        self.expect_rendered(again, text="boundary-001", within="cell-0-1")
+        self.expect_rendered(again, text="50 per page · Row count unavailable", within="grid-footer")
+        self._expect_row_count_next_action(again, True)
+        self.assertEqual((self.root / "settings.json").read_bytes(), settings)
+        self.assertEqual(self.db.read_bytes(), database)
+
     def test_settings_default_table_sort_persists_and_controls_native_sqlite_reads(self):
         settings = self.root / "settings.json"
         initial = {"ui": {"language": "en", "tablePageSize": 2, "queryMaxRows": 23},

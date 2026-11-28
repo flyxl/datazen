@@ -150,6 +150,7 @@ pub struct AppState {
     /// is in flight the grid keeps its previous page and the footer says so.
     pub table_loading: Option<u32>,
     pub(crate) table_read_error: Option<String>,
+    pub(crate) table_next_probe: Option<crate::workspace_state::TableNextProbe>,
     /// A commit job the host accepted and has not answered yet (N1). The
     /// dirty marks stay until the delivery lands.
     pub commit_loading: Option<u32>,
@@ -645,6 +646,7 @@ impl Default for AppState {
             read_generation: 0,
             table_loading: None,
             table_read_error: None,
+            table_next_probe: None,
             commit_loading: None,
             edit_preview: Default::default(),
             query_loading: None,

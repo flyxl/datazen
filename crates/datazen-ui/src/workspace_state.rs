@@ -21,6 +21,38 @@ use rune::{
     FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
+/// Tracks an explicit Next request from a visible nonexact offset page.
+/// It never modifies totals and never applies to ordinary reads.
+pub(crate) struct TableNextProbe {
+    generation: u32,
+    tab_id: u32,
+    connection: Option<String>,
+    table: String,
+    from: u32,
+    page_size: u32,
+    sort: Option<ColumnSort>,
+    filter: Option<ColumnFilter>,
+    exhausted: bool,
+}
+
+impl TableNextProbe {
+    fn still_scoped(&self, state: &AppState) -> bool {
+        self.generation == state.read_generation
+            && self.connection == state.desktop_connection
+            && state.connect_loading.is_none()
+            && state.grid.has_page()
+            && state.grid.table_label() == self.table
+            && state.grid.page() == self.from
+            && state.grid.page_size() == self.page_size
+            && state.table_page_size() == self.page_size
+            && state.tabs.selected().is_some_and(|tab| {
+                tab.kind == TabKind::Table && tab.id == self.tab_id && tab.title == self.table
+            })
+            && state.manual_sort_for_table(&self.table) == self.sort.as_ref()
+            && state.filter == self.filter
+    }
+}
+
 impl AppState {
     pub fn show_table(&mut self, title: &str) -> bool {
         // N1: a live host takes the read as a job and answers on its own
@@ -83,12 +115,37 @@ impl AppState {
         match page {
             Ok(read) => {
                 self.table_read_error = None;
+                if let Some(mut probe) = self.table_next_probe.take() {
+                    if !probe.exhausted && probe.still_scoped(self)
+                        && self.table_page == probe.from + 1
+                        && read.bounded_offset
+                        && !matches!(read.row_count, NativeTableRowCount::Exact(_))
+                        && read.page.page == probe.from + 1
+                        && read.page.page_size == probe.page_size
+                        && read.page.table == probe.table
+                        && read.page.sort == probe.sort
+                        && read.page.filter == probe.filter
+                        && read.page.rows.is_empty()
+                    {
+                        // The previous published rows remain genuinely visible;
+                        // this empty, same-scope probe only answers "no Next".
+                        self.table_page = probe.from;
+                        probe.exhausted = true;
+                        self.table_next_probe = Some(probe);
+                        return;
+                    }
+                }
                 self.table_page = read.page.page;
                 self.grid.load_native_table_page(&read);
                 self.grid.set_editable(read.page.read_only.is_none());
                 self.apply_table_column_widths();
             }
             Err(error) => {
+                if let Some(probe) = self.table_next_probe.take() {
+                    if !probe.exhausted && probe.still_scoped(self) {
+                        self.table_page = probe.from;
+                    }
+                }
                 self.grid.set_editable(false);
                 self.table_read_error = Some(error);
             }
@@ -106,7 +163,10 @@ impl AppState {
     pub(crate) fn can_next_table_page(&self) -> bool {
         self.grid.can_next_page()
             && (matches!(self.grid.row_count(), NativeTableRowCount::Exact(_))
-                || (self.table_loading.is_none()
+                || (!self.table_next_probe.as_ref().is_some_and(|probe| {
+                        probe.exhausted && probe.still_scoped(self)
+                    })
+                    && self.table_loading.is_none()
                     && self.table_read_error.is_none()
                     && self.connect_loading.is_none()
                     && self.table_page_size() == self.grid.page_size()
@@ -119,12 +179,29 @@ impl AppState {
         if !self.can_next_table_page() {
             return;
         }
-        self.table_page = if matches!(self.grid.row_count(), NativeTableRowCount::Exact(_)) {
-            self.table_page.saturating_add(1)
-        } else {
-            self.grid.page() + 1
+        if matches!(self.grid.row_count(), NativeTableRowCount::Exact(_)) {
+            self.table_page = self.table_page.saturating_add(1);
+            self.reload_table_page();
+            return;
+        }
+        let Some(tab) = self.tabs.selected() else { return };
+        let mut probe = TableNextProbe {
+            generation: self.read_generation,
+            tab_id: tab.id,
+            connection: self.desktop_connection.clone(),
+            table: tab.title.clone(),
+            from: self.grid.page(),
+            page_size: self.grid.page_size(),
+            sort: self.manual_sort_for_table(&tab.title).cloned(),
+            filter: self.filter.clone(),
+            exhausted: false,
         };
+        self.table_page = probe.from + 1;
         self.reload_table_page();
+        if self.read_generation != probe.generation && self.table_loading == Some(self.read_generation) {
+            probe.generation = self.read_generation;
+            self.table_next_probe = Some(probe);
+        }
     }
     pub fn prev_table_page(&mut self) {
         if !self.grid.has_page() || self.grid.page() == 0 {
@@ -728,6 +805,7 @@ impl AppState {
     /// a fresh open, a page turn, a reload — starts one, so a delivery from
     /// a read the state has moved past is dropped (N1, plan invariant 3).
     pub fn next_read_generation(&mut self) -> u32 {
+        self.table_next_probe = None;
         self.read_generation += 1;
         self.read_generation
     }
