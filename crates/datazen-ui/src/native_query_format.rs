@@ -101,8 +101,7 @@ impl AppState {
             Ok(captured) => captured,
             Err(FormatSourceError::Limit) => {
                 self.cancel_native_query_format();
-                self.query_action_notice("This SQL is too large to format.");
-                return true;
+                return self.report_native_format_error(NativeSqlFormatError::Limit);
             }
             Err(FormatSourceError::BlankOrInvalid) => return false,
         };
@@ -118,8 +117,8 @@ impl AppState {
             sql,
             options: context.engine_options(),
         };
-        if !self.desktop.begin_native_sql_format(request) {
-            self.query_action_notice("The local SQL formatter could not start.");
+        if let Err(error) = self.desktop.begin_native_sql_format(request) {
+            self.report_native_format_error(error);
             return true;
         }
         self.query_notice = None;
@@ -133,6 +132,18 @@ impl AppState {
             deadline: tx.clock() + UI_DEADLINE_SECONDS,
         });
         tx.wake_after(POLL_EVERY);
+        true
+    }
+
+    fn report_native_format_error(&mut self, error: NativeSqlFormatError) -> bool {
+        let notice = match error {
+            // Refusals for parse/cancel are deliberately silent as in React.
+            NativeSqlFormatError::Rejected | NativeSqlFormatError::Cancelled => return false,
+            NativeSqlFormatError::Limit => "This SQL is too large to format.",
+            NativeSqlFormatError::Timeout => "SQL formatting timed out.",
+            NativeSqlFormatError::Unavailable => "The local SQL formatter is unavailable.",
+        };
+        self.query_action_notice(notice);
         true
     }
 
@@ -158,8 +169,7 @@ impl AppState {
                 self.cancel_native_query_format();
             } else if now >= pending.deadline {
                 self.cancel_native_query_format();
-                self.query_action_notice("SQL formatting timed out.");
-                return true;
+                return self.report_native_format_error(NativeSqlFormatError::Timeout);
             }
         }
         // Drain a small bounded burst, including late answers made obsolete
@@ -184,17 +194,7 @@ impl AppState {
                     }
                     return false;
                 }
-                // CodeMirror's parse refusal is deliberately silent and
-                // cannot change a draft (or clear its redo).
-                Err(NativeSqlFormatError::Rejected | NativeSqlFormatError::Cancelled) => return false,
-                Err(error) => {
-                    self.query_action_notice(match error {
-                        NativeSqlFormatError::Limit => "This SQL is too large to format.",
-                        NativeSqlFormatError::Timeout => "SQL formatting timed out.",
-                        _ => "The local SQL formatter is unavailable.",
-                    });
-                    return true;
-                }
+                Err(error) => return self.report_native_format_error(error),
             }
         }
         if self.native_query_format.pending.is_some() {

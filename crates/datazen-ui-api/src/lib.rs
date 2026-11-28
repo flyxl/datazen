@@ -2407,10 +2407,13 @@ pub trait DesktopAdapter {
         None
     }
 
-    /// Enqueue bounded local-only work off the UI thread. False means no
+    /// Enqueue bounded local-only work off the UI thread. Err means no
     /// job was accepted and no answer for that generation will follow.
-    fn begin_native_sql_format(&mut self, _request: native_sql_format::NativeSqlFormatRequest) -> bool {
-        false
+    fn begin_native_sql_format(
+        &mut self,
+        _request: native_sql_format::NativeSqlFormatRequest,
+    ) -> Result<(), native_sql_format::NativeSqlFormatError> {
+        Err(native_sql_format::NativeSqlFormatError::Unavailable)
     }
 
     /// Nonblocking, with no raw engine diagnostics or SQL in errors.

@@ -12,6 +12,7 @@ use serde_json::json;
 #[derive(Default)]
 struct Wire {
     context: Option<NativeSqlFormatContext>,
+    begin_error: Option<NativeSqlFormatError>,
     requests: Vec<NativeSqlFormatRequest>,
     cancelled: Vec<u64>,
     replies: VecDeque<NativeSqlFormatDelivery>,
@@ -34,9 +35,13 @@ impl DesktopAdapter for Adapter {
     fn native_sql_format_context(&self) -> Option<NativeSqlFormatContext> {
         self.0.borrow().context.clone()
     }
-    fn begin_native_sql_format(&mut self, request: NativeSqlFormatRequest) -> bool {
-        self.0.borrow_mut().requests.push(request);
-        true
+    fn begin_native_sql_format(&mut self, request: NativeSqlFormatRequest) -> Result<(), NativeSqlFormatError> {
+        let mut wire = self.0.borrow_mut();
+        if let Some(error) = wire.begin_error {
+            return Err(error);
+        }
+        wire.requests.push(request);
+        Ok(())
     }
     fn poll_native_sql_format(&mut self) -> Option<NativeSqlFormatDelivery> {
         self.0.borrow_mut().replies.pop_front()
@@ -271,4 +276,36 @@ fn native_query_format_explicit_printable_custom_binding_precedes_its_insertion_
     key(&mut rt, Key::Text("k".into()), Mods::default());
     assert!(rt.state.sql.doc().starts_with("kSELECT"));
     assert_eq!(wire.borrow().requests.len(), 1);
+}
+
+#[test]
+fn native_query_format_immediate_limit_and_unavailable_match_delivery_notices() {
+    let source = "select 1";
+    let (mut rt, wire, _) = mounted(source, json!({}), "Mod-Shift-f");
+    tap(&mut rt, "sql-editor-scroll");
+    rt.state.sql.set_main_selection(8, 0);
+    let select = rt.state.sql.selection().clone();
+    for (error, notice) in [
+        (NativeSqlFormatError::Limit, "This SQL is too large to format."),
+        (NativeSqlFormatError::Unavailable, "The local SQL formatter is unavailable."),
+    ] {
+        wire.borrow_mut().begin_error = None;
+        stock_format(&mut rt);
+        let accepted = wire.borrow().requests.last().unwrap().generation;
+        reply(&wire, accepted, Err(error));
+        rt.frame(1.0 / 25.0);
+        assert_eq!(rt.state.query_notice.as_deref(), Some(notice));
+
+        rt.state.query_notice = None;
+        wire.borrow_mut().begin_error = Some(error);
+        let before_count = wire.borrow().requests.len();
+        stock_format(&mut rt);
+        assert_eq!(rt.state.query_notice.as_deref(), Some(notice));
+        assert_eq!(wire.borrow().requests.len(), before_count);
+        assert_eq!(rt.state.sql.doc(), source);
+        assert_eq!(rt.state.sql.selection(), &select);
+        assert!(rt.state.sql.undo_stack.is_empty());
+        assert!(rt.state.sql.redo_stack.is_empty());
+        assert!(rt.state.query_result_tabs.is_empty());
+    }
 }
