@@ -1096,6 +1096,7 @@ impl AppState {
             }
             AdapterDelivery::TablePage { generation, page } => {
                 let page = page.map(|page| NativeTablePage {
+                    column_types: Vec::new(),
                     row_count: NativeTableRowCount::Exact(u64::from(page.total_rows)),
                     page,
                     bounded_offset: false,

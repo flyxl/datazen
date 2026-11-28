@@ -845,6 +845,7 @@ fn nonexact_native_table_delivery_keeps_offset_stride_and_generation() {
     let native = |generation, page, rows, row_count| AdapterDelivery::NativeTablePage {
         generation,
         page: Ok(NativeTablePage {
+            column_types: Vec::new(),
             page: TablePage {
                 table: "customers".into(),
                 columns: vec!["id".into()],

@@ -1901,6 +1901,10 @@ pub enum NativeTableRowCount {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NativeTablePage {
     pub page: TablePage,
+    /// Driver-declared SQL types from the same scoped table read, in the exact
+    /// order of `page.columns`. Empty means the adapter has no metadata;
+    /// a blank entry means the driver did not declare a type for that column.
+    pub column_types: Vec<String>,
     pub row_count: NativeTableRowCount,
     /// The read is part of a bounded offset walk, not an unpaged result or a
     /// cursor continuation. Whether another page is possible also depends on

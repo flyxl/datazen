@@ -32,6 +32,7 @@ pub struct DataGrid {
     edits: HashMap<(u32, u32), String>,
     source: Option<Vec<Vec<String>>>,
     columns: Vec<String>,
+    column_types: Vec<String>,
     /// Per-column widths in points (A4), persisted per table.
     col_widths: Vec<u32>,
     pub anchor: (u32, u32),
@@ -96,6 +97,7 @@ impl DataGrid {
             edits: HashMap::new(),
             source: None,
             columns: Vec::new(),
+            column_types: Vec::new(),
             col_widths: Vec::new(),
             anchor: (0, 0),
             focus: (0, 0),
@@ -300,6 +302,11 @@ impl DataGrid {
         self.columns.get(col as usize).map(String::as_str)
     }
 
+    /// Only the current native table delivery can supply declared types.
+    pub(crate) fn column_type(&self, col: u32) -> Option<&str> {
+        self.column_types.get(col as usize).map(String::as_str).filter(|ty| !ty.trim().is_empty())
+    }
+
     /// The column's index on the loaded page, by name.
     fn column_index(&self, name: &str) -> Option<u32> {
         self.columns
@@ -327,6 +334,9 @@ impl DataGrid {
 
     pub fn load_native_table_page(&mut self, read: &NativeTablePage) {
         self.load_page_with_count(&read.page, read.row_count, read.bounded_offset);
+        if read.column_types.len() == self.columns.len() {
+            self.column_types.clone_from(&read.column_types);
+        }
     }
 
     fn load_page_with_count(
@@ -341,6 +351,7 @@ impl DataGrid {
         }
         self.source = Some(page.rows.clone());
         self.columns = page.columns.clone();
+        self.column_types.clear();
         self.rows = page.rows.len() as u32;
         self.cols = page.columns.len() as u32;
         self.page = page.page;

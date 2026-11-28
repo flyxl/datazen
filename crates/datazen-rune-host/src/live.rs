@@ -1689,10 +1689,15 @@ async fn read_table(
         .filter(|column| column.is_primary_key)
         .map(|column| column.name.clone())
         .collect();
+    let (columns, column_types) = read.columns
+        .into_iter()
+        .map(|column| (column.name, column.data_type))
+        .unzip();
     Ok(NativeTablePage {
+        column_types,
         page: TablePage {
             table: table.to_owned(),
-            columns: read.columns.into_iter().map(|column| column.name).collect(),
+            columns,
             rows: read
                 .rows
                 .into_iter()
@@ -4400,6 +4405,29 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         panic!("the read job never answered");
+    }
+
+    #[test]
+    fn native_table_read_carries_the_scoped_driver_column_types() {
+        let root = tempfile::tempdir().expect("disposable SQLite database");
+        let mut adapter = opened_adapter(root.path());
+        for (generation, table, names, types) in [
+            (2, "users", &["id", "name"][..], &["INTEGER", "TEXT"][..]),
+            (3, "orders", &["id", "user_id", "note"][..], &["INTEGER", "INTEGER", "TEXT"][..]),
+        ] {
+            assert!(adapter.begin_job(AdapterJob::ReadTable {
+                generation,
+                table: table.into(),
+                page: 0,
+                page_size: 25,
+                sort: None,
+                filter: None,
+            }));
+            let read = poll_native_read(&mut adapter).expect("the scoped table read succeeds");
+            assert_eq!(read.page.table, table);
+            assert_eq!(read.page.columns.iter().map(String::as_str).collect::<Vec<_>>(), names);
+            assert_eq!(read.column_types.iter().map(String::as_str).collect::<Vec<_>>(), types);
+        }
     }
 
     fn poll_read(adapter: &mut LiveAdapter) -> Result<TablePage, String> {

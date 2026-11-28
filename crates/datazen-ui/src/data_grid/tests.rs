@@ -227,6 +227,7 @@ fn native_table_pager_distinguishes_exact_estimated_and_unknown_counts() {
 
     let mut grid = DataGrid::new();
     let mut read = NativeTablePage {
+        column_types: vec!["INTEGER".into()],
         page: TablePage {
             table: "scoped".into(),
             columns: vec!["id".into()],
@@ -243,6 +244,7 @@ fn native_table_pager_distinguishes_exact_estimated_and_unknown_counts() {
         bounded_offset: true,
     };
     grid.load_native_table_page(&read);
+    assert_eq!(grid.column_type(0), Some("INTEGER"));
     assert!(grid.can_next_page(), "a small estimate is not a paging bound");
     assert_eq!(table_page_text(&grid), "Page 1");
     assert_eq!(
@@ -287,4 +289,46 @@ fn native_table_pager_distinguishes_exact_estimated_and_unknown_counts() {
     assert_eq!(grid.row_count(), Count::Exact(12));
     assert_eq!(table_page_text(&grid), "Page 1 / 6");
     assert_eq!(table_count_text(&grid), "12 rows");
+}
+
+
+#[test]
+fn native_table_column_types_cannot_outlive_their_page() {
+    use datazen_ui_api::{NativeTablePage, NativeTableRowCount, TablePage};
+
+    let mut grid = DataGrid::new();
+    let mut read = NativeTablePage {
+        page: TablePage {
+            table: "first".into(),
+            columns: vec!["same_name".into(), "undeclared".into()],
+            rows: Vec::new(),
+            page: 0,
+            page_size: 50,
+            total_rows: 0,
+            sort: None,
+            filter: None,
+            primary_key: Vec::new(),
+            read_only: None,
+        },
+        column_types: vec!["INTEGER".into(), "".into()],
+        row_count: NativeTableRowCount::Exact(0),
+        bounded_offset: true,
+    };
+    grid.load_native_table_page(&read);
+    assert_eq!((grid.column_type(0), grid.column_type(1)), (Some("INTEGER"), None));
+
+    read.page.table = "second".into();
+    read.column_types = vec!["TEXT".into(), "   ".into()];
+    grid.load_native_table_page(&read);
+    assert_eq!((grid.column_type(0), grid.column_type(1)), (Some("TEXT"), None));
+
+    read.column_types.pop();
+    grid.load_native_table_page(&read);
+    assert_eq!(grid.column_type(0), None, "unmatched metadata is not projected");
+
+    read.column_types.push("BLOB".into());
+    grid.load_native_table_page(&read);
+    assert_eq!(grid.column_type(1), Some("BLOB"));
+    grid.load_page(&read.page);
+    assert_eq!((grid.column_type(0), grid.column_type(1)), (None, None));
 }
