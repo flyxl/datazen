@@ -49,6 +49,7 @@ use crate::i18n::t;
 use crate::state_def::AppState;
 use crate::types::Section;
 use crate::splitter;
+use datazen_ui_api::WorkspaceApi;
 use rune::tok::{self, type_};
 use rune::{col, row, text, Cx, El};
 
@@ -282,6 +283,44 @@ pub fn connection_content_with_vm(
         })
 }
 
+/// Native database panes all belong to the one current session. Never name
+/// an unrelated profile from the navigator or infer a connection from a tab's
+/// editable label. Other workspace routes take priority over that session.
+fn connection_caption(state: &AppState) -> String {
+    match state.active {
+        Section::Settings => t("win.settings").to_owned(),
+        Section::Workflows => t("win.workflow").to_owned(),
+        Section::Dashboards => state.desktop.native_dashboard_board()
+            .ok().flatten()
+            .map(|board| format!("{} - DataZen", board.name))
+            .unwrap_or_else(|| t("win.dashboard").to_owned()),
+        Section::Wapps | Section::Tools => state.active.label().to_owned(),
+        Section::Connections | Section::Workspace => {
+            let connection_id = if state.active == Section::Workspace && state.session_open() {
+                state.desktop_connection.as_deref().or_else(|| {
+                    state.workspace.session().map(|session| session.connection_id.as_str())
+                })
+            } else {
+                None
+            };
+            connection_id.and_then(|id| {
+                let profiles = state.desktop_connections.as_deref()
+                    .unwrap_or_else(|| state.workspace.connections());
+                profiles.iter().find(|profile| profile.id == id)
+            }).map(|profile| {
+                let driver_label = crate::views::backup::db_label(&profile.engine);
+                format!("{} - {driver_label} - DataZen", profile.name)
+            }).unwrap_or_else(|| {
+                if state.active == Section::Workspace {
+                    t("nav.workspacePages")
+                } else {
+                    t("win.connections")
+                }.to_owned()
+            })
+        }
+    }
+}
+
 /// The title band: React's `titleBarLeft` (back + menu bar), the centred title,
 /// and the theme toggle. All chrome keys existing tests pin are kept verbatim.
 fn connection_titlebar(
@@ -322,11 +361,7 @@ fn connection_titlebar(
         );
     }
     left = left.child(super::shell_menu::titlebar_menu(state, dark, layer));
-    let label = if state.active == Section::Settings {
-        t("win.settings")
-    } else {
-        state.active.label()
-    };
+
 
     row()
         .key("datazen-titlebar")
@@ -338,6 +373,7 @@ fn connection_titlebar(
         .pr(right_pad)
         .fill(c.titlebar)
         .child(left)
-        .child(super::shell_menu::titlebar_label(label, c.titlebar_fg))
+        .child(super::shell_menu::titlebar_label(connection_caption(state), c.titlebar_fg))
+        .child(super::shell_menu::titlebar_reference_reserve(right_pad))
         .child(theme_toggle_slot(state, dark, layer))
 }

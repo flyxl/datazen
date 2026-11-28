@@ -142,14 +142,19 @@ fn every_section_stays_reachable_after_the_port() {
             .filter(|e| !e.exiting)
             .find(|e| e.key.as_deref() == Some("datazen-titlebar-label"))
             .expect("the title band is composed on every section");
-        let expected_title = if *section == Section::Settings {
-            // The original dedicated Settings window uses win.settings, not the nav label.
-            match rt.state.builtin_language() {
-                datazen_ui_api::BuiltinLanguage::English => "Settings - DataZen",
-                datazen_ui_api::BuiltinLanguage::SimplifiedChinese => "偏好设置 - DataZen",
-            }
-        } else {
-            section.label()
+        let expected_title = match (*section, rt.state.builtin_language()) {
+            (Section::Settings, datazen_ui_api::BuiltinLanguage::English) => "Settings - DataZen",
+            (Section::Connections, datazen_ui_api::BuiltinLanguage::English) => "Connections - DataZen",
+            (Section::Workflows, datazen_ui_api::BuiltinLanguage::English) => "Workflow - DataZen",
+            (Section::Dashboards, datazen_ui_api::BuiltinLanguage::English) => "Dashboards - DataZen",
+            (Section::Settings, _) => "偏好设置 - DataZen",
+            (Section::Connections | Section::Workflows | Section::Dashboards, _) =>
+                datazen_ui::i18n::t(match section {
+                    Section::Connections => "win.connections",
+                    Section::Workflows => "win.workflow",
+                    _ => "win.dashboard",
+                }),
+            _ => section.label(),
         };
         assert_eq!(
             title.text.as_deref(),

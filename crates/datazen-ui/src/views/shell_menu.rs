@@ -29,6 +29,20 @@ pub(super) fn titlebar_padding(insets: ChromeInsets) -> (f32, f32) {
     (insets.leading + 12.0, right)
 }
 
+/// The React Windows/Linux chrome reserves 140pt on the right for its
+/// absolutely positioned web captions. Keep the real native controls where
+/// the platform put them and give only the title's strip the missing reserve.
+pub(super) fn titlebar_reference_reserve(right_pad: f32) -> El {
+    let missing = if cfg!(any(target_os = "windows", target_os = "linux")) {
+        (140.0 - right_pad).max(0.0)
+    } else {
+        // macOS already takes its leading traffic-light inset from the host
+        // (zero in fullscreen) and uses the original 14pt trailing padding.
+        0.0
+    };
+    row().key("titlebar-reference-reserve").w(missing).min_w(0.0).shrink()
+}
+
 /// The remaining strip centers the title between the actual left and right
 /// controls. Keep the label independently addressable for shell tooling.
 pub(super) fn titlebar_label(label: impl Into<String>, ink: Color) -> El {

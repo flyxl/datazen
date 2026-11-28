@@ -1,11 +1,44 @@
 """Real native replay for the legacy populated connections landing."""
 import sqlite3
+import sys
 
 from offline import fill, key
 from scenarios import fixture, tap, visible
 
 
 class ConnectionLandingJourney:
+    def test_light_shell_caption_tracks_live_sqlite_and_settings_back(self):
+        fixture(self.store, self.db)
+        (self.root / "settings.json").write_text(
+            '{"ui":{"language":"en","themeMode":"light"}}', encoding="utf-8"
+        )
+
+        def caption(snapshot, text, chromium_reference_x):
+            self.expect_rendered(snapshot, key="datazen-titlebar-label", text=text)
+            x, _, width, _ = self._settled_rect(snapshot, "datazen-titlebar-label")
+            sx, _, sw, _ = self._settled_rect(snapshot, "datazen-titlebar-title")
+            self.assertAlmostEqual(x + width / 2, sx + sw / 2, delta=1)
+            if sys.platform.startswith("linux"):
+                # Fixed 1440x900 Chromium reference. A 5pt allowance keeps
+                # the existing native menu and theme-control metrics intact.
+                self.assertAlmostEqual(x + width / 2, chromium_reference_x, delta=5)
+
+        home = self.replay([], until=2)
+        self.expect_rendered(home, key="connections-home-title")
+        caption(home, "Connections - DataZen", 723.5)
+        actions = [tap(.5, "conn-open-e2e-sqlite")]
+        active = self.replay(actions, until=3)
+        self.expect_rendered(active, key="tree-table-customers")
+        caption(active, "Rune SQLite E2E - SQLite - DataZen", 723.5)
+        actions.append(tap(3.1, "rail-settings"))
+        settings = self.replay(actions, until=4.3)
+        self.expect_rendered(settings, key="settings-page")
+        caption(settings, "Settings - DataZen", 739.5)
+        actions.append(tap(4.4, "settings-back"))
+        restored = self.replay(actions, until=5.8)
+        self.expect_rendered(restored, key="tree-table-customers")
+        caption(restored, "Rune SQLite E2E - SQLite - DataZen", 723.5)
+
     def test_legacy_connection_landing_actions_only_expose_query_after_real_connection(self):
         """Migrate EMPTY-001–004 through the ordinary Native connections landing."""
         fixture(self.store, self.db)
