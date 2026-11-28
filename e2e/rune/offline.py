@@ -338,6 +338,88 @@ class OfflineJourneys:
         self.assertEqual(expect_previous_scheme(revisit), before_label)
         expect_file_blocker_intact()
 
+    def test_native_simple_auto_chart_persists_and_keeps_unsupported_results_in_table(self):
+        fixture(self.store, self.db)
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        before_db = self.db.read_bytes()
+        config = self.root / "settings.json"
+        original = {"ui": {"language": "en", "themeMode": "light"}, "keep": {"sentinel": 61}}
+        config.write_text(json.dumps(original), encoding="utf-8")
+        before = config.read_bytes()
+        route = [SETTINGS, DATA_SETTINGS]
+        switch = "settings-auto-chart"
+
+        def checked(tree, expected):
+            self.expect_rendered(tree, key=switch)
+            self.expect_rendered(tree, text="Auto-switch to chart (simple results)",
+                                 within=f"{switch}-row")
+            def walk(node):
+                yield node
+                for child in node.get("children", ()):
+                    yield from walk(child)
+            nodes = [node for node in walk(tree["accessibility"]) if node.get("key") == switch]
+            self.assertEqual(len(nodes), 1)
+            self.assertEqual(nodes[0]["role"], "switch")
+            self.assertEqual("checked" in nodes[0].get("states", ()), expected)
+
+        positive = query_steps("SELECT 'alpha' AS label, 2 AS total UNION ALL SELECT 'beta',5;")
+        checked(self.replay(route, until=2.6), False)
+        self.assertEqual(config.read_bytes(), before)
+        default = self.replay(positive, until=10.6)
+        self.expect_rendered(default, key="result-grid")
+        self.assertFalse(visible(default, key="result-chart"))
+
+        checked(self.replay([*route, tap(2.6, switch)], until=3.9), True)
+        enabled = {**original, "autoChartOnQuery": True}
+        self.assertEqual(json.loads(config.read_bytes()), enabled)
+        checked(self.replay(route, until=2.6), True)
+        chart = self.replay(positive, until=10.6)
+        self.expect_rendered(chart, key="result-chart")
+        self.expect_rendered(chart, text="alpha 2", within="result-bar-0")
+        self.expect_rendered(chart, text="beta 5", within="result-bar-1")
+        self.assertFalse(visible(chart, key="result-grid"))
+        self.assertFalse(visible(chart, key="data-table-export"))
+        override = self.replay([*positive, tap(10.8, "result-view-table")], until=11.9)
+        self.expect_rendered(override, text="2", within="result-cell-0-1")
+        self.assertFalse(visible(override, key="result-chart"))
+        self.assertEqual(json.loads(config.read_bytes()), enabled)
+
+        for unsupported, expected in [
+            ("SELECT 'text' AS label, '42' AS total;", "42"),
+            ("SELECT 'signed' AS label, -2 AS total;", "-2"),
+            ("SELECT 'decimal' AS label, 2.5 AS total;", "2.5"),
+        ]:
+            with self.subTest(sql=unsupported):
+                table = self.replay(query_steps(unsupported), until=10.6)
+                self.expect_rendered(table, text=expected, within="result-cell-0-1")
+                self.assertFalse(visible(table, key="result-chart"))
+
+        capped = {**enabled, "ui": {**enabled["ui"], "queryMaxRows": 1}}
+        config.write_text(json.dumps(capped), encoding="utf-8")
+        table = self.replay(positive, until=10.6)
+        self.expect_rendered(table, key="result-truncated")
+        self.expect_rendered(table, text="2", within="result-cell-0-1")
+        self.assertFalse(visible(table, key="result-chart"))
+        self.assertEqual(json.loads(config.read_bytes()), capped)
+        config.write_text(json.dumps(enabled), encoding="utf-8")
+
+        collision = config.with_suffix(".json.tmp")
+        collision.mkdir()
+        try:
+            blocked = self.replay([*route, tap(2.6, switch)], until=3.9)
+            checked(blocked, True)
+            self.expect_rendered(blocked, text="Could not save the automatic chart setting.",
+                                 within="settings-error")
+            self.assertEqual(json.loads(config.read_bytes()), enabled)
+        finally:
+            collision.rmdir()
+        checked(self.replay([*route, tap(2.6, switch)], until=3.9), False)
+        self.assertEqual(json.loads(config.read_bytes()), {**original, "autoChartOnQuery": False})
+        self.expect_rendered(self.replay(positive, until=10.6), key="result-grid")
+        self.assertEqual(self.db.read_bytes(), before_db)
+
     def test_extensions_without_driver_settings_contributors_is_localized_and_read_only(self):
         path = self.root / "settings.json"
         for locale, theme, heading, empty in [

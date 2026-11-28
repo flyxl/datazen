@@ -306,7 +306,7 @@ pub fn query_workspace(
     let explain = native_explain::panel(state, theme);
     let uses_table_result = selected_error.is_none()
         && command_stats.is_none() && explain.is_none()
-        && state.result_view == ResultView::Table && state.result_grid.is_some();
+        && state.effective_result_view() == ResultView::Table && state.result_grid.is_some();
     let explicit_split = state.layout_size(QUERY_EDITOR_HEIGHT_KEY).is_some()
         || state.splitter_preview.as_ref().is_some_and(|(region, _)| region == QUERY_EDITOR_HEIGHT_KEY);
     let live_table = uses_table_result && selected_result.is_some() && state.desktop_connection.is_some();
@@ -772,7 +772,7 @@ fn result_workspace(
     let toggle = result_view_toggle(state, theme);
     let find_bar = native_result_find::panel(state, grid, dark);
     let status = result_status_bar(state, grid, theme, dark, elapsed_ms);
-    let body = match state.result_view {
+    let body = match state.effective_result_view() {
         ResultView::Table if adaptive_table => crate::data_grid::flexible_query_result_panel(
             state, grid, theme.text, theme.text_secondary, theme.control_off, dark,
         ),
@@ -828,13 +828,13 @@ fn result_view_toggle(state: &AppState, theme: tok::Theme) -> El {
             "result-view-table",
             t("chart.viewTable"),
             ResultView::Table,
-            state.result_view == ResultView::Table,
+            state.effective_result_view() == ResultView::Table,
         ))
         .child(entry(
             "result-view-chart",
             t("chart.viewChart"),
             ResultView::Chart,
-            state.result_view == ResultView::Chart,
+            state.effective_result_view() == ResultView::Chart,
         ))
         .children(native_query_export::trigger(state, theme))
 }

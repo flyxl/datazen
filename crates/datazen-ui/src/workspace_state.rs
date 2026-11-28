@@ -384,6 +384,7 @@ impl AppState {
             error_copied_until: None,
             csv_source: None,
             csv_status: None,
+            auto_chart: false,
             grid: None,
             pinned: false,
         });
@@ -535,6 +536,15 @@ impl AppState {
             self.result_focused = false;
         } else {
             self.load_result_page(page.columns, page.rows);
+        }
+        // Only a fresh, complete native single-statement publication can
+        // auto-open Chart. Keep this preference scoped to its own result tab
+        // so a selected retained result is not silently charted instead.
+        let auto_chart = execution_stats.is_some_and(|stats| {
+            stats.affected_rows.is_none() && stats.truncated_to.is_none() && stats.native_chart_ready
+        }) && self.desktop.read_native_auto_chart_on_query() == Ok(true);
+        if let Some(tab) = self.query_result_tabs.iter_mut().find(|tab| tab.id == tab_id) {
+            tab.auto_chart = auto_chart;
         }
         self.park_selected_query_result_grid();
         self.restore_selected_query_result_grid();
@@ -925,8 +935,23 @@ impl AppState {
         }
     }
 
+    pub(crate) fn effective_result_view(&self) -> crate::types::ResultView {
+        if self.selected_query_result.is_some_and(|id| {
+            self.query_result_tabs.iter().any(|tab| tab.id == id && tab.auto_chart)
+        }) {
+            crate::types::ResultView::Chart
+        } else {
+            self.result_view
+        }
+    }
+
     /// A5: switch the query result presentation (table/chart).
     pub fn set_result_view(&mut self, view: crate::types::ResultView) {
+        if let Some(tab) = self.query_result_tabs.iter_mut()
+            .find(|tab| Some(tab.id) == self.selected_query_result)
+        {
+            tab.auto_chart = false;
+        }
         if view != crate::types::ResultView::Table {
             self.reset_native_result_find();
         }

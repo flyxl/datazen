@@ -22,7 +22,7 @@ const NEXT: &str = "result-find-next";
 
 impl AppState {
     fn native_result_find_scope(&self) -> Option<(u32, u32)> {
-        if self.active != Section::Workspace || self.result_view != ResultView::Table {
+        if self.active != Section::Workspace || self.effective_result_view() != ResultView::Table {
             return None;
         }
         let query = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query)?;

@@ -16,7 +16,7 @@ fn active(state: &AppState) -> Option<&QueryResultTab> {
 }
 
 pub(super) fn trigger(state: &AppState, theme: tok::Theme) -> Option<El> {
-    if state.result_view != ResultView::Table {
+    if state.effective_result_view() != ResultView::Table {
         return None;
     }
     let tab = active(state)?;

@@ -2504,6 +2504,15 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    /// Automatically show a suitable native query result in Chart view.
+    fn read_native_auto_chart_on_query(&self) -> Result<bool, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn write_native_auto_chart_on_query(&mut self, _enabled: bool) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// The actual Table and Query Result zebra paint preference.
     fn read_native_grid_alternating_rows(&self) -> Result<bool, String> {
         Err("Grid appearance is not implemented by this desktop adapter".into())
@@ -2979,6 +2988,9 @@ pub struct QueryExecutionStats {
     pub elapsed_ms: u64,
     /// Configured display cap, only when a real extra row proved truncation.
     pub truncated_to: Option<u32>,
+    /// True only when the complete native result can be charted without
+    /// coercing nonnumeric data or changing its magnitudes.
+    pub native_chart_ready: bool,
 }
 
 /// A completed job's answer. The generation is the requesting job's; the UI

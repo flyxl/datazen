@@ -59,6 +59,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let row_numbers = state.desktop.read_native_grid_row_numbers().ok();
     let auto_hide_scrollbar = state.desktop.read_native_grid_auto_hide_scrollbar().ok();
     let select_limit = state.desktop.read_native_select_limit().ok();
+    let auto_chart = state.desktop.read_native_auto_chart_on_query().ok();
     section = section
         .child(setting_row(
             &k,
@@ -130,6 +131,27 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             t("settings.maxRows"), None, select,
         ));
     }
+    if let Some(enabled) = auto_chart {
+        let (label, hint) = match state.builtin_language() {
+            BuiltinLanguage::English => (
+                "Auto-switch to chart (simple results)",
+                "Open Chart after a complete SELECT with 1–12 nonnegative whole-number values in its chart series.",
+            ),
+            BuiltinLanguage::SimplifiedChinese => (
+                "查询后自动切换图表（简单结果）",
+                "一条 SELECT 完整返回 1–12 个非负整数图表值时，自动打开图表。",
+            ),
+        };
+        section = section.child(grid_appearance_toggle(
+            "settings-auto-chart", label, hint,
+            enabled,
+            &k,
+            |state| {
+                let current = state.desktop.read_native_auto_chart_on_query()?;
+                state.desktop.write_native_auto_chart_on_query(!current)
+            },
+        ));
+    }
     section = section.child(workflow_step_order_row(state, &k, &mut overlays));
     if state.settings_error.is_some() {
         section = section.child(settings_error_row(state, theme));
@@ -138,26 +160,32 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let some_grid_unsupported = density.is_none() || striped.is_none()
         || row_numbers.is_none() || auto_hide_scrollbar.is_none();
     let unavailable = match state.builtin_language() {
-        BuiltinLanguage::English => format!(
-            "Settings not available here: {}{}{}time display, connection pool, {}and auto-chart.{}",
-            if row_count.is_none() { "row count mode, " } else { "" },
-            if default_sort.is_none() { "default sorting, " } else { "" },
-            if some_grid_unsupported { "some grid settings, " } else { "" },
-            if select_limit.is_none() { "the SELECT-limit toggle, " } else { "" },
+        BuiltinLanguage::English => {
+            let mut fields = vec!["time display", "connection pool"];
+            if row_count.is_none() { fields.push("row count mode"); }
+            if default_sort.is_none() { fields.push("default sorting"); }
+            if some_grid_unsupported { fields.push("some grid settings"); }
+            if select_limit.is_none() { fields.push("the SELECT-limit toggle"); }
+            if auto_chart.is_none() { fields.push("auto-chart"); }
+            let mut message = format!("Settings not available here: {}.", fields.join(", "));
             if row_count == Some(RowCountMode::Auto) {
-                " Automatic uses the database's default counting strategy; the estimate threshold is not configurable in Native."
-            } else { "" },
-        ),
-        BuiltinLanguage::SimplifiedChinese => format!(
-            "此处暂不支持{}{}{}时间显示、连接池、{}自动图表设置。{}",
-            if row_count.is_none() { "行数统计、" } else { "" },
-            if default_sort.is_none() { "默认排序、" } else { "" },
-            if some_grid_unsupported { "部分表格设置、" } else { "" },
-            if select_limit.is_none() { "SELECT 限制开关、" } else { "" },
+                message.push_str(" Automatic uses the database's default counting strategy; the estimate threshold is not configurable in Native.");
+            }
+            message
+        }
+        BuiltinLanguage::SimplifiedChinese => {
+            let mut fields = vec!["时间显示", "连接池"];
+            if row_count.is_none() { fields.push("行数统计"); }
+            if default_sort.is_none() { fields.push("默认排序"); }
+            if some_grid_unsupported { fields.push("部分表格设置"); }
+            if select_limit.is_none() { fields.push("SELECT 限制开关"); }
+            if auto_chart.is_none() { fields.push("自动图表"); }
+            let mut message = format!("此处暂不支持{}设置。", fields.join("、"));
             if row_count == Some(RowCountMode::Auto) {
-                "自动模式使用数据库默认的计数策略；Native 暂不支持设置估算阈值。"
-            } else { "" },
-        ),
+                message.push_str("自动模式使用数据库默认的计数策略；Native 暂不支持设置估算阈值。");
+            }
+            message
+        }
     };
     // Export and Import keep their existing entry until their replacement
     // paths are wired. Demo hosts without the Tools Backup destination also

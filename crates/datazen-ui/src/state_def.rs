@@ -47,6 +47,7 @@ pub struct QueryResultTab {
     pub error_copied_until: Option<f64>,
     pub(crate) csv_source: Option<datazen_ui_api::NativeQueryCsvSource>,
     pub(crate) csv_status: Option<NativeQueryCsvStatus>,
+    pub(crate) auto_chart: bool,
     pub grid: Option<DataGrid>,
     pub pinned: bool,
 }

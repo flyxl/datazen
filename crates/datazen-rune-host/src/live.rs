@@ -949,6 +949,9 @@ impl LiveAdapter {
                                         affected_rows: result.affected_rows,
                                         elapsed_ms,
                                         truncated_to: result.truncated_to,
+                                        native_chart_ready: artifact.is_some()
+                                            && result.truncated_to.is_none()
+                                            && result.chartable_values,
                                     }
                                 })
                             };
@@ -2615,11 +2618,10 @@ async fn run_query_observed(
     };
     // Read one extra published row to prove truncation. Neither driver
     // rewrites authored SQL for this opt-in editor output budget.
-    let display_limit = configured_limit.filter(|_| {
-        !script && dialect.is_some_and(|dialect| dialect.is_single_read_select(sql))
-    });
+    let single_read = !script && dialect.is_some_and(|dialect| dialect.is_single_read_select(sql));
+    let display_limit = configured_limit.filter(|_| single_read);
     let probe = display_limit.and_then(|rows| rows.checked_add(1));
-    let mut pages = live_sqlite_script::ResultPages::new(page_count, script, display_limit);
+    let mut pages = live_sqlite_script::ResultPages::new(page_count, script, display_limit, single_read);
     let artifact = live_query_command::consume_query_command(
         runtime, profiles, connection, database, "query", sql, probe, stop,
         note_execution, |output| pages.push(output),
@@ -3682,6 +3684,25 @@ impl DesktopAdapter for LiveAdapter {
             .map_err(|_| error())?;
         let object = document.as_object_mut().ok_or_else(error)?;
         object.insert("limitSelectResults".into(), serde_json::Value::Bool(enabled));
+        let persisted = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|_| error())?;
+        *cache = persisted;
+        Ok(())
+    }
+
+    fn read_native_auto_chart_on_query(&self) -> Result<bool, String> {
+        let cache = self.settings_document.lock()
+            .map_err(|_| "Could not read the automatic chart setting.".to_owned())?;
+        Ok(cache.get("autoChartOnQuery").and_then(serde_json::Value::as_bool).unwrap_or(false))
+    }
+
+    fn write_native_auto_chart_on_query(&mut self, enabled: bool) -> Result<(), String> {
+        let error = || "Could not save the automatic chart setting.".to_owned();
+        let mut cache = self.settings_document.lock().map_err(|_| error())?;
+        let mut document = futures_executor::block_on(self.settings.read_app_settings())
+            .map_err(|_| error())?;
+        let object = document.as_object_mut().ok_or_else(error)?;
+        object.insert("autoChartOnQuery".into(), serde_json::Value::Bool(enabled));
         let persisted = futures_executor::block_on(self.settings.save_app_settings(document))
             .map_err(|_| error())?;
         *cache = persisted;
