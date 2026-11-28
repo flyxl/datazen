@@ -99,6 +99,36 @@ class OfflineJourneys:
                             for e in cancelled["elements"]))
         self.assertEqual(path.read_bytes(), initial)
 
+    def test_light_log_level_return_opens_without_saving_then_keyboard_can_choose(self):
+        path = self.root / "settings.json"
+        initial = b'{"logLevel":"info","ui":{"language":"en","themeMode":"light"},"keep":"sentinel"}'
+        path.write_bytes(initial)
+        trigger = "settings-log-level-trigger"
+        popup = "settings-log-level-content"
+        # Pointer followed by Escape leaves the real closed combobox focused.
+        focus = [SETTINGS, tap(1.4, "settings-nav-logging"), tap(2.3, trigger), key(3, "Escape")]
+        opened = [*focus, key(3.7, "Enter")]
+        tree = self.replay(opened, until=4.4)
+        self.expect_rendered(tree, key=popup)
+        self.assertTrue(any(e.get("role") == "option" and e.get("label") == "Info"
+                            and e.get("focused") and not e.get("exiting")
+                            for e in tree["elements"]))
+        self.assertEqual(path.read_bytes(), initial, "opening via Return must not write")
+
+        canceled = self.replay([*opened, key(4.55, "Escape")], until=5.25)
+        self.assertFalse(visible(canceled, key=popup))
+        self.assertTrue(any(e.get("key") == trigger and e.get("focused")
+                            for e in canceled["elements"]))
+        self.assertEqual(path.read_bytes(), initial)
+
+        chosen = self.replay(
+            [*opened, key(4.5, "Home"), key(4.85, "Down"), key(5.2, "Enter")], until=6.0)
+        self.assertFalse(visible(chosen, key=popup))
+        self.expect_rendered(chosen, text="Debug", within=trigger)
+        saved = json.loads(initial)
+        saved["logLevel"] = "debug"
+        self.assertEqual(json.loads(path.read_bytes()), saved)
+
     def test_settings_unsupported_saved_locale_falls_back_without_rewriting_file(self):
         settings = self.root / "settings.json"
         previous = '{"ui":{"language":"fr","queryMaxRows":23},"keep":"sentinel"}'

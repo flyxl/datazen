@@ -1729,12 +1729,30 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         field.ty.ui_compact = TextStyle::new(14.0, 400.0).lh(20.0);
         field.c.icon_muted = k.c.text_faint;
         let mut select_layer = Vec::new();
-        let select_el = select.build(&field, &mut select_layer)
+        let mut select_el = select.build(&field, &mut select_layer)
             .h(36.0).radius(9.0).border(1.0, k.c.border_base).pl(3.0).pr(8.0);
-        if self.native_log_level.is_some() && !self.dark
-            && self.state.open_select == Some(SettingsSelect::LogLevel)
-        {
-            const TRIGGER: &str = "settings-log-level-trigger";
+        const TRIGGER: &str = "settings-log-level-trigger";
+        let native_light = self.native_log_level.is_some() && !self.dark;
+        let open = self.state.open_select == Some(SettingsSelect::LogLevel);
+        if native_light && !open {
+            if let Some(toggle) = &self.on_select_toggle {
+                let toggle = Rc::clone(toggle);
+                // The original button opens on Return. Rune already handles
+                // Space and Up/Down but leaves Return for app-owned controls.
+                select_el = select_el.on_key(move |state: &mut S, event, tx| {
+                    if event.key != Key::Enter || event.mods != Mods::default()
+                        || tx.focused() != Some(TRIGGER)
+                    {
+                        return false;
+                    }
+                    if !tx.key_repeat() {
+                        toggle(state, SettingsSelect::LogLevel);
+                    }
+                    true
+                });
+            }
+        }
+        if native_light && open {
             // Kit puts its listbox after the optional dismissal scrim. Keep
             // both and preserve their focus/choice handlers, but use the
             // reference's 4px gap and responsive minimum trigger width.
