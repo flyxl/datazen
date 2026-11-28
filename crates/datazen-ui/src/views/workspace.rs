@@ -767,9 +767,9 @@ fn result_workspace(
     truncated_to: Option<u32>,
     adaptive_table: bool,
 ) -> El {
-    let toggle = result_view_toggle(state, theme, dark);
+    let toggle = result_view_toggle(state, theme);
     let find_bar = native_result_find::panel(state, grid, dark);
-    let status = result_status_bar(state, grid, theme, elapsed_ms);
+    let status = result_status_bar(state, grid, theme, dark, elapsed_ms);
     let body = match state.result_view {
         ResultView::Table if adaptive_table => crate::data_grid::flexible_query_result_panel(
             state, grid, theme.text, theme.text_secondary, theme.control_off, dark,
@@ -800,7 +800,7 @@ fn result_workspace(
         .child(body)
 }
 
-fn result_view_toggle(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+fn result_view_toggle(state: &AppState, theme: tok::Theme) -> El {
     let entry = |key: &str, label: &str, view: ResultView, active: bool| {
         row()
             .key(key)
@@ -834,7 +834,6 @@ fn result_view_toggle(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             ResultView::Chart,
             state.result_view == ResultView::Chart,
         ))
-        .children(native_result_find::toggle(state, dark))
         .children(native_query_export::trigger(state, theme))
 }
 
@@ -847,6 +846,7 @@ fn result_status_bar(
     state: &AppState,
     grid: &crate::data_grid::DataGrid,
     theme: tok::Theme,
+    dark: bool,
     elapsed_ms: Option<u64>,
 ) -> El {
     let exec = if state.query_loading.is_some() {
@@ -883,13 +883,24 @@ fn result_status_bar(
         .center_y()
         .radius(6.0)
         .fill(theme.control_off)
+        // Like the original result table, keep Find at the end of the
+        // status row, separate from the Table/Chart controls above.
         .child(
-            text(line)
-                .key("result-status-text")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
+            row()
+                .grow(1.0)
+                .min_w(0.0)
+                .gap(12.0)
+                .center_y()
+                .child(
+                    text(line)
+                        .key("result-status-text")
+                        .font(type_::LABEL)
+                        .color(theme.text_secondary)
+                        .truncate(),
+                )
+                .children(elapsed_ms.map(|ms| result_duration("query-result-duration", ms, theme))),
         )
-        .children(elapsed_ms.map(|ms| result_duration("query-result-duration", ms, theme)))
+        .children(native_result_find::toggle(state, dark))
 }
 
 /// A5: derive chart bars from a result grid (label, numeric value).

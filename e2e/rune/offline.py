@@ -765,7 +765,8 @@ class OfflineJourneys:
         actions.append(tap(7.0, "sql-run-script"))
 
         idle = self.replay(actions, until=9.5)
-        self.expect_rendered(idle, key="result-find-toggle")
+        self.expect_rendered(idle, key="result-find-toggle", within="result-status-bar")
+        self.assertFalse(visible(idle, key="result-find-toggle", within="result-view-toggle"))
         self.assertFalse(visible(idle, key="result-find-bar"))
 
         entered = [*actions, tap(9.8, "result-find-toggle"),
@@ -1095,13 +1096,33 @@ class OfflineJourneys:
         fixture(self.store, self.db)
         sql = "SELECT 'Ada' AS label, id AS metric FROM customers ORDER BY id;"
         chart = [*query_steps(sql), tap(11, "result-view-chart")]
-        tree = self.replay(chart, until=12.4)
-        for index in (0, 1):
-            self.expect_rendered(tree, key=f"result-block-{index}", within="result-chart")
-        self.assertFalse(visible(tree, key="result-grid"))
-        tree = self.replay([*chart, tap(12.8, "result-view-table")], until=14.2)
-        self.expect_rendered(tree, text="Ada", within="result-cell-0-0")
-        self.expect_rendered(tree, text="2", within="result-cell-1-1")
+        settings = self.root / "settings.json"
+        for theme in ("light", "dark"):
+            with self.subTest(theme=theme):
+                settings.write_text(
+                    json.dumps({"ui": {"language": "en", "themeMode": theme}}),
+                    encoding="utf-8",
+                )
+                tree = self.replay(chart, until=12.4, size="1440x640")
+                for index in (0, 1):
+                    self.expect_rendered(tree, key=f"result-block-{index}", within="result-chart")
+                self.assertFalse(visible(tree, key="result-grid"))
+                self.assertFalse(visible(tree, key="result-find-toggle"))
+                self.assertFalse(visible(tree, key="result-find-bar"))
+
+                tree = self.replay([*chart, tap(12.8, "result-view-table")], until=14.2,
+                                   size="1440x640")
+                self.expect_rendered(tree, text="Ada", within="result-cell-0-0")
+                self.expect_rendered(tree, text="2", within="result-cell-1-1")
+                self.expect_rendered(tree, key="result-find-toggle", within="result-status-bar")
+                self.assertFalse(visible(tree, key="result-find-toggle", within="result-view-toggle"))
+                status = self._settled_rect(tree, "result-status-bar")
+                trigger = self._settled_rect(tree, "result-find-toggle")
+                switch = self._settled_rect(tree, "result-view-toggle")
+                self.assertGreaterEqual(trigger[1] + .25, switch[1] + switch[3])
+                self.assertAlmostEqual(trigger[0] + trigger[2], status[0] + status[2] - 8,
+                                       delta=.5)
+                self.assertGreater(trigger[2], 24)
 
     def test_legacy_query_chart_table_exports_selected_retained_sqlite_result(self):
         """Migrate query-result-chart-journey.ts with real CSV and independent SQLite oracles."""
