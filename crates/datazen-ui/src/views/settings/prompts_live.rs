@@ -121,6 +121,7 @@ impl AppState {
     }
 
     fn ask_native_prompt_reset(&mut self, idx: usize) {
+        let language = self.builtin_language();
         let ui = &mut self.prompt_settings;
         if ui.pending.is_some() || ui.editor.confirm.is_open() {
             return;
@@ -129,7 +130,9 @@ impl AppState {
         if !ui.editor.can_reset(scenario) {
             return;
         }
-        ui.editor.begin_reset(idx);
+        // This click runs after the view's locale scope has been restored.
+        // Resolve the warning and dialog title in the same locale as the card.
+        let _ = crate::i18n::with_language(language, || ui.editor.begin_reset(idx));
         ui.reset_plan = Some(scenario);
     }
 

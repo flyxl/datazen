@@ -1063,6 +1063,54 @@ class OfflineJourneys:
         self.assertNotEqual(fill_at(query, "sql-editor-body"), "#282a36ff")
         self.expect_rendered(query, text="fixture-ada", within="result-workspace")
 
+    def test_settings_prompt_reset_warning_uses_english_in_light_and_only_removes_the_approved_scope(self):
+        settings = self.root / "settings.json"
+        settings.write_text(json.dumps({"ui": {"themeMode": "light", "language": "en"}}),
+                            encoding="utf-8")
+        settings_before = settings.read_bytes()
+        path = self.root / "prompt_overrides.json"
+        card = "prompt-card-nl2sql"
+        preview = card + "-preview"
+        reset = card + "-reset"
+        route = [SETTINGS, tap(1.45, "settings-nav-prompts")]
+
+        original = self.replay(route, until=3.2)
+        [default] = [item["text"] for item in original["elements"]
+                     if item.get("key") == preview and not item.get("exiting")]
+        self.assertTrue(default)
+        self.assertFalse(path.exists())
+        global_override = {"driverType": "*", "scenario": "nl2sql",
+                           "system": "Global fixture to reset."}
+        driver_override = {"driverType": "sqlite", "scenario": "nl2sql",
+                           "system": "Local driver-specific fixture to keep."}
+        path.write_text(json.dumps({"overrides": [global_override, driver_override]}, indent=2),
+                        encoding="utf-8")
+        before = path.read_bytes()
+
+        ask = [*route, tap(3.1, reset)]
+        opened = self.replay(ask, until=4.0)
+        self.expect_rendered(opened, key="confirm-dialog-title", text="Reset to Default")
+        self.expect_rendered(opened, key="confirm-dialog-message-text",
+                             text="Are you sure you want to reset this prompt to the default?")
+        self.expect_rendered(opened, text="Cancel", within="confirm-dialog-cancel")
+        self.expect_rendered(opened, text="Confirm", within="confirm-dialog-ok")
+        self.assertEqual(path.read_bytes(), before)
+
+        for reason, action in (("Cancel", tap(4.15, "confirm-dialog-cancel")),
+                               ("Escape", key(4.15, "Escape"))):
+            with self.subTest(dismiss=reason):
+                dismissed = self.replay([*ask, action], until=4.9)
+                self.assertFalse(visible(dismissed, key="confirm-dialog"))
+                self.expect_rendered(dismissed, key=preview, text=global_override["system"])
+                self.assertEqual(path.read_bytes(), before)
+
+        confirmed = self.replay([*ask, tap(4.15, "confirm-dialog-ok")], until=5.45)
+        self.assertFalse(visible(confirmed, key="confirm-dialog"))
+        self.assertFalse(visible(confirmed, key=reset))
+        self.expect_rendered(confirmed, key=preview, text=default)
+        self.assertEqual(json.loads(path.read_bytes()), {"overrides": [driver_override]})
+        self.assertEqual(settings.read_bytes(), settings_before)
+
     def test_settings_snippet_failed_disk_write_keeps_draft_and_no_phantom_row(self):
         (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
         target = self.root / "snippets.json"
