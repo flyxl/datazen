@@ -760,3 +760,5 @@ fn pinned_sqlite_ansi_dml_and_protected_spans_from_original_tokens() {
 }
 
 mod dialects;
+
+mod ddl;

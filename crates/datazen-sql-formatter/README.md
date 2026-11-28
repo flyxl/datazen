@@ -11,3 +11,9 @@ local compute only and never executes SQL. The API returns a typed error for
 syntax or dialect coverage gaps and for bounded resource limits instead of
 reporting a successful no-op. The exact supported scope is measured by
 differential fixtures copied as data, not inferred from lexer recognition.
+
+The pinned comparison covers representative SELECT, DML, DDL, transaction,
+and comment handling across six dialects, not every statement accepted by
+each database or client. Client-side delimiter changes and external or
+streamed COPY targets are deliberately unsupported; never apply formatting
+that rewrites a client command into a different command.

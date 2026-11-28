@@ -12,6 +12,7 @@ use crate::{
     Dialect, Error, Indent, KeywordCase, LogicalOperatorNewline, Options,
 };
 
+mod ddl;
 mod statement;
 
 use crate::dialect_layout::{is_always_dense, is_property_access, is_select_head};
@@ -138,6 +139,7 @@ impl<'a> Parser<'_, 'a> {
         let mut query_clause = 0;
         let mut dml: Option<Dml> = None;
         let mut cte_pending = false;
+        let mut ddl_query = None;
         let mut after_go = false;
         let after_semicolon = statement && self.pos.checked_sub(1).and_then(|i| self.tokens.get(i))
             .is_some_and(|token| Atom::from(token).punctuation(";"));
@@ -170,7 +172,20 @@ impl<'a> Parser<'_, 'a> {
                 dml = None;
                 cte_pending = false;
                 after_go = true;
+                ddl_query = None;
                 continue;
+            }
+            if statement && !seen_data && !root_starter && ddl_query.is_none() && !head.comment() {
+                if let Some(command) = self.root_ddl(level)? {
+                    nodes.extend(command.nodes);
+                    ddl_query = command.query;
+                    if ddl_query.is_none() {
+                        return Ok(nodes);
+                    }
+                    // Prefixes (EXPLAIN or CREATE VIEW … AS) verified the
+                    // next token begins the same statement's real SELECT.
+                    continue;
+                }
             }
             if statement && !seen_data && !root_starter && statement::is_mysql_family(self.dialect)
                 && head.kind == Kind::Keyword(Kw::Keyword) && head.text.eq_ignore_ascii_case("DELETE")
@@ -242,6 +257,15 @@ impl<'a> Parser<'_, 'a> {
                             root_starter = true;
                             cte_pending = true;
                         }
+                        "WITH" if saw_select && !compound_waiting && query_clause < 10
+                            && matches!(ddl_query, Some(ddl::Query::View { check_option: true }))
+                            && ddl::with_check_option(&expressions) =>
+                        {
+                            if self.peek().is_some_and(|next| !next.punctuation(";")) {
+                                return Err(Error::Unsupported);
+                            }
+                            query_clause = 10;
+                        }
                         name if saw_select && !compound_waiting => {
                             let order = match name {
                                 "FROM" => 1,
@@ -264,7 +288,7 @@ impl<'a> Parser<'_, 'a> {
                         }
                         _ => return Err(Error::Unsupported),
                     }
-                    if name.starts_with("WITH") && !expressions.iter().any(|node| {
+                    if cte_pending && name.starts_with("WITH") && !expressions.iter().any(|node| {
                         matches!(node, Node::Group(nodes) if contains_select(nodes))
                     }) { return Err(Error::Unsupported); }
                     nodes.push(Node::Clause(head, expressions));
@@ -346,6 +370,9 @@ impl<'a> Parser<'_, 'a> {
     fn group(&mut self, level: usize) -> Result<Vec<Node<'a>>, Error> {
         self.expect_punctuation("(")?;
         let body = self.region(level + 1, false)?;
+        if self.peek().is_none_or(|next| next.punctuation(";")) {
+            return Err(Error::Syntax);
+        }
         self.expect_punctuation(")")?;
         Ok(body)
     }

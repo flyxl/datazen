@@ -1,0 +1,25 @@
+{
+  "formatter": "15.8.2",
+  "corpusSHA256": "531f5ff62d6228c62ec7fc6c3505d10579505fcf37c0ea085f15b60ab5732848",
+  "scenarios": [
+    "sqlite-create-table",
+    "sqlite-create-index",
+    "sqlite-create-view",
+    "sqlite-alter-add-column",
+    "sqlite-drop-if-exists",
+    "sqlite-explain-query-plan",
+    "sqlite-savepoints"
+  ],
+  "optionLanguage": "sqlite",
+  "options": {
+    "language": "sqlite",
+    "keywordCase": "upper",
+    "indentStyle": "standard",
+    "tabWidth": 2,
+    "useTabs": false,
+    "logicalOperatorNewline": "before",
+    "linesBetweenQueries": 1
+  },
+  "input": "create table if not exists accounts (id integer primary key, name text not null, balance numeric(9,2) default 0, check(balance>=0));\ncreate unique index if not exists account_name on accounts(name collate nocase) where name is not null;\ncreate view active_accounts as select id,name from accounts where balance>0;\nalter table accounts add column enabled integer default 1 not null;\ndrop view if exists active_accounts;drop index if exists account_name;drop table if exists accounts;\nexplain query plan select a.id,b.name from accounts a join ledger b on a.id=b.account_id where a.balance>0;\nsavepoint inner_edit;update t set n=2 where id=1;rollback to savepoint inner_edit;release savepoint inner_edit;",
+  "expected": "CREATE TABLE IF NOT EXISTS accounts (\n  id integer PRIMARY KEY,\n  name text NOT NULL,\n  balance numeric(9, 2) DEFAULT 0,\n  CHECK (balance >= 0)\n);\n\nCREATE UNIQUE INDEX IF NOT EXISTS account_name ON accounts (name COLLATE nocase)\nWHERE\n  name IS NOT NULL;\n\nCREATE VIEW active_accounts AS\nSELECT\n  id,\n  name\nFROM\n  accounts\nWHERE\n  balance > 0;\n\nALTER TABLE accounts\nADD COLUMN enabled integer DEFAULT 1 NOT NULL;\n\nDROP VIEW IF EXISTS active_accounts;\n\nDROP INDEX IF EXISTS account_name;\n\nDROP TABLE IF EXISTS accounts;\n\nEXPLAIN QUERY PLAN\nSELECT\n  a.id,\n  b.name\nFROM\n  accounts a\n  JOIN ledger b ON a.id = b.account_id\nWHERE\n  a.balance > 0;\n\nSAVEPOINT inner_edit;\n\nUPDATE t\nSET\n  n = 2\nWHERE\n  id = 1;\n\nROLLBACK TO SAVEPOINT inner_edit;\n\nRELEASE SAVEPOINT inner_edit;"
+}

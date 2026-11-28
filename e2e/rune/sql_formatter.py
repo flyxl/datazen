@@ -230,6 +230,22 @@ class SqlFormatterDmlJourney:
         self._no_query_or_settings_write((formatted, restored), baseline)
 
 
+class SqlFormatterDdlJourney:
+    def test_native_formatter_definitions_explain_and_savepoints_never_execute(self):
+        baseline = self._formatter_fixture({})
+        case = json.loads(Path(__file__).with_name("sql-formatter-ddl-15.8.2.json")
+                          .read_text(encoding="utf-8"))
+        self.assertEqual(case["formatter"], "15.8.2")
+        self.assertEqual(len(case["scenarios"]), 7)
+        route = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": case["input"]},
+                 tap(6.3, "sql-format")]
+        formatted = self.replay(route, until=8.3)
+        self.assertEqual(draft(formatted), case["expected"])
+        undone = self.replay([*route, key(8.45, "z", cmd=True)], until=9.25)
+        self.assertEqual(draft(undone), case["input"])
+        self._no_query_or_settings_write((formatted, undone), baseline)
+
+
 def main():
     import run as native
 
@@ -240,6 +256,8 @@ def main():
                         help="run only the separate real 256 KiB pure Rust input and selected recovery check")
     parser.add_argument("--statements", action="store_true",
                         help="run only the multi-statement DML/PRAGMA/disabled region gate")
+    parser.add_argument("--definitions", action="store_true",
+                        help="run only the multi-statement DDL/EXPLAIN/savepoint gate")
     args = parser.parse_args()
     native.BINARY = args.binary.resolve(strict=True)
     native.ARTIFACTS = args.artifacts
@@ -247,13 +265,14 @@ def main():
         native.ARTIFACTS = native.ARTIFACTS.resolve()
         native.ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
-    class FormatAcceptance(SqlFormatterLimitJourney, SqlFormatterDmlJourney, SqlFormatterJourneys, native.NativeJourneys):
+    class FormatAcceptance(SqlFormatterLimitJourney, SqlFormatterDmlJourney, SqlFormatterDdlJourney, SqlFormatterJourneys, native.NativeJourneys):
         pass
 
-    if args.size_bound and args.statements:
+    if sum((args.size_bound, args.statements, args.definitions)) > 1:
         parser.error("choose one specialized acceptance group at a time")
     group = (SqlFormatterLimitJourney if args.size_bound else
-             SqlFormatterDmlJourney if args.statements else SqlFormatterJourneys)
+             SqlFormatterDmlJourney if args.statements else
+             SqlFormatterDdlJourney if args.definitions else SqlFormatterJourneys)
     suite = unittest.TestSuite(FormatAcceptance(name)
                                for name in unittest.defaultTestLoader.getTestCaseNames(group))
     return 0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1

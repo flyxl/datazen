@@ -1,0 +1,502 @@
+{
+  "schema": 1,
+  "formatter": "15.8.2",
+  "method": "exact locked package + trusted prebuilt browser distribution, synthetic oracle only",
+  "browserBundleSHA256": "e3123498ae2ea8bb2971d8a444c32816af61f4816177b23c3ca45b60c1c473c1",
+  "corpusSourceSHA256": "5c0a36c05e9bcfc7f9ddcab65bb43cdfddb48c26bd1a741a05c69491763fb19a",
+  "packageLockIntegrity": "sha512-kTYRg5FIcvsDtYUG2Qn9pYT6xKwiLJN5TTIvc5Mur6hIg4pSfdpHu8Yyu5bqESLHnVM3mXzD446cb2+uEaKZXg==",
+  "rows": [
+    {
+      "id": "sqlite-create-table",
+      "input": "create table if not exists accounts (id integer primary key, name text not null, balance numeric(9,2) default 0, check(balance>=0));",
+      "trimmed": "create table if not exists accounts (id integer primary key, name text not null, balance numeric(9,2) default 0, check(balance>=0));",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CREATE TABLE IF NOT EXISTS accounts (\n  id integer PRIMARY KEY,\n  name text NOT NULL,\n  balance numeric(9, 2) DEFAULT 0,\n  CHECK (balance >= 0)\n);"
+      }
+    },
+    {
+      "id": "sqlite-create-index",
+      "input": "create unique index if not exists account_name on accounts(name collate nocase) where name is not null;",
+      "trimmed": "create unique index if not exists account_name on accounts(name collate nocase) where name is not null;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CREATE UNIQUE INDEX IF NOT EXISTS account_name ON accounts (name COLLATE nocase)\nWHERE\n  name IS NOT NULL;"
+      }
+    },
+    {
+      "id": "sqlite-create-view",
+      "input": "create view active_accounts as select id,name from accounts where balance>0;",
+      "trimmed": "create view active_accounts as select id,name from accounts where balance>0;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CREATE VIEW active_accounts AS\nSELECT\n  id,\n  name\nFROM\n  accounts\nWHERE\n  balance > 0;"
+      }
+    },
+    {
+      "id": "sqlite-alter-add-column",
+      "input": "alter table accounts add column enabled integer default 1 not null;",
+      "trimmed": "alter table accounts add column enabled integer default 1 not null;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "ALTER TABLE accounts\nADD COLUMN enabled integer DEFAULT 1 NOT NULL;"
+      }
+    },
+    {
+      "id": "sqlite-drop-if-exists",
+      "input": "drop view if exists active_accounts;drop index if exists account_name;drop table if exists accounts;",
+      "trimmed": "drop view if exists active_accounts;drop index if exists account_name;drop table if exists accounts;",
+      "overrides": {
+        "linesBetweenQueries": 0
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 0
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "DROP VIEW IF EXISTS active_accounts;\nDROP INDEX IF EXISTS account_name;\nDROP TABLE IF EXISTS accounts;"
+      }
+    },
+    {
+      "id": "sqlite-explain-query-plan",
+      "input": "explain query plan select a.id,b.name from accounts a join ledger b on a.id=b.account_id where a.balance>0;",
+      "trimmed": "explain query plan select a.id,b.name from accounts a join ledger b on a.id=b.account_id where a.balance>0;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "EXPLAIN QUERY PLAN\nSELECT\n  a.id,\n  b.name\nFROM\n  accounts a\n  JOIN ledger b ON a.id = b.account_id\nWHERE\n  a.balance > 0;"
+      }
+    },
+    {
+      "id": "sqlite-explain",
+      "input": "explain select 1+2;",
+      "trimmed": "explain select 1+2;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "EXPLAIN\nSELECT\n  1 + 2;"
+      }
+    },
+    {
+      "id": "sqlite-transaction",
+      "input": "begin immediate transaction;insert into t values(1);commit;begin;rollback;",
+      "trimmed": "begin immediate transaction;insert into t values(1);commit;begin;rollback;",
+      "overrides": {
+        "linesBetweenQueries": 1
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "BEGIN IMMEDIATE TRANSACTION;\n\nINSERT INTO\n  t\nVALUES\n  (1);\n\nCOMMIT;\n\nBEGIN;\n\nROLLBACK;"
+      }
+    },
+    {
+      "id": "sqlite-savepoints",
+      "input": "savepoint inner_edit;update t set n=2 where id=1;rollback to savepoint inner_edit;release savepoint inner_edit;",
+      "trimmed": "savepoint inner_edit;update t set n=2 where id=1;rollback to savepoint inner_edit;release savepoint inner_edit;",
+      "overrides": {
+        "keywordCase": "lower",
+        "indentStyle": "tab"
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "lower",
+        "indentStyle": "standard",
+        "tabWidth": 1,
+        "useTabs": true,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "savepoint inner_edit;\n\nupdate t\nset\n\tn = 2\nwhere\n\tid = 1;\n\nrollback to savepoint inner_edit;\n\nrelease savepoint inner_edit;"
+      }
+    },
+    {
+      "id": "sqlite-cjk-schema",
+      "input": "create table \"账户\"(\"编号\" integer primary key,\"名称\" text default '上海;😀');create index \"名称索引\" on \"账户\"(\"名称\");",
+      "trimmed": "create table \"账户\"(\"编号\" integer primary key,\"名称\" text default '上海;😀');create index \"名称索引\" on \"账户\"(\"名称\");",
+      "overrides": {
+        "indentStyle": "4spaces"
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 4,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CREATE TABLE \"账户\" (\n    \"编号\" integer PRIMARY KEY,\n    \"名称\" text DEFAULT '上海;😀'\n);\n\nCREATE INDEX \"名称索引\" ON \"账户\" (\"名称\");"
+      }
+    },
+    {
+      "id": "sqlite-unterminated-delimiter",
+      "input": "create table broken(name text default 'never closes);",
+      "trimmed": "create table broken(name text default 'never closes);",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Rejected"
+      }
+    },
+    {
+      "id": "sqlite-unbalanced-parenthesis",
+      "input": "create table broken(id integer, check((id>0));",
+      "trimmed": "create table broken(id integer, check((id>0));",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Rejected"
+      }
+    },
+    {
+      "id": "pg-create-schema",
+      "input": "create schema if not exists analytics authorization analyst;",
+      "trimmed": "create schema if not exists analytics authorization analyst;",
+      "overrides": {},
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CREATE SCHEMA if NOT EXISTS analytics AUTHORIZATION analyst;"
+      }
+    },
+    {
+      "id": "pg-create-table-references",
+      "input": "create table analytics.events(id bigint generated always as identity primary key, payload jsonb default '{}'::jsonb, parent_id bigint references analytics.events(id) on delete set null);",
+      "trimmed": "create table analytics.events(id bigint generated always as identity primary key, payload jsonb default '{}'::jsonb, parent_id bigint references analytics.events(id) on delete set null);",
+      "overrides": {
+        "indentStyle": "4spaces"
+      },
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 4,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CREATE TABLE analytics.events (\n    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,\n    payload jsonb DEFAULT '{}'::jsonb,\n    parent_id bigint REFERENCES analytics.events (id) ON DELETE SET NULL\n);"
+      }
+    },
+    {
+      "id": "pg-copy-options",
+      "input": "copy analytics.events(id,payload) to stdout with (format csv, header true, delimiter ',');",
+      "trimmed": "copy analytics.events(id,payload) to stdout with (format csv, header true, delimiter ',');",
+      "overrides": {},
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "COPY analytics.events (id, payload) TO stdout\nWITH\n  (format csv, header TRUE, delimiter ',');"
+      }
+    },
+    {
+      "id": "pg-explain-options",
+      "input": "explain (analyze false, costs true, format json) select payload->>'name' from analytics.events where payload @> '{\"enabled\":true}'::jsonb;",
+      "trimmed": "explain (analyze false, costs true, format json) select payload->>'name' from analytics.events where payload @> '{\"enabled\":true}'::jsonb;",
+      "overrides": {},
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "EXPLAIN (\n  ANALYZE FALSE,\n  costs TRUE,\n  format json\n)\nSELECT\n  payload ->> 'name'\nFROM\n  analytics.events\nWHERE\n  payload @> '{\"enabled\":true}'::jsonb;"
+      }
+    },
+    {
+      "id": "pg-alter-and-drop",
+      "input": "alter table analytics.events alter column payload set default '{}'::jsonb;drop table if exists analytics.events cascade;",
+      "trimmed": "alter table analytics.events alter column payload set default '{}'::jsonb;drop table if exists analytics.events cascade;",
+      "overrides": {},
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "ALTER TABLE analytics.events\nALTER COLUMN payload\nSET DEFAULT '{}'::jsonb;\n\nDROP TABLE IF EXISTS analytics.events cascade;"
+      }
+    },
+    {
+      "id": "mysql-create-table-engine",
+      "input": "create table `ledger`(`id` bigint unsigned not null auto_increment,`label` varchar(80) default 'memo',primary key(`id`)) engine=InnoDB default charset=utf8mb4;",
+      "trimmed": "create table `ledger`(`id` bigint unsigned not null auto_increment,`label` varchar(80) default 'memo',primary key(`id`)) engine=InnoDB default charset=utf8mb4;",
+      "overrides": {},
+      "options": {
+        "language": "mysql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CREATE TABLE `ledger` (\n  `id` bigint UNSIGNED NOT NULL auto_increment,\n  `label` varchar(80) default 'memo',\n  PRIMARY KEY (`id`)\n) engine = InnoDB default charset = utf8mb4;"
+      }
+    },
+    {
+      "id": "mysql-alter-index",
+      "input": "alter table `ledger` add index `ix_label`(`label`),rename column `label` to `memo`;",
+      "trimmed": "alter table `ledger` add index `ix_label`(`label`),rename column `label` to `memo`;",
+      "overrides": {
+        "keywordCase": "lower",
+        "indentStyle": "tab"
+      },
+      "options": {
+        "language": "mysql",
+        "keywordCase": "lower",
+        "indentStyle": "standard",
+        "tabWidth": 1,
+        "useTabs": true,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "alter table `ledger`\nadd index `ix_label` (`label`),\nrename column `label` to `memo`;"
+      }
+    },
+    {
+      "id": "mysql-delimiter-syntax",
+      "input": "delimiter //\ncreate procedure summary() begin select 1; end //\ndelimiter ;",
+      "trimmed": "delimiter //\ncreate procedure summary() begin select 1; end //\ndelimiter ;",
+      "overrides": {},
+      "options": {
+        "language": "mysql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "delimiter / /\nCREATE PROCEDURE summary () begin\nSELECT\n  1;\n\nEND / / delimiter;"
+      }
+    },
+    {
+      "id": "mariadb-create-or-replace-view",
+      "input": "create or replace view `billed` as select id,n as amount from `ledger` where n>0 with check option;",
+      "trimmed": "create or replace view `billed` as select id,n as amount from `ledger` where n>0 with check option;",
+      "overrides": {},
+      "options": {
+        "language": "mariadb",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CREATE OR REPLACE VIEW `billed` AS\nSELECT\n  id,\n  n AS amount\nFROM\n  `ledger`\nWHERE\n  n > 0\nWITH\n  CHECK OPTION;"
+      }
+    },
+    {
+      "id": "mariadb-transactions",
+      "input": "start transaction; savepoint edit_one; rollback to savepoint edit_one; commit;",
+      "trimmed": "start transaction; savepoint edit_one; rollback to savepoint edit_one; commit;",
+      "overrides": {
+        "linesBetweenQueries": 2
+      },
+      "options": {
+        "language": "mariadb",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 2
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "START TRANSACTION;\n\n\nSAVEPOINT edit_one;\n\n\nROLLBACK TO\nSAVEPOINT edit_one;\n\n\nCOMMIT;"
+      }
+    },
+    {
+      "id": "tsql-create-alter-go",
+      "input": "create table [dbo].[Ledger]([id] int identity(1,1) not null primary key,[name] nvarchar(60) default N'中文');\ngo\nalter table [dbo].[Ledger] add [active] bit not null default 1;\nGO",
+      "trimmed": "create table [dbo].[Ledger]([id] int identity(1,1) not null primary key,[name] nvarchar(60) default N'中文');\ngo\nalter table [dbo].[Ledger] add [active] bit not null default 1;\nGO",
+      "overrides": {},
+      "options": {
+        "language": "transactsql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CREATE TABLE [dbo].[Ledger] (\n  [id] int identity(1, 1) NOT NULL PRIMARY KEY,\n  [name] nvarchar(60) DEFAULT N'中文'\n);\n\nGO\nALTER TABLE [dbo].[Ledger]\nADD [active] bit NOT NULL DEFAULT 1;\n\nGO"
+      }
+    },
+    {
+      "id": "tsql-transaction-and-drop",
+      "input": "begin transaction t;save transaction edit_one;rollback transaction edit_one;commit transaction t;drop table if exists [dbo].[Ledger];",
+      "trimmed": "begin transaction t;save transaction edit_one;rollback transaction edit_one;commit transaction t;drop table if exists [dbo].[Ledger];",
+      "overrides": {},
+      "options": {
+        "language": "transactsql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "BEGIN TRANSACTION t;\n\nSAVE TRANSACTION edit_one;\n\nROLLBACK TRANSACTION edit_one;\n\nCOMMIT TRANSACTION t;\n\nDROP TABLE IF EXISTS [dbo].[Ledger];"
+      }
+    },
+    {
+      "id": "sql-ddl-transaction-preserve",
+      "input": "CrEaTe TaBlE inventory(id integer not null,unique(id));AlTeR TaBlE inventory DrOp CoLuMn id;RoLlBaCk;",
+      "trimmed": "CrEaTe TaBlE inventory(id integer not null,unique(id));AlTeR TaBlE inventory DrOp CoLuMn id;RoLlBaCk;",
+      "overrides": {
+        "keywordCase": "preserve",
+        "indentStyle": "4spaces"
+      },
+      "options": {
+        "language": "sql",
+        "keywordCase": "preserve",
+        "indentStyle": "standard",
+        "tabWidth": 4,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "CrEaTe TaBlE inventory (id integer not null, unique (id));\n\nAlTeR TaBlE inventory\nDrOp CoLuMn id;\n\nRoLlBaCk;"
+      }
+    }
+  ]
+}
