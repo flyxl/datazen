@@ -94,7 +94,21 @@ pub fn splitter_handle(
     max: u32,
     default: u32,
 ) -> El {
-    splitter_handle_inner(state, key, axis, min, max, default, false)
+    splitter_handle_inner(state, key, axis, min, max, default, false, None)
+}
+
+/// A splitter whose stored preference may already be clamped by the current
+/// layout. Start the gesture at the rendered pane size, not the stale request.
+pub(crate) fn splitter_handle_at_layout(
+    state: &AppState,
+    key: &'static str,
+    axis: SplitAxis,
+    min: u32,
+    max: u32,
+    default: u32,
+    rendered: u32,
+) -> El {
+    splitter_handle_inner(state, key, axis, min, max, default, false, Some(rendered))
 }
 
 /// The drag handle for a panel on the right edge (T009-S7: the AI
@@ -109,7 +123,7 @@ pub fn splitter_handle_reversed(
     max: u32,
     default: u32,
 ) -> El {
-    splitter_handle_inner(state, key, axis, min, max, default, true)
+    splitter_handle_inner(state, key, axis, min, max, default, true, None)
 }
 
 fn splitter_handle_inner(
@@ -120,8 +134,9 @@ fn splitter_handle_inner(
     max: u32,
     default: u32,
     reverse: bool,
+    rendered: Option<u32>,
 ) -> El {
-    let size = splitter_size(state, key, default);
+    let size = rendered.unwrap_or_else(|| splitter_size(state, key, default));
     let label = match axis {
         SplitAxis::Vertical => "Resize sidebar",
         SplitAxis::Horizontal => "Resize panel",
@@ -147,7 +162,7 @@ fn splitter_handle_inner(
         let start = drag.data.round().max(0.0) as u32;
         match drag.phase {
             Phase::Down => {
-                let start = splitter_size(s, key, default);
+                let start = rendered.unwrap_or_else(|| splitter_size(s, key, default));
                 begin_drag(s, key, start, drag);
             }
             Phase::Move => {
@@ -170,7 +185,7 @@ fn splitter_handle_inner(
     // Keyboard micro-adjust (arrows ±1, Page ±10) and ends (Home/End).
     handle = handle
         .on_step(move |s: &mut AppState, delta: i32, _: &mut Tx| {
-            let current = splitter_size(s, key, default);
+            let current = rendered.unwrap_or_else(|| splitter_size(s, key, default));
             // For a horizontal bar, "down" (rune: -1) should grow the pane below,
             // so flip the sign to keep arrow direction intuitive. A reversed
             // vertical bar (right-edge panel) flips the same way: Left grows it.

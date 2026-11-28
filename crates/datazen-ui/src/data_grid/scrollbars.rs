@@ -4,7 +4,7 @@ use std::{cell::Cell, rc::Rc, time::Duration};
 
 use rune::{el, Color, Drag, El, Live, Phase, ScrollPos, Tx, WheelEvent};
 
-const STRIP: f32 = 9.0;
+pub(super) const STRIP: f32 = 9.0;
 const INSET: f32 = 2.0;
 const INK_WIDTH: f32 = STRIP - 2.0 * INSET;
 const MIN_THUMB: f32 = 24.0;

@@ -20,3 +20,4 @@ pub use model::{DataGrid, COL_COUNT, COL_W, COL_WINDOW, GUTTER_W, ROW_COUNT, ROW
 pub use view::{panel, result_panel, GridSlot};
 
 pub use view::grid_of;
+pub(crate) use view::{pinned_query_result_panel, query_result_viewport_floor};

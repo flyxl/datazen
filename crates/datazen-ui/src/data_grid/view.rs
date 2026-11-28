@@ -467,17 +467,48 @@ pub fn result_panel(
     well: rune::Color,
     dark: bool,
 ) -> El {
-    col()
-        .key("result-grid")
-        .w_full()
-        .gap(8.0)
+    result_panel_with_height(state, grid, slot, ink, muted, well, dark, Some(200.0))
+}
+
+/// The pinned Query splitter owns the Result table's available height. The
+/// unpinned Query and Sync Preview still call the regular fixed-height entry.
+pub(crate) fn pinned_query_result_panel(
+    state: &crate::AppState,
+    grid: &DataGrid,
+    ink: rune::Color,
+    muted: rune::Color,
+    well: rune::Color,
+    dark: bool,
+) -> El {
+    result_panel_with_height(state, grid, GridSlot::Result, ink, muted, well, dark, None)
+}
+
+pub(crate) fn query_result_viewport_floor(state: &crate::AppState, dark: bool) -> f32 {
+    // Sticky header, one full density-adjusted row and room for a real
+    // horizontal gutter if the columns overflow.
+    ROW_H + CellPaint::for_slot(state, GridSlot::Result, dark).row_height + scrollbars::STRIP
+}
+
+fn result_panel_with_height(
+    state: &crate::AppState,
+    grid: &DataGrid,
+    slot: GridSlot,
+    ink: rune::Color,
+    muted: rune::Color,
+    well: rune::Color,
+    dark: bool,
+    fixed_height: Option<f32>,
+) -> El {
+    let panel = col().key("result-grid").w_full().gap(8.0);
+    let panel = if fixed_height.is_none() { panel.grow(1.0).min_h(0.0) } else { panel };
+    panel
         .child(
             text(format!("{} · {} rows × {} cols", grid.table_label(), grid.rows, grid.cols))
                 .font(label_style())
                 .color(muted)
                 .key("result-grid-status"),
         )
-        .child(sheet(grid, slot, ink, well, Some(200.0), CellPaint::for_slot(state, slot, dark)))
+        .child(sheet(grid, slot, ink, well, fixed_height, CellPaint::for_slot(state, slot, dark)))
 }
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.

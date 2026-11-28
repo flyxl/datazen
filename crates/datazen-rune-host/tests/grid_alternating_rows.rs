@@ -239,6 +239,9 @@ fn live_row_number_setting_changes_the_actual_table_and_query_grids_without_chan
 
     rt.update(|state, _| {
         let _ = state.tabs.open(TabKind::Query, "Result").expect("result tab");
+        // Exercise the same stock Cmd+C after the live query grid takes
+        // the pinned pane's available height.
+        state.set_layout_size(datazen_ui::constants::QUERY_EDITOR_HEIGHT_KEY, 240).unwrap();
         let mut results = DataGrid::new();
         results.load_page(&page);
         state.result_grid = Some(results);

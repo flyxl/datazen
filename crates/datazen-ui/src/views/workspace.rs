@@ -300,6 +300,13 @@ pub fn query_workspace(
     let command_stats = execution_stats.and_then(|stats| {
         stats.affected_rows.map(|count| (count, stats.elapsed_ms))
     });
+    let explain = native_explain::panel(state, theme);
+    let uses_table_result = selected_error.is_none()
+        && command_stats.is_none() && explain.is_none()
+        && state.result_view == ResultView::Table && state.result_grid.is_some();
+    let explicit_split = state.layout_size(QUERY_EDITOR_HEIGHT_KEY).is_some()
+        || state.splitter_preview.as_ref().is_some_and(|(region, _)| region == QUERY_EDITOR_HEIGHT_KEY);
+    let pinned_table = uses_table_result && explicit_split;
     let result_body = match (selected_error, command_stats, &state.result_grid) {
         (Some((tab, key, copied)), _, _) => {
             use crate::ui::{copyable::CopyableError, kit::kit};
@@ -331,11 +338,11 @@ pub fn query_workspace(
         (None, None, Some(grid)) => Some(result_workspace(
             state, grid, theme, dark, elapsed_ms,
             execution_stats.and_then(|stats| stats.truncated_to),
+            pinned_table,
         )),
         (None, None, None) => None,
     };
 
-    let explain = native_explain::panel(state, theme);
     // A saved/user-adjusted split only applies when something actually owns
     // the space below it. The idle view has a single shortcut footer.
     let split = loading.is_some()
@@ -375,18 +382,23 @@ pub fn query_workspace(
         .children(notice);
 
     if split {
-        let editor_split = splitter::splitter_handle(
-            state,
-            QUERY_EDITOR_HEIGHT_KEY,
-            splitter::SplitAxis::Horizontal,
-            QUERY_EDITOR_HEIGHT_MIN,
-            QUERY_EDITOR_HEIGHT_MAX,
-            QUERY_EDITOR_HEIGHT_DEFAULT,
-        )
-        .h(6.0)
-        .fill(theme.separator.alpha(0.25));
+        let rendered_editor = uses_table_result.then(|| {
+            rune::memo::layout_with("query-editor-pane", |rect| rect[3].round() as u32)
+        }).flatten().filter(|height| *height >= QUERY_EDITOR_HEIGHT_MIN);
+        let axis = splitter::SplitAxis::Horizontal;
+        let editor_split = if let Some(height) = rendered_editor {
+            splitter::splitter_handle_at_layout(
+                state, QUERY_EDITOR_HEIGHT_KEY, axis, QUERY_EDITOR_HEIGHT_MIN,
+                QUERY_EDITOR_HEIGHT_MAX, QUERY_EDITOR_HEIGHT_DEFAULT, height,
+            )
+        } else {
+            splitter::splitter_handle(
+                state, QUERY_EDITOR_HEIGHT_KEY, axis, QUERY_EDITOR_HEIGHT_MIN,
+                QUERY_EDITOR_HEIGHT_MAX, QUERY_EDITOR_HEIGHT_DEFAULT,
+            )
+        };
         main = main
-            .child(editor_split)
+            .child(editor_split.h(6.0).fill(theme.separator.alpha(0.25)))
             .children(loading)
             .child(query_result_tabs_bar(state, theme))
             .children(explain)
@@ -744,11 +756,15 @@ fn result_workspace(
     dark: bool,
     elapsed_ms: Option<u64>,
     truncated_to: Option<u32>,
+    pinned_table: bool,
 ) -> El {
     let toggle = result_view_toggle(state, theme, dark);
     let find_bar = native_result_find::panel(state, grid, dark);
     let status = result_status_bar(state, grid, theme, elapsed_ms);
     let body = match state.result_view {
+        ResultView::Table if pinned_table => crate::data_grid::pinned_query_result_panel(
+            state, grid, theme.text, theme.text_secondary, theme.control_off, dark,
+        ),
         ResultView::Table => crate::data_grid::result_panel(
             state,
             grid,
@@ -760,10 +776,22 @@ fn result_workspace(
         ),
         ResultView::Chart => result_chart_view(grid, theme),
     };
-    col()
-        .key("result-workspace")
-        .w_full()
-        .gap(6.0)
+    let workspace = col().key("result-workspace").w_full().gap(6.0);
+    let workspace = if pinned_table {
+        // The editor may shrink at a small window; the result keeps its
+        // actual toolbar, status, optional Find/notices and a usable row.
+        // Read the existing outer area so the 9pt scrollbars do not enter
+        // the chrome measurement; their possible lower strip is in the floor.
+        let chrome = rune::memo::layout_size("result-workspace")
+            .zip(rune::memo::layout_size("result-data-grid-scroll-scroll-area"))
+            .map_or(0.0, |([_, host], [_, sheet])| (host - sheet).max(0.0));
+        let floor = (chrome + crate::data_grid::query_result_viewport_floor(state, dark))
+            .max(140.0);
+        workspace.grow(1.0).min_h(floor)
+    } else {
+        workspace
+    };
+    workspace
         .child(toggle)
         .children(native_query_export::status(state, theme))
         .children(find_bar)
