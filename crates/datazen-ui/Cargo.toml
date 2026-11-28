@@ -40,6 +40,8 @@ chrono-tz = "0.10"
 # The `{ kind: 'local' }` display-zone spec needs the machine's IANA name
 # (already in the graph via chrono); same purpose as Intl resolvedOptions().
 iana-time-zone = "0.1"
+# SQL Find's literal cursor needs the same NFKD normalization as CodeMirror.
+unicode-normalization = "=0.1.25"
 unicode-segmentation = "1.13"
 # T054-S2: rule-name matching for the dialog's plan (`match_name_pattern`):
 # the restricted regex subset the TS validator accepts (literals, classes,

@@ -494,3 +494,74 @@ fn dock_literal_short_multiline_selection_seeds_the_live_search_field() {
     assert!(rt.state.sql.undo_stack.is_empty());
     assert!(rt.state.query_result_tabs.is_empty());
 }
+
+#[test]
+fn dock_unicode_literal_match_case_is_real_and_belongs_to_its_query_draft() {
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.state.workspace.connect("local").unwrap();
+    let a = rt.state.open_query_tab("Alpha").unwrap();
+    let sql = "FI / ﬃ / fi";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(sql);
+    rt.frame(0.0);
+    tap(&mut rt, "sql-find-open");
+    key(&mut rt, Key::Text("fi".into()), Mods::default());
+    key(&mut rt, Key::Enter, Mods::default());
+    assert_eq!(rt.state.sql.selected_text(), "FI");
+    let case = rt.elements().into_iter().find(|el| el.key.as_deref() == Some("sql-find-match-case")).unwrap();
+    assert_eq!(case.role, "checkbox");
+    tap(&mut rt, "sql-find-match-case");
+    tap(&mut rt, "sql-find-next");
+    assert_eq!(rt.state.sql.selected_text(), "ﬃ");
+    tap(&mut rt, "sql-find-next");
+    assert_eq!(rt.state.sql.selected_text(), "fi");
+    tap(&mut rt, "sql-find-next");
+    assert_eq!(rt.state.sql.selected_text(), "ﬃ", "wrap excludes uppercase FI");
+    key(&mut rt, Key::Escape, Mods::default());
+    assert!(rt.state.sql.focused());
+    assert!(rt.state.sql.undo_stack.is_empty());
+
+    let b = rt.state.open_query_tab("Beta").unwrap();
+    assert_ne!(a, b);
+    rt.state.sql = sql_editor::SqlEditor::from_doc("FI");
+    rt.frame(0.0);
+    tap(&mut rt, "sql-find-open");
+    key(&mut rt, Key::Text("fi".into()), Mods::default());
+    key(&mut rt, Key::Enter, Mods::default());
+    assert_eq!(rt.state.sql.selected_text(), "FI", "a new draft uses the default");
+    key(&mut rt, Key::Escape, Mods::default());
+
+    tap_tab(&mut rt, a);
+    rt.state.sql.set_main_selection(0, 0);
+    tap(&mut rt, "sql-find-open");
+    assert_eq!(rt.state.sql.find_input.text, "fi");
+    key(&mut rt, Key::Enter, Mods::default());
+    assert_eq!(rt.state.sql.selected_text(), "ﬃ", "tab A kept Match Case");
+    assert_eq!(rt.state.sql.doc(), sql);
+    assert!(rt.state.query_result_tabs.is_empty());
+}
+
+#[test]
+fn dock_unicode_literal_reports_invalid_selection_without_changing_the_editor() {
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.state.workspace.connect("local").unwrap();
+    let _ = rt.state.open_query_tab("Query").unwrap();
+    let sql = "SELECT 'x\u{1d15e}y';";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(sql);
+    rt.frame(0.0);
+    tap(&mut rt, "sql-find-open");
+    key(&mut rt, Key::Text("\u{1d165}".into()), Mods::default());
+    key(&mut rt, Key::Enter, Mods::default());
+    assert!(rt.find("sql-find-unsafe-unicode").is_some());
+    assert_eq!(rt.state.sql.selected_text(), "");
+    tap(&mut rt, "sql-replace-input");
+    key(&mut rt, Key::Text("Z".into()), Mods::default());
+    tap(&mut rt, "sql-replace-all");
+    assert!(rt.find("sql-find-unsafe-unicode").is_some());
+    assert_eq!(rt.state.sql.doc(), sql);
+    assert!(rt.state.sql.undo_stack.is_empty());
+    assert!(rt.state.query_result_tabs.is_empty());
+    key(&mut rt, Key::Escape, Mods::default());
+    assert!(rt.find("sql-find-unsafe-unicode").is_none());
+}

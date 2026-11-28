@@ -12,6 +12,7 @@ pub(crate) mod builtin_snippets;
 mod from_completion;
 mod highlight;
 mod input;
+mod literal_cursor;
 mod line_comment;
 mod model;
 mod navigation;

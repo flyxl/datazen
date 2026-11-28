@@ -2801,6 +2801,7 @@ dependencies = [
  "rust_xlsxwriter",
  "serde",
  "serde_json",
+ "unicode-normalization",
  "unicode-segmentation",
  "wasm-bindgen",
  "zip 2.4.2",

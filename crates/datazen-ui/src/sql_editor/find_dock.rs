@@ -3,7 +3,7 @@
 
 use rune::{col, row, text, El, Key, KeyEvent, Mods, Tx};
 
-use crate::{i18n::t, ui::field::TextField, AppState};
+use crate::{i18n::t, ui::{field::TextField, toggle::Checkbox}, AppState};
 
 use super::{model::SqlEditor, view::{editor_font, split_lines}};
 
@@ -41,6 +41,7 @@ pub(crate) fn open(state: &mut AppState, tx: &mut Tx) {
             let query = selected.replace('\n', "\\n");
             if state.sql.find_input.text != query {
                 state.sql.find_input = rune::TextEdit::new(query);
+                state.sql.find_unsafe_range = false;
             }
         }
     }
@@ -163,6 +164,10 @@ fn field<'a>(key: &'static str, edit: &'a rune::TextEdit, label: &str, dark: boo
 
 pub(super) fn panel(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
     let k = crate::ui::kit::kit(dark);
+    let warning = editor.find_unsafe_range.then(|| {
+        text(t("query.nativeFind.unsafeUnicode")).key("sql-find-unsafe-unicode")
+            .role("status").font(rune::tok::type_::LABEL).color(k.c.danger.fg)
+    });
     col().key("sql-find-bar").w_full().h(52.0).min_w(0.0).gap(2.0).px(6.0).py(3.0)
         .role("group").label(t("query.nativeFind.open"))
         .fill(k.c.bg_deep).border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base)
@@ -171,12 +176,20 @@ pub(super) fn panel(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
             row().w_full().min_w(0.0).h(22.0).gap(6.0).center_y().scroll_x()
                 .child(field(FIND_INPUT, &editor.find_input, t("query.nativeFind.find"), dark)
                     .on_edit(|state: &mut AppState| &mut state.sql.find_input)
+                    .on_change(|state: &mut AppState, _| state.sql.find_unsafe_range = false)
                     .on_key(find_key).build(dark))
                 .child(button("sql-find-next", t("query.nativeFind.next"), ink, dark)
                     .on_press_tx(|state: &mut AppState, tx| navigate(state, tx, true)))
                 .child(button("sql-find-prev", t("query.nativeFind.previous"), ink, dark)
                     .on_press_tx(|state: &mut AppState, tx| navigate(state, tx, false)))
+                .child(Checkbox::new("sql-find-match-case", editor.find_match_case)
+                    .label(t("query.nativeFind.matchCase"))
+                    .on_toggle(|state: &mut AppState| {
+                        state.sql.find_match_case = !state.sql.find_match_case;
+                        state.sql.find_unsafe_range = false;
+                    }).build(k).h(22.0))
                 .child(button("sql-find-close", t("resultFind.close"), ink, dark).on_press_tx(close))
+                .children(warning)
         )
         .child(
             row().w_full().min_w(0.0).h(22.0).gap(6.0).center_y().scroll_x()

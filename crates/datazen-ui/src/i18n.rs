@@ -69,6 +69,11 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         "query.nativeFind.next" => Some(("下一处", "Find next")),
         "query.nativeFind.previous" => Some(("上一处", "Find previous")),
         "query.nativeFind.replaceAll" => Some(("全部替换", "Replace all")),
+        "query.nativeFind.matchCase" => Some(("区分大小写", "Match case")),
+        "query.nativeFind.unsafeUnicode" => Some((
+            "此匹配会拆分一个 Unicode 字符。未更改文档。",
+            "This match would split a Unicode character. The document was not changed.",
+        )),
         "query.nativeFind.addCursor" => Some(("添加光标", "Add cursor")),
         "settings.nativeLogRestartNote" => Some((
             "原生启动诊断输出到控制台。级别变更在重启后生效；有效的 RUST_LOG 会覆盖此设置。",

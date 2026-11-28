@@ -1,7 +1,10 @@
-//! The existing exact-string Find's Replace button/field semantics.
+//! The live editor dock's Unicode-safe literal search and undoable edits.
 use std::{borrow::Cow, ops::Range};
 
-use super::model::{Sel, Selection, SqlEditor};
+use super::{
+    literal_cursor::{LiteralDocument, LiteralQuery, UnrepresentableRange},
+    model::{Sel, Selection, SqlEditor},
+};
 
 /// CodeMirror's plain Find input unquotes just these four single-pass
 /// escapes. An unknown escape or a trailing slash stays literal.
@@ -43,19 +46,6 @@ pub(super) fn decode_replacement(input: &str) -> Cow<'_, str> {
     }
 }
 
-/// Search after the full selection, then wrap up to its first character.
-/// All matching is still on the existing exact literal UTF-8 substring.
-/// This is not a regexp, case folding, or normalization implementation.
-fn next_match(doc: &str, needle: &str, from: usize, to: usize) -> Option<Range<usize>> {
-    if needle.is_empty() || !doc.is_char_boundary(from) {
-        return None;
-    }
-    let start = doc.get(to..)?.find(needle).map(|at| to + at)
-        .or_else(|| doc.find(needle).filter(|at| *at <= from))?;
-    let end = start + needle.len();
-    ((start, end) != (from, to)).then_some(start..end)
-}
-
 fn selection_for(found: Range<usize>) -> Selection {
     Selection { ranges: vec![Sel { anchor: found.start, head: found.end }], main: 0 }
 }
@@ -78,37 +68,112 @@ fn map_selection(sel: Sel, replaced: &Range<usize>, inserted: usize) -> Sel {
     }
     let low = map(sel.from(), true);
     let high = map(sel.to(), false);
-    if sel.anchor < sel.head {
+    if low > high {
+        // CM6 can assign an inverted pair of ordered bounds when Replace All
+        // entirely covers an arbitrary selected fragment. Collapse to the
+        // mapped head rather than selecting text neither endpoint requested.
+        Sel::caret(if sel.anchor < sel.head { high } else { low })
+    } else if sel.anchor < sel.head {
         Sel { anchor: low, head: high }
     } else {
         Sel { anchor: high, head: low }
     }
 }
 
-impl SqlEditor {
-    /// The live dock's Replace first selects a candidate. A second activation
-    /// on the same candidate edits the document in one undoable transaction.
-    /// The next selection comes from the pre-edit document, even if the
-    /// replacement text itself contains the search string.
-    pub(super) fn replace_next_literal(&mut self, needle: &str, replacement: &str) -> bool {
-        let main = self.selection.main();
-        let Some(found) = next_match(&self.doc, needle, main.from(), main.from()) else {
-            return false;
-        };
-        if (found.start, found.end) != (main.from(), main.to()) {
-            self.preferred_columns.clear();
-            self.selection = selection_for(found);
-            return true;
-        }
+enum ReplacePlan {
+    Seek(Range<usize>),
+    Edit { found: Range<usize>, next: Option<Range<usize>> },
+}
 
-        let mut after = next_match(&self.doc, needle, found.start, found.end)
-            .map_or_else(|| self.selection.clone(), selection_for);
-        for range in &mut after.ranges {
-            *range = map_selection(*range, &found, replacement.len());
+impl SqlEditor {
+    fn search_plan(&self, raw: &str, forward: bool) -> Result<Option<Range<usize>>, UnrepresentableRange> {
+        let Some(query) = LiteralQuery::new(raw, self.find_match_case) else { return Ok(None) };
+        let doc = LiteralDocument::new(&self.doc);
+        let main = self.selection.main();
+        let cursor = doc.offset(main.from())?..doc.offset(main.to())?;
+        let matched = if forward { query.next(&doc, cursor) } else { query.previous(&doc, cursor) };
+        matched.map(|range| doc.bytes(range)).transpose()
+    }
+
+    pub(super) fn find_dock_literal(&mut self, raw: &str, forward: bool) -> bool {
+        self.find_unsafe_range = false;
+        match self.search_plan(raw, forward) {
+            Ok(Some(found)) => {
+                self.set_main_selection(found.start, found.end);
+                true
+            }
+            Ok(None) => false,
+            Err(_) => {
+                self.find_unsafe_range = true;
+                false
+            }
         }
+    }
+
+    fn replace_plan(&self, raw: &str) -> Result<Option<ReplacePlan>, UnrepresentableRange> {
+        let Some(query) = LiteralQuery::new(raw, self.find_match_case) else { return Ok(None) };
+        let doc = LiteralDocument::new(&self.doc);
+        let main = self.selection.main();
+        let first = doc.offset(main.from())?;
+        let Some(found) = query.next(&doc, first..first) else { return Ok(None) };
+        let bytes = doc.bytes(found.clone())?;
+        if (bytes.start, bytes.end) != (main.from(), main.to()) {
+            return Ok(Some(ReplacePlan::Seek(bytes)));
+        }
+        // Validate the next selection BEFORE changing anything, even when
+        // the currently selected match itself is representable.
+        let next = query.next(&doc, found).map(|range| doc.bytes(range)).transpose()?;
+        Ok(Some(ReplacePlan::Edit { found: bytes, next }))
+    }
+
+    pub(super) fn replace_next_literal(&mut self, raw: &str, replacement: &str) -> bool {
+        self.find_unsafe_range = false;
+        match self.replace_plan(raw) {
+            Ok(Some(ReplacePlan::Seek(found))) => {
+                self.set_main_selection(found.start, found.end);
+                true
+            }
+            Ok(Some(ReplacePlan::Edit { found, next })) => {
+                let mut after = next.map_or_else(|| self.selection.clone(), selection_for);
+                for range in &mut after.ranges {
+                    *range = map_selection(*range, &found, replacement.len());
+                }
+                self.push_history();
+                self.apply_change(found.start, found.end, replacement);
+                self.selection = after;
+                self.keep_bracket_closers_on_main_line();
+                true
+            }
+            Ok(None) => false,
+            Err(_) => {
+                self.find_unsafe_range = true;
+                false
+            }
+        }
+    }
+
+    pub(super) fn replace_all_dock_literal(&mut self, raw: &str, replacement: &str) -> usize {
+        self.find_unsafe_range = false;
+        let Some(query) = LiteralQuery::new(raw, self.find_match_case) else { return 0 };
+        let ranges = match query.all(&LiteralDocument::new(&self.doc)) {
+            Ok(ranges) if ranges.is_empty() => return 0,
+            Ok(ranges) => ranges,
+            Err(_) => {
+                // No partial replacement and no history on a rejected set.
+                self.find_unsafe_range = true;
+                return 0;
+            }
+        };
         self.push_history();
-        self.apply_change(found.start, found.end, replacement);
+        let mut after = self.selection.clone();
+        for found in ranges.iter().rev() {
+            for selection in &mut after.ranges {
+                *selection = map_selection(*selection, found, replacement.len());
+            }
+            self.apply_change(found.start, found.end, replacement);
+        }
         self.selection = after;
-        true
+        self.keep_bracket_closers_on_main_line();
+        ranges.len()
     }
 }

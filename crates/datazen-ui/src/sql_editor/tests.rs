@@ -580,3 +580,109 @@ fn dock_literal_search_and_replace_use_real_multiline_utf8_ranges() {
     assert_eq!(all.doc(), "cat & cat");
     assert!(!all.undo());
 }
+
+#[test]
+fn dock_unicode_literal_matches_original_normalized_ranges() {
+    use super::literal_cursor::{LiteralDocument, LiteralQuery};
+    // Byte ranges from the locked original CM6 6.6.0 cursor, not lengths
+    // in the normalized query, nor a Unicode caseless full-fold approximation.
+    let cases: &[(&str, &str, bool, &[(usize, usize)])] = &[
+        ("A a Á A\u{0301}", "a", false, &[(0, 1), (2, 3), (7, 8)]),
+        ("A a Á A\u{0301}", "a", true, &[(2, 3)]),
+        ("é e\u{0301} É", "e\u{0301}", false, &[(0, 2), (3, 6), (7, 9)]),
+        ("é e\u{0301} É", "e\u{0301}", true, &[(0, 2), (3, 6)]),
+        ("office oﬃce", "fi", false, &[(2, 4), (8, 11)]),
+        ("ﬃ", "f", false, &[]),
+        ("ﬃ", "i", false, &[(0, 3)]),
+        ("ΟΣ Οσ Ος", "ΟΣ", false, &[(10, 14)]),
+        ("Straße STRASSE", "strasse", false, &[(8, 15)]),
+        ("😀😀", "😀", false, &[(0, 4), (4, 8)]),
+        ("İ i\u{0307} I", "i\u{0307}", false, &[(0, 2), (3, 6)]),
+    ];
+    for &(text, needle, case, expected) in cases {
+        let doc = LiteralDocument::new(text);
+        let actual = LiteralQuery::new(needle, case).unwrap().all(&doc).unwrap()
+            .into_iter().map(|range| (range.start, range.end)).collect::<Vec<_>>();
+        assert_eq!(actual.as_slice(), expected, "{text:?} {needle:?}, match case = {case}");
+    }
+    let mut legacy = SqlEditor::from_doc("A");
+    assert!(!legacy.find_next("a"), "the reusable raw-string helper is unchanged");
+    assert_eq!(legacy.replace_all("a", "x"), 0);
+}
+
+#[test]
+fn dock_unicode_literal_replaces_original_compatible_matches_and_undoes_once() {
+    let before = "É e\u{0301} 😀 ﬃ";
+    let mut editor = SqlEditor::from_doc(before);
+    editor.find_input = TextEdit::new("e\u{0301}");
+    editor.replace_input = TextEdit::new("Z");
+    assert!(editor.find_from_bar());
+    assert_eq!(editor.selection().main(), Sel { anchor: 0, head: 2 });
+    assert!(editor.replace_current_from_bar());
+    assert_eq!(editor.doc(), "Z e\u{0301} 😀 ﬃ");
+    assert_eq!(editor.selection().main(), Sel { anchor: 2, head: 5 });
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), before);
+    assert_eq!(editor.selection().main(), Sel { anchor: 0, head: 2 });
+    assert!(!editor.undo());
+    assert_eq!(editor.replace_all_from_bar(), 2);
+    assert_eq!(editor.doc(), "Z Z 😀 ﬃ");
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), before);
+    assert!(!editor.undo());
+}
+
+#[test]
+fn dock_unicode_literal_refuses_split_surrogates_atomically_in_both_cases() {
+    // Original CM6 normalizes U+1D15E to two astral characters and then
+    // reports the second one's match starting inside the original scalar.
+    let musical_symbol = "\u{1d15e}";
+    let needle = "\u{1d165}";
+    for case in [false, true] {
+        let text = format!("x{musical_symbol}y");
+        let mut editor = SqlEditor::from_doc(text.as_str());
+        editor.find_match_case = case;
+        editor.find_input = TextEdit::new(needle);
+        editor.replace_input = TextEdit::new("Z");
+        let selection = editor.selection().clone();
+        assert!(!editor.find_from_bar() && editor.find_unsafe_range);
+        assert!(!editor.find_previous_from_bar() && editor.find_unsafe_range);
+        assert!(!editor.replace_current_from_bar() && editor.find_unsafe_range);
+        assert_eq!(editor.replace_all_from_bar(), 0);
+        assert!(editor.find_unsafe_range);
+        assert_eq!(editor.doc(), text);
+        assert_eq!(editor.selection(), &selection);
+        assert!(!editor.undo());
+
+        // A valid earlier match does not make it okay to partially replace
+        // an invalid later match, or half-apply a Replace All transaction.
+        let text = format!("{needle} x{musical_symbol}y");
+        let mut batch = SqlEditor::from_doc(text.as_str());
+        batch.find_match_case = case;
+        batch.find_input = TextEdit::new(needle);
+        batch.replace_input = TextEdit::new("Z");
+        assert!(batch.find_from_bar());
+        assert_eq!(batch.selected_text(), needle);
+        let selection = batch.selection().clone();
+        assert!(!batch.replace_current_from_bar() && batch.find_unsafe_range);
+        assert_eq!(batch.replace_all_from_bar(), 0);
+        assert!(batch.find_unsafe_range);
+        assert_eq!(batch.doc(), text);
+        assert_eq!(batch.selection(), &selection);
+        assert!(!batch.undo());
+    }
+}
+
+#[test]
+fn dock_unicode_literal_replace_all_does_not_select_inverted_mapped_bounds() {
+    let mut editor = SqlEditor::from_doc("abcdef");
+    editor.set_main_selection(2, 3);
+    editor.find_input = TextEdit::new("ABCDEF");
+    editor.replace_input = TextEdit::new("XYZ");
+    assert_eq!(editor.replace_all_from_bar(), 1);
+    assert_eq!(editor.doc(), "XYZ");
+    assert_eq!(editor.selection().main(), Sel::caret(0));
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), "abcdef");
+    assert_eq!(editor.selection().main(), Sel { anchor: 2, head: 3 });
+}

@@ -610,3 +610,46 @@ class SqlSelectionJourneys:
         self.assertEqual(self.db.read_bytes(), original_bytes)
         history = json.loads((self.root / "query-history.json").read_bytes())
         self.assertEqual([row["sql"].rstrip(";") for row in history], [expected_sql.rstrip(";")])
+
+    def test_editor_literal_match_case_replaces_the_original_ligature_only(self):
+        original_rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        original_bytes = self.db.read_bytes()
+        sql = "SELECT 'FI' AS first_tag, 'ﬃ' AS second_tag;"
+        enter = query_steps(sql)[:-1]
+        enter[-1] = {"t": 4.8, "type": "paste", "text": sql}
+        find = [
+            *enter, tap(8.3, "sql-find-open"), *fill(8.9, "sql-find-input", "fi"),
+            tap(9.8, "sql-find-next"),
+        ]
+        folded = self.replay(find, until=10.4)
+        self.expect_rendered(folded, key="sql-find-match-case")
+        self.expect_rendered(folded, key="sql-selected-0-8", text="FI")
+        self.assertFalse(visible(folded, key="result-workspace"))
+
+        exact = [*find, tap(10.8, "sql-find-match-case"), tap(11.3, "sql-find-next")]
+        matched = self.replay(exact, until=11.9)
+        offset = len(sql.split("ﬃ", 1)[0].encode("utf-8"))
+        self.expect_rendered(matched, key=f"sql-selected-0-{offset}", text="ﬃ")
+        self.assertFalse(visible(matched, key="sql-selected-0-8"))
+
+        run = self.replay([
+            *exact, *fill(12.0, "sql-replace-input", "safe"),
+            tap(13.2, "sql-replace-current"),
+            key(13.8, "Escape"), key(14.2, "Left"), tap(14.6, "sql-run"),
+        ], until=16.5)
+        edited = sql.replace("ﬃ", "safe")
+        with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as db:
+            expected = db.execute(edited).fetchone()
+        self.assertEqual(expected, ("FI", "safe"))
+        for index, value in enumerate(expected):
+            self.expect_rendered(run, text=value, within=f"result-cell-0-{index}")
+        self.assertEqual(self.sql_customer_rows(), original_rows)
+        self.assertEqual(self.db.read_bytes(), original_bytes)
+        history = json.loads((self.root / "query-history.json").read_bytes())
+        self.assertEqual([row["sql"].rstrip(";") for row in history], [edited.rstrip(";")])

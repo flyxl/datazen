@@ -151,6 +151,8 @@ pub struct SqlEditor {
     pub redo_stack: Vec<Snapshot>,
     /// The Query-only find dock opens on demand; each draft owns its needle.
     pub(super) find_open: bool,
+    pub(super) find_match_case: bool,
+    pub(super) find_unsafe_range: bool,
     pub find_input: TextEdit,
     pub replace_input: TextEdit,
     /// The open completion list, if any.
@@ -183,6 +185,8 @@ impl SqlEditor {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             find_open: false,
+            find_match_case: false,
+            find_unsafe_range: false,
             find_input: TextEdit::new(String::new()),
             replace_input: TextEdit::new(String::new()),
             completion: None,
@@ -624,35 +628,14 @@ impl SqlEditor {
         }
     }
 
-    fn find_previous_from(&mut self, needle: &str) -> bool {
-        if needle.is_empty() {
-            return false;
-        }
-        let main = self.selection.main();
-        let from = if self.doc.get(main.from()..main.to()) == Some(needle) {
-            main.from()
-        } else {
-            main.head
-        };
-        let found = self.doc[..from].rfind(needle)
-            .or_else(|| self.doc[from..].rfind(needle).map(|at| at + from));
-        let Some(at) = found else { return false; };
-        self.preferred_columns.clear();
-        self.selection = Selection {
-            ranges: vec![Sel { anchor: at, head: at + needle.len() }],
-            main: 0,
-        };
-        self.keep_bracket_closers_on_main_line();
-        true
-    }
-
     pub(super) fn find_previous_from_bar(&mut self) -> bool {
         let needle = self.find_input.text.clone();
-        self.find_previous_from(&super::plain_find::decode_input(&needle))
+        self.find_dock_literal(&super::plain_find::decode_input(&needle), false)
     }
 
     pub(crate) fn dismiss_find(&mut self) {
         self.find_open = false;
+        self.find_unsafe_range = false;
         self.find_input.focused = false;
         self.replace_input.focused = false;
     }
@@ -697,7 +680,7 @@ impl SqlEditor {
     /// The find bar's Find: read the bar's needle.
     pub fn find_from_bar(&mut self) -> bool {
         let needle = self.find_input.text.clone();
-        self.find_next(&super::plain_find::decode_input(&needle))
+        self.find_dock_literal(&super::plain_find::decode_input(&needle), true)
     }
 
     /// The find bar's Replace: select the next occurrence or edit the one
@@ -715,7 +698,7 @@ impl SqlEditor {
     pub fn replace_all_from_bar(&mut self) -> usize {
         let needle = self.find_input.text.clone();
         let replacement = self.replace_input.text.clone();
-        self.replace_all(
+        self.replace_all_dock_literal(
             &super::plain_find::decode_input(&needle),
             &super::plain_find::decode_replacement(&replacement),
         )
