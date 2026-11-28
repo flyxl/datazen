@@ -480,8 +480,9 @@ fn mounted_editor_font_slider_resizes_sql_glyphs_caret_and_gutter() {
         "default thumb={thumb_at_13:?}, expected x={center_at_13:.2}, track={:?}",
         [x, y, width, height],
     );
-    assert!(rt.find("settings-snippets").is_some());
+    assert!(rt.find("settings-snippets-heading").is_some());
     assert!(rt.find("snippet-add").is_some());
+    assert!(query_rect(&rt, "settings-snippets")[3] <= 32.0, "empty Native section is one row");
     assert!(rt.find("snippet-edit-dialog").is_none());
     assert!(rt.find("snippet-update").is_none(), "nothing has been saved to update");
     let pos = x + width * (10.0 / 14.0);

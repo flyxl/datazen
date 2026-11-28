@@ -1,63 +1,40 @@
-//! The Editor Settings Add dialog/card backed by Native's name/SQL snippet store.
+//! The Editor Settings Add dialog/action backed by Native's name/SQL snippet store.
 //! The React Description, import/export, and rename controls are not projected
 //! into this store: Native has no place to save their data.
-use rune::{col, icon, row, text, text_input, Align, El, TextStyle};
+use rune::{col, icon, row, text, text_input, El, TextStyle};
 use rune_kit::Kit;
 
 use crate::i18n::t;
-use crate::icons::{ICON_CODE, ICON_PLUS};
+use crate::icons::ICON_PLUS;
 use crate::state_def::AppState;
 use crate::ui::{dialog::Dialog, field::TextField, kit::kit};
 
 const CAPTION: TextStyle = TextStyle::new(12.0, 400.0).lh(16.0);
 
-pub(super) fn card_header(k: &Kit, dark: bool, count: usize) -> El {
-    let radius = if dark { 12.0 } else { 11.0 };
-    let mut card = col()
+pub(super) fn section_header(k: &Kit) -> El {
+    // The original card follows the remaining Editor preferences. Do not
+    // paint that card above its proper position or reserve space for controls
+    // Native does not yet mount. Keep the live Add action beside the heading.
+    let add = t("query.snippets.add");
+    col()
         .key("settings-snippets")
         .w_full()
-        .gap(16.0)
-        .padding(15.0) // CSS p-3.5 plus the border inside its border box
-        .radius(radius)
-        .fill(k.c.surface_weak)
-        .border(1.0, k.c.border_base)
+        .gap(6.0)
         .child(
-            row().w_full().center_y().justify_between().flex_wrap().gap(8.0)
+            row().w_full().gap(8.0).center_y().justify_between().flex_wrap()
                 .child(
-                    row().center_y().gap(8.0)
-                        .child(icon(&ICON_CODE, 16.0).color(k.c.text_accent))
-                        .child(
-                            text(t("query.snippets").to_uppercase())
-                                .font(TextStyle::new(12.0, 600.0).lh(16.0))
-                                .color(k.c.text_base),
-                        ),
+                    text(t("query.snippets"))
+                        .key("settings-snippets-heading")
+                        .font(rune::tok::type_::TITLE)
+                        .color(k.c.text_base),
                 )
                 .child(
-                    button(k, "snippet-add", t("query.snippets.add"), true)
+                    button(k, "snippet-add", add, true)
                         .child(icon(&ICON_PLUS, 14.0).color(k.c.submit_fg))
-                        .child(text(t("query.snippets.add")).font(CAPTION).color(k.c.submit_fg))
+                        .child(text(add).font(CAPTION).color(k.c.submit_fg))
                         .on_press(|state: &mut AppState| state.open_native_snippet_add()),
                 ),
-        );
-    let mut custom = col().key("settings-snippets-custom").w_full().gap(8.0).child(
-        text(format!("{} ({count})", t("query.snippets.custom").to_uppercase()))
-            .key("settings-snippets-custom-count")
-            .font(TextStyle::new(11.0, 500.0).lh(16.0))
-            .color(k.c.text_faint),
-    );
-    if count == 0 {
-        custom = custom.child(
-            col().key("settings-snippets-empty")
-                .w_full().padding(16.0).center()
-                .radius(7.0).border(1.0, k.c.border_base)
-                .child(
-                    text(t("query.snippets.emptyCustom"))
-                        .w_full().wrap().align(Align::Center).font(CAPTION).color(k.c.text_faint),
-                ),
-        );
-    }
-    card = card.child(custom);
-    card
+        )
 }
 
 pub(in crate::views) fn mount(state: &AppState, dark: bool, layer: &mut Vec<El>) {

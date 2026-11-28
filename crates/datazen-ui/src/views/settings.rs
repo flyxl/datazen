@@ -336,7 +336,7 @@ fn settings_error_row(state: &AppState, theme: tok::Theme) -> El {
 fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let k = crate::ui::kit::kit(dark);
     let saved = state.host_snippets();
-    let mut snippets = snippet_add_live::card_header(k, dark, saved.len());
+    let mut snippets = snippet_add_live::section_header(k);
     if !saved.is_empty() {
         // Existing Native update workflow: key by the saved name, not React's
         // unsupported persistent ID or rename contract.
