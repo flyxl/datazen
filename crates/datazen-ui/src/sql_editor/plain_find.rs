@@ -86,6 +86,47 @@ enum ReplacePlan {
 }
 
 impl SqlEditor {
+    /// Find-dock Select All Matches changes only the selection. The matches
+    /// are fully checked before installing any Native byte range.
+    pub(super) fn select_all_literal_matches_from_bar(&mut self) -> bool {
+        if self.composition().is_some() {
+            return false;
+        }
+        const LIMIT: usize = 1_000;
+        self.find_unsafe_range = false;
+        let raw = decode_input(&self.find_input.text);
+        let Some(query) = LiteralQuery::new(&raw, self.find_match_case, self.find_whole_word) else {
+            return false;
+        };
+        // CodeMirror Text always normalizes document line boundaries. Reuse
+        // the existing LF projection while keeping each original UTF-8
+        // span, including any CRLF, unchanged in the Native buffer.
+        let ranges = match query.all_up_to(&LiteralDocument::new(&self.doc, true), LIMIT) {
+            Ok(Some(ranges)) if !ranges.is_empty() => ranges,
+            Ok(_) => return false,
+            Err(_) => {
+                self.find_unsafe_range = true;
+                return false;
+            }
+        };
+        // The cursor returns ordered, non-overlapping matches. Fail closed
+        // if this invariant ever changes: independent Native edit ranges
+        // must not overlap. Adjacent nonempty ranges remain separate.
+        if ranges.iter().any(Range::is_empty)
+            || ranges.windows(2).any(|pair| pair[0].end > pair[1].start)
+        {
+            return false;
+        }
+        self.preferred_columns.clear();
+        self.completion_close();
+        self.selection = Selection {
+            main: 0,
+            ranges: ranges.into_iter().map(|range| Sel { anchor: range.start, head: range.end }).collect(),
+        };
+        self.keep_bracket_closers_on_main_line();
+        true
+    }
+
     fn search_plan(&self, raw: &str, forward: bool) -> Result<Option<Range<usize>>, UnrepresentableRange> {
         let Some(query) = LiteralQuery::new(raw, self.find_match_case, self.find_whole_word) else { return Ok(None) };
         let doc = LiteralDocument::new(&self.doc, self.find_whole_word);

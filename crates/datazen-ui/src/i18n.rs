@@ -69,6 +69,8 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         "query.nativeFind.next" => Some(("下一处", "Find next")),
         "query.nativeFind.previous" => Some(("上一处", "Find previous")),
         "query.nativeFind.replaceAll" => Some(("全部替换", "Replace all")),
+        "query.nativeFind.all" => Some(("全选", "All")),
+        "query.nativeFind.selectAllMatches" => Some(("选择所有匹配项", "Select all matches")),
         "query.nativeFind.matchCase" => Some(("区分大小写", "Match case")),
         "query.nativeFind.wholeWord" => Some(("全字匹配", "Whole word")),
         "query.nativeFind.unsafeUnicode" => Some((

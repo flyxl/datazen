@@ -896,3 +896,63 @@ class SqlSelectionJourneys:
         self.assertEqual(self.db.read_bytes(), before)
         history = self.root / "query-history.json"
         self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+
+    def test_editor_select_all_literal_matches_edits_only_selected_ranges_after_dock_close(self):
+        rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        before = self.db.read_bytes()
+        lines = ["SELECT 'cat' AS first_v,", "  'CAT' AS upper_v, 'xcat' AS embedded_v,", "  'cat' AS last_v;"]
+        sql = "\n".join(lines)
+        select_all = "sql-find-select-all-matches"
+        first_match = f"sql-selected-0-{lines[0].index('cat')}"
+        upper_match = f"sql-selected-1-{lines[1].index('CAT')}"
+        embedded = f"sql-selected-1-{lines[1].index('xcat') + 1}"
+        last_match = f"sql-selected-2-{lines[2].index('cat')}"
+
+        def current_draft(tree):
+            def line_text(index):
+                row = next(n for n in tree["elements"]
+                           if n.get("key") == f"sql-line-{index}" and not n.get("exiting"))
+                return "".join(n.get("text") or "" for n in tree["elements"]
+                               if n["path"].startswith(row["path"] + "/") and not n.get("exiting"))
+            return "\n".join(line_text(index) for index in range(len(lines)))
+
+        opened = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": sql},
+                  tap(6.0, "sql-find-open"), *fill(6.65, "sql-find-input", "cat"),
+                  tap(7.75, "sql-find-whole-word")]
+        all_matches = [*opened, tap(8.4, select_all)]
+        picked = self.replay(all_matches, until=9.1)
+        self.expect_rendered(picked, key=first_match, text="cat")
+        self.expect_rendered(picked, key=upper_match, text="CAT")
+        self.expect_rendered(picked, key=last_match, text="cat")
+        self.assertFalse(visible(picked, key=embedded))
+        self.expect_rendered(picked, key="sql-add-cursor", within="sql-find-bar")
+        self.assertAlmostEqual(self._settled_rect(picked, select_all)[1],
+                               self._settled_rect(picked, "sql-find-prev")[1], delta=.2)
+        self.assertEqual(current_draft(picked), sql)
+
+        case_selected = [*all_matches, tap(9.3, "sql-find-match-case"), tap(9.8, select_all)]
+        strict = self.replay(case_selected, until=10.5)
+        self.expect_rendered(strict, key=first_match, text="cat")
+        self.expect_rendered(strict, key=last_match, text="cat")
+        self.assertFalse(visible(strict, key=upper_match))
+        self.assertFalse(visible(strict, key=embedded))
+        self.assertEqual(current_draft(strict), sql)
+
+        edited = [*case_selected, key(10.65, "Escape"),
+                  {"t": 11.15, "type": "key", "name": "z", "code": "z"}]
+        changed = self.replay(edited, until=11.8)
+        self.assertEqual(current_draft(changed), sql.replace("'cat'", "'z'"))
+        self.assertFalse(visible(changed, key="sql-find-bar"))
+        undone = self.replay([*edited, key(11.95, "z", cmd=True)], until=12.6)
+        self.assertEqual(current_draft(undone), sql)
+        self.expect_rendered(undone, key=first_match, text="cat")
+        self.expect_rendered(undone, key=last_match, text="cat")
+        for tree in (picked, strict, changed, undone):
+            self.assertFalse(visible(tree, key="result-workspace"))
+        self.assertEqual(self.db.read_bytes(), before)
+        self.assertEqual(self.sql_customer_rows(), rows)
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))

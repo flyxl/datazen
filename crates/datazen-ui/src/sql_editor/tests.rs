@@ -842,3 +842,94 @@ fn manual_completion_preserves_function_label_application_and_context_guard() {
         assert!(!blocked.completion_items().iter().any(|label| label == "COALESCE"), "{unchanged}");
     }
 }
+
+#[test]
+fn select_all_literal_matches_is_ordered_and_a_later_edit_undoes_once() {
+    let original = "cat CAT xcat cat_ cat";
+    let mut editor = SqlEditor::from_doc(original);
+    editor.find_input = TextEdit::new("cat");
+    editor.find_whole_word = true;
+    editor.set_main_selection(7, 4);
+    assert!(editor.select_all_literal_matches_from_bar());
+    assert_eq!(editor.selection().main_index(), 0);
+    assert_eq!(editor.selection().ranges(), [
+        Sel { anchor: 0, head: 3 },
+        Sel { anchor: 4, head: 7 },
+        Sel { anchor: 18, head: 21 },
+    ]);
+    assert_eq!(editor.selected_text(), "cat\nCAT\ncat");
+    assert_eq!(editor.doc(), original);
+    assert!(!editor.undo(), "the Find selection adds no document undo step");
+
+    editor.find_match_case = true;
+    assert!(editor.select_all_literal_matches_from_bar());
+    let selected = editor.selection().clone();
+    assert_eq!(selected.ranges(), [Sel { anchor: 0, head: 3 }, Sel { anchor: 18, head: 21 }]);
+    editor.insert("Z");
+    assert_eq!(editor.doc(), "Z CAT xcat cat_ Z");
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), original);
+    assert_eq!(editor.selection(), &selected);
+    assert!(!editor.undo());
+}
+
+#[test]
+fn select_all_literal_matches_refuses_over_cap_missing_empty_and_split_scalar() {
+    for count in [1_000, 1_001] {
+        let text = "x".repeat(count);
+        let mut editor = SqlEditor::from_doc(&text);
+        editor.find_input = TextEdit::new("x");
+        editor.set_main_selection(count, count - 1);
+        let before = editor.selection().clone();
+        if count == 1_000 {
+            assert!(editor.select_all_literal_matches_from_bar());
+            assert_eq!(editor.selection().main(), Sel { anchor: 0, head: 1 });
+            assert_eq!(editor.selection().ranges().len(), count);
+            assert_eq!(editor.selection().ranges()[999], Sel { anchor: 999, head: 1_000 });
+        } else {
+            assert!(!editor.select_all_literal_matches_from_bar());
+            assert_eq!(editor.selection(), &before, "never install a truncated selection");
+        }
+        assert_eq!(editor.doc(), text);
+        assert!(!editor.undo());
+    }
+
+    let symbol = "\u{1d165}";
+    let text = format!("{symbol} x\u{1d15e}y");
+    let mut editor = SqlEditor::from_doc(&text);
+    editor.set_main_selection(symbol.len(), 0);
+    let before = editor.selection().clone();
+    for (needle, unsafe_range) in [("missing", false), ("", false), (symbol, true)] {
+        editor.find_input = TextEdit::new(needle);
+        assert!(!editor.select_all_literal_matches_from_bar());
+        assert_eq!(editor.find_unsafe_range, unsafe_range);
+        assert_eq!(editor.selection(), &before, "a valid earlier match cannot half-apply");
+        assert_eq!(editor.doc(), text);
+        assert!(!editor.undo());
+    }
+}
+
+#[test]
+fn select_all_literal_matches_reuses_exact_decoding_normalization_and_nonoverlap() {
+    for (text, needle, expected) in [
+        ("banana", "ana", "ana"),
+        ("cat123 cat.* cat456", "cat.*", "cat.*"),
+        ("É e\u{0301} x", "e\u{0301}", "É\ne\u{0301}"),
+        ("hi\r\nthere xx hi\r\nthere", r"hi\nthere", "hi\r\nthere\nhi\r\nthere"),
+    ] {
+        let mut editor = SqlEditor::from_doc(text);
+        editor.find_input = TextEdit::new(needle);
+        assert!(editor.select_all_literal_matches_from_bar(), "{text:?}");
+        assert_eq!(editor.selected_text(), expected);
+        assert_eq!(editor.doc(), text);
+    }
+
+    let mut editor = SqlEditor::from_doc("cat cat");
+    editor.find_input = TextEdit::new("cat");
+    editor.set_main_selection(7, 4);
+    let before = editor.selection().clone();
+    editor.preedit("未提交");
+    assert!(!editor.select_all_literal_matches_from_bar());
+    assert_eq!(editor.selection(), &before);
+    assert_eq!(editor.composition(), Some("未提交"));
+}

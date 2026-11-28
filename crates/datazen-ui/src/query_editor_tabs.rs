@@ -17,6 +17,21 @@ pub(crate) struct QueryEditorViewport {
     pub offset: EditorScroll,
 }
 
+impl QueryEditorViewport {
+    /// A dock action built for another draft (including a reset/reused tab
+    /// id) must never select ranges in the now-mounted editor.
+    pub(crate) fn owns_current_query(&self, state: &AppState) -> bool {
+        state.active == Section::Workspace
+            && state.native_kv.is_none()
+            && state.connect_loading.is_none()
+            && state.query_editor_matches_connection()
+            && state.tabs.selected().is_some_and(|tab| {
+                tab.kind == TabKind::Query && state.query_editor_tabs.active == Some(tab.id)
+            })
+            && Rc::ptr_eq(&self.offset, &state.query_editor_tabs.scroll)
+    }
+}
+
 fn scroll_anchor(tab: u32) -> String {
     format!("query-editor-draft-{tab}-scroll-anchor")
 }
@@ -216,6 +231,22 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn find_dock_owner_never_targets_a_new_draft_even_with_the_same_tab_id() {
+        let mut state = AppState::default();
+        let a = state.open_query_tab("A").unwrap();
+        let owner = state.query_editor_viewport().unwrap();
+        assert!(owner.owns_current_query(&state));
+        state.open_query_tab("B").unwrap();
+        assert!(!owner.owns_current_query(&state));
+        assert!(state.select_tab(a));
+        assert!(owner.owns_current_query(&state), "the parked draft retains its identity");
+        state.reset_query_editor_tabs();
+        state.sync_query_editor_to_selected_tab();
+        assert_eq!(state.tabs.selected().unwrap().id, a);
+        assert!(!owner.owns_current_query(&state), "an old dock cannot hit a new editor");
+    }
 
     #[test]
     fn first_layout_report_cannot_clobber_a_pending_offset_even_on_rapid_switch() {

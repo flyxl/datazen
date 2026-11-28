@@ -162,7 +162,20 @@ fn field<'a>(key: &'static str, edit: &'a rune::TextEdit, label: &str, dark: boo
         .fill(k.c.bg_base)
 }
 
-pub(super) fn panel(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
+pub(super) fn panel(
+    editor: &SqlEditor, ink: rune::Color, dark: bool,
+    owner: Option<crate::query_editor_tabs::QueryEditorViewport>,
+) -> El {
+    let all = owner.map(|owner| {
+        let label = t("query.nativeFind.selectAllMatches");
+        button("sql-find-select-all-matches", t("query.nativeFind.all"), ink, dark)
+            .label(label).help(label)
+            .on_press(move |state: &mut AppState| {
+                if state.sql.find_open && owner.owns_current_query(state) {
+                    state.sql.select_all_literal_matches_from_bar();
+                }
+            })
+    });
     let k = crate::ui::kit::kit(dark);
     let warning = editor.find_unsafe_range.then(|| {
         text(t("query.nativeFind.unsafeUnicode")).key("sql-find-unsafe-unicode")
@@ -182,6 +195,7 @@ pub(super) fn panel(editor: &SqlEditor, ink: rune::Color, dark: bool) -> El {
                     .on_press_tx(|state: &mut AppState, tx| navigate(state, tx, true)))
                 .child(button("sql-find-prev", t("query.nativeFind.previous"), ink, dark)
                     .on_press_tx(|state: &mut AppState, tx| navigate(state, tx, false)))
+                .children(all)
                 .child(Checkbox::new("sql-find-match-case", editor.find_match_case)
                     .label(t("query.nativeFind.matchCase"))
                     .on_toggle(|state: &mut AppState| {

@@ -107,10 +107,10 @@ pub(crate) fn panel_with_completion_scope(
         }
     }
     let sheet = row().key("sql-editor-sheet").child(gutter).child(doc);
-    let (doc, scroll) = match viewport {
+    let (doc, scroll) = match &viewport {
         Some(viewport) => (
-            col().key(viewport.anchor).child(sheet),
-            Some(viewport.offset),
+            col().key(viewport.anchor.clone()).child(sheet),
+            Some(viewport.offset.clone()),
         ),
         None => (sheet, None),
     };
@@ -161,7 +161,7 @@ pub(crate) fn panel_with_completion_scope(
                 ),
         );
     if editor.find_open {
-        panel.child(super::find_dock::panel(editor, document_ink, dark))
+        panel.child(super::find_dock::panel(editor, document_ink, dark, viewport))
     } else {
         panel
     }

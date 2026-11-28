@@ -236,6 +236,33 @@ impl LiteralQuery {
             .filter(|range| range != &cursor)
     }
 
+    /// Non-overlapping matches for an explicit multi-selection. Exactly
+    /// limit is allowed. The next match aborts rather than truncating, as
+    /// CodeMirror's StringQuery.matchAll does for Select All Matches.
+    pub(super) fn all_up_to(
+        &self, doc: &LiteralDocument<'_>, limit: usize,
+    ) -> Result<Option<Vec<Range<usize>>>, UnrepresentableRange> {
+        let mut result = Ok(Some(Vec::new()));
+        self.scan(doc, 0, doc.len(), false, |range| {
+            let Ok(Some(ranges)) = &mut result else { return true };
+            if ranges.len() == limit {
+                result = Ok(None);
+                return true;
+            }
+            match doc.bytes(range) {
+                Ok(bytes) => {
+                    ranges.push(bytes);
+                    false
+                }
+                Err(error) => {
+                    result = Err(error);
+                    true
+                }
+            }
+        });
+        result
+    }
+
     pub(super) fn all(&self, doc: &LiteralDocument<'_>) -> Result<Vec<Range<usize>>, UnrepresentableRange> {
         let mut ranges = Vec::new();
         let mut safe = true;
