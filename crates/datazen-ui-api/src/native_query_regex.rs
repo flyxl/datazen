@@ -36,7 +36,7 @@ pub enum Outcome {
 pub struct Delivery { pub id: u64, pub result: Result<Outcome, Error> }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Error { Empty, InvalidPattern, UnsupportedRange, Limit, Timeout, Unavailable, InvalidReply }
+pub enum Error { Empty, InvalidPattern, UnsupportedPattern, UnsupportedRange, Limit, Timeout, Unavailable, InvalidReply }
 
 impl Request {
     pub fn check(&self) -> Result<(), Error> {

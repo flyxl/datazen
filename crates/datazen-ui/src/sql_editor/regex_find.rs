@@ -105,6 +105,7 @@ impl AppState {
 pub(super) fn status(e:Error)->Option<&'static str> {
     Some(match e {
         Error::Empty=>return None,Error::InvalidPattern=>"query.nativeFind.invalidRegex",
+        Error::UnsupportedPattern=>"query.nativeFind.unsupportedRegex",
         Error::UnsupportedRange=>"query.nativeFind.regexRange",Error::Limit=>"query.nativeFind.regexLimit",
         Error::Timeout=>"query.nativeFind.regexTimeout",Error::InvalidReply|Error::Unavailable=>"query.nativeFind.regexUnavailable",
     })

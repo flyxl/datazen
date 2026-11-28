@@ -266,6 +266,7 @@ fn error_tag(error: Error) -> Result<u8, Error> {
         Error::InvalidPattern => 3,
         Error::UnsupportedRange => 4,
         Error::BudgetExceeded => 5,
+        Error::UnsupportedPattern => 7, // 6 is reserved for passive mark replies.
         _ => return Err(Error::InvalidReply),
     })
 }
@@ -276,6 +277,7 @@ fn read_error_tag(tag: u8) -> Error {
         3 => Error::InvalidPattern,
         4 => Error::UnsupportedRange,
         5 => Error::BudgetExceeded,
+        7 => Error::UnsupportedPattern,
         _ => Error::InvalidReply,
     }
 }

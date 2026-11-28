@@ -78,6 +78,7 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         "query.nativeFind.wholeWord" => Some(("全字匹配", "Whole word")),
         "query.nativeFind.regex" => Some(("正则表达式", "Regular expression")),
         "query.nativeFind.invalidRegex" => Some(("正则表达式无效。", "Invalid regular expression.")),
+        "query.nativeFind.unsupportedRegex" => Some(("暂不支持此正则表达式。", "This regular expression is not supported.")),
         "query.nativeFind.regexRange" => Some(("无法安全表示此匹配范围。", "This document or selection cannot be searched safely.")),
         "query.nativeFind.regexLimit" => Some(("搜索超出大小限制。", "Search exceeded its size limit.")),
         "query.nativeFind.regexTimeout" => Some(("搜索超时。", "Search timed out.")),

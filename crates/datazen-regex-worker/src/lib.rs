@@ -80,6 +80,7 @@ pub enum Outcome {
 pub enum Error {
     Empty,
     InvalidPattern,
+    UnsupportedPattern,
     UnsupportedRange,
     BudgetExceeded,
     TimedOut,

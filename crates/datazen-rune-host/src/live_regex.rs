@@ -125,6 +125,7 @@ fn run(req: &ui::Request) -> Result<ui::Outcome, ui::Error> {
 fn engine_error(e:worker::Error)->ui::Error { match e {
         worker::Error::Empty => ui::Error::Empty,
         worker::Error::InvalidPattern => ui::Error::InvalidPattern,
+        worker::Error::UnsupportedPattern => ui::Error::UnsupportedPattern,
         worker::Error::UnsupportedRange => ui::Error::UnsupportedRange,
         worker::Error::BudgetExceeded => ui::Error::Limit,
         worker::Error::TimedOut => ui::Error::Timeout,

@@ -53,3 +53,12 @@ cargo run --locked -p datazen-regex-worker --example worker_smoke
 cargo run --locked -p datazen-regex-worker --example worker_goldens
 cargo run --locked -p datazen-regex-worker --example worker_highlights
 ```
+
+A known ECMAScript compatibility gap is refused rather than approximated:
+if two alternatives declare the same capture name and the pattern refers to
+that name via a named backreference, Regress 0.12 can match an empty reference
+to the wrong alternative. This worker returns `UnsupportedPattern` for
+that case before producing navigation, highlight, or edit data. Unique named
+groups, numeric references, and duplicate names without a reference to the
+duplicate are not refused by this check. Run the actual child regression with
+`cargo run --locked -p datazen-regex-worker --example worker_compatibility`.

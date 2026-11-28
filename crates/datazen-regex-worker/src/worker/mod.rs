@@ -2,6 +2,7 @@ use std::{io::{self, Read, Write}, ops::Range, process::ExitCode};
 
 use crate::{Edit, Error, HIGHLIGHT_MAX_MARKS, HighlightRequest, Operation, Outcome, Request, isolation, protocol};
 
+mod named_backref;
 mod regex_cursor;
 mod regex_replacement;
 mod regex_whole_word;
@@ -41,10 +42,12 @@ fn serve() -> io::Result<()> {
 }
 
 fn engine(pattern: &str, case_sensitive: bool) -> Result<regress::Regex, Error> {
-    regress::Regex::with_flags(
+    let compiled = regress::Regex::with_flags(
         pattern,
         regress::Flags { unicode: true, multiline: true, icase: !case_sensitive, ..Default::default() },
-    ).map_err(|_| Error::InvalidPattern)
+    ).map_err(|_| Error::InvalidPattern)?;
+    named_backref::check(pattern)?;
+    Ok(compiled)
 }
 
 fn mark(request: &HighlightRequest<'_>, window: Range<usize>) -> Result<Vec<Range<usize>>, Error> {
