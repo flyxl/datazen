@@ -92,7 +92,7 @@ mod tests {
             ("É E\u{0301} é e\u{0301}", 0, 2, vec![0..2, 3..6]),
             ("x\\n y\nz\\n", 1, 3, vec![1..3, 7..9]),
         ] {
-            let mut editor = SqlEditor::from_doc(&text);
+            let mut editor = SqlEditor::from_doc(text);
             editor.set_main_selection(to, from);
             assert!(editor.select_current_occurrences(), "{text:?}");
             let actual = editor.selection().ranges().iter().map(|r| r.from()..r.to()).collect::<Vec<_>>();
