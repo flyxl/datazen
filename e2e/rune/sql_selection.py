@@ -417,6 +417,17 @@ class SqlSelectionJourneys:
         self.assertFalse(visible(tree, text="unselected sibling", within="result-workspace"))
         self.assertEqual(self.sql_customer_rows(), original)
 
+    def _expect_focused_find_textbox(self, tree, expected_text):
+        # The Find field wrapper owns the scope, not the native text focus.
+        self.expect_rendered(tree, key="sql-find-input", within="sql-find-bar")
+        owner = [n for n in tree["elements"]
+                 if n.get("key") == "sql-find-input" and not n.get("exiting")]
+        self.assertEqual(len(owner), 1, "expected one live Find field owner")
+        focus = [n for n in tree["elements"]
+                 if n.get("role") == "textbox" and n.get("focused")]
+        self.expect_rendered({**tree, "elements": [*owner, *focus]},
+                             key="input", text=expected_text, within="sql-find-input")
+
     def test_editor_literal_find_passive_marks_preserve_shape_focus_and_original_selection(self):
         """Typing updates passive highlights; only Next changes the real selection."""
         self.sql_fixture_before()
@@ -451,7 +462,7 @@ class SqlSelectionJourneys:
                          [("FI", "#ffff0054"), ("ﬃ", "#ffff0054"),
                           ("fi", "#ffff0054"), ("fi", "#ffff0054")])
         self.assertEqual(editing_shape(passive), editing_shape(empty))
-        self.assertTrue(next(n for n in passive["elements"] if n.get("key") == "sql-find-input")["focused"])
+        self._expect_focused_find_textbox(passive, "fi")
         self.assertFalse(any((n.get("key") or "").startswith("sql-selected-")
                              for n in passive["elements"]))
         self.assertFalse(visible(passive, key="result-workspace"))
@@ -500,7 +511,7 @@ class SqlSelectionJourneys:
         after = self.replay([*entry, scroll], until=10.7, size="960x640")
         self.expect_rendered(after, key=end, text="needle")
         self.assertFalse(any(n.get("key") == start for n in after["elements"]))
-        self.assertTrue(next(n for n in after["elements"] if n.get("key") == "sql-find-input")["focused"])
+        self._expect_focused_find_textbox(after, "needle")
         self.assertFalse(any((n.get("key") or "").startswith("sql-selected-")
                              for n in after["elements"]))
         self.assertFalse(visible(after, key="result-workspace"))
