@@ -48,7 +48,7 @@ pub(super) fn settings_content_pane(k: &Kit, section: &str, body: El, layer: Vec
 mod settings_content_overflow_tests {
     use super::*;
     use crate::ui::kit::kit;
-    use rune::{Cx, Direction, Env, Runtime};
+    use rune::{row, Cx, Direction, Env, Runtime};
 
     #[derive(Clone, Copy)]
     struct Fixture {
