@@ -4539,13 +4539,16 @@ mod tests {
     /// Open the fixture connection through the adapter (the N3 job path) and
     /// return the adapter, ready for read jobs.
     fn opened_adapter(dir: &std::path::Path) -> LiveAdapter {
-        let database = dir.join("live.db");
+        opened_sqlite_adapter(dir, "live.db", false)
+    }
+
+    fn opened_sqlite_adapter(dir: &std::path::Path, filename: &str, read_only: bool) -> LiveAdapter {
+        let database = dir.join(filename);
         create_sqlite_file(&database);
         let store_path = dir.join("connections.json");
-        save_connection(
-            &store_path,
-            sqlite_config("live", Some(database.to_string_lossy().into_owned())),
-        );
+        let mut config = sqlite_config("live", Some(database.to_string_lossy().into_owned()));
+        config.read_only = read_only;
+        save_connection(&store_path, config);
         let mut adapter = LiveAdapter::with_data_dir(
             Arc::new(FileConnectionRepository::open(&store_path).unwrap()),
             &dir,
@@ -5668,6 +5671,45 @@ mod tests {
         assert_eq!(snapshot.status, "completed", "log: {:?}", snapshot.log);
         let picked_body = std::fs::read_to_string(&picked).expect("the picked file was written");
         assert!(!picked_body.is_empty(), "the dump lands at the picked path");
+    }
+
+    #[test]
+    fn sqlite_backup_preserves_source_and_aliases_in_writable_and_read_only_modes() {
+        for read_only in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let source = dir.path().join("source.sql");
+            let mut adapter = opened_sqlite_adapter(dir.path(), "source.sql", read_only);
+            let original = std::fs::read(&source).unwrap();
+            let hardlink = dir.path().join("hardlink.sql");
+            std::fs::hard_link(&source, &hardlink).unwrap();
+
+            let mut forbidden = vec![source.clone(), hardlink];
+            #[cfg(unix)]
+            {
+                let link = dir.path().join("symlink.sql");
+                std::os::unix::fs::symlink(&source, &link).unwrap();
+                forbidden.push(link);
+            }
+            for path in &forbidden {
+                let job = adapter.start_backup(Some(path.to_str().unwrap())).unwrap();
+                let failed = wait_job(&adapter, job);
+                assert_eq!(failed.status, "failed", "{path:?}: {:?}", failed.log);
+                assert!(failed.log.iter().any(|msg| msg.contains("different from the SQLite source")),
+                        "{path:?}: {:?}", failed.log);
+                assert_eq!(std::fs::read(path).unwrap(), original, "alias content was unchanged");
+            }
+
+            let destination = dir.path().join("previous-backup.sql");
+            std::fs::write(&destination, "an older dump").unwrap();
+            let job = adapter.start_backup(Some(destination.to_str().unwrap())).unwrap();
+            let snapshot = wait_job(&adapter, job);
+            assert_eq!(snapshot.status, "completed", "{:?}", snapshot.log);
+            let text = std::fs::read_to_string(destination).unwrap();
+            assert!(text.to_lowercase().contains("create table") && text.contains("users"));
+            for path in forbidden {
+                assert_eq!(std::fs::read(path).unwrap(), original, "the selected distinct output was the only write");
+            }
+        }
     }
 
     #[test]

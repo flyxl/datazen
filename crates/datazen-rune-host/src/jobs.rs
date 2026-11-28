@@ -16,6 +16,18 @@ use tempfile::NamedTempFile;
 
 struct FileJob(Mutex<ProgressSnapshot>);
 
+struct JobOutput {
+    path: PathBuf,
+    body: String,
+    sqlite_backup_source: Option<String>,
+}
+
+struct StagedOutput {
+    destination: PathBuf,
+    file: NamedTempFile,
+    create_only: bool,
+}
+
 impl FileJob {
     fn snapshot(&self) -> MutexGuard<'_, ProgressSnapshot> {
         self.0
@@ -49,22 +61,32 @@ impl FileJob {
         }
     }
 
-    fn write(&self, path: &Path, body: &str) -> Result<(), String> {
+    fn write(&self, output: JobOutput) -> Result<(), String> {
         if self.snapshot().status != "running" {
             return Ok(());
         }
-        let (destination, staged) = stage_output(path, body).map_err(|e| e.to_string())?;
-        self.publish(&destination, staged)
+        let source = output.sqlite_backup_source.as_deref();
+        let staged = stage_output(&output.path, &output.body, source)
+            .map_err(|e| e.to_string())?;
+        self.publish(staged, source)
     }
 
-    fn publish(&self, destination: &Path, staged: NamedTempFile) -> Result<(), String> {
+    fn publish(&self, staged: StagedOutput, sqlite_backup_source: Option<&str>) -> Result<(), String> {
         // Only publication and the terminal state share the lock with Stop.
         // A stopped job drops its temporary file and leaves the destination intact.
         let mut snapshot = self.snapshot();
         if snapshot.status == "running" {
-            staged
-                .persist(destination)
-                .map_err(|e| e.error.to_string())?;
+            let StagedOutput { destination, file, create_only } = staged;
+            if create_only {
+                file.persist_noclobber(&destination).map_err(|e| e.error.to_string())?;
+            } else {
+                // Existing-output backup keeps the normal overwrite semantics
+                // for a distinct file. Recheck the actual resolved destination
+                // before publication, after the potentially slow staging.
+                verify_sqlite_backup_destination(&destination, sqlite_backup_source)
+                    .map_err(|e| e.to_string())?;
+                file.persist(&destination).map_err(|e| e.error.to_string())?;
+            }
             snapshot.status = "completed".into();
             snapshot.percent = 100;
             let name = destination
@@ -77,7 +99,23 @@ impl FileJob {
     }
 }
 
-fn stage_output(path: &Path, body: &str) -> io::Result<(PathBuf, NamedTempFile)> {
+fn verify_sqlite_backup_destination(path: &Path, source: Option<&str>) -> io::Result<()> {
+    if let Some(source) = source {
+        // A replacement may be a non-regular file; never try to open a pipe
+        // or device merely to compare its identity.
+        if !std::fs::metadata(path)?.is_file() {
+            return Err(io::Error::other("Choose a writable file for this job."));
+        }
+        let destination = datazen_driver_sqlite::sqlite_existing_file_identity(path)
+            .map_err(|_| io::Error::other("Could not verify the existing SQLite backup output file."))?;
+        if destination == source {
+            return Err(io::Error::other("Choose a backup file different from the SQLite source database."));
+        }
+    }
+    Ok(())
+}
+
+fn stage_output(path: &Path, body: &str, sqlite_backup_source: Option<&str>) -> io::Result<StagedOutput> {
     // A save to an existing link still targets its file. Check write access
     // before staging: rename alone only requires access to the directory.
     let mut destination = path.to_owned();
@@ -88,6 +126,7 @@ fn stage_output(path: &Path, body: &str) -> io::Result<(PathBuf, NamedTempFile)>
             if !metadata.is_file() || metadata.permissions().readonly() {
                 return Err(io::Error::other("Choose a writable file for this job."));
             }
+            verify_sqlite_backup_destination(&destination, sqlite_backup_source)?;
             std::fs::OpenOptions::new().write(true).open(&destination)?;
             Some(metadata.permissions())
         }
@@ -99,12 +138,13 @@ fn stage_output(path: &Path, body: &str) -> io::Result<(PathBuf, NamedTempFile)>
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent)?;
-    let staged = stage_body(parent, body)?;
+    let file = stage_body(parent, body)?;
+    let create_only = sqlite_backup_source.is_some() && permissions.is_none();
     if let Some(permissions) = permissions {
-        staged.as_file().set_permissions(permissions)?;
+        file.as_file().set_permissions(permissions)?;
     }
 
-    Ok((destination, staged))
+    Ok(StagedOutput { destination, file, create_only })
 }
 
 fn stage_body(parent: &Path, body: &str) -> io::Result<NamedTempFile> {
@@ -161,7 +201,7 @@ impl HostJobs {
                 &dyn DatabaseDriver,
                 &ConnectionHandle,
                 &FileJob,
-            ) -> Result<(PathBuf, String), String>
+            ) -> Result<JobOutput, String>
             + Send
             + 'static,
     ) -> u64 {
@@ -185,7 +225,7 @@ impl HostJobs {
                         .enable_all()
                         .build()
                         .map_err(|error| format!("the {name} runtime did not start: {error}"))?;
-                    let (path, body) = runtime.block_on(async {
+                    let output = runtime.block_on(async {
                         let driver = registry
                             .get(&config.database_type)
                             .await
@@ -197,7 +237,7 @@ impl HostJobs {
                         closed.map_err(|e| e.to_string())?;
                         Ok::<_, String>(output)
                     })?;
-                    worker.write(&path, &body)
+                    worker.write(output)
                 };
                 if let Err(error) = run() {
                     worker.fail(error);
@@ -247,7 +287,7 @@ impl HostJobs {
                     let table = table.replace(['/', '\\'], "-");
                     dir.join(format!("export-{table}-{}.{format}", chrono::Utc::now().format("%Y%m%d-%H%M%S")))
                 });
-                Ok((path, body))
+                Ok(JobOutput { path, body, sqlite_backup_source: None })
             },
         )
     }
@@ -268,6 +308,13 @@ impl HostJobs {
             first_log,
             async move |driver, handle, job| {
                 job.progress(30, "connected".into())?;
+                let sqlite_backup_source = if driver.driver_type().as_str() == "sqlite" {
+                    Some(driver.physical_database_identity(handle, "main").await
+                        .ok().flatten()
+                        .ok_or_else(|| "Could not verify the SQLite backup source file.".to_owned())?)
+                } else {
+                    None
+                };
                 let dump = driver
                     .dump_database(handle, &database, &Default::default())
                     .await
@@ -293,7 +340,7 @@ impl HostJobs {
                         chrono::Utc::now().format("%Y%m%d-%H%M%S")
                     ))
                 });
-                Ok((path, dump))
+                Ok(JobOutput { path, body: dump, sqlite_backup_source })
             },
         )
     }
@@ -379,6 +426,10 @@ mod tests {
         }))
     }
 
+    fn ordinary_output(path: &Path, body: &str) -> JobOutput {
+        JobOutput { path: path.to_owned(), body: body.to_owned(), sqlite_backup_source: None }
+    }
+
     #[cfg(unix)]
     #[test]
     fn overwriting_a_picked_link_respects_its_destination_and_permissions() {
@@ -389,11 +440,11 @@ mod tests {
         std::fs::write(&target, "original").unwrap();
         symlink(&target, &link).unwrap();
         std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o400)).unwrap();
-        assert!(running().write(&link, "rejected").is_err());
+        assert!(running().write(ordinary_output(&link, "rejected")).is_err());
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "original");
 
         std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
-        running().write(&link, "saved").unwrap();
+        running().write(ordinary_output(&link, "saved")).unwrap();
         assert!(link.is_symlink());
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "saved");
         assert_eq!(
@@ -403,22 +454,54 @@ mod tests {
     }
 
     #[test]
+    fn new_sqlite_backup_never_overwrites_an_entry_that_appears_before_publish() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("live.db");
+        let chosen = dir.path().join("new.sql");
+        std::fs::write(&source, "source file identity fixture").unwrap();
+        let identity = datazen_driver_sqlite::sqlite_existing_file_identity(&source).unwrap();
+        let staged = stage_output(&chosen, "dump", Some(&identity)).unwrap();
+        std::fs::write(&chosen, "an intervening file").unwrap();
+
+        assert!(running().publish(staged, Some(&identity)).is_err());
+        assert_eq!(std::fs::read_to_string(&chosen).unwrap(), "an intervening file");
+    }
+
+    #[test]
+    fn existing_sqlite_backup_rechecks_aliases_before_publish() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("live.db");
+        let chosen = dir.path().join("old.sql");
+        std::fs::write(&source, "source file identity fixture").unwrap();
+        std::fs::write(&chosen, "a previous dump").unwrap();
+        let identity = datazen_driver_sqlite::sqlite_existing_file_identity(&source).unwrap();
+        let staged = stage_output(&chosen, "dump", Some(&identity)).unwrap();
+        std::fs::remove_file(&chosen).unwrap();
+        std::fs::hard_link(&source, &chosen).unwrap();
+
+        let error = running().publish(staged, Some(&identity)).unwrap_err();
+        assert!(error.contains("different from the SQLite source"));
+        assert_eq!(std::fs::read_to_string(&source).unwrap(), "source file identity fixture");
+        assert_eq!(std::fs::read_to_string(&chosen).unwrap(), "source file identity fixture");
+    }
+
+    #[test]
     fn stopping_before_or_after_publication_preserves_the_winning_result() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("chosen.csv");
         std::fs::write(&file, "original").unwrap();
 
         let stopped = running();
-        let (path, staged) = stage_output(&file, "discarded").unwrap();
+        let staged = stage_output(&file, "discarded", None).unwrap();
         stopped.stop();
-        stopped.publish(&path, staged).unwrap();
+        stopped.publish(staged, None).unwrap();
         stopped.fail("late failure".into());
         assert_eq!(stopped.snapshot().status, "stopped");
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "original");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
 
         let completed = running();
-        completed.write(&file, "published").unwrap();
+        completed.write(ordinary_output(&file, "published")).unwrap();
         completed.stop();
         assert_eq!(completed.snapshot().status, "completed");
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "published");

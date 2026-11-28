@@ -14,6 +14,7 @@ use datazen_driver_api::*;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{Column, Row, Sqlite, SqlitePool, ValueRef};
 use std::collections::HashMap;
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -227,10 +228,16 @@ fn sqlite_file_identity(path: &str) -> Option<String> {
     if path.is_empty() {
         return None;
     }
-    let file = same_file::Handle::from_path(path).ok()?;
+    sqlite_existing_file_identity(Path::new(path)).ok()
+}
+
+/// Resolve an existing path using the same identity as the connected
+/// SQLite main file, including filesystem aliases.
+pub fn sqlite_existing_file_identity(path: &Path) -> std::io::Result<String> {
+    let file = same_file::Handle::from_path(path)?;
     let mut hasher = FileIdentityHasher::default();
     std::hash::Hash::hash(&file, &mut hasher);
-    Some(serde_json::json!({"driver":"sqlite","fileId":hasher.0}).to_string())
+    Ok(serde_json::json!({"driver":"sqlite","fileId":hasher.0}).to_string())
 }
 
 #[derive(Default)]
@@ -324,7 +331,7 @@ impl DatabaseDriver for SqliteDriver {
                 .then(|| row.try_get::<String, _>("file").ok())
                 .flatten()
         });
-        Ok(main_file.as_deref().and_then(sqlite_file_identity))
+        Ok(main_file.as_deref().and_then(|path| sqlite_existing_file_identity(Path::new(path)).ok()))
     }
 
     fn ddl_atomicity(&self) -> DdlAtomicity {
