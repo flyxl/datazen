@@ -611,9 +611,19 @@ class OfflineJourneys:
         self.expect_rendered(search, key="result-find-count", text="1 of 3")
         self.expect_rendered(search, text=first[0][0], within="result-cell-0-0")
         self.expect_rendered(search, key="result-find-input")
-        matches = [n for n in search["elements"] if n.get("key") == "result-find-input" and not n.get("exiting")]
-        self.assertEqual(len(matches), 1)
-        self.assertTrue(matches[0]["focused"], "opening Find owns actual input focus")
+        wrappers = [n for n in search["elements"]
+                    if n.get("key") == "result-find-input" and not n.get("exiting")]
+        self.assertEqual(len(wrappers), 1)
+        input_path = wrappers[0]["path"] + "/value/input"
+        editors = [n for n in search["elements"]
+                   if n["path"] == input_path and n.get("key") == "input"
+                   and not n.get("exiting")]
+        self.assertEqual(len(editors), 1)
+        self.assertTrue(editors[0]["focusable"] and editors[0]["focused"],
+                        "opening Find owns the real TextEdit inside its wrapper")
+        self.expect_rendered(search, key="input", text="nEeDlE", within="result-find-input")
+        self.assertFalse(any(n.get("key") == "sql-editor-scroll" and n.get("focused")
+                             for n in search["elements"]))
         for unsupported in ("result-find-column", "result-find-operator",
                             "result-find-match-case", "result-find-replace-all"):
             self.assertFalse(visible(search, key=unsupported))
