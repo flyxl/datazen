@@ -105,6 +105,22 @@ fn answer(state: &mut AppState, epoch: u64, accepted: bool) {
     state.settings_content.workflow_retention.feedback = Some(result.unwrap_or(Feedback::Error));
 }
 
+impl AppState {
+    /// Rune publishes textbox focus on the bound TextEdit. Follow it in the
+    /// existing app poll so click and Tab both select this choice even when the
+    /// user keeps the existing text; leaving the field does not revert the choice.
+    pub(crate) fn tick_workflow_retention_focus(&mut self) -> bool {
+        if !is_current(self) { return false; }
+        let form = &mut self.settings_content.workflow_retention;
+        if !form.custom_days.focused || form.mode == Mode::Custom || form.pending.is_some() {
+            return false;
+        }
+        form.mode = Mode::Custom;
+        form.feedback = None;
+        true
+    }
+}
+
 fn change_form(state: &mut AppState, update: impl FnOnce(&mut WorkflowRetention)) {
     if !is_current(state) { return; }
     let form = &mut state.settings_content.workflow_retention;
@@ -175,20 +191,13 @@ pub(super) fn view(state: &AppState, dark: bool) -> El {
     let custom = TextField::new("data-cleanup-custom-days", &form.custom_days)
         .height(36.0).width(96.0).pad_x(12.0).radius(k.radius.md)
         .fill(k.c.surface_base)
-        .border(1.0, if form.mode == Mode::Custom { k.c.border_focus } else { k.c.border_base })
+        .border(1.0, k.c.border_base)
         .text_style(LABEL).label(custom_label)
         .on_edit(|s: &mut AppState| &mut s.settings_content.workflow_retention.custom_days)
-        .on_change(|s: &mut AppState, _| change_form(s, |f| f.mode = Mode::Custom)).build(dark);
-    // The extra radio also selects the existing custom value without editing
-    // (e.g. after switching to a preset). It is a real keyboard target.
-    let custom_choice = rune_kit::RadioItem::new(custom_label, form.mode == Mode::Custom)
-        .on_select(|s: &mut AppState| change_form(s, |f| f.mode = Mode::Custom))
-        .build(k).key("data-cleanup-custom-mode");
-    let custom_row = row().w_full().gap(16.0).center_y()
-        .child(row().w(160.0).gap(4.0).center_y().child(custom_choice)
-            .child(SettingHint::new("data-cleanup-custom-hint", custom_label,
-                t("settings.nativeRetention.dayRange")).build(k, &mut hints)))
-        .child(custom);
+        .on_change(|s: &mut AppState, _| change_form(s, |f| f.mode = Mode::Custom))
+        .build(dark).focus_within_ring(1.0, -1.0, k.c.border_focus);
+    let custom_row = setting_row(k, &mut hints, "data-cleanup-custom-row".into(),
+        custom_label, Some(t("settings.nativeRetention.dayRange")), custom);
     let clear = rune_kit::RadioItem::new(t("settings.dataCleanup.clearAll"), form.mode == Mode::ClearAll)
         .on_select(|s: &mut AppState| change_form(s, |f| f.mode = Mode::ClearAll))
         .build(k).key("data-cleanup-clear-all");
@@ -277,6 +286,40 @@ mod tests {
             self.0.borrow_mut().push(cutoff.to_owned());
             Ok(2)
         }
+    }
+
+    #[test]
+    fn custom_focus_selects_the_existing_draft_and_survives_blur() {
+        let mut state = AppState::default();
+        state.active = Section::Settings;
+        state.set_settings_section("behavior");
+        state.desktop = Box::new(Capture::default());
+        state.settings_content.workflow_retention.mode = Mode::Preset(7);
+        let mut rt = Runtime::new(state, crate::app::view, (1440.0, 900.0), Env {
+            system_dark: false, scale: 1.0,
+        });
+        rt.poll = Some(crate::app::app_poll);
+        rt.frame(0.0);
+        rt.settle_all();
+        let tap = |rt: &mut Runtime<AppState>, key| {
+            let (x, y) = rt.find(key).expect("visible Behavior control");
+            rt.pointer_down(x, y);
+            rt.frame(1.0 / 60.0);
+            rt.pointer_up(x, y);
+            rt.frame(1.0 / 60.0);
+            rt.settle_all();
+        };
+        tap(&mut rt, "data-cleanup-custom-days");
+        let form = &rt.state.settings_content.workflow_retention;
+        assert!(form.custom_days.focused && form.mode == Mode::Custom);
+        assert_eq!(form.custom_days.text, "30");
+        let earliest = Utc::now() - Duration::days(30) - Duration::seconds(1);
+        tap(&mut rt, "data-cleanup-workflow-run");
+        let Some((_, Plan::Before(cutoff))) = &rt.state.settings_content.workflow_retention.pending
+        else { panic!("expected a finite custom cutoff") };
+        let latest = Utc::now() - Duration::days(30);
+        let actual = chrono::DateTime::parse_from_rfc3339(cutoff).unwrap().with_timezone(&Utc);
+        assert!(actual >= earliest && actual <= latest);
     }
 
     #[test]

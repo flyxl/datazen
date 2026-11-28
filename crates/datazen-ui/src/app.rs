@@ -268,6 +268,7 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     let mut dirty = crate::views::home_copy_tick(state, now);
     dirty |= state.query_copy_feedback_tick(now);
     dirty |= state.tick_native_prompts(now);
+    dirty |= state.tick_workflow_retention_focus();
     // N1: the host's finished jobs land first, whatever section is showing;
     // a delivery redraws (it wrote state or cleared its marker), and stale
     // generations were dropped inside `deliver_host_job`.
