@@ -1000,6 +1000,91 @@ class OfflineJourneys:
         page(self.replay(OPEN, until=4.9), 1, ordered[:2], exact=True)
         self.assertEqual(self.db.read_bytes(), before_db)
 
+    def _open_real_row_count_boundary_page(self, total, *, mode="exact"):
+        config = self.root / "settings.json"
+        initial = {
+            "ui": {"language": "en", "tablePageSize": 25, "queryMaxRows": 23},
+            "rowCountMode": mode, "defaultTableSort": "primaryKeyAsc",
+            "rowCountEstimateThreshold": 200000, "unrelated": ["keep"],
+        }
+        config.write_text(json.dumps(initial), encoding="utf-8")
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+            db.executemany("INSERT INTO customers VALUES (?,?)",
+                           ((i, f"boundary-{i:03}") for i in range(1, total + 1)))
+        self.store.write_text(json.dumps({"connections": [{
+            "id": "e2e-sqlite", "name": "Rune SQLite page boundary", "databaseType": "sqlite",
+            "database": str(self.db), "readOnly": True,
+            "connectionTimeout": 30, "maxPoolSize": 2,
+        }]}), encoding="utf-8")
+        with sqlite3.connect(self.db.as_uri() + "?mode=ro", uri=True) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM customers").fetchone(), (total,))
+            self.assertEqual(
+                db.execute("SELECT name FROM customers ORDER BY id LIMIT 50 OFFSET 50").fetchall(),
+                [] if total == 50 else [("boundary-051",)],
+            )
+        db_before = self.db.read_bytes()
+        picked = self.replay([SETTINGS, DATA_SETTINGS, tap(2.1, PAGE_SIZE),
+                              tap(3.2, "option1")], until=4.3)
+        self.expect_rendered(picked, text="50 rows", within=PAGE_SIZE)
+        self.expect_rendered(picked, text=("Always exact" if mode == "exact" else "Do not count"),
+                             within="settings-row-count-mode-trigger")
+        self.assertFalse(visible(picked, key="settings-error"))
+        self.assertEqual(json.loads(config.read_text(encoding="utf-8")),
+                         {**initial, "ui": {**initial["ui"], "tablePageSize": 50}})
+        return config.read_bytes(), db_before
+
+    def _row_count_next_at(self, tree, t):
+        (x, y, width, height) = self._settled_rect(tree, "page-next")
+        return {"t": t, "type": "tap", "x": x + width / 2, "y": y + height / 2}
+
+    def _expect_row_count_next_action(self, tree, enabled):
+        def visit(node):
+            if node.get("key") == "page-next":
+                yield node
+            for child in node.get("children", []):
+                yield from visit(child)
+        matching = list(visit(tree["accessibility"]))
+        self.assertEqual(len(matching), 1)
+        target = matching[0]
+        self.assertEqual(target.get("role"), "button")
+        self.assertEqual("disabled" in target.get("states", []), not enabled)
+        self.assertEqual("click" in target.get("actions", []), enabled)
+
+    def test_settings_exact_50_rows_disables_next_on_full_final_page(self):
+        settings, database = self._open_real_row_count_boundary_page(50)
+        first = self.replay(OPEN, until=4.9)
+        self.expect_rendered(first, key="grid-page-label", text="Page 1 / 1")
+        self.expect_rendered(first, text="50 per page · 50 rows", within="grid-footer")
+        self.expect_rendered(first, text="boundary-001", within="cell-0-1")
+        self.expect_rendered(first, key="grid-readonly", within="data-grid")
+        attempted = self.replay([*OPEN, self._row_count_next_at(first, 5.2)], until=6.9)
+        self.expect_rendered(attempted, key="grid-page-label", text="Page 1 / 1")
+        self.expect_rendered(attempted, text="boundary-001", within="cell-0-1")
+        self.assertFalse(visible(attempted, key="table-loading"))
+        self.assertEqual((self.root / "settings.json").read_bytes(), settings)
+        self.assertEqual(self.db.read_bytes(), database)
+        # Checked after the physical attempt, so a red result on old source
+        # distinguishes a misleading click affordance from wrong rows/paging.
+        self._expect_row_count_next_action(first, False)
+        self._expect_row_count_next_action(attempted, False)
+
+    def test_settings_exact_51_rows_enables_next_and_renders_row_51(self):
+        settings, database = self._open_real_row_count_boundary_page(51)
+        first = self.replay(OPEN, until=4.9)
+        self.expect_rendered(first, key="grid-page-label", text="Page 1 / 2")
+        self.expect_rendered(first, text="50 per page · 51 rows", within="grid-footer")
+        self.expect_rendered(first, text="boundary-001", within="cell-0-1")
+        self._expect_row_count_next_action(first, True)
+        second = self.replay([*OPEN, self._row_count_next_at(first, 5.2)], until=6.9)
+        self.expect_rendered(second, key="grid-page-label", text="Page 2 / 2")
+        self.expect_rendered(second, text="boundary-051", within="cell-0-1")
+        self.expect_rendered(second, key="grid-readonly", within="data-grid")
+        self.assertFalse(visible(second, text="boundary-001", within="data-grid"))
+        self._expect_row_count_next_action(second, False)
+        self.assertEqual((self.root / "settings.json").read_bytes(), settings)
+        self.assertEqual(self.db.read_bytes(), database)
+
     def test_settings_default_table_sort_persists_and_controls_native_sqlite_reads(self):
         settings = self.root / "settings.json"
         initial = {"ui": {"language": "en", "tablePageSize": 2, "queryMaxRows": 23},
