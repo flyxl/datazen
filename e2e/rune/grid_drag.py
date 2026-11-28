@@ -1,8 +1,9 @@
 """Actual SQLite replay for legacy cell-drag selection."""
+import json
 import sqlite3
 
 from offline import OPEN, key
-from scenarios import fixture, tap, visible
+from scenarios import fixture, query_steps, tap, visible
 
 
 class GridDragJourney:
@@ -82,3 +83,80 @@ class GridDragJourney:
         self.assertFalse(visible(scrolled, key="grid-editor"))
         with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
             self.assertEqual(db.execute("SELECT * FROM customers ORDER BY id").fetchall(), all_rows)
+
+    def test_table_and_query_result_alternating_rows_follow_the_saved_switch(self):
+        """The real Data Browsing control changes ordinary SQLite table and result cells."""
+        fixture(self.store, self.db)
+        connection = json.loads(self.store.read_text(encoding="utf-8"))
+        connection["connections"][0]["readOnly"] = True
+        connection_bytes = json.dumps(connection).encode()
+        self.store.write_bytes(connection_bytes)
+        settings = self.root / "settings.json"
+        original = {"ui": {"language": "en", "tablePageSize": 50}, "rowCountMode": "exact",
+                    "defaultTableSort": "primaryKeyAsc", "unrelated": {"keep": 1}}
+        legacy = json.dumps(original).encode()
+        settings.write_bytes(legacy)
+        db_original = self.db.read_bytes()
+        section = [tap(.5, "rail-settings"), tap(1.4, "settings-nav-dataBrowsing")]
+        switch = "settings-grid-alternating-rows"
+        do_query = query_steps("SELECT id,customer_name FROM customers ORDER BY id;")
+
+        def node(tree, key):
+            items = [n for n in tree["elements"] if n.get("key") == key
+                     and not n.get("exiting") and n.get("opacity", 0) > .95
+                     and min(n["rect"][2:]) > 0]
+            self.assertEqual(len(items), 1, key)
+            return items[0]
+
+        def cells(tree, prefix):
+            output = []
+            for row, name in [(0, "fixture-ada"), (1, "fixture-lin")]:
+                normal = f"{prefix}cell-{row}-1"
+                frozen = f"{prefix}cell-{row}-0"
+                self.expect_rendered(tree, text=name, within=normal)
+                self.expect_rendered(tree, text=str(row + 1), within=frozen)
+                output.append((node(tree, normal)["fill"], node(tree, frozen)["fill"]))
+            return output
+
+        def check_switch(tree, want):
+            control = node(tree, switch)
+            self.assertEqual(control["role"], "switch")
+            self.assertTrue(control["focusable"])
+            self.assertEqual(control["rect"][2:], [36, 20])
+
+            def walk(entry):
+                yield entry
+                for child in entry.get("children", ()):
+                    yield from walk(child)
+
+            accessible = [e for e in walk(tree["accessibility"]) if e.get("key") == switch]
+            self.assertEqual(len(accessible), 1)
+            self.assertEqual(accessible[0]["role"], "switch")
+            self.assertEqual(accessible[0]["name"], "Alternating row backgrounds")
+            self.assertEqual("checked" in accessible[0].get("states", ()), want)
+
+        table_on = cells(self.replay(OPEN, until=5.5), "")
+        result_on = cells(self.replay(do_query, until=11.5), "result-")
+        for on in (table_on, result_on):
+            self.assertNotEqual(on[0][0], on[1][0])
+        check_switch(self.replay(section, until=2.8), True)
+        self.assertEqual(settings.read_bytes(), legacy)
+
+        check_switch(self.replay([*section, tap(2.6, switch)], until=4), False)
+        self.assertEqual(json.loads(settings.read_bytes()), {**original, "gridAlternatingRows": False})
+
+        table_off = cells(self.replay(OPEN, until=5.5), "")
+        result_off = cells(self.replay(do_query, until=11.5), "result-")
+        for on, off in ((table_on, table_off), (result_on, result_off)):
+            self.assertEqual(off[0][0], off[1][0])
+            self.assertEqual(on[0][0], off[0][0], "ordinary even base remains")
+            self.assertEqual([row[1] for row in off], [row[1] for row in on],
+                             "active/frozen cells keep their real paint")
+        check_switch(self.replay(section, until=2.8), False)
+        check_switch(self.replay([*section, tap(2.6, switch)], until=4), True)
+        self.assertEqual(json.loads(settings.read_bytes()), {**original, "gridAlternatingRows": True})
+        self.assertEqual(cells(self.replay(OPEN, until=5.5), ""), table_on)
+        self.assertEqual(self.db.read_bytes(), db_original)
+        self.assertEqual(self.store.read_bytes(), connection_bytes)
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(self.db.with_name(self.db.name + suffix).exists())

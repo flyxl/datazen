@@ -286,6 +286,7 @@ pub fn sync_tool(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                     theme.text_secondary,
                     theme.control_off,
                     dark,
+                    true, // Sync preview keeps its independent appearance.
                 ));
             }
             section = section.child(

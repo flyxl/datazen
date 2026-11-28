@@ -2385,6 +2385,15 @@ pub trait DesktopAdapter {
     }
 
     /// The effective global row count preference for interactive table reads.
+    /// The actual Table and Query Result zebra paint preference.
+    fn read_native_grid_alternating_rows(&self) -> Result<bool, String> {
+        Err("Grid appearance is not implemented by this desktop adapter".into())
+    }
+
+    fn write_native_grid_alternating_rows(&mut self, _enabled: bool) -> Result<(), String> {
+        Err("Grid appearance is not implemented by this desktop adapter".into())
+    }
+
     fn read_native_row_count_mode(&self) -> Result<types::RowCountMode, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }

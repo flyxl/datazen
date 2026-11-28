@@ -739,6 +739,7 @@ fn result_workspace(
             theme.text_secondary,
             theme.control_off,
             dark,
+            state.desktop.read_native_grid_alternating_rows().unwrap_or(true),
         ),
         ResultView::Chart => result_chart_view(grid, theme),
     };

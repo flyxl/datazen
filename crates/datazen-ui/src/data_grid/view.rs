@@ -40,6 +40,12 @@ pub fn grid_of<'a>(state: &'a crate::AppState, slot: GridSlot) -> &'a DataGrid {
     }
 }
 
+#[derive(Clone, Copy)]
+struct CellPaint {
+    dark: bool,
+    alternating_rows: bool,
+}
+
 /// The scrolling sheet the table page and the query result share: a sticky header
 /// over a window of virtual rows.
 fn sheet(
@@ -48,7 +54,7 @@ fn sheet(
     ink: rune::Color,
     well: rune::Color,
     height: f32,
-    dark: bool,
+    paint: CellPaint,
 ) -> El {
     let scroll_x = grid.scroll_x();
     let table_scroll_y = (slot == GridSlot::Table).then(|| grid.table_scroll_y());
@@ -57,7 +63,7 @@ fn sheet(
     let sheet = col()
         .key(slot.key("data-grid-sheet"))
         .w(width)
-        .child(header_row(grid, slot, ink, dark).sticky_top(0.0))
+        .child(header_row(grid, slot, ink, paint.dark).sticky_top(0.0))
         .child(
             col()
                 .key(slot.key("data-grid-rows"))
@@ -70,7 +76,7 @@ fn sheet(
                         Cow::Owned(slot.key(&format!("grid-row-{index}")))
                     },
                     move |state: &crate::AppState, index| {
-                        data_row(grid_of(state, slot), slot, index as u32, ink, dark)
+                        paint_row(grid_of(state, slot), slot, index as u32, ink, paint)
                     },
                 )
                 .virtual_rows_version(1u32),
@@ -120,7 +126,10 @@ pub fn panel(
         .child(pending_changes_bar(state, muted, well))
         .child(filter_bar(state, ink, muted, well, dark))
         .child(fk_bar(state, ink, muted, well))
-        .child(sheet(grid, GridSlot::Table, ink, viewport, 380.0, dark))
+        .child(sheet(grid, GridSlot::Table, ink, viewport, 380.0, CellPaint {
+            dark,
+            alternating_rows: state.desktop.read_native_grid_alternating_rows().unwrap_or(true),
+        }))
         .child(footer(state, ink, muted))
 }
 
@@ -341,6 +350,7 @@ pub fn result_panel(
     muted: rune::Color,
     well: rune::Color,
     dark: bool,
+    alternating_rows: bool,
 ) -> El {
     col()
         .key("result-grid")
@@ -352,7 +362,7 @@ pub fn result_panel(
                 .color(muted)
                 .key("result-grid-status"),
         )
-        .child(sheet(grid, slot, ink, well, 200.0, dark))
+        .child(sheet(grid, slot, ink, well, 200.0, CellPaint { dark, alternating_rows }))
 }
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.
@@ -556,13 +566,9 @@ fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, dark: bool) -> 
     line
 }
 
-fn data_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, dark: bool) -> El {
-    paint_row(grid, slot, row_index, ink, dark)
-}
-
-fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, dark: bool) -> El {
+fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, paint: CellPaint) -> El {
     let cols = grid.built_columns();
-    let gp = palette::grid_palette(dark);
+    let gp = palette::grid_palette(paint.dark);
     let mut line = row()
         .key(slot.key(&format!("grid-row-{row_index}")))
         .role("row")
@@ -594,7 +600,7 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
         if col_index > cursor {
             line = line.child(el().w(grid.span_width(cursor, col_index)).h(ROW_H));
         }
-        line = line.child(cell(grid, slot, row_index, col_index, ink, dark));
+        line = line.child(cell(grid, slot, row_index, col_index, ink, paint));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
@@ -653,8 +659,9 @@ fn cell(
     row_index: u32,
     col_index: u32,
     ink: rune::Color,
-    dark: bool,
+    paint: CellPaint,
 ) -> El {
+    let dark = paint.dark;
     let selected = grid.covers(row_index, col_index);
     let active = selected && grid.selected_row().is_none() && grid.focus == (row_index, col_index);
     let frozen = col_index == 0;
@@ -671,7 +678,7 @@ fn cell(
         gp.selected
     } else if frozen {
         gp.frozen_cell
-    } else if row_index % 2 == 0 {
+    } else if !paint.alternating_rows || row_index % 2 == 0 {
         gp.zebra_even
     } else if dark {
         gp.zebra_odd_dark

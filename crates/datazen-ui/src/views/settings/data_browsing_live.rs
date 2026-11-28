@@ -5,6 +5,7 @@ use datazen_ui_api::{BuiltinLanguage, DefaultTableSort, Setting};
 use rune::{col, row, text, tok, El, TextEdit, TextStyle, Tx};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Placement};
 
+use super::setting_hint::SettingHint;
 use super::settings_content_state::SettingsSelect;
 use super::settings_ui::{section_title, setting_row};
 use super::{backup_section, export_section, import_section, settings_error_row};
@@ -54,6 +55,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     mount_custom_page_size(state, dark, &k, &mut overlays);
     let row_count = state.desktop.read_native_row_count_mode().ok();
     let default_sort = state.desktop.read_native_default_table_sort().ok();
+    let striped = state.desktop.read_native_grid_alternating_rows().ok();
     section = section
         .child(setting_row(
             &k,
@@ -70,6 +72,9 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     }
     if let Some(order) = default_sort {
         section = section.child(default_table_sort_row(state, order, &k, &mut overlays));
+    }
+    if let Some(striped) = striped {
+        section = section.child(grid_alternating_rows(striped, &k, &mut overlays));
     }
     section = section
         .child(
@@ -105,17 +110,19 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
 
     let unavailable = match state.builtin_language() {
         BuiltinLanguage::English => format!(
-            "Settings not available here: {}{}grid and time display, connection pool, the SELECT-limit toggle, and auto-chart.{}",
+            "Settings not available here: {}{}{}, time display, connection pool, the SELECT-limit toggle, and auto-chart.{}",
             if row_count.is_none() { "row count mode, " } else { "" },
             if default_sort.is_none() { "default sorting, " } else { "" },
+            if striped.is_none() { "grid settings" } else { "other grid settings" },
             if row_count == Some(RowCountMode::Auto) {
                 " Automatic uses the database's default counting strategy; the estimate threshold is not configurable in Native."
             } else { "" },
         ),
         BuiltinLanguage::SimplifiedChinese => format!(
-            "此处暂不支持{}{}表格和时间显示、连接池、SELECT 限制开关及自动图表设置。{}",
+            "此处暂不支持{}{}{}、时间显示、连接池、SELECT 限制开关及自动图表设置。{}",
             if row_count.is_none() { "行数统计、" } else { "" },
             if default_sort.is_none() { "默认排序、" } else { "" },
+            if striped.is_none() { "表格设置" } else { "其他表格设置" },
             if row_count == Some(RowCountMode::Auto) {
                 "自动模式使用数据库默认的计数策略；Native 暂不支持设置估算阈值。"
             } else { "" },
@@ -143,6 +150,40 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .wrap(),
         )
         .children(overlays)
+}
+
+fn grid_alternating_rows(checked: bool, k: &Kit, overlays: &mut Vec<El>) -> El {
+    const KEY: &str = "settings-grid-alternating-rows";
+    let label = t("settings.gridAlternatingRows");
+    let hint = t("settings.gridAlternatingRows.hint");
+    let toggle = row()
+        .key(KEY)
+        .size(36.0, 20.0)
+        .shrink()
+        .radius(10.0)
+        .fill(if checked { k.c.bg_accent } else { k.c.border_base })
+        .pl(if checked { 18.0 } else { 3.0 })
+        .center_y()
+        .role("switch")
+        .label(label)
+        .checked(checked)
+        .focusable(true)
+        .focus_ring(2.0, 1.0, k.c.border_focus)
+        .child(col().size(14.0, 14.0).radius(7.0).fill(rune::Color::WHITE).a11y_hidden())
+        .on_press(|state: &mut AppState| {
+            if state.active == crate::types::Section::Settings && state.settings_section() == "dataBrowsing" {
+                state.settings_error = match state.desktop.read_native_grid_alternating_rows() {
+                    Ok(current) => state.desktop.write_native_grid_alternating_rows(!current).err(),
+                    Err(error) => Some(error),
+                };
+            }
+        });
+    row().key(format!("{KEY}-row")).w_full().justify_between().center_y()
+        .child(row().gap(4.0).center_y()
+            .child(text(label).font(TextStyle::new(14.0, 400.0).lh(20.0)).color(k.c.text_muted))
+            .child(SettingHint::new(format!("{KEY}-hint"), label.to_owned(), hint.to_owned())
+                .build(k, overlays)))
+        .child(toggle)
 }
 
 fn row_count_mode_row(
