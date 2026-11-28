@@ -150,6 +150,49 @@ class RegexJourneys:
         self.assertEqual(selection(raced), [(0, "Needle0")])
         self.untouched(initial, before, after, raced)
 
+    def test_regex_previous_wrap_select_all_and_replace_next_capture_undo(self):
+        sql = "SELECT '猫-A1', 'A1', '猫-B2', '猫-A3';"
+        initial, route = self.route(sql, r"(?<=猫-)([AB])(\d)", top=True)
+
+        def expected(text, *matches):
+            return [(f"sql-selected-0-{len(text[:text.index('猫-' + hit) + 2].encode())}", hit)
+                    for hit in matches]
+
+        def selected(tree):
+            return [(n["key"], n["text"]) for _, path in editor_rows(tree)
+                    for n in row_text_nodes(tree, path)
+                    if (n.get("key") or "").startswith("sql-selected-")]
+
+        # The document starts before the first hit, so Previous must wrap
+        # over unrelated text and land on the final captured match.
+        previous = [*route, tap(9.55, "sql-find-prev")]
+        wrapped = self.replay(previous, until=10.55)
+        self.assertEqual(selected(wrapped), expected(sql, "A3"))
+        self.assertEqual(draft(wrapped), sql)
+
+        all_hits = self.replay([*previous, tap(10.75, "sql-find-select-all-matches")], until=11.75)
+        # The bare second A1 must not match the lookbehind. Positions as
+        # well as text distinguish the three real selections.
+        self.assertEqual(selected(all_hits), expected(sql, "A1", "B2", "A3"))
+        self.assertEqual(draft(all_hits), sql)
+
+        replace = [*route, *fill(9.5, "sql-replace-input", "$2:$1"), tap(10.6, "sql-replace-current")]
+        located = self.replay(replace, until=11.55)
+        self.assertEqual(selected(located), expected(sql, "A1"))
+        self.assertEqual(draft(located), sql, "Replace Next from the initial caret may only select")
+
+        edit = [*replace, tap(11.75, "sql-replace-current")]
+        changed = self.replay(edit, until=12.8)
+        replaced = "SELECT '猫-1:A', 'A1', '猫-B2', '猫-A3';"
+        self.assertEqual(draft(changed), replaced)
+        self.assertEqual(selected(changed), expected(replaced, "B2"),
+                         "the following old-document hit must map through the length-changing edit")
+
+        undone = self.replay([*edit, tap(13.0, "sql-find-close"), key(13.6, "z", cmd=True)], until=14.5)
+        self.assertEqual(draft(undone), sql)
+        self.assertEqual(selected(undone), expected(sql, "A1"))
+        self.untouched(initial, wrapped, all_hits, located, changed, undone)
+
     def test_mixed_crlf_original_offsets_replace_and_undo(self):
         sql = "猫\r\nleft\r\nright\n😀 cat!"
         initial, route = self.route(sql, r"(left)\n(right)")
