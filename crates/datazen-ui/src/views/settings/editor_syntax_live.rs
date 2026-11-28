@@ -51,6 +51,9 @@ pub(super) fn font_family_row(state: &AppState, kit: &Kit, overlays: &mut Vec<El
     setting_row(kit, overlays, "settings-editor-font-family-row".to_owned(), label, None, field)
 }
 
+const THEME_SELECT: &str = "settings-sql-syntax-theme";
+const THEME_TRIGGER: &str = "settings-sql-syntax-theme-trigger";
+
 pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El>) -> El {
     let theme = state.sql_syntax_theme();
     let current = SQL_SYNTAX_PRESETS.iter().find(|preset| preset.id == theme.id())
@@ -58,11 +61,12 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
     let labels = SQL_SYNTAX_PRESETS.map(|preset| preset.label);
     let values = SQL_SYNTAX_PRESETS.map(|preset| preset.id);
     let label = t("settings.sqlSyntaxTheme");
-    let select = Select::new("settings-sql-syntax-theme", &labels)
+    let open = state.settings_content.open_select == Some(SettingsSelect::SyntaxTheme);
+    let select = Select::new(THEME_SELECT, &labels)
         .values(&values)
         .current(Some(current.label))
         .label(label)
-        .open(state.settings_content.open_select == Some(SettingsSelect::SyntaxTheme))
+        .open(open)
         .on_toggle(|state: &mut AppState| {
             if state.active == crate::types::Section::Settings && state.settings_section() == "editor" {
                 state.settings_content.toggle_select(SettingsSelect::SyntaxTheme);
@@ -78,7 +82,7 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
                 state.save_sql_syntax_theme(theme);
             }
         });
-    let select = stock_select_trigger(select, kit, overlays);
+    let select = theme_select_trigger(select, kit, overlays, open);
     setting_row(
         kit,
         overlays,
@@ -93,6 +97,48 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
             kit,
         )),
     )
+}
+
+/// Light Settings uses the reference menu's leading edge, 4px offset and
+/// at least trigger-width option surface. Keep Rune's underlying selection,
+/// scroll, focus restoration, and dismiss scrim rather than reimplement them.
+fn theme_select_trigger(select: Select, kit: &Kit, overlays: &mut Vec<El>, open: bool) -> El {
+    if kit.dark {
+        return stock_select_trigger(select, kit, overlays);
+    }
+    let mut menu = Vec::new();
+    let mut trigger = stock_select_trigger(select, kit, &mut menu);
+    if open {
+        // The pinned kit appends its anchored list after the optional scrim.
+        if let Some(surface) = menu.pop() {
+            let surface = surface.anchored_fit(THEME_TRIGGER, rune::Side::Bottom, rune::Align::Start, 4.0);
+            let width = rune::memo::layout_with(THEME_TRIGGER, |rect| rect[2]);
+            menu.push(match width {
+                // All authored labels fit the full-width Settings field.
+                Some(width) if width > 0.0 => surface.w(width).min_w(width).max_w(width),
+                _ => surface,
+            });
+        }
+    } else {
+        // The reference uses a button. Rune's combobox already handles Space
+        // and Up/Down; its app-owned plain Return needs an explicit binding.
+        trigger = trigger.on_key(|state: &mut AppState, event, tx| {
+            if event.key != rune::Key::Enter || event.mods != rune::Mods::default()
+                || tx.focused() != Some(THEME_TRIGGER)
+                || state.active != crate::types::Section::Settings
+                || state.settings_section() != "editor"
+                || state.settings_content.open_select.is_some()
+            {
+                return false;
+            }
+            if !tx.key_repeat() {
+                state.settings_content.toggle_select(SettingsSelect::SyntaxTheme);
+            }
+            true
+        });
+    }
+    overlays.extend(menu);
+    trigger
 }
 
 /// The real Execute SQL action belongs to Customize Shortcuts. Mount
