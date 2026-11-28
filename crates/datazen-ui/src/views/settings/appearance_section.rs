@@ -355,19 +355,30 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
         let active_plugin_theme_missing = parse_wapp_theme_pack_id(active_pack_id).is_some()
             && !theme_options.iter().any(|option| Some(option.pack_id.as_str()) == active_pack_id);
 
-        // Original SettingHint's glyph uses text-fg-muted. The shared
-        // Settings helper reads text_muted, which DataZen maps to React's
-        // fg-secondary. Remap only the kit passed to this caption; its
-        // header text already uses text_faint and all field kits stay real.
-        let mut title_kit = (*k).clone();
-        title_kit.c.text_muted = k.c.text_faint;
-        let mut section = col().key(key.to_owned()).w_full().gap(16.0).child(section_title(
-            &title_kit,
-            layer,
-            format!("{key}-title"),
-            t("settings.appearance"),
-            Some(t("settings.appearance.subtitle")),
-        ));
+        let heading_label = t("settings.appearance");
+        let heading_help = if self.show_theme_packs {
+            t("settings.appearance.subtitle")
+        } else {
+            t("settings.nativeAppearance.scope")
+        };
+        // This heading previously displayed the shared hint's glyph with its
+        // open flag permanently false. Use real native help here, retaining
+        // the mark and layout, and describe what this host actually offers.
+        let heading = section_title(k, layer, format!("{key}-title"), heading_label, None)
+            .child(row().key(format!("{key}-title-hint-tooltip-trigger")).child(
+                row()
+                    .key(format!("{key}-title-hint-mark"))
+                    .size(16.0, 16.0)
+                    .center()
+                    .radius(8.0)
+                    .border(1.0, k.c.border_base)
+                    .label(heading_label)
+                    .description(heading_help)
+                    .help(heading_help)
+                    .help_above()
+                    .child(text("?").font(tok::type_::LABEL).color(k.c.text_faint)),
+            ));
+        let mut section = col().key(key.to_owned()).w_full().gap(16.0).child(heading);
 
         // -- The color scheme row --
         let scheme_labels: Vec<String> =

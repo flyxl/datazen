@@ -140,6 +140,10 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
             "仅查看已安装的扩展。无法打开、启用、禁用、卸载或应用扩展主题。",
             "Installed extensions are read-only. Opening, enabling, disabling, uninstalling, and applying themes are unavailable.",
         )),
+        "settings.nativeAppearance.scope" => Some((
+            "配色方案可选择浅色、深色或跟随系统。此版本使用内置主题。",
+            "Choose Light, Dark, or System under Color scheme. This build uses the built-in theme pack.",
+        )),
         "settings.nativeTunnels.scope" => Some((
             "可新建和编辑 HTTP 代理。其他类型只读；不支持测试或绑定连接。",
             "Create or edit HTTP proxies. Other types are read-only. Testing and connection binding are unavailable.",

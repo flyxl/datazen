@@ -131,6 +131,39 @@ class OfflineJourneys:
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "unchanged")
         self.assertEqual(list(blocked.iterdir()), [sentinel])
 
+    def test_light_appearance_heading_hover_explains_the_supported_theme_controls(self):
+        path = self.root / "settings.json"
+        initial = b'{"ui":{"language":"en","themeMode":"light"},"keep":"sentinel"}'
+        path.write_bytes(initial)
+        mark = "appearance-section-title-hint-mark"
+        scheme = "appearance-color-scheme-select-trigger"
+        label = "Choose Light, Dark, or System under Color scheme. This build uses the built-in theme pack."
+        route = [SETTINGS, tap(1.4, "settings-nav-appearance")]
+        hover = [*route, {"t": 2.4, "type": "move", "key": mark}]
+
+        idle = self.replay(route, until=2.2)
+        self.assertNotIn("tooltip", idle)
+        field = self._settled_rect(idle, scheme)
+        box = self._settled_rect(idle, mark)
+        self.assertEqual(box[2:], [16, 16])
+
+        shown = self.replay(hover, until=4.0)
+        tooltip = shown["tooltip"]
+        self.assertEqual(tooltip["text"], label)
+        x, y, w, h = tooltip["rect"]
+        self.assertGreater(w, 0)
+        self.assertGreater(h, 0)
+        self.assertGreaterEqual(x, 0)
+        self.assertGreaterEqual(y, 0)
+        self.assertLessEqual(y + h, box[1])
+        self.assertEqual(self._settled_rect(shown, scheme), field)
+        self.assertFalse(visible(shown, key="appearance-theme-select-trigger"))
+
+        left = self.replay([*hover, {"t": 4.1, "type": "move", "x": 1408, "y": 870}], until=4.8)
+        self.assertNotIn("tooltip", left)
+        self.assertEqual(self._settled_rect(left, scheme), field)
+        self.assertEqual(path.read_bytes(), initial, "informational help makes no settings write")
+
     def test_settings_color_scheme_menu_fits_its_light_trigger_and_escape_does_not_save(self):
         path = self.root / "settings.json"
         initial = b'{"ui":{"language":"en","themeMode":"light"},"keep":"sentinel"}'
