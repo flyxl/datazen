@@ -212,7 +212,9 @@ pub use crate::types::client_settings::{
 
 // ── Re-export group: frontend `types/settings.ts` (the table-read trio) ─────
 
-pub use crate::types::table_settings::{DefaultTableSort, GridDensity, RowCountMode, DEFAULT_GRID_ROW_NUMBERS};
+pub use crate::types::table_settings::{
+    DefaultTableSort, GridDensity, RowCountMode, DEFAULT_GRID_DENSITY, DEFAULT_GRID_ROW_NUMBERS,
+};
 
 // ── Re-export group: driver-sdk's tunnel and table-options members ──────────
 

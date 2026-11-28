@@ -253,3 +253,72 @@ fn live_row_number_setting_changes_the_actual_table_and_query_grids_without_chan
     let reopened = open(profile.path(), false);
     assert_eq!(find(&reopened, ROW_NUMBERS).fill, datazen_ui::ui::kit::kit(false).c.border_base);
 }
+
+#[test]
+fn live_grid_density_selector_keeps_durable_choice_on_failed_save() {
+    use datazen_ui_api::GridDensity;
+    const DENSITY: &str = "settings-grid-density-trigger";
+    const OPTIONS: &str = "settings-grid-density-content";
+
+    fn choose(rt: &mut Runtime<AppState>, label: &str) {
+        press(rt, DENSITY);
+        let prefix = format!("{}/", find(rt, OPTIONS).path);
+        let option = rt.elements().into_iter().find(|item| {
+            !item.exiting && item.role == "option" && item.path.starts_with(&prefix)
+                && item.label.as_deref() == Some(label)
+        }).unwrap_or_else(|| panic!("missing density option {label}"));
+        press(rt, &option.path);
+        assert!(rt.find(OPTIONS).is_none());
+    }
+
+    let profile = tempfile::tempdir().unwrap();
+    let path = profile.path().join("settings.json");
+    let initial = json!({"ui": {"language":"en", "themeMode":"light"},
+                         "gridDensity":"legacy-invalid","unrelated":[1,2]});
+    let original = serde_json::to_vec(&initial).unwrap();
+    fs::write(&path, &original).unwrap();
+    let mut rt = open(profile.path(), false);
+    assert_eq!(rt.state.desktop.read_native_grid_density(), Ok(GridDensity::Standard));
+    assert_eq!(find(&rt, DENSITY).role, "combobox");
+    assert_eq!(fs::read(&path).unwrap(), original);
+
+    choose(&mut rt, "Compact");
+    assert_eq!(rt.state.desktop.read_native_grid_density(), Ok(GridDensity::Compact));
+    let mut expected = initial.clone();
+    expected["gridDensity"] = json!("compact");
+    let saved = fs::read(&path).unwrap();
+    assert_eq!(serde_json::from_slice::<Value>(&saved).unwrap(), expected);
+
+    let collision = path.with_extension("json.tmp");
+    fs::create_dir(&collision).unwrap();
+    choose(&mut rt, "Relaxed");
+    assert!(rt.find("settings-error").is_some());
+    assert_eq!(rt.state.desktop.read_native_grid_density(), Ok(GridDensity::Compact));
+    assert_eq!(fs::read(&path).unwrap(), saved);
+    fs::remove_dir(collision).unwrap();
+
+    drop(rt);
+    let mut reopened = open(profile.path(), false);
+    assert_eq!(reopened.state.desktop.read_native_grid_density(), Ok(GridDensity::Compact));
+    choose(&mut reopened, "Relaxed");
+    assert_eq!(reopened.state.desktop.read_native_grid_density(), Ok(GridDensity::Relaxed));
+    expected["gridDensity"] = json!("relaxed");
+    assert_eq!(serde_json::from_slice::<Value>(&fs::read(&path).unwrap()).unwrap(), expected);
+
+    // Exercise real keyboard copy from a cell actually laid out at relaxed
+    // query-result density (the separate Native journey loads real SQLite).
+    reopened.on_key = Some(datazen_ui::app_key);
+    let clipboard = rune::clipboard::memory();
+    reopened.use_clipboard(&clipboard);
+    reopened.update(|state, _| {
+        state.active = datazen_ui::Section::Workspace;
+        let _ = state.tabs.open(datazen_ui_api::TabKind::Query, "Relaxed result").expect("query tab");
+        state.load_result_page(vec!["label".into()], vec![vec!["selected result".into()]]);
+    });
+    settled(&mut reopened);
+    assert_eq!(find(&reopened, "result-cell-0-0").rect[3], 40.0);
+    press(&mut reopened, "result-cell-0-0");
+    reopened.key(KeyEvent { key: Key::Command('c'), mods: Mods::default() });
+    settled(&mut reopened);
+    assert_eq!(clipboard.text().as_deref().map(String::as_str), Some("selected result"));
+}

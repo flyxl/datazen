@@ -115,6 +115,20 @@ pub enum GridDensity {
 }
 
 impl GridDensity {
+    pub const ALL: [Self; 3] = [Self::Compact, Self::Standard, Self::Relaxed];
+
+    pub fn from_wire(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|density| density.as_str() == value)
+    }
+
+    pub fn label_key(self) -> &'static str {
+        match self {
+            Self::Compact => "settings.gridDensity.compact",
+            Self::Standard => "settings.gridDensity.standard",
+            Self::Relaxed => "settings.gridDensity.relaxed",
+        }
+    }
+
     /// The wire spelling.
     pub fn as_str(self) -> &'static str {
         match self {

@@ -296,3 +296,105 @@ class GridDragJourney:
             self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
         with sqlite3.connect(oracle_uri, uri=True) as oracle:
             self.assertEqual(oracle.execute(sql).fetchall(), expected)
+
+    def test_grid_density_changes_real_sqlite_row_geometry_and_keeps_find_reveal(self):
+        """The mounted selector changes actual rows, including virtualized query results."""
+        from offline import fill
+
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as seed:
+            seed.executemany("INSERT INTO customers VALUES (?, ?)", [
+                (i, f"density-{i:02}") for i in range(3, 52)
+            ])
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        self.env["HOME"] = str(self.root)
+        self.env["TZ"] = "UTC"
+        original_db = self.db.read_bytes()
+        connection_bytes = self.store.read_bytes()
+        sql = "SELECT id, customer_name FROM customers ORDER BY id;"
+        uri = f"{self.db.as_uri()}?mode=ro&immutable=1"
+        with sqlite3.connect(uri, uri=True) as oracle:
+            expected = oracle.execute(sql).fetchall()
+        self.assertEqual((len(expected), expected[-1]), (51, (51, "density-51")))
+
+        settings = self.root / "settings.json"
+        original = {"ui": {"language": "en", "themeMode": "light", "tablePageSize": 100},
+                    "rowCountMode": "exact", "defaultTableSort": "primaryKeyAsc",
+                    "gridRowNumbers": True, "unrelated": {"keep": True}}
+        settings.write_text(json.dumps(original), encoding="utf-8")
+        settings.chmod(0o600)
+        initial = settings.read_bytes()
+        route = [tap(.5, "rail-settings"), tap(1.4, "settings-nav-dataBrowsing")]
+        trigger = "settings-grid-density-trigger"
+
+        def check_field(tree, caption):
+            self.expect_rendered(tree, text=caption, within=trigger)
+            self.assertFalse(visible(tree, key="settings-error"))
+            control = self._settled_rect(tree, trigger)
+            stripe = self._settled_rect(tree, "settings-grid-alternating-rows")
+            self.assertEqual(control[3], 36)
+            self.assertAlmostEqual(stripe[1] - control[1], 56, delta=.25)
+
+        def check_grid(tree, prefix, height):
+            header = self._settled_rect(tree, f"{prefix}head-0")
+            first = self._settled_rect(tree, f"{prefix}cell-0-0")
+            first_gutter = self._settled_rect(tree, f"{prefix}rownum-0")
+            second = self._settled_rect(tree, f"{prefix}cell-1-0")
+            self.assertEqual(header[3], 28, "density must not resize the sticky column header")
+            self.assertEqual(first[3], height)
+            self.assertEqual(first_gutter[3], height)
+            self.assertEqual(second[1] - first[1], height)
+            for row, values in enumerate(expected[:2]):
+                for col, value in enumerate(values):
+                    self.expect_rendered(tree, text=str(value), within=f"{prefix}cell-{row}-{col}")
+
+        default = self.replay(route, until=2.5)
+        check_field(default, "Standard")
+        self.assertEqual(settings.read_bytes(), initial)
+        query = query_steps(sql)
+        for wire, caption, option, table_height, query_height in (
+            ("standard", "Standard", None, 28, 32),
+            ("compact", "Compact", 0, 22, 26),
+            ("relaxed", "Relaxed", 2, 36, 40),
+        ):
+            with self.subTest(density=wire):
+                if option is not None:
+                    tree = self.replay([*route, tap(2.6, trigger),
+                                        tap(3.2, f"option{option}")], until=4.1)
+                    check_field(tree, caption)
+                    self.assertEqual(json.loads(settings.read_bytes()), {**original, "gridDensity": wire})
+                # Fresh native processes must observe the same saved density.
+                table = self.replay(OPEN, until=5.3)
+                self.expect_rendered(table, key="grid-readonly")
+                check_grid(table, "", table_height)
+                result = self.replay(query, until=10.5)
+                self.expect_rendered(result, key="result-grid-status", text="result · 51 rows × 2 cols")
+                check_grid(result, "result-", query_height)
+                if wire != "relaxed":
+                    continue
+                self.assertFalse(visible(result, key="result-cell-50-1"))
+                last = self.replay([
+                    *query, tap(10.45, "result-find-toggle"),
+                    *fill(11.0, "result-find-input", expected[-1][1]),
+                    tap(12.5, "result-find-apply"),
+                ], until=14.0)
+                self.expect_rendered(last, key="result-find-count", text="1 of 1")
+                self.expect_rendered(last, text=expected[-1][1], within="result-cell-50-1")
+                viewport = self._settled_rect(last, "result-data-grid-scroll")
+                hit = self._settled_rect(last, "result-cell-50-1")
+                sticky = self._settled_rect(last, "result-data-grid-header")
+                self.assertEqual(hit[3], 40)
+                self.assertAlmostEqual(sticky[1], viewport[1], delta=.25)
+                self.assertGreaterEqual(hit[1] + .25, viewport[1] + sticky[3])
+                self.assertLessEqual(hit[1] + hit[3], viewport[1] + viewport[3] + .25)
+
+        check_field(self.replay(route, until=2.5), "Relaxed")
+        self.assertEqual(self.db.read_bytes(), original_db)
+        self.assertEqual(self.store.read_bytes(), connection_bytes)
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(self.db.with_name(self.db.name + suffix).exists())

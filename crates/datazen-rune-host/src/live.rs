@@ -3540,6 +3540,29 @@ impl DesktopAdapter for LiveAdapter {
         Ok(())
     }
 
+    fn read_native_grid_density(&self) -> Result<datazen_ui_api::types::GridDensity, String> {
+        let cache = self.settings_document.lock()
+            .map_err(|_| "Could not read the grid density setting.".to_owned())?;
+        Ok(cache.get("gridDensity").and_then(serde_json::Value::as_str)
+            .and_then(datazen_ui_api::types::GridDensity::from_wire)
+            .unwrap_or(datazen_ui_api::types::DEFAULT_GRID_DENSITY))
+    }
+
+    fn write_native_grid_density(&mut self, density: datazen_ui_api::types::GridDensity) -> Result<(), String> {
+        let error = || "Could not save the grid density setting.".to_owned();
+        let mut cache = self.settings_document.lock().map_err(|_| error())?;
+        // Persist the one wire field against the current profile. A rejected
+        // write must not change the effective row heights in the running host.
+        let mut document = futures_executor::block_on(self.settings.read_app_settings())
+            .map_err(|_| error())?;
+        let object = document.as_object_mut().ok_or_else(error)?;
+        object.insert("gridDensity".into(), serde_json::json!(density.as_str()));
+        let persisted = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|_| error())?;
+        *cache = persisted;
+        Ok(())
+    }
+
     fn read_native_grid_row_numbers(&self) -> Result<bool, String> {
         let cache = self.settings_document.lock()
             .map_err(|_| "Could not read the grid row numbers setting.".to_owned())?;

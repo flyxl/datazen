@@ -2423,6 +2423,15 @@ pub trait DesktopAdapter {
         Err("Grid appearance is not implemented by this desktop adapter".into())
     }
 
+    /// The display density of the actual Table and Query Result grids.
+    fn read_native_grid_density(&self) -> Result<types::GridDensity, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn write_native_grid_density(&mut self, _density: types::GridDensity) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// The row-number gutter in the actual Table and Query Result grids.
     fn read_native_grid_row_numbers(&self) -> Result<bool, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())

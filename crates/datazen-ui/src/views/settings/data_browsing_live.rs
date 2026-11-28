@@ -1,7 +1,7 @@
 //! The live native Data Browsing view presents only preferences with real host writes.
 
 use datazen_ui_api::types::{RowCountMode, WorkflowStepResultOrder};
-use datazen_ui_api::{BuiltinLanguage, DefaultTableSort, Setting};
+use datazen_ui_api::{BuiltinLanguage, DefaultTableSort, GridDensity, Setting};
 use rune::{col, row, text, tok, El, TextEdit, TextStyle, Tx};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Placement};
 
@@ -55,6 +55,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     mount_custom_page_size(state, dark, &k, &mut overlays);
     let row_count = state.desktop.read_native_row_count_mode().ok();
     let default_sort = state.desktop.read_native_default_table_sort().ok();
+    let density = state.desktop.read_native_grid_density().ok();
     let striped = state.desktop.read_native_grid_alternating_rows().ok();
     let row_numbers = state.desktop.read_native_grid_row_numbers().ok();
     let select_limit = state.desktop.read_native_select_limit().ok();
@@ -74,6 +75,9 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     }
     if let Some(order) = default_sort {
         section = section.child(default_table_sort_row(state, order, &k, &mut overlays));
+    }
+    if let Some(density) = density {
+        section = section.child(grid_density_row(state, density, &k, &mut overlays));
     }
     if let Some(striped) = striped {
         section = section.child(grid_appearance_toggle(
@@ -154,7 +158,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             "Settings not available here: {}{}{}, time display, connection pool, {}and auto-chart.{}",
             if row_count.is_none() { "row count mode, " } else { "" },
             if default_sort.is_none() { "default sorting, " } else { "" },
-            if striped.is_none() && row_numbers.is_none() { "grid settings" } else { "other grid settings" },
+            if density.is_none() && striped.is_none() && row_numbers.is_none() { "grid settings" } else { "other grid settings" },
             if select_limit.is_none() { "the SELECT-limit toggle, " } else { "" },
             if row_count == Some(RowCountMode::Auto) {
                 " Automatic uses the database's default counting strategy; the estimate threshold is not configurable in Native."
@@ -164,7 +168,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             "此处暂不支持{}{}{}、时间显示、连接池、{}自动图表设置。{}",
             if row_count.is_none() { "行数统计、" } else { "" },
             if default_sort.is_none() { "默认排序、" } else { "" },
-            if striped.is_none() && row_numbers.is_none() { "表格设置" } else { "其他表格设置" },
+            if density.is_none() && striped.is_none() && row_numbers.is_none() { "表格设置" } else { "其他表格设置" },
             if select_limit.is_none() { "SELECT 限制开关、" } else { "" },
             if row_count == Some(RowCountMode::Auto) {
                 "自动模式使用数据库默认的计数策略；Native 暂不支持设置估算阈值。"
@@ -386,6 +390,50 @@ fn default_table_sort_row(
     )
 }
 
+fn grid_density_row(state: &AppState, density: GridDensity, k: &Kit, overlays: &mut Vec<El>) -> El {
+    let label = t("settings.gridDensity");
+    let values = GridDensity::ALL.map(GridDensity::as_str);
+    let labels = GridDensity::ALL.map(|density| t(density.label_key()));
+    let select = Select::new("settings-grid-density", &labels)
+        .values(&values)
+        .current(Some(t(density.label_key())))
+        .label(label)
+        .open(state.settings_content.open_select == Some(SettingsSelect::GridDensity))
+        .on_toggle(|state: &mut AppState| {
+            if data_browsing_route(state) {
+                state.settings_content.toggle_select(SettingsSelect::GridDensity);
+            }
+        })
+        .on_close(|state: &mut AppState| {
+            if state.settings_content.open_select == Some(SettingsSelect::GridDensity) {
+                state.settings_content.close_select();
+            }
+        })
+        .on_choose(|state: &mut AppState, value, _tx| {
+            if !data_browsing_route(state) || state.settings_content.open_select != Some(SettingsSelect::GridDensity) {
+                return;
+            }
+            state.settings_content.close_select();
+            if let Some(density) = GridDensity::from_wire(value) {
+                state.settings_error = state.desktop.write_native_grid_density(density).err();
+            }
+        })
+        .build(&preset_field_kit(k), overlays)
+        .h(FIELD_HEIGHT)
+        .radius(9.0)
+        .border(1.0, k.c.border_base)
+        .pl(3.0)
+        .pr(8.0);
+    setting_row(
+        k,
+        overlays,
+        "settings-grid-density-row".to_owned(),
+        label,
+        Some(t("settings.gridDensity.hint")),
+        select,
+    )
+}
+
 fn workflow_step_order_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) -> El {
     use WorkflowStepResultOrder::{Asc, Desc};
 
@@ -451,7 +499,7 @@ fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Ve
         .label(t("settings.defaultPageSize"))
         .open(state.settings_content.open_select == Some(SettingsSelect::PageSize))
         .on_toggle(|state: &mut AppState| {
-            if page_size_route(state) {
+            if data_browsing_route(state) {
                 state.settings_content.toggle_select(SettingsSelect::PageSize);
             }
         })
@@ -461,7 +509,7 @@ fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Ve
             }
         })
         .on_choose(|state: &mut AppState, value, tx| {
-            if !page_size_route(state) || state.settings_content.open_select != Some(SettingsSelect::PageSize) {
+            if !data_browsing_route(state) || state.settings_content.open_select != Some(SettingsSelect::PageSize) {
                 return;
             }
             state.settings_content.close_select();
@@ -492,12 +540,12 @@ fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Ve
         .pr(8.0)
 }
 
-fn page_size_route(state: &AppState) -> bool {
+fn data_browsing_route(state: &AppState) -> bool {
     state.active == crate::types::Section::Settings && state.settings_section() == "dataBrowsing"
 }
 
 fn custom_page_size_is_open(state: &AppState) -> bool {
-    page_size_route(state) && state.settings_content.open_select == Some(SettingsSelect::CustomPageSize)
+    data_browsing_route(state) && state.settings_content.open_select == Some(SettingsSelect::CustomPageSize)
 }
 
 fn dismiss_custom_page_size(state: &mut AppState, tx: &mut Tx) {

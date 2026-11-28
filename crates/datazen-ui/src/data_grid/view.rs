@@ -1,6 +1,10 @@
 use std::borrow::Cow;
 
-use datazen_ui_api::{types::DEFAULT_GRID_ROW_NUMBERS, NativeTableRowCount};
+use datazen_ui_api::{
+    row_height_for_density,
+    types::{DEFAULT_GRID_DENSITY, DEFAULT_GRID_ROW_NUMBERS},
+    NativeTableRowCount,
+};
 use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, row, text};
 
 use crate::i18n::t;
@@ -46,6 +50,7 @@ struct CellPaint {
     alternating_rows: bool,
     show_row_numbers: bool,
     row_tail_width: f32,
+    row_height: f32,
 }
 
 impl CellPaint {
@@ -53,12 +58,21 @@ impl CellPaint {
         // Settings applies to the two user-facing data grids, not Sync's
         // independent comparison preview.
         let shared = slot != GridSlot::SyncPreview;
+        let row_height = match slot {
+            GridSlot::SyncPreview => ROW_H,
+            GridSlot::Table | GridSlot::Result => {
+                let base = if slot == GridSlot::Result { 32 } else { ROW_H as i64 };
+                let density = state.desktop.read_native_grid_density().unwrap_or(DEFAULT_GRID_DENSITY);
+                row_height_for_density(base, density) as f32
+            }
+        };
         Self {
             dark,
             alternating_rows: !shared || state.desktop.read_native_grid_alternating_rows().unwrap_or(true),
             show_row_numbers: !shared || state.desktop.read_native_grid_row_numbers()
                 .unwrap_or(DEFAULT_GRID_ROW_NUMBERS),
             row_tail_width: 0.0,
+            row_height,
         }
     }
 
@@ -99,18 +113,26 @@ fn sheet(
         paint.row_tail_width = (viewport_width - data_width).max(0.0);
     }
     let width = paint.gutter_width() + data_width + paint.row_tail_width;
+    // Changing the estimated height alone keeps old measured heights in Rune's
+    // ledger. Key the virtual stack by its geometry, not the data it paints:
+    // row/cell keys, the viewport, and keyed reveals keep their identities.
+    let rows_key = if paint.row_height == ROW_H {
+        slot.key("data-grid-rows")
+    } else {
+        slot.key(&format!("data-grid-rows-{}", paint.row_height as i64))
+    };
     let sheet = col()
         .key(slot.key("data-grid-sheet"))
         .w(width)
         .child(header_row(grid, slot, ink, paint).sticky_top(0.0))
         .child(
             col()
-                .key(slot.key("data-grid-rows"))
+                .key(rows_key)
                 .w(width)
                 .growth(GrowthSpec::default())
                 .virtual_rows(
                     grid.rows as usize,
-                    ROW_H,
+                    paint.row_height,
                     move |_state: &crate::AppState, index| {
                         Cow::Owned(slot.key(&format!("grid-row-{index}")))
                     },
@@ -610,7 +632,7 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
     let mut line = row()
         .key(slot.key(&format!("grid-row-{row_index}")))
         .role("row")
-        .h(ROW_H);
+        .h(paint.row_height);
     let row_selected = grid.selected_row() == Some(row_index);
     if paint.show_row_numbers {
         // The existing A4 numbering stays global and 1-based.
@@ -619,7 +641,7 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
             .key(slot.key(&format!("rownum-{row_index}")))
             .role("rowheader")
             .w(GUTTER_W)
-            .h(ROW_H)
+            .h(paint.row_height)
             .px(6.0)
             .center_y()
             .fill(if row_selected { gp.selected } else { gp.gutter_bg })
@@ -634,19 +656,19 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
     let mut cursor = 0u32;
     for col_index in cols {
         if col_index > cursor {
-            line = line.child(el().w(grid.span_width(cursor, col_index)).h(ROW_H));
+            line = line.child(el().w(grid.span_width(cursor, col_index)).h(paint.row_height));
         }
         line = line.child(cell(grid, slot, row_index, col_index, ink, paint));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
-        line = line.child(el().w(grid.span_width(cursor, grid.cols)).h(ROW_H));
+        line = line.child(el().w(grid.span_width(cursor, grid.cols)).h(paint.row_height));
     }
     if paint.row_tail_width > 0.0 {
         line = line.child(
             el().key(format!("grid-row-background-{row_index}"))
                 .w(paint.row_tail_width)
-                .h(ROW_H)
+                .h(paint.row_height)
                 .fill(if row_selected { gp.selected } else { paint.row_background(row_index, gp) })
                 .a11y_hidden()
                 .on_press(move |state: &mut crate::AppState| state.grid.select_row(row_index)),
@@ -732,7 +754,7 @@ fn cell(
         .key(slot.key(&format!("cell-{row_index}-{col_index}")))
         .role("gridcell")
         .w(w)
-        .h(ROW_H)
+        .h(paint.row_height)
         .px(8.0)
         .center_y()
         .fill(fill);
@@ -803,7 +825,7 @@ fn cell(
     if active && grid.editing {
         box_el.child(
             TextField::new(slot.key("grid-editor"), &grid.editor)
-                .height(ROW_H - 4.0)
+                .height(paint.row_height - 4.0)
                 .text_style(editor_font())
                 .width((w - 16.0).max(24.0))
                 .on_edit(|state: &mut crate::AppState| &mut state.grid.editor)

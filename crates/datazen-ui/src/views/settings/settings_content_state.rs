@@ -264,6 +264,8 @@ pub enum SettingsSelect {
     RowCountMode,
     /// The native data-browsing default table sort select.
     DefaultTableSort,
+    /// The density of the native table data and query result rows.
+    GridDensity,
     /// The data-browsing workflow step order select.
     WorkflowOrder,
     /// The native editor mono-family select.
