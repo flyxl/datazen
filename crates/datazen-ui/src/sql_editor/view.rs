@@ -167,10 +167,28 @@ pub(crate) fn panel_with_completion_scope(
     }
 }
 
-// Rune otherwise interprets Space on this focusable non-TextEdit viewport
-// as a button press *before* the app sees it. Claim only ordinary text Space
-// from the actual Query canvas; the normal SQL input path owns the edit.
 fn focused_query_canvas_key(state: &mut crate::AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    // Like the original Query editor, accept the selected completion on Tab
+    // only when it applies; Rune's ordinary Tab traversal gets other presses.
+    // This focused callback runs before Rune traverses, unlike the app fallback.
+    if ev.key == Key::Tab
+        && ev.mods == rune::Mods::default()
+        && tx.focused() == Some("sql-editor-scroll")
+        && state.sql.focused()
+        && !state.result_focused
+        && state.connect_loading.is_none()
+        && state.query_snippet_menu_owner().is_none()
+        && state.snippet_edit_owner().is_some()
+        && state.query_editor_matches_connection()
+        && state.catalog_completion_current()
+        && state.sql.try_accept_completion()
+    {
+        tx.scroll_into_view_in("sql-editor-scroll", "sql-caret");
+        return true;
+    }
+
+    // Rune would otherwise turn ordinary Space on this focusable non-TextEdit
+    // into a button press before the usual application input path sees it.
     if tx.focused() == Some("sql-editor-scroll")
         && state.active == crate::types::Section::Workspace
         && crate::views::query_selected(state)

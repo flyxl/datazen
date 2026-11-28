@@ -296,17 +296,25 @@ impl SqlEditor {
 
     /// Insert the highlighted completion over its prefix.
     pub fn completion_accept(&mut self) {
-        let selected = self.completion_selected();
-        self.completion_accept_index(selected);
+        self.try_accept_completion();
+    }
+
+    /// Whether a still-applicable completion handled the key.
+    pub(super) fn try_accept_completion(&mut self) -> bool {
+        self.try_accept_completion_index(self.completion_selected())
     }
 
     /// Insert completion item `index` over the prefix (the canvas list's click).
     pub fn completion_accept_index(&mut self, index: usize) {
+        self.try_accept_completion_index(index);
+    }
+
+    fn try_accept_completion_index(&mut self, index: usize) -> bool {
         let Some(completion) = self.completion.take() else {
-            return;
+            return false;
         };
         let Some(word) = completion.items.get(index) else {
-            return;
+            return false;
         };
         let caret = self.selection.main();
         if caret.anchor != caret.head
@@ -314,10 +322,11 @@ impl SqlEditor {
             || self.composition.is_some()
             || self.doc.get(completion.start..caret.head) != Some(completion.prefix.as_str())
         {
-            return;
+            return false;
         }
         self.push_history();
         self.apply_change(completion.start, caret.head, word);
+        true
     }
 
     /// Rebuild the completion from the word at the caret; close it when nothing matches.

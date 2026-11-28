@@ -267,8 +267,12 @@ class SqlSelectionJourneys:
             self.assertFalse(self.db.with_name(self.db.name+suffix).exists())
 
     def test_native_sql_editor_keyword_completion_undo_preserves_caret_run(self):
-        """Keyword selection is one undoable edit, not a query execution."""
+        """Tab accepts the highlighted keyword as one edit without running SQL."""
         original = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        db_bytes = self.db.read_bytes()
         prefix = "UPDATE customers SET customer_name='must-not-run' WHERE id=1;\n"
         steps = query_steps(prefix)[:-1]
         steps[-1] = {"t": 4.8, "type": "paste", "text": prefix}
@@ -277,9 +281,13 @@ class SqlSelectionJourneys:
         for i, option in enumerate(("SELECT", "SET", "SUM")):
             self.expect_rendered(offered, text=option, within=f"sql-completion-item-{i}")
 
-        selected = [*typed, key(7.1, "Down"), key(7.6, "Enter")]
+        selected = [*typed, key(7.1, "Down"), key(7.6, "Tab")]
         insertion = self.replay(selected, until=8.3)
         self.expect_rendered(insertion, text="SET", within="sql-line-1")
+        canvas = [n for n in insertion["elements"]
+                  if n.get("key") == "sql-editor-scroll" and not n.get("exiting")]
+        self.assertEqual(len(canvas), 1)
+        self.assertTrue(canvas[0]["focused"], "acceptance keeps the caret in the real Query canvas")
         self.assertFalse(visible(insertion, key="sql-completion"))
         self.assertFalse(visible(insertion, key="result-workspace"))
 
@@ -305,6 +313,36 @@ class SqlSelectionJourneys:
         history = json.loads((self.root / "query-history.json").read_text(encoding="utf-8"))
         self.assertEqual([(item["success"], item["sql"].rstrip(";")) for item in history],
                          [(True, statement.rstrip(";"))])
+        self.assertEqual(self.db.read_bytes(), db_bytes)
+
+    def test_native_sql_editor_tab_accepts_real_sqlite_from_completion(self):
+        self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        db_bytes = self.db.read_bytes()
+        prefix = "SELECT customer_name FROM "
+        candidate = '"main"."customers"'
+        selected = prefix + candidate
+        suffix = " ORDER BY id;"
+        with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as db:
+            expected = db.execute(selected + suffix).fetchall()
+        typed = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": prefix},
+                 type_text(5.6, "cust")]
+        offered = self.replay(typed, until=6.6)
+        self.expect_rendered(offered, text=candidate, within="sql-completion-item-0")
+
+        accepted = [*typed, key(7.0, "Tab")]
+        result = self.replay([*accepted, {"t": 7.65, "type": "paste", "text": suffix},
+                              tap(8.85, "sql-run")], until=10.8)
+        self.assertFalse(visible(result, key="sql-completion"))
+        self.assertFalse(visible(result, key="query-error-message"))
+        for row, (name,) in enumerate(expected):
+            self.expect_rendered(result, text=name, within=f"result-cell-{row}-0")
+        history = json.loads((self.root / "query-history.json").read_text(encoding="utf-8"))
+        self.assertEqual([(item["success"], item["sql"].rstrip(";")) for item in history],
+                         [(True, (selected + suffix).rstrip(";"))])
+        self.assertEqual(self.db.read_bytes(), db_bytes)
 
     def test_native_sql_editor_executes_only_exact_selection_with_literal_semicolon(self):
         original = self.sql_fixture_before()

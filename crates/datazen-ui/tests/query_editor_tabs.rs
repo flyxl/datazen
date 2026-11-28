@@ -301,6 +301,64 @@ fn find_dock_scopes_real_shortcuts_and_returns_focus_without_editing_the_draft()
 }
 
 #[test]
+fn tab_accepts_only_a_current_completion_in_the_focused_query_canvas() {
+    let mut rt = runtime();
+    rt.set_full_keyboard_access(true);
+    rt.on_key = Some(app_key);
+    rt.state.workspace.connect("local").unwrap();
+    let a = rt.state.open_query_tab("A").unwrap();
+    rt.frame(0.0);
+    let focused_canvas = |rt: &Runtime<AppState>| rt.elements().iter()
+        .any(|node| node.key.as_deref() == Some("sql-editor-scroll") && node.focused);
+    let plain = Mods::default();
+
+    tap(&mut rt, "sql-editor-scroll");
+    assert!(focused_canvas(&rt));
+    key(&mut rt, Key::Tab, plain);
+    assert!(!focused_canvas(&rt), "without a suggestion Rune still moves focus");
+    assert_eq!(rt.state.sql.doc(), "");
+
+    tap(&mut rt, "sql-editor-scroll");
+    key(&mut rt, Key::Text("s".into()), plain);
+    assert!(rt.find("sql-completion").is_some());
+    key(&mut rt, Key::Tab, Mods { shift: true, ..plain });
+    assert!(!focused_canvas(&rt), "Shift+Tab keeps reverse focus traversal");
+    assert_eq!(rt.state.sql.doc(), "s");
+    key(&mut rt, Key::Tab, plain);
+    assert_eq!(rt.state.sql.doc(), "s", "Tab from outside cannot accept");
+
+    tap(&mut rt, "sql-editor-scroll");
+    key(&mut rt, Key::Down, plain);
+    key(&mut rt, Key::Tab, plain);
+    assert!(focused_canvas(&rt));
+    assert_eq!(rt.state.sql.doc(), "SET");
+    assert!(rt.find("sql-completion").is_none());
+    key(&mut rt, Key::Command('z'), plain);
+    assert_eq!(rt.state.sql.doc(), "s", "acceptance is one edit");
+
+    key(&mut rt, Key::Text("e".into()), plain);
+    assert!(rt.find("sql-completion").is_some());
+    assert!(app_ime(&mut rt.state, &Ime::Preedit("未提交".into(), None), &mut Tx::default()));
+    key(&mut rt, Key::Tab, plain);
+    assert_eq!(rt.state.sql.doc(), "se", "an IME preedit is not a completion");
+    assert_eq!(rt.state.sql.composition(), Some("未提交"));
+    rt.state.sql.preedit("");
+
+    tap(&mut rt, "sql-editor-scroll");
+    key(&mut rt, Key::Text("l".into()), plain);
+    assert!(rt.find("sql-completion").is_some());
+    let b = rt.state.open_query_tab("B").unwrap();
+    rt.frame(0.0);
+    key(&mut rt, Key::Tab, plain);
+    assert_eq!(rt.state.tabs.selected().unwrap().id, b);
+    assert_eq!(rt.state.sql.doc(), "", "the previous draft's popup cannot write B");
+    tap_tab(&mut rt, a);
+    assert_eq!(rt.state.sql.doc(), "sel");
+    assert!(rt.find("sql-completion").is_none());
+    assert!(rt.state.query_result_tabs.is_empty(), "no key in this journey runs SQL");
+}
+
+#[test]
 fn native_execute_shortcut_requires_the_focused_tab_and_no_ime_composition() {
     struct OneBinding;
     impl DesktopAdapter for OneBinding {
