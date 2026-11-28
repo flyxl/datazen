@@ -653,3 +653,90 @@ class SqlSelectionJourneys:
         self.assertEqual(self.db.read_bytes(), original_bytes)
         history = json.loads((self.root / "query-history.json").read_bytes())
         self.assertEqual([row["sql"].rstrip(";") for row in history], [edited.rstrip(";")])
+
+    def test_editor_literal_whole_word_tabs_replace_all_and_undo_on_read_only_sqlite(self):
+        original_rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        original_db = self.db.read_bytes()
+        sql = ("SELECT 'xcat' AS ascii_prefix, '猫cat' AS cjk_prefix, "
+               "'cat_suffix' AS underline, 'cat' AS exact, 'cat-cat' AS punctuated, 'cat猫' AS cjk_suffix;")
+        edited = sql.replace("'cat'", "'dog'").replace("'cat-cat'", "'dog-dog'")
+
+        def byte_offset(phrase, inner=0):
+            return len(sql[:sql.index(phrase) + inner].encode("utf-8"))
+
+        ordinary = f"sql-selected-0-{byte_offset('xcat', 1)}"
+        standalone_offset = byte_offset("'cat'", 1)
+        whole = f"sql-selected-0-{standalone_offset}"
+        underscore = f"sql-selected-0-{byte_offset('cat_suffix')}"
+        cjk = f"sql-selected-0-{byte_offset('猫cat', 1)}"
+        enter = query_steps(sql)[:-1]
+        enter[-1] = {"t": 4.8, "type": "paste", "text": sql}
+        find = [
+            *enter, tap(8.3, "sql-find-open"), *fill(8.9, "sql-find-input", "cat"),
+            tap(9.8, "sql-find-next"),
+        ]
+        substring = self.replay(find, until=10.4)
+        self.expect_rendered(substring, key="sql-find-whole-word", within="sql-find-bar")
+        self.expect_rendered(substring, key=ordinary, text="cat")
+        checked = [*find, tap(10.8, "sql-find-whole-word"), tap(11.3, "sql-find-next")]
+        first = self.replay(checked, until=12)
+        self.expect_rendered(first, key=whole, text="cat")
+        for rejected in (ordinary, underscore, cjk):
+            self.assertFalse(visible(first, key=rejected))
+        tabs = [n["key"] for n in first["elements"] if not n.get("exiting")
+                and n.get("role") == "tab" and (n.get("key") or "").startswith("tab-")]
+        self.assertEqual(len(tabs), 1)
+        ax, ay, aw, ah = self._settled_rect(first, tabs[0])
+
+        # Grow a second real Query draft while A's Find dock is open.
+        other = [
+            *checked, tap(12.4, "conn-toolbar-new-query"), tap(13.25, "sql-editor-scroll"),
+            {"t": 13.7, "type": "paste", "text": sql}, tap(14.3, "sql-find-open"),
+            *fill(14.9, "sql-find-input", "cat"), tap(15.8, "sql-find-next"),
+        ]
+        other_draft = self.replay(other, until=16.4)
+        self.expect_rendered(other_draft, key=ordinary, text="cat")
+        self.assertFalse(visible(other_draft, key=whole))
+
+        returned = [
+            *other, {"t": 16.8, "type": "tap", "x": ax + min(8, aw/4), "y": ay+ah/2},
+            tap(17.4, "sql-editor-scroll"), key(17.75, "Home"),
+            tap(18.15, "sql-find-open"), tap(18.8, "sql-find-next"),
+        ]
+        return_a = self.replay(returned, until=19.3)
+        self.expect_rendered(return_a, key=whole, text="cat")
+        self.assertFalse(visible(return_a, key=ordinary))
+        self.assertFalse(visible(return_a, key="result-workspace"))
+        history_path = self.root / "query-history.json"
+        self.assertFalse(history_path.exists() and json.loads(history_path.read_text(encoding="utf-8")))
+
+        replace = [
+            *checked, *fill(12.1, "sql-replace-input", "dog"),
+            tap(13.2, "sql-replace-all"), key(13.8, "Escape"),
+        ]
+        changed = self.replay([*replace, key(14.25, "Left"), tap(14.7, "sql-run")], until=16.7)
+        undone = self.replay([
+            *replace, key(14.25, "z", cmd=True), key(14.65, "Left"), tap(15.1, "sql-run"),
+        ], until=17.1)
+        with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as independent:
+            expected_changed = independent.execute(edited).fetchone()
+            expected_undone = independent.execute(sql).fetchone()
+        self.assertEqual(expected_changed, ("xcat", "猫cat", "cat_suffix", "dog", "dog-dog", "cat猫"))
+        self.assertEqual(expected_undone, ("xcat", "猫cat", "cat_suffix", "cat", "cat-cat", "cat猫"))
+        for tree, expected in ((changed, expected_changed), (undone, expected_undone)):
+            for col, text in enumerate(expected):
+                self.expect_rendered(tree, text=text, within=f"result-cell-0-{col}")
+        history = json.loads(history_path.read_text(encoding="utf-8"))
+        self.assertCountEqual([item["sql"].rstrip(";") for item in history],
+                              [edited.rstrip(";"), sql.rstrip(";")])
+        self.assertTrue(all(item["success"] for item in history))
+        self.assertEqual(self.db.read_bytes(), original_db)
+        self.assertEqual(self.sql_customer_rows(), original_rows)
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
