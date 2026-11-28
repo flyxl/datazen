@@ -36,6 +36,33 @@ fn main() -> std::process::ExitCode {
         Err(Error::UnsupportedPattern),
     );
 
+    // Two separate siblings at the same depth are not disjoint, even
+    // when the captures occur at different branch ordinals. ES2025 and
+    // stock CodeMirror in the verified Chromium baseline reject these.
+    for pattern in [
+        r"(?:(?<k>a)|x)(?:y|(?<k>b))",
+        r"(?:(?<k>a)|x)(?:y|(?<k>b))\k<k>",
+        r"(?:(?<k>a)|x)(?:y|(?<\u006b>b))",
+    ] {
+        for operation in [Operation::Next, Operation::ReplaceAll] {
+            assert_eq!(
+                search(
+                    Request { operation, case_sensitive: true, whole_word: false, selection: 0..0,
+                        document: "abbab", pattern,
+                        replacement: if operation == Operation::ReplaceAll { "[$1/$2]" } else { "" },
+                    }, deadline,
+                ),
+                Err(Error::InvalidPattern),
+            );
+        }
+        assert_eq!(
+            highlight(HighlightRequest { viewport: 0..5, document: "abbab", pattern,
+                case_sensitive: true, whole_word: false,
+            }, deadline),
+            Err(Error::InvalidPattern),
+        );
+    }
+
     let check = |pattern, range: std::ops::Range<usize>| {
         assert_eq!(
             search(Request {
@@ -51,7 +78,18 @@ fn main() -> std::process::ExitCode {
     check(r"(b)\1", 2..4);
     check(r"(?:(?<k>a)|(?<k>b))b+", 1..4);
     check(r"(?:(?<k>a)|(?<k>b))(?<unrelated>b)\k<unrelated>?", 1..4);
-    println!("10 spawned compatibility witnesses passed");
+    assert_eq!(
+        search(Request {
+            operation: Operation::ReplaceAll, case_sensitive: true, whole_word: false,
+            selection: 0..0, document: "xa/b|b", pattern:r"(?:(?<k>a)[/]|\|(?<\u006b>b))",
+            replacement:"[$&]",
+        }, deadline),
+        Ok(Outcome::Edits { edits: vec![
+            Edit { range:1..3,insert:"[a/]".into() },
+            Edit { range:4..6,insert:"[|b]".into() },
+        ], following:None }),
+    );
+    println!("20 spawned compatibility witnesses passed");
     std::process::ExitCode::SUCCESS
 }
 

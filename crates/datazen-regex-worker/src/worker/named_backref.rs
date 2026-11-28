@@ -1,22 +1,38 @@
-//! Compatibility gate for regress 0.12.0. It lowers a named reference to
-//! duplicate captures into a left-first alternation of numeric references.
-//! Unmatched numeric captures match empty, so this can silently choose an
-//! empty branch rather than the participating capture (ECMAScript semantics).
-//! This is not a second regexp parser. Compile first with the real /u engine.
-//! Walk only syntax that can introduce names, and canonicalize their escapes.
+//! Compatibility gates for the pinned regress 0.12.0 /u parser and VM.
+//!
+//! The parser's duplicate check compares branch numbers at equal *depth*,
+//! which cannot prove that captures in concatenated sibling groups are
+//! disjoint. Reject declarations that share a name but not an enclosing
+//! disjunction with different branches (ECMAScript MightBothParticipate).
+//! Even valid disjoint names with a reference must still be refused: the
+//! current VM can compare an unmatched group's empty value instead of the
+//! participating capture. Compile first and walk only structural tokens in
+//! the validated /u syntax. This does not extend to /v nested classes.
 
 use crate::Error;
 use std::collections::{BTreeMap, BTreeSet};
 
+type Branch = (usize, usize); // Unique disjunction identity and branch ordinal.
+
+fn disjoint(a: &[Branch], b: &[Branch]) -> bool {
+    a.iter().zip(b).any(|(&(a_id,a_branch), &(b_id,b_branch))|
+        a_id == b_id && a_branch != b_branch)
+}
+
 pub(super) fn check(pattern: &str) -> Result<(), Error> {
-    // No syntactic reference can occur without this exact source sequence.
-    if !pattern.contains("\\k<") {
+    // Both the ordinary parser and this guard require a literal opener.
+    if !pattern.contains("(?<") {
         return Ok(());
     }
     let mut rest = pattern;
     let mut class = false;
-    let mut captures = BTreeMap::new();
+    let mut captures: BTreeMap<String, Vec<Vec<Branch>>> = BTreeMap::new();
     let mut references = BTreeSet::new();
+    let mut path = vec![(0,0)]; // The top-level disjunction.
+    let mut next_disjunction = 1;
+    // The wire caps pattern bytes at 1024 prior to compilation. Each group
+    // enters one path, each capture stores its current prefix, and each
+    // same-name comparison is bounded by that prefix length.
     while let Some(ch) = pop(&mut rest) {
         match ch {
             '\\' => {
@@ -28,16 +44,29 @@ pub(super) fn check(pattern: &str) -> Result<(), Error> {
             }
             '[' if !class => class = true,
             ']' if class => class = false,
-            '(' if !class && take(&mut rest, "?<") => {
-                if !rest.starts_with(['=', '!']) {
-                    let count = captures.entry(name(&mut rest)?).or_insert(0usize);
-                    *count += 1;
+            '(' if !class => {
+                if take(&mut rest, "?<") && !rest.starts_with(['=', '!']) {
+                    let previous = captures.entry(name(&mut rest)?).or_default();
+                    // Depth alone is not proof. Disjunction identities must
+                    // be the same and each capture must be in its own arm.
+                    if previous.iter().any(|other| !disjoint(other,&path)) {
+                        return Err(Error::InvalidPattern);
+                    }
+                    previous.push(path.clone());
                 }
+                path.push((next_disjunction,0));
+                next_disjunction += 1;
             }
+            ')' if !class => {
+                if path.len() == 1 { return Err(Error::InvalidPattern); }
+                path.pop();
+            }
+            '|' if !class => path.last_mut().ok_or(Error::InvalidPattern)?.1 += 1,
             _ => {}
         }
     }
-    if references.iter().any(|value| captures.get(value).is_some_and(|count| *count > 1)) {
+    if class || path.len() != 1 { return Err(Error::InvalidPattern); }
+    if references.iter().any(|value| captures.get(value).is_some_and(|paths| paths.len() > 1)) {
         return Err(Error::UnsupportedPattern);
     }
     Ok(())
@@ -122,6 +151,33 @@ mod tests {
             r"(?:(?<字>a)|(?<\u5b57>b))(?<=b)\k<字>",
         ] {
             assert!(matches!(engine(raw, true), Err(Error::UnsupportedPattern)), "{raw}");
+        }
+    }
+
+    #[test]
+    fn sibling_branch_numbers_and_lookaround_do_not_prove_exclusivity() {
+        for raw in [
+            r"(?:(?<k>a)|x)(?:y|(?<k>b))",
+            r"(?:(?<k>a)|x)(?:y|(?<k>b))\k<k>",
+            r"(?:(?<k>a)|x)(?:y|(?<\u006b>b))",
+            r"(?:(?<𐐀>a)|x)(?:y|(?<\uD801\uDC00>b))",
+            r"(?:(?<k>a)|x)(?:y|(?=(?<k>b))b)",
+            r"(?<k>a)(?<k>b)",
+        ] {
+            assert!(matches!(engine(raw,true), Err(Error::InvalidPattern)), "{raw}");
+        }
+    }
+
+    #[test]
+    fn actual_disjoint_branches_may_share_names_if_not_referenced() {
+        for raw in [
+            r"(?<k>a)|(?<k>b)",
+            r"(?:(?:(?<k>a))x|y(?:(?<k>b)))",
+            r"(?:(?<𐐀>a)[|]|\|(?<\u{10400}>b))",
+            r"(?:(?=(?<k>a))a|(?=(?<k>b))b)",
+            r"(?:(?<k>a)|(?<k>b))(?<other>c)\k<other>",
+        ] {
+            assert!(engine(raw,false).is_ok(), "{raw}");
         }
     }
 
