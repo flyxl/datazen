@@ -571,12 +571,83 @@ class OfflineJourneys:
     def test_query_result_find_moves_between_matches(self):
         fixture(self.store, self.db)
         sql = "SELECT customer_name FROM customers ORDER BY id;"
-        search = [*query_steps(sql), *fill(10.7, "result-find-input", "fixture-"),
+        search = [*query_steps(sql), tap(10.25, "result-find-toggle"),
+                  *fill(10.7, "result-find-input", "fixture-"),
                   tap(12.0, "result-find-apply")]
         tree = self.replay(search, until=13)
         self.expect_rendered(tree, key="result-find-count", text="1 of 2")
         tree = self.replay([*search, tap(13, "result-find-next")], until=14.2)
         self.expect_rendered(tree, key="result-find-count", text="2 of 2")
+
+    def test_native_result_find_is_active_tab_local_and_closes_to_sql_focus(self):
+        fixture(self.store, self.db)
+        saved = json.loads(self.store.read_text(encoding="utf-8"))
+        saved["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(saved), encoding="utf-8")
+        (self.root / "settings.json").write_text(
+            json.dumps({"ui": {"language": "en"}}), encoding="utf-8")
+        first_sql = ("SELECT 'Needle ' || customer_name AS left_hit, "
+                     "CASE WHEN id=1 THEN 'NEEDLE twice needle' ELSE 'no hit' END AS right_hit "
+                     "FROM customers ORDER BY id")
+        second_sql = "SELECT 'different-' || customer_name AS disjoint FROM customers ORDER BY id"
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
+            first = db.execute(first_sql).fetchall()
+            second = db.execute(second_sql).fetchall()
+        self.assertEqual(sum("needle" in cell.lower() for row in first for cell in row), 3)
+        self.assertFalse(any("needle" in cell.lower() for row in second for cell in row))
+        before_db = self.db.read_bytes()
+        script = first_sql + ";\n" + second_sql + ";"
+        actions = query_steps(script)[:-1]
+        actions[-1] = {"t": 5.0, "type": "paste", "text": script}
+        actions.append(tap(7.0, "sql-run-script"))
+
+        idle = self.replay(actions, until=9.5)
+        self.expect_rendered(idle, key="result-find-toggle")
+        self.assertFalse(visible(idle, key="result-find-bar"))
+
+        entered = [*actions, tap(9.8, "result-find-toggle"),
+                   {"t": 10.4, "type": "paste", "text": "nEeDlE"}]
+        search = self.replay(entered, until=11.15)
+        self.expect_rendered(search, key="result-find-count", text="1 of 3")
+        self.expect_rendered(search, text=first[0][0], within="result-cell-0-0")
+        self.expect_rendered(search, key="result-find-input")
+        matches = [n for n in search["elements"] if n.get("key") == "result-find-input" and not n.get("exiting")]
+        self.assertEqual(len(matches), 1)
+        self.assertTrue(matches[0]["focused"], "opening Find owns actual input focus")
+        for unsupported in ("result-find-column", "result-find-operator",
+                            "result-find-match-case", "result-find-replace-all"):
+            self.assertFalse(visible(search, key=unsupported))
+
+        navigated = [*entered, tap(11.35, "result-find-next")]
+        next_hit = self.replay(navigated, until=12.0)
+        self.expect_rendered(next_hit, key="result-find-count", text="2 of 3")
+        self.expect_rendered(next_hit, text=first[0][1], within="result-cell-0-1")
+        expect_selection = next(n["text"] for n in next_hit["elements"]
+                                if n.get("key") == "result-status-text")
+        self.assertTrue(expect_selection.endswith("selection r0c1..r0c1"), expect_selection)
+        prev_hit = self.replay([*navigated, tap(12.25, "result-find-prev")], until=13.0)
+        self.expect_rendered(prev_hit, key="result-find-count", text="1 of 3")
+
+        closed = self.replay([*navigated, key(12.25, "Escape")], until=13.0)
+        self.assertFalse(visible(closed, key="result-find-bar"))
+        canvas = [n for n in closed["elements"] if n.get("key") == "sql-editor-scroll" and not n.get("exiting")]
+        self.assertEqual(len(canvas), 1)
+        self.assertTrue(canvas[0]["focused"], "Escape restores the real SQL canvas")
+
+        other = [*entered, tap(11.35, "query-result-label-2")]
+        second_tab = self.replay(other, until=12.0)
+        self.assertFalse(visible(second_tab, key="result-find-bar"))
+        self.expect_rendered(second_tab, text=second[0][0], within="result-cell-0-0")
+        other_search = [*other, tap(12.25, "result-find-toggle"),
+                        {"t": 12.8, "type": "paste", "text": "needle"}]
+        no_matches = self.replay(other_search, until=13.6)
+        self.expect_rendered(no_matches, key="result-find-count", text="No matches")
+        self.expect_rendered(no_matches, text=second[0][0], within="result-cell-0-0")
+        returned = self.replay([*other_search, tap(14.0, "query-result-label-1")], until=14.8)
+        self.assertFalse(visible(returned, key="result-find-bar"))
+        self.expect_rendered(returned, text=first[0][0], within="result-cell-0-0")
+        self.assertFalse(visible(returned, key="query-result-tab-3"))
+        self.assertEqual(self.db.read_bytes(), before_db)
 
     def test_settings_sql_syntax_theme_select_colors_query_and_survives_restart(self):
         fixture(self.store, self.db)
@@ -1282,7 +1353,8 @@ class OfflineJourneys:
             expected = connection.execute(sql).fetchall()
         self.assertEqual((len(expected), expected[-1]), (600, (600, "batch-600")))
         tree = self.replay([
-            *query_steps(sql), *fill(11.0, "result-find-input", expected[-1][1]),
+            *query_steps(sql), tap(10.45, "result-find-toggle"),
+            *fill(11.0, "result-find-input", expected[-1][1]),
             tap(12.5, "result-find-apply"),
         ], until=14.0)
         self.expect_rendered(tree, key="result-grid-status", text="result · 600 rows × 2 cols")

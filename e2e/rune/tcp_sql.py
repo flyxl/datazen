@@ -288,7 +288,8 @@ class TcpSqlJourneys:
         actions = query_steps(sql, "e2e-tcp-sql")
         actions[-2] = {"t": 5, "type": "paste", "text": sql}
         tree = self.replay([
-            *actions, *fill(11.0, "result-find-input", marker),
+            *actions, tap(10.45, "result-find-toggle"),
+            *fill(11.0, "result-find-input", marker),
             tap(12.5, "result-find-apply"),
         ], until=14.2)
 

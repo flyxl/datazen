@@ -8,7 +8,7 @@ use crate::constants::*;
 use crate::icons::{self, section_icon};
 use crate::state_def::{AppState, StructureState, WidgetBarsState};
 use crate::types::{ResultView, Section, TableView, Tool};
-use crate::ui::field::TextField;
+use crate::views::result_workspace::native_result_find;
 use crate::{splitter, sql_editor};
 use datazen_ui_api::{
     ColumnDraft, ConnectionProfile, DashboardWidget, MemoryWorkspace, ProgressSnapshot, QueryApi,
@@ -728,8 +728,8 @@ fn result_workspace(
     elapsed_ms: Option<u64>,
     truncated_to: Option<u32>,
 ) -> El {
-    let toggle = result_view_toggle(state, theme);
-    let find_bar = result_find_bar(state, grid, theme, dark);
+    let toggle = result_view_toggle(state, theme, dark);
+    let find_bar = native_result_find::panel(state, grid, dark);
     let status = result_status_bar(state, grid, theme, elapsed_ms);
     let body = match state.result_view {
         ResultView::Table => crate::data_grid::result_panel(
@@ -749,7 +749,7 @@ fn result_workspace(
         .gap(6.0)
         .child(toggle)
         .children(native_query_export::status(state, theme))
-        .child(find_bar)
+        .children(find_bar)
         .child(status)
         .children(truncated_to.map(|limit| {
             let message = t("query.resultTruncated").replace("{limit}", &limit.to_string());
@@ -759,7 +759,7 @@ fn result_workspace(
         .child(body)
 }
 
-fn result_view_toggle(state: &AppState, theme: tok::Theme) -> El {
+fn result_view_toggle(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let entry = |key: &str, label: &str, view: ResultView, active: bool| {
         row()
             .key(key)
@@ -793,76 +793,8 @@ fn result_view_toggle(state: &AppState, theme: tok::Theme) -> El {
             ResultView::Chart,
             state.result_view == ResultView::Chart,
         ))
+        .children(native_result_find::toggle(state, dark))
         .children(native_query_export::trigger(state, theme))
-}
-
-/// A5: find bar for the query result grid — search, next/prev, match count.
-fn result_find_bar(state: &AppState, grid: &crate::data_grid::DataGrid, theme: tok::Theme, dark: bool) -> El {
-    let count = grid.find_hit_count();
-    let current = grid.find_current_index();
-    let count_label = if grid.find_needle().trim().is_empty() {
-        String::new()
-    } else if count == 0 {
-        t("select.noMatches").to_owned()
-    } else {
-        format!("{current} of {count}")
-    };
-    row()
-        .key("result-find-bar")
-        .w_full()
-        .h(28.0)
-        .gap(6.0)
-        .center_y()
-        .child(
-            TextField::new("result-find-input", &state.result_find)
-                .height(24.0)
-                .width(220.0)
-                .on_edit(|state: &mut AppState| &mut state.result_find)
-                .on_submit(|state: &mut AppState, tx| {
-                    state.apply_result_find();
-                    tx.blur();
-                })
-                .build(dark),
-        )
-        .child(
-            row()
-                .key("result-find-apply")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(text(t("resultFind.openLabel")).font(type_::LABEL).color(theme.text))
-                .on_press(|state: &mut AppState| state.apply_result_find()),
-        )
-        .child(
-            row()
-                .key("result-find-prev")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(text("Prev").font(type_::LABEL).color(theme.text))
-                .on_press(|state: &mut AppState| state.result_find_prev()),
-        )
-        .child(
-            row()
-                .key("result-find-next")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(text("Next").font(type_::LABEL).color(theme.text))
-                .on_press(|state: &mut AppState| state.result_find_next()),
-        )
-        .child(
-            text(count_label)
-                .key("result-find-count")
-                .font(type_::LABEL)
-                .color(theme.text_secondary),
-        )
 }
 
 fn result_duration(key: &'static str, elapsed_ms: u64, theme: tok::Theme) -> El {

@@ -330,6 +330,7 @@ impl AppState {
     }
 
     fn park_selected_query_result_grid(&mut self) {
+        self.reset_native_result_find();
         let grid = self.result_grid.take();
         if let Some(id) = self.selected_query_result {
             if let Some(tab) = self.query_result_tabs.iter_mut().find(|t| t.id == id) {
@@ -386,9 +387,11 @@ impl AppState {
         if !self.query_result_tabs.iter().any(|t| t.id == id) {
             return false;
         }
-        self.park_selected_query_result_grid();
-        self.selected_query_result = Some(id);
-        self.restore_selected_query_result_grid();
+        if self.selected_query_result != Some(id) {
+            self.park_selected_query_result_grid();
+            self.selected_query_result = Some(id);
+            self.restore_selected_query_result_grid();
+        }
         self.result_focused = false;
         true
     }
@@ -407,6 +410,7 @@ impl AppState {
         };
         let was_selected = self.selected_query_result == Some(id);
         if was_selected {
+            self.reset_native_result_find();
             // drop active grid (it is not parked in the tab)
             self.result_grid = None;
             self.selected_query_result = None;
@@ -491,7 +495,7 @@ impl AppState {
         self.result_focused = false;
         // A5: a fresh result starts in table view with no active find.
         self.result_view = crate::types::ResultView::Table;
-        self.result_find = rune::TextEdit::new(String::new());
+        self.reset_native_result_find();
     }
 
     /// Bump and return the next query generation. Every run and every cancel
@@ -910,6 +914,9 @@ impl AppState {
 
     /// A5: switch the query result presentation (table/chart).
     pub fn set_result_view(&mut self, view: crate::types::ResultView) {
+        if view != crate::types::ResultView::Table {
+            self.reset_native_result_find();
+        }
         self.result_view = view;
     }
 
@@ -917,7 +924,9 @@ impl AppState {
     pub fn apply_result_find(&mut self) {
         let needle = self.result_find.text.clone();
         if let Some(grid) = self.result_grid.as_mut() {
-            grid.set_find_needle(&needle);
+            if grid.find_needle() != needle {
+                grid.set_find_needle(&needle);
+            }
         }
     }
 
@@ -1282,6 +1291,9 @@ impl AppState {
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
     pub fn sync_grid_to_selected_tab(&mut self) {
+        if self.result_find_owner.is_some() && !self.native_result_find_open() {
+            self.reset_native_result_find();
+        }
         self.sync_query_editor_to_selected_tab();
         self.sql.clear_catalog_completion();
         self.active = Section::Workspace;

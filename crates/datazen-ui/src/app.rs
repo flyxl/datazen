@@ -129,6 +129,9 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
             && sql_editor::on_key(&mut state.workflow_yaml, ev, tx);
     }
     if query_selected(state) {
+        if crate::views::result_workspace::native_result_find::escape_if_focused(state, ev, tx) {
+            return true;
+        }
         if matches!(ev.key, Key::Enter) && ev.mods.cmd {
             state.run_query();
             return true;

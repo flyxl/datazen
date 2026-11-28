@@ -140,6 +140,7 @@ pub struct AppState {
     pub result_view: ResultView,
     /// A5: the result find bar's search text.
     pub result_find: TextEdit,
+    pub(crate) result_find_owner: Option<(u32, u32)>,
     /// The query generation: bumped by every run and every cancel. A result page
     /// from a generation that is not the current one is dropped.
     pub query_generation: u32,
@@ -643,6 +644,7 @@ impl Default for AppState {
             query_notice: None,
             result_view: ResultView::Table,
             result_find: TextEdit::new(String::new()),
+            result_find_owner: None,
             query_generation: 0,
             read_generation: 0,
             table_loading: None,

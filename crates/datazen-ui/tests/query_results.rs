@@ -701,3 +701,78 @@ use rune::{Env, Runtime};
         let indexes = runtime.state.workspace.table_indexes("customers").unwrap();
         assert_eq!(indexes[1].columns, vec!["name", "city"], "the compound order is in the row");
     }
+
+#[test]
+fn native_result_find_counts_cells_without_rerunning_and_resets_by_tab() {
+    use datazen_ui::app_key;
+    use datazen_ui_api::WorkspaceApi;
+    use rune::{Key, KeyEvent, Mods};
+
+    let mut runtime = runtime();
+    runtime.on_key = Some(app_key);
+    runtime.state.workspace.connect("local").unwrap();
+    runtime.state.open_query_tab("Find fixture").unwrap();
+    let first_generation = runtime.state.next_query_generation();
+    let table = runtime.state.workspace.open_result(
+        vec!["a".into(), "b".into()],
+        vec![
+            vec!["NeEdLe".into(), "needle needle".into()],
+            vec!["needle".into(), "different".into()],
+        ],
+    );
+    runtime.state.deliver_query_result(first_generation, table);
+    runtime.settle_all();
+    runtime.frame(0.0);
+    assert!(runtime.find("result-find-bar").is_none(), "initial dock is closed");
+
+    fn click(rt: &mut Runtime<AppState>, key: &str) {
+        let (x, y) = rt.find(key).expect(key);
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.settle_all();
+        rt.frame(0.0);
+    }
+
+    click(&mut runtime, "result-find-toggle");
+    assert!(runtime.state.result_find.focused, "real focus moved on open");
+    runtime.key(KeyEvent { key: Key::Text("needle".into()), mods: Mods::default() });
+    runtime.settle_all();
+    runtime.frame(0.0);
+    let grid = runtime.state.result_grid.as_ref().unwrap();
+    assert_eq!(grid.find_hit_count(), 3, "three cells, not repeated text occurrences or rows");
+    assert_eq!(grid.current_find_hit(), Some((0, 0)));
+    click(&mut runtime, "result-find-next");
+    assert_eq!(runtime.state.result_grid.as_ref().unwrap().current_find_hit(), Some((0, 1)));
+    click(&mut runtime, "result-find-prev");
+    assert_eq!(runtime.state.result_grid.as_ref().unwrap().current_find_hit(), Some((0, 0)));
+    assert_eq!(runtime.state.query_generation, first_generation);
+    assert_eq!(runtime.state.query_result_tabs.len(), 1);
+
+    runtime.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+    runtime.settle_all();
+    runtime.frame(0.0);
+    assert!(runtime.find("result-find-bar").is_none());
+    assert_eq!(runtime.state.result_grid.as_ref().unwrap().find_hit_count(), 0);
+    assert!(!runtime.state.result_find.focused);
+
+    click(&mut runtime, "result-find-toggle");
+    runtime.key(KeyEvent { key: Key::Text("needle".into()), mods: Mods::default() });
+    let second_generation = runtime.state.next_query_generation();
+    let other = runtime.state.workspace.open_result(
+        vec!["disjoint".into()],
+        vec![vec!["not here".into()]],
+    );
+    runtime.state.deliver_query_result(second_generation, other);
+    runtime.settle_all();
+    runtime.frame(0.0);
+    assert!(runtime.find("result-find-bar").is_none(), "the new result has no last tab draft");
+    let first_id = runtime.state.query_result_tabs[0].id;
+    assert!(runtime.state.select_query_result_tab(first_id));
+    runtime.settle_all();
+    runtime.frame(0.0);
+    assert!(runtime.find("result-find-bar").is_none());
+    let grid = runtime.state.result_grid.as_ref().unwrap();
+    assert_eq!(grid.find_hit_count(), 0, "the returned tab never leaks a hidden highlight");
+    assert_eq!(grid.cell(0, 0), "NeEdLe", "Find never changes retained cells");
+    assert_eq!(runtime.state.query_generation, second_generation);
+}
