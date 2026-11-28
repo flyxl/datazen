@@ -839,6 +839,121 @@ class OfflineJourneys:
             self.assertEqual(db.execute(
                 "SELECT customer_name FROM customers WHERE id=1").fetchone(), ("fixture-ada",))
 
+    def test_settings_page_size_and_default_sort_do_not_share_popup_or_draft(self):
+        config = self.root / "settings.json"
+        config.write_text(json.dumps({
+            "ui": {"language": "en", "tablePageSize": 17, "queryMaxRows": 23},
+            "defaultTableSort": "primaryKeyDesc", "unrelated": ["keep"],
+        }), encoding="utf-8")
+        initial = config.read_bytes()
+        sort = "settings-default-table-sort-trigger"
+        sort_menu = "settings-default-table-sort-content"
+        page_menu = "settings-page-size-preset-content"
+        page_edit = [SETTINGS, DATA_SETTINGS, *open_custom_page_size(2.1),
+                     *fill(3.35, "settings-page-size-input", "31")]
+        page_open = self.replay(page_edit, until=4.5)
+        self.expect_rendered(page_open, key=CUSTOM_PAGE_SIZE)
+        self.assertFalse(visible(page_open, key=page_menu))
+        self.assertFalse(visible(page_open, key=sort_menu))
+        self.assertEqual(config.read_bytes(), initial)
+
+        after_page = [*page_edit, key(4.75, "Escape"), tap(5.65, sort)]
+        sort_open = self.replay(after_page, until=6.55)
+        self.assertFalse(visible(sort_open, key=CUSTOM_PAGE_SIZE))
+        self.assertFalse(visible(sort_open, key=page_menu))
+        for label in ("Primary key, ascending", "Primary key, descending", "Do not sort"):
+            self.expect_rendered(sort_open, text=label, within=sort_menu)
+        self.expect_rendered(sort_open, text="17 rows", within=PAGE_SIZE)
+        self.assertEqual(config.read_bytes(), initial)
+
+        page_again = self.replay(
+            [*after_page, key(6.8, "Escape"), tap(7.75, PAGE_SIZE)], until=8.65)
+        self.assertFalse(visible(page_again, key=CUSTOM_PAGE_SIZE))
+        self.assertFalse(visible(page_again, key=sort_menu))
+        self.expect_rendered(page_again, text="50 rows", within=page_menu)
+        self.expect_rendered(page_again, text="Primary key, descending", within=sort)
+        self.assertEqual(config.read_bytes(), initial)
+
+    def test_settings_default_table_sort_persists_and_controls_native_sqlite_reads(self):
+        settings = self.root / "settings.json"
+        initial = {"ui": {"language": "en", "tablePageSize": 2, "queryMaxRows": 23},
+                   "future-prefs": ["keep"], "defaultTableSort": "future-mode"}
+        settings.write_text(json.dumps(initial), encoding="utf-8")
+        original = settings.read_bytes()
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                CREATE TABLE orders(name TEXT NOT NULL, payload TEXT NOT NULL);
+                INSERT INTO customers VALUES (1,'zulu'),(2,'alpha'),(3,'mike'),(4,'bravo');
+                INSERT INTO orders VALUES ('zulu','first'),('alpha','second'),
+                    ('mike','third'),('bravo','fourth');
+            """)
+        self.store.write_text(json.dumps({"connections": [{
+            "id": "e2e-sqlite", "name": "Rune SQLite default sort", "databaseType": "sqlite",
+            "database": str(self.db), "readOnly": True, "connectionTimeout": 30, "maxPoolSize": 2,
+        }]}), encoding="utf-8")
+        with sqlite3.connect(self.db.as_uri() + "?mode=ro", uri=True) as db:
+            desc = db.execute("SELECT name FROM customers ORDER BY id DESC LIMIT 2").fetchall()
+            desc_next = db.execute("SELECT name FROM customers ORDER BY id DESC LIMIT 2 OFFSET 2").fetchall()
+            asc = db.execute("SELECT name FROM customers ORDER BY id ASC LIMIT 2").fetchall()
+            manual = db.execute("SELECT name FROM customers ORDER BY name ASC LIMIT 2").fetchall()
+            driver_orders = db.execute("SELECT name FROM orders ORDER BY name ASC LIMIT 2").fetchall()
+            none = db.execute("SELECT name FROM orders LIMIT 2").fetchall()
+        self.assertNotEqual(desc, manual)
+        self.assertNotEqual(driver_orders, none, "the SQLite fixture distinguishes local query plans")
+        before = self.db.read_bytes()
+
+        trigger = "settings-default-table-sort-trigger"
+        menu = "settings-default-table-sort-content"
+        menu_path = [SETTINGS, DATA_SETTINGS, tap(2.1, trigger)]
+        opened = self.replay(menu_path, until=3.0)
+        for label in ("Primary key, ascending", "Primary key, descending", "Do not sort"):
+            self.expect_rendered(opened, text=label, within=menu)
+        self.assertEqual(settings.read_bytes(), original)
+        canceled = self.replay([*menu_path, key(3.3, "Escape")], until=4.3)
+        self.assertFalse(visible(canceled, key=menu))
+        self.expect_rendered(canceled, text="Primary key, ascending", within=trigger)
+        self.assertEqual(settings.read_bytes(), original)
+
+        def choose(index, label, wire):
+            picked = self.replay([*menu_path, tap(3.3, f"option{index}")], until=4.4)
+            self.assertFalse(visible(picked, key="settings-error"))
+            self.assertFalse(visible(picked, key=menu))
+            self.expect_rendered(picked, text=label, within=trigger)
+            self.assertEqual(json.loads(settings.read_text(encoding="utf-8")),
+                             {**initial, "defaultTableSort": wire})
+
+        def expect_page(tree, rows, header="name", col=1):
+            self.expect_rendered(tree, key="grid-readonly", within="data-grid")
+            self.expect_rendered(tree, text=header, within=f"head-{col}")
+            for i, (name,) in enumerate(rows):
+                self.expect_rendered(tree, text=name, within=f"cell-{i}-{col}")
+
+        choose(1, "Primary key, descending", "primaryKeyDesc")
+        # All reads take place in a fresh real app, not a mutation of the
+        # test state; the normal page control exercises the same worker.
+        expect_page(self.replay(OPEN, until=4.9), desc)
+        paged = self.replay([*OPEN, tap(5.0, "page-next")], until=6.8)
+        self.expect_rendered(paged, key="grid-page-label", text="Page 2 / 2")
+        expect_page(paged, desc_next)
+
+        sort_a = [*OPEN, tap(5.2, "head-1")]
+        expect_page(self.replay(sort_a, until=6.8), manual, "name ↑")
+        b = [*sort_a, tap(7.0, "tree-table-orders")]
+        expect_page(self.replay(b, until=8.8), driver_orders, col=0)
+        a_again = self.replay([*b, tap(9.1, "tab-1")], until=10.9)
+        expect_page(a_again, manual, "name ↑")
+        # Clear through the two remaining real header cycle presses.
+        expect_page(self.replay([*sort_a, tap(7.0, "head-1"), tap(8.5, "head-1")],
+                                until=10.2), desc)
+
+        choose(2, "Do not sort", "none")
+        expect_page(self.replay([OPEN[0], tap(3, "tree-table-orders")], until=4.9),
+                    none, col=0)
+        choose(0, "Primary key, ascending", "primaryKeyAsc")
+        expect_page(self.replay(OPEN, until=4.9), asc)
+        self.assertEqual(self.db.read_bytes(), before)
+
     def test_sqlite_manual_table_sort_follows_only_its_own_tab(self):
         """An identical sortable column on two real SQLite tables must not leak order."""
         with sqlite3.connect(self.db) as db:

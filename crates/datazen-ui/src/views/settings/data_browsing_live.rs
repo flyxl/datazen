@@ -1,7 +1,7 @@
 //! The live native Data Browsing view presents only preferences with real host writes.
 
 use datazen_ui_api::types::WorkflowStepResultOrder;
-use datazen_ui_api::{BuiltinLanguage, Setting};
+use datazen_ui_api::{BuiltinLanguage, DefaultTableSort, Setting};
 use rune::{col, row, text, tok, El, TextEdit, TextStyle, Tx};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Placement};
 
@@ -52,6 +52,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         ));
     let presets = page_size_select(state, page_size, &k, &mut overlays);
     mount_custom_page_size(state, dark, &k, &mut overlays);
+    let default_sort = state.desktop.read_native_default_table_sort().ok();
     section = section
         .child(setting_row(
             &k,
@@ -60,7 +61,13 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             t("settings.defaultPageSize"),
             None,
             presets,
-        ))
+        ));
+    // Keep the original preference order among the rows the native host
+    // actually supports. Do not reserve space for unimplemented settings.
+    if let Some(order) = default_sort {
+        section = section.child(default_table_sort_row(state, order, &k, &mut overlays));
+    }
+    section = section
         .child(
             col()
                 .key("settings-data")
@@ -92,12 +99,20 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         section = section.child(settings_error_row(state, theme));
     }
 
-    let unavailable = match state.builtin_language() {
-        BuiltinLanguage::English => concat!(
+    let unavailable = match (state.builtin_language(), default_sort.is_some()) {
+        (BuiltinLanguage::English, true) => concat!(
+            "Row counting, grid and time display, connection pool, ",
+            "the SELECT-limit toggle, and auto-chart are not configurable here."
+        ),
+        (BuiltinLanguage::English, false) => concat!(
             "Row counting, default sorting, grid and time display, connection pool, ",
             "the SELECT-limit toggle, and auto-chart are not configurable here."
         ),
-        BuiltinLanguage::SimplifiedChinese => concat!(
+        (BuiltinLanguage::SimplifiedChinese, true) => concat!(
+            "此处暂不支持行数统计、表格和时间显示、",
+            "连接池、SELECT 限制开关及自动图表设置。"
+        ),
+        (BuiltinLanguage::SimplifiedChinese, false) => concat!(
             "此处暂不支持行数统计、默认排序、表格和时间显示、",
             "连接池、SELECT 限制开关及自动图表设置。"
         ),
@@ -124,6 +139,69 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .wrap(),
         )
         .children(overlays)
+}
+
+fn default_table_sort_row(
+    state: &AppState,
+    order: DefaultTableSort,
+    k: &Kit,
+    overlays: &mut Vec<El>,
+) -> El {
+    use DefaultTableSort::{None as Unordered, PrimaryKeyAsc, PrimaryKeyDesc};
+    let label = t("settings.defaultTableSort");
+    let labels = [
+        t("settings.defaultTableSort.primaryKeyAsc"),
+        t("settings.defaultTableSort.primaryKeyDesc"),
+        t("settings.defaultTableSort.none"),
+    ];
+    let current = match order {
+        PrimaryKeyAsc => labels[0],
+        PrimaryKeyDesc => labels[1],
+        Unordered => labels[2],
+    };
+    let select = Select::new("settings-default-table-sort", &labels)
+        .values(&[PrimaryKeyAsc.as_str(), PrimaryKeyDesc.as_str(), Unordered.as_str()])
+        .current(Some(current))
+        .label(label)
+        .open(state.settings_content.open_select == Some(SettingsSelect::DefaultTableSort))
+        .on_toggle(|state: &mut AppState| {
+            if state.active == crate::types::Section::Settings && state.settings_section() == "dataBrowsing" {
+                state.settings_content.toggle_select(SettingsSelect::DefaultTableSort);
+            }
+        })
+        .on_close(|state: &mut AppState| {
+            if state.settings_content.open_select == Some(SettingsSelect::DefaultTableSort) {
+                state.settings_content.close_select();
+            }
+        })
+        .on_choose(|state: &mut AppState, value, _tx| {
+            if state.active != crate::types::Section::Settings
+                || state.settings_section() != "dataBrowsing"
+                || state.settings_content.open_select != Some(SettingsSelect::DefaultTableSort)
+            {
+                return;
+            }
+            state.settings_content.close_select();
+            if let Some(order) = DefaultTableSort::from_wire(value) {
+                state.settings_error = state.desktop.write_native_default_table_sort(order).err();
+                // Do not refresh a table or discard a draft from Settings.
+                // The next normal read samples the host's saved preference.
+            }
+        })
+        .build(&preset_field_kit(k), overlays)
+        .h(FIELD_HEIGHT)
+        .radius(9.0)
+        .border(1.0, k.c.border_base)
+        .pl(3.0)
+        .pr(8.0);
+    setting_row(
+        k,
+        overlays,
+        "settings-default-table-sort-row".to_owned(),
+        label,
+        Some(t("settings.defaultTableSort.hint")),
+        select,
+    )
 }
 
 fn workflow_step_order_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) -> El {

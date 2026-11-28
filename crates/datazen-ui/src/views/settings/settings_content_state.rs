@@ -260,6 +260,8 @@ pub enum SettingsSelect {
     CustomPageSize,
     /// The data-browsing query result limit select.
     ResultLimit,
+    /// The native data-browsing default table sort select.
+    DefaultTableSort,
     /// The data-browsing workflow step order select.
     WorkflowOrder,
     /// The native editor mono-family select.

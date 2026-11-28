@@ -2353,6 +2353,17 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    /// Persisted default for interactive native table reads. Unlike the
+    /// demo Settings API, unsupported adapters must not fabricate a value.
+    fn read_native_default_table_sort(&self) -> Result<DefaultTableSort, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Persist only the global default, never a table's manual sort.
+    fn write_native_default_table_sort(&mut self, _order: DefaultTableSort) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// The effective workflow report tab order. A supported persistence
     /// port returns Desc for an unset or unrecognized legacy preference.
     fn read_workflow_step_result_order(&self) -> Result<types::WorkflowStepResultOrder, String> {

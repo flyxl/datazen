@@ -68,6 +68,16 @@ pub enum DefaultTableSort {
 }
 
 impl DefaultTableSort {
+    /// Only the persisted global choices; the toolbar's inherit is not one.
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "primaryKeyAsc" => Some(Self::PrimaryKeyAsc),
+            "primaryKeyDesc" => Some(Self::PrimaryKeyDesc),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+
     /// The wire spelling.
     pub fn as_str(self) -> &'static str {
         match self {

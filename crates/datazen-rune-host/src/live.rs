@@ -2564,13 +2564,19 @@ async fn run_query_observed(
 /// absent settings retain the existing driver policy; reading never writes.
 fn native_table_default_order(document: &serde_json::Value) -> NativeTableDefaultOrder {
     use datazen_ui_api::DefaultTableSort;
-    match document.get("defaultTableSort").and_then(serde_json::Value::as_str) {
-        Some(value) if value == DefaultTableSort::PrimaryKeyDesc.as_str() => {
-            NativeTableDefaultOrder::SinglePrimaryKeyDescending
-        }
-        Some(value) if value == DefaultTableSort::None.as_str() => NativeTableDefaultOrder::Unordered,
-        _ => NativeTableDefaultOrder::Driver,
+    match effective_native_default_table_sort(document) {
+        DefaultTableSort::PrimaryKeyAsc => NativeTableDefaultOrder::Driver,
+        DefaultTableSort::PrimaryKeyDesc => NativeTableDefaultOrder::SinglePrimaryKeyDescending,
+        DefaultTableSort::None => NativeTableDefaultOrder::Unordered,
     }
+}
+
+fn effective_native_default_table_sort(document: &serde_json::Value) -> datazen_ui_api::DefaultTableSort {
+    use datazen_ui_api::DefaultTableSort;
+    document.get("defaultTableSort")
+        .and_then(serde_json::Value::as_str)
+        .and_then(DefaultTableSort::from_wire)
+        .unwrap_or(DefaultTableSort::PrimaryKeyAsc)
 }
 
 // What one setting write does to the document's ui object (L1): the
@@ -3361,6 +3367,30 @@ impl DesktopAdapter for LiveAdapter {
         let stored = futures_executor::block_on(self.settings.save_app_settings(document.clone()))
             .map_err(|error| error.to_string())?;
         *self.settings_document.lock().expect("the settings lock") = stored;
+        Ok(())
+    }
+
+    fn read_native_default_table_sort(&self) -> Result<datazen_ui_api::DefaultTableSort, String> {
+        let settings = self.settings_document.lock()
+            .map_err(|_| "Could not read the default table sort.".to_owned())?;
+        Ok(effective_native_default_table_sort(&settings))
+    }
+
+    fn write_native_default_table_sort(
+        &mut self,
+        order: datazen_ui_api::DefaultTableSort,
+    ) -> Result<(), String> {
+        let error = || "Could not save the default table sort.".to_owned();
+        let mut cache = self.settings_document.lock().map_err(|_| error())?;
+        // Read the current file, not the boot fallback: a malformed document
+        // must not be replaced to change a single preference.
+        let mut document = futures_executor::block_on(self.settings.read_app_settings())
+            .map_err(|_| error())?;
+        let object = document.as_object_mut().ok_or_else(error)?;
+        object.insert("defaultTableSort".into(), serde_json::json!(order.as_str()));
+        let stored = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|_| error())?;
+        *cache = stored;
         Ok(())
     }
 
@@ -4482,6 +4512,33 @@ mod tests {
         drop(none);
         assert_eq!(std::fs::read(&saved_settings).unwrap(), saved);
         assert_eq!(std::fs::read(&database).unwrap(), original_db, "this journey is read-only");
+    }
+
+    #[test]
+    fn native_default_table_sort_persists_typed_and_refuses_a_corrupt_document() {
+        use datazen_ui_api::DefaultTableSort::{None as Unordered, PrimaryKeyAsc, PrimaryKeyDesc};
+        let root = tempfile::tempdir().expect("disposable settings root");
+        let path = root.path().join("settings.json");
+        let current = br#"{"defaultTableSort":"future","ui":{"language":"en"},"other":[1,2]}"#;
+        std::fs::write(&path, current).unwrap();
+        let repo = Arc::new(FileConnectionRepository::open(&root.path().join("connections.json")).unwrap());
+        let mut live = LiveAdapter::with_data_dir(repo.clone(), root.path());
+        assert_eq!(live.read_native_default_table_sort().unwrap(), PrimaryKeyAsc);
+        assert_eq!(std::fs::read(&path).unwrap(), current);
+        for order in [PrimaryKeyDesc, Unordered, PrimaryKeyAsc] {
+            live.write_native_default_table_sort(order).expect("actual persisted change");
+            assert_eq!(live.read_native_default_table_sort().unwrap(), order);
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(),
+                serde_json::json!({"defaultTableSort":order.as_str(),"ui":{"language":"en"},"other":[1,2]}));
+        }
+        drop(live);
+        let mut reopened = LiveAdapter::with_data_dir(repo, root.path());
+        assert_eq!(reopened.read_native_default_table_sort().unwrap(), PrimaryKeyAsc);
+        let corrupt = b"{replace nothing";
+        std::fs::write(&path, corrupt).unwrap();
+        assert!(reopened.write_native_default_table_sort(Unordered).is_err());
+        assert_eq!(reopened.read_native_default_table_sort().unwrap(), PrimaryKeyAsc);
+        assert_eq!(std::fs::read(&path).unwrap(), corrupt);
     }
 
     #[test]
