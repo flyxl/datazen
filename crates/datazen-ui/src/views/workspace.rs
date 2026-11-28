@@ -400,7 +400,11 @@ pub fn query_workspace(
                 .center_y()
                 .justify_center()
                 .child(
-                    text(t("query.shortcutHint"))
+                    text(if state.uses_alternate_execute_shortcut() {
+                        t("query.nativeExecuteShortcut.idleModR")
+                    } else {
+                        t("query.shortcutHint")
+                    })
                         .key("query-idle-hint")
                         .color(crate::ui::kit::kit(dark).c.text_muted)
                         .font(rune::TextStyle::new(12.0, 400.0)),
@@ -528,7 +532,12 @@ fn query_toolbar(state: &AppState, theme: tok::Theme, dark: bool, database_picke
     );
     if state.native_query_selected() || state.query_loading.is_some() {
         bar = bar.child(
-            text("Command+Enter runs the statement at the cursor")
+            text(if state.uses_alternate_execute_shortcut() {
+                t("query.nativeExecuteShortcut.runningModR")
+            } else {
+                "Command+Enter runs the statement at the cursor"
+            })
+                .key("query-running-shortcut-hint")
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
         );

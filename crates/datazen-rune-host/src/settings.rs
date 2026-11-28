@@ -55,12 +55,22 @@ impl FileSettingsRepository {
     /// settings), the parsed file otherwise. A file that exists but does not
     /// parse is an error — never silently replaced.
     fn document(&self) -> Result<serde_json::Value, SettingsRepositoryError> {
+        self.read_document(true)
+    }
+
+    /// A shortcut edit may create a missing file, but must never replace
+    /// an existing malformed (including blank) file with just that setting.
+    pub(crate) fn document_for_shortcut_edit(&self) -> Result<serde_json::Value, SettingsRepositoryError> {
+        self.read_document(false)
+    }
+
+    fn read_document(&self, allow_blank: bool) -> Result<serde_json::Value, SettingsRepositoryError> {
         match std::fs::read_to_string(&self.path) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 Ok(serde_json::json!({}))
             }
             Err(error) => Err(Self::io_error(error)),
-            Ok(text) if text.trim().is_empty() => Ok(serde_json::json!({})),
+            Ok(text) if allow_blank && text.trim().is_empty() => Ok(serde_json::json!({})),
             Ok(text) => serde_json::from_str(&text).map_err(|error| {
                 SettingsRepositoryError::BackendUnavailable(format!(
                     "parse {}: {error}",

@@ -3495,10 +3495,14 @@ impl DesktopAdapter for LiveAdapter {
     fn write_native_execute_shortcut(
         &mut self, binding: datazen_ui_api::NativeExecuteShortcut,
     ) -> Result<(), String> {
-        // Read again rather than overwriting a settings edit, corrupt file,
-        // or unknown sibling that was not included in the startup snapshot.
-        let mut document = futures_executor::block_on(self.settings.read_app_settings())
-            .map_err(|error| error.to_string())?;
+        // Read the current file, not the startup snapshot and not the
+        // compatibility reader that treats an existing blank file as empty.
+        // The repository writes via atomic rename; this read/merge/write is
+        // not a cross-process lock against another editor changing the file.
+        let repository = crate::settings::FileSettingsRepository::open(
+            &crate::settings::settings_path(&self.data_dir),
+        );
+        let mut document = repository.document_for_shortcut_edit().map_err(|error| error.to_string())?;
         let object = document.as_object_mut().ok_or("the settings document is not an object")?;
         let custom = object.entry("customKeymap").or_insert_with(|| serde_json::json!({}))
             .as_object_mut().ok_or("customKeymap is not an object")?;
@@ -4665,6 +4669,18 @@ mod tests {
         assert!(fresh.write_native_execute_shortcut(ModEnter).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), wrong_shape);
         assert_eq!(fresh.native_execute_shortcut(), Some(ModR));
+
+        for malformed in [b"".as_slice(), b" \n\t".as_slice(), b"{broken".as_slice()] {
+            std::fs::write(&path, malformed).unwrap();
+            assert!(fresh.write_native_execute_shortcut(ModEnter).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), malformed);
+            assert_eq!(fresh.native_execute_shortcut(), Some(ModR));
+        }
+        std::fs::remove_file(&path).unwrap();
+        fresh.write_native_execute_shortcut(ModEnter).expect("a missing file is a new install");
+        assert_eq!(fresh.native_execute_shortcut(), Some(ModEnter));
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(),
+                   serde_json::json!({"customKeymap": {"execute": "Mod-Enter"}}));
     }
 
     #[test]

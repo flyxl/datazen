@@ -60,9 +60,12 @@ class SqlSelectionJourneys:
         query[-1] = {"t": 4.8, "type": "paste", "text": picked + "\nSELECT 'not-selected' AS value;"}
         history = self.root / "query-history.json"
         blocked = self.replay([*query, key(6.1, "Enter", cmd=True),
-                               {**key(6.55, "r", cmd=True), "shift": True},
-                               key(7.0, "f", cmd=True), key(7.6, "r", cmd=True)], until=8.4)
+                               {**key(6.45, "r", cmd=True), "shift": True},
+                               {**key(6.8, "r", cmd=True), "repeat": True},
+                               key(7.15, "f", cmd=True), key(7.65, "r", cmd=True)], until=8.5)
         self.expect_rendered(blocked, key="sql-find-input")
+        self.expect_rendered(blocked, key="query-idle-hint", text="Press Mod+R in the SQL editor to execute")
+        self.assertFalse(visible(blocked, text="Press ⌘+Enter to execute", within="query-main"))
         self.assertFalse(visible(blocked, key="sql-line-2"), "old Mod+Enter inserted a line")
         self.assertFalse(visible(blocked, key="result-workspace"))
         self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
@@ -75,9 +78,63 @@ class SqlSelectionJourneys:
         self.assertFalse(visible(ran, text="not-selected", within="result-workspace"))
         self.assertEqual([item["sql"].rstrip(";") for item in json.loads(history.read_text(encoding="utf-8"))],
                          [picked.rstrip(";")])
+        repeated = self.replay([
+            *selected, key(7.8, "r", cmd=True),
+            {**key(10.4, "r", cmd=True), "repeat": True},
+        ], until=11.6)
+        self.expect_rendered(repeated, text="shortcut-picked", within="result-cell-0-0")
+        self.assertEqual(len({node["key"] for node in repeated["elements"]
+                              if (node.get("key") or "").startswith("query-result-tab-")
+                              and not node.get("exiting")}), 1)
         self.assertEqual(self.sql_customer_rows(), original)
         self.assertEqual(self.db.read_bytes(), db_bytes)
         self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), expected)
+
+    def test_native_execute_shortcut_keeps_legacy_run_from_results_when_default_or_restored(self):
+        self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        settings = self.root / "settings.json"
+        prefs = {"ui": {"language": "en"}, "customKeymap": {"future": ["keep"]}}
+        settings.write_text(json.dumps(prefs), encoding="utf-8")
+        original = settings.read_bytes()
+        before = self.db.read_bytes()
+
+        def legacy_run(value):
+            statement = f"SELECT '{value}';"
+            query = query_steps(statement)
+            query[-2] = {"t": 4.8, "type": "paste", "text": statement}
+            # Mod+R is inactive even on the editor. The old app command works
+            # after a result cell took focus, with Shift as it did before.
+            ran = self.replay([*query[:-1], key(7.5, "r", cmd=True), query[-1],
+                               tap(10.3, "result-cell-0-0"),
+                               {**key(10.9, "Enter", cmd=True), "shift": True}], until=12.9)
+            self.expect_rendered(ran, text=value, within="result-cell-0-0")
+            self.assertEqual(len({node["key"] for node in ran["elements"]
+                                  if (node.get("key") or "").startswith("query-result-tab-")
+                                  and not node.get("exiting")}), 2)
+
+        legacy_run("legacy-when-absent")
+        self.assertEqual(settings.read_bytes(), original)
+
+        settings.write_text(json.dumps({**prefs, "customKeymap": {
+            **prefs["customKeymap"], "execute": "Mod-r",
+        }}), encoding="utf-8")
+        trigger = "settings-execute-shortcut-trigger"
+        restored = self.replay([
+            tap(.5, "rail-settings"), tap(1.4, "settings-nav-editor"),
+            tap(2.65, trigger), tap(3.55, "option0"),
+        ], until=4.65)
+        self.expect_rendered(restored, text="Mod+Enter", within=trigger)
+        self.assertFalse(visible(restored, key="settings-error"))
+        self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), {
+            **prefs, "customKeymap": {**prefs["customKeymap"], "execute": "Mod-Enter"},
+        })
+        restored_bytes = settings.read_bytes()
+        legacy_run("legacy-when-restored")
+        self.assertEqual(settings.read_bytes(), restored_bytes)
+        self.assertEqual(self.db.read_bytes(), before)
 
     def test_native_query_toolbar_snippets_preserve_literal_saved_sql_and_undo_without_execution(self):
         original = self.sql_fixture_before()

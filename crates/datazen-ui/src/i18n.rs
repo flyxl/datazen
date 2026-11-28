@@ -80,8 +80,16 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         )),
         "settings.nativeExecuteShortcut.label" => Some(("执行 SQL", "Execute SQL")),
         "settings.nativeExecuteShortcut.hint" => Some((
-            "只在当前 SQL 编辑器获得焦点时执行。Mac 上的 Mod 为 Command，其他系统为 Ctrl。",
-            "Runs only in the focused SQL editor. Mod is Command on macOS and Ctrl elsewhere.",
+            "Mod+R 只在当前 SQL 编辑器获得焦点时执行。Mac 上的 Mod 为 Command，其他系统为 Ctrl。",
+            "Mod+R works only in the focused SQL editor. Mod is Command on macOS and Ctrl elsewhere.",
+        )),
+        "query.nativeExecuteShortcut.idleModR" => Some((
+            "在 SQL 编辑器中按 Mod+R 执行",
+            "Press Mod+R in the SQL editor to execute",
+        )),
+        "query.nativeExecuteShortcut.runningModR" => Some((
+            "Mod+R 执行当前 SQL 编辑器中的选区或光标处的语句",
+            "Mod+R runs the selection or the statement at the cursor in the focused SQL editor",
         )),
         "settings.nativeEditorFont.bundled" => Some(("内置等宽字体（IBM Plex Mono）", "Bundled monospace (IBM Plex Mono)")),
         "settings.nativeRetention.unavailable" => Some(("此版本暂不支持本机工作流历史清理。", "Local workflow history cleanup is not available here.")),

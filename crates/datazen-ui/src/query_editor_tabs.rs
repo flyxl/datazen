@@ -4,7 +4,7 @@
 
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 
-use datazen_ui_api::{TabKind, WorkspaceApi};
+use datazen_ui_api::{NativeExecuteShortcut, TabKind, WorkspaceApi};
 use rune::Tx;
 
 use crate::{state_def::AppState, types::Section, sql_editor::SqlEditor};
@@ -172,6 +172,10 @@ impl AppState {
         self.query_editor_tabs.connection.as_ref().is_none_or(|owner| {
             self.query_editor_current_connection().as_ref() == Some(owner)
         })
+    }
+
+    pub(crate) fn uses_alternate_execute_shortcut(&self) -> bool {
+        self.desktop.native_execute_shortcut() == Some(NativeExecuteShortcut::ModR)
     }
 
     pub(crate) fn owns_query_execution_shortcut(&self, tx: &Tx) -> bool {
