@@ -2,6 +2,7 @@
 from contextlib import closing
 import json
 import sqlite3
+import sys
 
 from offline import fill, key
 from scenarios import fixture, query_steps, tap, type_text, visible
@@ -37,15 +38,29 @@ class SqlSelectionJourneys:
         self.expect_rendered(default, text="Mod+Enter", within=trigger)
         card = "settings-keymap-customize"
         self.expect_rendered(default, key=card, within="settings-section-editor")
-        self.expect_rendered(default, text="Customize Shortcuts", within="settings-keymap-customize-header")
+        self.expect_rendered(default, text="CUSTOMIZE SHORTCUTS", within="settings-keymap-customize-header")
         self.expect_rendered(default, key="settings-execute-shortcut-row", within="settings-keymap-customize-rows")
         self.expect_rendered(default, key=trigger, within=card)
+        row = "settings-execute-shortcut-row"
+        chip = "settings-keymap-kbd-execute"
+        primary = "Cmd" if sys.platform == "darwin" else "Ctrl"
+        self.expect_rendered(default, text="Execute Statement", within=row)
+        self.expect_rendered(default, text=f"{primary}+Enter", within=chip)
+        self.assertIn("Execute Statement", json.dumps(default["accessibility"]))
+        rx, ry, rw, rh = self._settled_rect(default, row)
+        fx, fy, fw, fh = self._settled_rect(default, trigger)
+        cx, cy, cw, ch = self._settled_rect(default, chip)
+        self.assertEqual((fw, fh, rh), (128.0, 28.0, 28.0))
+        self.assertAlmostEqual(fx + fw + 8.0, cx, delta=.1)
+        self.assertAlmostEqual(cx + cw, rx + rw, delta=.1)
+        self.assertAlmostEqual(cy + ch / 2, ry + rh / 2, delta=.1)
+        self.assertAlmostEqual(fy, ry, delta=.1)
         _, top, _, height = self._settled_rect(default, card)
         _, syntax_top, _, syntax_height = self._settled_rect(default, "settings-live-syntax-theme")
         _, snippets_top, _, _ = self._settled_rect(default, "settings-snippets")
         self.assertLessEqual(syntax_top + syntax_height, top)
         self.assertLessEqual(top + height, snippets_top)
-        for absent in ("settings-keymap-preset-trigger", "settings-keymap-reset", "settings-keymap-row-formatSql"):
+        for absent in ("settings-keymap-preset-trigger", "settings-keymap-reset"):
             self.assertFalse(visible(default, key=absent))
         self.assertEqual(settings.read_bytes(), initial)
 
@@ -60,6 +75,7 @@ class SqlSelectionJourneys:
         obstruction.rmdir()
         saved = self.replay(change, until=4.65)
         self.expect_rendered(saved, text="Mod+R", within=trigger)
+        self.expect_rendered(saved, text=f"{primary}+R", within=chip)
         self.assertFalse(visible(saved, key="settings-error"))
         expected = {**prefs, "customKeymap": {**prefs["customKeymap"], "execute": "Mod-r"}}
         self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), expected)

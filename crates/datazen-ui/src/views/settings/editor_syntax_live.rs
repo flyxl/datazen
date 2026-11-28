@@ -1,9 +1,12 @@
 //! Built-in syntax themes for the actual native SQL workspace.
-use datazen_ui_api::{EditorFontFamily, NativeExecuteShortcut, SqlSyntaxTheme, SQL_SYNTAX_PRESETS};
+use datazen_ui_api::{
+    format_shortcut_for_display, EditorFontFamily, NativeExecuteShortcut, SqlSyntaxTheme, SQL_SYNTAX_PRESETS,
+};
 use rune::{col, text, Color, El, Span, TextStyle};
 use rune_kit::Kit;
 
 use super::{
+    setting_hint::SettingHint,
     settings_content::{shortcut_card, shortcut_card_heading, shortcut_card_rows},
     settings_content_state::SettingsSelect,
     settings_ui::setting_row,
@@ -96,7 +99,7 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
 /// only actions with a working Settings writer and live keyboard consumer.
 pub(super) fn execute_shortcut_card(state: &AppState, kit: &Kit, overlays: &mut Vec<El>) -> Option<El> {
     let binding = state.desktop.native_execute_shortcut()?;
-    let label = t("settings.nativeExecuteShortcut.label");
+    let label = t("keymap.action.execute");
     let which = SettingsSelect::ExecuteShortcut;
     let labels = ["Mod+Enter", "Mod+R"];
     let values = NativeExecuteShortcut::OPTIONS.map(NativeExecuteShortcut::wire);
@@ -108,7 +111,7 @@ pub(super) fn execute_shortcut_card(state: &AppState, kit: &Kit, overlays: &mut 
         s.active == crate::types::Section::Settings && s.settings_section() == "editor"
     };
     let select = Select::new("settings-execute-shortcut", &labels)
-        .values(&values).current(Some(selected)).label(label)
+        .values(&values).current(Some(selected)).label(label).width(128.0)
         .open(state.settings_content.open_select == Some(which))
         .on_toggle(move |s: &mut AppState| {
             if current_editor(s) && s.desktop.native_execute_shortcut().is_some() {
@@ -130,20 +133,28 @@ pub(super) fn execute_shortcut_card(state: &AppState, kit: &Kit, overlays: &mut 
                 s.settings_error = s.desktop.write_native_execute_shortcut(binding).err();
             }
         });
-    let field = editor_preference_trigger(select, &editor_field_kit(kit), overlays);
-    let execute = setting_row(kit, overlays, "settings-execute-shortcut-row".to_owned(), label,
-                              Some(t("settings.nativeExecuteShortcut.hint")), field);
+    // The native control is a picker, but its size and position are those
+    // of the original keymap input, not a full-width Settings select.
+    let mut picker_kit = syntax_field_kit(kit);
+    picker_kit.ty.ui_compact = TextStyle::new(11.0, 400.0).lh(16.5).mono();
+    let field = editor_preference_trigger(select, &picker_kit, overlays)
+        .h(28.0).radius(4.0).pr(6.0);
+    let display = format_shortcut_for_display(binding.wire(), cfg!(target_os = "macos"));
+    let hint = SettingHint::new(
+        "settings-execute-shortcut-row-hint", label, t("settings.nativeExecuteShortcut.hint"),
+    ).build(kit, overlays);
+    let execute = shortcut_action_row(
+        kit, "settings-execute-shortcut-row", "settings-keymap-kbd-execute",
+        label, hint, field, display,
+    );
     let rows = shortcut_card_rows().child(execute).children(format_shortcut_row(state, kit, overlays));
     Some(shortcut_card(kit, shortcut_card_heading(kit), rows))
 }
-
 
 /// Keep transient edits local. Incomplete chords must not silently change a
 /// working shortcut on disk or in a different open Query tab.
 fn format_shortcut_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) -> Option<El> {
     use crate::ui::field::TextField;
-    use crate::views::settings::setting_hint::SettingHint;
-    use datazen_ui_api::format_shortcut_for_display;
     let binding = state.desktop.native_format_shortcut()?;
     let display = format_shortcut_for_display(&binding, cfg!(target_os = "macos"));
     let initial = rune::TextEdit::new(display.clone());
@@ -177,18 +188,35 @@ fn format_shortcut_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) -> Opt
                     s.settings_error = s.desktop.write_native_format_shortcut(binding.as_deref()).err();
                     if s.settings_error.is_none() { s.settings_content.format_binding_draft = None; }
                 }
-                Err(()) => s.settings_error = Some(t("settings.nativeFormatShortcut.invalid").into()),
+                Err(()) => {
+                    // Text input callbacks are outside the app's render-locale scope.
+                    let message = crate::i18n::with_language(s.builtin_language(), || {
+                        t("settings.nativeFormatShortcut.invalid")
+                    });
+                    s.settings_error = Some(message.to_owned());
+                }
             }
         })
         .build(k.dark);
     let hint = SettingHint::new("settings-format-shortcut-hint", label, t("settings.nativeFormatShortcut.hint")).build(k, overlays);
-    let chip = rune::row().key("settings-keymap-kbd-formatSql").min_w(40.0)
+    Some(shortcut_action_row(
+        k, "settings-keymap-row-formatSql", "settings-keymap-kbd-formatSql",
+        label, hint, field, display,
+    ))
+}
+
+fn shortcut_action_row(
+    k: &Kit, key: &str, chip_key: &str, label: &str, hint: El, field: El, display: String,
+) -> El {
+    let chip = rune::row().key(chip_key.to_owned()).min_w(40.0)
         .px(7.0).py(3.0).radius(4.0).border(1.0, k.c.border_base).fill(k.c.surface_raised).center()
         .child(text(display).font(TextStyle::new(10.0, 400.0).mono()).color(k.c.text_faint));
-    Some(rune::row().key("settings-keymap-row-formatSql").w_full().gap(16.0).center_y().justify_between()
-        .child(rune::row().gap(4.0).center_y()
-            .child(text(label).font(TextStyle::new(12.0, 400.0)).color(k.c.text_muted)).child(hint))
-        .child(rune::row().gap(8.0).center_y().child(field).child(chip)))
+    rune::row().key(key.to_owned()).w_full().gap(16.0).center_y().justify_between()
+        .child(rune::row().key(format!("{key}-label")).gap(4.0).center_y().min_w(0.0).shrink()
+            .child(text(label.to_owned()).font(TextStyle::new(12.0, 400.0).lh(16.0))
+                .color(k.c.text_muted).min_w(0.0).shrink().wrap())
+            .child(hint))
+        .child(rune::row().gap(8.0).center_y().child(field).child(chip))
 }
 
 fn normalize_format_binding(input: &str) -> Result<Option<String>, ()> {
