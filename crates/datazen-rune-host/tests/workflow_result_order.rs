@@ -215,3 +215,62 @@ fn no_read_or_failed_write_changes_legacy_or_corrupt_documents() {
     assert_eq!(adapter.read_workflow_step_result_order().unwrap(), Desc);
     assert_eq!(fs::read(&path).unwrap(), unknown, "no migration on read");
 }
+
+#[test]
+fn workflow_order_has_separate_wrapping_label_hint_and_select_in_the_live_host() {
+    const ROW: &str = "settings-workflow-step-order-row";
+    const EN_HINT: &str = "Order of the step result tabs shown after a workflow run.";
+    const ZH_HINT: &str = "工作流运行后步骤结果选项卡的排列顺序。";
+    for (locale, theme, dark, help, ascending) in [
+        ("en", "light", false, EN_HINT, ASC_LABEL),
+        ("zh-CN", "dark", true, ZH_HINT, "步骤递增（第一步在前）"),
+    ] {
+        let profile = tempfile::tempdir().unwrap();
+        let path = profile.path().join("settings.json");
+        let before = json!({"ui": {"language": locale, "themeMode": theme}});
+        let before_bytes = serde_json::to_vec(&before).unwrap();
+        fs::write(&path, &before_bytes).unwrap();
+        let mut rt = runtime(profile.path(), dark);
+        settings(&mut rt);
+
+        let slot = element(&rt, &format!("{ROW}-label")).rect;
+        let label = element(&rt, &format!("{ROW}-label-text")).rect;
+        let help_mark = element(&rt, &format!("{ROW}-hint-mark"));
+        let mark = help_mark.rect;
+        let target = element(&rt, SELECT).rect;
+        let prior = element(&rt, "settings-max-rows-row").rect;
+        assert_eq!(slot[2], 160.0);
+        assert_eq!([mark[2], mark[3]], [16.0, 16.0]);
+        assert!(label[0] + label[2] + 7.9 <= mark[0], "hint overlaps the label: {label:?}, {mark:?}");
+        assert!(mark[0] + mark[2] <= slot[0] + slot[2] + 0.1, "hint left its label column");
+        assert!((target[0] - slot[0] - slot[2] - 16.0).abs() < 0.1, "Select gutter changed");
+        assert!((target[1] - prior[1] - prior[3] - 20.0).abs() < 0.1, "Select row y moved");
+        assert_eq!([target[2], target[3]], [496.0, 36.0]);
+        if locale == "en" {
+            assert!(label[3] >= 39.5, "the long English label did not wrap: {label:?}");
+        }
+
+        // Move to the actual independent 16px hit target. Before the fix
+        // this point was inside the Select, and the shared mark had no
+        // automatic tooltip behavior.
+        assert_eq!(help_mark.help.as_deref(), Some(help));
+        rt.pointer_move(mark[0] + mark[2] / 2.0, mark[1] + mark[3] / 2.0);
+        for _ in 0..90 {
+            rt.frame(1.0 / 60.0);
+        }
+        let (tooltip, bounds) = rt.help_tooltip().expect("hover opens the real native help");
+        assert_eq!(tooltip, help);
+        assert!(bounds[1] + bounds[3] < mark[1], "native help is above the mark");
+        assert!(rt.find(MENU).is_none(), "hover did not open the Select");
+        assert_eq!(fs::read(&path).unwrap(), before_bytes, "hover did not write preferences");
+
+        rt.pointer_move(1120.0, target[1] + target[3] / 2.0);
+        settled(&mut rt);
+        assert!(rt.help_tooltip().is_none());
+        choose(&mut rt, ascending);
+        assert_eq!(rt.state.workflow_step_order(), Asc);
+        let mut expected = before;
+        expected["workflowStepResultOrder"] = json!("asc");
+        assert_eq!(serde_json::from_slice::<Value>(&fs::read(&path).unwrap()).unwrap(), expected);
+    }
+}

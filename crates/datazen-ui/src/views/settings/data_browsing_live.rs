@@ -479,14 +479,63 @@ fn workflow_step_order_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) ->
         .border(1.0, k.c.border_base)
         .pl(3.0)
         .pr(8.0);
-    setting_row(
-        k,
-        overlays,
-        "settings-workflow-step-order-row".to_owned(),
-        label,
-        Some(t("settings.workflowStepResultOrderHint")),
-        select,
-    )
+    workflow_order_setting_row(k, label, t("settings.workflowStepResultOrderHint"), select)
+}
+
+/// The original's min-w-0 label wraps within its 160px column, reserving
+/// a non-shrinking 16px hint plus the 4px row gap and 4px hint margin.
+/// Only this long, live label needs the narrower measure.
+fn workflow_order_setting_row(k: &Kit, label: &str, hint: &str, select: El) -> El {
+    const KEY: &str = "settings-workflow-step-order-row";
+    const LABEL_WIDTH: f32 = 160.0;
+    const HINT_WIDTH: f32 = 16.0;
+    const HINT_GAP: f32 = 8.0;
+    let mark = row()
+        .key(format!("{KEY}-hint-mark"))
+        .size(HINT_WIDTH, HINT_WIDTH)
+        .center()
+        .radius(HINT_WIDTH * 0.5)
+        .border(1.0, k.c.border_base)
+        .help(hint)
+        .help_above()
+        .label(label)
+        .description(hint)
+        .child(
+            text("?")
+                .font(TextStyle::new(11.0, 400.0).lh(16.5))
+                .color(k.c.text_faint)
+                .a11y_hidden(),
+        );
+    row()
+        .key(KEY)
+        .w_full()
+        .gap(16.0)
+        .items_start()
+        .child(
+            row()
+                .key(format!("{KEY}-label"))
+                .w(LABEL_WIDTH)
+                .min_h(FIELD_HEIGHT)
+                .gap(HINT_GAP)
+                .center_y()
+                .child(
+                    text(label.to_owned())
+                        .key(format!("{KEY}-label-text"))
+                        .font(TextStyle::new(14.0, 400.0).lh(20.0))
+                        .color(k.c.text_muted)
+                        .min_w(0.0)
+                        .max_w(LABEL_WIDTH - HINT_WIDTH - HINT_GAP)
+                        .shrink()
+                        .wrap(),
+                )
+                .child(
+                    row()
+                        .key(format!("{KEY}-hint-tooltip-trigger"))
+                        .size(HINT_WIDTH, HINT_WIDTH)
+                        .child(mark),
+                ),
+        )
+        .child(col().key(format!("{KEY}-content")).min_w(0.0).grow(1.0).child(select))
 }
 
 fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Vec<El>) -> El {
