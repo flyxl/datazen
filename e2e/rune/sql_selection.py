@@ -624,6 +624,58 @@ class SqlSelectionJourneys:
         self.assertEqual(self.db.read_bytes(), original_bytes)
         self.assertEqual(len(json.loads(history_path.read_bytes())), 1)
 
+    def test_editor_find_buttons_wrap_sole_and_overlapping_matches_without_editing_sqlite(self):
+        original_rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        original_db = self.db.read_bytes()
+
+        def editor(sql):
+            events = query_steps(sql)[:-1]
+            events[-1] = {"t": 4.8, "type": "paste", "text": sql}
+            return events
+
+        sole = "SELECT '猫';"
+        selected = [
+            *editor(sole), key(6.3, "End"), key(6.7, "Left"), key(7.1, "Left"),
+            {**key(7.5, "Left"), "shift": True}, tap(8.1, "sql-find-open"),
+        ]
+        before = self.replay(selected, until=8.65)
+        self.expect_rendered(before, text="猫", within="sql-find-input")
+        self.expect_rendered(before, key="sql-selected-0-8", text="猫")
+        wrapped = self.replay([
+            *selected, tap(8.9, "sql-find-next"), key(9.4, "Escape"),
+            {**key(9.9, "Left"), "shift": True},
+        ], until=10.45)
+        # Find remounts the sole match as a forward range. Shift+Left now
+        # collapses it rather than extending a backward range over the quote.
+        self.expect_rendered(wrapped, key="sql-caret", within="sql-editor-scroll")
+        self.assertFalse(visible(wrapped, key="sql-selected-0-7"))
+        self.assertFalse(visible(wrapped, key="sql-selected-0-8"))
+        self.assertFalse(visible(wrapped, key="sql-find-bar"))
+
+        overlap = "SELECT 'aabbbba' AS overlap;"
+        find = [
+            *editor(overlap), key(6.3, "End"), {**key(6.8, "Home"), "shift": True},
+            tap(7.5, "sql-find-open"), *fill(8.15, "sql-find-input", "bb"),
+        ]
+        first = self.replay([*find, tap(9.2, "sql-find-next")], until=9.85)
+        last = self.replay([*find, tap(9.2, "sql-find-prev")], until=9.85)
+        for scene, expected, other in ((first, 10, 12), (last, 12, 10)):
+            self.expect_rendered(scene, text="bb", within="sql-find-input")
+            self.expect_rendered(scene, key=f"sql-selected-0-{expected}", text="bb")
+            self.assertFalse(visible(scene, key=f"sql-selected-0-{other}"))
+        for scene in (before, wrapped, first, last):
+            self.assertFalse(visible(scene, key="result-workspace"))
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+        self.assertEqual(self.sql_customer_rows(), original_rows)
+        self.assertEqual(self.db.read_bytes(), original_db)
+
     def test_editor_literal_escape_search_selects_across_lines_and_replaces_real_sql(self):
         original_rows = self.sql_fixture_before()
         profile = json.loads(self.store.read_text(encoding="utf-8"))

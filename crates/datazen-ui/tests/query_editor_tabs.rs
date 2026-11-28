@@ -469,6 +469,55 @@ fn dock_replace_seeks_then_edits_through_real_button_and_replacement_enter() {
 }
 
 #[test]
+fn dock_find_wraps_the_only_match_and_navigates_overlapping_matches_by_edge() {
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.state.workspace.connect("local").unwrap();
+    let _ = rt.state.open_query_tab("Find").unwrap();
+    let sole = "SELECT '猫';";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(sole);
+    rt.frame(0.0);
+    rt.state.sql.set_main_selection(11, 8);
+    rt.frame(0.0);
+    tap(&mut rt, "sql-find-open");
+    assert_eq!(rt.state.sql.find_input.text, "猫");
+    for direction in ["sql-find-next", "sql-find-prev"] {
+        rt.state.sql.set_main_selection(11, 8);
+        rt.frame(0.0);
+        tap(&mut rt, direction);
+        let actual = rt.state.sql.selection().main();
+        // The original command dispatches even when wrap finds the same
+        // bounds. A backward selection now has a forward anchor and head.
+        assert_eq!((actual.anchor, actual.head), (8, 11), "{direction}");
+        assert_eq!(rt.state.sql.selected_text(), "猫");
+    }
+    assert_eq!(rt.state.sql.doc(), sole);
+    assert!(rt.state.sql.undo_stack.is_empty());
+
+    let overlap = "SELECT 'aabbbba' AS overlap;";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(overlap);
+    rt.frame(0.0);
+    rt.state.sql.set_main_selection(overlap.len(), 0);
+    rt.frame(0.0);
+    tap(&mut rt, "sql-find-open");
+    key(&mut rt, Key::Text("bb".into()), Mods::default());
+    assert_eq!(rt.state.sql.find_input.text, "bb");
+    key(&mut rt, Key::Enter, Mods::default());
+    let first = rt.state.sql.selection().main();
+    assert_eq!((first.anchor, first.head), (10, 12));
+    rt.state.sql.set_main_selection(overlap.len(), 0);
+    rt.frame(0.0);
+    key(&mut rt, Key::Enter, Mods { shift: true, ..Mods::default() });
+    let last = rt.state.sql.selection().main();
+    assert_eq!((last.anchor, last.head), (12, 14));
+    key(&mut rt, Key::Escape, Mods::default());
+    assert!(rt.state.sql.focused());
+    assert_eq!(rt.state.sql.doc(), overlap);
+    assert!(rt.state.sql.undo_stack.is_empty());
+    assert!(rt.state.query_result_tabs.is_empty());
+}
+
+#[test]
 fn dock_literal_short_multiline_selection_seeds_the_live_search_field() {
     let mut rt = runtime();
     rt.on_key = Some(app_key);

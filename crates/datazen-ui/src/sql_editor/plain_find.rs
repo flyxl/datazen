@@ -90,8 +90,11 @@ impl SqlEditor {
         let Some(query) = LiteralQuery::new(raw, self.find_match_case, self.find_whole_word) else { return Ok(None) };
         let doc = LiteralDocument::new(&self.doc, self.find_whole_word);
         let main = self.selection.main();
-        let cursor = doc.offset(main.from())?..doc.offset(main.to())?;
-        let matched = if forward { query.next(&doc, cursor) } else { query.previous(&doc, cursor) };
+        let from = doc.offset(main.from())?;
+        let to = doc.offset(main.to())?;
+        // CodeMirror's Find commands start at a collapsed directional edge.
+        // Keep the ranged cursor used by Replace Next separate.
+        let matched = if forward { query.next(&doc, to..to) } else { query.previous(&doc, from..from) };
         matched.map(|range| doc.bytes(range)).transpose()
     }
 
