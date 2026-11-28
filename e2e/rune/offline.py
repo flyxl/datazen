@@ -198,6 +198,25 @@ class OfflineJourneys:
         self.assertFalse(visible(tree, key=popup))
         expect_file_blocker_intact()
 
+    def test_extensions_without_driver_settings_contributors_is_localized_and_read_only(self):
+        path = self.root / "settings.json"
+        for locale, theme, heading, empty in [
+            ("en", "light", "EXTENSIONS", "No extensions are available in this build."),
+            ("zh-CN", "dark", "扩展", "当前构建中没有可用的扩展。"),
+        ]:
+            with self.subTest(locale=locale, theme=theme):
+                # A stored driver preference is not a settings descriptor.
+                before = json.dumps({"ui": {"language": locale, "themeMode": theme},
+                                     "driverSettings": {"redis": {"clusterRouting": "pinnedNode"}},
+                                     "other": [42]}).encode()
+                path.write_bytes(before)
+                tree = self.replay([SETTINGS, tap(1.4, "settings-nav-extensions")], until=2.6)
+                self.expect_rendered(tree, text=heading, within="driver-settings-title")
+                self.expect_rendered(tree, key="driver-settings-empty", text=empty)
+                self.assertFalse(visible(tree, key="driver-settings-block-redis"))
+                self.assertFalse(visible(tree, key="driver-settings-saved"))
+                self.assertEqual(path.read_bytes(), before)
+
     def test_settings_page_size_and_query_limit_survive_restart(self):
         # These journeys assert the localized trigger caption as well as disk
         # values; pin English rather than depending on stock's locale fallback.
