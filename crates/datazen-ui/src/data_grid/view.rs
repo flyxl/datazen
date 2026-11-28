@@ -98,7 +98,7 @@ fn sheet(
     slot: GridSlot,
     ink: rune::Color,
     well: rune::Color,
-    height: f32,
+    fixed_height: Option<f32>,
     mut paint: CellPaint,
 ) -> El {
     let scroll_x = grid.scroll_x();
@@ -106,17 +106,22 @@ fn sheet(
     let scroll_key = slot.key("data-grid-scroll");
     let data_width = grid.sheet_data_width();
     let classic = slot != GridSlot::SyncPreview;
-    let frame_width = classic.then(|| {
-        rune::memo::layout_with(&scrollbars::area_key(&scroll_key), |rect| rect[2])
+    // Measure the unpadded area, not the viewport inset by the bar itself.
+    // Table Data follows the actual layout; fixed result grids keep their
+    // existing height and only invalidate when the measured width changes.
+    let frame = classic.then(|| {
+        rune::memo::layout_with(&scrollbars::area_key(&scroll_key), move |rect| {
+            [rect[2], fixed_height.unwrap_or(rect[3])]
+        })
     }).flatten();
     let gutters = scrollbars::Gutters::for_content(
-        frame_width.map(|width| [width, height]),
+        frame,
         [paint.gutter_width() + data_width, ROW_H + grid.rows as f32 * paint.row_height],
     );
     if !paint.show_row_numbers && slot == GridSlot::Table && grid.cols > 0 {
         // Only real row background is selectable, not cells or virtual
         // pads. Leave the classic vertical strip to the actual scrollbar.
-        let viewport_width = frame_width.unwrap_or(0.0) - gutters.right();
+        let viewport_width = frame.map_or(0.0, |[width, _]| width) - gutters.right();
         paint.row_tail_width = (viewport_width - data_width).max(0.0);
     }
     let width = paint.gutter_width() + data_width + paint.row_tail_width;
@@ -154,10 +159,12 @@ fn sheet(
         || format!("cell-{focus_row}-{focus_col}"),
         |row| if paint.show_row_numbers { format!("rownum-{row}") } else { format!("grid-row-{row}") },
     );
-    let viewport = col()
-        .key(scroll_key)
-        .w_full()
-        .h(height)
+    let viewport = col().key(scroll_key).w_full();
+    let viewport = match fixed_height {
+        Some(height) => viewport.h(height),
+        None => viewport.grow(1.0).min_h(0.0),
+    };
+    let viewport = viewport
         .fill(well)
         .radius(8.0)
         .role("grid")
@@ -193,14 +200,15 @@ pub fn panel(
     col()
         .key("data-grid")
         .w_full()
-        .h(560.0)
+        .grow(1.0)
+        .min_h(0.0)
         .gap(8.0)
         .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
         .child(status_banner(state, muted, well))
         .child(pending_changes_bar(state, muted, well))
         .child(filter_bar(state, ink, muted, well, dark))
         .child(fk_bar(state, ink, muted, well))
-        .child(sheet(grid, GridSlot::Table, ink, viewport, 380.0,
+        .child(sheet(grid, GridSlot::Table, ink, viewport, None,
             CellPaint::for_slot(state, GridSlot::Table, dark)))
         .child(footer(state, ink, muted))
 }
@@ -434,7 +442,7 @@ pub fn result_panel(
                 .color(muted)
                 .key("result-grid-status"),
         )
-        .child(sheet(grid, slot, ink, well, 200.0, CellPaint::for_slot(state, slot, dark)))
+        .child(sheet(grid, slot, ink, well, Some(200.0), CellPaint::for_slot(state, slot, dark)))
 }
 
 /// The status line above the grid: page shape, column window, selection, dirty cells.

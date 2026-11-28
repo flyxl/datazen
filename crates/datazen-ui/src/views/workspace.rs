@@ -205,11 +205,15 @@ pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         TableView::Indexes => indexes_view(state, &title, theme),
         TableView::ForeignKeys => foreign_keys_view(state, &title, theme),
     };
-    col()
-        .key("table-workspace")
-        .w_full()
-        .child(view_switcher(state, dark))
-        .child(body)
+    let workspace = col().key("table-workspace").w_full();
+    let workspace = if state.table_view == TableView::Data {
+        // Only Table Data has a scroll viewport to consume the remaining
+        // workspace height. Structure and DDL keep their own layout.
+        workspace.grow(1.0).min_h(0.0)
+    } else {
+        workspace
+    };
+    workspace.child(view_switcher(state, dark)).child(body)
 }
 pub fn view_switcher(state: &AppState, dark: bool) -> El {
     let k = crate::ui::kit::kit(dark);

@@ -400,7 +400,7 @@ class GridDragJourney:
             self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
 
     def test_classic_grid_scrollbars_use_live_two_axis_overflow_and_keep_cells_working(self):
-        """Wide read-only SQLite surfaces get real gutters, drags, wheels and pinned cells."""
+        """Wide SQLite tables fill the real pane without losing gutters, chrome or cells."""
         fixture(self.store, self.db)
         with sqlite3.connect(self.db) as seed:
             for index in range(15):
@@ -446,14 +446,47 @@ class GridDragJourney:
                 self.expect_rendered(tree, key="thumb", within=track)
             return view, grid_a11y(tree, scope)
 
+        def table_frame(tree):
+            pane = self._settled_rect(tree, "content-view-panes")
+            workspace = self._settled_rect(tree, "table-workspace")
+            switcher = self._settled_rect(tree, "table-view-switcher")
+            panel = self._settled_rect(tree, "data-grid")
+            bar = self._settled_rect(tree, "content-status-bar")
+            frame = self._settled_rect(tree, "data-grid-scroll-scroll-area")
+            pager = self._settled_rect(tree, "grid-footer")
+            bottom = lambda rect: rect[1] + rect[3]
+            self.assertEqual(workspace, pane)
+            self.assertAlmostEqual(panel[1], bottom(switcher), delta=.25)
+            previous = panel[1]
+            for name in ("data-grid-status", "grid-readonly", "grid-filter", "fk-navigation"):
+                control = self._settled_rect(tree, name)
+                self.assertGreaterEqual(control[1], previous, name)
+                previous = bottom(control)
+            self.assertGreaterEqual(frame[1], previous)
+            self.assertAlmostEqual(pager[1] - bottom(frame), 8, delta=.25)
+            self.assertEqual(pager[3], 28)
+            self.assertAlmostEqual(bottom(pager), bottom(panel), delta=.25)
+            self.assertAlmostEqual(bottom(pager), bar[1], delta=.25)
+            self.expect_rendered(tree, key="filter-input")
+            self.expect_rendered(tree, key="grid-page-label", text="Page 1 / 1")
+            return frame
+
         table = self.replay([*OPEN, tap(4.8, "cell-1-1")], until=5.6)
         view, initial = bars(table, "")
+        tall_frame = table_frame(table)
         self.assertEqual(initial["scroll"][:2], [0, 0])
         self.assertGreater(initial["scroll"][2], 0)
         self.assertEqual(initial["activeDescendant"], "cell-1-1")
         self.expect_rendered(table, text="fixture-lin", within="cell-1-1")
         self.expect_rendered(table, key="data-grid-status",
                              text="41×17 · window at column 0 · selection r1c1..r1c1 · 0 dirty")
+
+        short = self.replay(OPEN, until=5.3, size="1440x640")
+        short_frame = table_frame(short)
+        bars(short, "")
+        self.assertEqual(short_frame[:3], tall_frame[:3])
+        self.assertAlmostEqual(tall_frame[3] - short_frame[3], 260, delta=.25)
+        self.expect_rendered(short, text="fixture-lin", within="cell-1-1")
 
         dragged = self.replay([
             *OPEN,
@@ -479,6 +512,7 @@ class GridDragJourney:
             tap(10.8, "result-cell-1-1"),
         ], until=11.6)
         _, query_state = bars(query, "result-")
+        self.assertEqual(self._settled_rect(query, "result-data-grid-scroll-scroll-area")[3], 200)
         self.assertEqual(query_state["activeDescendant"], "result-cell-1-1")
         self.expect_rendered(query, text="fixture-lin", within="result-cell-1-1")
         self.assertEqual(self.db.read_bytes(), original)
