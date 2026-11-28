@@ -705,7 +705,7 @@ steps:
         lines = ["SELECT customer_name AS observed", "FROM customers",
                  *[f"-- scroll witness {i}" for i in range(14)], "WHERE id=2"]
         sql_yaml = "\n".join("      " + line for line in lines)
-        definition = (f'id: {name}\nname: {name}\nsteps:\n'
+        definition = (f"id: {name}\nname: {name}\ndescription: ''\nsteps:\n"
                       f'  - type: query\n    id: read_customer\n    sql: |-\n{sql_yaml}\n')
         (self.root / "workflows.json").write_text(json.dumps([{
             "id": name, "name": name, "description": "", "visibility": "user",
