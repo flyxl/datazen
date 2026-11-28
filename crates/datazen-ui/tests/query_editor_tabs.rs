@@ -467,3 +467,30 @@ fn dock_replace_seeks_then_edits_through_real_button_and_replacement_enter() {
     tap_tab(&mut rt, b);
     assert_eq!(rt.state.sql.doc(), "", "replacement undo belongs to A only");
 }
+
+#[test]
+fn dock_literal_short_multiline_selection_seeds_the_live_search_field() {
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.state.workspace.connect("local").unwrap();
+    let _a = rt.state.open_query_tab("A").unwrap();
+    let sql = "猫 a\n\tb / a\n\tb";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(sql);
+    rt.frame(0.0);
+    tap(&mut rt, "sql-editor-scroll");
+    rt.state.sql.set_main_selection(4, 8);
+    rt.frame(0.0);
+    key(&mut rt, Key::Command('f'), Mods { cmd: true, ..Mods::default() });
+    assert_eq!(rt.state.sql.find_input.text, "a\\n\tb");
+    assert!(rt.state.sql.find_input.focused);
+    key(&mut rt, Key::Enter, Mods::default());
+    assert_eq!(rt.state.sql.selection().main().from(), 11);
+    assert_eq!(rt.state.sql.selected_text(), "a\n\tb");
+    key(&mut rt, Key::Enter, Mods { shift: true, ..Mods::default() });
+    assert_eq!(rt.state.sql.selection().main().from(), 4);
+    key(&mut rt, Key::Escape, Mods::default());
+    assert!(rt.state.sql.focused());
+    assert_eq!(rt.state.sql.doc(), sql);
+    assert!(rt.state.sql.undo_stack.is_empty());
+    assert!(rt.state.query_result_tabs.is_empty());
+}

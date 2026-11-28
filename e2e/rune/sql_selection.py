@@ -568,3 +568,45 @@ class SqlSelectionJourneys:
         self.assertEqual(self.sql_customer_rows(), original_rows)
         self.assertEqual(self.db.read_bytes(), original_bytes)
         self.assertEqual(len(json.loads(history_path.read_bytes())), 1)
+
+    def test_editor_literal_escape_search_selects_across_lines_and_replaces_real_sql(self):
+        original_rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        original_bytes = self.db.read_bytes()
+        sql = "SELECT '猫' AS first_tag,\n\t'猫' AS second_tag;"
+        enter = query_steps(sql)[:-1]
+        enter[-1] = {"t": 4.8, "type": "paste", "text": sql}
+        needle = r"猫' AS first_tag,\n\t'猫"
+        find = [
+            *enter, tap(8.3, "sql-find-open"),
+            *fill(8.9, "sql-find-input", needle),
+            # fill starts type_text at 9.350; the final scalar arrives at 9.917.
+            # A pointer press before then swaps focus to Next and drops that input.
+            tap(10.2, "sql-find-next"),
+        ]
+        selected = self.replay(find, until=10.6)
+        self.expect_rendered(selected, text=needle, within="sql-find-input")
+        self.expect_rendered(selected, key="sql-selected-0-8", text="猫' AS first_tag,")
+        self.expect_rendered(selected, key="sql-selected-1-0", text="\t'猫")
+        self.assertFalse(visible(selected, key="result-workspace"))
+
+        run = self.replay([
+            *find, *fill(10.7, "sql-replace-input", r"狗' AS first_tag,\r\n\t'猫"),
+            tap(12.1, "sql-replace-current"),
+            key(12.6, "Escape"), key(13.0, "Left"), tap(13.5, "sql-run"),
+        ], until=15.4)
+        expected_sql = sql.replace("猫", "狗", 1)
+        with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as db:
+            expected = db.execute(expected_sql).fetchone()
+        self.assertEqual(expected, ("狗", "猫"))
+        for index, value in enumerate(expected):
+            self.expect_rendered(run, text=value, within=f"result-cell-0-{index}")
+        self.assertEqual(self.sql_customer_rows(), original_rows)
+        self.assertEqual(self.db.read_bytes(), original_bytes)
+        history = json.loads((self.root / "query-history.json").read_bytes())
+        self.assertEqual([row["sql"].rstrip(";") for row in history], [expected_sql.rstrip(";")])

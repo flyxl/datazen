@@ -35,10 +35,13 @@ pub(crate) fn open(state: &mut AppState, tx: &mut Tx) {
     if !state.sql.find_input.focused {
         let main = state.sql.selection().main();
         let selected = &state.sql.doc()[main.from()..main.to()];
-        if !selected.is_empty() && !selected.contains('\n') && selected.encode_utf16().count() <= 100
-            && state.sql.find_input.text != selected
-        {
-            state.sql.find_input = rune::TextEdit::new(selected);
+        if !selected.is_empty() && selected.encode_utf16().count() <= 100 {
+            // Keep ordinary single-line input while seeding the short
+            // multiline selection as CodeMirror's visible backslash-n.
+            let query = selected.replace('\n', "\\n");
+            if state.sql.find_input.text != query {
+                state.sql.find_input = rune::TextEdit::new(query);
+            }
         }
     }
     state.sql.find_open = true;

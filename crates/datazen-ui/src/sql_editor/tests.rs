@@ -532,3 +532,51 @@ fn dock_replace_next_does_not_search_new_text_after_replacement() {
     assert_eq!(overlap.doc(), "aL");
     assert_eq!(overlap.selected_text(), "a", "map the previously overlapping range");
 }
+
+#[test]
+fn dock_literal_decoder_uses_codemirror_single_pass_escape_rules() {
+    use super::plain_find::{decode_input, decode_replacement};
+    for (input, expected) in [
+        (r"\n\r\t\\", "\n\r\t\\"),
+        (r"x\q\0\u0061", r"x\q\0\u0061"),
+        (r"\\n", r"\n"),
+        (r"\\\n", "\\\n"),
+        ("trailing\\", "trailing\\"),
+        (r"猫\t", "猫\t"),
+    ] {
+        assert_eq!(decode_input(input), expected);
+    }
+    assert_eq!(decode_replacement(r"A\rB\r\nC\nD"), "A\nB\nC\nD");
+    assert_eq!(decode_replacement(r"\\n"), r"\n");
+}
+
+#[test]
+fn dock_literal_search_and_replace_use_real_multiline_utf8_ranges() {
+    let original = "猫 a\n\tb / a\n\tb";
+    let mut editor = SqlEditor::from_doc(original);
+    editor.find_input = TextEdit::new(r"a\n\tb");
+    editor.replace_input = TextEdit::new(r"C\r\nD");
+    assert!(editor.find_from_bar());
+    assert_eq!(editor.selection().main(), Sel { anchor: 4, head: 8 });
+    assert!(editor.find_from_bar());
+    assert_eq!(editor.selection().main(), Sel { anchor: 11, head: 15 });
+    assert!(editor.find_previous_from_bar());
+    assert_eq!(editor.selection().main(), Sel { anchor: 4, head: 8 });
+    assert_eq!(editor.selected_text(), "a\n\tb");
+    assert!(editor.undo_stack.is_empty());
+    assert!(editor.replace_current_from_bar());
+    assert_eq!(editor.doc(), "猫 C\nD / a\n\tb");
+    assert_eq!(editor.selection().main(), Sel { anchor: 10, head: 14 });
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), original);
+    assert!(!editor.undo());
+
+    let mut all = SqlEditor::from_doc("cat & cat");
+    all.find_input = TextEdit::new("cat");
+    all.replace_input = TextEdit::new(r"\\n");
+    assert_eq!(all.replace_all_from_bar(), 2);
+    assert_eq!(all.doc(), r"\n & \n");
+    assert!(all.undo());
+    assert_eq!(all.doc(), "cat & cat");
+    assert!(!all.undo());
+}

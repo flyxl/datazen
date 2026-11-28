@@ -1,7 +1,47 @@
 //! The existing exact-string Find's Replace button/field semantics.
-use std::ops::Range;
+use std::{borrow::Cow, ops::Range};
 
 use super::model::{Sel, Selection, SqlEditor};
+
+/// CodeMirror's plain Find input unquotes just these four single-pass
+/// escapes. An unknown escape or a trailing slash stays literal.
+pub(super) fn decode_input(input: &str) -> Cow<'_, str> {
+    if !input.contains('\\') {
+        return Cow::Borrowed(input);
+    }
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        let replacement = match chars.peek() {
+            Some('n') => '\n',
+            Some('r') => '\r',
+            Some('t') => '\t',
+            Some('\\') => '\\',
+            _ => {
+                out.push(ch);
+                continue;
+            }
+        };
+        chars.next();
+        out.push(replacement);
+    }
+    Cow::Owned(out)
+}
+
+/// The replacement transaction's text, like CodeMirror's default Text,
+/// has LF line endings. This does not change any unrelated document input.
+pub(super) fn decode_replacement(input: &str) -> Cow<'_, str> {
+    let decoded = decode_input(input);
+    if decoded.contains('\r') {
+        Cow::Owned(decoded.replace("\r\n", "\n").replace('\r', "\n"))
+    } else {
+        decoded
+    }
+}
 
 /// Search after the full selection, then wrap up to its first character.
 /// All matching is still on the existing exact literal UTF-8 substring.

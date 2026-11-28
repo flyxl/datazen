@@ -648,7 +648,7 @@ impl SqlEditor {
 
     pub(super) fn find_previous_from_bar(&mut self) -> bool {
         let needle = self.find_input.text.clone();
-        self.find_previous_from(&needle)
+        self.find_previous_from(&super::plain_find::decode_input(&needle))
     }
 
     pub(crate) fn dismiss_find(&mut self) {
@@ -697,7 +697,7 @@ impl SqlEditor {
     /// The find bar's Find: read the bar's needle.
     pub fn find_from_bar(&mut self) -> bool {
         let needle = self.find_input.text.clone();
-        self.find_next(&needle)
+        self.find_next(&super::plain_find::decode_input(&needle))
     }
 
     /// The find bar's Replace: select the next occurrence or edit the one
@@ -705,14 +705,20 @@ impl SqlEditor {
     pub fn replace_current_from_bar(&mut self) -> bool {
         let needle = self.find_input.text.clone();
         let replacement = self.replace_input.text.clone();
-        self.replace_next_literal(&needle, &replacement)
+        self.replace_next_literal(
+            &super::plain_find::decode_input(&needle),
+            &super::plain_find::decode_replacement(&replacement),
+        )
     }
 
     /// The find bar's Replace all.
     pub fn replace_all_from_bar(&mut self) -> usize {
         let needle = self.find_input.text.clone();
         let replacement = self.replace_input.text.clone();
-        self.replace_all(&needle, &replacement)
+        self.replace_all(
+            &super::plain_find::decode_input(&needle),
+            &super::plain_find::decode_replacement(&replacement),
+        )
     }
 
     pub fn push_history(&mut self) {
