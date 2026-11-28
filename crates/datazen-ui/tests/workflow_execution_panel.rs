@@ -802,11 +802,10 @@ fn the_helper_slice_matches_react_semantics() {
 
 // ---- the app wiring ------------------------------------------------------------
 
-/// The panel and the action bar mount on the real workflows page over the
-/// real run paths (the memory port's audit workflow fails its applying
-/// step), through the same keys the page pins.
+/// A failed real run shows the selected step's detail rather than the
+/// aggregate report used by the history component.
 #[test]
-fn the_workflows_page_mounts_the_panel_over_a_real_run() {
+fn the_workflows_page_shows_only_the_active_failed_step() {
     let mut rt = runtime();
     rt.frame(0.0);
     // Navigate to the workflows page and open the audit workflow's run
@@ -825,56 +824,15 @@ fn the_workflows_page_mounts_the_panel_over_a_real_run() {
     rt.frame(1.0);
     assert!(rt.state.workflow_execution.is_some(), "the run filled the VM");
 
-    // The failed run's head: ✗ + t('common.executionFailed') and 0ms —
-    // the lite report carries no timing, and the projection says so.
-    let head = rt
-        .elements()
-        .into_iter()
-        .find(|e| e.key.as_deref() == Some("workflow-execution-result-status"))
-        .expect("the panel head status");
-    assert_eq!(
-        head.text.as_deref(),
-        Some(format!("✗ {}", t("common.executionFailed")).as_str())
-    );
-    let time = rt
-        .elements()
-        .into_iter()
-        .find(|e| e.key.as_deref() == Some("workflow-execution-result-total-time"))
-        .expect("the panel head time");
-    assert_eq!(time.text.as_deref(), Some("0ms"));
-
-    // Two steps, in the result's own order: steps[0] is "compare
-    // structures" (ok) and steps[1] is the failing "apply plan", whose
-    // summary becomes the error line once expanded; the lite projection
-    // types no steps (no chip).
-    assert!(rt.find("workflow-execution-result-step-0-row").is_some());
-    assert!(rt.find("workflow-execution-result-step-1-row").is_some());
-    // The panel's rows mount mid-reveal after the execute press: settle
-    // before the row's press reaches it, and settle what the press mounts
-    // (the rail-modals suite's ruling).
-    rt.settle_all();
-    rt.frame(0.0);
-    let (x, y) = rt
-        .find("workflow-execution-result-step-1-row")
-        .expect("the failing step's row");
-    rt.pointer_down(x, y);
-    rt.pointer_up(x, y);
-    rt.settle_all();
-    rt.frame(0.0);
-    let error = rt
-        .elements()
-        .into_iter()
-        .find(|e| e.key.as_deref() == Some("workflow-execution-result-step-1-error"))
-        .expect("the failing step's error line");
-    assert_eq!(error.text.as_deref(), Some("the replica refused the plan"));
-    assert!(
-        rt.find("workflow-execution-result-step-1-type").is_none(),
-        "the lite projection types no steps"
-    );
-    assert!(
-        rt.find("workflow-execution-result-final-output").is_none(),
-        "the lite report has no final output"
-    );
+    let nodes = rt.elements();
+    let label = |key: &str| {
+        nodes.iter().find(|node| node.key.as_deref() == Some(key))
+            .and_then(|node| node.text.as_deref())
+    };
+    assert_eq!(label("workflow-run-status"), Some("✗ 0ms"));
+    assert_eq!(label("workflow-step-detail-id"), Some("apply plan"));
+    assert_eq!(label("workflow-step-error-text"), Some("the replica refused the plan"));
+    assert!(rt.find("workflow-execution-result").is_none());
 }
 
 /// The app wiring: closing the run panel clears the interaction state the

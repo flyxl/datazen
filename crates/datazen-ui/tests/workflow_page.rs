@@ -323,11 +323,10 @@ fn the_run_panel_runs_and_mounts_the_result_panel() {
 
     // The step detail opened on the active step (apply plan): the header, the
     // failed step's error block, the connectionless lean projection's rows
-    // count. The execution-result panel stays mounted below (the documented
-    // interim keeping T019's panel a production consumer).
+    // count. The aggregate history report does not duplicate the step detail.
     assert!(rt.find("workflow-step-detail").is_some());
     assert!(rt.find("workflow-step-error").is_some());
-    assert!(rt.find("workflow-execution-result").is_some());
+    assert!(rt.find("workflow-execution-result").is_none());
 
     // A step tab press switches the detail (React's setActiveStepIndex).
     click(&mut rt, "workflow-step-compare structures");

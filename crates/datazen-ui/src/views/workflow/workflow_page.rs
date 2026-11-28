@@ -75,11 +75,6 @@
 //!   table the execution-result panel's preview took (columns + rows, no
 //!   virtualisation, no row-height/export chrome) — the container task swaps
 //!   it.
-//! - **The execution-result panel mount**: React's page shows the run through
-//!   the per-step detail view (the panel belongs to the AI panel's history
-//!   tab, T334); this port keeps the lite page's mount below the step detail
-//!   so the T019 panel keeps its production consumer until T334 lands — a
-//!   documented interim, not React structure.
 //! - **`ChartView`'s `lib/chart` pipeline** (fieldInference/recommend/transform,
 //!   T079's family): the page injects the lean [`WorkflowChartPipeline`] —
 //!   the chartability-relevant type slice T176 already ported
@@ -136,7 +131,6 @@ use crate::ui::field::TextField;
 use crate::ui::kit::kit;
 use crate::ui::spinner::{Spinner, SpinnerSize, SpinnerTone};
 use crate::views::workflow::editor_action_bar::workflow_editor_action_bar;
-use crate::views::workflow::execution_result_panel::{StepUiSlots, WorkflowExecutionResultPanel};
 use crate::views::workflow::history_section::{HistoryListSlots, WorkflowHistoryList};
 use crate::views::workflow::step_result_utils::{
     column_infers_numeric, is_chartable_preview, js_string, step_to_statement_preview,
@@ -161,10 +155,6 @@ const SIDEBAR_WIDTH_KEY: &str = "workflow-sidebar-width";
 const SIDEBAR_HANDLE_KEY: &str = "splitter:workflow.sidebar";
 /// React's `w-1` on the actual pointer-capture element (1 × 0.25rem).
 const SIDEBAR_HANDLE_WIDTH: f32 = 4.0;
-/// The panel-content ladder's cap (the step detail and the interim
-/// panel mount below it) — see the edit pane's middle column.
-const PANEL_CONTENT_MAX_H: f32 = 360.0;
-
 /// The toolbar's `border-b border-edge px-3 py-2` (the embedded branch).
 const TOOLBAR_PAD_X: f32 = 12.0;
 const TOOLBAR_PAD_Y: f32 = 8.0;
@@ -1631,9 +1621,8 @@ fn step_tab(step: &StepExecutionResult, index: usize, active: bool, k: &Kit) -> 
 
 /// React's panel-content ladder, order preserved: the ai-create pane, the
 /// edit pane, the current step's detail, the select-step sentence, the store
-/// error, the empty hint. A run/history panel's answer keeps the
-/// execution-result panel mounted below the content (the lite page's
-/// interim — see the module docs).
+/// error, the empty hint. The selected detail owns the remaining space;
+/// the aggregate execution report belongs to the history detail component.
 fn panel_content(
     state: &AppState,
     active: Option<&WorkflowPanel>,
@@ -1642,22 +1631,19 @@ fn panel_content(
     dark: bool,
     layer: &mut Vec<El>,
 ) -> El {
-    let current_step = active
-        .and_then(|panel| panel.execution_result())
-        .zip(state.workflow_active_step)
-        .and_then(|(result, index)| {
-            result.steps.get(index).map(|step| (result, index, step))
-        });
     let current_result = active.and_then(|panel| panel.execution_result());
+    let current_step = current_result
+        .zip(state.workflow_active_step)
+        .and_then(|(result, index)| result.steps.get(index));
 
     // React's ladder, order preserved: the panes first, then the current
     // step's detail, the select-step sentence, the store's error, and the
     // empty hint (an active panel without a result renders nothing).
-    let content = if matches!(active, Some(WorkflowPanel::AiCreate { .. })) {
+    if matches!(active, Some(WorkflowPanel::AiCreate { .. })) {
         ai_create_pane(k)
     } else if let Some(WorkflowPanel::Edit(edit)) = active {
         edit_pane(state, edit, k, dark, layer)
-    } else if let Some((_, _, step)) = current_step {
+    } else if let Some(step) = current_step {
         step_detail_view(state, step, k, dark, layer)
     } else if current_result.is_some() {
         select_step_sentence(k)
@@ -1669,46 +1655,7 @@ fn panel_content(
         empty_hint_pane(k)
     } else {
         select_step_sentence(k)
-    };
-
-    // The documented interim: the run's answer below the step detail (React's
-    // page has no panel mount; T334's AI panel history tab is the panel's
-    // real consumer).
-    if let Some(result) = current_result.filter(|result| !result.steps.is_empty()) {
-        // The engine's definite-height rule (the edit pane's middle column
-        // carries the same cap): React's `flex-1 min-h-0` content leftover
-        // cannot shrink a column below its content, so the step detail would
-        // push the panel past the window. A definite cap keeps the ladder's
-        // content inside a default-window slot; the dynamic leftover is the
-        // window-resize track's seam.
-        let bounded = col()
-            .key("workflow-panel-content-scroll")
-            .grow(1.0)
-            .min_h(0.0)
-            .max_h(PANEL_CONTENT_MAX_H)
-            .scroll(ScrollSpec { stick_bottom: false })
-            .child(content);
-        return col()
-            .key("workflow-panel-content")
-            .grow(1.0)
-            .min_h(0.0)
-            .child(bounded)
-            .child(
-                WorkflowExecutionResultPanel::<AppState>::new(
-                    result,
-                    StepUiSlots {
-                        expanded: |s: &AppState| &s.workflow_step_expanded,
-                        toggle: |s: &mut AppState, id| s.toggle_workflow_step_expanded(&id),
-                        chart: |s: &AppState| &s.workflow_step_chart,
-                        set_chart: |s: &mut AppState, id, chart| {
-                            s.set_workflow_step_chart(&id, chart)
-                        },
-                    },
-                )
-                .build(state, dark),
-            );
     }
-    content
 }
 
 /// React's `workflows.selectStep` sentence — a panel with a result but no

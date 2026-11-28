@@ -472,6 +472,14 @@ steps:
         self.expect_rendered(switched, key="workflow-step-table-cell-0-0", text="fixture-ada")
         self.expect_rendered(switched, key="workflow-step-table-cell-1-0", text="fixture-lin")
 
+        # React mounts one selected-step detail, not the aggregate history
+        # report. Check the actual tree, not just visibility below the fold.
+        for snapshot in (result, from_second, switched):
+            keys = [node.get("key") for node in snapshot["elements"]]
+            self.assertEqual(keys.count("workflow-step-detail"), 1)
+            self.assertNotIn("workflow-execution-result", keys)
+            self.assertNotIn("workflow-panel-content-scroll", keys)
+
         closed = self.replay([*opened, tap(9, "workflow-tab-wf-1-close")], until=10.8)
         self.expect_rendered(closed, key="workflow-empty-hint")
         self.expect_rendered(closed, key=f"workflow-{name}")

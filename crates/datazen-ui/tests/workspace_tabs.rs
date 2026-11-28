@@ -251,16 +251,11 @@ fn workflow_run_results_separate_failures_from_successes() {
     assert!(status.text.as_deref().unwrap_or_default().starts_with('✗'));
 
     // The steps bar (desc order — the settings default): the applying step
-    // is first; the panel's own rows carry the ok/fail split below.
+    // is first, and only its selected detail is shown.
     assert!(runtime.find("workflow-step-apply plan").is_some());
     assert!(runtime.find("workflow-step-compare structures").is_some());
-    assert!(runtime.find("workflow-execution-result").is_some());
-    assert!(runtime
-        .find("workflow-execution-result-step-0-row")
-        .is_some());
-    assert!(runtime
-        .find("workflow-execution-result-step-1-row")
-        .is_some());
+    assert!(runtime.find("workflow-step-detail").is_some());
+    assert!(runtime.find("workflow-execution-result").is_none());
     let results = &runtime.state.workflow_results;
     assert_eq!(results[0].summary, "ok: 12 rows");
     assert_eq!(results[1].summary, "the replica refused the plan");
