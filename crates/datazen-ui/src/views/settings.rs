@@ -258,6 +258,7 @@ fn font_size_row(state: &AppState, dark: bool, k: &rune_kit::Kit, overlays: &mut
         .max(f64::from(MAX_EDITOR_FONT_SIZE))
         .step(1.0)
         .label(label)
+        .surface_thumb()
         .on_change(|state, size| state.save_editor_font_size(size as u32))
         .build(dark);
     settings_ui::setting_row(

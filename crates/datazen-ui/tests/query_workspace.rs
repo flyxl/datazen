@@ -431,6 +431,21 @@ fn right_query_drawers_use_the_original_surface_without_repainting_left_snippets
 }
 
 #[test]
+fn mounted_editor_font_thumb_uses_the_chromium_surface_in_both_themes() {
+    for (dark, reference) in [(false, "#f6f8fb"), (true, "#0b0e14")] {
+        let env = Env { system_dark: dark, scale: 1.0 };
+        let mut rt = Runtime::new(AppState::default(), view, (1440.0, 900.0), env);
+        rt.frame(0.0);
+        tap_query(&mut rt, "rail-settings");
+        tap_query(&mut rt, "settings-nav-editor");
+        let thumb = rt.elements().into_iter().find(|e| !e.exiting
+            && e.key.as_deref() == Some("settings-font-size-thumb")).expect("live font slider thumb");
+        assert_eq!(&thumb.rect[2..], &[16.0, 16.0]);
+        assert_eq!(thumb.fill, rune::color::hex(reference).unwrap(), "dark={dark}");
+    }
+}
+
+#[test]
 fn mounted_editor_font_slider_resizes_sql_glyphs_caret_and_gutter() {
     use datazen_ui::types::Section;
 

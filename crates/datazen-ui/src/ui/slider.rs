@@ -15,7 +15,7 @@
 
 use std::rc::Rc;
 
-use rune::{el, row, Drag, El, Key, KeyEvent, Phase, Tx};
+use rune::{el, row, Color, Drag, El, Key, KeyEvent, Phase, Shadow, Tx};
 
 use crate::ui::kit::kit;
 
@@ -48,6 +48,7 @@ pub struct Slider<S: 'static> {
     disabled: bool,
     label: Option<String>,
     width: Option<f32>,
+    surface_thumb: bool,
     on_change: Option<OnChange<S>>,
 }
 
@@ -62,6 +63,7 @@ impl<S: 'static> Slider<S> {
             disabled: false,
             label: None,
             width: None,
+            surface_thumb: false,
             on_change: None,
         }
     }
@@ -108,6 +110,13 @@ impl<S: 'static> Slider<S> {
         self
     }
 
+    /// Use the stock desktop Settings surface and elevation for the thumb,
+    /// without changing the track or its hit targets.
+    pub(crate) fn surface_thumb(mut self) -> Self {
+        self.surface_thumb = true;
+        self
+    }
+
     pub fn on_change(mut self, f: impl Fn(&mut S, f64) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
         self
@@ -138,6 +147,27 @@ impl<S: 'static> Slider<S> {
             .radius(track_radius)
             .fill(c.surface_raised);
 
+        let style_thumb = |thumb: El| {
+            let thumb = thumb
+                .size(thumb_size, thumb_size)
+                .radius(thumb_size / 2.0)
+                .fill(if self.surface_thumb { c.surface_base } else { c.knob })
+                .border(1.0, c.border_strong);
+            if self.surface_thumb {
+                // Stock Chromium slider: Tailwind's two-layer `shadow`.
+                let ink = Color::BLACK.alpha(26.0 / 255.0);
+                thumb.shadow(1.0, 3.0, ink).box_shadow(Shadow {
+                    y: 1.0,
+                    blur: 2.0,
+                    spread: -1.0,
+                    color: ink,
+                    ..Shadow::default()
+                })
+            } else {
+                thumb
+            }
+        };
+
         let (fill_el, thumb_el) = if let Some(w) = self.width {
             let fill_w = (ratio as f32 * w).clamp(0.0, w);
             let thumb_left = ratio as f32 * w - thumb_size / 2.0;
@@ -159,12 +189,7 @@ impl<S: 'static> Slider<S> {
                 .w(w)
                 .h(hit_h)
                 .child(
-                    el()
-                        .absolute(thumb_left, thumb_y)
-                        .size(thumb_size, thumb_size)
-                        .radius(thumb_size / 2.0)
-                        .fill(c.knob)
-                        .border(1.0, c.border_strong)
+                    style_thumb(el().absolute(thumb_left, thumb_y))
                         .child(
                             el()
                                 .key(format!("{}-thumb", self.key))
@@ -207,13 +232,11 @@ impl<S: 'static> Slider<S> {
                                 .w(0.0)
                                 .h(thumb_size)
                                 .child(
-                                    el()
-                                        .key(format!("{}-thumb", self.key))
-                                        .absolute(-thumb_size / 2.0, 0.0)
-                                        .size(thumb_size, thumb_size)
-                                        .radius(thumb_size / 2.0)
-                                        .fill(c.knob)
-                                        .border(1.0, c.border_strong),
+                                    style_thumb(
+                                        el()
+                                            .key(format!("{}-thumb", self.key))
+                                            .absolute(-thumb_size / 2.0, 0.0),
+                                    ),
                                 ),
                         )
                         .child(el().grow((1.0 - ratio).max(0.0) as f32).min_w(0.0).h(thumb_size)),
