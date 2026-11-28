@@ -28,6 +28,17 @@ pub fn build<S: 'static>(
     dark: bool,
     layer: &mut Vec<El>,
 ) {
+    build_live_favorite(favorite, host, 0, false, dark, layer);
+}
+
+pub(crate) fn build_live_favorite<S: 'static>(
+    favorite: &FavoriteNameDialogVm,
+    host: &QueryTransactionHostPort<S>,
+    epoch: u64,
+    save_failed: bool,
+    dark: bool,
+    layer: &mut Vec<El>,
+) {
     let k = kit(dark);
     let mut field = TextField::new(TITLE_INPUT_KEY, &favorite.favorite_name)
         .height(32.0)
@@ -37,8 +48,8 @@ pub fn build<S: 'static>(
         let submit_action = emit(host, Action::FavoriteSave);
         field = field
             .on_edit(rune::edit_access(move |s: &mut S| edit_accessor(s)))
-            .on_submit(move |s: &mut S, _tx: &mut Tx| {
-                if can_save_favorite(accessor(s).text.as_str()) {
+            .on_submit(move |s: &mut S, tx: &mut Tx| {
+                if !tx.key_repeat() && can_save_favorite(accessor(s).text.as_str()) {
                     submit_action(s);
                 }
             });
@@ -57,6 +68,8 @@ pub fn build<S: 'static>(
                 .color(k.c.text_muted),
         )
         .child(field.build(dark))
+        .children(save_failed.then(|| text(t("common.operationFailed"))
+            .key("query-favorite-save-error").color(k.c.danger.fg).wrap()))
         .child(
             text("SQL")
                 .key("query-favorite-sql-label")
@@ -75,6 +88,7 @@ pub fn build<S: 'static>(
 
     Dialog::new(FAVORITE_KEY, t("common.addToFavorites"))
         .open(true)
+        .open_epoch(epoch)
         .fit()
         .width(448.0)
         .body_max_height(280.0)

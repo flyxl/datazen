@@ -7,6 +7,7 @@ use crate::{native_query_format::parse_format_chord, state_def::AppState, types:
 
 const NEW_QUERY_BINDING: &str = "Mod-n";
 const NEW_QUERY: Chord = Chord::new(ChordKey::Char('n')).with(ChordMod::Primary);
+pub(super) const SAVE_QUERY: Chord = Chord::new(ChordKey::Char('s')).with(ChordMod::Primary);
 
 impl AppState {
     pub(crate) fn has_query_shortcut_context(&self) -> bool {
@@ -18,9 +19,12 @@ impl AppState {
     pub(crate) fn native_home_query_binding(&self, action: KeymapAction) -> Option<String> {
         match action {
             KeymapAction::NewQuery if self.has_query_shortcut_context() => Some(NEW_QUERY_BINDING.into()),
+            KeymapAction::SaveQuery if self.has_query_favorite_shortcut_context() => Some("Mod-s".into()),
             KeymapAction::FormatSql => self.desktop.native_format_shortcut().filter(|value| {
                 parse_format_chord(value).is_some_and(|chord| {
-                    !self.has_query_shortcut_context() || !chord.same_keys(&NEW_QUERY, KeyPlatform::current())
+                    let platform = KeyPlatform::current();
+                    !(self.has_query_shortcut_context() && chord.same_keys(&NEW_QUERY, platform)
+                        || self.has_query_favorite_shortcut_context() && chord.same_keys(&SAVE_QUERY, platform))
                 })
             }),
             _ => None,

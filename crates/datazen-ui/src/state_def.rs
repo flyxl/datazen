@@ -317,6 +317,7 @@ pub struct AppState {
     /// statement comes from the current query editor — "save current SQL".
     pub favorite_title: TextEdit,
     pub favorite_error: Option<String>,
+    pub(crate) native_query_favorite: crate::app::query_favorite::NativeQueryFavorite,
     /// T7: the parsed connection import waiting on its confirm, and the
     /// import path's outcome notice. The password serves the encrypted
     /// export formats; the plain ones ignore it.
@@ -749,6 +750,7 @@ impl Default for AppState {
             native_snippet_delete: crate::snippets_state::NativeSnippetDelete::default(),
             favorite_title: TextEdit::new(String::new()),
             favorite_error: None,
+            native_query_favorite: Default::default(),
             import_password: TextEdit::new(String::new()),
             import_preview: None,
             import_notice: None,

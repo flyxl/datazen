@@ -30,6 +30,7 @@
 //!   `app_with_adapter`) are this barrel's Rune counterpart: the shared-app
 //!   launch surface, kept apart from the light port/contract surface.
 
+pub(crate) mod query_favorite;
 mod query_shortcuts;
 
 use crate::constants::{APP_FONTS, APP_FONT_FAMILIES};
@@ -121,7 +122,8 @@ pub fn init_state() -> AppState {
 pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
     // Rune routes menu focus/activation before the app fallback. Nothing
     // unhandled by these menus should reach the surrounding editor/grid.
-    if state.query_snippet_menu_owner().is_some()
+    if state.native_query_favorite_active()
+        || state.query_snippet_menu_owner().is_some()
         || crate::data_grid::freeze::blocks_grid_keys(state)
         || crate::data_grid::field_filter::blocks_grid_keys(state)
     {
@@ -153,6 +155,9 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
             if !tx.key_repeat() {
                 state.request_native_query_completion();
             }
+            return true;
+        }
+        if query_favorite::shortcut(state, ev, tx) {
             return true;
         }
         let comment = Chord::new(ChordKey::Char('/')).with(ChordMod::Primary);
@@ -289,6 +294,7 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     // the dialog is mounted at the app root, not inside a section.
     dirty = state.sync_ai_write_proposals() || dirty;
     dirty |= state.retire_invalid_query_snippet_menu();
+    dirty |= state.retire_stale_query_favorite();
     dirty |= crate::data_grid::freeze::retire_stale_menu(state);
     dirty |= crate::data_grid::field_filter::retire_stale_popup(state);
     dirty |= state.restore_query_editor_scroll(tx);
@@ -325,6 +331,7 @@ pub fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
     }
     let handled = state.active == Section::Workspace
         && query_selected(state)
+        && !state.native_query_favorite_active()
         && state.query_snippet_menu_owner().is_none()
         && crate::sql_editor::on_ime(&mut state.sql, ev);
     if handled && matches!(ev, Ime::Preedit(text, _) if !text.is_empty()) {

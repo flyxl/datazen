@@ -38,6 +38,7 @@ pub use favorite::{
     CANCEL_KEY as FAVORITE_CANCEL_KEY, FAVORITE_KEY, SAVE_KEY, SQL_KEY, TITLE_INPUT_KEY,
 };
 pub use unclosed::{BODY_KEY, CANCEL_KEY, CONFIRM_KEY, UNCLOSED_KEY};
+pub(crate) use favorite::build_live_favorite;
 
 /// React `QueryTransactionModalsProps` as a cloneable VM.
 #[allow(dead_code)] // VM mirror; remove when the query-panel host wires the modals.
