@@ -203,7 +203,7 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         if !state.catalog_completion_current() {
             state.sql.clear_catalog_completion();
         }
-        let consumed = sql_editor::on_key(&mut state.sql, ev, tx);
+        let consumed = sql_editor::on_query_key(&mut state.sql, ev, tx);
         if consumed && (matches!(ev.key, Key::Backspace)
             || (matches!(ev.key, Key::Text(_)) && !ev.mods.cmd && !ev.mods.ctrl))
         {

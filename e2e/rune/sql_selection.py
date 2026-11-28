@@ -315,6 +315,61 @@ class SqlSelectionJourneys:
                          [(True, statement.rstrip(";"))])
         self.assertEqual(self.db.read_bytes(), db_bytes)
 
+    def test_native_sql_editor_common_function_completion_undo_and_real_sqlite_run(self):
+        """The live base source offers the label and inserts its distinct apply text."""
+        original = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        db_bytes = self.db.read_bytes()
+        history = self.root / "query-history.json"
+
+        def draft(tree):
+            row = next(n for n in tree["elements"] if n.get("key") == "sql-line-0")
+            return "".join(n.get("text") or "" for n in tree["elements"]
+                           if n["path"].startswith(row["path"] + "/"))
+
+        prefix = "SELECT "
+        applied = "SELECT COALESCE("
+        entry = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": prefix}]
+        typed = [*entry, type_text(5.6, "coa")]
+        offered = self.replay(typed, until=6.6)
+        self.assertEqual(draft(offered), prefix + "coa")
+        self.expect_rendered(offered, text="COALESCE", within="sql-completion-item-0")
+        self.assertFalse(visible(offered, text="COALESCE(", within="sql-completion"))
+
+        accepted = [*typed, key(7.0, "Tab")]
+        selected = self.replay(accepted, until=7.7)
+        self.assertEqual(draft(selected), applied)
+        self.assertFalse(visible(selected, key="sql-completion"))
+        self.assertFalse(visible(selected, key="result-workspace"))
+
+        undo = [*accepted, key(8.0, "z", cmd=True)]
+        restored = self.replay(undo, until=8.7)
+        self.assertEqual(draft(restored), prefix + "coa")
+        self.assertFalse(visible(restored, key="sql-completion"))
+        self.assertFalse(visible(restored, key="result-workspace"))
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+
+        suffix = "NULL, customer_name) FROM customers ORDER BY id;"
+        statement = applied + suffix
+        with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as db:
+            expected = db.execute(statement).fetchall()
+        result = self.replay([
+            *undo, {**key(9.1, "z", cmd=True), "shift": True},
+            {"t": 9.9, "type": "paste", "text": suffix},
+            tap(10.8, "sql-run"),
+        ], until=12.9)
+        self.assertEqual(draft(result), statement)
+        self.assertFalse(visible(result, key="query-error-message"))
+        for row, (name,) in enumerate(expected):
+            self.expect_rendered(result, text=name, within=f"result-cell-{row}-0")
+        self.assertEqual([(item["success"], item["sql"].rstrip(";"))
+                          for item in json.loads(history.read_text(encoding="utf-8"))],
+                         [(True, statement.rstrip(";"))])
+        self.assertEqual(self.sql_customer_rows(), original)
+        self.assertEqual(self.db.read_bytes(), db_bytes)
+
     def test_native_sql_editor_tab_accepts_real_sqlite_from_completion(self):
         self.sql_fixture_before()
         profile = json.loads(self.store.read_text(encoding="utf-8"))

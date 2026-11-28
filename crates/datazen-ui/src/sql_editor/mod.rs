@@ -7,6 +7,7 @@
 //! the view paints lines, highlight spans and carets. The main caret is an `El::ime_cursor`,
 //! which is what turns the platform input method on.
 
+mod function_completion;
 pub(crate) mod find_dock;
 pub(crate) mod builtin_snippets;
 mod from_completion;
@@ -27,6 +28,7 @@ pub use highlight::highlight_sql;
 pub(crate) use highlight::highlight_with_palette;
 pub(crate) use syntax_theme::SyntaxPalette;
 pub use input::{on_ime, on_key};
+pub(crate) use input::on_query_key;
 pub(crate) use model::CompletionScope;
 pub use model::{Sel, Selection, SqlEditor};
 pub use view::{editor_font, panel, plain_panel, EDITOR_SURFACE_WIDTH};

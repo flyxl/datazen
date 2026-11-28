@@ -2,6 +2,7 @@ use datazen_sql::sql_split::{is_comment_only_or_empty, split_sql_statements};
 use rune::{col, row, text, text_input, El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx};
 
 use super::bracket_pairs::{BracketCloser, BracketClosers};
+use super::function_completion::{self, FunctionApplications};
 
 pub(super) const KEYWORDS: &[&str] = &[
     "ALL",
@@ -133,6 +134,7 @@ pub struct Completion {
     start: usize,
     prefix: String,
     items: Vec<String>,
+    function_applications: FunctionApplications,
     selected: usize,
     scope: Option<CompletionScope>,
 }
@@ -327,34 +329,57 @@ impl SqlEditor {
         let Some(word) = completion.items.get(index) else {
             return false;
         };
+        let function = completion.function_applications.get(word);
         let caret = self.selection.main();
         if caret.anchor != caret.head
-            || (completion.scope.is_some() && self.selection.len() != 1)
+            || ((completion.scope.is_some() || function.is_some()) && self.selection.len() != 1)
             || self.composition.is_some()
             || self.doc.get(completion.start..caret.head) != Some(completion.prefix.as_str())
+            || (function.is_some()
+                && !function_completion::plain_select_expression(
+                    &self.doc, completion.start, &completion.prefix,
+                ))
         {
             return false;
         }
+        let insert = function.unwrap_or(word);
         self.push_history();
-        self.apply_change(completion.start, caret.head, word);
+        self.apply_change(completion.start, caret.head, insert);
         true
     }
 
     /// Rebuild the completion from the word at the caret; close it when nothing matches.
     pub fn refresh_completion(&mut self) {
-        let head = self.selection.main().head;
+        self.refresh_completion_sources(false);
+    }
+
+    pub(super) fn refresh_completion_sources(&mut self, query: bool) {
+        let caret = self.selection.main();
+        let head = caret.head;
         let start = word_start(&self.doc, head);
         let prefix = &self.doc[start..head];
         if prefix.is_empty() || !prefix.bytes().all(|byte| byte.is_ascii_alphabetic()) {
             self.completion = None;
             return;
         }
-        let items: Vec<String> = KEYWORDS
+        let mut items: Vec<String> = KEYWORDS
             .iter()
             .filter(|keyword| starts_with_ignore_ascii_case(keyword, prefix))
             .take(COMPLETION_LIMIT)
             .map(|keyword| (*keyword).to_owned())
             .collect();
+        let function_applications = if query && self.selection.len() == 1
+            && caret.anchor == head && self.composition.is_none()
+        {
+            function_completion::applications(&self.doc, start, prefix)
+        } else {
+            FunctionApplications::new()
+        };
+        for label in function_applications.keys() {
+            if items.len() < COMPLETION_LIMIT && !items.contains(label) {
+                items.push(label.clone());
+            }
+        }
         self.completion = if items.is_empty() {
             None
         } else {
@@ -362,6 +387,7 @@ impl SqlEditor {
                 start,
                 prefix: prefix.to_owned(),
                 items,
+                function_applications,
                 selected: 0,
                 scope: None,
             })
@@ -388,6 +414,7 @@ impl SqlEditor {
                 start,
                 prefix: prefix.to_owned(),
                 items,
+                function_applications: FunctionApplications::new(),
                 selected: 0,
                 scope: Some(scope),
             });

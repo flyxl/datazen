@@ -3,6 +3,14 @@ use rune::{Ime, Key, KeyEvent, Tx};
 use super::{model::SqlEditor, navigation::Motion};
 
 pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    on_key_with_functions(editor, ev, tx, false)
+}
+
+pub(crate) fn on_query_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    on_key_with_functions(editor, ev, tx, true)
+}
+
+fn on_key_with_functions(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx, query: bool) -> bool {
     if !editor.focused() || editor.composition().is_some() {
         return false;
     }
@@ -66,7 +74,7 @@ pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
     match &ev.key {
         Key::Text(text) if !ev.mods.cmd && !ev.mods.ctrl => {
             editor.insert(text);
-            editor.refresh_completion();
+            editor.refresh_completion_sources(query);
             true
         }
         Key::Enter => {
@@ -80,7 +88,7 @@ pub fn on_key(editor: &mut SqlEditor, ev: &KeyEvent, tx: &mut Tx) -> bool {
             } else {
                 editor.delete_forward();
             }
-            editor.refresh_completion();
+            editor.refresh_completion_sources(query);
             true
         }
         Key::Command('z') if ev.mods.shift => {
