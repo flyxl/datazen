@@ -69,14 +69,14 @@ pub(super) fn attach(viewport: El, k: &Kit) -> El {
         .child(
             el().key("settings-content-scrollbar")
                 .absolute(0.0, 0.0)
-                .live_rect(track)
+                .live_rect(&track)
                 // The underlying scroll viewport remains the accessible scroll control.
                 .a11y_hidden()
                 .on_drag_any(move |drag, tx| drag_bar(&target, at.get(), jumps, drag, tx))
                 .child(
                     el().key("settings-content-scrollbar-thumb")
                         .absolute(0.0, 0.0)
-                        .live_rect(thumb_rect)
+                        .live_rect(&thumb_rect)
                         .radius(THUMB_WIDTH / 2.0)
                         .fill(k.c.border_strong)
                         .hover(k.c.text_faint),
