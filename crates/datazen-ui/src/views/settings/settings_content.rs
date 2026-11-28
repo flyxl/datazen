@@ -77,7 +77,7 @@
 use std::rc::Rc;
 
 use rune::{col, icon, row, text, tok, El, TextEdit, TextStyle};
-use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
+use rune_kit::{Button, ButtonVariant, ControlSize, Kit, ScrollBar, ScrollBarStyle};
 
 use super::settings_content_state::{
     available_sections, format_shortcut_for_display, get_action_shortcut,
@@ -222,17 +222,49 @@ pub struct SettingsContent<'a, S: 'static> {
 
 // Keep the same centered, width-capped region for host-wired pages and
 // pages whose fields are rendered by SettingsContent itself.
-fn settings_content_pane() -> El {
+fn settings_content_pane(k: &Kit, section: &str, body: El, layer: Vec<El>) -> El {
+    const VIEWPORT: &str = "settings-content";
+    const PADDING_X: f32 = 32.0;
+    const PADDING_Y: f32 = 24.0;
+    let body_key = format!("settings-scrolling-body-{section}");
+    // Chromium's 9px strip is a 5px thumb plus 2px on either side. Reuse
+    // the live, draggable Rune bar, but reserve its width only when the
+    // real body overflows. The bar still uses the kit's hover reveal.
+    let scrollbar = ScrollBarStyle::native(k.c.border_strong, k.c.text_faint)
+        .width(5.0)
+        .hover_width(5.0)
+        .inside();
+    // These reads settle with layout and do not subscribe to scroll position.
+    // A section-specific body key cannot reuse another route's old height.
+    let overflowing = match (
+        rune::memo::layout_with(VIEWPORT, |rect| rect[3]),
+        rune::memo::layout_with(&body_key, |rect| rect[3]),
+    ) {
+        (Some(viewport_height), Some(body_height)) => body_height > viewport_height,
+        _ => false,
+    };
     col()
-        .key("settings-content")
+        .key(VIEWPORT)
         .grow(1.0)
         .min_w(0.0)
         .min_h(0.0)
         .h_full()
         .items_center()
-        .px(32.0)
-        .py(24.0)
+        .px(PADDING_X)
+        .pr(PADDING_X + if overflowing { scrollbar.strip() } else { 0.0 })
         .scroll(rune::ScrollSpec { stick_bottom: false })
+        // Rune's scroll extent ends at its last content box. Reserve the
+        // actual bottom padding in that box so it remains visible at the end.
+        .child(
+            col()
+                .key(body_key)
+                .w_full()
+                .max_w(BODY_MAX_WIDTH)
+                .py(PADDING_Y)
+                .child(body),
+        )
+        .children(layer)
+        .scroll_bar_styled(scrollbar)
 }
 
 impl<'a, S: 'static> SettingsContent<'a, S> {
@@ -528,9 +560,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             .gap(0.0);
         page = page.child(self.build_nav(&k, &sections, active));
         let body = if let Some(body) = self.host_body.take() {
-            settings_content_pane().child(
-                col().w_full().max_w(BODY_MAX_WIDTH).child(body),
-            )
+            settings_content_pane(k, active, body, Vec::new())
         } else {
             self.build_content(k, &sections, active)
         };
@@ -679,16 +709,16 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         // The selects' open listboxes ride the overlay layer (the
         // section convention: the pane carries the layer's elements
         // as trailing children).
-        settings_content_pane()
-            .child(
-                col()
-                    .key(format!("settings-section-{active}"))
-                    .w_full()
-                    .max_w(BODY_MAX_WIDTH)
-                    .gap(20.0)
-                    .child(body),
-            )
-            .children(layer)
+        settings_content_pane(
+            k,
+            active,
+            col()
+                .key(format!("settings-section-{active}"))
+                .w_full()
+                .gap(20.0)
+                .child(body),
+            layer,
+        )
     }
 
     /// A delegated section: the child slot alone (an unlanded port
@@ -2058,5 +2088,101 @@ mod general_language_field_tests {
             assert_eq!(field.c.border_focus, shared.c.border_focus);
             assert_eq!(field.c.icon_muted, shared.c.text_faint);
         }
+    }
+}
+
+#[cfg(test)]
+mod settings_content_overflow_tests {
+    use super::*;
+    use rune::{Cx, Direction, Env, Runtime};
+
+    #[derive(Clone, Copy)]
+    struct Fixture {
+        short: bool,
+        rtl: bool,
+        dark: bool,
+    }
+
+    fn view(state: &Fixture, _: &mut Cx<Fixture>) -> El {
+        let (section, height) = if state.short {
+            ("appearance", 192.5)
+        } else {
+            ("prompts", 1827.5)
+        };
+        let direction = if state.rtl { Direction::Rtl } else { Direction::Ltr };
+        col()
+            .w_full()
+            .h_full()
+            .dir(direction)
+            .child(col().w_full().h(40.0).shrink())
+            .child(
+                row()
+                    .w_full()
+                    .grow(1.0)
+                    .min_h(0.0)
+                    .child(col().w(180.0).h_full())
+                    .child(settings_content_pane(
+                        kit(state.dark),
+                        section,
+                        col().key("fixture-body").w_full().h(height),
+                        Vec::new(),
+                    )),
+            )
+    }
+
+    fn rect(rt: &Runtime<Fixture>, key: &str) -> [f32; 4] {
+        rt.elements().into_iter().find(|element| element.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("missing {key}"))
+            .rect
+    }
+
+    #[test]
+    fn gutter_tracks_actual_overflow_on_first_layout_resize_and_section_switch() {
+        for dark in [false, true] {
+            let mut rt = Runtime::new(
+                Fixture { short: false, rtl: false, dark },
+                view,
+                (1440.0, 900.0),
+                Env::new(dark, 1.0),
+            );
+            rt.frame(0.0);
+            assert_eq!(rect(&rt, "settings-content"), [180.0, 40.0, 1260.0, 860.0]);
+            assert_eq!(rect(&rt, "fixture-body"), [469.5, 64.0, 672.0, 1827.5]);
+
+            rt.update(|_, tx| tx.scroll_to_bottom_instant("settings-content"));
+            rt.frame(1.0 / 60.0);
+            let [x, y, _, h] = rect(&rt, "fixture-body");
+            assert_eq!(x, 469.5, "scroll position does not recenter the body");
+            assert_eq!(y + h, 876.0, "24 points of real bottom padding at the scroll end");
+
+            rt.set_viewport((1440.0, 2000.0), 1.0);
+            rt.frame(1.0 / 60.0);
+            assert_eq!(rect(&rt, "fixture-body"), [474.0, 64.0, 672.0, 1827.5]);
+
+            rt.set_viewport((1440.0, 900.0), 1.0);
+            rt.frame(1.0 / 60.0);
+            assert_eq!(rect(&rt, "fixture-body"), [469.5, 64.0, 672.0, 1827.5]);
+
+            rt.update(|state, _| state.short = true);
+            rt.frame(1.0 / 60.0);
+            assert_eq!(rect(&rt, "fixture-body"), [474.0, 64.0, 672.0, 192.5]);
+        }
+    }
+
+    #[test]
+    fn gutter_is_on_the_logical_end_and_counts_bottom_padding_in_the_fit() {
+        let mut rt = Runtime::new(
+            Fixture { short: true, rtl: true, dark: false },
+            view,
+            (1440.0, 280.5),
+            Env::new(false, 1.0),
+        );
+        rt.frame(0.0);
+        assert_eq!(rect(&rt, "fixture-body"), [294.0, 64.0, 672.0, 192.5]);
+
+        // The same body now exceeds the viewport by one point of bottom padding.
+        rt.set_viewport((1440.0, 279.5), 1.0);
+        rt.frame(1.0 / 60.0);
+        assert_eq!(rect(&rt, "fixture-body"), [298.5, 64.0, 672.0, 192.5]);
     }
 }
