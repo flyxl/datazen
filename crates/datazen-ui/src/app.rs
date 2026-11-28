@@ -137,6 +137,7 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
             && sql_editor::on_key(&mut state.workflow_yaml, ev, tx);
     }
     if query_selected(state) {
+        if sql_editor::goto_line::holds_focus(state, tx) { return true; }
         if crate::views::result_workspace::native_result_find::escape_if_focused(state, ev, tx) {
             return true;
         }
@@ -276,6 +277,7 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
                 .as_mut()
                 .is_some_and(|grid| grid.sync_scroll());
     }
+    dirty |= sql_editor::goto_line::retire_invalid(state);
     dirty || (state.grid.has_page() && state.grid.sync_scroll())
 }
 

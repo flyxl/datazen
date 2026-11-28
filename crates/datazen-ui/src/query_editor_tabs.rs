@@ -12,7 +12,7 @@ use crate::{state_def::AppState, types::Section, sql_editor::SqlEditor};
 type EditorScroll = Rc<Cell<[f32; 2]>>;
 
 /// The callback and its internal scroll anchor belong to the same draft.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct QueryEditorViewport {
     pub anchor: String,
     pub offset: EditorScroll,
@@ -107,6 +107,7 @@ impl AppState {
         self.query_editor_tabs.snippets_menu = None;
         self.sql.preedit("");
         self.sql.dismiss_find();
+        self.sql.goto_lease = None;
         self.sql.focused = false;
         self.query_editor_tabs.scroll_mount = None;
         if self.query_editor_tabs.active.is_some() && self.query_editor_tabs.pending_scroll.is_none() {

@@ -154,13 +154,16 @@ pub(crate) fn panel_with_completion_scope(
                         .on_press_tx(|state: &mut crate::AppState, tx| {
                             // Take the actual editor focus back from other fields/results.
                             state.result_focused = false;
+                            state.sql.goto_lease = None;
                             state.sql.focus();
                             tx.focus("sql-editor-scroll", false);
                         })
                         .child(doc),
                 ),
         );
-    if editor.find_open {
+    if editor.goto_lease.is_some() && viewport.is_some() {
+        panel.child(super::goto_line::panel(editor, document_ink, dark))
+    } else if editor.find_open {
         panel.child(super::find_dock::panel(editor, document_ink, dark, viewport))
     } else {
         panel
@@ -204,7 +207,7 @@ fn focused_query_canvas_key(state: &mut crate::AppState, ev: &KeyEvent, tx: &mut
         state.sql.focus();
         return crate::app_key(state, ev, tx);
     }
-    super::find_dock::canvas_key(state, ev, tx)
+    super::goto_line::open_key(state, ev, tx) || super::find_dock::canvas_key(state, ev, tx)
 }
 
 /// The completion list, drawn in the canvas below the caret line.

@@ -158,6 +158,9 @@ pub struct SqlEditor {
     pub undo_stack: Vec<Snapshot>,
     pub redo_stack: Vec<Snapshot>,
     /// The Query-only find dock opens on demand; each draft owns its needle.
+    pub(crate) goto_lease: Option<super::goto_line::Lease>,
+    pub(super) goto_input: TextEdit,
+    pub(super) document_revision: u64,
     pub(super) find_open: bool,
     pub(super) find_match_case: bool,
     pub(super) find_whole_word: bool,
@@ -193,6 +196,9 @@ impl SqlEditor {
             bracket_closers: BracketClosers::default(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            goto_lease: None,
+            goto_input: TextEdit::new(String::new()),
+            document_revision: 0,
             find_open: false,
             find_match_case: false,
             find_whole_word: false,
@@ -561,6 +567,7 @@ impl SqlEditor {
 
     fn restore_snapshot(&mut self, snapshot: Snapshot) {
         self.doc = snapshot.doc;
+        self.document_revision = self.document_revision.wrapping_add(1);
         self.selection = snapshot.selection;
         self.bracket_closers.restore_survivors(snapshot.bracket_closers);
         self.keep_bracket_closers_on_main_line();
@@ -851,6 +858,7 @@ impl SqlEditor {
     pub(super) fn splice_doc(&mut self, from: usize, to: usize, text: &str) {
         self.bracket_closers.map_edit(from, to, text.len());
         self.doc.replace_range(from..to, text);
+        self.document_revision = self.document_revision.wrapping_add(1);
     }
 
     pub fn apply_change(&mut self, from: usize, to: usize, text: &str) {
