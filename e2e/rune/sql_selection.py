@@ -20,6 +20,48 @@ class SqlSelectionJourneys:
         self.assertEqual(original, [(1, "fixture-ada"), (2, "fixture-lin")])
         return original
 
+    def test_native_sql_physically_typed_space_preserves_draft_and_read_history(self):
+        original = self.sql_fixture_before()
+        store = json.loads(self.store.read_text(encoding="utf-8"))
+        store["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(store), encoding="utf-8")
+        db_bytes = self.db.read_bytes()
+        sql = "SELECT  '双 空格'  AS note;"
+        route = [tap(.5, "conn-open-e2e-sqlite"), tap(3.0, "conn-toolbar-new-query"),
+                 tap(4.0, "sql-editor-scroll")]
+        typed = [*route, type_text(4.45, "SELECT"),
+                 {"t":4.95,"type":"key","name":" ","code":"Space"},
+                 {"t":5.25,"type":"key","name":" ","code":"Space","shift":True},
+                 type_text(5.65, "'双 空格'  AS note;")]
+
+        def actual_draft(tree):
+            row = next(n for n in tree["elements"] if n.get("key")=="sql-line-0")
+            return "".join(n.get("text") or "" for n in tree["elements"]
+                           if n["path"].startswith(row["path"]+"/"))
+        typed_tree = self.replay(typed, until=6.8)
+        self.assertEqual(actual_draft(typed_tree), sql, "real typed spaces never reach the editor")
+        self.assertFalse(visible(typed_tree, key="result-workspace"))
+        # Independent stock clipboard-path control, never used by the typing
+        # or execution witness; exact drafts must match.
+        pasted = self.replay([*route, {"t":4.45,"type":"paste","text":sql}], until=5.55)
+        self.assertEqual(actual_draft(pasted), sql)
+        self.assertFalse(visible(pasted, key="result-workspace"))
+
+        result = self.replay([*typed, tap(7.1, "query-library-history-toggle"),
+                              tap(8.2, "sql-run")], until=10.2)
+        self.expect_rendered(result, text="双 空格", within="result-cell-0-0")
+        # The history card intentionally collapses whitespace for its preview;
+        # the actual stored SQL and draft above must preserve every byte.
+        preview = " ".join(sql.rstrip(";").split())
+        self.expect_rendered(result, text=preview, within="query-history-entry-0")
+        history = json.loads((self.root / "query-history.json").read_text(encoding="utf-8"))
+        self.assertEqual([(r["sql"].rstrip(";"), r["success"]) for r in history],
+                         [(sql.rstrip(";"), True)])
+        self.assertEqual(self.sql_customer_rows(), original)
+        self.assertEqual(self.db.read_bytes(), db_bytes)
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(self.db.with_name(self.db.name+suffix).exists())
+
     def test_native_sql_editor_keyword_completion_undo_preserves_caret_run(self):
         """Keyword selection is one undoable edit, not a query execution."""
         original = self.sql_fixture_before()
@@ -81,6 +123,12 @@ class SqlSelectionJourneys:
     def test_native_sql_editor_find_dock_is_opt_in_then_focuses_next_and_escapes(self):
         """The live Query dock is scoped and search never runs or edits a draft."""
         self.sql_fixture_before()
+        # Writable SQLite connections initialize WAL when opened. This
+        # no-execution Find journey must use the real read-only profile
+        # before taking its exact database-byte witness.
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
         db_bytes = self.db.read_bytes()
         sql = "SELECT '中文';\nSELECT '中文';"
         prefix = query_steps(sql)[:-1]
@@ -118,6 +166,8 @@ class SqlSelectionJourneys:
         history = self.root / "query-history.json"
         self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
         self.assertEqual(self.db.read_bytes(), db_bytes)
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
 
     def test_native_sql_editor_caret_keeps_literal_semicolon_and_ignores_other_write(self):
         original = self.sql_fixture_before()

@@ -160,6 +160,52 @@ fn query_toolbar_is_above_flex_idle_editor_and_run_preserves_the_selected_statem
 }
 
 #[test]
+fn focused_sql_canvas_takes_space_as_text_without_changing_library_button_activation() {
+    let mut rt = runtime();
+    rt.on_key = Some(datazen_ui::app_key);
+    rt.state.workspace.connect("local").unwrap();
+    rt.state.open_query_tab("Query").unwrap();
+    rt.state.sql = sql_editor::SqlEditor::from_doc("AβZ");
+    rt.frame(0.0);
+    tap_query(&mut rt, "sql-editor-scroll");
+    rt.state.sql.set_main_selection(1, 3);
+    let send = |rt: &mut Runtime<AppState>, key, mods| {
+        rt.key(rune::KeyEvent { key, mods });
+        rt.frame(0.0);
+    };
+    send(&mut rt, rune::Key::Text(" ".into()), rune::Mods::default());
+    assert_eq!(rt.state.sql.doc(), "A Z");
+    send(&mut rt, rune::Key::Text(" ".into()), rune::Mods { shift:true,..Default::default() });
+    assert_eq!(rt.state.sql.doc(), "A  Z");
+    assert_eq!(rt.state.sql.undo_stack.len(), 2);
+    send(&mut rt, rune::Key::Command('z'), rune::Mods { cmd:true,..Default::default() });
+    assert_eq!(rt.state.sql.doc(), "A Z");
+    send(&mut rt, rune::Key::Command('z'), rune::Mods { cmd:true,..Default::default() });
+    assert_eq!(rt.state.sql.doc(), "AβZ");
+    assert_eq!(rt.state.sql.selected_text(), "β");
+
+    rt.state.sql.preedit("未提交");
+    send(&mut rt, rune::Key::Text(" ".into()), rune::Mods::default());
+    assert_eq!(rt.state.sql.doc(), "AβZ");
+    assert_eq!(rt.state.sql.composition(), Some("未提交"));
+    rt.state.sql.preedit("");
+
+    for (trigger, panel) in [
+        ("query-library-history-toggle", "query-history-panel"),
+        ("query-library-favorites-toggle", "query-favorites-panel"),
+        ("query-library-snippets-toggle", "query-snippets-panel"),
+    ] {
+        tap_query(&mut rt, trigger);
+        assert!(rt.find(panel).is_some());
+        send(&mut rt, rune::Key::Text(" ".into()), rune::Mods::default());
+        rt.settle_all();
+        rt.frame(0.0);
+        assert!(rt.find(panel).is_none(), "Space still activates the focused real Library button");
+    }
+    assert_eq!(rt.state.sql.doc(), "AβZ", "toolbar Space never types behind it");
+}
+
+#[test]
 fn narrow_query_toolbar_can_scroll_to_its_last_action() {
     let mut rt = runtime();
     rt.set_viewport((900.0, 900.0), 1.0);

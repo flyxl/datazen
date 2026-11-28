@@ -147,7 +147,7 @@ pub(crate) fn panel_with_completion_scope(
                         .min_h(0.0)
                         .scroll_xy()
                         .focusable(true)
-                        .on_key(super::find_dock::canvas_key)
+                        .on_key(focused_query_canvas_key)
                         .on_scroll_offset(move |at| {
                             if let Some(scroll) = &scroll { scroll.set(at.offset); }
                         })
@@ -165,6 +165,28 @@ pub(crate) fn panel_with_completion_scope(
     } else {
         panel
     }
+}
+
+// Rune otherwise interprets Space on this focusable non-TextEdit viewport
+// as a button press *before* the app sees it. Claim only ordinary text Space
+// from the actual Query canvas; the normal SQL input path owns the edit.
+fn focused_query_canvas_key(state: &mut crate::AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if tx.focused() == Some("sql-editor-scroll")
+        && state.active == crate::types::Section::Workspace
+        && crate::views::query_selected(state)
+        && matches!(&ev.key, Key::Text(space) if space == " ")
+        && !ev.mods.cmd && !ev.mods.ctrl && !ev.mods.alt && !ev.mods.logo
+    {
+        // Don't turn an IME's composition-space into a document edit or a
+        // generic press; Commit still reaches the existing IME handler.
+        if state.sql.composition().is_some() {
+            return true;
+        }
+        state.result_focused = false;
+        state.sql.focus();
+        return crate::app_key(state, ev, tx);
+    }
+    super::find_dock::canvas_key(state, ev, tx)
 }
 
 /// The completion list, drawn in the canvas below the caret line.
