@@ -278,23 +278,7 @@ impl SqlEditorState {
         options: super::format_editor_document::PartialSqlFormatOptions,
         format_sql: super::format_editor_document::FormatSql<'_>,
     ) -> bool {
-        let sel = self.editor.selection().main();
-        let cursor = self.editor.main_head();
-        let doc = self.editor.doc().to_string();
-        let Some(edit) = super::format_editor_document::format_editor_document(
-            &doc,
-            sel.from(),
-            sel.to(),
-            cursor,
-            database_type,
-            options,
-            format_sql,
-        ) else {
-            return false;
-        };
-        self.editor.replace_range(edit.from, edit.to, &edit.insert);
-        self.editor.set_main_selection(edit.anchor, edit.head);
-        true
+        self.editor.format_draft_with(database_type, options, format_sql)
     }
 
     /// `insertSnippet(template)`: replace the selection with the template.
