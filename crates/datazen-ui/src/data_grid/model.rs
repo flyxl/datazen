@@ -1,3 +1,5 @@
+mod display;
+
 use std::collections::HashMap;
 
 use datazen_ui_api::{NativeTablePage, NativeTableRowCount};
@@ -35,6 +37,8 @@ pub struct DataGrid {
     columns: Vec<String>,
     column_types: Vec<String>,
     numeric_columns: Vec<bool>,
+    displayed: Option<Vec<u32>>,
+    display_revision: u64,
     /// Per-column widths in points (A4), persisted per table.
     col_widths: Vec<u32>,
     pub anchor: (u32, u32),
@@ -62,6 +66,7 @@ pub struct DataGrid {
     // Only the table sheet observes Y: a virtualized source row can disappear
     // before Rune can send its captured cell a final pointer event.
     table_scroll_y: rune::Live<f32>,
+    table_viewport_width: rune::Live<f32>,
     origin_col: u32,
     /// Result/find state (A5): the active needle, every matching cell in
     /// row-major order, and the current hit's index in that list.
@@ -101,6 +106,8 @@ impl DataGrid {
             columns: Vec::new(),
             column_types: Vec::new(),
             numeric_columns: Vec::new(),
+            displayed: None,
+            display_revision: 0,
             col_widths: Vec::new(),
             anchor: (0, 0),
             focus: (0, 0),
@@ -119,6 +126,7 @@ impl DataGrid {
             editor: TextEdit::new(String::new()),
             scroll_x: rune::Live::new(0.0),
             table_scroll_y: rune::Live::new(0.0),
+            table_viewport_width: rune::Live::new(0.0),
             origin_col: 0,
             find_needle: String::new(),
             find_hits: Vec::new(),
@@ -267,15 +275,18 @@ impl DataGrid {
         self.col_widths = normalized;
     }
 
-    /// A4: x offset of a data column's left edge within the data sheet.
+    pub(super) fn table_viewport_width(&self) -> rune::Live<f32> {
+        self.table_viewport_width.clone()
+    }
+
+    /// A4: x offset of a displayed data column's left edge.
     pub fn x_of_col(&self, col: u32) -> f32 {
-        let end = col.min(self.cols);
-        (0..end).map(|c| self.col_w(c)).sum()
+        self.span_width(0, col)
     }
 
     /// A4: total width of all data columns.
     pub fn sheet_data_width(&self) -> f32 {
-        self.x_of_col(self.cols)
+        self.x_of_col(self.displayed_count())
     }
 
     /// A4: width of a contiguous span of data columns [from, to).
@@ -283,8 +294,8 @@ impl DataGrid {
         if to <= from {
             return 0.0;
         }
-        let to = to.min(self.cols);
-        (from.min(self.cols)..to).map(|c| self.col_w(c)).sum()
+        let count = self.displayed_count();
+        (from.min(count)..to.min(count)).map(|at| self.displayed_width(at)).sum()
     }
 
     pub fn cell(&self, row: u32, col: u32) -> String {
@@ -315,7 +326,7 @@ impl DataGrid {
     }
 
     /// The column's index on the loaded page, by name.
-    fn column_index(&self, name: &str) -> Option<u32> {
+    pub(in crate::data_grid) fn column_index(&self, name: &str) -> Option<u32> {
         self.columns
             .iter()
             .position(|column| column == name)
@@ -362,6 +373,8 @@ impl DataGrid {
         }
         self.source = Some(page.rows.clone());
         self.columns = page.columns.clone();
+        self.displayed = None;
+        self.display_revision = self.display_revision.wrapping_add(1);
         self.column_types.clear();
         self.numeric_columns.clear();
         self.rows = page.rows.len() as u32;
@@ -391,6 +404,9 @@ impl DataGrid {
     }
 
     pub fn select(&mut self, row: u32, col: u32) {
+        if self.is_projected() && self.displayed_index(col).is_none() {
+            return;
+        }
         self.drag_selection = None;
         if self.editing {
             self.commit_edit();
@@ -410,7 +426,7 @@ impl DataGrid {
     /// selection is not a cell anchor, so shift-click starts a new range.
     pub fn click_cell(&mut self, row: u32, col: u32, extend: bool) {
         if !extend || self.selection != Selection::Cells || self.editing
-            || row >= self.rows || col >= self.cols
+            || row >= self.rows || self.displayed_index(col).is_none()
         {
             self.select(row, col);
             return;
@@ -421,7 +437,7 @@ impl DataGrid {
     /// Only a real drag (not a click or an inline edit) takes ownership of the
     /// cell selection. Save the previous selection so Escape can cancel it.
     pub(super) fn begin_cell_drag(&mut self, row: u32, col: u32) -> bool {
-        if self.editing || row >= self.rows || col >= self.cols {
+        if self.editing || row >= self.rows || self.displayed_index(col).is_none() {
             return false;
         }
         if self.drag_selection.is_none() {
@@ -438,7 +454,7 @@ impl DataGrid {
     }
 
     pub(super) fn extend_cell_drag(&mut self, row: u32, col: u32) {
-        if self.drag_selection.is_some() && row < self.rows && col < self.cols {
+        if self.drag_selection.is_some() && row < self.rows && self.displayed_index(col).is_some() {
             self.focus = (row, col);
         }
     }
@@ -489,7 +505,7 @@ impl DataGrid {
 
     /// Navigation coordinates can exist even though no cells are selected.
     pub fn has_selection(&self) -> bool {
-        self.selection != Selection::None && self.rows > 0 && self.cols > 0
+        self.selection != Selection::None && self.rows > 0 && self.displayed_count() > 0
     }
 
     pub fn clear_selection(&mut self) {
@@ -499,7 +515,9 @@ impl DataGrid {
     }
 
     pub fn begin_edit(&mut self) {
-        if !self.editable || self.rows == 0 || self.cols == 0 || self.selected_row().is_some() {
+        if !self.editable || self.rows == 0 || self.displayed_index(self.focus.1).is_none()
+            || self.selected_row().is_some()
+        {
             return;
         }
         if self.editing {
@@ -624,11 +642,12 @@ impl DataGrid {
             return String::new();
         }
         let (r0, r1, c0, c1) = self.rect();
+        let columns = self.displayed_range(c0, c1);
         let mut lines = Vec::new();
         for r in r0..=r1 {
             let mut cells = Vec::new();
-            for c in c0..=c1 {
-                cells.push(self.cell(r, c));
+            for col in columns.clone().filter_map(|at| self.displayed_raw(at)) {
+                cells.push(self.cell(r, col));
             }
             lines.push(cells.join("\t"));
         }
@@ -644,6 +663,7 @@ impl DataGrid {
             self.commit_edit();
         }
         let (row0, col0) = self.focus;
+        let Some(start) = self.displayed_index(col0) else { return; };
         for (dr, line) in text.split('\n').enumerate() {
             let line = line.trim_end_matches('\r');
             if line.is_empty() {
@@ -653,12 +673,12 @@ impl DataGrid {
                 let Some(row) = (row0 as usize).checked_add(dr) else {
                     continue;
                 };
-                let Some(col) = (col0 as usize).checked_add(dc) else {
-                    continue;
-                };
-                if row < self.rows as usize && col < self.cols as usize {
-                    self.edits
-                        .insert((row as u32, col as u32), value.to_owned());
+                let Some(col) = (start as usize).checked_add(dc)
+                    .and_then(|index| u32::try_from(index).ok())
+                    .and_then(|at| self.displayed_raw(at))
+                else { continue; };
+                if row < self.rows as usize {
+                    self.edits.insert((row as u32, col), value.to_owned());
                 }
             }
         }
@@ -670,19 +690,20 @@ impl DataGrid {
         let x = self.scroll_x.get().max(0.0);
         let mut origin = 0u32;
         let mut acc = 0.0f32;
-        if self.cols == 0 {
+        let count = self.displayed_count();
+        if count == 0 {
             return false;
         }
-        for c in 0..self.cols {
-            let next = acc + self.col_w(c);
+        for c in 0..count {
+            let next = acc + self.displayed_width(c);
             if next > x + 0.5 {
                 origin = c;
                 break;
             }
             acc = next;
-            origin = c.saturating_add(1).min(self.cols.saturating_sub(1));
+            origin = c.saturating_add(1).min(count.saturating_sub(1));
         }
-        let origin = origin.min(self.cols.saturating_sub(1));
+        let origin = origin.min(count.saturating_sub(1));
         if origin == self.origin_col {
             false
         } else {
@@ -692,22 +713,27 @@ impl DataGrid {
     }
 
     pub fn nudge(&mut self, dr: i32, dc: i32, extend: bool) {
-        if self.editing || self.rows == 0 || self.cols == 0 {
+        let count = self.displayed_count();
+        if self.editing || self.rows == 0 || count == 0 {
             return;
         }
         let row = self.selected_row().unwrap_or(self.focus.0);
         let r = (row as i32 + dr).clamp(0, self.rows as i32 - 1) as u32;
-        let c = (self.focus.1 as i32 + dc).clamp(0, self.cols as i32 - 1) as u32;
+        let position = self.displayed_index(self.focus.1).unwrap_or(0);
+        let next = (position as i32 + dc).clamp(0, count as i32 - 1) as u32;
+        let Some(c) = self.displayed_raw(next) else { return; };
         self.focus = (r, c);
         if !extend || self.selection != Selection::Cells {
             self.anchor = (r, c);
         }
         self.selection = Selection::Cells;
-        self.reveal_focus();
+        if !self.is_projected() {
+            self.reveal_focus();
+        }
     }
 
     fn reveal_focus(&mut self) {
-        let col = self.focus.1;
+        let Some(col) = self.displayed_index(self.focus.1) else { return; };
         let end = self.origin_col.saturating_add(COL_WINDOW);
         if col < self.origin_col || col >= end {
             self.origin_col = col.saturating_sub(COL_WINDOW / 2);
@@ -727,7 +753,7 @@ impl DataGrid {
     }
 
     pub fn covers(&self, row: u32, col: u32) -> bool {
-        if !self.has_selection() {
+        if !self.has_selection() || self.displayed_index(col).is_none() {
             return false;
         }
         let (r0, r1, c0, c1) = self.rect();
@@ -739,18 +765,19 @@ impl DataGrid {
         self.built_columns_with_pin(1, None)
     }
 
-    /// Sorted union of the raw leading prefix and the virtual window. Every
-    /// cell keeps its original column index; the skipped widths remain pads.
+    /// Sorted union of leading displayed positions and the virtual window.
+    /// The renderer resolves each position to its raw identity before binding.
     pub(super) fn built_columns_with_pin(&self, pinned: u32, viewport: Option<f32>) -> Vec<u32> {
-        let pinned = pinned.min(self.cols);
-        let origin = self.origin_col.min(self.cols.saturating_sub(1));
+        let count = self.displayed_count();
+        let pinned = pinned.min(count);
+        let origin = self.origin_col.min(count.saturating_sub(1));
         // A measured viewport can fit more than twelve 40pt persisted columns.
         // Keep the partially visible end plus one column of horizontal overscan.
         let window = viewport.map_or(COL_WINDOW, |width| {
             (((width.max(0.0) / MIN_COL_W as f32).ceil() as u32).saturating_add(2)).max(COL_WINDOW)
         });
         let start = origin.max(pinned);
-        let end = origin.saturating_add(window).min(self.cols);
+        let end = origin.saturating_add(window).min(count);
         (0..pinned).chain(start..end).collect()
     }
 

@@ -103,7 +103,7 @@ pub fn workspace_body(
     } else if table_selected && state.grid.has_page() {
         // A retained table page is not active after its last tab is closed.
         crate::data_grid::freeze::mount_menu(state, dark, layer);
-        table_workspace(state, theme, dark)
+        table_workspace(state, theme, dark, layer)
     } else {
         workspace_empty(theme)
     };
@@ -177,7 +177,7 @@ pub(super) fn live_sqlite_table_page(state: &AppState) -> bool {
     })
 }
 
-pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool, layer: &mut Vec<El>) -> El {
     let title = state
         .tabs
         .selected()
@@ -202,6 +202,7 @@ pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 viewport,
                 dark,
                 live_sqlite,
+                crate::data_grid::field_filter::mount(state, dark, layer),
             )
         }
         TableView::Ddl => ddl_view(state, &title, theme),

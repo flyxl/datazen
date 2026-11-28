@@ -30,3 +30,27 @@ pub fn on_key(grid: &mut DataGrid, ev: &KeyEvent, tx: &mut Tx) -> bool {
     }
     true
 }
+
+pub(crate) fn on_table_key(state: &mut crate::AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
+    if !state.grid.is_projected() {
+        return on_key(&mut state.grid, ev, tx);
+    }
+    if state.grid.displayed_count() == 0 || super::freeze::Owner::current(state).is_none() {
+        return false;
+    }
+    let pinned = super::freeze::frozen_columns(state).unwrap_or(0);
+    let gutter = if state.desktop.read_native_grid_row_numbers()
+        .unwrap_or(datazen_ui_api::types::DEFAULT_GRID_ROW_NUMBERS)
+    { super::GUTTER_W } else { 0.0 };
+    let consumed = on_key(&mut state.grid, ev, tx);
+    if consumed && matches!(ev.key, Key::Left | Key::Right | Key::Up | Key::Down
+        | Key::Home | Key::End | Key::PageUp | Key::PageDown)
+    {
+        if let Some(x) = state.grid.projected_key_reveal(
+            pinned, gutter, state.grid.table_viewport_width().get(), state.grid.scroll_x().get(),
+        ) {
+            tx.scroll_to_x("data-grid-scroll", x);
+        }
+    }
+    consumed
+}

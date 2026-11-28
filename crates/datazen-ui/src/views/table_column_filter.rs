@@ -20,9 +20,8 @@
 //!
 //! The VM mirrors the props plus the two local `useState` values (`open`,
 //! `searchQuery`); `loading` is a documented stand-in for a host-driven busy
-//! state React does not render. No production host mounts this filter yet, so
-//! every reusable item carries a per-item `#[allow(dead_code)]` with removal
-//! stage "drop when the table toolbar host wires this filter".
+//! state React does not render. The live host mounts the trigger in the grid
+//! bar and anchors the shared body in the window overlay.
 
 use std::rc::Rc;
 
@@ -94,13 +93,13 @@ impl TableColumnFilterVm {
 
     /// React `columns.filter(name/dataType includes the trimmed, lowered query)`.
     pub fn filtered_columns(&self) -> Vec<&FilterColumn> {
-        let query = self.search_query.text.trim().to_ascii_lowercase();
+        let query = self.search_query.text.trim().to_lowercase();
         self.columns
             .iter()
             .filter(|column| {
                 query.is_empty()
-                    || column.name.to_ascii_lowercase().contains(&query)
-                    || column.data_type.to_ascii_lowercase().contains(&query)
+                    || column.name.to_lowercase().contains(&query)
+                    || column.data_type.to_lowercase().contains(&query)
             })
             .collect()
     }
@@ -173,7 +172,6 @@ pub fn build<S: 'static>(
     dark: bool,
     layer: &mut Vec<El>,
 ) {
-    let k = kit(dark);
     let toggle_disabled = vm.disabled || vm.columns.is_empty();
     // React installs a document mousedown listener that closes the popover on
     // an outside press. A full-window transparent scrim behind the toggle and
@@ -190,6 +188,34 @@ pub fn build<S: 'static>(
         scrim = scrim.on_press(move |s: &mut S| dismiss(s));
         layer.push(scrim);
     }
+    let mut toggle = trigger(vm, dark);
+    if !toggle_disabled {
+        toggle = toggle.on_press(emit(on_action, TableColumnFilterAction::ToggleOpen));
+    }
+    layer.push(toggle);
+
+    if vm.open {
+        let mut popover = popover(vm, on_action, search_edit, dark);
+        // React's Escape handler closes the popover and returns focus to the
+        // toggle; the popover carries the key handler when focused.
+        let escape_callback = on_action.clone();
+        popover = popover.focusable(true).on_key(move |s: &mut S, event: &KeyEvent, _tx: &mut Tx| {
+            if event.key == Key::Escape {
+                if let Some(callback) = &escape_callback {
+                    callback(s, TableColumnFilterAction::Close);
+                }
+                true
+            } else {
+                false
+            }
+        });
+        layer.push(popover);
+    }
+}
+
+pub(crate) fn trigger(vm: &TableColumnFilterVm, dark: bool) -> El {
+    let k = kit(dark);
+    let toggle_disabled = vm.disabled || vm.columns.is_empty();
     let mut toggle = row()
         .key(TOGGLE_KEY)
         .role("button")
@@ -229,31 +255,10 @@ pub fn build<S: 'static>(
                 .color(k.c.text_accent),
         );
     }
-    if !toggle_disabled {
-        toggle = toggle.on_press(emit(on_action, TableColumnFilterAction::ToggleOpen));
-    }
-    layer.push(toggle);
-
-    if vm.open {
-        let mut popover = popover(vm, on_action, search_edit, dark);
-        // React's Escape handler closes the popover and returns focus to the
-        // toggle; the popover carries the key handler when focused.
-        let escape_callback = on_action.clone();
-        popover = popover.focusable(true).on_key(move |s: &mut S, event: &KeyEvent, _tx: &mut Tx| {
-            if event.key == Key::Escape {
-                if let Some(callback) = &escape_callback {
-                    callback(s, TableColumnFilterAction::Close);
-                }
-                true
-            } else {
-                false
-            }
-        });
-        layer.push(popover);
-    }
+    toggle
 }
 
-fn popover<S: 'static>(
+pub(crate) fn popover<S: 'static>(
     vm: &TableColumnFilterVm,
     on_action: &Option<TableColumnFilterActionFn<S>>,
     search_edit: Option<SearchEditFn<S>>,
@@ -360,24 +365,19 @@ fn popover<S: 'static>(
         );
     }
     let active = vm.active_visible();
-    for (at, column) in filtered.iter().enumerate() {
+    for column in filtered {
         let checked = active.iter().any(|name| name == &column.name);
         let mut check = Checkbox::new(
             format!("column-filter-checkbox-{}", column.name),
             checked,
-        );
+        ).label(column.name.clone());
         if let Some(callback) = on_action.clone() {
             let name = column.name.clone();
             let next = vm.toggle_column(&name);
-            check = check.on_toggle(move |s: &mut S| {
-                callback(
-                    s,
-                    TableColumnFilterAction::ToggleColumn {
-                        name: name.clone(),
-                        next: next.clone(),
-                    },
-                )
-            });
+            check = check.on_toggle(emit(
+                &Some(callback),
+                TableColumnFilterAction::ToggleColumn { name, next },
+            ));
         }
         let mut item = row()
             .key(format!("column-filter-item-{}", column.name))
@@ -413,7 +413,12 @@ fn popover<S: 'static>(
                 .font(k.ty.mono)
                 .color(k.c.text_muted),
         );
-        let _ = at;
+        if on_action.is_some() {
+            item = item.on_press(emit(on_action, TableColumnFilterAction::ToggleColumn {
+                name: column.name.clone(),
+                next: vm.toggle_column(&column.name),
+            }));
+        }
         list = list.child(item);
     }
 
@@ -428,7 +433,7 @@ fn popover<S: 'static>(
         .border(1.0, k.c.border_base)
         .child(header)
         .child(search)
-        .child(list)
+        .child(list.max_h(240.0).scroll(rune::ScrollSpec { stick_bottom: false }))
 }
 
 fn action_button<S: 'static>(

@@ -352,3 +352,63 @@ fn a_measured_live_table_window_covers_narrow_columns_and_keeps_raw_pin_order() 
     let overlapping = grid.built_columns_with_pin(25, Some(1000.0));
     assert!(overlapping.windows(2).all(|pair| pair[0] + 1 == pair[1]));
 }
+
+#[test]
+fn field_filter_projects_geometry_navigation_and_copy_but_not_raw_edits_or_pk() {
+    use datazen_ui_api::TablePage;
+    let mut grid = DataGrid::new();
+    grid.load_page(&TablePage {
+        table: "customers".into(),
+        columns: vec!["id".into(), "private".into(), "display name".into(), "score".into()],
+        rows: vec![vec!["91".into(), "secret".into(), "Åsa".into(), "7".into()]],
+        page: 0,
+        page_size: 25,
+        total_rows: 1,
+        sort: None,
+        filter: None,
+        primary_key: vec!["id".into()],
+        read_only: None,
+    });
+    grid.set_column_widths(vec![80, 260, 140, 65]);
+    grid.select(0, 3);
+    grid.begin_edit();
+    grid.editor = TextEdit::new("8");
+    grid.commit_edit();
+    let original_batch = grid.commit_batch().expect("draft addresses raw score and PK");
+    assert_eq!(original_batch.rows[0].identity, [("id".to_string(), "91".to_string())]);
+    assert_eq!(original_batch.rows[0].changes[0].0, "score");
+
+    // Reversing the checkbox payload cannot reorder the schema.
+    assert!(grid.set_displayed_columns(Some(&["score".into(), "display name".into()])));
+    assert_eq!(grid.cols, 4);
+    assert_eq!(grid.displayed_count(), 2);
+    assert_eq!(grid.displayed_raw(0), Some(2));
+    assert_eq!(grid.displayed_raw(1), Some(3));
+    assert_eq!(grid.x_of_col(1), 140.0);
+    assert_eq!(grid.sheet_data_width(), 205.0);
+    assert_eq!(grid.commit_batch().unwrap(), original_batch);
+    assert_eq!(grid.focus(), (0, 3), "visible focus is preserved");
+    assert_eq!(grid.copy_tsv(), "8");
+
+    grid.nudge(0, -1, true);
+    assert_eq!(grid.focus(), (0, 2));
+    assert_eq!(grid.copy_tsv(), "Åsa\t8");
+    grid.select_row(0);
+    assert_eq!(grid.copy_tsv(), "Åsa\t8", "whole row copy cannot leak hidden values");
+    assert!(grid.set_displayed_columns(Some(&[])));
+    assert_eq!(grid.selected_row(), Some(0));
+    assert!(!grid.has_selection());
+    assert_eq!(grid.copy_tsv(), "");
+    assert!(grid.set_displayed_columns(None));
+    assert_eq!(grid.selected_row(), Some(0));
+    assert_eq!(grid.copy_tsv(), "91\tsecret\tÅsa\t8");
+
+    grid.select(0, 1);
+    assert!(grid.set_displayed_columns(Some(&["id".into(), "display name".into()])));
+    assert!(!grid.has_selection(), "hiding the anchor/focus truly clears cell selection");
+    grid.select(0, 1);
+    assert!(!grid.has_selection(), "stale hidden hit cannot select or edit the raw cell");
+    grid.nudge(0, 1, false);
+    assert_eq!(grid.focus(), (0, 2), "native arrows skip hidden raw columns");
+    assert_eq!(grid.commit_batch().unwrap(), original_batch);
+}

@@ -109,6 +109,7 @@ pub struct AppState {
     /// No entry means use the existing unsorted/default driver path.
     pub(crate) manual_table_sorts: std::collections::BTreeMap<u32, ColumnSort>,
     pub(crate) table_freeze: crate::data_grid::freeze::TableFreeze,
+    pub(crate) table_field_filter: crate::data_grid::field_filter::TableFieldFilter,
     /// The filter the table page is opened with.
     pub filter: Option<ColumnFilter>,
     /// The column the filter bar targets, as an index into the loaded page.
@@ -632,6 +633,7 @@ impl Default for AppState {
             table_page: 0,
             manual_table_sorts: Default::default(),
             table_freeze: Default::default(),
+            table_field_filter: Default::default(),
             filter: None,
             filter_column: 0,
             filter_editor: TextEdit::new(String::new()),

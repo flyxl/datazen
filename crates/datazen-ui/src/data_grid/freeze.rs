@@ -19,20 +19,26 @@ pub(super) struct HeaderLease {
     tab: u32,
     session: u32,
     read: u32,
+    display: u64,
 }
 
-struct Owner<'a> {
-    tab: u32,
-    session: u32,
-    connection: &'a str,
-    table: &'a str,
+pub(super) struct Owner<'a> {
+    pub(super) tab: u32,
+    pub(super) session: u32,
+    pub(super) connection: &'a str,
+    pub(super) table: &'a str,
 }
 
 impl<'a> Owner<'a> {
-    fn current(state: &'a AppState) -> Option<Self> {
-        if state.active != Section::Workspace
-            || state.table_view != TableView::Data
-            || state.native_kv.is_some()
+    pub(super) fn current(state: &'a AppState) -> Option<Self> {
+        (state.active == Section::Workspace && state.table_view == TableView::Data)
+            .then(|| Self::loaded(state)).flatten()
+    }
+
+    // Reads may complete while the same tab shows its Structure page. The
+    // scoped projection belongs to its data, not to the active sub-view.
+    pub(super) fn loaded(state: &'a AppState) -> Option<Self> {
+        if state.native_kv.is_some()
             || state.er_schema.is_some()
             || state.table_read_error.is_some()
             || !state.grid.has_page()
@@ -71,9 +77,10 @@ struct Prefix {
     session: u32,
     connection: String,
     table: String,
-    /// The real source columns, in displayed order (the stock native Table
-    /// Data surface currently exposes the raw order; no aliases or reorder).
+    // A raw prefix snapshot guards schema replacement. The count itself
+    // always applies to the first N *displayed* columns as in Chromium.
     columns: Vec<String>,
+    count: u32,
 }
 
 struct Menu {
@@ -116,11 +123,18 @@ pub(super) fn frozen_columns(state: &AppState) -> Option<u32> {
             && entry.table == owner.table
     });
     let count = prefix.map_or(0, |entry| {
-        // A changed schema must not silently freeze newly inserted/reordered
-        // columns by index. Retain only the still-matching leading identities.
-        entry.columns.iter().enumerate().take_while(|(i, name)| {
+        let matched = entry.columns.iter().enumerate().take_while(|(i, name)| {
             state.grid.column_name(*i as u32) == Some(name.as_str())
-        }).count() as u32
+        }).count() as u32;
+        if matched == entry.columns.len() as u32 {
+            entry.count.min(state.grid.displayed_count())
+        } else {
+            // The schema, not just the presentation, changed underneath.
+            // Do not pin an inserted/reordered identity by stale raw index.
+            (0..state.grid.displayed_count())
+                .take_while(|at| state.grid.displayed_raw(*at).is_some_and(|raw| raw < matched))
+                .count().min(entry.count as usize) as u32
+        }
     });
     Some(count)
 }
@@ -133,11 +147,14 @@ pub(super) fn header_lease(state: &AppState) -> Option<HeaderLease> {
         return None;
     }
     let owner = Owner::current(state)?;
-    Some(HeaderLease { tab: owner.tab, session: owner.session, read: state.read_generation })
+    Some(HeaderLease {
+        tab: owner.tab, session: owner.session, read: state.read_generation,
+        display: state.grid.display_revision(),
+    })
 }
 
 pub(super) fn open(state: &mut AppState, lease: HeaderLease, column: u32, point: PointerPress) {
-    if header_lease(state) != Some(lease) || state.grid.column_name(column).is_none() {
+    if header_lease(state) != Some(lease) || state.grid.displayed_raw(column).is_none() {
         return;
     }
     state.table_freeze.nonce = state.table_freeze.nonce.wrapping_add(1);
@@ -173,7 +190,8 @@ fn apply(state: &mut AppState, nonce: u64, freeze: bool) {
         state.table_freeze.tabs.remove(&tab);
     } else {
         let Some(owner) = Owner::current(state) else { return; };
-        let Some(columns) = (0..next_count)
+        let Some(last_raw) = state.grid.displayed_raw(next_count - 1) else { return; };
+        let Some(columns) = (0..=last_raw)
             .map(|column| state.grid.column_name(column).map(str::to_owned))
             .collect::<Option<Vec<_>>>()
         else {
@@ -184,6 +202,7 @@ fn apply(state: &mut AppState, nonce: u64, freeze: bool) {
             connection: owner.connection.to_owned(),
             table: owner.table.to_owned(),
             columns,
+            count: next_count,
         };
         state.table_freeze.tabs.insert(tab, entry);
     }
@@ -289,6 +308,28 @@ mod tests {
         assert_eq!(frozen_columns(&state), Some(2));
         state.navigator_value_search_session_generation = Some(11);
         assert_eq!(frozen_columns(&state), Some(0));
+    }
+
+    #[test]
+    fn visibility_changes_remap_the_displayed_prefix_and_invalidate_old_header_actions() {
+        let mut state = customer_table();
+        let lease = header_lease(&state).unwrap();
+        let point = PointerPress { x: 20.0, y: 30.0 };
+        open(&mut state, lease, 1, point);
+        let nonce = state.table_freeze.nonce;
+        apply(&mut state, nonce, true);
+        assert_eq!(frozen_columns(&state), Some(2));
+
+        state.grid.set_displayed_columns(Some(&["first name".into(), "分数".into()]));
+        assert_eq!(state.grid.displayed_raw(0), Some(1));
+        assert_eq!(state.grid.displayed_raw(1), Some(2));
+        assert_eq!(frozen_columns(&state), Some(2));
+        apply(&mut state, nonce, false);
+        assert_eq!(frozen_columns(&state), Some(2), "old viewport menu cannot unfreeze");
+        state.grid.set_displayed_columns(Some(&[]));
+        assert_eq!(frozen_columns(&state), Some(0));
+        state.grid.set_displayed_columns(None);
+        assert_eq!(frozen_columns(&state), Some(2), "zero displayed was not a reset");
     }
 
     #[test]

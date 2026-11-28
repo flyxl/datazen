@@ -11,7 +11,7 @@ use crate::i18n::t;
 use crate::icons::{ICON_ARROW_DOWN_WIDE_NARROW, ICON_ARROW_UP_DOWN, ICON_ARROW_UP_NARROW_WIDE};
 use crate::ui::palette;
 
-use super::{freeze, scrollbars, DataGrid, GUTTER_W, ROW_H};
+use super::{field_filter, freeze, scrollbars, DataGrid, GUTTER_W, ROW_H};
 use crate::ui::field::TextField;
 
 // Chromium TableHeader uses h-10 (40px) for the two-line metadata header.
@@ -186,7 +186,8 @@ fn sheet(
     mut paint: CellPaint,
 ) -> El {
     let scroll_x = grid.scroll_x();
-    let table_scroll_y = (slot == GridSlot::Table).then(|| grid.table_scroll_y());
+    let table_scroll = (slot == GridSlot::Table)
+        .then(|| (grid.table_scroll_y(), grid.table_viewport_width()));
     let scroll_key = slot.key("data-grid-scroll");
     let data_width = grid.sheet_data_width();
     let header_h = if slot == GridSlot::Table
@@ -212,7 +213,7 @@ fn sheet(
         [paint.gutter_width() + data_width, header_h + body_h],
     );
     paint.table_viewport_width = frame.map(|[width, _]| (width - gutters.right()).max(0.0));
-    if !paint.show_row_numbers && slot == GridSlot::Table && grid.cols > 0 {
+    if !paint.show_row_numbers && slot == GridSlot::Table && grid.displayed_count() > 0 {
         // Only real row background is selectable, not cells or virtual
         // pads. Leave the classic vertical strip to the actual scrollbar.
         let viewport_width = frame.map_or(0.0, |[width, _]| width) - gutters.right();
@@ -269,18 +270,23 @@ fn sheet(
         Some(height) => viewport.h(height),
         None => viewport.grow(1.0).min_h(0.0),
     };
+    let viewport = if !grid.is_projected() || grid.has_selection() {
+        viewport.active_descendant(slot.key(&active))
+    } else {
+        viewport
+    };
     let viewport = viewport
         .fill(well)
         .radius(8.0)
         .role("grid")
         .label(grid.table_label())
-        .a11y_value(format!("{} rows × {} columns", grid.rows, grid.cols))
-        .active_descendant(slot.key(&active))
+        .a11y_value(format!("{} rows × {} columns", grid.rows, grid.displayed_count()))
         .scroll_xy()
         .on_scroll_offset(move |at: ScrollPos| {
             scroll_x.set(at.offset[0]);
-            if let Some(scroll_y) = &table_scroll_y {
+            if let Some((scroll_y, width)) = &table_scroll {
                 scroll_y.set(at.offset[1]);
+                width.set(at.viewport[0]);
             }
         })
         .child(sheet);
@@ -300,6 +306,7 @@ pub fn panel(
     viewport: rune::Color,
     dark: bool,
     live_sqlite: bool,
+    field_filter_trigger: Option<El>,
 ) -> El {
     let grid = &state.grid;
     let status = status_line(grid);
@@ -311,14 +318,27 @@ pub fn panel(
         .gap(8.0);
     let filter = filter_bar(state, ink, muted, well, dark, live_sqlite);
     let (panel, legacy_filter) = if live_sqlite { (panel.child(filter), None) } else { (panel, Some(filter)) };
+    let status = text(status).font(label_style()).color(muted).key("data-grid-status");
+    let status = if let Some(trigger) = field_filter_trigger {
+        row().key("table-grid-selection-bar").w_full().min_w(0.0).center_y()
+            .child(status.grow(1.0).min_w(0.0))
+            .child(trigger)
+    } else {
+        status
+    };
+    let data = if grid.is_projected() && grid.displayed_count() == 0 {
+        field_filter::empty(state, dark)
+    } else {
+        sheet(grid, GridSlot::Table, ink, viewport, None,
+            CellPaint::for_slot(state, GridSlot::Table, dark))
+    };
     panel
-        .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
+        .child(status)
         .child(status_banner(state, muted, well))
         .children(pending_changes_bar(state, muted, well))
         .children(legacy_filter)
         .child(fk_bar(state, ink, muted, well))
-        .child(sheet(grid, GridSlot::Table, ink, viewport, None,
-            CellPaint::for_slot(state, GridSlot::Table, dark)))
+        .child(data)
         .child(footer(state, ink, muted))
 }
 
@@ -601,7 +621,7 @@ pub fn status_line(grid: &DataGrid) -> String {
     format!(
         "{}×{} · window at column {} · selection {selection} · {} dirty",
         grid.rows,
-        grid.cols,
+        grid.displayed_count(),
         grid.origin_col(),
         grid.dirty_cells()
     )
@@ -797,15 +817,16 @@ fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, paint: CellPain
         line = line.child(paint.pin_gutter(gutter));
     }
     let mut cursor = 0u32;
-    for col_index in paint.columns(grid) {
-        if col_index > cursor {
-            line = line.child(el().w(grid.span_width(cursor, col_index)).h(header_h));
+    for display in paint.columns(grid) {
+        let Some(raw) = grid.displayed_raw(display) else { continue; };
+        if display > cursor {
+            line = line.child(el().w(grid.span_width(cursor, display)).h(header_h));
         }
-        line = line.child(header_cell(grid, slot, col_index, ink, paint, header_h));
-        cursor = col_index + 1;
+        line = line.child(header_cell(grid, slot, (display, raw), ink, paint, header_h));
+        cursor = display + 1;
     }
-    if cursor < grid.cols {
-        line = line.child(el().w(grid.span_width(cursor, grid.cols)).h(header_h));
+    if cursor < grid.displayed_count() {
+        line = line.child(el().w(grid.span_width(cursor, grid.displayed_count())).h(header_h));
     }
     line
 }
@@ -838,15 +859,16 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
         line = line.child(paint.pin_gutter(gutter));
     }
     let mut cursor = 0u32;
-    for col_index in cols {
-        if col_index > cursor {
-            line = line.child(el().w(grid.span_width(cursor, col_index)).h(paint.row_height));
+    for display in cols {
+        let Some(raw) = grid.displayed_raw(display) else { continue; };
+        if display > cursor {
+            line = line.child(el().w(grid.span_width(cursor, display)).h(paint.row_height));
         }
-        line = line.child(cell(grid, slot, row_index, col_index, ink, paint));
-        cursor = col_index + 1;
+        line = line.child(cell(grid, slot, row_index, (display, raw), ink, paint));
+        cursor = display + 1;
     }
-    if cursor < grid.cols {
-        line = line.child(el().w(grid.span_width(cursor, grid.cols)).h(paint.row_height));
+    if cursor < grid.displayed_count() {
+        line = line.child(el().w(grid.span_width(cursor, grid.displayed_count())).h(paint.row_height));
     }
     if paint.row_tail_width > 0.0 {
         line = line.child(
@@ -864,7 +886,7 @@ fn paint_row(grid: &DataGrid, slot: GridSlot, row_index: u32, ink: rune::Color, 
 fn header_cell(
     grid: &DataGrid,
     slot: GridSlot,
-    col_index: u32,
+    (display, col_index): (u32, u32),
     ink: rune::Color,
     paint: CellPaint,
     header_h: f32,
@@ -939,13 +961,13 @@ fn header_cell(
     }
     if let Some(lease) = paint.table_header_lease {
         cell = cell.on_secondary_press(move |state: &mut crate::AppState, press, _| {
-            freeze::open(state, lease, col_index, press);
+            freeze::open(state, lease, display, press);
         });
     }
-    if paint.is_pinned(col_index) {
+    if paint.is_pinned(display) {
         cell = cell.fill(palette::grid_palette(paint.dark).frozen_bg);
     }
-    paint.pin(cell, grid, col_index)
+    paint.pin(cell, grid, display)
 }
 
 /// A hit can be a text child of a cell. Resolve the enclosing key in the
@@ -961,14 +983,14 @@ fn cell(
     grid: &DataGrid,
     slot: GridSlot,
     row_index: u32,
-    col_index: u32,
+    (display, col_index): (u32, u32),
     ink: rune::Color,
     paint: CellPaint,
 ) -> El {
     let dark = paint.dark;
     let selected = grid.covers(row_index, col_index);
     let active = selected && grid.selected_row().is_none() && grid.focus == (row_index, col_index);
-    let frozen = paint.is_pinned(col_index);
+    let frozen = paint.is_pinned(display);
     let current_hit = grid.is_current_find_hit(row_index, col_index);
     let any_hit = grid.is_find_hit(row_index, col_index);
     let gp = palette::grid_palette(dark);
@@ -1055,7 +1077,7 @@ fn cell(
             state.result_focused = true;
         });
     }
-    box_el = paint.pin(box_el, grid, col_index);
+    box_el = paint.pin(box_el, grid, display);
     if active && grid.editing {
         box_el.child(
             TextField::new(slot.key("grid-editor"), &grid.editor)

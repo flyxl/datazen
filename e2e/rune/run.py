@@ -14,6 +14,7 @@ from csv_import import CsvImportJourneys
 from dashboard import DashboardJourney
 from data_sync import DataSyncJourneys
 from favorites import FavoritesJourney
+from field_filter import TableFieldFilterJourney
 from grid_drag import GridDragJourney
 from offline import OfflineJourneys
 from query_history import QueryHistoryJourney
@@ -30,7 +31,7 @@ from transfer import TransferJourneys
 from workflow import WorkflowJourney
 
 
-class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourney, OfflineJourneys, GridDragJourney, QueryHistoryJourney, QueryResultsLayoutJourney, QueryRowLimitJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, unittest.TestCase):
+class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourney, OfflineJourneys, GridDragJourney, TableFieldFilterJourney, QueryHistoryJourney, QueryResultsLayoutJourney, QueryRowLimitJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="datazen-native-e2e-")
         self.addCleanup(tmp.cleanup)

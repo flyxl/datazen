@@ -121,6 +121,7 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
     // unhandled by these menus should reach the surrounding editor/grid.
     if state.query_snippet_menu_owner().is_some()
         || crate::data_grid::freeze::blocks_grid_keys(state)
+        || crate::data_grid::field_filter::blocks_grid_keys(state)
     {
         return true;
     }
@@ -194,7 +195,7 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         return consumed;
     }
     if state.grid.has_page() {
-        return crate::data_grid::on_key(&mut state.grid, ev, tx);
+        return crate::data_grid::on_table_key(state, ev, tx);
     }
     false
 }
@@ -224,6 +225,7 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     dirty = state.sync_ai_write_proposals() || dirty;
     dirty |= state.retire_invalid_query_snippet_menu();
     dirty |= crate::data_grid::freeze::retire_stale_menu(state);
+    dirty |= crate::data_grid::field_filter::retire_stale_popup(state);
     dirty |= state.restore_query_editor_scroll(tx);
     // A captured cell might not receive Up once its virtual row or table
     // subtree is gone. Cancel the app's gesture before it can affect a newer grid.

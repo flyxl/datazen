@@ -7,6 +7,7 @@
 //! Cell text, the selection rectangle and the editor live on the grid, not on the row element.
 //! A row that scrolls away is destroyed. The values are not.
 
+pub(crate) mod field_filter;
 pub(crate) mod freeze;
 mod input;
 mod model;
@@ -17,6 +18,7 @@ mod view;
 mod tests;
 
 pub use input::on_key;
+pub(crate) use input::on_table_key;
 pub use model::{DataGrid, COL_COUNT, COL_W, COL_WINDOW, GUTTER_W, ROW_COUNT, ROW_H};
 pub use view::{panel, result_panel, GridSlot};
 
