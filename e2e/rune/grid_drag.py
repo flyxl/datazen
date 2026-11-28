@@ -465,6 +465,7 @@ class GridDragJourney:
             return view, grid_a11y(tree, scope)
 
         def table_frame(tree):
+            page = self._settled_rect(tree, "datazen-page")
             pane = self._settled_rect(tree, "content-view-panes")
             workspace = self._settled_rect(tree, "table-workspace")
             switcher = self._settled_rect(tree, "table-view-switcher")
@@ -485,6 +486,9 @@ class GridDragJourney:
             self.assertEqual(pager[3], 28)
             self.assertAlmostEqual(bottom(pager), bottom(panel), delta=.25)
             self.assertAlmostEqual(bottom(pager), bar[1], delta=.25)
+            self.assertEqual(bar[3], 40)
+            self.assertAlmostEqual(bottom(bar), bottom(page), delta=.25)
+            self.assertAlmostEqual(bottom(bar), tree["viewport"][1], delta=.25)
             self.expect_rendered(tree, key="filter-input")
             self.expect_rendered(tree, key="grid-page-label", text="Page 1 / 1")
             return frame

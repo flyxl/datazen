@@ -217,14 +217,13 @@ pub fn connection_content_with_vm(
         slot = slot.size(0.0, 0.0);
     }
     let plain_query = plain_query_workspace(state, vm);
-    let page_inset = if plain_query || plain_live_sqlite_table(state, vm) {
-        0.0
-    } else {
-        24.0
-    };
-    // The Query occupies ContentView's whole lane. Its inactive object and
-    // document slots are zero-sized and must not reserve sibling spacing.
-    let sibling_gap = if plain_query { 0.0 } else { 16.0 };
+    let plain_table = plain_live_sqlite_table(state, vm);
+    let page_inset = if plain_query || plain_table { 0.0 } else { 24.0 };
+    let plain_table_data = plain_table && state.table_view == crate::types::TableView::Data;
+    // Plain Query and live Table Data fill the lane. Their inactive object
+    // and document hosts are zero-sized; no gap should stand below the status
+    // bar just because those hosts keep their stable keys.
+    let sibling_gap = if plain_query || plain_table_data { 0.0 } else { 16.0 };
     col()
         .key("datazen-page")
         .grow(1.0)
