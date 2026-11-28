@@ -25,16 +25,12 @@
 //!   was in ([`map_cursor_by_statement`]): reformatting rewrites every
 //!   offset, so a raw offset would drop the cursor in an unrelated
 //!   statement and make the viewport jump; a clamped offset is the
-//!   fallback when the statement count changes. `contentFrom` is the
-//!   statement's first non-whitespace byte (the range the engine's
-//!   `statements()` splits at semicolons, content-trimmed).
-//! - `buildStatementRanges`/`findStatementAtCursor`
-//!   (extension-points) are the statement-splitting primitives —
-//!   carried here as the `sql_editor` model's semantics (`statements()`
-//!   + the at-cursor rule), which those extension-points mirror.
-//!
-//! Known deltas: none behavioural — every rule below is the React
-//! file's verbatim.
+//!   fallback when the statement count changes. The formatting-only
+//!   anchor projection follows the React statement scanner/ranges; it
+//!   is not the Native driver's query-execution splitter.
+
+mod statement_anchors;
+use self::statement_anchors::map_cursor_by_statement;
 
 /// React `SqlFormatOptions` (the four configurable knobs;
 /// `SettingsSqlFormatOptions` on the wire).
@@ -150,7 +146,7 @@ fn format_selection(
     options: &SqlFormatOptionsVm,
     format_sql: FormatSql<'_>,
 ) -> Option<FormatEdit> {
-    let original = &doc[from.min(doc.len())..to.min(doc.len())];
+    let original = doc.get(from..to)?;
     if original.trim().is_empty() {
         return None;
     }
@@ -206,88 +202,6 @@ fn format_whole_document(
 
 fn original_eq(doc: &str) -> &str {
     doc
-}
-
-/// `mapCursorByStatement`: reformatting rewrites every offset, so a raw
-/// offset would drop the cursor in an unrelated statement. Anchor on
-/// the statement the cursor was in, and fall back to a clamped offset
-/// when the statement count changes.
-fn map_cursor_by_statement(original: &str, formatted: &str, cursor: usize) -> usize {
-    let Some(before) = statement_at_cursor(original, cursor) else {
-        return cursor.min(formatted.len());
-    };
-    let Some(after) = statement_with_index(formatted, before.index) else {
-        return cursor.min(formatted.len());
-    };
-    after.content_from.min(formatted.len())
-}
-
-
-/// One split statement: its ordinal and its content start (the
-/// non-whitespace start — `SqlStatementRange.index`/`contentFrom`).
-#[derive(Clone, Debug)]
-struct StatementAnchor {
-    index: usize,
-    content_from: usize,
-}
-
-/// `buildStatementRanges`'s split (the engine `statements()` semantics,
-/// carried): segments at semicolons, empty ones skipped; `contentFrom`
-/// skips the segment's leading whitespace.
-fn statement_ranges(doc: &str) -> Vec<StatementAnchor> {
-    let mut out = Vec::new();
-    let mut start = 0usize;
-    for (i, byte) in doc.bytes().enumerate() {
-        if byte == b';' {
-            push_range(doc, start, i, &mut out);
-            start = i + 1;
-        }
-    }
-    push_range(doc, start, doc.len(), &mut out);
-    out
-}
-
-fn push_range(doc: &str, start: usize, end: usize, out: &mut Vec<StatementAnchor>) {
-    let segment = &doc[start..end];
-    if segment.trim().is_empty() {
-        return;
-    }
-    let content_from = start + (segment.len() - segment.trim_start().len());
-    out.push(StatementAnchor { index: out.len(), content_from });
-}
-
-/// `findStatementAtCursor`: the statement the cursor is in — the first
-/// ending at or after the cursor, the last one past the end.
-fn statement_at_cursor(doc: &str, cursor: usize) -> Option<StatementAnchor> {
-    let ranges = statement_ranges(doc);
-    // Segment ends: each range's segment ends at its terminating
-    // semicolon (or the document's end for the last).
-    let ends = segment_ends(doc);
-    let mut picked = None;
-    for (range, end) in ranges.iter().zip(ends) {
-        if cursor <= end {
-            picked = Some(range.clone());
-            break;
-        }
-    }
-    picked.or_else(|| ranges.last().cloned())
-}
-
-fn segment_ends(doc: &str) -> Vec<usize> {
-    let mut ends = Vec::new();
-    for (i, byte) in doc.bytes().enumerate() {
-        if byte == b';' {
-            ends.push(i);
-        }
-    }
-    ends.push(doc.len());
-    ends
-}
-
-/// The statement with `index` in the formatted document (the same
-/// ordinal — `find((r) => r.index === before.index)`).
-fn statement_with_index(doc: &str, index: usize) -> Option<StatementAnchor> {
-    statement_ranges(doc).into_iter().find(|range| range.index == index)
 }
 
 /// `safeFormat`: a rejection reads as `None` (the buffer stays

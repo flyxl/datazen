@@ -311,3 +311,114 @@ fn the_options_overlay_resolves_and_travels() {
     );
     assert!(edit.is_some());
 }
+
+fn anchor_for_format(original: &str, formatted: &str, cursor: usize) -> usize {
+    let edit = format_editor_document(
+        original,
+        cursor,
+        cursor,
+        cursor,
+        Some("postgresql"),
+        PartialSqlFormatOptions::default(),
+        &|sql, _, _| {
+            assert_eq!(sql, original);
+            Ok(formatted.to_owned())
+        },
+    )
+    .unwrap();
+    assert_eq!((edit.from, edit.to), (0, original.len()));
+    assert_eq!(edit.insert, formatted);
+    assert_eq!(edit.anchor, edit.head);
+    assert!(formatted.is_char_boundary(edit.anchor));
+    edit.anchor
+}
+
+#[test]
+fn remapping_ignores_lexical_semicolons_and_counts_delimiter_only_ordinals() {
+    let original = "-- old;\nselect [x]];名字], $$💜; else$$, (1;2);;\n    SELECT final;";
+    let formatted =
+        "-- new;\nSELECT [x]];名字], $$💜; else$$, (1;2);\n    ;\n \tSELECT FINAL;";
+    let expected = formatted.find("SELECT FINAL").unwrap();
+    // The blank separator is a physical ordinal with no valid content;
+    // neither its semicolon nor semicolons inside lexical regions grab caret.
+    for offset in [original.find("final").unwrap(), original.rfind('\n').unwrap() + 2] {
+        assert_eq!(anchor_for_format(original, formatted, offset), expected);
+    }
+
+    let original = "select 'x;''y', \"a;\"\"b\", `c;d`;\n# with query;\nselect 2;";
+    let formatted = "    SELECT 'x;''y', \"a;\"\"b\", `c;d`;\n /* new comment */ SELECT 2;";
+    assert_eq!(
+        anchor_for_format(original, formatted, original.find('#').unwrap()),
+        formatted.find("/* new comment */").unwrap(),
+    );
+}
+
+#[test]
+fn remapping_selects_preceding_neighbor_for_leading_whitespace_only() {
+    let original = "select 1;\n   -- keep this line;\n   select 2;";
+    let formatted = "    SELECT 1;\n\n -- new note\nSELECT 2;";
+    assert_eq!(
+        anchor_for_format(original, formatted, original.find("   --").unwrap() + 1),
+        formatted.find("SELECT 1").unwrap(),
+    );
+    assert_eq!(
+        anchor_for_format(original, formatted, original.find("--").unwrap() + 3),
+        formatted.find("-- new note").unwrap(),
+    );
+
+    // React locates the source in valid content, but the formatted lookup
+    // uses all ranges: ordinal 1 is this semicolon-only span's content start.
+    assert_eq!(
+        anchor_for_format("select 1; select 2;", "SELECT 1;\n  ;\nSELECT 3;", 13),
+        "SELECT 1;\n  ".len(),
+    );
+}
+
+#[test]
+fn pure_comment_fallback_maps_utf16_without_splitting_native_utf8() {
+    let original = "--🚲 pure comment\n";
+    let formatted = "'🥹🦋';";
+    // The caret after the bicycle is 4 UTF-16 units from the start. Target
+    // position 4 is between the butterfly's surrogates; floor to its start.
+    assert_eq!(
+        anchor_for_format(original, formatted, "--🚲".len()),
+        formatted.find('🦋').unwrap(),
+    );
+    assert_eq!(anchor_for_format(original, formatted, original.len()), 0);
+    let original = "SELECT 1;\n-- 尾注释;\n";
+    assert_eq!(
+        anchor_for_format(original, formatted, original.find('尾').unwrap()),
+        formatted.len(),
+    );
+}
+
+#[test]
+fn raw_delimiter_and_routine_hints_degrade_the_document_to_one_span() {
+    for source in [
+        "  DELIMITER $$\nSELECT 1; SELECT 2$$\n  SELECT 3;",
+        "\tCREATE\u{a0}OR\u{2003}REPLACE\u{b}FUNCTION f() BEGIN SELECT 2; SELECT 3; END;",
+        "SELECT 'delimiter'; SELECT 2; SELECT 3;",
+    ] {
+        let formatted = "  SELECT A;\n  SELECT B;\nSELECT C;";
+        let cursor = source.rfind("SELECT").unwrap();
+        assert_eq!(anchor_for_format(source, formatted, cursor), 2);
+    }
+    let original = "SELECT 0;\nCREATE FUNCTION_ordinary;\nSELECT 3;";
+    let formatted = "SELECT A;\nSELECT B;\n SELECT C;";
+    assert_eq!(
+        anchor_for_format(original, formatted, original.rfind("SELECT").unwrap()),
+        formatted.find("SELECT C").unwrap(),
+    );
+}
+
+#[test]
+fn invalid_native_selection_bounds_are_rejected_without_calling_formatter() {
+    let doc = "select '🚲';";
+    let mid_scalar = doc.find('🚲').unwrap() + 1;
+    for (from, to) in [(mid_scalar, doc.len()), (0, mid_scalar), (doc.len(), 0), (0, doc.len() + 1)] {
+        assert!(format_editor_document(
+            doc, from, to, to, None, PartialSqlFormatOptions::default(),
+            &|_, _, _| panic!("an invalid Native selection must not reach the formatter"),
+        ).is_none());
+    }
+}
