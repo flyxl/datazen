@@ -70,6 +70,8 @@ pub fn modal_layer(state: &AppState, theme: tok::Theme, dark: bool) -> Vec<El> {
         } else {
             dialog.build(base, &mut layer);
         }
+    } else if state.native_object_search_is_current() {
+        super::navigator::native_object_search::mount(state, dark, &mut layer);
     } else {
         // Prompt cards scroll inside Settings; the reset dialog must not.
         crate::views::prompts_live::mount_reset_confirmation(state, dark, &mut layer);

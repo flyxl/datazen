@@ -305,6 +305,17 @@ pub fn navigator_panel(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 let _ = state.open_query_tab("Query");
             },
         ));
+    let title_row = title_row.children(
+        state.native_object_search_is_available().then(|| {
+            let k = crate::ui::kit::kit(dark);
+            let label = t("objectSearch.native.title");
+            row().key(super::navigator::native_object_search::OPEN_KEY).size(24.0, 24.0)
+                .shrink().center().radius(6.0).role("button").label(label).help(label)
+                .focusable(true).hover(k.c.surface_raised)
+                .child(rune::icon(&icons::ICON_SEARCH, 14.0).color(k.c.text_muted).a11y_hidden())
+                .on_press(AppState::open_native_object_search)
+        }),
+    );
     let toolbar = row()
         .key("navigator-toolbar")
         .w_full()

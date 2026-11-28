@@ -2028,3 +2028,62 @@ class OfflineJourneys:
         self.assertEqual(field_value(reopened, name), "")
         self.assertEqual(field_value(reopened, address), "127.0.0.1:5432")
         self.assertFalse(self.store.exists(), "switching and cancelling a draft must never save it")
+
+    def test_navigator_search_objects_opens_only_the_current_session_relation(self):
+        """Use the actual Navigator button/portal and open a real SQLite view."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as db:
+            db.execute("CREATE VIEW recent_customers AS SELECT customer_name FROM customers WHERE id=2")
+        second = self.root / "other.sqlite"
+        with sqlite3.connect(second) as db:
+            db.executescript("CREATE TABLE other_only(value TEXT); INSERT INTO other_only VALUES ('private fixture');")
+        profiles = json.loads(self.store.read_text(encoding="utf-8"))
+        profiles["connections"][0]["readOnly"] = True
+        profiles["connections"].append({
+            "id": "e2e-other", "name": "Other connection", "databaseType": "sqlite",
+            "database": str(second), "connectionTimeout": 30, "maxPoolSize": 4,
+            "readOnly": True,
+        })
+        self.store.write_text(json.dumps(profiles), encoding="utf-8")
+        settings = self.root / "settings.json"
+        settings.write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+        unchanged = {path: path.read_bytes() for path in (self.db, second, self.store, settings)}
+        opener = "navigator-native-object-search"
+        field = "global-object-search-input"
+        modal = "global-object-search"
+        row = "native-object-search-open-" + "recent_customers".encode().hex()
+        hidden = "native-object-search-open-" + "other_only".encode().hex()
+
+        idle = self.replay([], until=2)
+        self.assertFalse(visible(idle, key=opener), "no mock search before an actual session")
+        first = [tap(.5, "conn-open-e2e-sqlite"), tap(3.5, opener)]
+        opened = self.replay(first, until=4.6)
+        self.expect_rendered(opened, key=modal)
+        self.expect_rendered(opened, text="Search objects in this connection", within=modal)
+        self.expect_rendered(opened, key=row)
+        self.assertFalse(visible(opened, key=hidden))
+        for action in ("openData", "select", "insert", "update", "ddl"):
+            self.assertFalse(visible(opened, key=f"object-search-action-{action}"))
+
+        narrowed = [*first, tap(4.45, field), type_text(4.8, "recent_customers")]
+        matched = self.replay(narrowed, until=5.75)
+        self.expect_rendered(matched, key=row)
+        self.assertFalse(visible(matched, key="native-object-search-open-" + "customers".encode().hex()))
+        opened_view = self.replay([*narrowed, tap(5.8, row)], until=8.4)
+        self.assertFalse(visible(opened_view, key=modal))
+        self.expect_rendered(opened_view, text="fixture-lin", within="cell-0-0")
+
+        escaped = self.replay([*first, tap(4.4, field), key(4.9, "Escape"),
+                               tap(5.8, "disconnect")], until=7.2)
+        self.assertFalse(visible(escaped, key=modal))
+        self.assertFalse(visible(escaped, key=opener))
+        other = self.replay([tap(.5, "conn-open-e2e-other"), tap(3.5, opener)], until=5.0)
+        self.expect_rendered(other, key=hidden)
+        self.assertFalse(visible(other, key=row), "previous session names cannot leak")
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+        for path, contents in unchanged.items():
+            self.assertEqual(path.read_bytes(), contents, path.name)
+        for path in (self.db, second):
+            for suffix in ("-wal", "-shm", "-journal"):
+                self.assertFalse(path.with_name(path.name+suffix).exists())

@@ -441,9 +441,33 @@ pub fn build<S: 'static>(
     dark: bool,
     layer: &mut Vec<El>,
 ) {
+    build_dialog(vm, query_edit, on_action, dark, layer, None);
+}
+
+/// Native only has the current session's catalog and the relation-open action.
+pub(crate) fn build_native<S: 'static>(
+    vm: &GlobalObjectSearchVm,
+    query_edit: EditFn<S>,
+    on_action: ActionFn<S>,
+    dark: bool,
+    layer: &mut Vec<El>,
+    epoch: u64,
+) {
+    build_dialog(vm, Some(query_edit), Some(on_action), dark, layer, Some(epoch));
+}
+
+fn build_dialog<S: 'static>(
+    vm: &GlobalObjectSearchVm,
+    query_edit: Option<EditFn<S>>,
+    on_action: Option<ActionFn<S>>,
+    dark: bool,
+    layer: &mut Vec<El>,
+    native_epoch: Option<u64>,
+) {
     if !vm.open {
         return;
     }
+    let native = native_epoch.is_some();
     let k = kit(dark);
     let results = vm.results();
     let mut field = TextField::new(format!("{ROOT}-input"), &vm.query)
@@ -451,7 +475,10 @@ pub fn build<S: 'static>(
         .grow()
         .pad_x(8.0)
         .text_style(TextStyle::new(14.0, 400.0))
-        .placeholder(t("objectSearch.placeholder"));
+        .placeholder(t(if native { "objectSearch.native.placeholder" } else { "objectSearch.placeholder" }));
+    if native {
+        field = field.label(t("objectSearch.native.placeholder"));
+    }
     if let Some(edit) = query_edit {
         let accessor = edit.clone();
         field = field.on_edit(move |s: &mut S| accessor(s));
@@ -473,7 +500,7 @@ pub fn build<S: 'static>(
                 .color(k.c.text_muted)
                 .role("button")
                 .focusable(true)
-                .label(t("common.close"))
+                .label(t(if native { "filter.clear" } else { "common.close" }))
                 .on_press(emit(&on_action, ObjectSearchAction::ClearQuery)),
         );
     }
@@ -488,7 +515,7 @@ pub fn build<S: 'static>(
         .scroll(rune::ScrollSpec { stick_bottom: false });
     if results.is_empty() {
         let empty = if vm.index.is_empty() {
-            t("objectSearch.noLoadedSchema")
+            t(if native { "objectSearch.native.empty" } else { "objectSearch.noLoadedSchema" })
         } else {
             t("objectSearch.noResults")
         };
@@ -501,7 +528,7 @@ pub fn build<S: 'static>(
         );
     } else {
         for result in results.into_iter().take(MAX_RESULTS) {
-            list = list.child(result_row(&result, &on_action, dark));
+            list = list.child(result_row(&result, &on_action, dark, native));
         }
     }
 
@@ -512,9 +539,10 @@ pub fn build<S: 'static>(
         .gap(12.0)
         .child(input_row)
         .child(list);
-    Dialog::new(ROOT, t("objectSearch.title"))
+    Dialog::new(ROOT, t(if native { "objectSearch.native.title" } else { "objectSearch.title" }))
         .open(true)
-        .description(t("objectSearch.description"))
+        .open_epoch(native_epoch.unwrap_or_default())
+        .description(t(if native { "objectSearch.native.description" } else { "objectSearch.description" }))
         .fit()
         .width(720.0)
         .body_max_height(420.0)
@@ -527,8 +555,13 @@ fn result_row<S: 'static>(
     result: &ObjectSearchResult,
     on_action: &Option<ActionFn<S>>,
     dark: bool,
+    native: bool,
 ) -> El {
     let k = kit(dark);
+    // Native only supplies unique names; encode the raw bytes in a key-safe
+    // identity so quoted, non-ASCII and slash identifiers cannot collide.
+    let identity = native.then(|| result.name.as_bytes().iter()
+        .map(|byte| format!("{byte:02x}")).collect::<Vec<_>>().join(""));
     let context = [
         result.connection_name.as_deref(),
         result.database.as_deref(),
@@ -543,7 +576,10 @@ fn result_row<S: 'static>(
     let matched = t("objectSearch.matched")
         .replace("{field}", result.match_reason.as_deref().unwrap_or("name"));
     let open = text(result.name.clone())
-        .key(format!("{ROOT}-result-name"))
+        .key(identity.as_ref().map_or_else(
+            || format!("{ROOT}-result-name"),
+            |id| format!("native-object-search-open-{id}"),
+        ))
         .color(k.c.text_base)
         .wrap()
         .min_w(0.0)
@@ -562,7 +598,10 @@ fn result_row<S: 'static>(
                 .color(k.c.text_weak),
         );
     let mut item = col()
-        .key("global-object-search-result")
+        .key(identity.as_ref().map_or_else(
+            || "global-object-search-result".to_owned(),
+            |id| format!("{ROOT}-result-{id}"),
+        ))
         .w_full()
         .min_w(0.0)
         .gap(2.0)
@@ -575,7 +614,7 @@ fn result_row<S: 'static>(
                 .min_w(0.0),
         );
 
-    if result.object_type.is_relation() {
+    if !native && result.object_type.is_relation() {
         let mut actions = row().w_full().gap(4.0).flex_wrap().center_y();
         for action in &result.actions {
             actions = actions.child(

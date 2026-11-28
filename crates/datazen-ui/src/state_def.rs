@@ -320,6 +320,7 @@ pub struct AppState {
     /// T4: the value search's form and state. The value and its mode ride
     /// the job; the hits list is the scan's answer.
     pub navigator_value_search_session_generation: Option<u32>,
+    pub(crate) native_object_search: crate::views::navigator::native_object_search::SearchState,
     pub navigator_value_search_scope: Option<datazen_ui_api::NativeValueSearchScope>,
     pub navigator_value_search_epoch: u64,
     pub value_search_value: TextEdit,
@@ -740,6 +741,7 @@ impl Default for AppState {
             import_preview: None,
             import_notice: None,
             navigator_value_search_session_generation: None,
+            native_object_search: Default::default(),
             navigator_value_search_scope: None,
             navigator_value_search_epoch: 0,
             value_search_value: TextEdit::new(String::new()),

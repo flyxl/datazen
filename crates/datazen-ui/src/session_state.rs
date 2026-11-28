@@ -33,6 +33,9 @@ impl AppState {
             self.close_navigator_value_search();
         }
         let entering = self.active != section;
+        if entering {
+            self.close_native_object_search();
+        }
         if self.active == Section::Workspace && section != Section::Workspace {
             self.cancel_query_editor_input();
         }
@@ -80,6 +83,7 @@ impl AppState {
     /// subsection without losing the original return route.
     pub fn open_settings(&mut self, subsection: Option<&str>) {
         self.close_navigator_value_search();
+        self.close_native_object_search();
         if self.active == Section::Settings {
             if let Some(subsection) = subsection {
                 self.set_settings_section(subsection);
@@ -181,6 +185,7 @@ impl AppState {
     pub fn refresh_catalog(&mut self) {
         if let Some(id) = self.desktop_connection.clone() {
             self.close_navigator_value_search();
+            self.close_native_object_search();
             let generation = self.next_read_generation();
             if self
                 .desktop
@@ -214,6 +219,7 @@ impl AppState {
         // the page stays put and says the connect is in flight; the memory
         // port's instant path answers when the host declines.
         self.close_navigator_value_search();
+        self.close_native_object_search();
         self.record_recent_connection(id);
         let generation = self.next_read_generation();
         if self.desktop.begin_job(AdapterJob::OpenConnection {
@@ -260,6 +266,7 @@ impl AppState {
             return;
         }
         self.close_navigator_value_search();
+        self.close_native_object_search();
         self.close_kv_workbench();
         self.workspace.disconnect();
         self.tabs = Tabs::new();

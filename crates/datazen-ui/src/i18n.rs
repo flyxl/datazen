@@ -57,6 +57,13 @@ pub fn len() -> usize {
 
 fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
     let native = match key {
+        "objectSearch.native.title" => Some(("搜索当前连接的对象", "Search objects in this connection")),
+        "objectSearch.native.description" => Some((
+            "仅显示此连接中名称唯一的已加载表和视图。",
+            "Shows loaded tables and views with a unique name in this connection.",
+        )),
+        "objectSearch.native.placeholder" => Some(("搜索表和视图", "Search tables and views")),
+        "objectSearch.native.empty" => Some(("没有名称唯一的已加载表或视图。", "No uniquely named tables or views are loaded.")),
         "query.nativeFind.open" => Some(("在 SQL 中查找", "Find in SQL")),
         "query.nativeFind.find" => Some(("查找", "Find")),
         "query.nativeFind.next" => Some(("下一处", "Find next")),

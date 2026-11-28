@@ -7,6 +7,7 @@
 pub mod build_flat_rows;
 pub mod database_value_search_dialog;
 pub mod global_object_search;
+pub(crate) mod native_object_search;
 pub mod navigator_dialogs;
 pub mod navigator_toolbar;
 pub mod navigator_tree_row;
