@@ -5,6 +5,8 @@ import socket
 import sqlite3
 import sys
 
+from contextlib import closing
+
 from scenarios import fixture, query_steps, tap, type_text, visible
 
 OPEN = (tap(.5, "conn-open-e2e-sqlite"), tap(3, "tree-table-customers"))
@@ -578,6 +580,15 @@ class OfflineJourneys:
             menu_key = entries.pop()
             self.assertFalse(visible(idle, text="Restore Database", within="menu-bar-tools-menu"))
 
+        # The real writable SQLite connection enables WAL while opening its
+        # pool; that can change the fixture's file header before Backup exists.
+        # Establish the source baseline after a successful connection-only
+        # replay, before opening or submitting any Backup action.
+        connected = self.replay(OPEN, until=4.25)
+        self.expect_rendered(connected, text="fixture-ada")
+        with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as source:
+            expected = source.execute("SELECT id, customer_name FROM customers ORDER BY id").fetchall()
+        self.assertEqual(len(expected), 2)
         original = self.db.read_bytes()
         destination = self.root / "customers.sql"
         entry = [*OPEN, tap(4.4, "rail-tools"),
@@ -587,6 +598,8 @@ class OfflineJourneys:
         self.expect_rendered(transfer, key="native-transfer-selected-table", text="customers",
                              within="native-transfer-source")
         self.assertFalse(visible(transfer, key="backup-section"))
+        self.assertFalse(list(self.root.rglob("*.sql")))
+        self.assertEqual(self.db.read_bytes(), original, "opening/switching Tools did not write the source")
 
         tools = [*entry, tap(7.4, "backup-start")]
         cancelled = self.replay([
@@ -595,7 +608,9 @@ class OfflineJourneys:
         self.expect_rendered(cancelled, key="backup-section")
         self.expect_rendered(cancelled, text="the backup was cancelled; nothing was written",
                              within="backup-error")
+        self.assertFalse(visible(cancelled, key="backup-status"), "cancel did not start a backup job")
         self.assertFalse(list(self.root.rglob("*.sql")))
+        self.assertEqual(self.db.read_bytes(), original, "picker cancellation did not write the source")
 
         actions = [*tools, {"t": 8.2, "type": "file-dialog", "path": str(destination)},
                    tap(11.5, "backup-refresh"), tap(12.1, "rail-connections")]
@@ -609,13 +624,12 @@ class OfflineJourneys:
         finished = self.replay(actions, until=15.8)
         self.expect_rendered(finished, key="backup-section")
         self.expect_rendered(finished, text="completed · 100%", within="backup-status")
-        self.assertEqual(self.db.read_bytes(), original, "backup is read-only on the live DB")
-        with sqlite3.connect(self.db) as db:
-            expected = db.execute("SELECT id, customer_name FROM customers ORDER BY id").fetchall()
-        with sqlite3.connect(":memory:") as restored:
+        self.assertEqual(self.db.read_bytes(), original, "backup to a separate file did not write the source")
+        with closing(sqlite3.connect(self.root / "restored-customers.sqlite")) as restored:
             restored.executescript(destination.read_text(encoding="utf-8"))
             self.assertEqual(restored.execute(
                 "SELECT id, customer_name FROM customers ORDER BY id").fetchall(), expected)
+        self.assertEqual(self.db.read_bytes(), original, "the independent restore did not touch the source")
 
     def test_query_result_find_moves_between_matches(self):
         fixture(self.store, self.db)
