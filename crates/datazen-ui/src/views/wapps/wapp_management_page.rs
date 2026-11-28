@@ -151,17 +151,6 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
             text(t("common.loading")).key("extension-page-loading").color(k.c.text_muted).mt(12.0),
         );
     }
-    if read_only && !state.wapps.is_empty() {
-        content = content.child(
-            text(t("extensions.page.nativeReadOnly"))
-                .key("extension-page-read-only")
-                .font(k.ty.body)
-                .color(k.c.text_muted)
-                .w_full()
-                .wrap()
-                .mt(12.0),
-        );
-    }
 
     if filtered.is_empty() {
         // A failed or unknown stock snapshot does not establish an empty
@@ -194,7 +183,7 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
                             .key(format!("extension-group-{group_key}-header"))
                             // React: `mb-2 text-[11px] font-semibold uppercase
                             // tracking-wide text-fg-muted`.
-                            .font(TextStyle::new(11.0, 600.0).tracking(0.3))
+                            .font(TextStyle::new(11.0, 600.0).lh(16.5).tracking(0.3))
                             .color(k.c.text_faint)
                             .text_case(TextCase::Uppercase)
                             .w_full()
@@ -207,6 +196,19 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
     } else {
         // The single-kind views keep React's flat grid without headers.
         content = content.child(wapp_grid("extension-grid", &filtered, dark, read_only).mt(16.0));
+    }
+
+    // Keep the read-only disclosure without moving the React-compatible grid.
+    if read_only && !state.wapps.is_empty() {
+        content = content.child(
+            text(t("extensions.page.nativeReadOnly"))
+                .key("extension-page-read-only")
+                .font(k.ty.body)
+                .color(k.c.text_muted)
+                .w_full()
+                .wrap()
+                .mt(12.0),
+        );
     }
 
     page.child(content)
@@ -225,7 +227,7 @@ fn page_header(state: &AppState, k: &'static Kit, dark: bool, show_counts: bool)
         .gap(8.0)
         .child(
             text(t("extensions.page.title"))
-                .key("extension-page-title").font(TextStyle::new(16.0, 600.0))
+                .key("extension-page-title").font(TextStyle::new(16.0, 600.0).lh(24.0))
                 .color(k.c.text_base),
         );
     if show_counts {
@@ -241,7 +243,7 @@ fn page_header(state: &AppState, k: &'static Kit, dark: bool, show_counts: bool)
                 text(t("extensions.page.subtitle"))
                     .key("extension-page-subtitle")
                     // React: `mt-1 text-xs text-fg-muted`.
-                    .font(k.ty.text_xsmall)
+                    .font(k.ty.text_xsmall.lh(16.0))
                     .color(k.c.text_faint)
                     .w_full()
                     .wrap()
