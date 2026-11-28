@@ -258,7 +258,22 @@ def main():
                         help="run only the multi-statement DML/PRAGMA/disabled region gate")
     parser.add_argument("--definitions", action="store_true",
                         help="run only the multi-statement DDL/EXPLAIN/savepoint gate")
+    parser.add_argument("--dialect", choices=("sqlite", "postgresql", "mysql", "mariadb"),
+                        help="run the independent dialect suite for an actual connected engine")
+    parser.add_argument("--fixture", type=Path, help="marked disposable TCP configuration for --dialect")
+    parser.add_argument("--case", help="named case for the chosen dialect suite")
     args = parser.parse_args()
+    if args.dialect:
+        if any((args.size_bound, args.statements, args.definitions)):
+            parser.error("choose one specialized acceptance group at a time")
+        import sql_formatter_dialects
+        argv = [str(args.binary), args.dialect]
+        for flag, value in (("--fixture", args.fixture), ("--case", args.case), ("--artifacts", args.artifacts)):
+            if value is not None:
+                argv.extend([flag, str(value)])
+        return sql_formatter_dialects.main(argv)
+    if args.fixture or args.case:
+        parser.error("--fixture and --case require --dialect")
     native.BINARY = args.binary.resolve(strict=True)
     native.ARTIFACTS = args.artifacts
     if native.ARTIFACTS:

@@ -56,6 +56,35 @@ mappings or nontransactional targets before writes. MySQL-to-PostgreSQL
 supports only mappings that can prove their type capacity from the catalog:
 signed integers, bounded DECIMAL and bounded VARCHAR.
 
+## SQL formatter: real Native editor
+
+The formatter has its own narrow, opt-in acceptance suite. Drive the stock Native
+binary with isolated settings, using the same disposable SQLite or marked
+loopback TCP fixtures as above. Use separate real PostgreSQL, Oracle MySQL
+Community and MariaDB servers; a MariaDB server is not a MySQL test. A
+SELECT-only fixture account suffices. The Native credential-import CLI is not
+a UI replay and its LLVM profile is excluded.
+
+```sh
+BIN=target/debug/datazen-native
+for mode in "" --definitions --statements --size-bound; do
+  python3 e2e/rune/sql_formatter.py "$BIN" $mode || exit 1
+done
+python3 e2e/rune/sql_formatter.py "$BIN" --dialect sqlite
+python3 e2e/rune/sql_formatter.py "$BIN" --dialect postgresql --fixture "$PG_FIXTURE"
+python3 e2e/rune/sql_formatter.py "$BIN" --dialect mysql --fixture "$MYSQL_FIXTURE"
+python3 e2e/rune/sql_formatter.py "$BIN" --dialect mariadb --fixture "$MARIA_FIXTURE"
+```
+
+The expected transformations in `sql-formatter-dialects-15.8.2.json` were
+verified with the pinned 15.8.2 CJS and original browser distributions. No
+JavaScript is loaded by these journeys or the Native app. Each test opens a
+real session, pastes its draft, clicks Format, compares every rendered document
+line, and checks one physical Undo in a replay of the same route. It checks no
+query result/history, no settings change, and an unchanged SQLite file or TCP
+fixture marker. These cases cover neither every upstream statement nor a
+stock SQL Server session.
+
 ## Opt-in real Redis UI
 
 Pass both `--redis-server PATH` and `--redis-cli PATH` to either native
