@@ -314,13 +314,22 @@ class OfflineJourneys:
 
     def test_filter_grid_matches_sqlite_predicate_and_can_be_cleared(self):
         fixture(self.store, self.db)
-        with sqlite3.connect(self.db) as db:
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        # A writable SQLite session may initialize WAL even if it only reads.
+        # Match the read-only visual fixture and keep bytes as a strict oracle.
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        with closing(sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True)) as db:
             expected = db.execute("SELECT customer_name FROM customers WHERE customer_name LIKE ?",
                                   ("%lin%",)).fetchone()[0]
         original = self.db.read_bytes()
         filtered = [*OPEN, tap(4.5, "filter-column"), *fill(5, "filter-input", "lin"),
                     key(6.1, "Enter")]
         tree = self.replay(filtered, until=7.8)
+        self.expect_rendered(tree, key="grid-readonly")
         self.expect_rendered(tree, text=expected, within="data-grid")
         self.expect_rendered(tree, key="grid-filter-count", text="1 rows", within="grid-filter")
         self.expect_rendered(tree, text='Filter: customer_name contains "lin"', within="grid-filter-active")
@@ -333,6 +342,8 @@ class OfflineJourneys:
         self.expect_rendered(tree, key="grid-filter-count", text="2 rows", within="grid-filter")
         self.assertFalse(visible(tree, key="grid-filter-active"))
         self.assertEqual(self.db.read_bytes(), original)
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
 
     def test_grid_header_cycles_sort_order(self):
         fixture(self.store, self.db)
