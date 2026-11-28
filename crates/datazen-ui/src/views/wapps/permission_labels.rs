@@ -2,17 +2,8 @@
 //! (T484) — the human-readable explanations shown as permission
 //! badge tooltips.
 //!
-//! React attaches them through the badge's `title` attribute
-//! (`PERMISSION_LABELS[perm] ?? perm`); the kit `Badge` has no
-//! tooltip surface, so the visible badge keeps rendering the
-//! permission string and these texts wait for the host's tooltip
-//! rail (the wapps pages' own documented delta). The lookup is by
-//! the wire string — the closed five-key record, with the same
-//! `?? perm` fallback the call sites apply.
-
-// No production consumer yet (the badges' tooltip rail is the
-// host's); this crate's tests are the callers meanwhile.
-#![allow(dead_code)]
+//! React attaches the explanation as `title`; the Native badge attaches
+//! it as Rune help metadata while retaining the visible permission token.
 
 /// `PERMISSION_LABELS[permission]` — `None` for anything but the
 /// closed five (the call sites fall back to the permission string

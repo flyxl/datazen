@@ -32,9 +32,6 @@
 //!   (`install_wapp_inspected` / `install_wapp_succeeded`) for that wiring;
 //!   until it lands, a picked path and a confirmed install run React's
 //!   error branches honestly (see `wapps_state.rs`).
-//! - `PERMISSION_LABELS` — landed as T484's `permission_labels`
-//!   the permission badges render without their tooltip texts until that
-//!   port lands.
 //! - The open press (`extensions.page.install`, `WappManagementPage.tsx`)
 //!   belongs to the page port (T073); `open_install_wapp_dialog` is its
 //!   call, and the root modal layer only mounts the dialog once it runs.
@@ -60,6 +57,7 @@
 //! | error (either step, React's `data-testid`) | `extension-install-error` |
 //! | footer back / confirm / cancel | `extension-install-back`, `extension-install-confirm`, `extension-install-cancel` |
 
+use crate::views::wapps::permission_labels::wapp_permission_label;
 use crate::i18n::t;
 use crate::state_def::AppState;
 use crate::ui::badge::Badge;
@@ -337,13 +335,12 @@ fn install_wapp_review_body(state: &AppState, dark: bool) -> El {
                 .wrap(),
         );
     } else {
-        // React: one neutral `Badge` per permission string; the tooltip
-        // texts are T484's `permission_labels` (the kit Badge has no
-        // tooltip surface — the visible badge matches React's).
-        for perm in preview.manifest.permissions.clone() {
+        // Preserve the wire token; expose the same description as React.
+        for perm in &preview.manifest.permissions {
             badges = badges.child(
-                Badge::new(format!("extension-install-permission-{perm}"), perm)
-                    .build(dark),
+                Badge::new(format!("extension-install-permission-{perm}"), perm.clone())
+                    .build(dark)
+                    .help(wapp_permission_label(perm).unwrap_or(perm)),
             );
         }
     }

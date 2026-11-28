@@ -20,10 +20,6 @@
 //!   is enabled — React's same `!iconPath || !wapp.enabled` gate) still shows
 //!   the letter avatar, which is exactly the fallback React renders when the
 //!   read fails. The icon path rides [`WappSummaryVm::icon`] for the wiring.
-//! - `PERMISSION_LABELS` (landed as T484's `permission_labels`): the
-//!   permission badges render without their tooltip texts until that port
-//!   lands; the mismatch badge's own hint tooltip is real (its key is in the
-//!   zh-CN table).
 //! - The stock native registry is read-only. Its cards expose the persisted
 //!   enabled state, but cannot change it, launch a page, or remove a package.
 //!
@@ -52,6 +48,7 @@ use crate::state_def::AppState;
 use crate::ui::badge::{Badge, BadgeTone};
 use crate::ui::kit::kit;
 use crate::ui::toggle::Switch;
+use crate::views::wapps::permission_labels::wapp_permission_label;
 use crate::views::wapps::wapp_summary::{has_pages, has_themes, WAPP_API_VERSION, WappSummaryVm};
 use rune::{col, row, text, El, TextStyle};
 use rune_kit::{Button, ButtonVariant, ControlSize, IconButton, IconButtonVariant, Kit};
@@ -167,12 +164,11 @@ pub fn wapp_card(wapp: &WappSummaryVm, dark: bool, read_only: bool, width: f32) 
             .build(dark),
         );
     }
-    for perm in wapp.permissions.clone() {
-        // The tooltip text is T484's `permission_labels` (the kit Badge
-        // has no tooltip surface); the badge itself renders the
-        // permission string, as React's does.
+    for perm in &wapp.permissions {
         badges = badges.child(
-            Badge::new(format!("{card_key}-badge-permission-{perm}"), perm.clone()).build(dark),
+            Badge::new(format!("{card_key}-badge-permission-{perm}"), perm.clone())
+                .build(dark)
+                .help(wapp_permission_label(perm).unwrap_or(perm)),
         );
     }
     card = card.child(badges);
