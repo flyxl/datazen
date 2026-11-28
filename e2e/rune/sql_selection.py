@@ -620,7 +620,7 @@ class SqlSelectionJourneys:
         self.addCleanup(self.db.chmod, 0o600)
         self.db.chmod(0o400)
         original_bytes = self.db.read_bytes()
-        sql = "SELECT 'FI' AS first_tag, 'ﬃ' AS second_tag;"
+        sql = "SELECT 'FI' AS upper_tag, 'ﬃ' AS ligature_tag;"
         enter = query_steps(sql)[:-1]
         enter[-1] = {"t": 4.8, "type": "paste", "text": sql}
         find = [
