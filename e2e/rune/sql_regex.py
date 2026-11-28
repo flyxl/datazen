@@ -15,7 +15,7 @@ from sql_formatter import draft, editor_rows, row_text_nodes, selection
 
 
 class RegexJourneys:
-    def route(self, sql, pattern, *, top=False, light=False, before_find=()):
+    def route(self, sql, pattern, *, top=False, light=False, before_find=(), keyboard_find=False):
         fixture(self.store, self.db)
         store = json.loads(self.store.read_text(encoding="utf-8"))
         store["connections"][0]["readOnly"] = True
@@ -31,7 +31,8 @@ class RegexJourneys:
         # fill() uses the physical typing route (one key event every 27ms).
         # Do not toggle the mode until a longer pattern has landed.
         toggle = max(8.2, 7.75 + .027 * len(pattern))
-        route = [*enter, *before_find, tap(6.2, "sql-find-open"), *fill(7.0, "sql-find-input", pattern),
+        open_find = key(6.2, "f", cmd=True) if keyboard_find else tap(6.2, "sql-find-open")
+        route = [*enter, *before_find, open_find, *fill(7.0, "sql-find-input", pattern),
                  tap(toggle, "sql-find-regex")]
         return initial, route
 
@@ -113,7 +114,10 @@ class RegexJourneys:
         gap = "BEGIN\n" + "".join(f"-- gap line {i:02}\n" for i in range(90)) + "END\n"
         sql = head + gap + "SELECT '😀 Needle9' AS last_tag;"
         pattern = r"Needle[09]|BEGIN[\s\S]*?END"
-        initial, route = self.route(sql, pattern, top=True, light=True)
+        # At 960px the trailing Find button is in the toolbar's horizontal
+        # overflow lane. Use the real editor's keyboard shortcut rather than
+        # targeting a clipped hit rectangle that belongs to the library.
+        initial, route = self.route(sql, pattern, top=True, light=True, keyboard_find=True)
         first = self.hit_key(sql, "Needle0")
         last = self.hit_key(sql, "Needle9")
         ordinary = "#ffff0054"
