@@ -124,7 +124,7 @@ mod tests {
         state.toggle_query_sidebar(QuerySidebarPanel::History);
         assert!(state.query_sidebar_shows(QuerySidebarPanel::History));
         state.query_history.scope = HistoryScope::All;
-        state.query_history.search = TextEdit::new("known statement".into());
+        state.query_history.search = TextEdit::new("known statement");
 
         // Simulate the already-started read's reply arriving after the actual
         // close action; the current query/editor does not change.
