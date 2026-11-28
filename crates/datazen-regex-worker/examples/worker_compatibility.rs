@@ -50,7 +50,7 @@ fn main() -> std::process::ExitCode {
     check(r"(?<k>b)\k<k>", 2..4);
     check(r"(b)\1", 2..4);
     check(r"(?:(?<k>a)|(?<k>b))b+", 1..4);
-    check(r"(?:(?<k>a)|(?<k>b))(?<unrelated>b)\k<unrelated>?", 1..3);
+    check(r"(?:(?<k>a)|(?<k>b))(?<unrelated>b)\k<unrelated>?", 1..4);
     println!("10 spawned compatibility witnesses passed");
     std::process::ExitCode::SUCCESS
 }
