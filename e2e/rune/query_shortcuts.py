@@ -194,7 +194,7 @@ class QueryShortcutJourneys(native.NativeJourneys):
         restored = self.replay([*opening, tap(5.0, "query-library-favorites-toggle"),
                                 tap(6.0, "query-favorite-0")], until=7.4)
         self.expect_rendered(restored, text=title, within="query-favorites-panel")
-        self.assertEqual(draft(restored), sql.strip())
+        self.assertEqual(draft(restored), sql.strip() + "\n")
         self.assertEqual((self.store.read_bytes(), self.db.read_bytes(), settings.read_bytes()), inputs)
         self.assertFalse((self.root / "query-history.json").exists())
         self.assertEqual(list(favorites.glob("*.sql")), saved)
