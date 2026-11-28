@@ -742,7 +742,7 @@ fn settings_nav_groups_render_all_twelve_sections() {
 fn settings_navigation_switches_rendered_section() {
     for (id, marker) in [
         ("appearance", "appearance-color-scheme-select-trigger"),
-        ("dataBrowsing", "settings-page-size-set"),
+        ("dataBrowsing", "settings-page-size-preset-trigger"),
         ("editor", "settings-snippets"),
         ("mcpServer", "settings-section-mcpServer"),
     ] {

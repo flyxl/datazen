@@ -256,6 +256,8 @@ pub enum SettingsSelect {
     Language,
     /// The data-browsing page size select.
     PageSize,
+    /// Native custom page-size numeric popover, disclosed by Page Size.
+    CustomPageSize,
     /// The data-browsing query result limit select.
     ResultLimit,
     /// The data-browsing workflow step order select.
@@ -442,6 +444,8 @@ pub struct SettingsContentState {
     pub mirror: SettingsMirror,
     /// Which select holds its listbox open.
     pub open_select: Option<SettingsSelect>,
+    /// Validation/write error scoped to the disclosed custom page-size draft.
+    pub(crate) custom_page_size_error: Option<String>,
     /// Which contribution select is open (the `settings-contrib-*`
     /// selects are many; the id disambiguates — the page's own
     /// selects are the [`SettingsSelect`] enum).
@@ -476,6 +480,7 @@ impl Default for SettingsContentState {
             default_log_path: None,
             mirror: SettingsMirror::default(),
             open_select: None,
+            custom_page_size_error: None,
             open_contribution_select: None,
             pool_size_edit: TextEdit::default(),
             font_family_edit: TextEdit::default(),
@@ -600,6 +605,7 @@ impl SettingsContentState {
     }
 
     pub fn close_select(&mut self) {
+        self.custom_page_size_error = None;
         self.open_select = None;
         self.open_contribution_select = None;
     }

@@ -2,8 +2,8 @@
 
 use datazen_ui_api::types::WorkflowStepResultOrder;
 use datazen_ui_api::{BuiltinLanguage, Setting};
-use rune::{col, row, text, tok, El, TextEdit, TextStyle};
-use rune_kit::Kit;
+use rune::{col, row, text, tok, El, TextEdit, TextStyle, Tx};
+use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Placement};
 
 use super::settings_content_state::SettingsSelect;
 use super::settings_ui::{section_title, setting_row};
@@ -13,10 +13,13 @@ use crate::i18n::t;
 use crate::state_def::AppState;
 use crate::ui::{field::TextField, kit::kit, select::Select};
 
-// The original choices are all in the native API's 1..=500 range. Manual
-// entries still support every integer in that range, including custom values.
+// Original presets stay in order; Native additionally discloses its existing
+// validated custom size rather than placing a duplicate editor in the route.
 const PRESETS: [u32; 5] = [25, 50, 100, 200, 500];
 const FIELD_HEIGHT: f32 = 36.0;
+const CUSTOM_VALUE: &str = "__custom_page_size__";
+const PAGE_SIZE_TRIGGER: &str = "settings-page-size-preset-trigger";
+const PAGE_SIZE_INPUT: &str = "settings-page-size-input";
 
 pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let settings = state.ui_settings();
@@ -48,6 +51,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             None,
         ));
     let presets = page_size_select(state, page_size, &k, &mut overlays);
+    mount_custom_page_size(state, dark, &k, &mut overlays);
     section = section
         .child(setting_row(
             &k,
@@ -62,26 +66,6 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .key("settings-data")
                 .w_full()
                 .gap(12.0)
-                .child(setting_row(
-                    &k,
-                    &mut overlays,
-                    "settings-page-size-manual-row".to_owned(),
-                    &format!("Rows per page: {page_size}"),
-                    None,
-                    number_row(
-                        &k,
-                        dark,
-                        NumberControl {
-                            input_key: "settings-page-size-input",
-                            draft: &state.page_size_input,
-                            field_label: t("settings.defaultPageSize"),
-                            edit: |state| &mut state.page_size_input,
-                            set_key: "settings-page-size-set",
-                            set_label: "Set page size",
-                            save: AppState::set_table_page_size,
-                        },
-                    ),
-                ))
                 .child(setting_row(
                     &k,
                     &mut overlays,
@@ -195,8 +179,11 @@ fn workflow_step_order_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) ->
 }
 
 fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Vec<El>) -> El {
-    let labels = PRESETS.map(|rows| format!("{rows} {}", t("common.rows")));
-    let values = PRESETS.map(|rows| rows.to_string());
+    let mut labels = PRESETS.map(|rows| format!("{rows} {}", t("common.rows"))).to_vec();
+    let mut values = PRESETS.map(|rows| rows.to_string()).to_vec();
+    let (custom, _, _, _) = custom_page_size_copy(state.builtin_language());
+    labels.push(custom.to_owned());
+    values.push(CUSTOM_VALUE.to_owned());
     let selected = format!("{page_size} {}", t("common.rows"));
     Select::new("settings-page-size-preset", &labels)
         .values(&values)
@@ -204,11 +191,26 @@ fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Ve
         .label(t("settings.defaultPageSize"))
         .open(state.settings_content.open_select == Some(SettingsSelect::PageSize))
         .on_toggle(|state: &mut AppState| {
-            state.settings_content.toggle_select(SettingsSelect::PageSize)
+            if page_size_route(state) {
+                state.settings_content.toggle_select(SettingsSelect::PageSize);
+            }
         })
-        .on_close(|state: &mut AppState| state.settings_content.close_select())
-        .on_choose(|state: &mut AppState, value, _tx| {
+        .on_close(|state: &mut AppState| {
+            if state.settings_content.open_select == Some(SettingsSelect::PageSize) {
+                state.settings_content.close_select();
+            }
+        })
+        .on_choose(|state: &mut AppState, value, tx| {
+            if !page_size_route(state) || state.settings_content.open_select != Some(SettingsSelect::PageSize) {
+                return;
+            }
             state.settings_content.close_select();
+            if value == CUSTOM_VALUE {
+                state.page_size_input = TextEdit::new(state.table_page_size().to_string());
+                state.settings_content.open_select = Some(SettingsSelect::CustomPageSize);
+                tx.focus(PAGE_SIZE_INPUT, tx.focus_visible());
+                return;
+            }
             if let Ok(rows) = value.parse::<u32>() {
                 if PRESETS.contains(&rows) {
                     state.settings_error = state
@@ -228,6 +230,100 @@ fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Ve
         // placement or stretching the row to imitate its scroller.
         .pl(3.0)
         .pr(8.0)
+}
+
+fn page_size_route(state: &AppState) -> bool {
+    state.active == crate::types::Section::Settings && state.settings_section() == "dataBrowsing"
+}
+
+fn custom_page_size_is_open(state: &AppState) -> bool {
+    page_size_route(state) && state.settings_content.open_select == Some(SettingsSelect::CustomPageSize)
+}
+
+fn dismiss_custom_page_size(state: &mut AppState, tx: &mut Tx) {
+    if custom_page_size_is_open(state) {
+        state.settings_content.close_select();
+        tx.focus(PAGE_SIZE_TRIGGER, tx.focus_visible());
+    }
+}
+
+fn commit_custom_page_size(state: &mut AppState, tx: &mut Tx) {
+    if !custom_page_size_is_open(state) {
+        return;
+    }
+    // The established setter owns validation and the actual host write. A
+    // custom draft error belongs to this popover, not the Query Limit row.
+    let prior_error = state.settings_error.take();
+    state.set_table_page_size();
+    let custom_error = std::mem::replace(&mut state.settings_error, prior_error);
+    if let Some(error) = custom_error {
+        state.settings_content.custom_page_size_error = Some(error);
+        tx.focus(PAGE_SIZE_INPUT, tx.focus_visible());
+    } else {
+        dismiss_custom_page_size(state, tx);
+    }
+}
+
+fn custom_page_size_copy(language: BuiltinLanguage) -> (&'static str, &'static str, &'static str, &'static str) {
+    match language {
+        BuiltinLanguage::English => ("Custom…", "Custom page size", "Rows per page (1–500)", "Set page size"),
+        BuiltinLanguage::SimplifiedChinese => ("自定义…", "自定义每页行数", "每页行数（1–500）", "设定每页行数"),
+    }
+}
+
+fn mount_custom_page_size(state: &AppState, dark: bool, k: &Kit, overlays: &mut Vec<El>) {
+    if !custom_page_size_is_open(state) {
+        return;
+    }
+    let (_, title, hint, save_label) = custom_page_size_copy(state.builtin_language());
+    let mut body = col()
+        .key("settings-page-size-custom")
+        .role("dialog")
+        .label(title)
+        .description(hint)
+        .w(320.0)
+        .padding(12.0)
+        .gap(8.0)
+        .modal_tx(true, dismiss_custom_page_size)
+        .child(text(title).font(k.ty.ui_medium).color(k.c.text_base))
+        .child(text(hint).font(k.ty.ui_compact).color(k.c.text_muted))
+        .child(
+            TextField::new(PAGE_SIZE_INPUT, &state.page_size_input)
+                .height(FIELD_HEIGHT)
+                .fill(k.c.bg_base)
+                .border(1.0, k.c.border_base)
+                .radius(k.radius.md)
+                .label(t("settings.defaultPageSize"))
+                .on_edit(|state: &mut AppState| &mut state.page_size_input)
+                .on_submit(commit_custom_page_size)
+                .build(dark),
+        );
+    if let Some(error) = &state.settings_content.custom_page_size_error {
+        body = body.child(
+            text(error.clone())
+                .key("settings-page-size-custom-error")
+                .role("alert")
+                .wrap()
+                .color(k.c.danger.fg),
+        );
+    }
+    body = body.child(
+        row()
+            .w_full()
+            .justify_end()
+            .gap(8.0)
+            .child(Button::new(t("common.cancel")).variant(ButtonVariant::Ghost)
+                .control_size(ControlSize::Regular).build(k)
+                .key("settings-page-size-custom-cancel").focusable(true)
+                .on_press_tx(dismiss_custom_page_size))
+            .child(Button::new(t("common.save")).control_size(ControlSize::Regular).build(k)
+                .key("settings-page-size-set").focusable(true).label(save_label)
+                .on_press_tx(commit_custom_page_size)),
+    );
+    overlays.push(rune_kit::popover::anchored(
+        k, rune_kit::popover::raised(k, body, k.radius.md),
+        PAGE_SIZE_TRIGGER, Placement::BottomStart, 4.0,
+    ));
 }
 
 fn preset_field_kit(k: &Kit) -> Kit {

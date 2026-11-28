@@ -300,6 +300,14 @@ fn light_system_without_a_saved_theme_keeps_fields_on_the_light_palette() {
     rt.state.active = Section::Settings;
     rt.state.set_settings_section("dataBrowsing");
     rt.frame(0.0);
+    for key in ["settings-page-size-preset-trigger", "option5"] {
+        let (x, y) = rt.find(key).expect("reachable page size disclosure");
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        for _ in 0..48 {
+            rt.frame(1.0 / 60.0);
+        }
+    }
     let elements = rt.elements();
     let field = elements
         .iter()

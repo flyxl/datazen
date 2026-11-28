@@ -361,6 +361,8 @@ fn the_page_size_setting_drives_the_grid_paging() {
 
     click_settings_regression(&mut runtime, "rail-settings");
     click_settings_regression(&mut runtime, "settings-nav-dataBrowsing");
+    click_settings_regression(&mut runtime, "settings-page-size-preset-trigger");
+    click_settings_regression(&mut runtime, "option5");
     runtime.update(|state, _| state.page_size_input = rune::TextEdit::new("10"));
     runtime.frame(0.0);
     click_settings_regression(&mut runtime, "settings-page-size-set");
@@ -379,11 +381,13 @@ fn the_page_size_setting_drives_the_grid_paging() {
 
     click_settings_regression(&mut runtime, "rail-settings");
     click_settings_regression(&mut runtime, "settings-nav-dataBrowsing");
+    click_settings_regression(&mut runtime, "settings-page-size-preset-trigger");
+    click_settings_regression(&mut runtime, "option5");
     runtime.update(|state, _| state.page_size_input = rune::TextEdit::new("0"));
     runtime.frame(0.0);
     click_settings_regression(&mut runtime, "settings-page-size-set");
     assert!(runtime.state.workspace.read_settings().contains(&page_size), "the rejected write changed nothing");
-    assert!(runtime.find("settings-error").is_some(), "the rejection is visible");
+    assert!(runtime.find("settings-page-size-custom-error").is_some(), "the rejection is visible");
 }
 
 #[test]

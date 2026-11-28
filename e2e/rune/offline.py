@@ -9,10 +9,16 @@ from scenarios import fixture, query_steps, tap, type_text, visible
 OPEN = (tap(.5, "conn-open-e2e-sqlite"), tap(3, "tree-table-customers"))
 SETTINGS = tap(.5, "rail-settings")
 DATA_SETTINGS = tap(1.4, "settings-nav-dataBrowsing")
+PAGE_SIZE = "settings-page-size-preset-trigger"
+CUSTOM_PAGE_SIZE = "settings-page-size-custom"
 
 
 def key(t, name, *, cmd=False):
     return {"t": t, "type": "key", "name": name, "cmd": cmd}
+
+
+def open_custom_page_size(t):
+    return [tap(t, PAGE_SIZE), tap(t + .65, "option5")]
 
 
 def fill(t, element, value):
@@ -140,40 +146,44 @@ class OfflineJourneys:
         self.assertEqual(list(blocked.iterdir()), [sentinel])
 
     def test_settings_page_size_and_query_limit_survive_restart(self):
+        # These journeys assert the localized trigger caption as well as disk
+        # values; pin English rather than depending on stock's locale fallback.
+        self.root.joinpath("settings.json").write_text(
+            json.dumps({"ui": {"language": "en"}}), encoding="utf-8")
         tree = self.replay([
-            SETTINGS, DATA_SETTINGS,
-            *fill(2.2, "settings-page-size-input", "17"), tap(3.3, "settings-page-size-set"),
-            *fill(4, "settings-max-rows-input", "23"), tap(5.1, "settings-max-rows-set"),
-        ], until=6.2)
+            SETTINGS, DATA_SETTINGS, *open_custom_page_size(2.1),
+            *fill(3.35, "settings-page-size-input", "17"), tap(4.45, "settings-page-size-set"),
+            *fill(5.15, "settings-max-rows-input", "23"), tap(6.25, "settings-max-rows-set"),
+        ], until=7.35)
         self.assertFalse(visible(tree, key="settings-error"))
         ui = json.loads((self.root / "settings.json").read_text())["ui"]
         self.assertEqual((ui["tablePageSize"], ui["queryMaxRows"]), (17, 23))
         tree = self.replay([SETTINGS, DATA_SETTINGS], until=2.5)
-        self.expect_rendered(tree, text="Rows per page: 17", within="settings-data")
+        self.expect_rendered(tree, text="17 rows", within=PAGE_SIZE)
         self.expect_rendered(tree, text="Query max rows: 23", within="settings-data")
 
     def test_settings_page_size_preset_persists_without_changing_the_query_limit(self):
         config = self.root / "settings.json"
-        initial = json.dumps({"ui": {"tablePageSize": 17, "queryMaxRows": 23}})
+        initial = json.dumps({"ui": {"language": "en", "tablePageSize": 17, "queryMaxRows": 23}})
         config.write_text(initial, encoding="utf-8")
         preset = "settings-page-size-preset-trigger"
 
         cancelled = self.replay([
             SETTINGS, DATA_SETTINGS, tap(2.1, preset), key(3.3, "Escape"),
         ], until=4.3)
-        self.expect_rendered(cancelled, text="Rows per page: 17", within="settings-data")
+        self.expect_rendered(cancelled, text="17 rows", within=PAGE_SIZE)
         self.assertEqual(config.read_text(encoding="utf-8"), initial)
 
         applied = self.replay([
             SETTINGS, DATA_SETTINGS, tap(2.1, preset), tap(3.3, "option1"),
         ], until=4.3)
-        self.expect_rendered(applied, text="Rows per page: 50", within="settings-data")
+        self.expect_rendered(applied, text="50 rows", within=PAGE_SIZE)
         self.expect_rendered(applied, text="Query max rows: 23", within="settings-data")
         ui = json.loads(config.read_text(encoding="utf-8"))["ui"]
         self.assertEqual((ui["tablePageSize"], ui["queryMaxRows"]), (50, 23))
 
         restarted = self.replay([SETTINGS, DATA_SETTINGS], until=2.5)
-        self.expect_rendered(restarted, text="Rows per page: 50", within="settings-data")
+        self.expect_rendered(restarted, text="50 rows", within=PAGE_SIZE)
         self.expect_rendered(restarted, key=preset)
 
     def test_settings_navigation_changes_real_grid_page_boundary_after_restart(self):
@@ -189,16 +199,17 @@ class OfflineJourneys:
                 ).fetchone()[0] for size in (17, 25)
             }
         self.root.joinpath("settings.json").write_text(
-            json.dumps({"ui": {"tablePageSize": 17, "queryMaxRows": 23}}), encoding="utf-8")
+            json.dumps({"ui": {"language": "en", "tablePageSize": 17, "queryMaxRows": 23}}),
+            encoding="utf-8")
         next_page = [*OPEN, tap(5.0, "page-next")]
         first = self.replay(next_page, until=6.9)
         self.expect_rendered(first, key="grid-page-label", text="Page 2 / 4")
         self.expect_rendered(first, text=expected[17], within="cell-0-1")
 
-        changed = self.replay([SETTINGS, DATA_SETTINGS,
-                               *fill(2.2, "settings-page-size-input", "25"),
-                               tap(3.3, "settings-page-size-set")], until=4.7)
-        self.expect_rendered(changed, text="Rows per page: 25", within="settings-data")
+        changed = self.replay([SETTINGS, DATA_SETTINGS, *open_custom_page_size(2.1),
+                               *fill(3.35, "settings-page-size-input", "25"),
+                               tap(4.45, "settings-page-size-set")], until=5.7)
+        self.expect_rendered(changed, text="25 rows", within=PAGE_SIZE)
         self.assertFalse(visible(changed, key="settings-error"))
         settings = json.loads(self.root.joinpath("settings.json").read_text())["ui"]
         self.assertEqual((settings["tablePageSize"], settings["queryMaxRows"]), (25, 23))
@@ -209,11 +220,49 @@ class OfflineJourneys:
 
     def test_settings_invalid_page_size_is_not_saved(self):
         tree = self.replay([
-            SETTINGS, DATA_SETTINGS, *fill(2.2, "settings-page-size-input", "abc"),
-            tap(3.3, "settings-page-size-set"),
-        ], until=4.5)
-        self.expect_rendered(tree, text="table page size must be a number", within="settings-error")
+            SETTINGS, DATA_SETTINGS, *open_custom_page_size(2.1),
+            *fill(3.35, "settings-page-size-input", "abc"),
+            tap(4.45, "settings-page-size-set"),
+        ], until=5.7)
+        self.expect_rendered(tree, key="settings-page-size-custom-error",
+                             text="table page size must be a number", within=CUSTOM_PAGE_SIZE)
         self.assertFalse((self.root / "settings.json").exists())
+
+    def test_settings_custom_page_size_discloses_and_cancels_without_writes(self):
+        config = self.root / "settings.json"
+        initial = json.dumps({"ui": {"language": "en", "tablePageSize": 17, "queryMaxRows": 23}})
+        config.write_text(initial, encoding="utf-8")
+        route = [SETTINGS, DATA_SETTINGS]
+        idle = self.replay(route, until=2.75)
+        self.expect_rendered(idle, text="17 rows", within=PAGE_SIZE)
+        self.assertFalse(visible(idle, key="settings-page-size-input"))
+        self.assertEqual(config.read_text(encoding="utf-8"), initial)
+
+        # Native listbox's End/Enter selects the last disclosed option. The
+        # numeric field owns focus before any write or direct field tap.
+        keyboard = route + [tap(2.1, PAGE_SIZE), key(2.75, "End"), key(3.1, "Enter")]
+        opened = self.replay(keyboard, until=4.1)
+        self.expect_rendered(opened, key=CUSTOM_PAGE_SIZE)
+        self.assertTrue(any(n.get("focused") and not n.get("exiting")
+                            and "settings-page-size-input/" in n["path"] for n in opened["elements"]))
+        self.assertEqual(config.read_text(encoding="utf-8"), initial)
+
+        typed = keyboard + [key(3.65, "a", cmd=True), type_text(3.9, "31")]
+        for close in (key(4.75, "Escape"), {"t": 4.75, "type": "tap", "x": 1408, "y": 870}):
+            dismissed = self.replay([*typed, close], until=5.65)
+            self.assertFalse(visible(dismissed, key=CUSTOM_PAGE_SIZE))
+            self.expect_rendered(dismissed, text="17 rows", within=PAGE_SIZE)
+            self.assertTrue(any(n.get("focused") and not n.get("exiting") and n.get("key") == PAGE_SIZE
+                                for n in dismissed["elements"]))
+            self.assertEqual(config.read_text(encoding="utf-8"), initial)
+
+        saved = self.replay([*typed, key(4.75, "Enter")], until=5.85)
+        self.assertFalse(visible(saved, key=CUSTOM_PAGE_SIZE))
+        self.expect_rendered(saved, text="31 rows", within=PAGE_SIZE)
+        ui = json.loads(config.read_text(encoding="utf-8"))["ui"]
+        self.assertEqual((ui["tablePageSize"], ui["queryMaxRows"]), (31, 23))
+        restarted = self.replay(route, until=2.75)
+        self.expect_rendered(restarted, text="31 rows", within=PAGE_SIZE)
 
     def test_filter_grid_matches_sqlite_predicate_and_can_be_cleared(self):
         fixture(self.store, self.db)
