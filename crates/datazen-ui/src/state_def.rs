@@ -108,6 +108,7 @@ pub struct AppState {
     /// In-memory user-selected sort, scoped to a table tab in this session.
     /// No entry means use the existing unsorted/default driver path.
     pub(crate) manual_table_sorts: std::collections::BTreeMap<u32, ColumnSort>,
+    pub(crate) table_freeze: crate::data_grid::freeze::TableFreeze,
     /// The filter the table page is opened with.
     pub filter: Option<ColumnFilter>,
     /// The column the filter bar targets, as an index into the loaded page.
@@ -630,6 +631,7 @@ impl Default for AppState {
             query_database_targets: Default::default(),
             table_page: 0,
             manual_table_sorts: Default::default(),
+            table_freeze: Default::default(),
             filter: None,
             filter_column: 0,
             filter_editor: TextEdit::new(String::new()),

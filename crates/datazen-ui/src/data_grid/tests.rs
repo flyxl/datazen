@@ -335,3 +335,20 @@ fn native_table_column_types_cannot_outlive_their_page() {
     grid.load_page(&read.page);
     assert_eq!((grid.column_type(0), grid.column_type(1)), (None, None));
 }
+
+#[test]
+fn a_measured_live_table_window_covers_narrow_columns_and_keeps_raw_pin_order() {
+    let mut grid = DataGrid::new();
+    grid.set_column_widths(vec![40; grid.cols as usize]);
+    grid.scroll_x().set(804.0);
+    assert!(grid.sync_scroll());
+    assert_eq!(grid.origin_col(), 20);
+    let unpinned = grid.built_columns_with_pin(0, Some(1000.0));
+    assert!(!unpinned.contains(&0));
+    assert!(unpinned.contains(&45), "far partially visible column");
+    let pinned = grid.built_columns_with_pin(3, Some(1000.0));
+    assert_eq!(&pinned[..3], &[0, 1, 2]);
+    assert_eq!(pinned[3..], unpinned);
+    let overlapping = grid.built_columns_with_pin(25, Some(1000.0));
+    assert!(overlapping.windows(2).all(|pair| pair[0] + 1 == pair[1]));
+}

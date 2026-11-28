@@ -150,10 +150,10 @@ class GridDragJourney:
             output = []
             for row, name in [(0, "fixture-ada"), (1, "fixture-lin")]:
                 normal = f"{prefix}cell-{row}-1"
-                frozen = f"{prefix}cell-{row}-0"
+                first = f"{prefix}cell-{row}-0"
                 self.expect_rendered(tree, text=name, within=normal)
-                self.expect_rendered(tree, text=str(row + 1), within=frozen)
-                output.append((node(tree, normal)["fill"], node(tree, frozen)["fill"]))
+                self.expect_rendered(tree, text=str(row + 1), within=first)
+                output.append((node(tree, normal)["fill"], node(tree, first)["fill"]))
             return output
 
         def check_switch(tree, want):
@@ -188,8 +188,11 @@ class GridDragJourney:
         for on, off in ((table_on, table_off), (result_on, result_off)):
             self.assertEqual(off[0][0], off[1][0])
             self.assertEqual(on[0][0], off[0][0], "ordinary even base remains")
-            self.assertEqual([row[1] for row in off], [row[1] for row in on],
-                             "active/frozen cells keep their real paint")
+        self.assertEqual([row[0] for row in table_on], [row[1] for row in table_on],
+                         "with zero pinned columns, ID is an ordinary striped table cell")
+        self.assertEqual([row[0] for row in table_off], [row[1] for row in table_off])
+        self.assertEqual([row[1] for row in result_off], [row[1] for row in result_on],
+                         "Query Result keeps its existing frozen paint")
         check_switch(self.replay(section, until=2.8), False)
         check_switch(self.replay([*section, tap(2.6, switch)], until=4), True)
         self.assertEqual(json.loads(settings.read_bytes()), {**original, "gridAlternatingRows": True})
@@ -584,9 +587,8 @@ class GridDragJourney:
         self.assertEqual(dragged_view, view)
         self.assertGreater(drag_state["scroll"][0], 0)
         self.assertGreater(drag_state["scroll"][1], 0)
-        frozen = self._settled_rect(dragged, "head-0")
-        self.assertAlmostEqual(frozen[0], view[0] + 40, delta=.25)
-        self.assertAlmostEqual(frozen[1], view[1], delta=.25)
+        self.assertFalse(visible(dragged, key="head-0"), "the stock Table Data default is unpinned")
+        self.assertAlmostEqual(self._settled_rect(dragged, "data-grid-header")[1], view[1], delta=.25)
 
         wheeled = self.replay([
             *OPEN,
@@ -606,3 +608,134 @@ class GridDragJourney:
         self.assertEqual(self.db.read_bytes(), original)
         for suffix in ("-wal", "-shm", "-journal"):
             self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
+
+    def test_sqlite_table_freeze_through_unfreeze_and_tab_ownership(self):
+        """Real secondary menu, both scroll axes, sorting + selection on a disposable database."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as seed:
+            seed.execute("UPDATE customers SET customer_name = 'zulu' WHERE id = 1")
+            seed.execute("UPDATE customers SET customer_name = 'alpha' WHERE id = 2")
+            seed.executemany("INSERT INTO customers VALUES (?, ?)",
+                             [(i, f"row-{i:02}") for i in range(3, 49)])
+            for i in range(14):
+                seed.execute(f"ALTER TABLE customers ADD COLUMN v_{i} INTEGER DEFAULT {i}")
+            seed.execute("CREATE TABLE orders AS SELECT * FROM customers")
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        settings = self.root / "settings.json"
+        config = {"ui": {"language": "en", "tablePageSize": 50},
+                  "rowCountMode": "exact", "defaultTableSort": "primaryKeyAsc"}
+        settings.write_text(json.dumps(config), encoding="utf-8")
+        before = self.db.read_bytes()
+        settings_before = settings.read_bytes()
+        store_before = self.store.read_bytes()
+
+        menu = "table-column-freeze-menu"
+        freeze = "table-column-freeze-item0"
+        unfreeze = "table-column-freeze-item1"
+
+        def secondary(at, col):
+            return {"t": at, "type": "secondary-click", "key": f"head-{col}"}
+
+        def scroll(at):
+            return {"t": at, "type": "drag", "key": "horizontal-scrollbar/thumb",
+                    "dx": 240, "dur": .35}
+
+        def grid(tree):
+            def walk(node):
+                yield node
+                for child in node.get("children", ()):
+                    yield from walk(child)
+            return next(node for node in walk(tree["accessibility"])
+                        if node.get("key") == "data-grid-scroll")
+
+        def assert_unpinned(tree):
+            self.assertGreater(grid(tree)["scroll"][0], 2 * 120)
+            self.assertFalse(visible(tree, key="head-0"))
+            self.assertFalse(visible(tree, key="head-1"))
+            self.assertFalse(visible(tree, key="cell-0-0"))
+            self.assertFalse(visible(tree, key=menu))
+
+        def assert_pinned(tree, row, gutter=True):
+            gb = self._settled_rect(tree, "data-grid-scroll")
+            x, hb = gb[0] + (40 if gutter else 0), gb[1]
+            for index in range(2):
+                head = self._settled_rect(tree, f"head-{index}")
+                cell = self._settled_rect(tree, f"cell-{row}-{index}")
+                self.assertAlmostEqual(head[0], x, delta=.25)
+                self.assertAlmostEqual(cell[0], x, delta=.25)
+                self.assertAlmostEqual(head[1], hb, delta=.25)
+                x += head[2]
+            if gutter:
+                self.assertAlmostEqual(self._settled_rect(tree, "head-rownum")[0], gb[0], delta=.25)
+                self.assertAlmostEqual(self._settled_rect(tree, f"rownum-{row}")[0], gb[0], delta=.25)
+            else:
+                self.assertFalse(visible(tree, key="head-rownum"))
+                self.assertFalse(visible(tree, key=f"rownum-{row}"))
+
+        # The actual data grid starts unpinned, not simply painted with a
+        # different color. Dismissing the menu is not an action or a sort.
+        before_menu = [*OPEN, tap(4.8, "cell-1-1")]
+        before_menu_tree = self.replay(before_menu, until=5.1)
+        self._expect_table_header_sort(before_menu_tree, 1, "customer_name")
+        self.assertEqual(grid(before_menu_tree)["activeDescendant"], "cell-1-1")
+        opened = [*before_menu, secondary(5.3, 1)]
+        tree = self.replay(opened, until=5.9)
+        self.expect_rendered(tree, key=menu)
+        self.expect_rendered(tree, text="Freeze through This Column", within=freeze)
+        self.expect_rendered(tree, text="Unfreeze Columns", within=unfreeze)
+        self.expect_rendered(tree, key="head-sort-neutral-1", within="head-1")
+
+        unpinned = self.replay([*opened, key(6.2, "Escape"), scroll(6.9)], until=7.9)
+        assert_unpinned(unpinned)
+        self.assertTrue(any(
+            node.get("key") == "data-grid-status"
+            and (node.get("text") or "").endswith(" · selection r1c1..r1c1 · 0 dirty")
+            for node in unpinned["elements"]
+        ), "a virtualized selection remains logically selected after Escape and scroll")
+
+        # The primary header gesture still drives genuine SQLite sorting.
+        # Selected raw cell remains the same through a secondary menu + drag.
+        pinned = [*OPEN, tap(5.0, "head-1"), tap(6.4, "cell-1-1"),
+                  secondary(6.9, 1), tap(7.6, freeze), scroll(8.35)]
+        pinned_tree = self.replay(pinned, until=9.35)
+        assert_pinned(pinned_tree, 1)
+        self.assertGreater(grid(pinned_tree)["scroll"][0], 240)
+        self._expect_table_header_sort(pinned_tree, 1, "customer_name", "ascending")
+        self.expect_rendered(pinned_tree, text="alpha", within="cell-0-1")
+        self.assertEqual(grid(pinned_tree)["activeDescendant"], "cell-1-1")
+        self.expect_rendered(pinned_tree, key="data-grid-status")
+        self.assertFalse(visible(pinned_tree, key="pending-changes-bar"))
+
+        # Both axes now move; stickiness is horizontal only for body rows.
+        two_axis = [*pinned, {"t": 9.55, "type": "wheel", "key": "vertical-scrollbar", "dy": -230}]
+        after_y = self.replay(two_axis, until=10.4)
+        offset = grid(after_y)["scroll"][:2]
+        self.assertGreater(offset[1], 0)
+        assert_pinned(after_y, 12)
+        out = self.replay([*two_axis, secondary(10.6, 1), tap(11.3, unfreeze)], until=12.2)
+        assert_unpinned(out)
+        self.assertEqual(grid(out)["scroll"][:2], offset, "unfreezing is not a scroll reset")
+
+        # Another table has the same raw names, but does not inherit a
+        # different tab's view state. Returning restores it without writing it.
+        other_route = [*pinned, tap(9.6, "tree-table-orders"), scroll(11.2)]
+        other = self.replay(other_route, until=12.2)
+        assert_unpinned(other)
+        back = self.replay([*other_route, tap(12.6, "tab-1"), scroll(14.0)], until=15)
+        assert_pinned(back, 1)
+        self._expect_table_header_sort(back, 1, "customer_name", "ascending")
+
+        self.assertEqual(self.store.read_bytes(), store_before)
+        self.assertEqual(settings.read_bytes(), settings_before)
+        settings.write_text(json.dumps(dict(config, gridRowNumbers=False)), encoding="utf-8")
+        no_gutter_settings = settings.read_bytes()
+        no_gutter = self.replay(pinned, until=9.35)
+        assert_pinned(no_gutter, 1, gutter=False)
+        self.assertEqual(settings.read_bytes(), no_gutter_settings)
+        self.assertEqual(self.db.read_bytes(), before)
+        with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as oracle:
+            self.assertEqual(oracle.execute("SELECT customer_name FROM customers WHERE id=1").fetchone(),
+                             ("zulu",))
+            self.assertEqual(oracle.execute("SELECT COUNT(*) FROM orders").fetchone(), (48,))

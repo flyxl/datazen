@@ -2,11 +2,12 @@
 //!
 //! Rows come from `virtual_rows`: the list is long, and only the mounted window is built.
 //! Columns are not virtualized by Rune, so each mounted row builds a window of cells plus the
-//! frozen first column. The window follows the horizontal scroll offset.
+//! pinned prefix. The window follows the horizontal scroll offset.
 //!
 //! Cell text, the selection rectangle and the editor live on the grid, not on the row element.
 //! A row that scrolls away is destroyed. The values are not.
 
+pub(crate) mod freeze;
 mod input;
 mod model;
 mod scrollbars;

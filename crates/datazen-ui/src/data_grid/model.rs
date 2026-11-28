@@ -5,11 +5,12 @@ use rune::TextEdit;
 
 pub const ROW_H: f32 = 28.0;
 pub const COL_W: f32 = 120.0;
+const MIN_COL_W: u32 = 40;
 /// Default width of the row-number gutter (A4).
 pub const GUTTER_W: f32 = 40.0;
 pub const ROW_COUNT: u32 = 20_000;
 pub const COL_COUNT: u32 = 200;
-/// Cells built for one mounted row, besides the frozen first column.
+/// Minimum window built for one mounted row, besides the pinned prefix.
 pub const COL_WINDOW: u32 = 12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -235,7 +236,7 @@ impl DataGrid {
 
     /// A4: set one column width in points.
     pub fn set_col_w(&mut self, col: u32, width: u32) {
-        let width = width.max(40);
+        let width = width.max(MIN_COL_W);
         if self.col_widths.len() < self.cols as usize {
             self.col_widths.resize(self.cols as usize, COL_W as u32);
         }
@@ -260,7 +261,7 @@ impl DataGrid {
         let mut normalized = vec![COL_W as u32; self.cols as usize];
         for (i, w) in widths.into_iter().enumerate() {
             if i < normalized.len() {
-                normalized[i] = w.max(40);
+                normalized[i] = w.max(MIN_COL_W);
             }
         }
         self.col_widths = normalized;
@@ -733,20 +734,24 @@ impl DataGrid {
         row >= r0 && row <= r1 && col >= c0 && col <= c1
     }
 
-    /// Columns this row should build: the frozen first column, then the window.
+    /// Legacy Query/Sync/demo shape: the first column and the existing window.
     pub fn built_columns(&self) -> Vec<u32> {
-        let mut cols = Vec::with_capacity(COL_WINDOW as usize + 1);
-        let start = self.origin_col.min(self.cols.saturating_sub(1));
-        let end = start.saturating_add(COL_WINDOW).min(self.cols);
-        if start > 0 {
-            cols.push(0);
-        }
-        for col in start..end {
-            if !cols.contains(&col) {
-                cols.push(col);
-            }
-        }
-        cols
+        self.built_columns_with_pin(1, None)
+    }
+
+    /// Sorted union of the raw leading prefix and the virtual window. Every
+    /// cell keeps its original column index; the skipped widths remain pads.
+    pub(super) fn built_columns_with_pin(&self, pinned: u32, viewport: Option<f32>) -> Vec<u32> {
+        let pinned = pinned.min(self.cols);
+        let origin = self.origin_col.min(self.cols.saturating_sub(1));
+        // A measured viewport can fit more than twelve 40pt persisted columns.
+        // Keep the partially visible end plus one column of horizontal overscan.
+        let window = viewport.map_or(COL_WINDOW, |width| {
+            (((width.max(0.0) / MIN_COL_W as f32).ceil() as u32).saturating_add(2)).max(COL_WINDOW)
+        });
+        let start = origin.max(pinned);
+        let end = origin.saturating_add(window).min(self.cols);
+        (0..pinned).chain(start..end).collect()
     }
 
     /// A5: clear the active find — no hits, no highlight.

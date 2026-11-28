@@ -101,6 +101,7 @@ pub fn workspace_body(
         )
     } else if table_selected && state.grid.has_page() {
         // A retained table page is not active after its last tab is closed.
+        crate::data_grid::freeze::mount_menu(state, dark, layer);
         table_workspace(state, theme, dark)
     } else {
         workspace_empty(theme)

@@ -118,8 +118,10 @@ pub fn init_state() -> AppState {
 
 pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
     // Rune routes menu focus/activation before the app fallback. Nothing
-    // unhandled by that menu should reach Query execution or the editor.
-    if state.query_snippet_menu_owner().is_some() {
+    // unhandled by these menus should reach the surrounding editor/grid.
+    if state.query_snippet_menu_owner().is_some()
+        || crate::data_grid::freeze::blocks_grid_keys(state)
+    {
         return true;
     }
     if crate::views::shell_menu::shortcut(state, ev, tx) {
@@ -221,6 +223,7 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     // the dialog is mounted at the app root, not inside a section.
     dirty = state.sync_ai_write_proposals() || dirty;
     dirty |= state.retire_invalid_query_snippet_menu();
+    dirty |= crate::data_grid::freeze::retire_stale_menu(state);
     dirty |= state.restore_query_editor_scroll(tx);
     // A captured cell might not receive Up once its virtual row or table
     // subtree is gone. Cancel the app's gesture before it can affect a newer grid.

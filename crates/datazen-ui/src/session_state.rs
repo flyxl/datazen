@@ -200,6 +200,7 @@ impl AppState {
         let _ = self.workspace.catalog();
     }
     pub fn set_table_view(&mut self, view: TableView) {
+        self.table_freeze.dismiss();
         self.table_view = view;
         // E1: a view switch re-asks for the selected table's structure —
         // the views render the cache, and the switch is the refresh (the
@@ -271,6 +272,7 @@ impl AppState {
         self.close_native_object_search();
         self.close_kv_workbench();
         self.workspace.disconnect();
+        self.table_freeze.clear_session();
         self.tabs = Tabs::new();
         self.reset_query_editor_tabs();
         self.query_database_picker_tab = None;

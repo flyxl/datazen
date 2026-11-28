@@ -419,9 +419,12 @@ class OfflineJourneys:
                 tree = self.replay(actions, until=at + 1.2, size="1440x640")
                 self.assertEqual(header(tree, direction), baseline)
 
-        scrolled = self.replay([*actions, {
-            "t": 9.4, "type": "drag", "key": "horizontal-scrollbar/thumb", "dx": 195, "dur": .4,
-        }], until=10.4, size="1440x640")
+        scrolled = self.replay([
+            *actions,
+            {"t": 9.35, "type": "secondary-click", "key": "head-0"},
+            tap(10.1, "table-column-freeze-item0"),
+            {"t": 10.8, "type": "drag", "key": "horizontal-scrollbar/thumb", "dx": 195, "dur": .4},
+        ], until=12, size="1440x640")
         def walk(node):
             yield node
             for child in node.get("children", ()):

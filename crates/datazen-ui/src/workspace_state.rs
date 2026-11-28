@@ -812,6 +812,7 @@ impl AppState {
     /// a fresh open, a page turn, a reload — starts one, so a delivery from
     /// a read the state has moved past is dropped (N1, plan invariant 3).
     pub fn next_read_generation(&mut self) -> u32 {
+        self.table_freeze.dismiss();
         self.table_next_probe = None;
         self.read_generation += 1;
         self.read_generation
@@ -1024,6 +1025,7 @@ impl AppState {
                         self.collapsed.clear();
                         self.table_page = 0;
                         self.manual_table_sorts.clear();
+                        self.table_freeze.clear_session();
                         self.filter = None;
                         self.filter_column = 0;
                         self.filter_editor = TextEdit::new(String::new());
@@ -1295,6 +1297,7 @@ impl AppState {
     /// Any tab event lands in the workspace: the selected tab decides what the
     /// workspace shows, so the tab strip and its content stay on one page.
     pub fn sync_grid_to_selected_tab(&mut self) {
+        self.table_freeze.dismiss();
         if self.result_find_owner.is_some() && !self.native_result_find_open() {
             self.reset_native_result_find();
         }
@@ -1330,6 +1333,7 @@ impl AppState {
             return false;
         }
         self.manual_table_sorts.remove(&id);
+        self.table_freeze.drop_tab(id);
         self.discard_query_editor_tab(id);
         self.query_database_targets.remove(&id);
         if self.query_plan.as_ref().is_some_and(|plan| plan.tab_id == id) {
