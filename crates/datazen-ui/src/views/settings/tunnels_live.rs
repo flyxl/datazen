@@ -195,17 +195,37 @@ fn dialog(state: &AppState, dark: bool, k: &Kit, layer: &mut Vec<El>) {
     let title = if form.id.is_some() { "settings.tunnels.editor.editTitle" }
         else { "settings.tunnels.editor.createTitle" };
     let name_label = t("settings.tunnels.editor.name");
+    let name = col().key("tunnel-edit-name-block").gap(4.0)
+        .child(Label::new("tunnel-edit-name-label", name_label).required(true).build(dark))
+        .child(TextField::new("tunnel-edit-name", &form.name)
+            .height(32.0).label(name_label)
+            .placeholder(t("settings.tunnels.editor.namePlaceholder"))
+            .on_edit::<AppState>(rune::edit_access(|s: &mut AppState| &mut s.native_tunnels.form.name))
+            .build(dark));
+    // Only HTTP proxy definitions are editable here. Show the fixed value
+    // as text, never an unavailable kind picker or a faux form control.
+    let kind = col().key("tunnel-edit-kind-block").gap(4.0)
+        .child(Label::new("tunnel-edit-kind-label", t("settings.tunnels.editor.kind")).build(dark))
+        .child(row().w_full().h(32.0).center_y().child(
+            text(t(tunnel_kind_label_key(SavedTunnelKind::HttpProxy)))
+                .key("tunnel-edit-kind-readable")
+                .font(TextStyle::new(14.0, 400.0).lh(20.0)).color(k.c.text_base),
+        ));
+
+    // The original grid uses the viewport's md (768px) breakpoint. Track
+    // just that threshold on the full-window dialog layer; its settled
+    // width is independent of the form height or scroll position.
+    let wide = rune::memo::layout_with("tunnel-edit-dialog-layer", |rect| rect[2] >= 768.0)
+        .unwrap_or(false);
+    let identity = if wide {
+        row().items_start()
+            .child(name.min_w(0.0).grow(1.0))
+            .child(kind.min_w(0.0).grow(1.0))
+    } else {
+        col().child(name.w_full()).child(kind.w_full())
+    };
     let mut body = col().key("tunnel-edit-content").w_full().gap(12.0)
-        .child(col().w_full().gap(4.0)
-            .child(Label::new("tunnel-edit-name-label", name_label).required(true).build(dark))
-            .child(TextField::new("tunnel-edit-name", &form.name)
-                .height(32.0).label(name_label)
-                .placeholder(t("settings.tunnels.editor.namePlaceholder"))
-                .on_edit::<AppState>(rune::edit_access(|s: &mut AppState| &mut s.native_tunnels.form.name))
-                .build(dark)))
-        .child(text(format!("{}: {}", t("settings.tunnels.editor.kind"),
-                            t(tunnel_kind_label_key(SavedTunnelKind::HttpProxy))))
-            .key("tunnel-edit-kind-readable").font(k.ty.text_xsmall).color(k.c.text_muted))
+        .child(identity.key("tunnel-edit-identity").w_full().gap(12.0))
         .child(fields);
     if form.password_configured {
         let (hint, action) = if form.remove_password {

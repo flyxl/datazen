@@ -126,6 +126,43 @@ class SavedTunnelJourneys:
         self.assertEqual(settings.read_bytes(), saved_settings)
         self.assertFalse(self.db.exists(), "definition editing is not connection binding")
 
+    def test_light_tunnel_edit_keeps_http_type_read_only_and_stacks_below_desktop_breakpoint(self):
+        settings = self.root / "settings.json"
+        initial = b'{"ui":{"language":"en","themeMode":"light"}}'
+        settings.write_bytes(initial)
+        store = self.root / "tunnels.json"
+        opened = [tap(.5, "rail-settings"), tap(1.4, "settings-nav-tunnels"),
+                  tap(2.3, "tunnel-create")]
+
+        for size, wide in (("1440x900", True), ("767x800", False)):
+            tree = self.replay(opened, until=3.4, size=size)
+            name = self._settled_rect(tree, "tunnel-edit-name-block")
+            kind = self._settled_rect(tree, "tunnel-edit-kind-block")
+            grid = self._settled_rect(tree, "tunnel-edit-identity")
+            self.expect_rendered(tree, text="Type", within="tunnel-edit-kind-block")
+            self.expect_rendered(tree, key="tunnel-edit-kind-readable", text="HTTP proxy")
+            [fixed] = [e for e in tree["elements"] if e.get("key") == "tunnel-edit-kind-readable"]
+            self.assertFalse(fixed["focusable"])
+            self.assertEqual(fixed["role"], "text")
+            self.assertFalse(visible(tree, key="tunnel-edit-kind-trigger"))
+            if wide:
+                self.assertAlmostEqual(kind[1], name[1], delta=.5)
+                self.assertAlmostEqual(kind[0] - name[0] - name[2], 12, delta=.5)
+                self.assertAlmostEqual(kind[2], name[2], delta=.5)
+            else:
+                self.assertAlmostEqual(kind[0], name[0], delta=.5)
+                self.assertAlmostEqual(kind[1] - name[1] - name[3], 12, delta=.5)
+                self.assertAlmostEqual(kind[2], grid[2], delta=.5)
+            self.assertAlmostEqual(kind[0] + kind[2], grid[0] + grid[2], delta=.5)
+
+        edited = [*opened, tap(3.5, "tunnel-edit-name"),
+                  {"t": 3.8, "type": "paste", "text": "Unsaved Light fixture"}]
+        cancelled = self.replay([*edited, tap(4.6, "tunnel-edit-cancel")], until=5.5)
+        self.assertFalse(visible(cancelled, key="tunnel-edit-dialog"))
+        self.expect_rendered(cancelled, key="tunnel-list-empty")
+        self.assertFalse(store.exists(), "opening, editing and cancelling makes no registry")
+        self.assertEqual(settings.read_bytes(), initial)
+
     def test_malformed_saved_tunnel_file_shows_real_error_and_cannot_be_overwritten(self):
         path = self.root / "tunnels.json"
         malformed = b'{"unexpected":'
