@@ -1171,6 +1171,9 @@ fn panel_tab_bar(state: &AppState, k: &Kit, dark: bool) -> El {
     let mut bar = row()
         .key("workflow-panel-tabs")
         .w_full()
+        // Chromium: y=81..114 at 1440×900. Include the bottom edge;
+        // leave the tab underline inside the band, not in a new row.
+        .h(33.0)
         .shrink()
         .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
         .fill(k.c.surface_weak);
@@ -1243,8 +1246,10 @@ fn panel_tab(state: &AppState, panel: &WorkflowPanel, k: &Kit, dark: bool) -> El
         .border_sides([0.0, 1.0, 0.0, 0.0], k.c.border_base)
         .child(
             row()
+                .h(31.0)
+                .px(12.0)
                 .items_center()
-                .gap(2.0)
+                .gap(6.0)
                 .child(tab_button)
                 .child(
                     row()
