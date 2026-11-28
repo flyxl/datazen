@@ -79,7 +79,9 @@ use std::rc::Rc;
 use rune::{
     col, icon, row, text, tok, El, Key, Mods, PhysicalInput, TextEdit, TextStyle,
 };
-use rune_kit::{Button, ButtonVariant, ControlSize, Kit, ScrollBar, ScrollBarStyle};
+use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
+
+mod scrollbar;
 
 use super::settings_content_state::{
     available_sections, format_shortcut_for_display, get_action_shortcut,
@@ -243,13 +245,6 @@ fn settings_content_pane(k: &Kit, section: &str, body: El, layer: Vec<El>) -> El
     const PADDING_X: f32 = 32.0;
     const PADDING_Y: f32 = 24.0;
     let body_key = format!("settings-scrolling-body-{section}");
-    // Chromium's 9px strip is a 5px thumb plus 2px on either side. Reuse
-    // the live, draggable Rune bar, but reserve its width only when the
-    // real body overflows. The bar still uses the kit's hover reveal.
-    let scrollbar = ScrollBarStyle::native(k.c.border_strong, k.c.text_faint)
-        .width(5.0)
-        .hover_width(5.0)
-        .inside();
     // These reads settle with layout and do not subscribe to scroll position.
     // A section-specific body key cannot reuse another route's old height.
     let overflowing = match (
@@ -259,7 +254,7 @@ fn settings_content_pane(k: &Kit, section: &str, body: El, layer: Vec<El>) -> El
         (Some(viewport_height), Some(body_height)) => body_height > viewport_height,
         _ => false,
     };
-    col()
+    let viewport = col()
         .key(VIEWPORT)
         .grow(1.0)
         .min_w(0.0)
@@ -267,7 +262,7 @@ fn settings_content_pane(k: &Kit, section: &str, body: El, layer: Vec<El>) -> El
         .h_full()
         .items_center()
         .px(PADDING_X)
-        .pr(PADDING_X + if overflowing { scrollbar.strip() } else { 0.0 })
+        .pr(PADDING_X + if overflowing { scrollbar::STRIP } else { 0.0 })
         .scroll(rune::ScrollSpec { stick_bottom: false })
         // Rune's scroll extent ends at its last content box. Reserve the
         // actual bottom padding in that box so it remains visible at the end.
@@ -279,8 +274,8 @@ fn settings_content_pane(k: &Kit, section: &str, body: El, layer: Vec<El>) -> El
                 .py(PADDING_Y)
                 .child(body),
         )
-        .children(layer)
-        .scroll_bar_styled(scrollbar)
+        .children(layer);
+    scrollbar::attach(viewport, k)
 }
 
 impl<'a, S: 'static> SettingsContent<'a, S> {
@@ -2257,6 +2252,53 @@ mod settings_content_overflow_tests {
             rt.frame(1.0 / 60.0);
             assert_eq!(rect(&rt, "fixture-body"), [474.0, 64.0, 672.0, 192.5]);
         }
+    }
+
+    #[test]
+    fn classic_thumb_paints_at_idle_and_drags_the_real_settings_viewport() {
+        let thumb = "settings-content-scrollbar-thumb";
+        let mut rt = Runtime::new(
+            Fixture { short: false, rtl: false, dark: true },
+            view,
+            (1440.0, 900.0),
+            Env::new(true, 1.0),
+        );
+        rt.set_system_scroll_bars(rune::ScrollBars::WhenScrolling);
+        rt.set_system_scroller_jumps(false);
+        rt.pointer_move(300.0, 300.0);
+        rt.frame(0.0);
+        assert_eq!(rect(&rt, thumb), [1433.0, 42.0, 5.0, 390.0]);
+
+        rt.pointer_move(1435.0, 48.0);
+        rt.pointer_down(1435.0, 48.0);
+        rt.pointer_move(1435.0, 600.0);
+        rt.frame(1.0 / 60.0);
+        rt.pointer_up(1435.0, 600.0);
+        rt.frame(1.0 / 60.0);
+        let [_, y, _, h] = rect(&rt, "fixture-body");
+        assert_eq!(y + h, 876.0, "dragging the thumb scrolls real content");
+        assert_eq!(rect(&rt, thumb), [1433.0, 508.0, 5.0, 390.0]);
+
+        rt.pointer_move(1435.0, 45.0);
+        rt.pointer_down(1435.0, 45.0);
+        rt.pointer_up(1435.0, 45.0);
+        rt.frame(1.0 / 60.0);
+        assert!(
+            (y..64.0).contains(&rect(&rt, "fixture-body")[1])
+                && rect(&rt, "fixture-body")[1] > y,
+            "pressing the track pages toward the start",
+        );
+
+        rt.set_system_scroller_jumps(true);
+        rt.frame(1.0 / 60.0);
+        rt.pointer_down(1435.0, 45.0);
+        rt.pointer_up(1435.0, 45.0);
+        rt.frame(1.0 / 60.0);
+        assert_eq!(rect(&rt, "fixture-body")[1], 64.0, "jump preference is retained");
+
+        rt.update(|state, _| state.short = true);
+        rt.frame(1.0 / 60.0);
+        assert_eq!(rect(&rt, thumb)[2..], [0.0, 0.0], "a fitting body has no thumb");
     }
 
     #[test]
