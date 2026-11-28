@@ -11,6 +11,11 @@ use crate::components::sql_editor::format_editor_document::{
     format_editor_document, format_editor_output, project_lf, FormatEdit, FormatSql, PartialSqlFormatOptions,
 };
 
+// A selected fragment is a different workload than its parent document.
+// The model takes a full document lease and an undo snapshot, so keep an
+// independent, finite editor-side bound instead of unbounded cloning.
+const NATIVE_FORMAT_DRAFT_LEASE_MAX_BYTES: usize = 1024 * 1024;
+
 pub(crate) struct FormatDraftSnapshot {
     identity: Rc<()>,
     revision: u64,
@@ -35,7 +40,7 @@ impl SqlEditor {
             return Err(FormatSourceError::BlankOrInvalid);
         }
         let document = self.doc();
-        if document.len() > NATIVE_SQL_FORMAT_MAX_INPUT_BYTES {
+        if document.len() > NATIVE_FORMAT_DRAFT_LEASE_MAX_BYTES {
             return Err(FormatSourceError::Limit);
         }
         let range = self.selection.ranges().get(self.selection.main_index())
@@ -48,6 +53,9 @@ impl SqlEditor {
         } else {
             0..document.len()
         };
+        if region.len() > NATIVE_SQL_FORMAT_MAX_INPUT_BYTES {
+            return Err(FormatSourceError::Limit);
+        }
         let projected = project_lf(&document[region]);
         let text = trim_like_react(&projected);
         if text.is_empty() {
@@ -148,6 +156,29 @@ mod tests {
         assert!(matches!(large.capture_native_format(), Err(FormatSourceError::Limit)));
         let blank = SqlEditor::from_doc("\u{feff}\t");
         assert!(matches!(blank.capture_native_format(), Err(FormatSourceError::BlankOrInvalid)));
+    }
+
+    #[test]
+    fn a_small_selection_gets_its_own_format_budget_and_one_undo() {
+        let start = "select 1;";
+        let tail = "x".repeat(NATIVE_SQL_FORMAT_MAX_INPUT_BYTES);
+        let original = format!("{start}\n/* {tail} */");
+        let mut editor = SqlEditor::from_doc(original.clone());
+
+        assert!(matches!(editor.capture_native_format(), Err(FormatSourceError::Limit)));
+        editor.set_main_selection(start.len(), 0);
+        let (lease, input) = editor.capture_native_format().ok().expect("small, exact region");
+        assert_eq!(input, start);
+        assert!(editor.apply_native_format(&lease, "SELECT\n  1;".into()));
+        assert_eq!(editor.doc(), format!("SELECT\n  1;{}", &original[start.len()..]));
+        assert!(editor.undo());
+        assert_eq!(editor.doc(), original);
+        assert!(!editor.undo());
+        assert!(!editor.owns_native_format(&lease), "undo never revives an earlier request");
+
+        let mut too_large = SqlEditor::from_doc("a".repeat(NATIVE_FORMAT_DRAFT_LEASE_MAX_BYTES + 1));
+        too_large.set_main_selection(0, 3);
+        assert!(matches!(too_large.capture_native_format(), Err(FormatSourceError::Limit)));
     }
 
     #[test]
