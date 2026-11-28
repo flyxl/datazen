@@ -98,12 +98,25 @@ use crate::ui::path_input::PathInput;
 use crate::ui::select::Select;
 use crate::ui::slider::Slider;
 
+// The Settings rail inherits the browser's platform sans stack. As with
+// Appearance's reserved caption, keep named native faces scoped to these
+// labels and retain Rune's bundled sans fallback for unavailable glyphs.
+const fn nav_text(style: TextStyle) -> TextStyle {
+    if cfg!(target_arch = "wasm32") {
+        style
+    } else {
+        style.family(tok::Family::Named(
+            "SF Pro Display, SF Pro Text, Segoe UI, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial, Liberation Sans, sans-serif",
+        ))
+    }
+}
+
 /// `text-[13px]` — the nav item label.
-const NAV_ITEM_TEXT: TextStyle = TextStyle::new(13.0, 400.0).lh(19.5);
+const NAV_ITEM_TEXT: TextStyle = nav_text(TextStyle::new(13.0, 400.0).lh(19.5));
 /// `text-[13px] font-medium` — the active nav item label.
-const NAV_ITEM_ACTIVE: TextStyle = TextStyle::new(13.0, 500.0).lh(19.5);
+const NAV_ITEM_ACTIVE: TextStyle = nav_text(TextStyle::new(13.0, 500.0).lh(19.5));
 /// `text-[11px] font-semibold` — the nav group label.
-const NAV_GROUP_TEXT: TextStyle = TextStyle::new(11.0, 600.0).lh(16.5).tracking(0.55);
+const NAV_GROUP_TEXT: TextStyle = nav_text(TextStyle::new(11.0, 600.0).lh(16.5).tracking(0.55));
 /// `text-xs` — the version line, the keymap rows, the back button.
 const TEXT_XS: TextStyle = TextStyle::new(12.0, 400.0);
 /// `text-xs` semibold — the keymap card's header.
