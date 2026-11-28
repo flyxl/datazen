@@ -2,12 +2,63 @@
 import json
 import re
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 from offline import key
 from scenarios import fixture, tap, type_text, visible
 
 
 class WorkflowJourney:
+    def test_settings_behavior_finite_workflow_retention_requires_consent(self):
+        (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+        history = self.root / "workflow-run-history.json"
+        sql_history = self.root / "query-history.json"
+        definitions = self.root / "workflows.json"
+        now = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+        rows = [
+            {"id": f"run-{age}", "workflowId": "retention-fixture", "workflowName": "Retention fixture",
+             "variables": {}, "result": {"success": True, "finalOutput": "", "steps": [], "totalTimeMs": 6},
+             "createdAt": (now - timedelta(days=age)).isoformat()}
+            for age in (100, 45, 10, 1)
+        ]
+        fixture_bytes = json.dumps(rows, indent=2).encode()
+        decoy = b" [ ] \n"
+        sql_history.write_bytes(decoy)
+        definitions.write_bytes(decoy)
+        history.write_bytes(fixture_bytes)
+        start = [tap(.5, "rail-settings"), tap(1.4, "settings-nav-behavior")]
+        ask = [*start, tap(2.3, "data-cleanup-workflow-run")]
+        pending = self.replay(ask, until=3.2)
+        self.expect_rendered(pending, key="data-cleanup-workflow-scope")
+        self.expect_rendered(pending, key="data-cleanup-workflow-confirm")
+        for unavailable in ("data-cleanup-scope-query", "data-cleanup-clear-all", "settings-safe-mode"):
+            self.assertFalse(visible(pending, key=unavailable))
+        self.assertTrue(any("UTC" in e.get("text", "") and "Query history and workflow definitions" in e.get("text", "")
+                            for e in pending["elements"] if e.get("key") == "data-cleanup-workflow-confirm-message"))
+        self.assertEqual(history.read_bytes(), fixture_bytes)
+        for dismiss in (tap(3.55, "data-cleanup-workflow-cancel"), key(3.55, "Escape")):
+            canceled = self.replay([*ask, dismiss], until=4.55)
+            self.assertFalse(visible(canceled, key="data-cleanup-workflow-confirm"))
+            self.assertEqual(history.read_bytes(), fixture_bytes)
+
+        for days, kept in ((7, ["run-1"]), (30, ["run-10", "run-1"]), (90, ["run-45", "run-10", "run-1"])):
+            with self.subTest(preset=days):
+                history.write_bytes(fixture_bytes)
+                retained = self.replay([
+                    *start, tap(2.3, f"data-cleanup-preset-{days}"),
+                    tap(3.05, "data-cleanup-workflow-run"),
+                    tap(4.0, "data-cleanup-workflow-accept"),
+                ], until=5.05)
+                self.expect_rendered(retained, key="data-cleanup-workflow-success")
+                self.assertEqual([e["id"] for e in json.loads(history.read_bytes())], kept)
+                self.assertEqual(sql_history.read_bytes(), decoy)
+                self.assertEqual(definitions.read_bytes(), decoy)
+
+        reopened = self.replay(
+            [tap(.5, "rail-workflows"), tap(2, "workflow-side-tab-history")], until=3.3)
+        self.expect_rendered(reopened, key="workflow-history-list-item-run-45")
+        self.assertFalse(visible(reopened, key="workflow-history-list-item-run-100"))
+
     def test_workflow_inline_visual_form_fills_pane_and_scrolls_above_fixed_footer(self):
         settings = self.root / "settings.json"
         registry = self.root / "workflows.json"

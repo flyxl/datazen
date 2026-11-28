@@ -2712,6 +2712,17 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.to_owned())
     }
 
+    /// Capability for a finite, confirmed cutoff on local workflow run history.
+    fn supports_native_workflow_retention(&self) -> bool {
+        false
+    }
+
+    /// Persist deletion strictly before the confirmed absolute UTC cutoff.
+    /// This operation does not touch query history or workflow definitions.
+    fn retain_native_workflow_history_before(&mut self, _cutoff: &str) -> Result<usize, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.to_owned())
+    }
+
     fn workflows(&self) -> Result<Vec<Workflow>, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }

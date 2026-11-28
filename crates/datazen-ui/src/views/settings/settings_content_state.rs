@@ -436,6 +436,7 @@ pub struct ContributionEdit {
 /// The settings page's state.
 #[derive(Clone, PartialEq)]
 pub struct SettingsContentState {
+    pub(crate) workflow_retention: super::behavior_live::WorkflowRetention,
     /// The selected section id (normalized; unknown ids never land).
     pub active_section: &'static str,
     /// The nav button that armed Space, pending its key release.
@@ -484,6 +485,7 @@ impl Default for SettingsContentState {
     fn default() -> Self {
         Self {
             active_section: "general",
+            workflow_retention: super::behavior_live::WorkflowRetention::default(),
             nav_space_target: None,
             initial_section: None,
             app_version: None,

@@ -82,6 +82,7 @@ pub mod language_packs_card;
 // T381: the "?" help hint (hover/focus tooltip with the 120ms close
 // grace and the focus-retention rule).
 pub mod setting_hint;
+pub(super) mod behavior_live;
 // T417: the SQL snippet add/edit/duplicate dialog.
 pub mod snippet_edit_dialog;
 pub(super) mod snippet_add_live;
@@ -205,7 +206,7 @@ fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &st
         "appearance" => appearance_section(state, theme, dark),
         "dataBrowsing" => data_browsing_live::view(state, theme, dark),
         "editor" => editor_section(state, theme, dark),
-        "behavior" => behavior_section(state, theme),
+        "behavior" => behavior_live::view(state, dark),
         "logging" => placeholder_section("logging", t("settings.logging"), theme),
         "ai" => placeholder_section("ai", t("common.aiAssistant"), theme),
         "prompts" => prompts_live::view(state, dark),
@@ -307,10 +308,6 @@ fn font_size_row(state: &AppState, dark: bool, k: &rune_kit::Kit, overlays: &mut
     )
 }
 
-
-fn behavior_section(_state: &AppState, theme: tok::Theme) -> El {
-    placeholder_section("behavior", t("settings.behavior"), theme)
-}
 
 fn section_title(label: &str, theme: tok::Theme) -> El {
     row()

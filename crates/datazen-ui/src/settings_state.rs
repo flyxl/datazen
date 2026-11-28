@@ -126,6 +126,9 @@ impl AppState {
             self.retire_native_snippet_add();
             self.retire_snippet_delete_confirmation();
         }
+        if section != "behavior" || self.active != crate::types::Section::Settings {
+            self.settings_content.workflow_retention.retire();
+        }
         self.settings_content.select_section(section);
     }
 

@@ -3992,6 +3992,14 @@ impl DesktopAdapter for LiveAdapter {
         self.workflow_history.clear()
     }
 
+    fn supports_native_workflow_retention(&self) -> bool {
+        true
+    }
+
+    fn retain_native_workflow_history_before(&mut self, cutoff: &str) -> Result<usize, String> {
+        self.workflow_history.retain_before(cutoff)
+    }
+
     fn workflows(&self) -> Result<Vec<Workflow>, String> {
         // N13: the registry use case's user-visible definitions — the
         // dashboard's hidden workflows stay out of the user list.

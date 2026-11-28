@@ -40,6 +40,7 @@ impl AppState {
             self.cancel_query_editor_input();
         }
         if self.active == Section::Settings {
+            self.settings_content.workflow_retention.retire();
             self.retire_native_snippet_add();
             self.retire_snippet_delete_confirmation();
         }
