@@ -1,0 +1,10 @@
+[package]
+name = "datazen-regex-worker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))'.dependencies]
+libc = "0.2"
+regress = { version = "=0.12.0", default-features = false, features = ["std", "utf16", "prohibit-unsafe"] }
