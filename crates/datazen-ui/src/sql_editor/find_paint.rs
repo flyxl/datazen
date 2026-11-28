@@ -21,7 +21,7 @@ struct Hit {
     fill: Color,
 }
 
-pub(super) struct FindPaint(Vec<Hit>);
+pub(super) struct FindPaint(Vec<Hit>, Option<Range<usize>>);
 
 impl FindPaint {
     pub(super) fn window(
@@ -56,9 +56,9 @@ impl FindPaint {
         // standalone CR as a laid-out line break, so only project real CRLF.
         let doc = LiteralDocument::new(editor.doc(), true);
         let visible = query.visible_matches(&doc, window, VISIBLE_MARK_LIMIT)?;
-        Self::from_ranges(editor,visible,dark)
+        Self::from_ranges(editor,visible,None,dark)
     }
-    pub(super) fn from_ranges(editor:&SqlEditor,visible:impl IntoIterator<Item=Range<usize>>,dark:bool)->Option<Self> {
+    pub(super) fn from_ranges(editor:&SqlEditor,visible:impl IntoIterator<Item=Range<usize>>,clip:Option<Range<usize>>,dark:bool)->Option<Self> {
         let selected: HashSet<_> = editor.selection().ranges().iter()
             .map(|sel| sel.from()..sel.to()).collect();
         let (ordinary, current) = if dark {
@@ -71,18 +71,21 @@ impl FindPaint {
         Some(Self(visible.into_iter().map(|range| {
             let fill = if selected.contains(&range) { current } else { ordinary };
             Hit { range, fill }
-        }).collect()))
+        }).collect(),clip))
     }
 
     pub(super) fn fragment(&self, fragment: Range<usize>) -> impl Iterator<Item = TextHighlight> + '_ {
-        let Range { start, end } = fragment;
+        let origin = fragment.start;
+        let (start,end) = self.1.as_ref().map_or((origin,fragment.end),|window|
+            (origin.max(window.start), fragment.end.min(window.end)));
+
         let first = self.0.partition_point(|hit| hit.range.end <= start);
         self.0[first..].iter().take_while(move |hit| hit.range.start < end)
             .filter_map(move |hit| {
                 let from = hit.range.start.max(start);
                 let to = hit.range.end.min(end);
                 (from < to).then(|| TextHighlight::new(
-                    from - start..to - start, hit.fill,
+                    from - origin..to - origin, hit.fill,
                 ).pad(0.0).key(format!("sql-find-hit-{}-{}-{from}", hit.range.start, hit.range.end)))
             })
     }

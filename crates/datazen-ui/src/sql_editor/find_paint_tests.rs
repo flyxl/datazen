@@ -68,3 +68,16 @@ fn literal_find_paint_skips_unrepresentable_endpoints_without_changing_find_stat
     let too_many = editor(&"x ".repeat(VISIBLE_MARK_LIMIT + 1), "x");
     assert!(FindPaint::for_window(&too_many, 0..too_many.doc().len(), false).is_none());
 }
+
+#[test]
+fn regex_context_can_cross_the_window_but_never_paints_hidden_rows() {
+    let mut model = editor("ab\ncd\nef", "ab");
+    model.set_main_selection(0, 8);
+    let paint = FindPaint::from_ranges(&model,[0..8],Some(3..5),false).unwrap();
+    assert_eq!(paint.0[0].fill.hex(), "#ff6a0054");
+    assert!(paint.fragment(0..2).next().is_none());
+    assert_eq!(paint.fragment(3..5).next().unwrap().range(),0..2);
+    assert_eq!(paint.fragment(0..8).next().unwrap().range(),3..5);
+    assert!(paint.fragment(6..8).next().is_none());
+    assert!(model.undo_stack.is_empty());
+}

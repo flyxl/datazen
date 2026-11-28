@@ -50,7 +50,7 @@ pub(super) fn mounted(e:&SqlEditor, owner:Option<&QueryEditorViewport>, window:O
     if e.composition().is_some() {return (None,None)}
     if let Some(cache)=&e.regex_marks {
         if cache.key.window == window && cache.key.active(e) {
-            return (FindPaint::from_ranges(e,cache.marks.iter().cloned(),dark),None)
+            return (FindPaint::from_ranges(e,cache.marks.iter().cloned(),Some(window),dark),None)
         }
     }
     let owner=owner.clone();
