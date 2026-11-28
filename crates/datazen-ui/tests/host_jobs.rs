@@ -831,3 +831,65 @@ use rune::{Env, Runtime};
             "all-connections filtered empty: {keys:?}"
         );
     }
+
+#[test]
+fn nonexact_native_table_delivery_keeps_offset_stride_and_generation() {
+    use datazen_ui_api::{AdapterDelivery, NativeTablePage, NativeTableRowCount as Count, WorkspaceApi};
+
+    let mut runtime = runtime();
+    let state = &mut runtime.state;
+    state.workspace.connect("local").unwrap();
+    state.open_table_tab("customers").unwrap();
+    let generation = state.read_generation;
+    let size = state.table_page_size();
+    let native = |generation, page, rows, row_count| AdapterDelivery::NativeTablePage {
+        generation,
+        page: Ok(NativeTablePage {
+            page: TablePage {
+                table: "customers".into(),
+                columns: vec!["id".into()],
+                rows: (0..rows).map(|id| vec![format!("row-{id}")]).collect(),
+                page,
+                page_size: size,
+                total_rows: 0,
+                sort: None,
+                filter: None,
+                primary_key: vec!["id".into()],
+                read_only: Some("read-only fixture".into()),
+            },
+            row_count,
+            bounded_offset: true,
+        }),
+    };
+    state.deliver_host_job(native(generation, 0, size, Count::Unknown));
+    state.deliver_host_job(native(generation.wrapping_sub(1), 0, 1, Count::Estimated(99)));
+    assert_eq!(state.grid.row_count(), Count::Unknown);
+    assert_eq!(state.grid.rows, size);
+
+    state.desktop = Box::new(JobAdapter::new());
+    state.next_table_page();
+    let next_generation = state.read_generation;
+    assert_ne!(next_generation, generation);
+    assert_eq!(state.table_loading, Some(next_generation));
+    state.next_table_page();
+    assert_eq!(state.read_generation, next_generation, "do not skip an in-flight page");
+
+    assert!(state.desktop.poll_jobs().is_empty(), "the fixture delays one poll");
+    let deliveries = state.desktop.poll_jobs();
+    let [AdapterDelivery::TablePage { page: Ok(request), .. }] = deliveries.as_slice() else {
+        panic!("exactly one next read must reach the desktop adapter");
+    };
+    assert_eq!((request.page, request.page_size), (1, size));
+    state.deliver_host_job(native(next_generation, 1, 1, Count::Unknown));
+    state.next_table_page();
+    assert_eq!(state.read_generation, next_generation, "a short page ends the walk");
+    assert_eq!(state.grid.page(), 1);
+    state.prev_table_page();
+    assert_ne!(state.read_generation, next_generation, "Prev stays available");
+    assert!(state.desktop.poll_jobs().is_empty(), "the fixture delays one poll");
+    let deliveries = state.desktop.poll_jobs();
+    let [AdapterDelivery::TablePage { page: Ok(request), .. }] = deliveries.as_slice() else {
+        panic!("exactly one prev read must reach the desktop adapter");
+    };
+    assert_eq!((request.page, request.page_size), (0, size));
+}

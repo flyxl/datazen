@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use datazen_ui_api::NativeTableRowCount;
 use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, row, text};
 
 use crate::i18n::t;
@@ -373,6 +374,26 @@ pub fn status_line(grid: &DataGrid) -> String {
     )
 }
 
+pub(super) fn table_count_text(grid: &DataGrid) -> String {
+    match grid.row_count() {
+        NativeTableRowCount::Exact(total) => format!("{total} rows"),
+        NativeTableRowCount::Estimated(total) => format!(
+            "{} {}",
+            t("pagination.rowCountEstimated").replace("{count}", &total.to_string()),
+            t("connWin.rowCount"),
+        ),
+        NativeTableRowCount::Unknown => t("pagination.rowsUnknown").to_owned(),
+    }
+}
+
+pub(super) fn table_page_text(grid: &DataGrid) -> String {
+    let current = u64::from(grid.page()) + 1;
+    match grid.exact_page_count() {
+        Some(pages) => format!("Page {current} / {pages}"),
+        None => format!("Page {current}"),
+    }
+}
+
 /// One text filter on one column: a column chip that cycles, a text field, the row count.
 fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color, dark: bool) -> El {
     let column = state
@@ -410,7 +431,7 @@ fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, wel
                 .build(dark),
         )
         .child(
-            text(format!("{} rows", state.grid.total_rows()))
+            text(table_count_text(&state.grid))
                 .font(label_style())
                 .color(muted),
         )
@@ -446,6 +467,20 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
                 .child(text(t("common.loading")).font(label_style()).color(muted)),
         );
     }
+    let next_enabled = matches!(grid.row_count(), NativeTableRowCount::Exact(_))
+        || state.can_next_table_page();
+    let next = row()
+        .key("page-next")
+        .h(24.0)
+        .px(8.0)
+        .center_y()
+        .radius(6.0)
+        .child(text("Next ›").font(label_style()).color(if next_enabled { ink } else { muted }));
+    let next = if next_enabled {
+        next.on_press(|state: &mut crate::AppState| state.next_table_page())
+    } else {
+        next
+    };
     footer = footer
         .child(
             row()
@@ -458,23 +493,14 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
                 .on_press(|state: &mut crate::AppState| state.prev_table_page()),
         )
         .child(
-            text(format!("Page {} / {}", grid.page() + 1, grid.pages()))
+            text(table_page_text(grid))
                 .key("grid-page-label")
                 .font(label_style())
                 .color(muted),
         )
+        .child(next)
         .child(
-            row()
-                .key("page-next")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .child(text("Next ›").font(label_style()).color(ink))
-                .on_press(|state: &mut crate::AppState| state.next_table_page()),
-        )
-        .child(
-            text(format!("{} per page · {} rows", grid.page_size(), grid.total_rows()))
+            text(format!("{} per page · {}", grid.page_size(), table_count_text(grid)))
                 .font(label_style())
                 .color(muted),
         )

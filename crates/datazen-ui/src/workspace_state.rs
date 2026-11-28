@@ -10,7 +10,8 @@ use crate::views::{next_connection, workflow_yaml};
 use crate::{icons, splitter};
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnDraft, ColumnFilter, ColumnSort, ConnectionProfile,
-    DashboardWidget, DesktopAdapter, MemoryWorkspace, ProgressSnapshot, QueryApi, Setting,
+    DashboardWidget, DesktopAdapter, MemoryWorkspace, NativeTablePage, NativeTableRowCount,
+    ProgressSnapshot, QueryApi, Setting,
     SettingsApi, TabKind, TablePage, Tabs, UnimplementedAdapter, Workflow, WorkflowStepResult,
     WorkspaceApi, DESKTOP_NOT_IMPLEMENTED,
 };
@@ -72,6 +73,28 @@ impl AppState {
         }
     }
 
+    fn deliver_table_page(&mut self, generation: u32, page: Result<NativeTablePage, String>) {
+        if self.table_loading == Some(generation) {
+            self.table_loading = None;
+        }
+        if generation != self.read_generation {
+            return;
+        }
+        match page {
+            Ok(read) => {
+                self.table_read_error = None;
+                self.table_page = read.page.page;
+                self.grid.load_native_table_page(&read);
+                self.grid.set_editable(read.page.read_only.is_none());
+                self.apply_table_column_widths();
+            }
+            Err(error) => {
+                self.grid.set_editable(false);
+                self.table_read_error = Some(error);
+            }
+        }
+    }
+
     /// Reopen the selected table tab at the current page, sort and filter.
     pub fn reload_table_page(&mut self) {
         if let Some(tab) = self.tabs.selected() {
@@ -80,11 +103,27 @@ impl AppState {
             }
         }
     }
+    pub(crate) fn can_next_table_page(&self) -> bool {
+        self.grid.can_next_page()
+            && (matches!(self.grid.row_count(), NativeTableRowCount::Exact(_))
+                || (self.table_loading.is_none()
+                    && self.table_read_error.is_none()
+                    && self.connect_loading.is_none()
+                    && self.table_page_size() == self.grid.page_size()
+                    && self.tabs.selected().is_some_and(|tab| {
+                        tab.kind == TabKind::Table && tab.title == self.grid.table_label()
+                    })))
+    }
+
     pub fn next_table_page(&mut self) {
-        if !self.grid.has_page() || self.grid.page() + 1 >= self.grid.pages() {
+        if !self.can_next_table_page() {
             return;
         }
-        self.table_page += 1;
+        self.table_page = if matches!(self.grid.row_count(), NativeTableRowCount::Exact(_)) {
+            self.table_page.saturating_add(1)
+        } else {
+            self.grid.page() + 1
+        };
         self.reload_table_page();
     }
     pub fn prev_table_page(&mut self) {
@@ -969,25 +1008,15 @@ impl AppState {
                 }
             }
             AdapterDelivery::TablePage { generation, page } => {
-                if self.table_loading == Some(generation) {
-                    self.table_loading = None;
-                }
-                if generation != self.read_generation {
-                    return;
-                }
-                match page {
-                    Ok(page) => {
-                        self.table_read_error = None;
-                        self.table_page = page.page;
-                        self.grid.load_page(&page);
-                        self.grid.set_editable(page.read_only.is_none());
-                        self.apply_table_column_widths();
-                    }
-                    Err(error) => {
-                        self.grid.set_editable(false);
-                        self.table_read_error = Some(error);
-                    }
-                }
+                let page = page.map(|page| NativeTablePage {
+                    row_count: NativeTableRowCount::Exact(u64::from(page.total_rows)),
+                    page,
+                    bounded_offset: false,
+                });
+                self.deliver_table_page(generation, page);
+            }
+            AdapterDelivery::NativeTablePage { generation, page } => {
+                self.deliver_table_page(generation, page);
             }
             AdapterDelivery::StructureRead {
                 generation,

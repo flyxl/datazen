@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use datazen_ui_api::{NativeTablePage, NativeTableRowCount};
 use rune::TextEdit;
 
 pub const ROW_H: f32 = 28.0;
@@ -41,7 +42,8 @@ pub struct DataGrid {
     editable: bool,
     page: u32,
     page_size: u32,
-    total_rows: u32,
+    row_count: NativeTableRowCount,
+    bounded_offset: bool,
     /// The sort the loaded page was opened with, as a column index.
     sort: Option<(u32, bool)>,
     /// The loaded page's primary-key column names (N6): the commit batch
@@ -72,7 +74,7 @@ impl std::fmt::Debug for DataGrid {
             .field("cols", &self.cols)
             .field("page", &self.page)
             .field("page_size", &self.page_size)
-            .field("total_rows", &self.total_rows)
+            .field("row_count", &self.row_count)
             .field("table", &self.table)
             .field("read_only", &self.read_only)
             .field("origin_col", &self.origin_col)
@@ -103,7 +105,8 @@ impl DataGrid {
             editable: true,
             page: 0,
             page_size: 0,
-            total_rows: 0,
+            row_count: NativeTableRowCount::Exact(0),
+            bounded_offset: false,
             sort: None,
             pk: Vec::new(),
             read_only: None,
@@ -126,17 +129,43 @@ impl DataGrid {
         self.page_size
     }
 
-    /// Rows in the whole table behind this page.
+    /// Legacy exact-only shorthand for result grids and existing callers.
+    /// Interactive table displays must read row_count(), not this shorthand.
     pub fn total_rows(&self) -> u32 {
-        self.total_rows
+        match self.row_count {
+            NativeTableRowCount::Exact(total) => u32::try_from(total).unwrap_or(u32::MAX),
+            _ => 0,
+        }
     }
 
-    /// Pages in the whole table at the current page size (at least 1).
+    pub fn row_count(&self) -> NativeTableRowCount {
+        self.row_count
+    }
+
+    pub(crate) fn exact_page_count(&self) -> Option<u64> {
+        let NativeTableRowCount::Exact(total) = self.row_count else {
+            return None;
+        };
+        Some(if self.page_size == 0 {
+            1
+        } else {
+            total.div_ceil(u64::from(self.page_size))
+        })
+    }
+
+    /// Exact page count (legacy callers); not a paging bound for other kinds.
     pub fn pages(&self) -> u32 {
-        if self.page_size == 0 {
-            return 1;
+        u32::try_from(self.exact_page_count().unwrap_or(0)).unwrap_or(u32::MAX)
+    }
+
+    pub fn can_next_page(&self) -> bool {
+        if !self.has_page() || self.page_size == 0 || self.page == u32::MAX {
+            return false;
         }
-        self.total_rows.div_ceil(self.page_size)
+        match self.exact_page_count() {
+            Some(pages) => u64::from(self.page) + 1 < pages,
+            None => self.bounded_offset && self.rows == self.page_size,
+        }
     }
 
     /// The sort column the loaded page carries, as (column index, descending).
@@ -289,6 +318,23 @@ impl DataGrid {
     }
 
     pub fn load_page(&mut self, page: &datazen_ui_api::TablePage) {
+        self.load_page_with_count(
+            page,
+            NativeTableRowCount::Exact(u64::from(page.total_rows)),
+            false,
+        );
+    }
+
+    pub fn load_native_table_page(&mut self, read: &NativeTablePage) {
+        self.load_page_with_count(&read.page, read.row_count, read.bounded_offset);
+    }
+
+    fn load_page_with_count(
+        &mut self,
+        page: &datazen_ui_api::TablePage,
+        row_count: NativeTableRowCount,
+        bounded_offset: bool,
+    ) {
         if self.editing {
             self.editing = false;
             self.editor.focused = false;
@@ -299,7 +345,8 @@ impl DataGrid {
         self.cols = page.columns.len() as u32;
         self.page = page.page;
         self.page_size = page.page_size;
-        self.total_rows = page.total_rows;
+        self.row_count = row_count;
+        self.bounded_offset = bounded_offset;
         self.pk = page.primary_key.clone();
         self.sort = page.sort.as_ref().and_then(|sort| {
             page.columns

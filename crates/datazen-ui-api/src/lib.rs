@@ -1887,6 +1887,26 @@ pub struct TablePage {
     pub read_only: Option<String>,
 }
 
+/// The evidence behind the row count of an interactive native table read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeTableRowCount {
+    Exact(u64),
+    Estimated(u64),
+    Unknown,
+}
+
+/// An interactive desktop table page; legacy and query/result pages do not
+/// need a count-quality or offset-continuation channel.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NativeTablePage {
+    pub page: TablePage,
+    pub row_count: NativeTableRowCount,
+    /// The read is part of a bounded offset walk, not an unpaged result or a
+    /// cursor continuation. Whether another page is possible also depends on
+    /// the number of rows returned.
+    pub bounded_offset: bool,
+}
+
 /// One job's progress, in one piece. The port hands these out when asked;
 /// the UI never streams.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2841,6 +2861,11 @@ pub enum AdapterDelivery {
     TablePage {
         generation: u32,
         page: Result<TablePage, String>,
+    },
+    /// The native desktop read job's page and actual count evidence.
+    NativeTablePage {
+        generation: u32,
+        page: Result<NativeTablePage, String>,
     },
     /// A structure job's four-part answer (or its failure sentence) (E1).
     /// The table rides along: the cache is per table, and a delivery for a

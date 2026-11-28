@@ -218,3 +218,73 @@ fn clear_find_resets_hits_and_new_page_clears_find() {
     assert_eq!(grid.find_hit_count(), 0, "loading a page clears find");
     assert_eq!(grid.find_needle(), "");
 }
+
+#[test]
+fn native_table_pager_distinguishes_exact_estimated_and_unknown_counts() {
+    use super::view::{table_count_text, table_page_text};
+    use crate::i18n::t;
+    use datazen_ui_api::{NativeTablePage, NativeTableRowCount as Count, TablePage};
+
+    let mut grid = DataGrid::new();
+    let mut read = NativeTablePage {
+        page: TablePage {
+            table: "scoped".into(),
+            columns: vec!["id".into()],
+            rows: vec![vec!["a".into()], vec!["b".into()]],
+            page: 0,
+            page_size: 2,
+            total_rows: 0,
+            sort: None,
+            filter: None,
+            primary_key: vec!["id".into()],
+            read_only: Some("read only fixture".into()),
+        },
+        row_count: Count::Estimated(1),
+        bounded_offset: true,
+    };
+    grid.load_native_table_page(&read);
+    assert!(grid.can_next_page(), "a small estimate is not a paging bound");
+    assert_eq!(table_page_text(&grid), "Page 1");
+    assert_eq!(
+        table_count_text(&grid),
+        format!(
+            "{} {}",
+            t("pagination.rowCountEstimated").replace("{count}", "1"),
+            t("connWin.rowCount"),
+        ),
+    );
+    assert_eq!(grid.read_only_reason(), Some("read only fixture"));
+
+    read.page.page = 1;
+    read.row_count = Count::Unknown;
+    grid.load_native_table_page(&read);
+    assert!(grid.can_next_page(), "a full unknown-total offset page can advance");
+    assert_eq!(table_page_text(&grid), "Page 2");
+    assert_eq!(table_count_text(&grid), t("pagination.rowsUnknown"));
+
+    read.bounded_offset = false;
+    grid.load_native_table_page(&read);
+    assert!(!grid.can_next_page(), "do not guess after a cursor or unpaged read");
+    read.bounded_offset = true;
+    read.page.rows.pop();
+    grid.load_native_table_page(&read);
+    assert!(!grid.can_next_page(), "a short offset page stops even with no count");
+    read.page.rows.clear();
+    read.row_count = Count::Estimated(100);
+    grid.load_native_table_page(&read);
+    assert!(!grid.can_next_page(), "a large estimate cannot advance an empty page");
+
+    read.page.page = 0;
+    read.row_count = Count::Exact(0);
+    grid.load_native_table_page(&read);
+    assert!(!grid.can_next_page());
+    assert_eq!(table_page_text(&grid), "Page 1 / 0");
+    assert_eq!(table_count_text(&grid), "0 rows");
+
+    read.page.total_rows = 12;
+    grid.load_page(&read.page);
+    assert!(grid.can_next_page(), "legacy/query load resets nonexact metadata");
+    assert_eq!(grid.row_count(), Count::Exact(12));
+    assert_eq!(table_page_text(&grid), "Page 1 / 6");
+    assert_eq!(table_count_text(&grid), "12 rows");
+}

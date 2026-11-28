@@ -296,19 +296,26 @@ pub fn content_status_bar(state: &AppState, dark: bool) -> El {
 
     let mut table_name: Option<String> = None;
     let mut column_count = 0u64;
+    use crate::views::content_status_bar::CountStrategy;
+    use datazen_ui_api::NativeTableRowCount;
     let mut total_rows = 0u64;
+    let mut total_rows_kind = CountStrategy::Exact;
     if let Some(tab) = state.tabs.selected() {
         if tab.kind == datazen_ui_api::TabKind::Table {
             table_name = Some(tab.title.clone());
             if state.grid.has_page() {
                 column_count = state.grid.cols as u64;
-                total_rows = state.grid.total_rows() as u64;
+                (total_rows, total_rows_kind) = match state.grid.row_count() {
+                    NativeTableRowCount::Exact(total) => (total, CountStrategy::Exact),
+                    NativeTableRowCount::Estimated(total) => (total, CountStrategy::Estimated),
+                    NativeTableRowCount::Unknown => (0, CountStrategy::Unsupported),
+                };
             }
         } else if tab.kind == datazen_ui_api::TabKind::Query {
             if let Some(result) = state.result_grid.as_ref() {
                 if result.has_page() {
                     column_count = result.cols as u64;
-                    total_rows = result.total_rows() as u64;
+                    total_rows = u64::from(result.total_rows());
                 }
             }
         }
@@ -322,9 +329,7 @@ pub fn content_status_bar(state: &AppState, dark: bool) -> El {
         table_name,
         column_count,
         total_rows,
-        // Rune's grid reports an exact page total; no estimate/unsupported
-        // signal is exposed by the current host port.
-        total_rows_kind: crate::views::content_status_bar::CountStrategy::Exact,
+        total_rows_kind,
         has_kv_slot: false,
         mod_key: "⌘".to_owned(),
         key_sep: String::new(),

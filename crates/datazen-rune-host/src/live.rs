@@ -40,7 +40,8 @@ use datazen_ui_api::native_kv::{native_kv_driver, KvRead, KvReply, NativeKvDrive
 use datazen_ui_api::{
     AdapterDelivery, AdapterJob, Catalog, ColumnFilter, ColumnSort, ConnectionDraft,
     ConnectionProbeError, ConnectionProfile, DashboardWidget, DatabaseNode, DesktopAdapter,
-    NativeQueryCsvSource, ProgressSnapshot, QueryExecutionStats, SchemaNode,
+    NativeQueryCsvSource, NativeTablePage, NativeTableRowCount, ProgressSnapshot,
+    QueryExecutionStats, SchemaNode,
     Snippet, TablePage, TableStructure, ValueSearchHit, Workflow, WorkflowStepResult,
     DESKTOP_NOT_IMPLEMENTED,
 };
@@ -277,7 +278,7 @@ enum HostAnswer {
     },
     TablePage {
         generation: u32,
-        page: Result<TablePage, String>,
+        page: Result<NativeTablePage, String>,
     },
     /// One table's four-part structure (or its failure sentence) (E1).
     Structure {
@@ -1573,7 +1574,7 @@ async fn read_table(
     default_order: NativeTableDefaultOrder,
     sort: Option<ColumnSort>,
     filter: Option<ColumnFilter>,
-) -> Result<TablePage, String> {
+) -> Result<NativeTablePage, String> {
     let (driver, handle, target, connection, read_only) = {
         let session = session.lock().expect("the live session lock");
         if !session.is_open() {
@@ -1665,11 +1666,17 @@ async fn read_table(
             .expect("the schema lock")
             .insert(table.to_owned(), schema);
     }
-    // The count the driver could not give is the absence of a fact: fall
-    // back to the best lower bound (the page's own end), never to zero.
-    let known = read
-        .total_rows
-        .unwrap_or(page as i64 * page_size as i64 + read.rows.len() as i64);
+    let row_count = native_table_row_count(read.total_rows, read.total_rows_kind);
+    // Native never sends a cursor. The core labels a seek-capable first
+    // page "Keyset", but that initial query has no predicate and offset 0.
+    // Its next request is still an offset request with the same page size.
+    let bounded_offset = read.paging.as_ref().is_none_or(|info| {
+        info.mode == datazen_driver_api::keyset::PagingMode::Offset || read.page == 0
+    }) && driver.supports_offset()
+        && !driver
+            .pagination_syntax(u64::from(read.page_size), u64::from(read.page_size))
+            .clause
+            .is_empty();
     // The driver's primary-key answer (N6): the commit batch addresses rows
     // by these names.
     let primary_key: Vec<String> = read
@@ -1678,22 +1685,45 @@ async fn read_table(
         .filter(|column| column.is_primary_key)
         .map(|column| column.name.clone())
         .collect();
-    Ok(TablePage {
-        table: table.to_owned(),
-        columns: read.columns.into_iter().map(|column| column.name).collect(),
-        rows: read
-            .rows
-            .into_iter()
-            .map(|row| row.into_iter().map(cell_to_text).collect())
-            .collect(),
-        page: read.page,
-        page_size: read.page_size,
-        total_rows: known.max(0) as u32,
-        sort,
-        filter,
-        primary_key,
-        read_only: read_only.then(|| "Connection is read only.".to_owned()),
+    Ok(NativeTablePage {
+        page: TablePage {
+            table: table.to_owned(),
+            columns: read.columns.into_iter().map(|column| column.name).collect(),
+            rows: read
+                .rows
+                .into_iter()
+                .map(|row| row.into_iter().map(cell_to_text).collect())
+                .collect(),
+            page: read.page,
+            page_size: read.page_size,
+            // The native consumer uses row_count above. Keep the legacy
+            // exact field for consumers that can only read a TablePage.
+            total_rows: match row_count {
+                NativeTableRowCount::Exact(total) => u32::try_from(total).unwrap_or(u32::MAX),
+                _ => 0,
+            },
+            sort,
+            filter,
+            primary_key,
+            read_only: read_only.then(|| "Connection is read only.".to_owned()),
+        },
+        row_count,
+        bounded_offset,
     })
+}
+
+fn native_table_row_count(
+    value: Option<i64>,
+    kind: Option<datazen_driver_api::CountStrategy>,
+) -> NativeTableRowCount {
+    use datazen_driver_api::CountStrategy;
+    match (kind, value.and_then(|total| u64::try_from(total).ok())) {
+        (Some(CountStrategy::Exact), Some(total)) => NativeTableRowCount::Exact(total),
+        (Some(CountStrategy::Estimated), Some(total)) => NativeTableRowCount::Estimated(total),
+        // Native reads don't request reuse and have no cached count. Missing
+        // or contradictory metadata is not evidence of an exact total.
+        _ => NativeTableRowCount::Unknown,
+    }
 }
 
 /// One table's structure, four reads in one job (E1): the schema — columns,
@@ -3192,7 +3222,7 @@ impl DesktopAdapter for LiveAdapter {
                     });
                 }
                 HostAnswer::TablePage { generation, page } => {
-                    deliveries.push(AdapterDelivery::TablePage { generation, page });
+                    deliveries.push(AdapterDelivery::NativeTablePage { generation, page });
                 }
                 HostAnswer::Structure {
                     generation,
@@ -4137,12 +4167,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn native_table_count_uses_only_valid_fresh_driver_evidence() {
+        use datazen_driver_api::CountStrategy::{Estimated, Exact, Unsupported};
+        use NativeTableRowCount as Count;
+
+        assert_eq!(native_table_row_count(Some(0), Some(Exact)), Count::Exact(0));
+        assert_eq!(
+            native_table_row_count(Some(5_000_000_001), Some(Exact)),
+            Count::Exact(5_000_000_001),
+        );
+        assert_eq!(
+            native_table_row_count(Some(7), Some(Estimated)),
+            Count::Estimated(7),
+        );
+        for (value, kind) in [
+            (Some(8), Some(Unsupported)),
+            (Some(-1), Some(Estimated)),
+            (None, Some(Exact)),
+            (Some(8), None),
+            (None, None),
+        ] {
+            assert_eq!(native_table_row_count(value, kind), Count::Unknown);
+        }
+    }
+
     /// Poll the adapter until its read job answers.
     fn poll_read(adapter: &mut LiveAdapter) -> Result<TablePage, String> {
         for _ in 0..300 {
             for delivery in adapter.poll_jobs() {
-                if let AdapterDelivery::TablePage { page, .. } = delivery {
-                    return page;
+                if let AdapterDelivery::NativeTablePage { page, .. } = delivery {
+                    return page.map(|page| {
+                        assert_eq!(
+                            page.row_count,
+                            NativeTableRowCount::Exact(u64::from(page.page.total_rows)),
+                            "the live test uses the unchanged default exact count",
+                        );
+                        page.page
+                    });
                 }
             }
             std::thread::sleep(Duration::from_millis(10));
