@@ -220,6 +220,49 @@ class RegexJourneys:
         self.assertEqual(draft(restored), sql)
         self.untouched(initial, original, changed, restored)
 
+    def test_overlapping_duplicate_names_without_reference_are_invalid_not_edits(self):
+        sql = "ab"
+        # There are different ordinal alternatives, but they belong to two
+        # concatenated siblings. Both named captures could match at once.
+        # Stock CodeMirror in the pinned browser calls this a syntax error.
+        overlapping = r"(?:(?<k>a)|x)(?:y|(?<k>b))"
+        initial, route = self.route(sql, overlapping, top=True, light=True)
+        status = "sql-find-regex-status"
+
+        def refused(tree):
+            self.assertEqual(draft(tree), sql)
+            self.assertEqual(selection(tree), [])
+            self.assertEqual(self.marks(tree), [])
+            self.expect_rendered(tree, key=status, text="Invalid regular expression.")
+
+        bad_next = [*route, tap(9.55, "sql-find-next")]
+        refused_next = self.replay(bad_next, until=10.65)
+        refused(refused_next)
+
+        replace = [*route, *fill(9.5, "sql-replace-input", "[$1/$2]"), tap(10.65, "sql-replace-all")]
+        refused_replace = self.replay(replace, until=11.85)
+        refused(refused_replace)
+
+        # Both names now appear in different branches of the *same*
+        # disjunction. Neither is referenced. Native must keep these
+        # real regex matches/edits instead of rejecting all duplicate names.
+        disjoint = r"(?:(?<k>a)|(?<k>b))"
+        fixed = [*bad_next, *fill(10.9, "sql-find-input", disjoint), tap(12.35, "sql-find-next")]
+        found = self.replay(fixed, until=13.5)
+        self.assertEqual(draft(found), sql)
+        self.assertEqual(selection(found), [(0, "a")])
+        self.assertEqual(self.marks(found), [
+            ("sql-find-hit-0-1-0", "a", "#ff6a0054"),
+            ("sql-find-hit-1-2-1", "b", "#ffff0054"),
+        ])
+        self.assertFalse(visible(found, key=status))
+
+        replaced = self.replay([*fixed, *fill(13.7, "sql-replace-input", "[$&]"),
+                                tap(14.85, "sql-replace-all")], until=16.0)
+        self.assertEqual(draft(replaced), "[a][b]")
+        self.assertFalse(visible(replaced, key=status))
+        self.untouched(initial, refused_next, refused_replace, found, replaced)
+
     def test_duplicate_named_backref_cannot_select_paint_or_corrupt_draft(self):
         sql = "xbby"
         # Locked CodeMirror matches "bb" on the second alternative. The old
