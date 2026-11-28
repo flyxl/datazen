@@ -77,7 +77,7 @@
 use std::rc::Rc;
 
 use rune::{
-    col, icon, row, text, tok, El, Key, Mods, PhysicalInput, PhysicalKeyCode, TextEdit, TextStyle,
+    col, icon, row, text, tok, El, Key, Mods, PhysicalInput, TextEdit, TextStyle,
 };
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, ScrollBar, ScrollBarStyle};
 
@@ -712,7 +712,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 }
                 pointer(s, id);
             })
-            .on_key(move |s: &mut S, key, _| {
+            .on_key(move |s: &mut S, key, tx| {
                 // Keep Rune's normal Tab traversal and do not make the inline
                 // buttons a roving list. Unlike a plain Rune button, HTML
                 // activates the focused button on Enter.
@@ -726,7 +726,11 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                     }
                     Key::Text(t) if t == " " && key.mods == Mods::default() => {
                         let Some(pending) = pending else { return false };
-                        *pending(s) = Some(id);
+                        // Repeats of a held Space must not re-arm it after
+                        // a focus move cancelled the original press.
+                        if !tx.key_repeat() {
+                            *pending(s) = Some(id);
+                        }
                         true
                     }
                     _ => false,
@@ -739,19 +743,10 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             // FocusLost also fires when another element takes focus; losing
             // and regaining focus before Space comes up must not click.
             .on_physical_input(move |s: &mut S, event, _| {
-                match event {
-                    PhysicalInput::FocusLost => {
-                        if *pending(s) == Some(id) {
-                            *pending(s) = None;
-                        }
-                        false
-                    }
-                    // A held key cannot re-arm a cancelled press after focus moves.
-                    PhysicalInput::Key {
-                        key: PhysicalKeyCode::Space, pressed: true, repeat: true, mods,
-                    } if *mods == Mods::default() => true,
-                    _ => false,
+                if matches!(event, PhysicalInput::FocusLost) && *pending(s) == Some(id) {
+                    *pending(s) = None;
                 }
+                false
             })
             .on_key_up(move |s: &mut S, ev, tx| {
                 if !matches!(&ev.key, Key::Text(t) if t == " ") || *pending(s) != Some(id) {

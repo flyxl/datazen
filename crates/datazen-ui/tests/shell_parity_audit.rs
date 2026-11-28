@@ -166,6 +166,8 @@ fn settings_nav_is_tabbable_with_dom_button_activation() {
     assert_eq!(focused(&rt).as_deref(), Some("settings-nav-general"));
     key(&mut rt, Key::Tab, false);
     assert_eq!(focused(&rt).as_deref(), Some("settings-nav-appearance"));
+    rt.repeat_key(space.clone());
+    settle(&mut rt);
     assert!(rt.key_up(space));
     settle(&mut rt);
     assert_eq!(rt.state.settings_section(), "dataBrowsing", "a lost focus cancels the old press");
