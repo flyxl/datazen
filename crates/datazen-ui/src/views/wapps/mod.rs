@@ -17,6 +17,7 @@
 //! `permissionLabels.ts` (the permission badges' tooltip texts) landed as
 //! T484's `permission_labels`.
 
+mod grid_tracks;
 pub mod install_wapp_dialog;
 // T484: the permission badges' tooltip texts.
 pub mod permission_labels;

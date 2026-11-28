@@ -19,7 +19,7 @@
 //! | `useConfirmDialog()`'s pending `{options, resolve}` | `AppState::wapp_remove_request` (+ `wapp_remove_epoch`: each ask is a fresh mount) and `answer_remove_wapp` — the running-execution close host's pattern |
 //! | `actionError` (the page's catch slot) | `AppState::wapp_action_error` |
 //! | the install press (`extensions.page.install`) | `open_install_wapp_dialog` — the T022 dialog's production caller this port makes real |
-//! | the grid `repeat(auto-fill,minmax(260px,1fr))` | a wrapping row of 260pt cards with the same column count (the `1fr` stretch is the one simplification) |
+//! | the grid `repeat(auto-fill,minmax(260px,1fr))` | equal-width tracks computed from each mounted grid’s measured width |
 //!
 //! ## Honest seams (each belongs to its own later task)
 //!
@@ -200,13 +200,13 @@ pub fn wapp_management_page(state: &AppState, theme: tok::Theme, dark: bool) -> 
                             .w_full()
                             .mb(8.0),
                     )
-                    .child(wapp_grid(&items, dark, read_only)),
+                    .child(wapp_grid(&format!("extension-grid-{group_key}"), &items, dark, read_only)),
             );
         }
         content = content.child(group_stack);
     } else {
         // The single-kind views keep React's flat grid without headers.
-        content = content.child(wapp_grid(&filtered, dark, read_only).mt(16.0));
+        content = content.child(wapp_grid("extension-grid", &filtered, dark, read_only).mt(16.0));
     }
 
     page.child(content)
@@ -396,19 +396,24 @@ fn empty_state(k: &'static Kit) -> El {
         )
 }
 
-/// The card grid (React: `grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))]
-/// gap-3`) — a wrapping row of 260pt cards, the same column count the
-/// auto-fill picks at the same width; the line's cards stretch to one height
-/// (CSS grid's default cross-axis stretch).
-fn wapp_grid(items: &[&WappSummaryVm], dark: bool, read_only: bool) -> El {
-    let mut grid = row()
-        .key("extension-grid")
-        .w_full()
-        .gap(12.0)
-        .flex_wrap()
-        .items_stretch();
-    for wapp in items {
-        grid = grid.child(wapp_card(wapp, dark, read_only));
+/// Match CSS auto-fill, not auto-fit: a short last row (even a single card)
+/// keeps the same track width as a full row. Explicit rows avoid flex-wrap
+/// moving the last card when the fractional track widths round differently.
+fn wapp_grid(key: &str, items: &[&WappSummaryVm], dark: bool, read_only: bool) -> El {
+    use super::grid_tracks::{tracks, GAP};
+    let measured = rune::memo::layout_with(key, |rect| rect[2]);
+    let (columns, width) = tracks(measured);
+    let mut grid = col().key(key.to_owned()).w_full().gap(GAP);
+    for (index, chunk) in items.chunks(columns).enumerate() {
+        let mut line = row()
+            .key(format!("{key}-row-{index}"))
+            .w_full()
+            .items_stretch()
+            .gap(GAP);
+        for wapp in chunk {
+            line = line.child(wapp_card(wapp, dark, read_only, width));
+        }
+        grid = grid.child(line);
     }
     grid
 }
