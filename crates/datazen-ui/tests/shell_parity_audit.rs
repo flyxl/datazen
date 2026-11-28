@@ -103,3 +103,83 @@ fn settings_back_glyph_tracks_the_button_hover_in_both_themes() {
         assert_eq!(node(&rt, "settings-back-icon").text_color.unwrap().hex(), normal);
     }
 }
+
+// The real host, not a SettingsContent fixture: keep the previously selected
+// route while tabbing and use the same activation callback as a mouse click.
+#[test]
+fn settings_nav_is_tabbable_with_dom_button_activation() {
+    use rune::{Key, KeyEvent, Mods};
+
+    let mut rt = runtime();
+    rt.state.open_settings(None);
+    // A row with its own keyboard action remains reachable even under
+    // Apple's "Tab only visits fields" preference.
+    rt.set_full_keyboard_access(false);
+    rt.set_tab_visits_controls(false);
+    settle(&mut rt);
+    let key = |rt: &mut Runtime<AppState>, key, shift| {
+        let event = KeyEvent { key, mods: Mods { shift, ..Mods::default() } };
+        rt.key(event.clone());
+        if !matches!(&event.key, Key::Text(t) if t == " ") {
+            rt.key_up(event);
+        }
+        settle(rt);
+    };
+    let focused = |rt: &Runtime<AppState>| {
+        rt.elements().into_iter()
+            .find(|e| e.focused && !e.exiting)
+            .and_then(|e| e.key)
+    };
+    for _ in 0..64 {
+        key(&mut rt, Key::Tab, false);
+        if focused(&rt).as_deref() == Some("settings-nav-general") {
+            break;
+        }
+    }
+    assert_eq!(focused(&rt).as_deref(), Some("settings-nav-general"));
+    key(&mut rt, Key::Tab, false);
+    assert_eq!(focused(&rt).as_deref(), Some("settings-nav-appearance"));
+    assert!(rt.elements().iter().any(|e| e.focus_visible && e.focused && e.role == "button"));
+    key(&mut rt, Key::Down, false);
+    assert_eq!(focused(&rt).as_deref(), Some("settings-nav-appearance"));
+    assert_eq!(rt.state.settings_section(), "general", "focus alone never selects");
+    key(&mut rt, Key::Enter, false);
+    assert_eq!(rt.state.settings_section(), "appearance");
+    assert_eq!(focused(&rt).as_deref(), Some("settings-nav-appearance"));
+
+    key(&mut rt, Key::Tab, false);
+    assert_eq!(focused(&rt).as_deref(), Some("settings-nav-dataBrowsing"));
+    let space = KeyEvent { key: Key::Text(" ".into()), mods: Mods::default() };
+    key(&mut rt, space.key.clone(), false);
+    rt.repeat_key(space.clone());
+    settle(&mut rt);
+    assert_eq!(rt.state.settings_section(), "appearance", "Space does not click until release");
+    assert!(rt.key_up(space.clone()));
+    settle(&mut rt);
+    assert_eq!(rt.state.settings_section(), "dataBrowsing");
+    assert_eq!(focused(&rt).as_deref(), Some("settings-nav-dataBrowsing"));
+
+    key(&mut rt, Key::Tab, true);
+    assert_eq!(focused(&rt).as_deref(), Some("settings-nav-appearance"));
+    key(&mut rt, space.key.clone(), false);
+    key(&mut rt, Key::Tab, true);
+    assert_eq!(focused(&rt).as_deref(), Some("settings-nav-general"));
+    key(&mut rt, Key::Tab, false);
+    assert_eq!(focused(&rt).as_deref(), Some("settings-nav-appearance"));
+    assert!(rt.key_up(space));
+    settle(&mut rt);
+    assert_eq!(rt.state.settings_section(), "dataBrowsing", "a lost focus cancels the old press");
+
+    let (x, y) = rt.find("settings-nav-editor").expect("editor navigation button");
+    rt.pointer_down(x, y);
+    settle(&mut rt);
+    assert_eq!(rt.state.settings_section(), "dataBrowsing", "pointer press still waits for release");
+    rt.pointer_move(x + 180.0, y);
+    rt.pointer_up(x + 180.0, y);
+    settle(&mut rt);
+    assert_eq!(rt.state.settings_section(), "dataBrowsing", "release outside cancels the click");
+    rt.pointer_down(x, y);
+    rt.pointer_up(x, y);
+    settle(&mut rt);
+    assert_eq!(rt.state.settings_section(), "editor");
+}

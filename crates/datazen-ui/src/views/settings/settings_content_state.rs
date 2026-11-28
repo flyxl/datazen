@@ -436,6 +436,8 @@ pub struct ContributionEdit {
 pub struct SettingsContentState {
     /// The selected section id (normalized; unknown ids never land).
     pub active_section: &'static str,
+    /// The nav button that armed Space, pending its key release.
+    pub(crate) nav_space_target: Option<&'static str>,
     /// The `initialSection` prop's last seen value (the deep-link
     /// sync only fires when the prop actually changes).
     pub initial_section: Option<String>,
@@ -479,6 +481,7 @@ impl Default for SettingsContentState {
     fn default() -> Self {
         Self {
             active_section: "general",
+            nav_space_target: None,
             initial_section: None,
             app_version: None,
             default_log_path: None,
@@ -507,12 +510,14 @@ impl SettingsContentState {
     /// `parseSettingsSection` + the two `setActiveSection` call sites:
     /// a known id selects it, anything else falls back to `general`.
     pub fn set_initial_section(&mut self, initial: Option<&str>) {
+        self.nav_space_target = None;
         self.initial_section = initial.map(str::to_owned);
         self.active_section = parse_settings_section(initial.unwrap_or(""));
     }
 
     /// The nav's own press (no `initialSection` involvement).
     pub fn select_section(&mut self, section: &'static str) {
+        self.nav_space_target = None;
         self.active_section = parse_settings_section(section);
     }
 

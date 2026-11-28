@@ -151,6 +151,7 @@ pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         dark,
         cfg!(target_os = "macos"),
     )
+    .nav_space_target(|state: &mut AppState| &mut state.settings_content.nav_space_target)
     .on_select_section(|state: &mut AppState, section| state.set_settings_section(section));
     if active == "general" {
         shell

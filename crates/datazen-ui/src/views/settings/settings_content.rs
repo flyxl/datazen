@@ -76,7 +76,9 @@
 
 use std::rc::Rc;
 
-use rune::{col, icon, row, text, tok, El, TextEdit, TextStyle};
+use rune::{
+    col, icon, row, text, tok, El, Key, Mods, PhysicalInput, PhysicalKeyCode, TextEdit, TextStyle,
+};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, ScrollBar, ScrollBarStyle};
 
 use super::settings_content_state::{
@@ -200,6 +202,7 @@ pub struct SettingsContent<'a, S: 'static> {
     sql_syntax_preview: Option<El>,
     // the host action slots
     on_back: Option<Rc<dyn Fn(&mut S)>>,
+    nav_space_target: Option<fn(&mut S) -> &mut Option<&'static str>>,
     /// The nav item press: `setActiveSection(sec.id)` — the host
     /// routes it through the state's `select_section`.
     on_select_section: Option<Rc<dyn Fn(&mut S, &'static str)>>,
@@ -298,6 +301,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             data_cleanup_section: None,
             sql_syntax_preview: None,
             on_back: None,
+            nav_space_target: None,
             on_select_section: None,
             on_update_field: None,
             on_extension_setting: None,
@@ -407,6 +411,16 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
 
     pub fn on_back(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_back = Some(Rc::new(f));
+        self
+    }
+
+    /// Arms keyboard Space through the persistent page state. The mounted
+    /// host supplies this lens so the press survives frame rebuilds.
+    pub(crate) fn nav_space_target(
+        mut self,
+        lens: fn(&mut S) -> &mut Option<&'static str>,
+    ) -> Self {
+        self.nav_space_target = Some(lens);
         self
     }
 
@@ -671,16 +685,84 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 if !is_active {
                     item = item.hover_group().hover(k.c.surface_hover);
                 }
-                if let Some(f) = &self.on_select_section {
-                    let f = Rc::clone(f);
-                    let id = section.id;
-                    item = item.on_press(move |s: &mut S| f(s, id));
+                if let Some(select) = &self.on_select_section {
+                    item = self.bind_nav_button(item, section.id, select);
                 }
                 group = group.child(item);
             }
             nav = nav.child(group);
         }
         nav
+    }
+
+    fn bind_nav_button(
+        &self,
+        item: El,
+        id: &'static str,
+        select: &Rc<dyn Fn(&mut S, &'static str)>,
+    ) -> El {
+        let pointer = Rc::clone(select);
+        let enter = Rc::clone(select);
+        let pending = self.nav_space_target;
+        let item = item
+            .focusable(true)
+            .on_press(move |s: &mut S| {
+                if let Some(pending) = pending {
+                    *pending(s) = None;
+                }
+                pointer(s, id);
+            })
+            .on_key(move |s: &mut S, key, _| {
+                // Keep Rune's normal Tab traversal and do not make the inline
+                // buttons a roving list. Unlike a plain Rune button, HTML
+                // activates the focused button on Enter.
+                match &key.key {
+                    Key::Enter if key.mods == Mods::default() => {
+                        if let Some(pending) = pending {
+                            *pending(s) = None;
+                        }
+                        enter(s, id);
+                        true
+                    }
+                    Key::Text(t) if t == " " && key.mods == Mods::default() => {
+                        let Some(pending) = pending else { return false };
+                        *pending(s) = Some(id);
+                        true
+                    }
+                    _ => false,
+                }
+            });
+        let Some(pending) = pending else { return item };
+        let release = Rc::clone(select);
+        let key = format!("settings-nav-{id}");
+        item
+            // FocusLost also fires when another element takes focus; losing
+            // and regaining focus before Space comes up must not click.
+            .on_physical_input(move |s: &mut S, event, _| {
+                match event {
+                    PhysicalInput::FocusLost => {
+                        if *pending(s) == Some(id) {
+                            *pending(s) = None;
+                        }
+                        false
+                    }
+                    // A held key cannot re-arm a cancelled press after focus moves.
+                    PhysicalInput::Key {
+                        key: PhysicalKeyCode::Space, pressed: true, repeat: true, mods,
+                    } if *mods == Mods::default() => true,
+                    _ => false,
+                }
+            })
+            .on_key_up(move |s: &mut S, ev, tx| {
+                if !matches!(&ev.key, Key::Text(t) if t == " ") || *pending(s) != Some(id) {
+                    return false;
+                }
+                *pending(s) = None;
+                if tx.focused() == Some(key.as_str()) {
+                    release(s, id);
+                }
+                true
+            })
     }
 
     /// The content pane (`data-testid="settings-content"`).
