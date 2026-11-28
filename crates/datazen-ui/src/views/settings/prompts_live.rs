@@ -231,6 +231,9 @@ pub(super) fn view(state: &AppState, dark: bool) -> El {
             state.prompt_settings.editor.edit_system = TextEdit::new("");
         }
     })
+    .on_resize_draft(move |state, idx, height| {
+        if ready(state) { state.prompt_settings.editor.resize_draft(idx, height); }
+    })
     .on_save(move |state| {
         if ready(state) { state.save_native_prompt(); }
     })

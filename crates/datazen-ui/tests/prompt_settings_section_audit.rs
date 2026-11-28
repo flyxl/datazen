@@ -80,6 +80,7 @@ fn view(s: &AuditState, _cx: &mut rune::Cx<AuditState>) -> El {
         s.edit_begun.push(idx);
         s.section.begin_edit(idx);
     })
+    .on_resize_draft(|s, idx, height| s.section.resize_draft(idx, height))
     .on_save(|s| {
         s.saves += 1;
         let _ = s.section.begin_save(s.now);
@@ -351,4 +352,59 @@ fn overflowing_preview_has_its_own_idle_thumb_and_fitting_preview_has_no_gutter(
         assert!(rect(&rt, "prompt-card-nl2sql-preview")[1] < start[1] - 20.0);
         assert_eq!(rect(&rt, "prompt-card-chat-preview"), short, "only the touched preview moves");
     }
+}
+
+#[test]
+fn resizing_the_light_prompt_draft_keeps_focus_and_resets_for_the_next_edit() {
+    fn one(rt: &Runtime<AuditState>, key: &str) -> rune::ElementInfo {
+        rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("missing {key}"))
+    }
+    fn drag(rt: &mut Runtime<AuditState>, dy: f32) {
+        let [x, y, w, h] = one(rt, "prompt-edit-system-resize").rect;
+        let (x, y) = (x + w / 2.0, y + h / 2.0);
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.frame(1.0 / 60.0);
+        rt.pointer_move(x, y + dy);
+        rt.frame(1.0 / 60.0);
+        rt.pointer_up(x, y + dy);
+        settle(rt);
+    }
+    let mut scene = AuditState::empty();
+    scene.dark = false;
+    let original = "example 模板\n".repeat(28);
+    scene.section.deliver_prompts(vec![
+        info(PromptScenario::Nl2sql, PromptSource::Default, &original),
+        info(PromptScenario::Chat, PromptSource::Default, "another draft"),
+    ]);
+    let mut rt = Runtime::new(scene, view, (960.0, 900.0), Env::new(false, 1.0));
+    rt.frame(0.0);
+    press(&mut rt, "prompt-card-nl2sql-edit");
+    let before = one(&rt, "prompt-edit-system-scroll").rect;
+    let save_before = one(&rt, "prompt-edit-save").rect;
+    assert_eq!(before[3], 146.0);
+    // Click visible input ink rather than the center of its full hidden
+    // text extent; this is the same target a real user can reach.
+    rt.pointer_down(before[0] + 30.0, before[1] + 30.0);
+    rt.pointer_up(before[0] + 30.0, before[1] + 30.0);
+    settle(&mut rt);
+    assert!(one(&rt, "prompt-edit-system").focused);
+    drag(&mut rt, 97.0);
+    let after = one(&rt, "prompt-edit-system-scroll").rect;
+    assert_eq!(after, [before[0], before[1], before[2], 243.0]);
+    assert_eq!(one(&rt, "prompt-edit-save").rect[1] - save_before[1], 97.0);
+    assert!(one(&rt, "prompt-edit-system").focused);
+    assert_eq!(rt.state.section.edit_system.text, original);
+    assert_eq!(rt.state.saves, 0);
+    drag(&mut rt, -180.0);
+    assert_eq!(one(&rt, "prompt-edit-system-scroll").rect[3], 120.0);
+    assert_eq!(rt.state.section.edit_system.text, original);
+    rt.update(|s, _| s.section.cancel_edit());
+    settle(&mut rt);
+    assert!(!has(&rt, "prompt-edit-system-resize"));
+    press(&mut rt, "prompt-card-chat-edit");
+    assert_eq!(one(&rt, "prompt-edit-system-scroll").rect[3], 146.0);
+    assert_eq!(rt.state.section.edit_system.text, "another draft");
+    assert_eq!(rt.state.saves, 0);
 }

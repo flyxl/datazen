@@ -48,14 +48,14 @@
 //! `prompt-edit-cancel`), and the confirm dialog the
 //! [`ConfirmDialogHost`]'s own keys.
 //!
-//! Multi-line Rune input preserves the textarea content and selection; the
-//! browser's drag resize handle is not part of this port.
+//! The multi-line editor and its vertical size belong to the current draft;
+//! resizing does not modify the text or its persisted override.
 
 #![allow(dead_code)]
 
 use std::rc::Rc;
 
-use rune::{col, row, text, text_input, El, ScrollSpec, TextEdit, TextStyle};
+use rune::{col, el, icon, row, text, text_input, Cursor, El, Icon, Phase, ScrollSpec, TextEdit, TextStyle};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, State};
 
 use crate::commands::ai::wire::{
@@ -95,6 +95,16 @@ pub const PROMPT_FEEDBACK_WINDOW: f64 = 2.0;
 /// The all-drivers sentinel (the select's `*` value).
 pub const PROMPT_ALL_DRIVERS: &str = "*";
 
+// The original textarea is rows={8}, text-xs (16px leading), py-2 and
+// one CSS border at either end; the resize lower bound is min-h-[120px].
+const PROMPT_EDIT_DEFAULT_HEIGHT: f32 = 8.0 * 16.0 + 2.0 * 8.0 + 2.0;
+const PROMPT_EDIT_MIN_HEIGHT: f32 = 120.0;
+static PROMPT_RESIZE_GRIP: Icon = Icon {
+    name: "prompt-template-resize-grip",
+    view: 12.0,
+    body: r#"<path d="M2 10L10 2M6 10L10 6" fill="none" stroke="currentColor" stroke-width="1"/>"#,
+};
+
 /// The section's state.
 #[derive(Clone, Debug, Default)]
 pub struct PromptSettingsSectionState {
@@ -109,6 +119,7 @@ pub struct PromptSettingsSectionState {
     pub editing_idx: Option<usize>,
     /// `editSystem`.
     pub edit_system: TextEdit,
+    edit_height: Option<f32>,
     /// `feedback` — the window's deadline (the saved / resetDone line).
     pub feedback_until: Option<f64>,
     /// The feedback line's KEY (the render translates; a locale switch
@@ -140,7 +151,7 @@ impl PromptSettingsSectionState {
     /// (`setEditingIdx(null)`).
     pub fn deliver_prompts(&mut self, prompts: Vec<PromptInfo>) {
         self.prompts = prompts;
-        self.editing_idx = None;
+        self.cancel_edit();
     }
 
     /// The driver filter changed (`setDriverType`): the reload's
@@ -153,6 +164,7 @@ impl PromptSettingsSectionState {
     pub fn begin_edit(&mut self, idx: usize) {
         if let Some(prompt) = self.prompts.get(idx) {
             self.editing_idx = Some(idx);
+            self.edit_height = None;
             self.edit_system = TextEdit::new(prompt.system.clone());
         }
     }
@@ -160,6 +172,14 @@ impl PromptSettingsSectionState {
     /// The edit's cancel.
     pub fn cancel_edit(&mut self) {
         self.editing_idx = None;
+        self.edit_height = None;
+    }
+
+    /// The text area resize is transient and scoped to the open card.
+    pub fn resize_draft(&mut self, idx: usize, height: f32) {
+        if self.editing_idx == Some(idx) && !self.confirm.is_open() && height.is_finite() {
+            self.edit_height = Some(height.max(PROMPT_EDIT_MIN_HEIGHT));
+        }
     }
 
     /// `handleSave`'s entry build (`{ driverType, scenario, system }`)
@@ -176,7 +196,7 @@ impl PromptSettingsSectionState {
         let request = prompt_set_override_request(&entry);
         self.feedback_key = Some("settings.prompts.saved");
         self.feedback_until = Some(now + PROMPT_FEEDBACK_WINDOW);
-        self.editing_idx = None;
+        self.cancel_edit();
         Some((entry, request))
     }
 
@@ -258,6 +278,7 @@ pub struct PromptSettingsSection<'a, S: 'static> {
     on_begin_edit: Option<Rc<dyn Fn(&mut S, usize)>>,
     on_save: Option<Rc<dyn Fn(&mut S)>>,
     on_cancel: Option<Rc<dyn Fn(&mut S)>>,
+    on_resize_draft: Option<Rc<dyn Fn(&mut S, usize, f32)>>,
     busy: bool,
     inline_reset_confirmation: bool,
     on_begin_reset: Option<Rc<dyn Fn(&mut S, usize)>>,
@@ -286,6 +307,7 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
             on_begin_edit: None,
             on_save: None,
             on_cancel: None,
+            on_resize_draft: None,
             busy: false,
             inline_reset_confirmation: true,
             on_begin_reset: None,
@@ -320,6 +342,12 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
     }
     pub(super) fn on_cancel(mut self, f: impl Fn(&mut S) + 'static) -> Self {
         self.on_cancel = Some(Rc::new(f));
+        self
+    }
+
+    /// The current draft's local height, not a save or an adapter operation.
+    pub fn on_resize_draft(mut self, f: impl Fn(&mut S, usize, f32) + 'static) -> Self {
+        self.on_resize_draft = Some(Rc::new(f));
         self
     }
 
@@ -506,17 +534,15 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
 
         // The body: the edit form, or the 260-char preview.
         if is_editing {
-            let mut field = text_input(&state.edit_system, TextStyle { size: 12.0, ..k.ty.mono })
+            let height = state.edit_height.unwrap_or(PROMPT_EDIT_DEFAULT_HEIGHT);
+            let mut field = text_input(&state.edit_system, TextStyle { size: 12.0, line_height: 16.0, ..k.ty.mono })
                 .key("prompt-edit-system")
                 .label(t("settings.prompts.template"))
                 .w_full()
-                .min_h(120.0)
-                .px(12.0)
-                .py(8.0)
-                .radius(k.radius.md)
-                .fill(k.c.surface_base)
-                .border(1.0, k.c.border_base)
-                .focus_ring(2.0, 0.0, k.c.border_focus)
+                .min_h(height)
+                .px(13.0)
+                .py(9.0)
+                .no_focus_ring()
                 .color(k.c.text_base);
             if !self.busy {
                 let lens = Rc::clone(&self.edit_system_edit);
@@ -525,7 +551,43 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
                     .on_edit::<S>(move |s: &mut S| lens(s))
                     .on_submit::<S>(move |s: &mut S, _| { line_break_lens(s).insert("\n"); });
             }
-            let field = rune::auto_grow(field, 8, 8).key("prompt-edit-system-scroll");
+            // Keep Rune's editor-aware nested scrolling/caret path. Only
+            // the viewport height is controlled by the grip; its field still
+            // lays out every line so it can be scrolled into view.
+            let viewport = rune::auto_grow(field, 8, 8)
+                .key("prompt-edit-system-scroll")
+                .h(height)
+                .min_h(height)
+                .max_h(height);
+            let mut frame = col().key("prompt-edit-system-frame")
+                .w_full().h(height).min_h(height)
+                .radius(k.radius.md).clip_rounded(k.radius.md)
+                .fill(k.c.surface_base).border(1.0, k.c.border_base)
+                .focus_within_ring(2.0, 0.0, k.alpha(k.c.bg_accent, 0.25))
+                .child(viewport);
+            if let Some(resize) = self.on_resize_draft.as_ref().filter(|_| {
+                !self.busy && !state.confirm.is_open()
+            }) {
+                let resize = Rc::clone(resize);
+                frame = frame.child(
+                    el().key("prompt-edit-system-resize")
+                        .size(14.0, 14.0)
+                        .pin(None, None, Some(1.0), Some(1.0))
+                        .center()
+                        .a11y_hidden()
+                        .cursor(Cursor::ResizeRow)
+                        .preserve_focus_on_press(true)
+                        .child(icon(&PROMPT_RESIZE_GRIP, 12.0).color(k.c.text_faint))
+                        .on_drag(move |s: &mut S, drag, _| {
+                            match drag.phase {
+                                Phase::Down => drag.data = height,
+                                Phase::Move => resize(s, idx, drag.data + drag.dy),
+                                Phase::Up if drag.cancelled() => resize(s, idx, drag.data),
+                                Phase::Up => {}
+                            }
+                        }),
+                );
+            }
             let mut save = Button::new(t("common.save"))
                 .variant(ButtonVariant::Submit)
                 .control_size(ControlSize::ExtraLarge)
@@ -547,7 +609,7 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
                     .child(
                         col().gap(4.0)
                             .child(text(t("settings.prompts.template")).font(TextStyle::new(12.0, 400.0)).color(k.c.text_muted))
-                            .child(field),
+                            .child(frame),
                     )
                     .child(
                         row().gap(8.0)
