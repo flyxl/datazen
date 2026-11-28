@@ -687,7 +687,7 @@ class GridDragJourney:
             tap(10.8, "result-cell-1-1"),
         ], until=11.6)
         _, query_state = bars(query, "result-")
-        expect_status_colors(query, "#f6f8fbff", "#dcf7e1ff")
+        expect_status_colors(query, "#f1f5f9ff", "#18b77aff")
         result_host = self._settled_rect(query, "query-results-host")
         query_main = self._settled_rect(query, "query-main")
         self.assertAlmostEqual(result_host[3], query_main[3] / 2, delta=.25)
