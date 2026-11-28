@@ -27,8 +27,10 @@ implementation.
 
 The LF-only search window, wrapping rules, and bounded capture replacements
 follow pinned `@codemirror/search` 6.6.0. Whole-word context follows
-`@codemirror/state` 6.7.4 and `find-cluster-break` 1.0.4. Their notices are
-included. Matching uses pinned Regress 0.12.0 (pure Rust ECMAScript regexp).
+`@codemirror/state` 6.7.4 and `find-cluster-break` 1.0.4. Their MIT notices and the Unicode License V3 notice for the derived
+Unicode 17 Alphabetic/Number ranges are included. The checked-in table
+is byte-for-byte the already generated Native Query table from
+`scripts/codemirror-whole-word-fixtures.mjs`. Matching uses pinned Regress 0.12.0 (pure Rust ECMAScript regexp).
 The interface accepts only original-document UTF-8 scalar boundaries.
 CR-bearing document, unrepresentable cursor edges, oversized requests or
 results, and worker errors are no-edit results, not approximations.
