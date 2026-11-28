@@ -108,6 +108,7 @@ pub mod tunnel_edit_dialog;
 // T459: the tunnel live-probe dialog (the target inputs, the
 // kind-scoped honesty note, the elapsed/error answers).
 pub mod tunnel_test_dialog;
+pub(crate) mod tunnels_live;
 // T638's carried lib (segment 2 — until it lands): the updater's
 // pure core (channel/variant reasoning, the manifest defence, the
 // progress/result contracts).
@@ -144,7 +145,7 @@ pub mod settings_ui;
 /// A6: grouped settings navigation (2 groups, 12 sections) with deep-link
 /// selection by section key. Only the active section's content renders so
 /// navigation switching is observable and addressable.
-pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool, layer: &mut Vec<El>) -> El {
     use settings_content_state::SettingsField;
 
     let active = state.settings_section();
@@ -196,12 +197,12 @@ pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             .build()
     } else {
         shell
-            .host_body(settings_content(state, theme, dark, active))
+            .host_body(settings_content(state, theme, dark, active, layer))
             .build()
     }
 }
 
-fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &str) -> El {
+fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &str, layer: &mut Vec<El>) -> El {
     let body = match active {
         "appearance" => appearance_section(state, theme, dark),
         "dataBrowsing" => data_browsing_live::view(state, theme, dark),
@@ -212,6 +213,7 @@ fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &st
         "prompts" => prompts_live::view(state, dark),
         "mcpServer" => placeholder_section("mcpServer", t("settings.mcp.title"), theme),
         "mcpClient" => placeholder_section("mcpClient", t("settings.mcpClient.title"), theme),
+        "tunnels" if state.desktop.supports_native_saved_tunnels() => tunnels_live::view(state, dark, layer),
         "tunnels" => placeholder_section("tunnels", t("settings.tunnels.title"), theme),
         "extensions" => placeholder_section("extensions", t("settings.extensions.title"), theme),
         _ => placeholder_section(active, t("settings.title"), theme),

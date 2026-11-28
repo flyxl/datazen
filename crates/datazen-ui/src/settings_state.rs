@@ -129,6 +129,10 @@ impl AppState {
         if section != "behavior" || self.active != crate::types::Section::Settings {
             self.settings_content.workflow_retention.retire();
         }
+        self.retire_native_tunnel_editor();
+        if section == "tunnels" {
+            self.refresh_native_tunnels();
+        }
         self.settings_content.select_section(section);
     }
 

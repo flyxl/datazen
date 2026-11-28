@@ -67,7 +67,7 @@ pub fn page_body(
     match state.active {
         Section::Connections => connection_list(state, theme, dark),
         Section::Workspace => workspace_body(state, theme, dark, layer),
-        Section::Settings => settings_page(state, theme, dark),
+        Section::Settings => settings_page(state, theme, dark, layer),
         Section::Tools => tools_page(state, theme, dark),
         Section::Dashboards => dashboards_page(state, theme, dark),
         // T145: the workflow window's page port — the lite editor that stood

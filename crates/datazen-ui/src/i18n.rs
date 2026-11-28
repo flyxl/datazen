@@ -111,6 +111,32 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
             "仅查看已安装的扩展。无法打开、启用、禁用、卸载或应用扩展主题。",
             "Installed extensions are read-only. Opening, enabling, disabling, uninstalling, and applying themes are unavailable.",
         )),
+        "settings.nativeTunnels.scope" => Some((
+            "可新建和编辑 HTTP 代理。其他类型仅显示名称；此版本尚不支持测试隧道或绑定连接。",
+            "Create and edit HTTP proxy definitions. Other types are listed only; testing and connection binding are not available here.",
+        )),
+        "settings.nativeTunnels.loadFailed" => Some((
+            "无法加载本机保存的隧道定义。未更改已保存内容。",
+            "Could not load the saved tunnel definitions. Nothing was changed.",
+        )),
+        "settings.nativeTunnels.keyUnavailable" => Some((
+            "无法安全保存代理密码。请恢复原加密密钥或检查系统钥匙串。",
+            "Could not securely save the proxy password. Restore the original key or check the system keychain.",
+        )),
+        "settings.nativeTunnels.savedPassword" => Some((
+            "留空会保留已保存的密码。",
+            "Leave the password blank to keep the saved password.",
+        )),
+        "settings.nativeTunnels.clearingPassword" => Some((
+            "保存时会移除已保存的密码，除非输入新密码。",
+            "Saving will remove the saved password unless you enter a new one.",
+        )),
+        "settings.nativeTunnels.timeout" => Some((
+            "超时必须是大于零的秒数。",
+            "Enter a positive timeout in seconds.",
+        )),
+        "settings.nativeTunnels.clearPassword" => Some(("移除已保存的密码", "Remove saved password")),
+        "settings.nativeTunnels.keepPassword" => Some(("保留已保存的密码", "Keep saved password")),
         _ => None,
     };
     if let Some((zh, en)) = native {

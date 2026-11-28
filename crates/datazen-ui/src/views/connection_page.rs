@@ -84,7 +84,7 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
 
     // One layer serves either body (declared above, before the titlebar).
     let body = if state.active == Section::Settings {
-        body.child(settings_page(state, theme, dark).h_full())
+        body.child(settings_page(state, theme, dark, &mut layer).h_full())
     } else {
         // React mounts ConnectionNavigatorTree in its database workspace only;
         // Rune splits that workspace between the landing and the live tabs.

@@ -17,6 +17,7 @@ from favorites import FavoritesJourney
 from field_filter import TableFieldFilterJourney
 from grid_drag import GridDragJourney
 from offline import OfflineJourneys
+from native_tunnels import SavedTunnelJourneys
 from query_history import QueryHistoryJourney
 from query_results_layout import QueryResultsLayoutJourney
 from query_row_limit import QueryRowLimitJourney
@@ -33,7 +34,7 @@ from transfer import TransferJourneys
 from workflow import WorkflowJourney
 
 
-class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourney, OfflineJourneys, GridDragJourney, TableFieldFilterJourney, QueryHistoryJourney, QueryResultsLayoutJourney, QueryRowLimitJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, SqlLineCommentJourney, SqlRoundPairJourney, unittest.TestCase):
+class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourney, OfflineJourneys, GridDragJourney, TableFieldFilterJourney, QueryHistoryJourney, QueryResultsLayoutJourney, SavedTunnelJourneys, QueryRowLimitJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, SqlLineCommentJourney, SqlRoundPairJourney, unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="datazen-native-e2e-")
         self.addCleanup(tmp.cleanup)
