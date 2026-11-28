@@ -2384,6 +2384,16 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    /// The effective global row count preference for interactive table reads.
+    fn read_native_row_count_mode(&self) -> Result<types::RowCountMode, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// Save only the row count mode, preserving other app settings.
+    fn write_native_row_count_mode(&mut self, _mode: types::RowCountMode) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// The effective workflow report tab order. A supported persistence
     /// port returns Desc for an unset or unrecognized legacy preference.
     fn read_workflow_step_result_order(&self) -> Result<types::WorkflowStepResultOrder, String> {

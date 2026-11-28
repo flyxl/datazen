@@ -41,6 +41,16 @@ pub enum RowCountMode {
 }
 
 impl RowCountMode {
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "auto" => Some(Self::Auto),
+            "exact" => Some(Self::Exact),
+            "estimated" => Some(Self::Estimated),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+
     /// The wire spelling.
     pub fn as_str(self) -> &'static str {
         match self {

@@ -1,6 +1,6 @@
 //! The live native Data Browsing view presents only preferences with real host writes.
 
-use datazen_ui_api::types::WorkflowStepResultOrder;
+use datazen_ui_api::types::{RowCountMode, WorkflowStepResultOrder};
 use datazen_ui_api::{BuiltinLanguage, DefaultTableSort, Setting};
 use rune::{col, row, text, tok, El, TextEdit, TextStyle, Tx};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Placement};
@@ -52,6 +52,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         ));
     let presets = page_size_select(state, page_size, &k, &mut overlays);
     mount_custom_page_size(state, dark, &k, &mut overlays);
+    let row_count = state.desktop.read_native_row_count_mode().ok();
     let default_sort = state.desktop.read_native_default_table_sort().ok();
     section = section
         .child(setting_row(
@@ -62,8 +63,11 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             None,
             presets,
         ));
-    // Keep the original preference order among the rows the native host
-    // actually supports. Do not reserve space for unimplemented settings.
+    // Keep the original preference order, without reserving space for
+    // controls that the native read path does not yet implement.
+    if let Some(mode) = row_count {
+        section = section.child(row_count_mode_row(state, mode, &k, &mut overlays));
+    }
     if let Some(order) = default_sort {
         section = section.child(default_table_sort_row(state, order, &k, &mut overlays));
     }
@@ -99,22 +103,22 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         section = section.child(settings_error_row(state, theme));
     }
 
-    let unavailable = match (state.builtin_language(), default_sort.is_some()) {
-        (BuiltinLanguage::English, true) => concat!(
-            "Row counting, grid and time display, connection pool, ",
-            "the SELECT-limit toggle, and auto-chart are not configurable here."
+    let unavailable = match state.builtin_language() {
+        BuiltinLanguage::English => format!(
+            "Settings not available here: {}{}grid and time display, connection pool, the SELECT-limit toggle, and auto-chart.{}",
+            if row_count.is_none() { "row count mode, " } else { "" },
+            if default_sort.is_none() { "default sorting, " } else { "" },
+            if row_count == Some(RowCountMode::Auto) {
+                " Automatic uses the database's default counting strategy; the estimate threshold is not configurable in Native."
+            } else { "" },
         ),
-        (BuiltinLanguage::English, false) => concat!(
-            "Row counting, default sorting, grid and time display, connection pool, ",
-            "the SELECT-limit toggle, and auto-chart are not configurable here."
-        ),
-        (BuiltinLanguage::SimplifiedChinese, true) => concat!(
-            "此处暂不支持行数统计、表格和时间显示、",
-            "连接池、SELECT 限制开关及自动图表设置。"
-        ),
-        (BuiltinLanguage::SimplifiedChinese, false) => concat!(
-            "此处暂不支持行数统计、默认排序、表格和时间显示、",
-            "连接池、SELECT 限制开关及自动图表设置。"
+        BuiltinLanguage::SimplifiedChinese => format!(
+            "此处暂不支持{}{}表格和时间显示、连接池、SELECT 限制开关及自动图表设置。{}",
+            if row_count.is_none() { "行数统计、" } else { "" },
+            if default_sort.is_none() { "默认排序、" } else { "" },
+            if row_count == Some(RowCountMode::Auto) {
+                "自动模式使用数据库默认的计数策略；Native 暂不支持设置估算阈值。"
+            } else { "" },
         ),
     };
     // Keep the working native actions, even though React places them elsewhere.
@@ -139,6 +143,69 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .wrap(),
         )
         .children(overlays)
+}
+
+fn row_count_mode_row(
+    state: &AppState,
+    mode: RowCountMode,
+    k: &Kit,
+    overlays: &mut Vec<El>,
+) -> El {
+    use RowCountMode::{Auto, Estimated, Exact, None as DoNotCount};
+    let label = t("settings.rowCountMode");
+    let labels = [
+        t("settings.rowCountMode.auto"),
+        t("settings.rowCountMode.exact"),
+        t("settings.rowCountMode.estimated"),
+        t("settings.rowCountMode.none"),
+    ];
+    let current = match mode {
+        Auto => labels[0],
+        Exact => labels[1],
+        Estimated => labels[2],
+        DoNotCount => labels[3],
+    };
+    let select = Select::new("settings-row-count-mode", &labels)
+        .values(&[Auto.as_str(), Exact.as_str(), Estimated.as_str(), DoNotCount.as_str()])
+        .current(Some(current))
+        .label(label)
+        .open(state.settings_content.open_select == Some(SettingsSelect::RowCountMode))
+        .on_toggle(|state: &mut AppState| {
+            if state.active == crate::types::Section::Settings && state.settings_section() == "dataBrowsing" {
+                state.settings_content.toggle_select(SettingsSelect::RowCountMode);
+            }
+        })
+        .on_close(|state: &mut AppState| {
+            if state.settings_content.open_select == Some(SettingsSelect::RowCountMode) {
+                state.settings_content.close_select();
+            }
+        })
+        .on_choose(|state: &mut AppState, value, _tx| {
+            if state.active != crate::types::Section::Settings
+                || state.settings_section() != "dataBrowsing"
+                || state.settings_content.open_select != Some(SettingsSelect::RowCountMode)
+            {
+                return;
+            }
+            state.settings_content.close_select();
+            if let Some(mode) = RowCountMode::from_wire(value) {
+                state.settings_error = state.desktop.write_native_row_count_mode(mode).err();
+            }
+        })
+        .build(&preset_field_kit(k), overlays)
+        .h(FIELD_HEIGHT)
+        .radius(9.0)
+        .border(1.0, k.c.border_base)
+        .pl(3.0)
+        .pr(8.0);
+    setting_row(
+        k,
+        overlays,
+        "settings-row-count-mode-row".to_owned(),
+        label,
+        None,
+        select,
+    )
 }
 
 fn default_table_sort_row(

@@ -166,6 +166,7 @@ enum HostJob {
         page: u32,
         page_size: u32,
         default_order: NativeTableDefaultOrder,
+        count_strategy: Option<datazen_driver_api::CountStrategy>,
         sort: Option<ColumnSort>,
         filter: Option<ColumnFilter>,
     },
@@ -764,7 +765,8 @@ impl LiveAdapter {
                             HostAnswer::WorkflowRun { generation, results }
                         }
                         HostJob::ReadTable {
-                            generation, table, page, page_size, default_order, sort, filter,
+                            generation, table, page, page_size, default_order, count_strategy,
+                            sort, filter,
                         } => {
                             let page_result = runtime.block_on(read_table(
                                 &worker_session,
@@ -773,6 +775,7 @@ impl LiveAdapter {
                                 page,
                                 page_size,
                                 default_order,
+                                count_strategy,
                                 sort,
                                 filter,
                             ));
@@ -1572,6 +1575,7 @@ async fn read_table(
     page: u32,
     page_size: u32,
     default_order: NativeTableDefaultOrder,
+    count_strategy: Option<datazen_driver_api::CountStrategy>,
     sort: Option<ColumnSort>,
     filter: Option<ColumnFilter>,
 ) -> Result<NativeTablePage, String> {
@@ -1639,7 +1643,7 @@ async fn read_table(
         skip_count: None,
         filter_logic: None,
         raw_where: None,
-        count_strategy: None,
+        count_strategy,
         default_order_columns: None,
         after_key: None,
         require_keyset: None,
@@ -2609,6 +2613,30 @@ fn effective_native_default_table_sort(document: &serde_json::Value) -> datazen_
         .unwrap_or(DefaultTableSort::PrimaryKeyAsc)
 }
 
+fn effective_native_row_count_mode(document: &serde_json::Value) -> datazen_ui_api::types::RowCountMode {
+    use datazen_ui_api::types::RowCountMode;
+    document.get("rowCountMode")
+        .and_then(serde_json::Value::as_str)
+        .and_then(RowCountMode::from_wire)
+        .unwrap_or(RowCountMode::Auto)
+}
+
+fn native_requested_row_count(
+    mode: datazen_ui_api::types::RowCountMode,
+) -> Option<datazen_driver_api::CountStrategy> {
+    use datazen_driver_api::CountStrategy;
+    use datazen_ui_api::types::RowCountMode;
+    match mode {
+        // The native catalog has no qualified table-size observation yet.
+        // Automatic uses the driver's declared/fallback strategy, not a
+        // guessed size or an extra count to decide whether to count.
+        RowCountMode::Auto => None,
+        RowCountMode::Exact => Some(CountStrategy::Exact),
+        RowCountMode::Estimated => Some(CountStrategy::Estimated),
+        RowCountMode::None => Some(CountStrategy::Unsupported),
+    }
+}
+
 // What one setting write does to the document's ui object (L1): the
 // scalar settings set one flat key verbatim; a layout size sets a key
 // inside the layout sub-object.
@@ -3098,17 +3126,28 @@ impl DesktopAdapter for LiveAdapter {
                 page_size,
                 sort,
                 filter,
-            } => HostJob::ReadTable {
-                generation,
-                table,
-                page,
-                page_size,
-                default_order: self.settings_document.lock().ok()
-                    .map(|document| native_table_default_order(&document))
-                    .unwrap_or_default(),
-                sort,
-                filter,
-            },
+            } => {
+                let (default_order, count_strategy) = self
+                    .settings_document
+                    .lock()
+                    .ok()
+                    .map(|document| (
+                        native_table_default_order(&document),
+                        native_requested_row_count(effective_native_row_count_mode(&document)),
+                    ))
+                    .unwrap_or_default();
+                HostJob::ReadTable {
+                    generation,
+                    table,
+                    page,
+                    page_size,
+                    default_order,
+                    count_strategy,
+                    sort,
+                    filter,
+                }
+            }
+
             AdapterJob::ReadStructure { generation, table } => {
                 HostJob::ReadStructure { generation, table }
             }
@@ -3418,6 +3457,30 @@ impl DesktopAdapter for LiveAdapter {
             .map_err(|_| error())?;
         let object = document.as_object_mut().ok_or_else(error)?;
         object.insert("defaultTableSort".into(), serde_json::json!(order.as_str()));
+        let stored = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|_| error())?;
+        *cache = stored;
+        Ok(())
+    }
+
+    fn read_native_row_count_mode(&self) -> Result<datazen_ui_api::types::RowCountMode, String> {
+        let settings = self.settings_document.lock()
+            .map_err(|_| "Could not read the row count mode.".to_owned())?;
+        Ok(effective_native_row_count_mode(&settings))
+    }
+
+    fn write_native_row_count_mode(
+        &mut self,
+        mode: datazen_ui_api::types::RowCountMode,
+    ) -> Result<(), String> {
+        let error = || "Could not save the row count mode.".to_owned();
+        let mut cache = self.settings_document.lock().map_err(|_| error())?;
+        // Persist against the current file and fail closed on malformed
+        // JSON; the boot cache is never a replacement for user preferences.
+        let mut document = futures_executor::block_on(self.settings.read_app_settings())
+            .map_err(|_| error())?;
+        let object = document.as_object_mut().ok_or_else(error)?;
+        object.insert("rowCountMode".into(), serde_json::json!(mode.as_str()));
         let stored = futures_executor::block_on(self.settings.save_app_settings(document))
             .map_err(|_| error())?;
         *cache = stored;
@@ -4193,23 +4256,27 @@ mod tests {
     }
 
     /// Poll the adapter until its read job answers.
-    fn poll_read(adapter: &mut LiveAdapter) -> Result<TablePage, String> {
+    fn poll_native_read(adapter: &mut LiveAdapter) -> Result<NativeTablePage, String> {
         for _ in 0..300 {
             for delivery in adapter.poll_jobs() {
                 if let AdapterDelivery::NativeTablePage { page, .. } = delivery {
-                    return page.map(|page| {
-                        assert_eq!(
-                            page.row_count,
-                            NativeTableRowCount::Exact(u64::from(page.page.total_rows)),
-                            "the live test uses the unchanged default exact count",
-                        );
-                        page.page
-                    });
+                    return page;
                 }
             }
             std::thread::sleep(Duration::from_millis(10));
         }
         panic!("the read job never answered");
+    }
+
+    fn poll_read(adapter: &mut LiveAdapter) -> Result<TablePage, String> {
+        poll_native_read(adapter).map(|read| {
+            assert_eq!(
+                read.row_count,
+                NativeTableRowCount::Exact(u64::from(read.page.total_rows)),
+                "the existing fixture uses the default exact count",
+            );
+            read.page
+        })
     }
 
     /// Poll the adapter until its structure job answers (E1).
@@ -4363,6 +4430,74 @@ mod tests {
         }));
         poll_open(&mut adapter).expect("the session opens");
         adapter
+    }
+
+    #[test]
+    fn row_count_modes_persist_and_change_the_real_sqlite_read_job() {
+        use datazen_ui_api::types::RowCountMode::{Auto, Estimated, Exact, None as DoNotCount};
+
+        let root = tempfile::tempdir().expect("disposable settings and database");
+        let path = root.path().join("settings.json");
+        let initial = serde_json::json!({
+            "rowCountMode": "future-mode",
+            "rowCountEstimateThreshold": 100,
+            "defaultTableSort": "primaryKeyAsc",
+            "ui": {"language": "en", "tablePageSize": 25},
+            "unrelated": ["keep"],
+        });
+        std::fs::write(&path, initial.to_string()).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let mut adapter = opened_adapter(root.path());
+        assert_eq!(adapter.read_native_row_count_mode().unwrap(), Auto);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let database_before = std::fs::read(root.path().join("live.db")).unwrap();
+
+        let read_job = |generation, page| AdapterJob::ReadTable {
+            generation,
+            table: "users".into(),
+            page,
+            page_size: 25,
+            sort: None,
+            filter: None,
+        };
+        adapter.write_native_row_count_mode(DoNotCount).unwrap();
+        assert!(adapter.begin_job(read_job(2, 0)));
+        // Already enqueued reads retain the mode snapshotted at enqueue.
+        adapter.write_native_row_count_mode(Exact).unwrap();
+        let rows_only = poll_native_read(&mut adapter).unwrap();
+        assert_eq!(rows_only.row_count, NativeTableRowCount::Unknown);
+        assert!(rows_only.bounded_offset, "SQLite's first page can continue by offset");
+        assert_eq!(rows_only.page.rows.len(), 25);
+        assert_eq!(rows_only.page.rows[0][1], "user-00");
+        assert!(adapter.begin_job(read_job(3, 1)));
+        let exact = poll_native_read(&mut adapter).unwrap();
+        assert_eq!(exact.row_count, NativeTableRowCount::Exact(60));
+        assert_eq!(exact.page.rows[0][1], "user-25");
+
+        adapter.write_native_row_count_mode(Estimated).unwrap();
+        assert!(adapter.begin_job(read_job(4, 2)));
+        let fallback = poll_native_read(&mut adapter).unwrap();
+        assert_eq!(fallback.row_count, NativeTableRowCount::Exact(60), "SQLite cannot estimate");
+        assert_eq!(fallback.page.rows.len(), 10);
+        let mut expected = initial;
+        expected["rowCountMode"] = serde_json::json!("estimated");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(),
+            expected,
+        );
+        assert_eq!(std::fs::read(root.path().join("live.db")).unwrap(), database_before);
+
+        drop(adapter);
+        let repo = Arc::new(
+            FileConnectionRepository::open(&root.path().join("connections.json")).unwrap(),
+        );
+        let mut reopened = LiveAdapter::with_data_dir(repo, root.path());
+        assert_eq!(reopened.read_native_row_count_mode().unwrap(), Estimated);
+        let corrupt = b"{not valid JSON";
+        std::fs::write(&path, corrupt).unwrap();
+        assert!(reopened.write_native_row_count_mode(Auto).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), corrupt);
+        assert_eq!(reopened.read_native_row_count_mode().unwrap(), Estimated);
     }
 
     #[test]

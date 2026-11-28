@@ -919,6 +919,87 @@ class OfflineJourneys:
         self.expect_rendered(page_again, text="Primary key, descending", within=sort)
         self.assertEqual(config.read_bytes(), initial)
 
+    def test_settings_row_count_mode_persists_and_controls_real_sqlite_pages(self):
+        config = self.root / "settings.json"
+        initial = {"rowCountMode": "future-mode", "rowCountEstimateThreshold": 7,
+                   "defaultTableSort": "primaryKeyAsc", "unrelated": ["keep"],
+                   "ui": {"language": "en", "tablePageSize": 2, "queryMaxRows": 23}}
+        config.write_text(json.dumps(initial), encoding="utf-8")
+        before_config = config.read_bytes()
+        with sqlite3.connect(self.db) as db:
+            db.executescript("""
+                CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                INSERT INTO customers VALUES
+                    (1,'row-a'), (2,'row-b'), (3,'row-c'), (4,'row-d'), (5,'row-e');
+            """)
+        self.store.write_text(json.dumps({"connections": [{
+            "id": "e2e-sqlite", "name": "Rune SQLite row count", "databaseType": "sqlite",
+            "database": str(self.db), "readOnly": True,
+            "connectionTimeout": 30, "maxPoolSize": 2,
+        }]}), encoding="utf-8")
+        before_db = self.db.read_bytes()
+        with sqlite3.connect(self.db.as_uri() + "?mode=ro", uri=True) as db:
+            count = db.execute("SELECT count(*) FROM customers").fetchone()[0]
+            ordered = db.execute("SELECT name FROM customers ORDER BY id").fetchall()
+        self.assertEqual(count, 5)
+
+        trigger = "settings-row-count-mode-trigger"
+        menu = "settings-row-count-mode-content"
+        menu_path = [SETTINGS, DATA_SETTINGS, tap(2.1, trigger)]
+        opened = self.replay(menu_path, until=3.0)
+        options = ("Automatic", "Always exact", "Estimate when possible", "Do not count")
+        for label in options:
+            self.expect_rendered(opened, text=label, within=menu)
+        self.assertFalse(visible(opened, key="settings-default-table-sort-content"))
+        self.assertFalse(visible(opened, key="settings-page-size-preset-content"))
+        canceled = self.replay([*menu_path, key(3.3, "Escape")], until=4.4)
+        self.expect_rendered(canceled, text="Automatic", within=trigger)
+        self.assertFalse(visible(canceled, key=menu))
+        self.assertEqual(config.read_bytes(), before_config)
+
+        def choose(index, wire):
+            picked = self.replay([*menu_path, tap(3.3, f"option{index}")], until=4.4)
+            self.expect_rendered(picked, text=options[index], within=trigger)
+            self.assertFalse(visible(picked, key=menu))
+            self.assertFalse(visible(picked, key="settings-error"))
+            self.assertEqual(json.loads(config.read_text(encoding="utf-8")),
+                             {**initial, "rowCountMode": wire})
+
+        def page(tree, number, rows, exact=False):
+            label = f"Page {number} / 3" if exact else f"Page {number}"
+            self.expect_rendered(tree, key="grid-page-label", text=label)
+            self.expect_rendered(tree, key="grid-readonly", within="data-grid")
+            footer = f"2 per page · {count} rows" if exact else "2 per page · Row count unavailable"
+            self.expect_rendered(tree, text=footer, within="grid-footer")
+            self.expect_rendered(tree, key="status-context")
+            context = [node["text"] for node in tree["elements"]
+                       if node.get("key") == "status-context" and not node.get("exiting")]
+            self.assertEqual(len(context), 1)
+            self.assertIn(f"{count} rows" if exact else "Row count unavailable", context[0])
+            for i, (name,) in enumerate(rows):
+                self.expect_rendered(tree, text=name, within=f"cell-{i}-1")
+            self.assertFalse(visible(tree, key="table-loading", within="grid-footer"))
+
+        choose(3, "none")
+        reopened = self.replay([SETTINGS, DATA_SETTINGS], until=2.6)
+        self.expect_rendered(reopened, text="Do not count", within=trigger)
+        page(self.replay(OPEN, until=4.9), 1, ordered[:2])
+        second = [*OPEN, tap(5.0, "page-next")]
+        page(self.replay(second, until=6.7), 2, ordered[2:4])
+        third = [*second, tap(7.0, "page-next"), tap(8.7, "page-next")]
+        page(self.replay(third, until=9.8), 3, ordered[4:])
+        page(self.replay([*third, tap(10.4, "page-prev")], until=11.9),
+             2, ordered[2:4])
+
+        choose(1, "exact")
+        reopened = self.replay([SETTINGS, DATA_SETTINGS], until=2.6)
+        self.expect_rendered(reopened, text="Always exact", within=trigger)
+        page(self.replay(OPEN, until=4.9), 1, ordered[:2], exact=True)
+        choose(2, "estimated")
+        # SQLite genuinely cannot estimate: report the actual exact fallback.
+        page(self.replay(OPEN, until=4.9), 1, ordered[:2], exact=True)
+        self.assertEqual(self.db.read_bytes(), before_db)
+
     def test_settings_default_table_sort_persists_and_controls_native_sqlite_reads(self):
         settings = self.root / "settings.json"
         initial = {"ui": {"language": "en", "tablePageSize": 2, "queryMaxRows": 23},
