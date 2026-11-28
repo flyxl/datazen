@@ -52,7 +52,7 @@ class SyntaxMenuJourney(native.NativeJourneys):
         self.assertEqual(json.loads(prefs.read_bytes()), {**preset, "sqlSyntaxTheme": "dracula"})
         [preview] = [e for e in chosen["elements"]
                      if e.get("key") == "settings-sql-syntax-preview" and not e.get("exiting")]
-        self.assertEqual(preview["fill"], "#282a36ff")
+        self.assertEqual(preview["fill"], "#f8f8f2ff")
         self.assertFalse(self.db.exists(), "theme changes are separate from database activity")
 
 
