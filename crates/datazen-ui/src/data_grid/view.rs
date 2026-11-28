@@ -216,7 +216,7 @@ pub fn panel(
         .gap(8.0)
         .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
         .child(status_banner(state, muted, well))
-        .child(pending_changes_bar(state, muted, well))
+        .children(pending_changes_bar(state, muted, well))
         .child(filter_bar(state, ink, muted, well, dark))
         .child(fk_bar(state, ink, muted, well))
         .child(sheet(grid, GridSlot::Table, ink, viewport, None,
@@ -270,10 +270,13 @@ fn status_banner(state: &crate::AppState, muted: rune::Color, well: rune::Color)
 /// A4: pending/staged changes bar (待提交条) showing staged change count.
 /// Commit/Rollback buttons remain in the footer for stable hit-testing and
 /// compatibility with existing interactions.
-fn pending_changes_bar(state: &crate::AppState, muted: rune::Color, well: rune::Color) -> El {
+fn pending_changes_bar(
+    state: &crate::AppState, muted: rune::Color, well: rune::Color,
+) -> Option<El> {
     let dirty = state.grid.dirty_cells();
     if dirty == 0 || state.grid.read_only_reason().is_some() {
-        return row().key("pending-changes-bar").w_full().h(0.0);
+        // A zero-height child would still consume a panel gap.
+        return None;
     }
     let mut bar = row()
         .key("pending-changes-bar")
@@ -304,7 +307,7 @@ fn pending_changes_bar(state: &crate::AppState, muted: rune::Color, well: rune::
             .child(text(t("tableData.preview")).font(label_style()).color(muted))
             .on_press(|state: &mut crate::AppState| state.request_cell_preview()));
     }
-    bar
+    Some(bar)
 }
 
 /// T5: foreign-key navigation bar with A4 breadcrumb trail.
