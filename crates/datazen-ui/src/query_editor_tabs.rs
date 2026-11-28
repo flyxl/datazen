@@ -12,6 +12,7 @@ use crate::{state_def::AppState, types::Section, sql_editor::SqlEditor};
 type EditorScroll = Rc<Cell<[f32; 2]>>;
 
 /// The callback and its internal scroll anchor belong to the same draft.
+#[derive(Clone)]
 pub(crate) struct QueryEditorViewport {
     pub anchor: String,
     pub offset: EditorScroll,

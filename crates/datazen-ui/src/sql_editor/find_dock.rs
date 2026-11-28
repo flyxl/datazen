@@ -166,7 +166,11 @@ pub(super) fn panel(
     editor: &SqlEditor, ink: rune::Color, dark: bool,
     owner: Option<crate::query_editor_tabs::QueryEditorViewport>,
 ) -> El {
-    let all = owner.map(|owner| {
+    const INSET_X: f32 = 6.0;
+    const INSET_Y: f32 = 3.0;
+    const ROW_H: f32 = 22.0;
+    const CLOSE_SIZE: f32 = 20.0;
+    let all = owner.clone().map(|owner| {
         let label = t("query.nativeFind.selectAllMatches");
         button("sql-find-select-all-matches", t("query.nativeFind.all"), ink, dark)
             .label(label).help(label)
@@ -181,12 +185,28 @@ pub(super) fn panel(
         text(t("query.nativeFind.unsafeUnicode")).key("sql-find-unsafe-unicode")
             .role("status").font(rune::tok::type_::LABEL).color(k.c.danger.fg)
     });
-    col().key("sql-find-bar").w_full().h(52.0).min_w(0.0).gap(2.0).px(6.0).py(3.0)
+    // CodeMirror pins Close at the top right, last in keyboard order.
+    // Reserve a separate lane so scrollable controls cannot pass under it.
+    let close_label = t("resultFind.close");
+    let close_button = row()
+        .key("sql-find-close")
+        .pin(None, Some(INSET_Y + (ROW_H - CLOSE_SIZE) / 2.0), Some(INSET_X), None)
+        .size(CLOSE_SIZE, CLOSE_SIZE)
+        .center().radius(4.0).hover(k.c.surface_raised)
+        .role("button").label(close_label).help(close_label).focusable(true)
+        .child(text("×").font(rune::tok::type_::LABEL).color(ink).a11y_hidden())
+        .on_press_tx(move |state: &mut AppState, tx| {
+            if state.sql.find_open && owner.as_ref().is_none_or(|owner| owner.owns_current_query(state)) {
+                close(state, tx);
+            }
+        });
+    col().key("sql-find-bar").w_full().h(52.0).min_w(0.0).gap(2.0).px(INSET_X).py(INSET_Y)
         .role("group").label(t("query.nativeFind.open"))
         .fill(k.c.bg_deep).border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base)
         .on_key(panel_key)
-        .child(
-            row().w_full().min_w(0.0).h(22.0).gap(6.0).center_y().scroll_x()
+        .child(row().w_full().min_w(0.0).h(ROW_H).pr(CLOSE_SIZE + INSET_X).child(
+            row().key("sql-find-conditions-scroll").grow(1.0).min_w(0.0).h(ROW_H)
+                .gap(INSET_X).center_y().scroll_x()
                 .child(field(FIND_INPUT, &editor.find_input, t("query.nativeFind.find"), dark)
                     .on_edit(|state: &mut AppState| &mut state.sql.find_input)
                     .on_change(|state: &mut AppState, _| state.sql.find_unsafe_range = false)
@@ -208,9 +228,8 @@ pub(super) fn panel(
                         state.sql.find_whole_word = !state.sql.find_whole_word;
                         state.sql.find_unsafe_range = false;
                     }).build(k).h(22.0))
-                .child(button("sql-find-close", t("resultFind.close"), ink, dark).on_press_tx(close))
                 .children(warning)
-        )
+        ))
         .child(
             row().w_full().min_w(0.0).h(22.0).gap(6.0).center_y().scroll_x()
                 .child(field("sql-replace-input", &editor.replace_input, t("resultFind.replacementPlaceholder"), dark)
@@ -223,4 +242,5 @@ pub(super) fn panel(
                 .child(button("sql-add-cursor", t("query.nativeFind.addCursor"), ink, dark)
                     .on_press(|state: &mut AppState| state.sql.add_cursor_at_end()))
         )
+        .child(close_button)
 }

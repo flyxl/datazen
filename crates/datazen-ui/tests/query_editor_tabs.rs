@@ -518,6 +518,77 @@ fn dock_find_wraps_the_only_match_and_navigates_overlapping_matches_by_edge() {
 }
 
 #[test]
+fn find_close_is_a_fixed_accessible_corner_action_in_both_themes_and_narrow_docks() {
+    for (w, h) in [(1440.0, 900.0), (720.0, 640.0)] {
+        for dark in [false, true] {
+            let mut rt = Runtime::new(AppState::default(), view, (w, h), Env { system_dark: dark, scale: 1.0 });
+            rt.on_key = Some(app_key);
+            rt.state.workspace.connect("local").unwrap();
+            let tab_id = rt.state.open_query_tab("Native Find").unwrap();
+            let sql = "SELECT 'xcat' AS prefix, 'cat' AS standalone;";
+            rt.state.sql = sql_editor::SqlEditor::from_doc(sql);
+            rt.settle_all();
+            rt.frame(0.0);
+            tap(&mut rt, "sql-editor-scroll");
+            let command = Mods { cmd: true, ..Mods::default() };
+            key(&mut rt, Key::Command('f'), command);
+            key(&mut rt, Key::Text("cat".into()), Mods::default());
+
+            let info = |rt: &Runtime<AppState>, key: &str| rt.elements().into_iter()
+                .find(|node| !node.exiting && node.key.as_deref() == Some(key))
+                .unwrap_or_else(|| panic!("visible {key} at {w}x{h}, dark={dark}"));
+            let dock = info(&rt, "sql-find-bar").rect;
+            let first = info(&rt, "sql-find-conditions-scroll").rect;
+            let input = info(&rt, "sql-find-input").rect;
+            let replace = info(&rt, "sql-replace-input").rect;
+            let close = info(&rt, "sql-find-close");
+            let button = close.rect;
+            assert_eq!(close.role, "button");
+            assert!(close.focusable && !close.inert);
+            assert_eq!(close.label.as_deref(), Some(i18n::t("resultFind.close")));
+            assert_eq!(close.visible, button);
+            assert_eq!((button[2], button[3]), (20.0, 20.0));
+            assert!((dock[0] + dock[2] - (button[0] + button[2]) - 6.0).abs() < 0.5);
+            assert!(first[0] + first[2] + 5.5 <= button[0], "scroll clip leaves the corner clear");
+            assert!((button[1] + button[3] / 2.0 - (input[1] + input[3] / 2.0)).abs() <= 1.01);
+            assert!(button[1] + button[3] < replace[1], "not in the Replace row");
+            assert!(rt.elements().iter().any(|n| n.text.as_deref() == Some("×") && !n.exiting
+                && n.path.starts_with(&format!("{}/", close.path))));
+            assert!(rt.find("sql-add-cursor").is_some());
+            assert!(rt.find("sql-find-select-all-matches").is_some());
+
+            let (close_x, close_y) = (button[0] + button[2] / 2.0, button[1] + button[3] / 2.0);
+            if w < 800.0 {
+                let whole_before = info(&rt, "sql-find-whole-word");
+                assert!(whole_before.visible[2] < whole_before.rect[2], "narrow row really clips");
+                let (x, y) = rt.find("sql-find-conditions-scroll").unwrap();
+                rt.wheel_xy(x, y, -500.0, 0.0);
+                rt.frame(0.15);
+                let whole = info(&rt, "sql-find-whole-word");
+                assert!(whole.scrolled[0] > 0.0 && whole.visible[2] > 0.0, "whole word remains reachable");
+                assert_eq!(info(&rt, "sql-find-close").rect, button);
+                tap_point(&mut rt, whole.visible[0] + whole.visible[2] / 2.0, whole.visible[1] + whole.visible[3] / 2.0);
+                key(&mut rt, Key::Function(3), Mods::default());
+                assert_eq!(rt.state.sql.selection().main().from(), sql.rfind("cat").unwrap());
+            }
+            // Use the original point so a Close hitbox accidentally riding
+            // horizontal wheel motion cannot pass this interaction.
+            tap_point(&mut rt, close_x, close_y);
+            assert!(rt.find("sql-find-bar").is_none());
+            assert!(rt.state.sql.focused());
+            assert_eq!(rt.state.tabs.selected().unwrap().id, tab_id);
+            key(&mut rt, Key::Command('f'), command);
+            assert!(rt.find("sql-find-bar").is_some());
+            key(&mut rt, Key::Escape, Mods::default());
+            assert!(rt.find("sql-find-bar").is_none() && rt.state.sql.focused());
+            assert_eq!(rt.state.sql.doc(), sql);
+            assert!(rt.state.sql.undo_stack.is_empty());
+            assert!(rt.state.query_result_tabs.is_empty());
+        }
+    }
+}
+
+#[test]
 fn dock_literal_short_multiline_selection_seeds_the_live_search_field() {
     let mut rt = runtime();
     rt.on_key = Some(app_key);

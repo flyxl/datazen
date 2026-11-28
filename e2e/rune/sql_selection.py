@@ -676,6 +676,73 @@ class SqlSelectionJourneys:
         self.assertEqual(self.sql_customer_rows(), original_rows)
         self.assertEqual(self.db.read_bytes(), original_db)
 
+    def test_editor_find_close_corner_stays_clickable_at_wide_and_narrow_width_in_both_themes(self):
+        original_rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        original_db = self.db.read_bytes()
+
+        sql = "SELECT 'xcat' AS prefix, 'cat' AS standalone;"
+        enter = query_steps(sql)[:-1]
+        enter[-1] = {"t": 4.8, "type": "paste", "text": sql}
+        find = [*enter, key(6.35, "f", cmd=True),
+                {"t": 6.85, "type": "paste", "text": "cat"}]
+        settings = self.root / "settings.json"
+        dock_colors = {}
+        for theme in ("light", "dark"):
+            settings.write_text(json.dumps({"ui": {"language": "en", "themeMode": theme}}), encoding="utf-8")
+            settings.chmod(0o600)
+            for size in ("1440x900", "720x640"):
+                with self.subTest(theme=theme, size=size):
+                    opened = self.replay(find, until=7.4, size=size)
+                    dock = self._settled_rect(opened, "sql-find-bar")
+                    dock_colors[theme, size] = next(n["fill"] for n in opened["elements"]
+                                                    if n.get("key") == "sql-find-bar" and not n.get("exiting"))
+                    first = self._settled_rect(opened, "sql-find-conditions-scroll")
+                    field = self._settled_rect(opened, "sql-find-input")
+                    replace = self._settled_rect(opened, "sql-replace-input")
+                    close = self._settled_rect(opened, "sql-find-close")
+                    button = next(n for n in opened["elements"]
+                                  if n.get("key") == "sql-find-close" and not n.get("exiting"))
+                    self.assertEqual(button["role"], "button")
+                    self.assertEqual(button["label"], "Close find")
+                    self.assertTrue(button["focusable"])
+                    self.expect_rendered(opened, text="×", within="sql-find-close")
+                    self.expect_rendered(opened, text="cat", within="sql-find-input")
+                    self.assertEqual(close[2:], [20.0, 20.0])
+                    self.assertAlmostEqual(dock[0] + dock[2] - close[0] - close[2], 6.0, delta=.5)
+                    self.assertGreaterEqual(close[0] - first[0] - first[2], 5.5)
+                    self.assertAlmostEqual(close[1] + close[3] / 2, field[1] + field[3] / 2, delta=1.01)
+                    self.assertLess(close[1] + close[3], replace[1])
+                    self.assertFalse(visible(opened, key="result-workspace"))
+
+                    if size == "720x640":
+                        right = first[0] + first[2]
+                        # Raw shape, since it is allowed to begin outside the
+                        # visible scroll viewport before a wheel.
+                        whole = next(n["rect"] for n in opened["elements"]
+                                     if n.get("key") == "sql-find-whole-word" and not n.get("exiting"))
+                        self.assertGreater(whole[0] + whole[2], right)
+                        wheel = {"t": 7.65, "type": "wheel", "key": "sql-find-conditions-scroll", "dx": -500}
+                        physical_close = {"t": 8.3, "type": "tap", "x": close[0] + close[2] / 2,
+                                          "y": close[1] + close[3] / 2}
+                        closed = self.replay([*find, wheel, physical_close], until=8.95, size=size)
+                        self.assertFalse(visible(closed, key="sql-find-bar"))
+                        self.assertFalse(visible(closed, key="result-workspace"))
+                        self.assertTrue(any(n.get("key") == "sql-editor-scroll" and n.get("focused")
+                                            and not n.get("exiting") for n in closed["elements"]))
+
+        for size in ("1440x900", "720x640"):
+            self.assertNotEqual(dock_colors["light", size], dock_colors["dark", size])
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_bytes()))
+        self.assertEqual(self.sql_customer_rows(), original_rows)
+        self.assertEqual(self.db.read_bytes(), original_db)
+
     def test_editor_literal_escape_search_selects_across_lines_and_replaces_real_sql(self):
         original_rows = self.sql_fixture_before()
         profile = json.loads(self.store.read_text(encoding="utf-8"))
