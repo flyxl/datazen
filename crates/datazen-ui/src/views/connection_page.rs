@@ -179,7 +179,7 @@ fn plain_content_view(vm: &crate::views::content_view::ContentViewVm) -> bool {
 }
 
 /// React's plain table pane starts immediately below its toolbar and tabs.
-fn plain_live_sqlite_table(state: &AppState, vm: &crate::views::content_view::ContentViewVm) -> bool {
+pub(super) fn plain_live_sqlite_table(state: &AppState, vm: &crate::views::content_view::ContentViewVm) -> bool {
     super::workspace::live_sqlite_table_page(state) && plain_content_view(vm)
 }
 

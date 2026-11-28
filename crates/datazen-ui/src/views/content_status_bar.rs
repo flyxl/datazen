@@ -139,13 +139,28 @@ impl StatusBarVm {
 ///
 /// React `ContentStatusBar.tsx:69`: `border-t border-edge bg-surface-alt px-4
 /// text-xs text-fg-secondary`, with the centre and shortcut clusters in
-/// `text-fg-muted` and the state dot in `bg-success`. The kit mapping is the
-/// same one `components/status_bar.rs` uses (`surface-alt` → `layer_01`,
-/// `edge` → `border_base`), so light and dark both resolve from one palette.
+/// `text-fg-muted` and the state dot in `bg-success`. The default here keeps
+/// the existing native paint for callers outside the matched live table.
 #[allow(dead_code)] // reusable component; mounted by chrome::content_status_bar
 pub fn build(vm: &StatusBarVm, dark: bool) -> El {
+    build_with_live_table_paint(vm, dark, false)
+}
+
+pub(super) fn build_with_live_table_paint(
+    vm: &StatusBarVm, dark: bool, live_table_data: bool,
+) -> El {
     let k = kit(dark);
-    let dot = if vm.connected { k.c.success.bg } else { k.c.text_faint };
+    let live_connected = live_table_data && vm.connected && !vm.has_kv_slot;
+    let surface = if live_connected { k.c.layer_02 } else { k.c.layer_01 };
+    // The connection indicator is a solid success mark, not the tinted
+    // background used behind status messages by the kit.
+    let dot = if live_connected {
+        k.c.success.icon
+    } else if vm.connected {
+        k.c.success.bg
+    } else {
+        k.c.text_faint
+    };
     let mut bar = row()
         .key("content-status-bar")
         .role("status")
@@ -155,7 +170,7 @@ pub fn build(vm: &StatusBarVm, dark: bool) -> El {
         .px(16.0)
         .center_y()
         .border_sides([1.0, 0.0, 0.0, 0.0], k.c.border_base)
-        .fill(k.c.layer_01)
+        .fill(surface)
         .child(
             row()
                 .gap(8.0)

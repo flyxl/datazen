@@ -278,6 +278,12 @@ pub fn theme_toggle_slot(state: &AppState, dark: bool, layer: &mut Vec<El>) -> E
 /// Shows connection state, context counts (table/columns/rows) when available,
 /// and shortcut hints.
 pub fn content_status_bar(state: &AppState, dark: bool) -> El {
+    content_status_bar_with_live_table_paint(state, dark, false)
+}
+
+pub(super) fn content_status_bar_with_live_table_paint(
+    state: &AppState, dark: bool, live_table_data: bool,
+) -> El {
     // Kept in this file because the T0-03 sweep pins the call count here.
     let connected_label = t("conn.connected").to_owned();
     let profile = state.desktop_connection.as_ref().and_then(|id| {
@@ -337,5 +343,5 @@ pub fn content_status_bar(state: &AppState, dark: bool) -> El {
         // Keeps the legacy English shortcut copy pinned by chrome_metrics.
         shortcuts_override: Some("⌘N New query · ⌘W Close".to_owned()),
     };
-    crate::views::content_status_bar::build(&vm, dark)
+    crate::views::content_status_bar::build_with_live_table_paint(&vm, dark, live_table_data)
 }

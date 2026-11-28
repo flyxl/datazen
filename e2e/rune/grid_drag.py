@@ -465,11 +465,23 @@ class GridDragJourney:
         self.db.chmod(0o400)
         original = self.db.read_bytes()
         settings = self.root / "settings.json"
-        settings.write_text(json.dumps({
-            "ui": {"language": "en", "themeMode": "light", "tablePageSize": 100},
-            "rowCountMode": "exact", "defaultTableSort": "primaryKeyAsc",
-        }), encoding="utf-8")
-        settings.chmod(0o600)
+
+        def save_theme(theme):
+            settings.write_text(json.dumps({
+                "ui": {"language": "en", "themeMode": theme, "tablePageSize": 100},
+                "rowCountMode": "exact", "defaultTableSort": "primaryKeyAsc",
+            }), encoding="utf-8")
+            settings.chmod(0o600)
+
+        save_theme("light")
+
+        def expect_status_colors(tree, surface, dot):
+            self.expect_rendered(tree, key="status-connection-label", text="Connected")
+            for key, expected in (("content-status-bar", surface), ("status-connection-dot", dot)):
+                bounds = self._settled_rect(tree, key)
+                nodes = [node for node in tree["elements"] if node.get("key") == key
+                         and node["rect"] == bounds and not node.get("exiting")]
+                self.assertEqual([node.get("fill") for node in nodes], [expected], key)
 
         def grid_a11y(tree, target):
             def visit(node):
@@ -531,6 +543,7 @@ class GridDragJourney:
         table = self.replay([*OPEN, tap(4.8, "cell-1-1")], until=5.6)
         view, initial = bars(table, "")
         tall_frame = table_frame(table)
+        expect_status_colors(table, "#f1f5f9ff", "#18b77aff")
         self.assertEqual(initial["scroll"][:2], [0, 0])
         self.assertGreater(initial["scroll"][2], 0)
         self.assertEqual(initial["activeDescendant"], "cell-1-1")
@@ -538,7 +551,10 @@ class GridDragJourney:
         self.expect_rendered(table, key="data-grid-status",
                              text="41×17 · window at column 0 · selection r1c1..r1c1 · 0 dirty")
 
+        save_theme("dark")
         short = self.replay(OPEN, until=5.3, size="1440x640")
+        expect_status_colors(short, "#0e121bff", "#5fd08aff")
+        save_theme("light")
         short_frame = table_frame(short)
         bars(short, "")
         self.assertEqual(short_frame[:3], tall_frame[:3])
@@ -569,6 +585,7 @@ class GridDragJourney:
             tap(10.8, "result-cell-1-1"),
         ], until=11.6)
         _, query_state = bars(query, "result-")
+        expect_status_colors(query, "#f6f8fbff", "#dcf7e1ff")
         self.assertEqual(self._settled_rect(query, "result-data-grid-scroll-scroll-area")[3], 200)
         self.assertEqual(query_state["activeDescendant"], "result-cell-1-1")
         self.expect_rendered(query, text="fixture-lin", within="result-cell-1-1")

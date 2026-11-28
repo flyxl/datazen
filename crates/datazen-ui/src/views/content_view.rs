@@ -214,12 +214,14 @@ pub fn build(
     }
     root = root.child(main);
 
-    if vm.react_status_gate && vm.show_status_bar() {
-        root = root.child(super::content_status_bar(state, dark));
-    } else if vm.react_status_gate {
-        root = root.child(row().key("content-status-bar-absent").h(0.0));
+    if !vm.react_status_gate || vm.show_status_bar() {
+        let live_table_data = state.table_view == crate::types::TableView::Data
+            && super::connection_page::plain_live_sqlite_table(state, vm);
+        root = root.child(super::chrome::content_status_bar_with_live_table_paint(
+            state, dark, live_table_data,
+        ));
     } else {
-        root = root.child(super::content_status_bar(state, dark));
+        root = root.child(row().key("content-status-bar-absent").h(0.0));
     }
 
     // React's seven dialogs. The host has no state slice for their open flags
