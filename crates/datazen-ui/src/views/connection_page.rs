@@ -287,15 +287,18 @@ fn connection_titlebar(
                 .h(28.0)
                 .w(28.0)
                 .center()
-                .radius(6.0)
-                .hover(c.titlebar_hover)
+                .radius(if dark { 10.0 } else { 9.0 })
+                .hover(c.surface_raised)
+                .hover_group()
                 .role("button")
                 .label(t("common.back"))
                 .focusable(true)
                 .on_press(AppState::leave_settings)
                 .child(
-                    rune::icon(&crate::icons::ICON_CHEVRON_LEFT, 16.0)
-                        .color(c.titlebar_fg_muted),
+                    rune::icon(&crate::icons::ICON_ARROW_LEFT, 16.0)
+                        .key("settings-back-icon")
+                        .color(c.fg_secondary)
+                        .group_color(c.fg),
                 ),
         );
     }

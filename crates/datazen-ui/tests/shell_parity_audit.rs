@@ -65,3 +65,41 @@ fn settings_shows_its_original_localized_title_and_leading_back_button() {
     assert_eq!(title.text.as_deref(), Some(datazen_ui::i18n::t("win.settings")));
     assert_title_is_centered(&rt);
 }
+
+// ConnectionPage's Back button uses surface tokens, not the menu's titlebar inks.
+// Hover the button padding (outside the SVG): the entire hit target must tint it.
+#[test]
+fn settings_back_glyph_tracks_the_button_hover_in_both_themes() {
+    for (dark, normal, hovered, radius) in [
+        (false, "#58708dff", "#26364dff", 9.0),
+        (true, "#8b94a7ff", "#e6eaf2ff", 10.0),
+    ] {
+        let mut rt = Runtime::new(
+            AppState::default(),
+            view,
+            (1440.0, 900.0),
+            Env { system_dark: dark, scale: 1.0 },
+        );
+        rt.state.open_settings(None);
+        settle(&mut rt);
+        let node = |rt: &Runtime<AppState>, key: &str| {
+            rt.elements().into_iter()
+                .find(|e| !e.exiting && e.key.as_deref() == Some(key))
+                .unwrap_or_else(|| panic!("missing {key}"))
+        };
+        let back = node(&rt, "settings-back");
+        assert!(back.focusable);
+        assert_eq!(back.radius, radius);
+        let initial = node(&rt, "settings-back-icon");
+        assert_eq!(initial.rect, [18.0, 12.0, 16.0, 16.0]);
+        assert_eq!(initial.text_color.unwrap().hex(), normal);
+
+        let [x, y, _, _] = back.rect;
+        rt.pointer_move(x + 3.0, y + 14.0);
+        settle(&mut rt);
+        assert_eq!(node(&rt, "settings-back-icon").text_color.unwrap().hex(), hovered);
+        rt.pointer_move(x + 3.0, y + 40.0);
+        settle(&mut rt);
+        assert_eq!(node(&rt, "settings-back-icon").text_color.unwrap().hex(), normal);
+    }
+}
