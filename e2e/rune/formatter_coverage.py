@@ -125,15 +125,17 @@ def main():
     if args.native_only:
         return 0
     from formatter_coverage_mixed import mixed_report
-    reports = mixed_report(CRATE.parent / "e2e", out, binary, raws,
+    reports, physical = mixed_report(CRATE.parent / "e2e", out, binary, raws,
                            args.formatter_rlib.resolve(strict=True), args.reference.resolve(strict=True),
                            profdata, cov, summarize, digest)
     if digest(binary) != initial:
         raise SystemExit("Native executable changed during measurement")
     for label, row in reports.items():
         print(f"{label}: {row['covered']}/{row['count']} ({row['percent']:.2f}%)")
-    total = reports["combined"]
-    return 0 if args.report_only or total["covered"] * 100 >= total["count"] * 99 else 1
+    for label, row in physical.items():
+        print(f"{label} unique physical lines: {row['covered']}/{row['count']} ({row['percent']:.2f}%)")
+    thresholds = [reports["combined"], physical["combined"]]
+    return 0 if args.report_only or all(row["covered"] * 100 >= row["count"] * 99 for row in thresholds) else 1
 
 
 if __name__ == "__main__":

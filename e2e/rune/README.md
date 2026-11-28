@@ -144,7 +144,9 @@ The mixed total is not an E2E-only percentage. Use `--native-only` without
 `--report-only` to report a below-threshold mixed measurement without accepting
 a failed case. See [public consumer acceptance](../../crates/datazen-sql-formatter/e2e/README.md).
 `llvm-cov`'s file-summary lines and the distinct physical line keys in exported
-LCOV `DA` records are different metrics; never add their counts.
+LCOV `DA` records are different metrics; never add their counts. The combined
+gate checks the logical OR on the same physical source-line keys and requires
+both combined metrics to reach 99%.
 
 ## Opt-in real Redis UI
 
