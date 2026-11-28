@@ -376,6 +376,9 @@ fn home_header(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 filter = filter.child(
                     row()
                         .key("home-connections-filter-clear")
+                        .role("button")
+                        .focusable(true)
+                        .focus_ring(2.0, 0.0, accent)
                         .size(16.0, 16.0)
                         .center()
                         .label(t("connWin.home.connections.clearFilter"))
@@ -429,13 +432,17 @@ fn connection_cards(
     dark: bool,
     connections: &[ConnectionProfile],
 ) -> El {
-    let needle = state.connection_search.display().0.trim().to_lowercase();
+    let display_query = state.connection_search.display().0;
+    let entered = display_query.trim();
+    let needle = entered.to_lowercase();
     let matched: Vec<&ConnectionProfile> = connections
         .iter()
         .filter(|profile| {
             needle.is_empty()
                 || profile.name.to_lowercase().contains(&needle)
                 || profile.engine.to_lowercase().contains(&needle)
+                || engine_label(&profile.engine).to_lowercase().contains(&needle)
+                || profile.host.as_deref().is_some_and(|host| host.to_lowercase().contains(&needle))
                 || profile.id.to_lowercase().contains(&needle)
         })
         .collect();
@@ -459,7 +466,7 @@ fn connection_cards(
         .border(1.0, theme.card_border)
         .clip_rounded(12.0);
     if total == 0 {
-        cards = cards.child(no_match_state(theme, &needle));
+        cards = cards.child(no_match_state(theme, entered));
         return section.child(cards);
     }
     for (index, profile) in matched.iter().take(visible_count).enumerate() {
@@ -542,7 +549,7 @@ fn connection_cards(
         cards = cards.child(card);
     }
     section = section.child(cards);
-    if total > COLLAPSED_COUNT {
+    if total > COLLAPSED_COUNT || state.connections_show_all {
         section = section.child(paging_row(state, theme, visible_count, total));
     }
     section
@@ -576,6 +583,9 @@ fn paging_row(state: &AppState, theme: tok::Theme, visible_count: usize, total: 
         .child(
             row()
                 .key("connections-show-all")
+                .role("button")
+                .focusable(true)
+                .focus_ring(2.0, 0.0, theme.text_secondary)
                 .child(react_key("home-connections-show-all"))
                 .h(22.0)
                 .px(8.0)
@@ -610,7 +620,7 @@ fn no_match_state(theme: tok::Theme, needle: &str) -> El {
                 .color(theme.text_secondary),
         )
         .child(
-            text("Try a different name, engine or id.")
+            text(t("common.importConnections"))
                 .font(type_::LABEL)
                 .color(theme.text_secondary),
         )
