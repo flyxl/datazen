@@ -1,13 +1,14 @@
 use std::{
     io::{self, Read, Write},
     net::Shutdown,
+    ops::Range,
     os::{fd::OwnedFd, unix::{net::UnixStream, process::CommandExt}},
     process::{Child, Command, Stdio},
     thread,
     time::{Duration, Instant},
 };
 
-use crate::{Error, Outcome, Request, WORKER_ARG, isolation, protocol};
+use crate::{Error, HighlightRequest, Outcome, Request, WORKER_ARG, isolation, protocol};
 
 const MAX_DURATION: Duration = Duration::from_secs(1);
 const WAIT: Duration = Duration::from_millis(1);
@@ -19,13 +20,32 @@ const WAIT: Duration = Duration::from_millis(1);
 pub fn search(request: Request<'_>, timeout: Duration) -> Result<Outcome, Error> {
     let deadline = Instant::now() + timeout.min(MAX_DURATION);
     let encoded = protocol::encode_request(&request)?;
-    let mut wire = Vec::with_capacity(encoded.len() + 4);
-    protocol::write_frame(&mut wire, &encoded).map_err(|_| Error::Unavailable)?;
-    let mut link = ChildLink::launch(deadline)?;
-    let reply = link.transfer(&wire, deadline)?;
+    let reply = transmit(&encoded, deadline, protocol::MAX_REPLY)?;
     let result = protocol::decode_reply(&request, &reply);
     until(deadline)?;
     result
+}
+
+/// Find passive visible marks in a new restricted child. Uses CodeMirror's
+/// +/-250 UTF-16 margin, clipped to the document; no selection or edits can
+/// be returned. A UTF-16 margin that bisects a scalar is refused rather
+/// than fabricating a lone surrogate or searching a different window.
+pub fn highlight(
+    request: HighlightRequest<'_>,
+    timeout: Duration,
+) -> Result<Vec<Range<usize>>, Error> {
+    let deadline = Instant::now() + timeout.min(MAX_DURATION);
+    let (encoded, window) = protocol::passive::encode_request(&request)?;
+    let reply = transmit(&encoded, deadline, protocol::passive::MAX_REPLY)?;
+    let result = protocol::passive::decode_reply(request.document, window, &reply);
+    until(deadline)?;
+    result
+}
+
+fn transmit(encoded: &[u8], deadline: Instant, max_reply: usize) -> Result<Vec<u8>, Error> {
+    let mut wire = Vec::with_capacity(encoded.len() + 4);
+    protocol::write_frame(&mut wire, encoded).map_err(|_| Error::Unavailable)?;
+    ChildLink::launch(deadline)?.transfer(&wire, deadline, max_reply)
 }
 
 struct KillAndReap(Child);
@@ -74,7 +94,12 @@ impl ChildLink {
         Ok(Self { parent, child })
     }
 
-    fn transfer(&mut self, request: &[u8], deadline: Instant) -> Result<Vec<u8>, Error> {
+    fn transfer(
+        &mut self,
+        request: &[u8],
+        deadline: Instant,
+        max_reply: usize,
+    ) -> Result<Vec<u8>, Error> {
         // A failed kernel restriction must never result in transmitting the
         // user's document to a running, unrestricted matching process.
         let mut ready = [0u8; 1];
@@ -111,12 +136,12 @@ impl ChildLink {
                 match self.parent.read(&mut chunk) {
                     Ok(0) => eof = true,
                     Ok(n) => {
-                        if reply.len() + n > protocol::MAX_REPLY + 4 {
+                        if reply.len() + n > max_reply + 4 {
                             return Err(Error::InvalidReply);
                         }
                         reply.extend_from_slice(&chunk[..n]);
                         if let Some(len) = length(&reply)
-                            && (len == 0 || len > protocol::MAX_REPLY || reply.len() > len + 4)
+                            && (len == 0 || len > max_reply || reply.len() > len + 4)
                         {
                             return Err(Error::InvalidReply);
                         }
@@ -180,7 +205,7 @@ mod tests {
         fake_peer.write_all(&[protocol::READY, 7, 0, 0, 0, 1]).unwrap();
         let mut link = ChildLink { parent, child: KillAndReap(child) };
         assert_eq!(
-            link.transfer(&[0], Instant::now() + Duration::from_millis(30)),
+            link.transfer(&[0], Instant::now() + Duration::from_millis(30), protocol::MAX_REPLY),
             Err(Error::TimedOut)
         );
         drop(link);
@@ -196,10 +221,10 @@ mod tests {
         parent.set_nonblocking(true).unwrap();
         let child = Command::new("/bin/sleep").arg("5").env_clear().spawn().unwrap();
         fake_peer.write_all(&[protocol::READY]).unwrap();
-        fake_peer.write_all(&((protocol::MAX_REPLY as u32) + 1).to_le_bytes()).unwrap();
+        fake_peer.write_all(&((protocol::passive::MAX_REPLY as u32) + 1).to_le_bytes()).unwrap();
         let mut link = ChildLink { parent, child: KillAndReap(child) };
         assert_eq!(
-            link.transfer(&[0], Instant::now() + Duration::from_secs(1)),
+            link.transfer(&[0], Instant::now() + Duration::from_secs(1), protocol::passive::MAX_REPLY),
             Err(Error::InvalidReply)
         );
     }

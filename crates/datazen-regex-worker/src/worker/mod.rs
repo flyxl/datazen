@@ -1,6 +1,6 @@
-use std::{io::{self, Read, Write}, process::ExitCode};
+use std::{io::{self, Read, Write}, ops::Range, process::ExitCode};
 
-use crate::{Edit, Error, Operation, Outcome, Request, isolation, protocol};
+use crate::{Edit, Error, HIGHLIGHT_MAX_MARKS, HighlightRequest, Operation, Outcome, Request, isolation, protocol};
 
 mod regex_cursor;
 mod regex_replacement;
@@ -29,18 +29,36 @@ fn serve() -> io::Result<()> {
     if input.read(&mut [0])? != 0 {
         return Err(io::ErrorKind::InvalidData.into());
     }
-    let request = protocol::decode_request(&bytes).map_err(|_| io::ErrorKind::InvalidData)?;
-    let result = execute(&request);
-    let reply = protocol::encode_reply(request.operation, result)
-        .map_err(|_| io::ErrorKind::InvalidData)?;
+    let reply = if protocol::passive::is_highlight(&bytes) {
+        let (request, window) = protocol::passive::decode_request(&bytes)
+            .map_err(|_| io::ErrorKind::InvalidData)?;
+        protocol::passive::encode_reply(mark(&request, window))
+    } else {
+        let request = protocol::decode_request(&bytes).map_err(|_| io::ErrorKind::InvalidData)?;
+        protocol::encode_reply(request.operation, execute(&request))
+    }.map_err(|_| io::ErrorKind::InvalidData)?;
     protocol::write_frame(&mut output, &reply)
 }
 
+fn engine(pattern: &str, case_sensitive: bool) -> Result<regress::Regex, Error> {
+    regress::Regex::with_flags(
+        pattern,
+        regress::Flags { unicode: true, multiline: true, icase: !case_sensitive, ..Default::default() },
+    ).map_err(|_| Error::InvalidPattern)
+}
+
+fn mark(request: &HighlightRequest<'_>, window: Range<usize>) -> Result<Vec<Range<usize>>, Error> {
+    let engine = engine(request.pattern, request.case_sensitive)?;
+    let mut policy = Policy::new(request.document, request.pattern, request.whole_word, 32_768)
+        .map_err(cursor_error)?;
+    let mut conversion = WindowCache::default();
+    let mut call = |window: Window<'_>| conversion.search(&engine, window, false);
+    let hits = policy.highlight(window, HIGHLIGHT_MAX_MARKS, &mut call).map_err(cursor_error)?;
+    Ok(hits.into_iter().map(|hit| hit.range).collect())
+}
+
 fn execute(request: &Request<'_>) -> Result<Outcome, Error> {
-    let engine = regress::Regex::with_flags(
-        request.pattern,
-        regress::Flags { unicode: true, multiline: true, icase: !request.case_sensitive, ..Default::default() },
-    ).map_err(|_| Error::InvalidPattern)?;
+    let engine = engine(request.pattern, request.case_sensitive)?;
     let mut policy = Policy::new(
         request.document, request.pattern, request.whole_word, 32_768,
     ).map_err(cursor_error)?;

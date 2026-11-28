@@ -88,13 +88,8 @@ impl<'a> Policy<'a> {
         document: &'a str, pattern: &str, whole_word: bool, calls: usize,
     ) -> Result<Self, Error> {
         if pattern.is_empty() { return Err(Error::Empty); }
-        let b = pattern.as_bytes();
-        // Exact CM source heuristic: this is not a regex-grammar decision.
-        let multiline = b.contains(&b'\n') || b.contains(&b'\r') || b.windows(2).any(|w| {
-            w == b"[^" || (w[0] == b'\\' && b"sWDnr".contains(&w[1]))
-        });
         Ok(Self {
-            doc: Document::new(document)?, multiline, calls,
+            doc: Document::new(document)?, multiline: crate::protocol::multiline_pattern(pattern), calls,
             words: whole_word.then_some(WordBudget(2_000_000)),
         })
     }
@@ -139,7 +134,7 @@ impl<'a> Policy<'a> {
     }
 
     fn visit(
-        &mut self, lo: usize, hi: usize,
+        &mut self, lo: usize, hi: usize, passive: bool,
         engine: &mut impl FnMut(Window<'_>) -> Result<Option<Hit>, Error>,
         mut accept: impl FnMut(Hit) -> Result<bool, Error>,
     ) -> Result<(), Error> {
@@ -159,17 +154,22 @@ impl<'a> Policy<'a> {
                     if (chunk >= hi || to.saturating_add(10) <= chunk)
                         && self.word_accepts(lo, chunk, from, to)? {
                         // CM's line-ended speculative buffer can extend beyond
-                        // hi. Fail closed rather than activate outside range.
-                        if to > hi { return Err(Error::Bounds); }
+                        // hi. Preserve this only for passive marks, which cannot
+                        // select or edit and are clipped again by the renderer.
+                        if !passive && to > hi { return Err(Error::Bounds); }
                         if accept(hit)? { return Ok(()); }
                         pos = self.doc.char_end(to + usize::from(from == to));
                         continue;
                     }
                 }
-                if chunk >= hi { return Ok(()); }
-                let grown = self.doc.chunk_end(lo + (chunk - lo) * 2, hi);
-                if grown <= chunk { return Err(Error::Bounds); }
-                chunk = grown;
+                if chunk == hi || (!passive && chunk > hi) { return Ok(()); }
+                let next = self.doc.chunk_end(lo + (chunk - lo) * 2, hi);
+                // When a speculative line ended beyond hi, pinned CM retries
+                // in the clipped final buffer before it considers itself done.
+                if next <= chunk && !(passive && chunk > hi && next == hi) {
+                    return Err(Error::Bounds);
+                }
+                chunk = next;
             }
         }
 
@@ -202,7 +202,7 @@ impl<'a> Policy<'a> {
         engine: &mut impl FnMut(Window<'_>) -> Result<Option<Hit>, Error>,
     ) -> Result<Option<Hit>, Error> {
         let mut value = None;
-        self.visit(lo, hi, engine, |hit| { value = Some(hit); Ok(true) })?;
+        self.visit(lo, hi, false, engine, |hit| { value = Some(hit); Ok(true) })?;
         Ok(value)
     }
 
@@ -228,7 +228,7 @@ impl<'a> Policy<'a> {
             // sliced buffer, fail rather than invent a lone surrogate in UTF-8.
             let cursor_start = if self.multiline { start } else { self.doc.char_end(start) };
             let mut value = None;
-            self.visit(cursor_start, hi, engine, |hit| { value = Some(hit); Ok(false) })?;
+            self.visit(cursor_start, hi, false, engine, |hit| { value = Some(hit); Ok(false) })?;
             if let Some(hit) = value {
                 if start == lo || self.doc.unit(hit.range.start)? > start + 10 { return Ok(Some(hit)); }
             }
@@ -251,17 +251,24 @@ impl<'a> Policy<'a> {
         &mut self, max: usize,
         engine: &mut impl FnMut(Window<'_>) -> Result<Option<Hit>, Error>,
     ) -> Result<Vec<Hit>, Error> {
-        self.within(0..self.doc.text.len(), max, engine)
+        self.collect(0..self.doc.text.len(), max, false, engine)
     }
 
-    pub(super) fn within(
+    pub(super) fn highlight(
         &mut self, bytes: Range<usize>, max: usize,
+        engine: &mut impl FnMut(Window<'_>) -> Result<Option<Hit>, Error>,
+    ) -> Result<Vec<Hit>, Error> {
+        self.collect(bytes, max, true, engine)
+    }
+
+    fn collect(
+        &mut self, bytes: Range<usize>, max: usize, passive: bool,
         engine: &mut impl FnMut(Window<'_>) -> Result<Option<Hit>, Error>,
     ) -> Result<Vec<Hit>, Error> {
         let mut hits = Vec::new();
         let lo = self.doc.unit(bytes.start)?;
         let hi = self.doc.unit(bytes.end)?;
-        self.visit(lo, hi, engine, |hit| {
+        self.visit(lo, hi, passive, engine, |hit| {
             if hits.len() == max { return Err(Error::Limit); }
             hits.push(hit);
             Ok(false)

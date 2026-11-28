@@ -36,10 +36,20 @@ CR-bearing document, unrepresentable cursor edges, oversized requests or
 results, and worker errors are no-edit results, not approximations.
 The checked golden fixtures are not exhaustive ECMAScript conformance.
 
+Passive marks use a separately tagged, mark-only request and reply. The
+request carries the visible LF UTF-8 byte range; the worker applies the
+stock 250 UTF-16 unit margin at each edge. A wide multiline query can
+speculatively reach the remainder of the line containing the right edge,
+as in the pinned cursor. The host still clips painting to its own visible
+slice. Split UTF-8 viewport edges, a UTF-16 margin between a surrogate pair,
+and more than 1,000 matches return no partial marks. A passive response
+cannot masquerade as a selection or edit response.
+
 Linux verification, after normal Cargo prerequisites:
 
 ```sh
 cargo test --locked -p datazen-regex-worker
 cargo run --locked -p datazen-regex-worker --example worker_smoke
 cargo run --locked -p datazen-regex-worker --example worker_goldens
+cargo run --locked -p datazen-regex-worker --example worker_highlights
 ```

@@ -8,7 +8,7 @@ mod protocol;
 mod transport;
 mod worker;
 
-pub use transport::search;
+pub use transport::{highlight, search};
 pub use worker::worker_main;
 
 /// Dispatch this exact argument before starting the application, rendering, or
@@ -42,6 +42,20 @@ pub struct Request<'a> {
     pub document: &'a str,
     pub pattern: &'a str,
     pub replacement: &'a str,
+}
+
+/// The maximum number of marks from one visible request. Exceeding the
+/// bound is an explicit no-result error, not a truncated set.
+pub const HIGHLIGHT_MAX_MARKS: usize = 1000;
+
+#[derive(Clone, Debug)]
+pub struct HighlightRequest<'a> {
+    /// Ordered visible endpoints in LF-document UTF-8 bytes, before margin.
+    pub viewport: Range<usize>,
+    pub document: &'a str,
+    pub pattern: &'a str,
+    pub case_sensitive: bool,
+    pub whole_word: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

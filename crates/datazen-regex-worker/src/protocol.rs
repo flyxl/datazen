@@ -5,6 +5,8 @@ use std::{
 
 use crate::{Edit, Error, Operation, Outcome, Request};
 
+pub(crate) mod passive;
+
 pub(crate) const READY: u8 = 0x95;
 const VERSION: u8 = 1;
 const DOC: usize = 128 * 1024;
@@ -92,6 +94,14 @@ impl<'a> Reader<'a> {
     }
 }
 
+/// Literal upstream cursor heuristic, not a regex grammar decision.
+pub(crate) fn multiline_pattern(pattern: &str) -> bool {
+    let b = pattern.as_bytes();
+    b.contains(&b'\n')
+        || b.contains(&b'\r')
+        || b.windows(2).any(|w| w == b"[^" || (w[0] == b'\\' && b"sWDnr".contains(&w[1])))
+}
+
 pub(crate) fn wire_size(header: &[u8]) -> Option<usize> {
     Some(u32::from_le_bytes(header.try_into().ok()?) as usize)
 }
@@ -170,13 +180,7 @@ pub(crate) fn encode_reply(
                 w.text(insert)?;
             }
         }
-        Err(error) => w.flag(match error {
-            Error::Empty => 2,
-            Error::InvalidPattern => 3,
-            Error::UnsupportedRange => 4,
-            Error::BudgetExceeded => 5,
-            _ => return Err(Error::InvalidReply),
-        }),
+        Err(error) => w.flag(error_tag(error)?),
     }
     if w.0.len() > MAX_REPLY {
         return Err(Error::BudgetExceeded);
@@ -249,17 +253,31 @@ pub(crate) fn decode_reply(request: &Request<'_>, bytes: &[u8]) -> Result<Outcom
         }
         error => {
             r.end()?;
-            return Err(match error {
-                2 => Error::Empty,
-                3 => Error::InvalidPattern,
-                4 => Error::UnsupportedRange,
-                5 => Error::BudgetExceeded,
-                _ => Error::InvalidReply,
-            });
+            return Err(read_error_tag(error));
         }
     };
     r.end()?;
     Ok(outcome)
+}
+
+fn error_tag(error: Error) -> Result<u8, Error> {
+    Ok(match error {
+        Error::Empty => 2,
+        Error::InvalidPattern => 3,
+        Error::UnsupportedRange => 4,
+        Error::BudgetExceeded => 5,
+        _ => return Err(Error::InvalidReply),
+    })
+}
+
+fn read_error_tag(tag: u8) -> Error {
+    match tag {
+        2 => Error::Empty,
+        3 => Error::InvalidPattern,
+        4 => Error::UnsupportedRange,
+        5 => Error::BudgetExceeded,
+        _ => Error::InvalidReply,
+    }
 }
 
 fn check_range(
