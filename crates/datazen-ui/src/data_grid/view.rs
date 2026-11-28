@@ -214,19 +214,23 @@ pub fn panel(
     well: rune::Color,
     viewport: rune::Color,
     dark: bool,
+    live_sqlite: bool,
 ) -> El {
     let grid = &state.grid;
     let status = status_line(grid);
-    col()
+    let panel = col()
         .key("data-grid")
         .w_full()
         .grow(1.0)
         .min_h(0.0)
-        .gap(8.0)
+        .gap(8.0);
+    let filter = filter_bar(state, ink, muted, well, dark, live_sqlite);
+    let (panel, legacy_filter) = if live_sqlite { (panel.child(filter), None) } else { (panel, Some(filter)) };
+    panel
         .child(text(status).font(label_style()).color(muted).key("data-grid-status"))
         .child(status_banner(state, muted, well))
         .children(pending_changes_bar(state, muted, well))
-        .child(filter_bar(state, ink, muted, well, dark))
+        .children(legacy_filter)
         .child(fk_bar(state, ink, muted, well))
         .child(sheet(grid, GridSlot::Table, ink, viewport, None,
             CellPaint::for_slot(state, GridSlot::Table, dark)))
@@ -508,46 +512,67 @@ pub(super) fn table_page_text(grid: &DataGrid) -> String {
 }
 
 /// One text filter on one column: a column chip that cycles, a text field, the row count.
-fn filter_bar(state: &crate::AppState, ink: rune::Color, muted: rune::Color, well: rune::Color, dark: bool) -> El {
-    let column = state
-        .grid
-        .column_name(state.filter_column)
-        .map(str::to_owned)
-        .unwrap_or_else(|| "-".into());
-    row()
-        .key("grid-filter")
-        .w_full()
-        .h(28.0)
-        .gap(8.0)
+fn filter_bar(
+    state: &crate::AppState,
+    ink: rune::Color,
+    muted: rune::Color,
+    well: rune::Color,
+    dark: bool,
+    live_sqlite: bool,
+) -> El {
+    let column = state.grid.column_name(state.filter_column).unwrap_or("-");
+    let label = text(format!("in: {column}")).font(label_style()).color(ink);
+    let chip = row()
+        .key("filter-column")
+        .h(24.0)
+        .px(8.0)
         .center_y()
-        .child(
-            row()
-                .key("filter-column")
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(well)
-                .child(text(format!("in: {column}")).font(label_style()).color(ink))
-                .on_press(|state: &mut crate::AppState| state.cycle_filter_column()),
-        )
-        .child(
-            TextField::new("filter-input", &state.filter_editor)
-                .height(24.0)
-                .text_style(label_style())
-                .width(220.0)
-                .on_edit(|state: &mut crate::AppState| &mut state.filter_editor)
-                .on_submit(|state: &mut crate::AppState, tx| {
-                    state.apply_filter();
-                    tx.blur();
-                })
-                .build(dark),
-        )
-        .child(
-            text(table_count_text(&state.grid))
-                .font(label_style())
-                .color(muted),
-        )
+        .radius(6.0)
+        .fill(well)
+        .on_press(|state: &mut crate::AppState| state.cycle_filter_column());
+    let field = TextField::new("filter-input", &state.filter_editor)
+        .text_style(label_style())
+        .on_edit(|state: &mut crate::AppState| &mut state.filter_editor)
+        .on_submit(|state: &mut crate::AppState, tx| {
+            state.apply_filter();
+            tx.blur();
+        });
+    let count = text(table_count_text(&state.grid))
+        .key("grid-filter-count")
+        .font(label_style())
+        .color(muted);
+    let bar = row().key("grid-filter").w_full().gap(8.0).center_y();
+    if live_sqlite {
+        let k = crate::ui::kit::kit(dark);
+        let contains = t("filter.contains");
+        // The first Table Data row is the filter toolbar in the original:
+        // 28pt controls, 2pt vertical padding and a 1pt bottom border.
+        // Keep the existing simple contains predicate, not the original
+        // expression editor's grammar or any unconnected toolbar buttons.
+        bar.h(33.0)
+            .px(8.0)
+            .fill(k.c.layer_01)
+            .border_sides([0.0, 0.0, 1.0, 0.0], k.c.border_base)
+            .border_layout()
+            .child(chip.max_w(200.0).label(format!("in: {column}")).child(label.truncate()))
+            .child(count)
+            .child(
+                field.height(28.0)
+                    .grow()
+                    .pad_x(8.0)
+                    .radius(4.0)
+                    .fill(k.c.layer_01)
+                    .border(1.0, k.c.border_base)
+                    .placeholder(contains)
+                    .label(format!("{column}: {contains}"))
+                    .build(dark),
+            )
+    } else {
+        bar.h(28.0)
+            .child(chip.child(label))
+            .child(field.height(24.0).width(220.0).build(dark))
+            .child(count)
+    }
 }
 
 /// Prev / next paging over the table behind the loaded page, and host job markers.

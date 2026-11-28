@@ -186,7 +186,8 @@ pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             // React's DataTable scroll area inherits the parent bg-surface.
             // Give this table canvas that role without changing the status
             // wells, cells, or any query/result-preview surface.
-            let viewport = if live_sqlite_table_page(state) {
+            let live_sqlite = live_sqlite_table_page(state);
+            let viewport = if live_sqlite {
                 crate::ui::theme::colors(dark).surface
             } else {
                 theme.control_off
@@ -198,6 +199,7 @@ pub fn table_workspace(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 theme.control_off,
                 viewport,
                 dark,
+                live_sqlite,
             )
         }
         TableView::Ddl => ddl_view(state, &title, theme),

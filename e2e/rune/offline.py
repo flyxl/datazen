@@ -317,18 +317,22 @@ class OfflineJourneys:
         with sqlite3.connect(self.db) as db:
             expected = db.execute("SELECT customer_name FROM customers WHERE customer_name LIKE ?",
                                   ("%lin%",)).fetchone()[0]
+        original = self.db.read_bytes()
         filtered = [*OPEN, tap(4.5, "filter-column"), *fill(5, "filter-input", "lin"),
                     key(6.1, "Enter")]
         tree = self.replay(filtered, until=7.8)
         self.expect_rendered(tree, text=expected, within="data-grid")
-        self.expect_rendered(tree, text="1 rows", within="grid-filter")
+        self.expect_rendered(tree, key="grid-filter-count", text="1 rows", within="grid-filter")
+        self.expect_rendered(tree, text='Filter: customer_name contains "lin"', within="grid-filter-active")
         self.assertFalse(visible(tree, text="fixture-ada", within="data-grid"))
 
         tree = self.replay([*filtered, tap(8, "filter-input"), key(8.35, "a", cmd=True),
                             key(8.6, "Backspace"), key(9, "Enter")], until=10.5)
         self.expect_rendered(tree, text="fixture-ada", within="data-grid")
         self.expect_rendered(tree, text=expected, within="data-grid")
-        self.expect_rendered(tree, text="2 rows", within="grid-filter")
+        self.expect_rendered(tree, key="grid-filter-count", text="2 rows", within="grid-filter")
+        self.assertFalse(visible(tree, key="grid-filter-active"))
+        self.assertEqual(self.db.read_bytes(), original)
 
     def test_grid_header_cycles_sort_order(self):
         fixture(self.store, self.db)
