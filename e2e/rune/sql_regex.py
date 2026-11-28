@@ -220,6 +220,51 @@ class RegexJourneys:
         self.assertEqual(draft(restored), sql)
         self.untouched(initial, original, changed, restored)
 
+    def test_duplicate_named_backref_cannot_select_paint_or_corrupt_draft(self):
+        sql = "xbby"
+        # Locked CodeMirror matches "bb" on the second alternative. The old
+        # Regress worker reported individual "b" hits instead. Neither
+        # driving an edit from those spans nor painting them is safe.
+        ambiguous = r"(?:(?<k>a)|(?<k>b))\k<k>"
+        initial, route = self.route(sql, ambiguous, top=True, light=True)
+        status = "sql-find-regex-status"
+
+        def refused(tree):
+            self.assertEqual(draft(tree), sql)
+            self.assertEqual(selection(tree), [])
+            self.assertEqual(self.marks(tree), [])
+            self.expect_rendered(tree, key=status, text="This regular expression is not supported.")
+
+        passive = self.replay(route, until=9.45)
+        self.assertEqual(draft(passive), sql)
+        self.assertEqual(selection(passive), [])
+        self.assertEqual(self.marks(passive), [], "passive search cannot publish a partial 'b' match")
+
+        next_ = [*route, tap(9.55, "sql-find-next")]
+        navigated = self.replay(next_, until=10.65)
+        refused(navigated)
+
+        replacement = "[$&]"
+        replace = [*route, *fill(9.5, "sql-replace-input", replacement)]
+        rejected = self.replay([*replace, tap(10.65, "sql-replace-all")], until=11.85)
+        refused(rejected)
+
+        # Positive controls isolate the guard: named or numeric references
+        # with unambiguous ownership must continue to use real regexp mode.
+        unique = [*next_, *fill(10.9, "sql-find-input", r"(?<k>b)\k<k>"), tap(12.1, "sql-find-next")]
+        named = self.replay(unique, until=13.2)
+        self.assertEqual(draft(named), sql)
+        self.assertEqual(selection(named), [(0, "bb")])
+        self.expect_rendered(named, key="sql-selected-0-1", text="bb")
+        self.assertEqual(self.marks(named), [("sql-find-hit-1-3-1", "bb", "#ff6a0054")])
+        self.assertFalse(visible(named, key=status))
+
+        numeric = [*replace, *fill(10.85, "sql-find-input", r"(b)\1"), tap(12.0, "sql-replace-all")]
+        replaced = self.replay(numeric, until=13.2)
+        self.assertEqual(draft(replaced), "x[bb]y")
+        self.assertFalse(visible(replaced, key=status))
+        self.untouched(initial, passive, navigated, rejected, named, replaced)
+
     def test_invalid_pattern_does_not_fall_back_to_literal(self):
         sql = "SELECT '(';"
         initial, route = self.route(sql,"(")
