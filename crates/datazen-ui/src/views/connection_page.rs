@@ -130,7 +130,7 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
         .w_full()
         .h_full()
         .fill(theme.bg)
-        .on_paste(|state: &mut AppState, text, _| {
+        .on_paste(|state: &mut AppState, text, tx| {
             // Same routing as the React page's focused editor/grid: an OS paste
             // lands here when no platform text field owns the focus.
             if state.active == Section::Settings {
@@ -143,7 +143,19 @@ pub fn connection_page(state: &AppState, cx: &mut Cx<AppState>) -> El {
             {
                 state.grid.paste_tsv(text);
             } else if query_selected(state) && state.sql.focused() {
+                // CodeMirror reveals the resulting selection after input.paste.
+                // Keep the same insert/undo path; empty text and active IME
+                // are no-ops. Scope the reveal to this draft's mounted anchor,
+                // so a later tab change cannot reveal the next draft's caret.
+                let reveal_in = if !text.is_empty() && state.owns_query_document_shortcut(tx) {
+                    state.query_editor_viewport().map(|owner| owner.anchor)
+                } else {
+                    None
+                };
                 state.sql.insert(text);
+                if let Some(anchor) = reveal_in {
+                    tx.scroll_into_view_in(anchor, "sql-caret");
+                }
             }
         })
         .child(

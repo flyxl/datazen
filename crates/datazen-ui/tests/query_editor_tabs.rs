@@ -143,6 +143,78 @@ fn scroll_offsets_follow_the_selected_tab_and_survive_hiding_workspace() {
 }
 
 #[test]
+fn query_paste_reveals_only_the_active_drafts_caret_without_changing_undo_or_ime() {
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.poll = Some(app_poll);
+    rt.state.workspace.connect("local").unwrap();
+    let a = rt.state.open_query_tab("Paste A").unwrap();
+    let prefix = "-- draft A";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(prefix);
+    rt.state.sql.set_main_caret(prefix.len());
+    rt.frame(0.0);
+    tap(&mut rt, "sql-editor-scroll");
+    let payload = (2..=120).map(|line| format!("\n-- pasted line {line:03}"))
+        .collect::<String>();
+    let expected = format!("{prefix}{payload}");
+
+    let info = |rt: &Runtime<AppState>, key: &str| rt.elements().into_iter()
+        .find(|node| node.key.as_deref() == Some(key) && !node.exiting).expect(key);
+    let offset_y = |rt: &Runtime<AppState>| info(rt, "sql-editor-field").scrolled[1];
+    assert_eq!(offset_y(&rt), 0.0);
+    rt.paste(payload);
+    rt.frame(0.05);
+    let view = info(&rt, "sql-editor-scroll");
+    let caret = info(&rt, "sql-caret");
+    assert!(caret.path.starts_with(&(info(&rt, "sql-line-119").path + "/")));
+    assert!(caret.rect[1] >= view.rect[1] && caret.rect[1] + caret.rect[3] <= view.rect[1] + view.rect[3] + 0.1);
+    assert_eq!(rt.state.sql.doc(), expected);
+    assert_eq!(rt.state.sql.selection().main().head, expected.len());
+    assert_eq!(rt.state.sql.undo_stack.len(), 1);
+    let bottom = offset_y(&rt);
+    assert!(bottom > 1000.0, "the actual viewport moved, not only the caret model");
+
+    let b = rt.state.open_query_tab("Paste B").unwrap();
+    assert_ne!(a, b);
+    rt.frame(0.05);
+    assert_eq!(offset_y(&rt), 0.0);
+    assert_eq!(rt.state.sql.doc(), "");
+    tap_tab(&mut rt, a);
+    rt.frame(0.05);
+    assert_eq!(offset_y(&rt), bottom, "A's revealed viewport is still its own");
+    assert_eq!(rt.state.sql.doc(), expected);
+    tap(&mut rt, "sql-editor-scroll");
+
+    let (x, y) = rt.find("sql-editor-scroll").unwrap();
+    rt.wheel_xy(x, y, 0.0, 3600.0);
+    rt.frame(0.15);
+    assert_eq!(offset_y(&rt), 0.0);
+    assert!(app_ime(&mut rt.state, &Ime::Preedit("未提交".into(), None), &mut Tx::default()));
+    rt.frame(0.0);
+    rt.paste("must not reach the composing draft");
+    rt.frame(0.0);
+    assert_eq!(rt.state.sql.composition(), Some("未提交"));
+    assert_eq!(rt.state.sql.doc(), expected);
+    assert_eq!(offset_y(&rt), 0.0, "a no-op IME paste does not reveal");
+    assert_eq!(rt.state.sql.undo_stack.len(), 1);
+    assert!(app_ime(&mut rt.state, &Ime::Preedit(String::new(), None), &mut Tx::default()));
+    rt.frame(0.0);
+
+    let cmd = Mods { cmd: true, ..Mods::default() };
+    key(&mut rt, Key::Command('f'), cmd);
+    rt.paste("owned by Find");
+    rt.frame(0.0);
+    assert_eq!(rt.state.sql.find_input.text, "owned by Find");
+    assert_eq!(rt.state.sql.doc(), expected);
+    assert_eq!(offset_y(&rt), 0.0, "a focused text field never scrolls the Query draft");
+    key(&mut rt, Key::Escape, Mods::default());
+    key(&mut rt, Key::Command('z'), cmd);
+    assert_eq!(rt.state.sql.doc(), prefix);
+    assert!(rt.state.sql.undo_stack.is_empty());
+    assert!(rt.state.query_result_tabs.is_empty());
+}
+
+#[test]
 fn refreshed_catalog_preserves_draft_and_explicit_target_but_new_profile_cannot_run_it() {
     let mut s = AppState::default();
     s.desktop_connection = Some("profile-a".into());

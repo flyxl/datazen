@@ -843,6 +843,63 @@ class SqlSelectionJourneys:
         self.assertEqual(self.sql_customer_rows(), original_rows)
         self.assertEqual(self.db.read_bytes(), original_db)
 
+    def test_editor_long_paste_reveals_live_caret_but_find_paste_keeps_viewport_on_read_only_sqlite(self):
+        original_rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        before = self.db.read_bytes()
+
+        prefix = "-- original draft"
+        tail = "-- last pasted row 120: 猫"
+        text = "".join(f"\n-- pasted row {i:03}" for i in range(2, 120)) + "\n" + tail
+        route = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": prefix}]
+        pasted = [*route, {"t": 5.75, "type": "paste", "text": text}]
+        revealed = self.replay(pasted, until=6.6)
+
+        def node(tree, name):
+            return next(n for n in tree["elements"]
+                        if n.get("key") == name and not n.get("exiting"))
+
+        editor = node(revealed, "sql-editor-scroll")
+        self.assertTrue(editor.get("focused"))
+        x, y, w, h = editor["rect"]
+        caret = node(revealed, "sql-caret")
+        cx, cy, cw, ch = caret["rect"]
+        self.assertTrue(caret["path"].startswith(node(revealed, "sql-line-119")["path"] + "/"))
+        self.assertGreaterEqual(cy, y)
+        self.assertLessEqual(cy + ch, y + h + .1)
+        self.assertGreaterEqual(cx, x)
+        self.assertLessEqual(cx + cw, x + w + .1)
+        self.expect_rendered(revealed, text=tail, within="sql-line-119")
+        self.assertLess(node(revealed, "sql-line-0")["rect"][1], y - 100)
+
+        # Scroll away from the document caret and paste into a real Find
+        # input. It must stay at the top, rather than revealing row 120.
+        field_text = "not-in-the-document"
+        into_find = self.replay([
+            *pasted, {"t": 6.85, "type": "wheel", "x": x + w / 2, "y": y + h / 2, "dy": 3600},
+            key(7.7, "f", cmd=True), {"t": 8.25, "type": "paste", "text": field_text},
+        ], until=8.9)
+        self.expect_rendered(into_find, text=field_text, within="sql-find-input")
+        self.expect_rendered(into_find, text=prefix, within="sql-line-0")
+        _, fy, _, fh = node(into_find, "sql-editor-scroll")["rect"]
+        self.assertGreater(node(into_find, "sql-line-119")["rect"][1], fy + fh + 100)
+
+        undone = self.replay([*pasted, key(6.85, "z", cmd=True)], until=7.45)
+        self.expect_rendered(undone, text=prefix, within="sql-line-0")
+        self.assertFalse(any(n.get("key") == "sql-line-119" and not n.get("exiting")
+                             for n in undone["elements"]))
+        for scene in (revealed, into_find, undone):
+            self.assertFalse(visible(scene, key="result-workspace"))
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_bytes()))
+        self.assertEqual(self.sql_customer_rows(), original_rows)
+        self.assertEqual(self.db.read_bytes(), before)
+
     def test_editor_literal_escape_search_selects_across_lines_and_replaces_real_sql(self):
         original_rows = self.sql_fixture_before()
         profile = json.loads(self.store.read_text(encoding="utf-8"))
