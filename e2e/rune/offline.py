@@ -734,6 +734,36 @@ class OfflineJourneys:
         self.assertNotEqual(fill_at(query, "sql-editor-body"), "#282a36ff")
         self.expect_rendered(query, text="fixture-ada", within="result-workspace")
 
+    def test_settings_snippet_failed_disk_write_keeps_draft_and_no_phantom_row(self):
+        (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+        target = self.root / "snippets.json"
+        sentinel = b'[ { "name": "Existing snippet", "sql": "SELECT 1;" } ]\n'
+        target.write_bytes(sentinel)
+        blocked = target.with_suffix(".json.tmp")
+        blocked.mkdir()
+        name, sql = "Disk retry snippet", "SELECT 314;"
+        actions = [SETTINGS, tap(1.4, "settings-nav-editor"), tap(2.3, "snippet-add"),
+                   *fill(3.2, "snippet-name-input", name),
+                   *fill(4.6, "snippet-sql-input", sql), tap(5.85, "snippet-save")]
+        failed = self.replay(actions, until=6.6)
+        self.expect_rendered(failed, key="snippet-edit-dialog")
+        self.expect_rendered(failed, key="snippet-add-error", within="snippet-edit-dialog")
+        self.expect_rendered(failed, text=name, within="snippet-name-input")
+        self.expect_rendered(failed, key="snippet-sql-input", text=sql)
+        self.assertFalse(visible(failed, key="snippet-row-1"))
+        self.assertEqual(target.read_bytes(), sentinel)
+
+        # Native replay starts a fresh process. Replay the same visible Save
+        # actions after restoring disk access; the mounted Rust test exercises
+        # the actual same-modal retry without re-entering either field.
+        blocked.rmdir()
+        saved = self.replay(actions, until=6.6)
+        self.assertFalse(visible(saved, key="snippet-edit-dialog"))
+        self.expect_rendered(saved, text=name, within="snippet-row-1")
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8")), [
+            {"name": "Existing snippet", "sql": "SELECT 1;"}, {"name": name, "sql": sql},
+        ])
+
     def test_settings_snippet_survives_restart_then_can_be_deleted(self):
         settings = self.root / "settings.json"
         settings.write_text(json.dumps({"ui": {"language": "en"}}), encoding="utf-8")

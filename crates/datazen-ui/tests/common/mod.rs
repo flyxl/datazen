@@ -6,8 +6,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// A host adapter that owns snippet storage (T3).
+#[derive(Default)]
 pub(crate) struct SnippetHostAdapter {
     pub snippets: Vec<datazen_ui_api::Snippet>,
+    pub fail_next_save: bool,
 }
 
 impl DesktopAdapter for SnippetHostAdapter {
@@ -35,6 +37,9 @@ impl DesktopAdapter for SnippetHostAdapter {
     }
 
     fn save_snippet(&mut self, name: &str, sql: &str) -> Result<(), String> {
+        if std::mem::take(&mut self.fail_next_save) {
+            return Err("temporary snippet write failure".into());
+        }
         self.snippets.push(datazen_ui_api::Snippet {
             name: name.to_owned(),
             sql: sql.to_owned(),

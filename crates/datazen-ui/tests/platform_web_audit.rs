@@ -117,7 +117,7 @@ fn injected_adapter_changes_sync_result() {
     );
     assert!(state.desktop_connections.is_none());
 
-    state.desktop = Box::new(SnippetHostAdapter { snippets: Vec::new() });
+    state.desktop = Box::new(SnippetHostAdapter::default());
     state.sync_desktop_connections();
     assert!(
         state.desktop_connections.is_some(),

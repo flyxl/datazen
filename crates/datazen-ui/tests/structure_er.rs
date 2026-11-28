@@ -564,6 +564,7 @@ fn the_snippets_panel_reads_and_writes_the_host_store_first() {
             name: "host snippet".into(),
             sql: "SELECT 1".into(),
         }],
+        fail_next_save: true,
     });
     runtime.frame(0.0);
     let (x, y) = runtime.find("rail-settings").unwrap();
@@ -586,12 +587,23 @@ fn the_snippets_panel_reads_and_writes_the_host_store_first() {
         "the memory port stays empty"
     );
 
-    // A save reaches the host, not the port.
+    // A real Add form retries the same draft without having to re-enter it.
     fill_snippet_add(&mut runtime, "from the form", "SELECT 2");
     snippet_press(&mut runtime, "snippet-save");
+    assert!(runtime.find("snippet-edit-dialog").is_some());
+    assert!(runtime.find("snippet-add-error").is_some());
+    assert_eq!(runtime.state.host_snippets().len(), 1, "no phantom row");
+    assert!(runtime.state.workspace.snippets().is_empty(), "no fallback on I/O error");
+
+    snippet_press(&mut runtime, "snippet-save");
+    assert!(runtime.find("snippet-edit-dialog").is_none());
+    assert_eq!(runtime.state.host_snippets()[1], datazen_ui_api::Snippet {
+        name: "from the form".into(),
+        sql: "SELECT 2".into(),
+    });
     assert!(
         runtime.find("snippet-row-1").is_some(),
-        "the new snippet is listed"
+        "the successful retry is listed"
     );
     assert!(
         runtime.state.workspace.snippets().is_empty(),

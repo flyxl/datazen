@@ -62,39 +62,55 @@ impl FileSnippets {
         self.state.lock().expect("the snippets lock").clone()
     }
 
+    /// Keep the same lock through validation, disk replacement, and
+    /// publication. Failed writes must not change what list() or a retry sees.
+    fn commit(
+        &self,
+        propose: impl FnOnce(&mut Vec<datazen_ui_api::Snippet>) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let mut current = self.state.lock().expect("the snippets lock");
+        let mut next = current.clone();
+        propose(&mut next)?;
+        self.persist(&next)?;
+        *current = next;
+        Ok(())
+    }
+
     /// Create a snippet; an existing name is refused.
     pub fn save(&self, name: &str, sql: &str) -> Result<(), String> {
         if name.trim().is_empty() {
             return Err("snippet name is required".into());
         }
-        let mut snippets = self.state.lock().expect("the snippets lock");
-        if snippets.iter().any(|snippet| snippet.name == name) {
-            return Err(format!("a snippet named {name} already exists"));
-        }
-        snippets.push(datazen_ui_api::Snippet { name: name.to_owned(), sql: sql.to_owned() });
-        self.persist(&snippets)
+        self.commit(|next| {
+            if next.iter().any(|snippet| snippet.name == name) {
+                return Err(format!("a snippet named {name} already exists"));
+            }
+            next.push(datazen_ui_api::Snippet { name: name.to_owned(), sql: sql.to_owned() });
+            Ok(())
+        })
     }
 
     /// Change a snippet's SQL; an unknown name is refused.
     pub fn update(&self, name: &str, sql: &str) -> Result<(), String> {
-        let mut snippets = self.state.lock().expect("the snippets lock");
-        let snippet = snippets
-            .iter_mut()
-            .find(|snippet| snippet.name == name)
-            .ok_or_else(|| format!("no snippet named {name}"))?;
-        snippet.sql = sql.to_owned();
-        self.persist(&snippets)
+        self.commit(|next| {
+            let snippet = next.iter_mut()
+                .find(|snippet| snippet.name == name)
+                .ok_or_else(|| format!("no snippet named {name}"))?;
+            snippet.sql = sql.to_owned();
+            Ok(())
+        })
     }
 
     /// Delete a snippet; an unknown name is refused.
     pub fn delete(&self, name: &str) -> Result<(), String> {
-        let mut snippets = self.state.lock().expect("the snippets lock");
-        let before = snippets.len();
-        snippets.retain(|snippet| snippet.name != name);
-        if snippets.len() == before {
-            return Err(format!("no snippet named {name}"));
-        }
-        self.persist(&snippets)
+        self.commit(|next| {
+            let before = next.len();
+            next.retain(|snippet| snippet.name != name);
+            if next.len() == before {
+                return Err(format!("no snippet named {name}"));
+            }
+            Ok(())
+        })
     }
 }
 
@@ -134,6 +150,43 @@ mod tests {
         assert!(store.delete("top customers").is_err(), "a second delete is refused");
         let store = FileSnippets::open(&path).unwrap();
         assert_eq!(store.list().len(), 1, "the delete survived the reopen");
+    }
+
+    #[test]
+    fn failed_create_update_and_delete_leave_the_live_and_disk_snapshots_unchanged() {
+        let path = temp_path("failed-writes");
+        let sentinel = b"[ { \"name\": \"Existing snippet\", \"sql\": \"SELECT 1;\" } ]\n";
+        std::fs::write(&path, sentinel).unwrap();
+        let store = FileSnippets::open(&path).unwrap();
+        let original = store.list();
+        assert_eq!(original.len(), 1);
+
+        // A directory at the temporary file path blocks the actual write
+        // portably, including under an account that ignores file modes.
+        let obstruction = path.with_extension("json.tmp");
+        std::fs::create_dir(&obstruction).unwrap();
+        let assert_unchanged = || {
+            assert_eq!(store.list(), original, "no phantom in-memory change");
+            assert_eq!(std::fs::read(&path).unwrap().as_slice(), &sentinel[..], "original bytes preserved");
+            assert_eq!(FileSnippets::open(&path).unwrap().list(), original);
+        };
+        assert!(store.save("New snippet", "SELECT 3;").is_err());
+        assert_unchanged();
+        assert!(store.update("Existing snippet", "SELECT 2;").is_err());
+        assert_unchanged();
+        assert!(store.delete("Existing snippet").is_err());
+        assert_unchanged();
+
+        std::fs::remove_dir(&obstruction).unwrap();
+        store.save("New snippet", "SELECT 3;").unwrap();
+        store.update("Existing snippet", "SELECT 2;").unwrap();
+        let updated = store.list();
+        assert_eq!(updated[0].sql, "SELECT 2;");
+        assert_eq!(updated[1].name, "New snippet", "insertion order survives retry");
+        assert_eq!(FileSnippets::open(&path).unwrap().list(), updated);
+        store.delete("Existing snippet").unwrap();
+        assert_eq!(store.list().as_slice(), &updated[1..]);
+        assert_eq!(FileSnippets::open(&path).unwrap().list().as_slice(), &updated[1..]);
     }
 
     #[test]
