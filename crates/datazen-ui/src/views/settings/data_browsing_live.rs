@@ -2,7 +2,7 @@
 
 use datazen_ui_api::types::{RowCountMode, WorkflowStepResultOrder};
 use datazen_ui_api::{BuiltinLanguage, DefaultTableSort, GridDensity, Setting};
-use rune::{col, row, text, tok, El, TextEdit, TextStyle, Tx};
+use rune::{col, row, text, tok, Color, El, Shadow, TextEdit, TextStyle, Tx};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Placement};
 
 use super::setting_hint::SettingHint;
@@ -240,6 +240,8 @@ fn grid_appearance_toggle(
     overlays: &mut Vec<El>,
     toggle_preference: impl Fn(&mut AppState) -> Result<(), String> + 'static,
 ) -> El {
+    // React's white ToggleRow knob uses Tailwind's two-layer `shadow`.
+    let knob_shadow = Color::BLACK.alpha(26.0 / 255.0);
     let toggle = row()
         .key(key)
         .size(36.0, 20.0)
@@ -253,7 +255,21 @@ fn grid_appearance_toggle(
         .checked(checked)
         .focusable(true)
         .focus_ring(2.0, 1.0, k.c.border_focus)
-        .child(col().size(14.0, 14.0).radius(7.0).fill(rune::Color::WHITE).a11y_hidden())
+        .child(
+            col()
+                .size(14.0, 14.0)
+                .radius(7.0)
+                .fill(Color::WHITE)
+                .shadow(1.0, 3.0, knob_shadow)
+                .box_shadow(Shadow {
+                    y: 1.0,
+                    blur: 2.0,
+                    spread: -1.0,
+                    color: knob_shadow,
+                    ..Shadow::default()
+                })
+                .a11y_hidden(),
+        )
         .on_press(move |state: &mut AppState| {
             if state.active == crate::types::Section::Settings && state.settings_section() == "dataBrowsing" {
                 state.settings_error = toggle_preference(state).err();
