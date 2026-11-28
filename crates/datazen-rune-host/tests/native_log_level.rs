@@ -37,7 +37,7 @@ fn page(rt: &mut Runtime<AppState>) {
 
 fn control(rt: &Runtime<AppState>) -> ElementInfo {
     rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some(TRIGGER))
-        .expect("real logging selector");
+        .expect("real logging selector")
 }
 
 fn assert_value(rt: &Runtime<AppState>, label: &str) {
