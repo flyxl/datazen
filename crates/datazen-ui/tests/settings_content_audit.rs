@@ -279,6 +279,43 @@ fn the_nav_press_switches_sections() {
     assert!(has(&rt, "extensions-section-slot"));
 }
 
+#[test]
+fn inactive_nav_row_hover_tints_its_glyph_and_label_without_selecting_it() {
+    for (dark, secondary, foreground) in [
+        (false, "#58708dff", "#26364dff"),
+        (true, "#8b94a7ff", "#e6eaf2ff"),
+    ] {
+        let mut rt = rt(AuditState { dark, ..AuditState::empty() });
+        let inks = |rt: &Runtime<AuditState>, key: &str| {
+            let elements = rt.elements();
+            let row = elements.iter().position(|e| !e.exiting && e.key.as_deref() == Some(key))
+                .expect("row is mounted");
+            elements.iter().filter(|e| !e.exiting && e.parent == Some(row))
+                .filter_map(|e| e.text_color.map(|color| color.hex())).collect::<Vec<_>>()
+        };
+        let point_in_padding = |rt: &Runtime<AuditState>, key: &str| {
+            let [x, y, _, h] = rt.elements().into_iter()
+                .find(|e| !e.exiting && e.key.as_deref() == Some(key)).unwrap().rect;
+            (x + 3.0, y + h / 2.0)
+        };
+        let inactive = "settings-nav-appearance";
+        let active = "settings-nav-general";
+        assert_eq!(inks(&rt, inactive), [secondary, secondary]);
+        let (x, y) = point_in_padding(&rt, inactive);
+        rt.pointer_move(x, y);
+        settle(&mut rt);
+        assert_eq!(inks(&rt, inactive), [foreground, foreground]);
+        assert!(rt.state.section_picks.is_empty(), "hover does not navigate");
+
+        let (x, y) = point_in_padding(&rt, active);
+        rt.pointer_move(x, y);
+        settle(&mut rt);
+        assert_eq!(inks(&rt, active), ["#4fc3f7ff", "#4fc3f7ff"]);
+        assert_eq!(inks(&rt, inactive), [secondary, secondary]);
+        assert_eq!(rt.state.content.active_section, "general");
+    }
+}
+
 /// An unlanded delegated section (no slot) still mounts its keyed
 /// placeholder column — the nav target and deep-link id exist.
 #[test]

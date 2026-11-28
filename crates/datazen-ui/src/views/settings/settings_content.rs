@@ -622,19 +622,24 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                     .role("button")
                     .label(t(section.label_key))
                     .fill(fill);
+                // In React the button owns the foreground. Its label and Lucide
+                // SVG both inherit hover:text-fg, even over the row padding.
+                let nav_ink = |el: El| {
+                    let el = el.color(label_color);
+                    if is_active { el } else { el.group_color(k.c.text_base) }
+                };
                 if let Some(icon_el) = settings_section_icon(section.id) {
-                    item = item.child(icon(icon_el, 16.0).color(label_color));
+                    item = item.child(nav_ink(icon(icon_el, 16.0)));
                 }
                 item = item.child(
-                    text(t(section.label_key).to_owned())
+                    nav_ink(text(t(section.label_key).to_owned()))
                         .font(label_style)
-                        .color(label_color)
                         .grow(1.0)
                         .min_w(0.0)
                         .wrap(),
                 );
                 if !is_active {
-                    item = item.hover(k.c.surface_hover);
+                    item = item.hover_group().hover(k.c.surface_hover);
                 }
                 if let Some(f) = &self.on_select_section {
                     let f = Rc::clone(f);
