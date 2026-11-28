@@ -467,20 +467,17 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
                 .child(text(t("common.loading")).font(label_style()).color(muted)),
         );
     }
-    let next_enabled = matches!(grid.row_count(), NativeTableRowCount::Exact(_))
-        || state.can_next_table_page();
+    let next_enabled = state.can_next_table_page();
     let next = row()
         .key("page-next")
+        .role("button")
+        .disabled(!next_enabled)
         .h(24.0)
         .px(8.0)
         .center_y()
         .radius(6.0)
-        .child(text("Next ›").font(label_style()).color(if next_enabled { ink } else { muted }));
-    let next = if next_enabled {
-        next.on_press(|state: &mut crate::AppState| state.next_table_page())
-    } else {
-        next
-    };
+        .child(text("Next ›").font(label_style()).color(if next_enabled { ink } else { muted }))
+        .on_press(|state: &mut crate::AppState| state.next_table_page());
     footer = footer
         .child(
             row()
