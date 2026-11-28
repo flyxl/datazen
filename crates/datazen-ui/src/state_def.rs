@@ -310,8 +310,6 @@ pub struct AppState {
     pub connection_ssh_port: TextEdit,
     pub connection_ssh_username: TextEdit,
     /// The snippet form's fields and its last rejected write.
-    pub snippet_name: TextEdit,
-    pub snippet_sql: TextEdit,
     pub snippet_error: Option<String>,
     pub(crate) native_snippet_add: crate::snippets_state::NativeSnippetAdd,
     pub(crate) native_snippet_delete: crate::snippets_state::NativeSnippetDelete,
@@ -746,8 +744,6 @@ impl Default for AppState {
             connection_ssh_host: TextEdit::new(String::new()),
             connection_ssh_port: TextEdit::new(String::from("22")),
             connection_ssh_username: TextEdit::new(String::new()),
-            snippet_name: TextEdit::new(String::new()),
-            snippet_sql: TextEdit::new(String::new()),
             snippet_error: None,
             native_snippet_add: crate::snippets_state::NativeSnippetAdd::default(),
             native_snippet_delete: crate::snippets_state::NativeSnippetDelete::default(),

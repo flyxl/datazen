@@ -275,8 +275,8 @@ fn editor_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .child(editor_syntax_live::row(state, dark, &k, &mut overlays))
         .children(editor_syntax_live::execute_shortcut_card(state, &k, &mut overlays))
         .children(state.settings_error.as_ref().map(|_| settings_error_row(state, theme)))
-        // Add uses the native name/SQL store; keep existing update and delete.
-        .child(snippets_section(state, theme, dark))
+        // The custom list uses the native name/SQL store for Add, Edit and Delete.
+        .child(snippet_add_live::section(state, &k))
         .children(overlays)
 }
 
@@ -359,113 +359,6 @@ fn settings_error_row(state: &AppState, theme: tok::Theme) -> El {
     } else {
         row().key("settings-error-empty").w(0.0).h(0.0)
     }
-}
-
-fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
-    let k = crate::ui::kit::kit(dark);
-    let saved = state.host_snippets();
-    let mut snippets = snippet_add_live::section_header(k);
-    if !saved.is_empty() {
-        // Existing Native update workflow: key by the saved name, not React's
-        // unsupported persistent ID or rename contract.
-        snippets = snippets.child(
-            row()
-                .key("snippet-form")
-                .w_full()
-                .min_h(28.0)
-                .gap(8.0)
-                .center_y()
-                .flex_wrap()
-                .child(
-                    TextField::new("snippet-update-name", &state.snippet_name)
-                        .height(24.0).width(140.0).pad_x(8.0).radius(7.0)
-                        .fill(k.c.surface_base).border(1.0, k.c.border_base)
-                        .label(t("settings.nativeSnippet.name")).placeholder(t("settings.nativeSnippet.name"))
-                        .on_edit(|state: &mut AppState| &mut state.snippet_name)
-                        .build(dark),
-                )
-                .child(
-                    TextField::new("snippet-update-sql", &state.snippet_sql)
-                        .height(24.0).width(280.0).min_width(0.0).pad_x(8.0).radius(7.0)
-                        .fill(k.c.surface_base).border(1.0, k.c.border_base)
-                        .label(t("query.snippets.template")).placeholder(t("query.snippets.template"))
-                        .on_edit(|state: &mut AppState| &mut state.snippet_sql)
-                        .build(dark),
-                )
-                .child(
-                    row()
-                        .key("snippet-update")
-                        .role("button").focusable(true).label(t("settings.nativeSnippet.update"))
-                        .h(24.0)
-                        .px(8.0)
-                        .center_y()
-                        .radius(6.0)
-                        .fill(theme.control_off)
-                        .child(text(t("settings.nativeSnippet.update")).font(type_::LABEL).color(theme.text))
-                        .on_press(|state: &mut AppState| state.update_snippet_form()),
-                ),
-        );
-    }
-    for (index, snippet) in saved.iter().enumerate() {
-        let target = snippet.clone();
-        snippets = snippets.child(
-            row()
-                .key(format!("snippet-row-{index}"))
-                .w_full()
-                .h(24.0)
-                .gap(8.0)
-                .center_y()
-                .px(8.0)
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(
-                    text(snippet.name.clone())
-                        .font(type_::LABEL)
-                        .color(theme.text),
-                )
-                .child(
-                    text(snippet.sql.clone())
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                )
-                .child(
-                    row()
-                        .key(format!("snippet-delete-{index}"))
-                        .role("button")
-                        .label(t("common.delete"))
-                        .focusable(true)
-                        .h(20.0)
-                        .px(6.0)
-                        .center_y()
-                        .radius(4.0)
-                        .fill(theme.control_off)
-                        .child(
-                            text(t("common.delete"))
-                                .font(type_::LABEL)
-                                .color(theme.text_secondary),
-                        )
-                        .on_press(move |state: &mut AppState| state.request_snippet_delete(&target)),
-                ),
-        );
-    }
-    if let Some(error) = &state.snippet_error {
-        snippets = snippets.child(
-            row()
-                .key("snippet-error")
-                .w_full()
-                .h(24.0)
-                .px(8.0)
-                .center_y()
-                .radius(6.0)
-                .fill(theme.control_off)
-                .child(
-                    text(error.clone())
-                        .font(type_::LABEL)
-                        .color(theme.text_secondary),
-                ),
-        );
-    }
-    snippets
 }
 
 /// The favorites section (T6): save the current query, list the host's

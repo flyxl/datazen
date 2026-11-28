@@ -126,7 +126,10 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         "settings.nativeRetention.confirm" => Some(("永久清理 UTC {cutoff} 之前的本机工作流运行记录？将保留该时刻及之后的记录。查询历史与工作流定义不会更改。", "Permanently delete local workflow runs older than {cutoff} (UTC)? Runs at or after the cutoff stay. Query history and workflow definitions are not changed.")),
         "settings.nativeRetention.delete" => Some(("删除较早的记录", "Delete older runs")),
         "settings.nativeSnippet.name" => Some(("片段名称", "Snippet name")),
-        "settings.nativeSnippet.update" => Some(("更新片段", "Update snippet")),
+        "settings.nativeSnippet.editStale" => Some((
+            "此片段在编辑期间已更改。请取消后重新打开。",
+            "This snippet changed while you were editing. Cancel and reopen it.",
+        )),
         "settings.nativeEditorFont.system" => Some(("系统等宽字体（不可用时使用内置字体）", "System monospace (bundled fallback)")),
         "extensions.page.nativeListUnavailable" => Some((
             "当前平台无法读取本地扩展列表。",

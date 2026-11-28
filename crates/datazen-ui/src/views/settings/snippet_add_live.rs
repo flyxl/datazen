@@ -1,32 +1,31 @@
-//! The Editor Settings Add dialog/action backed by Native's name/SQL snippet store.
-//! The React Description, import/export, and rename controls are not projected
-//! into this store: Native has no place to save their data.
+//! The Editor Settings custom snippet list and dialog, backed by Native's name/SQL store.
+//! Existing names are identity keys. Description, Rename, Builtin and Import/Export
+//! do not mount here until the Native-backed capabilities are available.
 use rune::{col, icon, row, text, text_input, El, TextStyle};
 use rune_kit::Kit;
 
 use crate::i18n::t;
-use crate::icons::ICON_PLUS;
+use crate::icons::{ICON_CODE_2, ICON_PENCIL, ICON_PLUS, ICON_TRASH};
 use crate::state_def::AppState;
 use crate::ui::{dialog::Dialog, field::TextField, kit::kit};
 
 const CAPTION: TextStyle = TextStyle::new(12.0, 400.0).lh(16.0);
 
-pub(super) fn section_header(k: &Kit) -> El {
-    // The original card follows the remaining Editor preferences. Do not
-    // paint that card above its proper position or reserve space for controls
-    // Native does not yet mount. Keep the live Add action beside the heading.
+pub(super) fn section(state: &AppState, k: &Kit) -> El {
     let add = t("query.snippets.add");
-    col()
-        .key("settings-snippets")
-        .w_full()
-        .gap(6.0)
+    let saved = state.host_snippets();
+    let custom = t("query.snippets.custom");
+    let caption = TextStyle::new(11.0, 500.0).lh(16.5).tracking(0.55);
+    let mut card = col().key("settings-snippets").w_full().padding(15.0).gap(16.0)
+        .radius(k.radius.lg).fill(k.c.surface_weak).border(1.0, k.c.border_base)
         .child(
-            row().w_full().gap(8.0).center_y().justify_between().flex_wrap()
+            row().key("settings-snippets-header").w_full().gap(8.0).center_y().justify_between().flex_wrap()
                 .child(
-                    text(t("query.snippets"))
-                        .key("settings-snippets-heading")
-                        .font(rune::tok::type_::TITLE)
-                        .color(k.c.text_base),
+                    row().gap(8.0).center_y()
+                        .child(icon(&ICON_CODE_2, 16.0).color(k.c.text_accent))
+                        .child(text(t("query.snippets").to_uppercase()).key("settings-snippets-heading")
+                            .font(TextStyle::new(12.0, 600.0).lh(16.0).tracking(0.6))
+                            .color(k.c.text_base)),
                 )
                 .child(
                     button(k, "snippet-add", add, true)
@@ -34,7 +33,68 @@ pub(super) fn section_header(k: &Kit) -> El {
                         .child(text(add).font(CAPTION).color(k.c.submit_fg))
                         .on_press(|state: &mut AppState| state.open_native_snippet_add()),
                 ),
-        )
+        );
+    let mut group = col().key("settings-snippets-custom").w_full().gap(8.0)
+        .child(text(format!("{} ({})", custom.to_uppercase(), saved.len()))
+            .key("settings-snippets-custom-heading").font(caption).color(k.c.text_faint));
+    if saved.is_empty() {
+        group = group.child(
+            col().key("settings-snippets-empty").w_full().padding(16.0).items_center()
+                .radius(k.radius.sm).border(1.0, k.c.border_base)
+                .child(text(t("query.snippets.emptyCustom")).font(CAPTION).color(k.c.text_faint).wrap()),
+        );
+    } else {
+        let mut list = col().key("settings-snippets-custom-list").w_full()
+            .radius(k.radius.sm).border(1.0, k.c.border_base).fill(k.c.surface_base);
+        for (index, snippet) in saved.into_iter().enumerate() {
+            if index != 0 {
+                list = list.child(col().w_full().h(1.0).fill(k.c.border_base));
+            }
+            let edit_target = snippet.clone();
+            let edit = t("query.snippets.edit");
+            let delete = t("common.delete");
+            let summary = snippet.sql.replace('\n', " ");
+            list = list.child(
+                row().key(format!("snippet-row-{index}")).w_full().px(11.0).py(10.0)
+                    .gap(12.0).center_y().justify_between().hover(k.c.surface_hover)
+                    .child(
+                        col().grow(1.0).min_w(0.0).gap(2.0)
+                            .child(row().gap(6.0).center_y().min_w(0.0)
+                                .child(text(snippet.name.clone()).font(CAPTION.mono()).color(k.c.text_base)
+                                    .min_w(0.0).shrink().truncate())
+                                .child(row().radius(k.radius.sm).px(6.0).fill(k.alpha(k.c.bg_accent, 0.12))
+                                    .child(text(custom).font(TextStyle::new(10.0, 500.0).lh(15.0)).color(k.c.text_accent))))
+                            .child(
+                                text(summary).font(caption.mono()).color(k.c.text_faint)
+                                    .key(format!("snippet-summary-{index}")).w_full().min_w(0.0).truncate(),
+                            ),
+                    )
+                    .child(
+                        row().gap(4.0).min_w(60.0).center_y()
+                            .child(
+                                button(k, &format!("snippet-edit-{index}"), edit, false)
+                                    .w(28.0).px(0.0).help(edit)
+                                    .child(icon(&ICON_PENCIL, 14.0).color(k.c.text_muted))
+                                    .on_press(move |s: &mut AppState| s.open_native_snippet_edit(&edit_target)),
+                            )
+                            .child(
+                                button(k, &format!("snippet-delete-{index}"), delete, false)
+                                    .w(28.0).px(0.0).help(delete)
+                                    .child(icon(&ICON_TRASH, 14.0).color(k.c.danger.fg))
+                                    .on_press(move |s: &mut AppState| s.request_snippet_delete(&snippet)),
+                            ),
+                    ),
+            );
+        }
+        group = group.child(list);
+    }
+    card = card.child(group);
+    if let Some(error) = &state.snippet_error {
+        card = card.child(
+            text(error.clone()).key("snippet-error").w_full().wrap().font(CAPTION).color(k.c.danger.fg),
+        );
+    }
+    card
 }
 
 pub(in crate::views) fn mount(state: &AppState, dark: bool, layer: &mut Vec<El>) {
@@ -61,8 +121,15 @@ pub(in crate::views) fn mount(state: &AppState, dark: bool, layer: &mut Vec<El>)
                 .font(CAPTION).color(k.c.danger.fg),
         );
     }
-    body = body
-        .child(field(
+    let name_field = if draft.edit_target.is_some() {
+        // This is an identity label, not a disabled/misleading Rename input.
+        col().w_full().gap(6.0)
+            .child(text(name).font(CAPTION).color(k.c.text_muted))
+            .child(text(draft.name.text.clone()).key("snippet-edit-identity")
+                .w_full().wrap().font(TextStyle::new(14.0, 400.0).lh(20.0).mono())
+                .color(k.c.text_base))
+    } else {
+        field(
             name,
             TextField::new("snippet-name-input", &draft.name)
                 .height(36.0).label(name).placeholder(name).pad_x(12.0)
@@ -70,7 +137,9 @@ pub(in crate::views) fn mount(state: &AppState, dark: bool, layer: &mut Vec<El>)
                 .radius(radius).fill(k.c.surface_base).border(1.0, k.c.border_base)
                 .on_edit(|s: &mut AppState| &mut s.native_snippet_add.name)
                 .build(dark),
-        ))
+        )
+    };
+    body = body.child(name_field)
         .child(field(
             sql,
             text_input(&draft.sql, CAPTION.mono())
@@ -87,7 +156,8 @@ pub(in crate::views) fn mount(state: &AppState, dark: bool, layer: &mut Vec<El>)
         ));
     let cancel = t("common.cancel");
     let save = t("common.save");
-    Dialog::new("snippet-edit-dialog", t("query.snippets.add"))
+    let title = if draft.edit_target.is_some() { t("query.snippets.edit") } else { t("query.snippets.add") };
+    Dialog::new("snippet-edit-dialog", title)
         .open(true).open_epoch(epoch).width(576.0).fit().body_max_height(360.0)
         .header_pad((21.0, 16.0)).body_pad((21.0, 16.0)).footer_pad((21.0, 12.0))
         .on_close(move |s: &mut AppState| s.close_native_snippet_add(epoch))

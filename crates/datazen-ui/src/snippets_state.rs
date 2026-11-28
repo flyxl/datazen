@@ -31,12 +31,13 @@ pub(crate) struct NativeSnippetDelete {
     target: Option<datazen_ui_api::Snippet>,
 }
 
-/// An ephemeral Add draft, separate from the existing Update fields.
+/// An ephemeral Add or row Edit draft. No storage operation until Save.
 #[derive(Default)]
 pub(crate) struct NativeSnippetAdd {
     pub(crate) open: bool,
     pub(crate) epoch: u64,
     pub(crate) name: TextEdit,
+    pub(crate) edit_target: Option<datazen_ui_api::Snippet>,
     pub(crate) sql: TextEdit,
     pub(crate) error: Option<String>,
 }
@@ -60,14 +61,45 @@ impl AppState {
     }
 
     pub(crate) fn open_native_snippet_add(&mut self) {
+        self.begin_native_snippet_draft(None);
+    }
+
+    pub(crate) fn open_native_snippet_edit(&mut self, target: &datazen_ui_api::Snippet) {
         if !self.on_editor_settings() || self.native_snippet_add.open || self.native_snippet_delete.confirm.is_open() {
             return;
         }
-        self.native_snippet_add = NativeSnippetAdd {
+        if self.is_current_snippet_edit(target) {
+            self.begin_native_snippet_draft(Some(target.clone()));
+        } else {
+            self.snippet_error = Some(self.snippet_edit_stale_message());
+        }
+    }
+
+    fn is_current_snippet_edit(&self, target: &datazen_ui_api::Snippet) -> bool {
+        let mut matches = self.host_snippets().into_iter().filter(|row| row.name == target.name);
+        matches.next().as_ref() == Some(target) && matches.next().is_none()
+    }
+
+    fn snippet_edit_stale_message(&self) -> String {
+        crate::i18n::with_language(self.builtin_language(), || t("settings.nativeSnippet.editStale")).to_owned()
+    }
+
+    fn begin_native_snippet_draft(&mut self, target: Option<datazen_ui_api::Snippet>) {
+        if !self.on_editor_settings() || self.native_snippet_add.open || self.native_snippet_delete.confirm.is_open() {
+            return;
+        }
+        let mut draft = NativeSnippetAdd {
             open: true,
             epoch: self.native_snippet_add.epoch.wrapping_add(1),
             ..Default::default()
         };
+        if let Some(target) = target {
+            draft.name = TextEdit::new(target.name.clone());
+            draft.sql = TextEdit::new(target.sql.clone());
+            draft.edit_target = Some(target);
+        }
+        self.snippet_error = None;
+        self.native_snippet_add = draft;
     }
 
     pub(crate) fn close_native_snippet_add(&mut self, epoch: u64) {
@@ -90,11 +122,23 @@ impl AppState {
         }
         let name = draft.name.text.trim().to_owned();
         let sql = draft.sql.text.trim().to_owned();
-        // The exact same host-first persistence route, including duplicate-name
-        // handling and the demo-only in-memory fallback. No React metadata is
-        // invented or written into the separate settings file.
+        let target = draft.edit_target.clone();
+        let unchanged = target.as_ref().is_some_and(|target| target.sql == draft.sql.text);
+        // Do not apply a stale draft to a deleted or replaced record. The
+        // current store keys edits by name, so the edit target isn't mutable.
         let result = if sql.is_empty() {
             Err(crate::i18n::with_language(self.builtin_language(), || t("query.snippets.templateRequired")).to_owned())
+        } else if let Some(target) = target {
+            if !self.is_current_snippet_edit(&target) {
+                Err(self.snippet_edit_stale_message())
+            } else if unchanged {
+                Ok(()) // Closing an unchanged edit is not a write.
+            } else {
+                match self.desktop.update_snippet(&target.name, &sql) {
+                    Err(error) if error == DESKTOP_NOT_IMPLEMENTED => self.workspace.update_snippet(&target.name, &sql),
+                    result => result,
+                }
+            }
         } else {
             match self.desktop.save_snippet(&name, &sql) {
                 Err(error) if error == DESKTOP_NOT_IMPLEMENTED => self.workspace.save_snippet(&name, &sql),
@@ -110,26 +154,6 @@ impl AppState {
         }
     }
 
-    pub fn update_snippet_form(&mut self) {
-        let name = self.snippet_name.text.trim().to_owned();
-        let sql = self.snippet_sql.text.trim().to_owned();
-        // T3: the host's file store first, the memory port's fallback.
-        let updated = match self.desktop.update_snippet(&name, &sql) {
-            Ok(()) => Ok(()),
-            Err(error) if error == DESKTOP_NOT_IMPLEMENTED => {
-                self.workspace.update_snippet(&name, &sql)
-            }
-            Err(error) => Err(error),
-        };
-        match updated {
-            Ok(()) => {
-                self.snippet_error = None;
-                self.snippet_name = TextEdit::new(String::new());
-                self.snippet_sql = TextEdit::new(String::new());
-            }
-            Err(error) => self.snippet_error = Some(error),
-        }
-    }
     pub(crate) fn on_editor_settings(&self) -> bool {
         self.active == Section::Settings && self.settings_section() == "editor"
     }

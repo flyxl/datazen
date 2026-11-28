@@ -479,7 +479,7 @@ fn fill_snippet_add(runtime: &mut Runtime<AppState>, name: &str, sql: &str) {
 
 #[test]
 fn snippets_add_update_delete_and_duplicate_names_are_refused() {
-    use datazen_ui_api::{SettingsApi, WorkspaceApi};
+    use datazen_ui_api::WorkspaceApi;
 
     let mut runtime = runtime();
     runtime.frame(0.0);
@@ -513,12 +513,29 @@ fn snippets_add_update_delete_and_duplicate_names_are_refused() {
     snippet_press(&mut runtime, "snippet-cancel");
     assert!(runtime.find("snippet-row-1").is_none(), "still one snippet");
 
-    runtime.state.snippet_name = rune::TextEdit::new("top");
-    runtime.state.snippet_sql = rune::TextEdit::new("SELECT 1");
-    let (x, y) = runtime.find("snippet-update").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
-    runtime.frame(0.0);
+    let edit_sql = |rt: &mut Runtime<AppState>| {
+        snippet_press(rt, "snippet-edit-0");
+        snippet_press(rt, "snippet-sql-input");
+        rt.key(rune::KeyEvent { key: rune::Key::Command('a'), mods: rune::Mods::default() });
+        rt.frame(0.0);
+        rt.paste("SELECT 1");
+        rt.frame(0.0);
+    };
+    edit_sql(&mut runtime);
+    assert!(runtime.find("snippet-name-input").is_none(), "an existing name is not a rename field");
+    assert!(runtime.find("snippet-edit-identity").is_some());
+    snippet_press(&mut runtime, "snippet-cancel");
+    assert_eq!(runtime.state.workspace.snippets()[0].sql, "SELECT * FROM customers LIMIT 10");
+
+    edit_sql(&mut runtime);
+    runtime.state.workspace.update_snippet("top", "SELECT 2").unwrap();
+    snippet_press(&mut runtime, "snippet-save");
+    assert!(runtime.find("snippet-add-error").is_some(), "replaced target is not overwritten");
+    assert_eq!(runtime.state.workspace.snippets()[0].sql, "SELECT 2");
+    snippet_press(&mut runtime, "snippet-cancel");
+
+    edit_sql(&mut runtime);
+    snippet_press(&mut runtime, "snippet-save");
     assert_eq!(
         runtime.state.workspace.snippets()[0].sql,
         "SELECT 1",

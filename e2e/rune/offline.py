@@ -1193,6 +1193,81 @@ class OfflineJourneys:
         self.assertEqual(json.loads(path.read_bytes()), {"overrides": [driver_override]})
         self.assertEqual(settings.read_bytes(), settings_before)
 
+    def test_settings_light_saved_snippets_edit_from_their_own_responsive_row(self):
+        settings = self.root / "settings.json"
+        settings.write_text(json.dumps({"ui": {"language": "en", "themeMode": "light"}}),
+                            encoding="utf-8")
+        settings_before = settings.read_bytes()
+        store = self.root / "snippets.json"
+        route = [SETTINGS, tap(1.4, "settings-nav-editor")]
+        empty = self.replay(route, until=2.6)
+        self.expect_rendered(empty, key="settings-snippets-custom-heading", text="CUSTOM (0)")
+        self.expect_rendered(empty, key="settings-snippets-empty")
+        self.assertFalse(store.exists())
+
+        first = {"name": "Unaffected snippet", "sql": "SELECT 'first';"}
+        second = {"name": "Light saved snippet", "sql": "SELECT 'second';\n-- keeps line breaks"}
+        changed_sql = "SELECT 'updated';\n-- editable multi-line SQL"
+        store.write_text(json.dumps([first, second], indent=2), encoding="utf-8")
+        before = store.read_bytes()
+
+        def assert_row_layout(tree):
+            self.expect_rendered(tree, key="settings-snippets-custom-heading", text="CUSTOM (2)")
+            self.assertFalse(visible(tree, key="snippet-form"))
+            self.assertFalse(visible(tree, key="settings-snippets-empty"))
+            row = self._settled_rect(tree, "snippet-row-1")
+            edit = self._settled_rect(tree, "snippet-edit-1")
+            delete = self._settled_rect(tree, "snippet-delete-1")
+            self.assertGreaterEqual(edit[0], row[0])
+            self.assertLessEqual(edit[0] + edit[2], delete[0])
+            self.assertLessEqual(delete[0] + delete[2], row[0] + row[2] + .1)
+            self.assertAlmostEqual(edit[1] + edit[3] / 2, delete[1] + delete[3] / 2, delta=.1)
+
+        wide = self.replay(route, until=2.6)
+        assert_row_layout(wide)
+        sx, sy, sw, sh = self._settled_rect(wide, "settings-keymap-customize")
+        ax, ay, aw, ah = self._settled_rect(wide, "settings-snippets-header")
+        _, group_y, _, _ = self._settled_rect(wide, "settings-snippets-custom")
+        self.assertLessEqual(sy + sh, ay)
+        self.assertLessEqual(ay + ah, group_y)
+        narrow = [*route, {"t": 2.3, "type": "wheel", "key": "settings-content", "dy": -320}]
+        assert_row_layout(self.replay(narrow, until=3.3, size="960x640"))
+        self.assertEqual(store.read_bytes(), before)
+
+        edit = [*narrow, tap(3.55, "snippet-edit-1")]
+        opened = self.replay(edit, until=4.5, size="960x640")
+        self.expect_rendered(opened, text="Edit Snippet", within="snippet-edit-dialog")
+        self.expect_rendered(opened, key="snippet-edit-identity", text=second["name"])
+        self.expect_rendered(opened, key="snippet-sql-input", text=second["sql"])
+        self.assertFalse(visible(opened, key="snippet-name-input"))
+        self.assertEqual(store.read_bytes(), before)
+        unchanged = self.replay([*edit, tap(4.6, "snippet-save")], until=5.4, size="960x640")
+        self.assertFalse(visible(unchanged, key="snippet-edit-dialog"))
+        self.assertEqual(store.read_bytes(), before, "an unchanged edit is not a write")
+
+        draft = [*edit, tap(4.65, "snippet-sql-input"), key(4.9, "a", cmd=True),
+                 {"t": 5.15, "type": "paste", "text": changed_sql}]
+        cancelled = self.replay([*draft, tap(5.65, "snippet-cancel")], until=6.45, size="960x640")
+        self.assertFalse(visible(cancelled, key="snippet-edit-dialog"))
+        self.assertEqual(store.read_bytes(), before)
+        save = [*draft, tap(5.65, "snippet-save")]
+        obstruction = store.with_suffix(".json.tmp")
+        obstruction.mkdir()
+        failed = self.replay(save, until=6.45, size="960x640")
+        self.expect_rendered(failed, key="snippet-add-error", within="snippet-edit-dialog")
+        self.expect_rendered(failed, key="snippet-sql-input", text=changed_sql)
+        self.assertEqual(store.read_bytes(), before)
+        obstruction.rmdir()
+
+        saved = self.replay(save, until=6.45, size="960x640")
+        self.assertFalse(visible(saved, key="snippet-edit-dialog"))
+        self.assertEqual(json.loads(store.read_bytes()), [first, {**second, "sql": changed_sql}])
+        restarted = self.replay(edit, until=4.5, size="960x640")
+        self.expect_rendered(restarted, key="snippet-edit-identity", text=second["name"])
+        self.expect_rendered(restarted, key="snippet-sql-input", text=changed_sql)
+        self.assertEqual(settings.read_bytes(), settings_before)
+        self.assertFalse(self.db.exists())
+
     def test_settings_snippet_failed_disk_write_keeps_draft_and_no_phantom_row(self):
         (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
         target = self.root / "snippets.json"
