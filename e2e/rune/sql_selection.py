@@ -20,6 +20,83 @@ class SqlSelectionJourneys:
         self.assertEqual(original, [(1, "fixture-ada"), (2, "fixture-lin")])
         return original
 
+    def test_native_query_toolbar_snippets_preserve_literal_saved_sql_and_undo_without_execution(self):
+        original = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        (self.root / "settings.json").write_text('{"ui":{"language":"en"}}', encoding="utf-8")
+        db_bytes = self.db.read_bytes()
+        saved_name = "query.run"  # not a translation key when it is a user name
+        saved_sql = "SELECT '${1:literal} 中文';"
+        self.replay([
+            tap(.5, "rail-settings"), tap(1.4, "settings-nav-editor"),
+            *fill(2.3, "snippet-name-input", saved_name),
+            tap(3.8, "snippet-sql-input"), key(4.05, "a", cmd=True),
+            {"t":4.25,"type":"paste","text":saved_sql}, tap(5.4, "snippet-save"),
+        ], until=6.6)
+        saved_file = self.root / "snippets.json"
+        saved_stamp = saved_file.read_bytes(), saved_file.stat().st_mtime_ns
+        payload = json.loads(saved_stamp[0])
+        self.assertTrue(any(item["name"] == saved_name and item["sql"] == saved_sql
+                            for item in payload))
+
+        def draft_line(tree, index):
+            row = next(i for i in tree["elements"] if i.get("key") == f"sql-line-{index}" and not i.get("exiting"))
+            return "".join(n.get("text") or "" for n in tree["elements"]
+                           if n["path"].startswith(row["path"] + "/") and not n.get("exiting"))
+
+        def focused(tree, node):
+            self.assertTrue(any(i.get("key") == node and i.get("focused") and not i.get("exiting")
+                                for i in tree["elements"]), node)
+
+        original_sql = "SELECT '原稿';"
+        route = query_steps(original_sql)[:-1]
+        route[-1] = {"t":4.8,"type":"paste","text":original_sql}
+        route.extend([key(5.7, "a", cmd=True), tap(6.3, "query-library-history-toggle")])
+        idle = self.replay(route, until=7.0)
+        editor = self._settled_rect(idle, "sql-editor-scroll")
+        self.assertFalse(visible(idle, key="query-snippets-popup"))
+        opened = [*route, tap(7.15, "query-library-snippets-toggle")]
+        guarded = [*opened, key(7.7, "Enter", cmd=True), type_text(8.05, "q"),
+                   {"t":8.5,"type":"paste","text":"must not enter the draft"}]
+        menu = self.replay(guarded, until=9.15)
+        self.expect_rendered(menu, key="snippet-menu")
+        self.expect_rendered(menu, key="snippet-saved-0-label", text=saved_name)
+        self.expect_rendered(menu, key="query-history-panel")
+        self.assertEqual(self._settled_rect(menu, "sql-editor-scroll"), editor)
+        self.assertEqual(draft_line(menu, 0), original_sql)
+        focus_back = [*guarded, key(9.3, "Escape")]
+        closed = self.replay(focus_back, until=9.9)
+        self.assertFalse(visible(closed, key="query-snippets-popup"))
+        focused(closed, "query-library-snippets-toggle")
+        activation = [*focus_back, {"t":10.1,"type":"key","name":" ","code":"Space"},
+                      key(10.55, "Down"), key(11.0, "Enter")]
+        builtin = self.replay(activation, until=11.8)
+        self.assertEqual(draft_line(builtin, 0), "SELECT columns")
+        self.assertEqual(draft_line(builtin, 1), "FROM table_name;")
+        self.expect_rendered(builtin, key="sql-selected-1-5", text="table_name")
+        self.assertFalse(visible(builtin, key="query-snippets-popup"))
+        focused(builtin, "sql-editor-scroll")
+        history_undo = [*activation, key(12.1, "z", cmd=True)]
+        undone = self.replay(history_undo, until=12.85)
+        self.assertEqual(draft_line(undone, 0), original_sql)
+        self.expect_rendered(undone, key="sql-selected-0-0")
+        literal = [*history_undo, tap(13.0, "query-library-snippets-toggle"), tap(13.65, "snippet-saved-0")]
+        saved = self.replay(literal, until=14.45)
+        self.assertEqual(draft_line(saved, 0), saved_sql)
+        focused(saved, "sql-editor-scroll")
+        restored = self.replay([*literal, key(14.7, "z", cmd=True)], until=15.4)
+        self.assertEqual(draft_line(restored, 0), original_sql)
+        self.assertFalse(visible(restored, key="result-workspace"))
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+        self.assertEqual((saved_file.read_bytes(), saved_file.stat().st_mtime_ns), saved_stamp)
+        self.assertEqual(self.sql_customer_rows(), original)
+        self.assertEqual(self.db.read_bytes(), db_bytes)
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(self.db.with_name(self.db.name+suffix).exists())
+
     def test_native_sql_physically_typed_space_preserves_draft_and_read_history(self):
         original = self.sql_fixture_before()
         store = json.loads(self.store.read_text(encoding="utf-8"))

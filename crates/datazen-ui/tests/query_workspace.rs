@@ -193,7 +193,6 @@ fn focused_sql_canvas_takes_space_as_text_without_changing_library_button_activa
     for (trigger, panel) in [
         ("query-library-history-toggle", "query-history-panel"),
         ("query-library-favorites-toggle", "query-favorites-panel"),
-        ("query-library-snippets-toggle", "query-snippets-panel"),
     ] {
         tap_query(&mut rt, trigger);
         assert!(rt.find(panel).is_some());
@@ -245,7 +244,7 @@ fn real_query_library_disclosures_switch_and_collapse_without_disturbing_the_edi
     let actions = [
         ("query-library-favorites-toggle", "query-favorites-panel"),
         ("query-library-history-toggle", "query-history-panel"),
-        ("query-library-snippets-toggle", "query-snippets-panel"),
+        ("query-sidebar-tab-snippets", "query-snippets-panel"),
     ];
     let assert_closed = |rt: &Runtime<AppState>| {
         assert!(rt.find("query-sidebar-pane").is_none());
@@ -257,8 +256,10 @@ fn real_query_library_disclosures_switch_and_collapse_without_disturbing_the_edi
     for (toggle, panel) in actions {
         let action = rt.elements().into_iter().find(|e| !e.exiting
             && e.key.as_deref() == Some(toggle)).expect("physical toolbar control");
-        assert_eq!(action.role, "button");
-        assert!(action.focusable);
+        if panel != "query-snippets-panel" {
+            assert_eq!(action.role, "button");
+            assert!(action.focusable);
+        }
         tap_query(&mut rt, toggle);
         assert!(rt.find(panel).is_some());
         assert!(rt.find("splitter:query-sidebar-width").is_some());
@@ -410,7 +411,7 @@ fn right_query_drawers_use_the_original_surface_without_repainting_left_snippets
         for (toggle, panel, fill) in [
             ("query-library-history-toggle", "query-history-panel", colors.layer_02),
             ("query-library-favorites-toggle", "query-favorites-panel", colors.layer_02),
-            ("query-library-snippets-toggle", "query-snippets-panel", colors.surface_raised),
+            ("query-sidebar-tab-snippets", "query-snippets-panel", colors.surface_raised),
         ] {
             tap_query(&mut rt, toggle);
             assert!(rt.find(panel).is_some());

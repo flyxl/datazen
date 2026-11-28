@@ -35,6 +35,7 @@ pub(crate) struct QueryEditorTabs {
     parked: HashMap<u32, ParkedDraft>,
     scroll_mount: Option<u32>,
     pending_scroll: Option<[f32; 2]>,
+    snippets_menu: Option<u32>,
 }
 
 impl AppState {
@@ -87,6 +88,7 @@ impl AppState {
     }
 
     pub(crate) fn cancel_query_editor_input(&mut self) {
+        self.query_editor_tabs.snippets_menu = None;
         self.sql.preedit("");
         self.sql.dismiss_find();
         self.sql.focused = false;
@@ -94,6 +96,35 @@ impl AppState {
         if self.query_editor_tabs.active.is_some() && self.query_editor_tabs.pending_scroll.is_none() {
             self.query_editor_tabs.pending_scroll = Some(self.query_editor_tabs.scroll.get());
         }
+    }
+
+    pub(crate) fn query_snippet_menu_owner(&self) -> Option<u32> {
+        self.query_editor_tabs.snippets_menu.filter(|owner| {
+            self.snippet_edit_owner() == Some(*owner)
+        })
+    }
+
+    pub(crate) fn snippet_edit_owner(&self) -> Option<u32> {
+        if self.active != Section::Workspace || self.native_kv.is_some()
+            || self.query_loading.is_some() || self.native_query_selected()
+            || self.sql.composition().is_some()
+        {
+            return None;
+        }
+        let tab = self.tabs.selected().filter(|tab| tab.kind == TabKind::Query)?;
+        (self.query_editor_tabs.active == Some(tab.id)).then_some(tab.id)
+    }
+
+    pub(crate) fn set_query_snippet_menu_owner(&mut self, owner: Option<u32>) {
+        self.query_editor_tabs.snippets_menu = owner;
+    }
+
+    pub(crate) fn retire_invalid_query_snippet_menu(&mut self) -> bool {
+        if self.query_editor_tabs.snippets_menu.is_some() && self.query_snippet_menu_owner().is_none() {
+            self.query_editor_tabs.snippets_menu = None;
+            return true;
+        }
+        false
     }
 
     pub(crate) fn query_editor_viewport(&self) -> Option<QueryEditorViewport> {

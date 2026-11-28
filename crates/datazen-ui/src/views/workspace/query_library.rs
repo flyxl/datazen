@@ -1,6 +1,6 @@
 //! Compact, real disclosures for the existing Query Library views.
 
-use crate::icons::{ICON_CLOCK, ICON_CODE_2, ICON_X};
+use crate::icons::{ICON_CLOCK, ICON_X};
 use crate::i18n::t;
 use crate::state_def::AppState;
 use crate::types::QuerySidebarPanel::{self, Favorites, History, Snippets};
@@ -46,10 +46,10 @@ pub(super) fn header(state: &AppState, theme: tok::Theme) -> El {
             }))
 }
 
-pub(super) fn controls(state: &AppState, theme: tok::Theme) -> El {
-    let mut group = row().key("query-library-controls").shrink().px(8.0).gap(2.0).center_y();
+pub(super) fn controls(state: &AppState, theme: tok::Theme, dark: bool) -> El {
+    let mut group = row().key("query-library-controls").shrink().px(8.0).gap(2.0).center_y()
+        .child(super::query_snippets_menu::trigger(state, dark));
     for (panel, glyph) in [
-        (Snippets, &ICON_CODE_2),
         (History, &ICON_CLOCK),
         (Favorites, &BOOKMARK),
     ] {

@@ -8,6 +8,7 @@
 //! which is what turns the platform input method on.
 
 pub(crate) mod find_dock;
+pub(crate) mod builtin_snippets;
 mod from_completion;
 mod highlight;
 mod input;

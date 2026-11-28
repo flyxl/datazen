@@ -28,6 +28,7 @@ mod native_explain;
 mod native_query_export;
 mod query_history;
 mod query_library;
+mod query_snippets_menu;
 pub mod wapp_icon;
 // T067: the host-side shell around a sandboxed wapp page — the lazy entry
 // resolve with its per-wapp cache, the 10s load watchdog, the reload/retry
@@ -355,6 +356,7 @@ pub fn query_workspace(
         ));
     let editor = if split { editor.h(editor_h).shrink() } else { editor.grow(1.0) };
 
+    query_snippets_menu::mount(state, dark, layer);
     native_query_export::dialog(state, dark, layer);
     let mut main = col()
         .key("query-main")
@@ -362,7 +364,7 @@ pub fn query_workspace(
         .min_w(0.0)
         .min_h(0.0)
         .h_full()
-        .child(query_toolbar(state, theme, build_query_database_picker(state, theme, dark, layer)))
+        .child(query_toolbar(state, theme, dark, build_query_database_picker(state, theme, dark, layer)))
         .child(editor)
         .children(notice);
 
@@ -411,7 +413,7 @@ pub fn query_workspace(
     let pane = col().key("query-sidebar-pane").w(width as f32).h_full()
         .child(query_sidebar(state, theme, dark));
     // History and Favorites are right drawers in the original Query tab.
-    // The live saved Snippets panel stays left until there is a real menu.
+    // The existing inner Snippets tab remains a saved-only pane.
     use crate::types::QuerySidebarPanel::{Favorites, History, Snippets};
     match state.query_sidebar_panel {
         Favorites | History => workspace.child(main)
@@ -465,7 +467,7 @@ fn build_query_database_picker(
     Some(select.build(kit(dark), layer))
 }
 
-fn query_toolbar(state: &AppState, theme: tok::Theme, database_picker: Option<El>) -> El {
+fn query_toolbar(state: &AppState, theme: tok::Theme, dark: bool, database_picker: Option<El>) -> El {
     let mut bar = row()
         .key("query-toolbar-content")
         .h_full()
@@ -537,7 +539,7 @@ fn query_toolbar(state: &AppState, theme: tok::Theme, database_picker: Option<El
         .border_sides([0.0, 0.0, 1.0, 0.0], theme.separator)
         .child(row().key("query-toolbar-scroll").grow(1.0).min_w(0.0).h_full()
             .scroll_x().child(bar))
-        .child(query_library::controls(state, theme))
+        .child(query_library::controls(state, theme, dark))
 }
 
 fn query_result_tabs_bar(state: &AppState, theme: tok::Theme) -> El {
