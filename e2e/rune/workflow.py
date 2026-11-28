@@ -695,6 +695,44 @@ steps:
             self.assertEqual(database.execute(select).fetchall(),
                              [(1, "choose-else"), (2, "else-committed"), (3, "fixture-decoy")])
 
+    def test_workflow_long_executed_sql_scrolls_without_displacing_live_results(self):
+        """Match the original independent overflow-auto preview above the data grid."""
+        fixture(self.store, self.db)
+        (self.root / "settings.json").write_text(
+            '{"ui":{"language":"en","themeMode":"light"}}', encoding="utf-8"
+        )
+        name = "e2e-workflow-sql-overflow"
+        lines = ["SELECT customer_name AS observed", "FROM customers",
+                 *[f"-- scroll witness {i}" for i in range(14)], "WHERE id=2"]
+        sql_yaml = "\n".join("      " + line for line in lines)
+        definition = (f'id: {name}\nname: {name}\nsteps:\n'
+                      f'  - type: query\n    id: read_customer\n    sql: |-\n{sql_yaml}\n')
+        (self.root / "workflows.json").write_text(json.dumps([{
+            "id": name, "name": name, "description": "", "visibility": "user",
+            "definitionYaml": definition, "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-01T00:00:00Z",
+        }]), encoding="utf-8")
+        start = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "rail-workflows"),
+                 tap(4.5, f"workflow-{name}"), tap(6, "workflow-execute-button")]
+        wheel = {"t": 8.7, "type": "wheel", "key": "workflow-step-sql-scroll", "dy": -600}
+        for size in ("1440x900", "960x640"):
+            with self.subTest(size=size):
+                top = self.replay(start, until=8, size=size)
+                bottom = self.replay([*start, wheel], until=10.2, size=size)
+                for tree in (top, bottom):
+                    self.expect_rendered(tree, key="workflow-step-table-cell-0-0", text="fixture-lin")
+                rect = self._settled_rect
+                viewport = rect(top, "workflow-step-sql-scroll")
+                self.assertAlmostEqual(viewport[3], 80, delta=1)
+                self.assertEqual(viewport, rect(bottom, "workflow-step-sql-scroll"))
+                self.assertEqual(rect(top, "workflow-step-table"), rect(bottom, "workflow-step-table"))
+                top_text = rect(top, "workflow-step-sql-text")
+                bottom_text = rect(bottom, "workflow-step-sql-text")
+                self.assertGreater(top_text[3], viewport[3] + 80)
+                self.assertLess(bottom_text[1], top_text[1] - 80)
+                self.assertAlmostEqual(bottom_text[1] + bottom_text[3],
+                                       viewport[1] + viewport[3], delta=2)
+
     def test_legacy_workflow_history_survives_restart_and_requires_confirmation_to_clear(self):
         """Migrate SW-03 and history tab reuse using actual SQLite and native storage."""
         fixture(self.store, self.db)

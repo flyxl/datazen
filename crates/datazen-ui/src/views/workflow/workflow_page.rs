@@ -1974,7 +1974,16 @@ fn step_detail_view(
                 .py(8.0)
                 .fill(k.c.bg_base)
                 .child(
-                    text(sql.to_owned())
+                    // Like the original max-h-20 overflow-auto <pre>, cap
+                    // the viewport, not the document. Keep the remainder
+                    // of a long statement reachable without moving results.
+                    col()
+                        .key("workflow-step-sql-scroll")
+                        .w_full()
+                        .min_h(0.0)
+                        .max_h(80.0)
+                        .scroll(ScrollSpec { stick_bottom: false })
+                        .child(text(sql.to_owned())
                         .key("workflow-step-sql-text")
                         .font(TextStyle {
                             size: 11.0,
@@ -1983,9 +1992,8 @@ fn step_detail_view(
                         })
                         .color(k.c.text_muted)
                         .w_full()
-                        .max_h(80.0)
                         .wrap_anywhere()
-                        .selectable(true),
+                        .selectable(true)),
                 ),
         );
     }
