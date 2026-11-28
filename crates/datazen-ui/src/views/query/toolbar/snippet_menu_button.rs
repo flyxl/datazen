@@ -105,7 +105,7 @@ pub(crate) fn menu<S: 'static>(
     let k = kit(dark);
     let mut menu = col().key("snippet-menu").role("menu").label(t(LABEL_KEY)).gap(2.0);
     if !show_prefix {
-        menu = menu.focus_group().w_full().min_h(0.0).shrink().px(2.0).py(4.0).scroll_y();
+        menu = menu.focus_group().w_full().min_h(0.0).shrink().px(2.0).py(4.0).scroll(rune::ScrollSpec { stick_bottom: false });
     }
     for item in vm.menu_items() {
         let id = item.id;
