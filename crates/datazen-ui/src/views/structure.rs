@@ -598,21 +598,45 @@ pub fn ddl_view(state: &AppState, title: &str, theme: tok::Theme) -> El {
         .filter(|ddl| !ddl.is_empty());
     match ddl {
         Some(ddl) => {
-            let mut page = col()
+            // The stock route previously rendered only the code. Use the same
+            // real, wake-backed clipboard control as the rest of the shell;
+            // never offer Copy for a missing, loading or failed definition.
+            let dark = state.dark_theme();
+            let copy_owner = format!("table-ddl:{}", state.tabs.selected().map_or(0, |tab| tab.id));
+            let header = row()
+                .key("table-ddl-header")
+                .w_full()
+                .min_w(0.0)
+                .px(16.0)
+                .py(12.0)
+                .center_y()
+                .gap(8.0)
+                .child(text(title.to_owned()).key("table-ddl-title")
+                    .font(rune::TextStyle::new(16.0, 600.0)).color(theme.text).truncate())
+                .child(text("· DDL").key("table-ddl-kind")
+                    .font(rune::TextStyle::new(14.0, 400.0)).color(theme.text_secondary))
+                .child(row().grow(1.0).min_w(0.0))
+                .child(home_copy_button(
+                    state, "table-ddl-copy", &copy_owner, &ddl, t("common.copy"), dark,
+                ));
+            let mut code = col()
                 .key("table-ddl")
                 .w_full()
+                .min_w(0.0)
                 .px(12.0)
-                .py(8.0)
-                .radius(8.0)
-                .fill(theme.control_off);
+                .py(12.0)
+                .fill(crate::ui::theme::colors(dark).surface);
             for line in ddl.lines() {
-                page = page.child(
+                code = code.child(
                     text(line.to_owned())
                         .font(crate::sql_editor::editor_font())
-                        .color(theme.text),
+                        .color(theme.text)
+                        .selectable(true),
                 );
             }
-            page
+            col().key("table-ddl-pane").w_full().min_w(0.0)
+                .child(header)
+                .child(code)
         }
         None => col()
             .key("table-ddl-empty")
