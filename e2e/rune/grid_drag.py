@@ -160,3 +160,139 @@ class GridDragJourney:
         self.assertEqual(self.store.read_bytes(), connection_bytes)
         for suffix in ("-wal", "-shm", "-journal"):
             self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
+
+    def test_row_numbers_controls_real_readonly_sqlite_grids_after_restart(self):
+        """Row Numbers controls the real Table and Query Result without changing their data."""
+        fixture(self.store, self.db)
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        self.env["HOME"] = str(self.root)
+        self.env["TZ"] = "UTC"
+
+        sql = "SELECT id, customer_name FROM customers ORDER BY id;"
+        oracle_uri = f"{self.db.as_uri()}?mode=ro&immutable=1"
+        with sqlite3.connect(oracle_uri, uri=True) as oracle:
+            expected = oracle.execute(sql).fetchall()
+        self.assertEqual(expected, [(1, "fixture-ada"), (2, "fixture-lin")])
+        original_db = self.db.read_bytes()
+        original_connections = self.store.read_bytes()
+
+        settings = self.root / "settings.json"
+        original_settings = {
+            "ui": {"language": "en", "themeMode": "light", "tablePageSize": 25},
+            "rowCountMode": "exact",
+            "defaultTableSort": "primaryKeyAsc",
+            "gridAlternatingRows": False,
+            "unrelated": {"keep": "row-number-fixture"},
+        }
+        settings.write_text(json.dumps(original_settings), encoding="utf-8")
+        settings.chmod(0o600)
+        initial_settings = settings.read_bytes()
+        section = [tap(.5, "rail-settings"), tap(1.4, "settings-nav-dataBrowsing")]
+        switch = "settings-grid-row-numbers"
+
+        def a11y_node(tree, target):
+            def visit(entry):
+                if entry.get("key") == target:
+                    yield entry
+                for child in entry.get("children", ()):
+                    yield from visit(child)
+            matches = list(visit(tree["accessibility"]))
+            self.assertEqual(len(matches), 1, target)
+            return matches[0]
+
+        def check_switch(tree, on):
+            self.expect_rendered(tree, key=switch)
+            control = a11y_node(tree, switch)
+            self.assertEqual((control.get("role"), control.get("name")), ("switch", "Row numbers"))
+            self.assertIn("click", control.get("actions", ()))
+            self.assertIn("checked" if on else "unchecked", control.get("states", ()))
+            self.assertFalse(visible(tree, key="settings-error"))
+
+        def check_grid(tree, prefix, show):
+            header = f"{prefix}head-rownum"
+            gutter = {f"{prefix}rownum-{row}" for row in range(len(expected))}
+            relevant = [n for n in tree["elements"] if not n.get("exiting")]
+            keys = {n.get("key") for n in relevant}
+            if show:
+                self.expect_rendered(tree, key=header)
+                self.expect_rendered(tree, text="#", within=header)
+                for row in range(len(expected)):
+                    row_header = f"{prefix}rownum-{row}"
+                    self.expect_rendered(tree, text=str(row + 1), within=row_header)
+                    self.assertEqual(a11y_node(tree, row_header)["role"], "row-header")
+                    self.assertAlmostEqual(self._settled_rect(tree, row_header)[2], 40, delta=.25)
+            else:
+                self.assertTrue(keys.isdisjoint({header, *gutter}), "no hidden gutter nodes")
+
+            wanted = {f"{prefix}cell-{r}-{c}" for r, values in enumerate(expected)
+                      for c in range(len(values))}
+            found = {n["key"] for n in relevant if n.get("role") == "gridcell"
+                     and (n.get("key") or "").startswith(f"{prefix}cell-")}
+            self.assertEqual(found, wanted, "same logical cell count and identifiers")
+            for row, values in enumerate(expected):
+                for col, value in enumerate(values):
+                    self.expect_rendered(tree, text=str(value), within=f"{prefix}cell-{row}-{col}")
+            return {key: self._settled_rect(tree, key) for key in wanted}
+
+        check_switch(self.replay(section, until=2.5), True)
+        self.assertEqual(settings.read_bytes(), initial_settings, "mount does not write defaults")
+
+        table_on = self.replay([*OPEN, tap(4.8, "rownum-1")], until=5.8)
+        self.expect_rendered(table_on, key="grid-readonly")
+        self.expect_rendered(table_on, key="data-grid-status",
+                             text="2×2 · window at column 0 · selection row 2 · 0 dirty")
+        self.assertEqual(a11y_node(table_on, "data-grid-scroll").get("activeDescendant"), "rownum-1")
+        table_with_gutter = check_grid(table_on, "", True)
+        query = query_steps(sql)
+        result_on = self.replay([*query, tap(10.9, "result-cell-1-1")], until=11.8)
+        result_with_gutter = check_grid(result_on, "result-", True)
+        self.assertEqual(a11y_node(result_on, "result-data-grid-scroll").get("activeDescendant"),
+                         "result-cell-1-1")
+
+        check_switch(self.replay([*section, tap(2.6, switch)], until=4), False)
+        persisted = {**original_settings, "gridRowNumbers": False}
+        self.assertEqual(json.loads(settings.read_bytes()), persisted)
+        # Each replay launches a new native process from the same disposable profile.
+        check_switch(self.replay(section, until=2.5), False)
+
+        table_off = self.replay([*OPEN, tap(4.8, "cell-1-1")], until=5.8)
+        self.expect_rendered(table_off, key="data-grid-status",
+                             text="2×2 · window at column 0 · selection r1c1..r1c1 · 0 dirty")
+        self.assertEqual(a11y_node(table_off, "data-grid-scroll").get("activeDescendant"), "cell-1-1")
+        table_without_gutter = check_grid(table_off, "", False)
+        result_off = self.replay([*query, tap(10.9, "result-cell-1-1")], until=11.8)
+        result_without_gutter = check_grid(result_off, "result-", False)
+        self.assertEqual(a11y_node(result_off, "result-data-grid-scroll").get("activeDescendant"),
+                         "result-cell-1-1")
+
+        for previous, current in ((table_with_gutter, table_without_gutter),
+                                  (result_with_gutter, result_without_gutter)):
+            self.assertEqual(previous.keys(), current.keys())
+            for cell, rect in previous.items():
+                self.assertAlmostEqual(rect[0] - current[cell][0], 40, delta=.25)
+                self.assertEqual(rect[1:], current[cell][1:])
+
+        # Real clicks and a real pointer drag select the same TSV source values
+        # with the gutter gone. The host integration test exercises Cmd+C itself.
+        selection = self.replay([
+            *OPEN, tap(4.8, "cell-1-1"),
+            {"t": 5.4, "type": "down", "key": "cell-0-0"},
+            {"t": 5.9, "type": "move", "key": "cell-1-1"},
+            {"t": 6.3, "type": "up", "key": "cell-1-1"},
+        ], until=7.0)
+        self.expect_rendered(selection, key="data-grid-status",
+                             text="2×2 · window at column 0 · selection r0c0..r1c1 · 0 dirty")
+        check_grid(selection, "", False)
+
+        self.assertEqual(json.loads(settings.read_bytes()), persisted)
+        self.assertEqual(self.store.read_bytes(), original_connections)
+        self.assertEqual(self.db.read_bytes(), original_db)
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
+        with sqlite3.connect(oracle_uri, uri=True) as oracle:
+            self.assertEqual(oracle.execute(sql).fetchall(), expected)

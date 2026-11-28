@@ -143,6 +143,14 @@ fn live_row_number_setting_changes_the_actual_table_and_query_grids_without_chan
         read_only: None,
     };
     let mut rt = open(profile.path(), false);
+    rt.on_key = Some(datazen_ui::app_key);
+    let clipboard = rune::clipboard::memory();
+    rt.use_clipboard(&clipboard);
+    fn copy_by_key(rt: &mut Runtime<AppState>, clipboard: &rune::clipboard::MemoryClipboard) -> Option<String> {
+        rt.key(KeyEvent { key: Key::Command('c'), mods: Mods::default() });
+        settled(rt);
+        clipboard.text().map(|text| text.to_string())
+    }
     let toggle = find(&rt, ROW_NUMBERS);
     assert_eq!(toggle.role, "switch");
     assert_eq!(toggle.label.as_deref(), Some("Row numbers"));
@@ -212,6 +220,7 @@ fn live_row_number_setting_changes_the_actual_table_and_query_grids_without_chan
     settled(&mut rt);
     assert_eq!(rt.state.grid.rect(), (0, 1, 0, 1));
     assert_eq!(rt.state.grid.copy_tsv(), "1\tAda\n2\tBob");
+    assert_eq!(copy_by_key(&mut rt, &clipboard).as_deref(), Some("1\tAda\n2\tBob"));
 
     let mut wide_page = page.clone();
     wide_page.columns = (0..20).map(|index| format!("column{index}")).collect();
@@ -238,6 +247,7 @@ fn live_row_number_setting_changes_the_actual_table_and_query_grids_without_chan
     assert!(rt.find("result-head-rownum").is_none() && rt.find("result-rownum-0").is_none());
     press(&mut rt, "result-cell-1-1");
     assert_eq!(rt.state.result_grid.as_ref().unwrap().copy_tsv(), "Bob");
+    assert_eq!(copy_by_key(&mut rt, &clipboard).as_deref(), Some("Bob"));
 
     drop(rt);
     let reopened = open(profile.path(), false);
