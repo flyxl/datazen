@@ -23,7 +23,8 @@ use datazen::shared::context::RequestContext;
 use datazen::shared::error::{ApiError, ApiErrorCode};
 use datazen::shared::id::{ConnectionId, Counter};
 use datazen::table_browsing::api::{
-    read_table_page, TableReadRequest, TargetBinding, TargetCommandRunner,
+    read_native_table_page, read_table_page, NativeTableDefaultOrder, TableReadRequest, TargetBinding,
+    TargetCommandRunner,
 };
 use datazen::table_editing::change_set::{
     CommitPendingChangesRequest, PendingRowChange, RowChangeTableContext,
@@ -163,6 +164,7 @@ enum HostJob {
         table: String,
         page: u32,
         page_size: u32,
+        default_order: NativeTableDefaultOrder,
         sort: Option<ColumnSort>,
         filter: Option<ColumnFilter>,
     },
@@ -760,13 +762,16 @@ impl LiveAdapter {
                             ));
                             HostAnswer::WorkflowRun { generation, results }
                         }
-                        HostJob::ReadTable { generation, table, page, page_size, sort, filter } => {
+                        HostJob::ReadTable {
+                            generation, table, page, page_size, default_order, sort, filter,
+                        } => {
                             let page_result = runtime.block_on(read_table(
                                 &worker_session,
                                 &worker_schemas,
                                 &table,
                                 page,
                                 page_size,
+                                default_order,
                                 sort,
                                 filter,
                             ));
@@ -1565,6 +1570,7 @@ async fn read_table(
     table: &str,
     page: u32,
     page_size: u32,
+    default_order: NativeTableDefaultOrder,
     sort: Option<ColumnSort>,
     filter: Option<ColumnFilter>,
 ) -> Result<TablePage, String> {
@@ -1638,9 +1644,16 @@ async fn read_table(
         require_keyset: None,
         cursor_depth: None,
     };
-    let read = read_table_page(driver.as_ref(), request, binding.revision, context, &runner)
-        .await
-        .map_err(|error| error.to_string())?;
+    let read = read_native_table_page(
+        driver.as_ref(),
+        request,
+        binding.revision,
+        context,
+        &runner,
+        default_order,
+    )
+    .await
+    .map_err(|error| error.to_string())?;
     // N10: warm the structure cache — one schema read beside the page read,
     // both local-file speed, so the structure pages answer from memory.
     if let Ok(schema) = driver
@@ -2547,9 +2560,22 @@ async fn run_query_observed(
     Ok((pages.finish()?, artifact))
 }
 
-/// What one setting write does to the document's ui object (L1): the
-/// scalar settings set one flat key verbatim; a layout size sets a key
-/// inside the layout sub-object.
+/// Take the persisted app setting as part of this job's snapshot. Unknown or
+/// absent settings retain the existing driver policy; reading never writes.
+fn native_table_default_order(document: &serde_json::Value) -> NativeTableDefaultOrder {
+    use datazen_ui_api::DefaultTableSort;
+    match document.get("defaultTableSort").and_then(serde_json::Value::as_str) {
+        Some(value) if value == DefaultTableSort::PrimaryKeyDesc.as_str() => {
+            NativeTableDefaultOrder::SinglePrimaryKeyDescending
+        }
+        Some(value) if value == DefaultTableSort::None.as_str() => NativeTableDefaultOrder::Unordered,
+        _ => NativeTableDefaultOrder::Driver,
+    }
+}
+
+// What one setting write does to the document's ui object (L1): the
+// scalar settings set one flat key verbatim; a layout size sets a key
+// inside the layout sub-object.
 enum UiWrite {
     Scalar(&'static str, serde_json::Value),
     AppPreference(&'static str, serde_json::Value),
@@ -3041,6 +3067,9 @@ impl DesktopAdapter for LiveAdapter {
                 table,
                 page,
                 page_size,
+                default_order: self.settings_document.lock().ok()
+                    .map(|document| native_table_default_order(&document))
+                    .unwrap_or_default(),
                 sort,
                 filter,
             },
@@ -4325,6 +4354,151 @@ mod tests {
         }));
         let error = poll_read(&mut adapter).expect_err("an unknown table fails");
         assert!(!error.is_empty(), "the failure carries a sentence: {error}");
+    }
+
+    #[test]
+    fn native_default_table_order_cold_read_refresh_and_manual_sort_use_real_sqlite() {
+        let root = tempfile::tempdir().expect("disposable profile");
+        let settings = root.path().join("settings.json");
+        let saved = br#"{"defaultTableSort":"primaryKeyDesc","unrelated":true}"#;
+        std::fs::write(&settings, saved).expect("preseed the existing React-compatible preference");
+        let mut adapter = opened_adapter(root.path());
+        let read = |adapter: &mut LiveAdapter, generation, page, sort| {
+            assert!(adapter.begin_job(AdapterJob::ReadTable {
+                generation, table: "users".into(), page, page_size: 2, sort, filter: None,
+            }));
+            poll_read(adapter).expect("real SQLite table read")
+        };
+        assert_eq!(read(&mut adapter, 2, 0, None).rows[0][1], "user-59");
+        assert_eq!(read(&mut adapter, 3, 1, None).rows[0][1], "user-57");
+        assert_eq!(read(&mut adapter, 4, 1, None).rows[0][1], "user-57");
+        let authored = ColumnSort { column: "name".into(), descending: false };
+        let manual = read(&mut adapter, 5, 0, Some(authored.clone()));
+        assert_eq!(manual.rows[0][1], "user-00");
+        assert_eq!(manual.sort, Some(authored));
+        assert!(read(&mut adapter, 6, 0, None).sort.is_none(),
+            "an inherited default is not a UI manual-sort arrow");
+        assert_eq!(std::fs::read(&settings).unwrap(), saved);
+
+        let default_root = tempfile::tempdir().expect("independent default profile");
+        let mut default_adapter = opened_adapter(default_root.path());
+        assert_eq!(read(&mut default_adapter, 2, 0, None).rows[0][1], "user-00");
+        assert!(!default_root.path().join("settings.json").exists());
+    }
+
+    #[test]
+    fn native_default_table_order_none_reads_keyless_sqlite_like_the_unordered_local_oracle() {
+        let root = tempfile::tempdir().expect("disposable SQLite owned by this test");
+        let database = root.path().join("sort-oracle.sqlite");
+        std::fs::File::create(&database).expect("create only our fixture");
+        let registry = host_registry();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all().build().expect("fixture runtime starts");
+        let mut config = sqlite_config("local-none", Some(database.to_string_lossy().into_owned()));
+        let (natural, ordered, descending) = runtime.block_on(async {
+            let driver = registry.get(&"sqlite".into()).await.expect("linked SQLite");
+            let seed = driver.connect(&config).await.expect("open fixture to seed");
+            driver.execute(&seed, "CREATE TABLE keyless (label TEXT NOT NULL, payload TEXT NOT NULL)")
+                .await.expect("real keyless table without indexes");
+            driver.execute(
+                &seed,
+                "INSERT INTO keyless VALUES ('zulu','first'),('alpha','second'),('mike','third'),('bravo','fourth')",
+            ).await.expect("deliberately nonalphabetical insertion");
+            driver.disconnect(seed).await.expect("flush and close seeding connection");
+
+            config.read_only = true;
+            let oracle = driver.connect(&config).await.expect("independent read-only SQLite connection");
+            let mut results = Vec::new();
+            for sql in [
+                "SELECT label, payload FROM keyless LIMIT 2 OFFSET 0",
+                "SELECT label, payload FROM keyless LIMIT 2 OFFSET 2",
+                "SELECT label, payload FROM keyless ORDER BY label ASC LIMIT 2 OFFSET 0",
+                "SELECT label, payload FROM keyless ORDER BY label ASC LIMIT 2 OFFSET 2",
+                "SELECT label, payload FROM keyless ORDER BY label DESC LIMIT 2 OFFSET 0",
+            ] {
+                let result = driver.query(&oracle, sql).await.expect("execute independent local SQL");
+                results.push(result.rows.into_iter().map(|row| row.into_iter().map(|value| {
+                    match value {
+                        Some(Cell::String(text)) => text,
+                        other => panic!("expected a fixture TEXT cell, got {other:?}"),
+                    }
+                }).collect::<Vec<_>>()).collect::<Vec<_>>());
+            }
+            driver.disconnect(oracle).await.expect("close independent SQLite connection");
+            let [natural_first, natural_second, ordered_first, ordered_second, descending] =
+                <[_; 5]>::try_from(results).expect("five direct SQL results");
+            ([natural_first, natural_second], [ordered_first, ordered_second], descending)
+        });
+        // This is a constraint of the controlled SQLite fixture and plan,
+        // not a product promise that unordered rows follow insertion order.
+        assert_ne!(natural[0], ordered[0], "this fixture distinguishes unordered from fallback ASC");
+        let original_db = std::fs::read(&database).expect("freeze unchanged fixture bytes");
+
+        let read_profile = |name: &str, value: Option<&[u8]>| {
+            let dir = root.path().join(name);
+            std::fs::create_dir(&dir).expect("separate disposable profile");
+            let settings = dir.join("settings.json");
+            if let Some(bytes) = value {
+                std::fs::write(&settings, bytes).expect("isolated persisted setting for this worker");
+            }
+            let connections = dir.join("connections.json");
+            save_connection(&connections, config.clone());
+            let mut host = LiveAdapter::with_data_dir(
+                Arc::new(FileConnectionRepository::open(&connections).expect("read fixture profiles")),
+                &dir,
+            );
+            assert!(host.begin_job(AdapterJob::OpenConnection { generation: 1, id: config.id.clone() }));
+            poll_open(&mut host).expect("worker opens real SQLite");
+            (host, settings)
+        };
+        let read = |host: &mut LiveAdapter, generation, page, sort: Option<ColumnSort>| {
+            assert!(host.begin_job(AdapterJob::ReadTable {
+                generation, table: "keyless".into(), page, page_size: 2, sort: sort.clone(), filter: None,
+            }));
+            let actual = poll_read(host).expect("actual native ReadTable job");
+            assert_eq!(actual.page, page);
+            assert_eq!(actual.page_size, 2);
+            assert_eq!(actual.total_rows, 4);
+            assert!(actual.primary_key.is_empty());
+            assert!(actual.read_only.is_some());
+            assert_eq!(actual.sort, sort);
+            actual.rows
+        };
+
+        let (mut legacy, absent_settings) = read_profile("stock", None);
+        assert_eq!(read(&mut legacy, 2, 0, None), ordered[0]);
+        assert_eq!(read(&mut legacy, 3, 1, None), ordered[1]);
+        assert!(!absent_settings.exists());
+        drop(legacy);
+
+        let saved = br#"{"defaultTableSort":"none","unrelated":true}"#;
+        let (mut none, saved_settings) = read_profile("none", Some(saved));
+        assert_eq!(read(&mut none, 2, 0, None), natural[0]);
+        assert_eq!(read(&mut none, 3, 1, None), natural[1]);
+        assert_eq!(read(&mut none, 4, 1, None), natural[1], "repeat the same native page");
+        let manual = ColumnSort { column: "label".into(), descending: true };
+        assert_eq!(read(&mut none, 5, 0, Some(manual)), descending, "manual sort wins");
+        assert_eq!(read(&mut none, 6, 0, None), natural[0], "clear the manual sort");
+        drop(none);
+        assert_eq!(std::fs::read(&saved_settings).unwrap(), saved);
+        assert_eq!(std::fs::read(&database).unwrap(), original_db, "this journey is read-only");
+    }
+
+    #[test]
+    fn native_default_table_order_recognizes_only_exact_flat_persisted_values() {
+        use NativeTableDefaultOrder as Order;
+        for (document, expected) in [
+            (serde_json::json!({}), Order::Driver),
+            (serde_json::json!({"defaultTableSort": "primaryKeyAsc"}), Order::Driver),
+            (serde_json::json!({"defaultTableSort": "primaryKeyDesc"}), Order::SinglePrimaryKeyDescending),
+            (serde_json::json!({"defaultTableSort": "none"}), Order::Unordered),
+            (serde_json::json!({"defaultTableSort": "inherit"}), Order::Driver),
+            (serde_json::json!({"defaultTableSort": "None"}), Order::Driver),
+            (serde_json::json!({"defaultTableSort": 1}), Order::Driver),
+            (serde_json::json!({"ui": {"defaultTableSort": "none"}}), Order::Driver),
+        ] {
+            assert_eq!(native_table_default_order(&document), expected);
+        }
     }
 
     #[test]

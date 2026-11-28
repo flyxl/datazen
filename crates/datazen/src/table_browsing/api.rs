@@ -24,7 +24,7 @@
 //! （[`preview_table_read`]）。写链路（commit/preview changes）在
 //! `table_editing`；查询历史在 `history`；均不在本模块。
 
-use datazen_driver_api::keyset::CursorValue;
+use datazen_driver_api::keyset::{CursorValue, KeysetUnavailableReason};
 use datazen_driver_api::{
     CountStrategy, DatabaseDriver, LegacySqlDialect, SqlDialect, TableDataResult, TableSchema,
     Value,
@@ -49,7 +49,17 @@ use super::executor::{
     keyset_refusal, paging_info, resolve_paging, FilterCondition, PagingPlan, QueryExecutor,
     SortCondition,
 };
-use super::paging::{keyset_decision, resolve_order_spec_multi};
+use super::paging::{keyset_decision, resolve_order_spec_multi, KeysetDecision, KeysetSeek};
+
+/// Optional default order for the native host's interactive table reads.
+/// A caller's explicit sort always wins. This is not part of the IPC DTO.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NativeTableDefaultOrder {
+    #[default]
+    Driver,
+    SinglePrimaryKeyDescending,
+    Unordered,
+}
 
 /// A table read request as it arrives over IPC (camelCase on the wire).
 ///
@@ -250,6 +260,7 @@ struct ReadQueryShape<'a> {
     raw_where: Option<&'a str>,
     count_strategy: Option<CountStrategy>,
     default_order_columns: Option<&'a [String]>,
+    native_default_order: NativeTableDefaultOrder,
     after_key: Option<&'a [CursorValue]>,
     require_keyset: bool,
     cursor_depth: u32,
@@ -298,12 +309,25 @@ fn assemble_statements(
     // and order by the first column instead.
     let primary_keys = schema.effective_primary_keys();
     browsing::report_pk_source_disagreement(&schema.table_name, &schema.columns, &primary_keys);
-    let default_order = browsing::resolve_default_order(
-        driver,
-        &schema.columns,
-        &primary_keys,
-        shape.default_order_columns,
-    );
+    let unordered = shape.native_default_order == NativeTableDefaultOrder::Unordered
+        && shape.sorts.unwrap_or_default().is_empty();
+    // Deliberately unordered reads cannot reuse a boundary from a different
+    // ordering. The stock native caller does not hold such a cursor.
+    if unordered && shape.after_key.is_some() {
+        return Err(TableReadError::Validation(
+            "An unordered native table read cannot use a seek boundary.".into(),
+        ));
+    }
+    let default_order = if unordered {
+        Vec::new()
+    } else {
+        browsing::resolve_default_order(
+            driver,
+            &schema.columns,
+            &primary_keys,
+            shape.default_order_columns,
+        )
+    };
     // The order of this read, and whether it is a total order. The decision
     // is made once, here: the statement, the boundary and the answer to the
     // caller all read it from the same place.
@@ -314,14 +338,30 @@ fn assemble_statements(
     // used to truncate `sorts` to its first entry — every column after the
     // first silently disappeared here, which is why the grid could not sort
     // by more than one column even with a plural contract on the wire.
-    let explicit_sorts: Vec<(&str, bool)> = shape
+    let mut explicit_sorts: Vec<(&str, bool)> = shape
         .sorts
         .unwrap_or_default()
         .iter()
         .map(|sort| (sort.column.as_str(), sort.descending))
         .collect();
+    if explicit_sorts.is_empty()
+        && shape.native_default_order == NativeTableDefaultOrder::SinglePrimaryKeyDescending
+    {
+        if let [primary_key] = primary_keys.as_slice() {
+            explicit_sorts.push((primary_key.as_str(), true));
+        }
+    }
     let order = resolve_order_spec_multi(&explicit_sorts, &default_order, &primary_keys);
-    let decision = keyset_decision(order, &schema.columns);
+    let decision = if unordered {
+        // A regular keyset decision may add primary keys even to an empty
+        // order. Do not silently order an explicitly unordered native read.
+        KeysetDecision {
+            order,
+            seek: KeysetSeek::Unavailable { reason: KeysetUnavailableReason::NoStableOrder },
+        }
+    } else {
+        keyset_decision(order, &schema.columns)
+    };
     let plan = resolve_paging(
         driver,
         &decision,
@@ -568,6 +608,28 @@ pub async fn read_table_page(
     context: RequestContext,
     runner: &dyn TargetCommandRunner,
 ) -> Result<TableDataResult, TableReadError> {
+    read_native_table_page(
+        driver,
+        request,
+        revision,
+        context,
+        runner,
+        NativeTableDefaultOrder::Driver,
+    )
+    .await
+}
+
+/// Read the same qualified table as the legacy entry point, with an optional
+/// native-only default. A user-authored sort and the existing wire shape are
+/// unchanged; the policy is resolved using this read's authoritative schema.
+pub async fn read_native_table_page(
+    driver: &dyn DatabaseDriver,
+    request: TableReadRequest,
+    revision: Counter,
+    context: RequestContext,
+    runner: &dyn TargetCommandRunner,
+    native_default_order: NativeTableDefaultOrder,
+) -> Result<TableDataResult, TableReadError> {
     validate_read_context(&request.context)?;
     if request.page_size == 0 || request.page_size > 10000 {
         return Err(TableReadError::Validation("Invalid table page size".into()));
@@ -620,6 +682,7 @@ pub async fn read_table_page(
             raw_where,
             count_strategy: request.count_strategy,
             default_order_columns: request.default_order_columns.as_deref(),
+            native_default_order,
             after_key: request.after_key.as_deref(),
             require_keyset: request.require_keyset.unwrap_or(false),
             cursor_depth: request.cursor_depth.unwrap_or(0),
@@ -841,6 +904,7 @@ pub async fn preview_table_read(
         raw_where,
         count_strategy: request.count_strategy,
         default_order_columns: request.default_order_columns.as_deref(),
+        native_default_order: NativeTableDefaultOrder::Driver,
         after_key: request.after_key.as_deref(),
         require_keyset: request.require_keyset.unwrap_or(false),
         cursor_depth: request.cursor_depth.unwrap_or(0),
@@ -990,6 +1054,7 @@ mod tests {
             raw_where: None,
             count_strategy: None,
             default_order_columns: None,
+            native_default_order: NativeTableDefaultOrder::Driver,
             after_key: None,
             require_keyset: false,
             cursor_depth: 0,
@@ -999,6 +1064,77 @@ mod tests {
 
     fn driver() -> Arc<MockDriver> {
         MockDriver::new("postgres", MockDriverOptions::default())
+    }
+
+    #[test]
+    fn native_unordered_cannot_be_resorted_by_keyset_or_a_reused_cursor() {
+        let driver = MockDriver::new("postgres", MockDriverOptions {
+            supports_keyset_pagination: true,
+            ..MockDriverOptions::default()
+        });
+        let dialect = LegacySqlDialect::new(driver.as_ref());
+        let schema = schema();
+        let prepare = |shape| assemble_statements(
+            driver.as_ref(), &dialect, &schema, "app", None, "users", shape,
+        );
+        let none = NativeTableDefaultOrder::Unordered;
+        let legacy = prepare(ReadQueryShape { default_order_columns: Some(&[]), ..shape() })
+            .expect("legacy transport stays byte-compatible, even for its empty override");
+        assert!(legacy.select.contains("ORDER BY"), "{}", legacy.select);
+
+        for page in [0, 2] {
+            let read = prepare(ReadQueryShape { native_default_order: none, page, ..shape() })
+                .expect("the native page is readable without an order");
+            assert!(!read.select.contains("ORDER BY"), "{}", read.select);
+            assert_eq!(read.plan.mode, datazen_driver_api::keyset::PagingMode::Offset);
+            assert!(read.plan.seek_order.is_none());
+            assert!(read.plan.predicate.is_none());
+        }
+        assert!(matches!(
+            prepare(ReadQueryShape { native_default_order: none, after_key: Some(&[]), ..shape() }),
+            Err(TableReadError::Validation(_)),
+        ));
+        assert!(matches!(
+            prepare(ReadQueryShape { native_default_order: none, require_keyset: true, ..shape() }),
+            Err(TableReadError::Validation(_)),
+        ));
+    }
+
+    #[test]
+    fn native_default_at_assembly_prefers_authoritative_single_pk_only_after_manual_sort() {
+        let driver = driver();
+        let dialect = LegacySqlDialect::new(driver.as_ref());
+        let prepare = |schema: &TableSchema, shape| {
+            assemble_statements(driver.as_ref(), &dialect, schema, "app", None, "users", shape)
+                .expect("assembly")
+        };
+        let desc = NativeTableDefaultOrder::SinglePrimaryKeyDescending;
+        let mut target = schema();
+        target.columns[0].is_primary_key = false;
+        // A stale column flag must not override the normalized scoped key.
+        let pk = prepare(&target, ReadQueryShape { native_default_order: desc, ..shape() });
+        assert_eq!(pk.plan.order.columns.len(), 1);
+        assert_eq!(pk.plan.order.columns[0].column, "id");
+        assert!(pk.plan.order.columns[0].descending);
+
+        let user = [SortCondition { column: "name".into(), descending: false }];
+        let manual = prepare(&target, ReadQueryShape { sorts: Some(&user), ..shape() });
+        for policy in [desc, NativeTableDefaultOrder::Unordered] {
+            let combined = prepare(&target, ReadQueryShape {
+                native_default_order: policy, sorts: Some(&user), ..shape()
+            });
+            assert_eq!(manual.select, combined.select);
+        }
+
+        target.primary_keys.push("name".into());
+        let composite_default = prepare(&target, shape());
+        let composite_desc = prepare(&target, ReadQueryShape { native_default_order: desc, ..shape() });
+        assert_eq!(composite_default.select, composite_desc.select);
+
+        target.primary_keys.clear();
+        let keyless_default = prepare(&target, shape());
+        let keyless_desc = prepare(&target, ReadQueryShape { native_default_order: desc, ..shape() });
+        assert_eq!(keyless_default.select, keyless_desc.select);
     }
 
     /// The port must be object-safe: the api takes it as `&dyn`.
