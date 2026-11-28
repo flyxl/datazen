@@ -10,7 +10,7 @@ use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, row, text};
 use crate::i18n::t;
 use crate::ui::palette;
 
-use super::{DataGrid, GUTTER_W, ROW_H};
+use super::{scrollbars, DataGrid, GUTTER_W, ROW_H};
 use crate::ui::field::TextField;
 
 /// Which grid a render call targets: the table page's or the query result's.
@@ -105,11 +105,18 @@ fn sheet(
     let table_scroll_y = (slot == GridSlot::Table).then(|| grid.table_scroll_y());
     let scroll_key = slot.key("data-grid-scroll");
     let data_width = grid.sheet_data_width();
+    let classic = slot != GridSlot::SyncPreview;
+    let frame_width = classic.then(|| {
+        rune::memo::layout_with(&scrollbars::area_key(&scroll_key), |rect| rect[2])
+    }).flatten();
+    let gutters = scrollbars::Gutters::for_content(
+        frame_width.map(|width| [width, height]),
+        [paint.gutter_width() + data_width, ROW_H + grid.rows as f32 * paint.row_height],
+    );
     if !paint.show_row_numbers && slot == GridSlot::Table && grid.cols > 0 {
-        // React still selects the whole row when the pointer hits real row
-        // background outside the data cells. Do not assign this action to
-        // the cells or virtual-column spacers: those have different semantics.
-        let viewport_width = rune::memo::layout_with(&scroll_key, |rect| rect[2]).unwrap_or(0.0);
+        // Only real row background is selectable, not cells or virtual
+        // pads. Leave the classic vertical strip to the actual scrollbar.
+        let viewport_width = frame_width.unwrap_or(0.0) - gutters.right();
         paint.row_tail_width = (viewport_width - data_width).max(0.0);
     }
     let width = paint.gutter_width() + data_width + paint.row_tail_width;
@@ -147,7 +154,7 @@ fn sheet(
         || format!("cell-{focus_row}-{focus_col}"),
         |row| if paint.show_row_numbers { format!("rownum-{row}") } else { format!("grid-row-{row}") },
     );
-    col()
+    let viewport = col()
         .key(scroll_key)
         .w_full()
         .h(height)
@@ -164,7 +171,13 @@ fn sheet(
                 scroll_y.set(at.offset[1]);
             }
         })
-        .child(sheet)
+        .child(sheet);
+    if classic {
+        let k = crate::ui::kit::kit(paint.dark);
+        scrollbars::attach::<crate::AppState>(viewport, gutters, well, k.c.border_strong, k.c.text_faint)
+    } else {
+        viewport
+    }
 }
 
 pub fn panel(

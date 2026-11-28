@@ -398,3 +398,89 @@ class GridDragJourney:
         self.assertEqual(self.store.read_bytes(), connection_bytes)
         for suffix in ("-wal", "-shm", "-journal"):
             self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
+
+    def test_classic_grid_scrollbars_use_live_two_axis_overflow_and_keep_cells_working(self):
+        """Wide read-only SQLite surfaces get real gutters, drags, wheels and pinned cells."""
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as seed:
+            for index in range(15):
+                seed.execute(f"ALTER TABLE customers ADD COLUMN value_{index} INTEGER DEFAULT {index}")
+            seed.executemany("INSERT INTO customers (id, customer_name) VALUES (?, ?)", [
+                (i, f"scrollbar-{i:02}") for i in range(3, 42)
+            ])
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        self.store.chmod(0o600)
+        self.addCleanup(self.db.chmod, 0o600)
+        self.db.chmod(0o400)
+        original = self.db.read_bytes()
+        settings = self.root / "settings.json"
+        settings.write_text(json.dumps({
+            "ui": {"language": "en", "themeMode": "light", "tablePageSize": 100},
+            "rowCountMode": "exact", "defaultTableSort": "primaryKeyAsc",
+        }), encoding="utf-8")
+        settings.chmod(0o600)
+
+        def grid_a11y(tree, target):
+            def visit(node):
+                if node.get("key") == target:
+                    yield node
+                for child in node.get("children", ()):
+                    yield from visit(child)
+            matches = list(visit(tree["accessibility"]))
+            self.assertEqual(len(matches), 1, target)
+            return matches[0]
+
+        def bars(tree, prefix):
+            scope = f"{prefix}data-grid-scroll"
+            frame = self._settled_rect(tree, f"{scope}-scroll-area")
+            view = self._settled_rect(tree, scope)
+            horizontal = self._settled_rect(tree, "horizontal-scrollbar")
+            vertical = self._settled_rect(tree, "vertical-scrollbar")
+            x, y, w, h = frame
+            self.assertEqual(view, [x, y, w - 9, h - 9])
+            self.assertEqual(horizontal, [x, y + h - 9, w - 9, 9])
+            self.assertEqual(vertical, [x + w - 9, y, 9, h - 9])
+            for track in ("horizontal-scrollbar", "vertical-scrollbar"):
+                self.expect_rendered(tree, key="thumb", within=track)
+            return view, grid_a11y(tree, scope)
+
+        table = self.replay([*OPEN, tap(4.8, "cell-1-1")], until=5.6)
+        view, initial = bars(table, "")
+        self.assertEqual(initial["scroll"][:2], [0, 0])
+        self.assertGreater(initial["scroll"][2], 0)
+        self.assertEqual(initial["activeDescendant"], "cell-1-1")
+        self.expect_rendered(table, text="fixture-lin", within="cell-1-1")
+        self.expect_rendered(table, key="data-grid-status",
+                             text="41×17 · window at column 0 · selection r1c1..r1c1 · 0 dirty")
+
+        dragged = self.replay([
+            *OPEN,
+            {"t": 4.9, "type": "drag", "key": "horizontal-scrollbar/thumb", "dx": 240, "dur": .35},
+            {"t": 5.8, "type": "drag", "key": "vertical-scrollbar/thumb", "dy": 72, "dur": .35},
+        ], until=6.7)
+        dragged_view, drag_state = bars(dragged, "")
+        self.assertEqual(dragged_view, view)
+        self.assertGreater(drag_state["scroll"][0], 0)
+        self.assertGreater(drag_state["scroll"][1], 0)
+        frozen = self._settled_rect(dragged, "head-0")
+        self.assertAlmostEqual(frozen[0], view[0] + 40, delta=.25)
+        self.assertAlmostEqual(frozen[1], view[1], delta=.25)
+
+        wheeled = self.replay([
+            *OPEN,
+            {"t": 4.9, "type": "wheel", "key": "vertical-scrollbar", "dy": -75},
+        ], until=5.9)
+        self.assertEqual(bars(wheeled, "")[1]["scroll"][:2], [0, 75])
+
+        query = self.replay([
+            *query_steps("SELECT * FROM customers ORDER BY id;"),
+            tap(10.8, "result-cell-1-1"),
+        ], until=11.6)
+        _, query_state = bars(query, "result-")
+        self.assertEqual(query_state["activeDescendant"], "result-cell-1-1")
+        self.expect_rendered(query, text="fixture-lin", within="result-cell-1-1")
+        self.assertEqual(self.db.read_bytes(), original)
+        for suffix in ("-wal", "-shm", "-journal"):
+            self.assertFalse(self.db.with_name(self.db.name + suffix).exists())

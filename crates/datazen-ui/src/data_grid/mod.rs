@@ -9,6 +9,7 @@
 
 mod input;
 mod model;
+mod scrollbars;
 mod view;
 
 #[cfg(test)]
