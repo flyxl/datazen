@@ -82,6 +82,24 @@ pub fn yaml_palette(dark: bool, foreground: Color) -> YamlPalette {
     }
 }
 
+/// The stock Chromium `--dt-*` inks for SQL type labels on live Table
+/// Data. The generic component palette intentionally stays unchanged.
+pub fn table_header_type_ink(sql_type: &str, dark: bool) -> Color {
+    use crate::support::cell_types::{cell_type_to_data_type_family, resolve_cell_type};
+    use crate::support::data_type_colors::DataTypeFamily;
+    let family = cell_type_to_data_type_family(resolve_cell_type(Some(sql_type), None));
+    let (light, night) = match family {
+        DataTypeFamily::Null => ("#8498af", "#5f6879"),
+        DataTypeFamily::Bool => ("#3478ee", "#4fc3f7"),
+        DataTypeFamily::Number => ("#b86d12", "#fbbf24"),
+        DataTypeFamily::Datetime => ("#147e9c", "#5eead4"),
+        DataTypeFamily::Json => ("#2b70a8", "#67e8f9"),
+        DataTypeFamily::Text => ("#26364d", "#8b94a7"),
+        DataTypeFamily::Binary => ("#e05252", "#ff7b72"),
+    };
+    rune::color::hex(if dark { night } else { light }).expect("literal table type color")
+}
+
 /// Data-grid chrome and cell background colors.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GridPalette {

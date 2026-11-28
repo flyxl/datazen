@@ -13,6 +13,10 @@ use crate::ui::palette;
 use super::{scrollbars, DataGrid, GUTTER_W, ROW_H};
 use crate::ui::field::TextField;
 
+// Chromium TableHeader uses h-10 (40px) for the two-line metadata header.
+// Only a typed Table Data page opts into it; row density is independent.
+const TYPED_TABLE_HEADER_H: f32 = 40.0;
+
 /// Which grid a render call targets: the table page's or the query result's.
 /// The result keys are prefixed so both can be mounted in one frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,6 +109,13 @@ fn sheet(
     let table_scroll_y = (slot == GridSlot::Table).then(|| grid.table_scroll_y());
     let scroll_key = slot.key("data-grid-scroll");
     let data_width = grid.sheet_data_width();
+    let header_h = if slot == GridSlot::Table
+        && (0..grid.cols).any(|column| grid.column_type(column).is_some())
+    {
+        TYPED_TABLE_HEADER_H
+    } else {
+        ROW_H
+    };
     let classic = slot != GridSlot::SyncPreview;
     // Measure the unpadded area, not the viewport inset by the bar itself.
     // Table Data follows the actual layout; fixed result grids keep their
@@ -116,7 +127,7 @@ fn sheet(
     }).flatten();
     let gutters = scrollbars::Gutters::for_content(
         frame,
-        [paint.gutter_width() + data_width, ROW_H + grid.rows as f32 * paint.row_height],
+        [paint.gutter_width() + data_width, header_h + grid.rows as f32 * paint.row_height],
     );
     if !paint.show_row_numbers && slot == GridSlot::Table && grid.cols > 0 {
         // Only real row background is selectable, not cells or virtual
@@ -136,7 +147,7 @@ fn sheet(
     let sheet = col()
         .key(slot.key("data-grid-sheet"))
         .w(width)
-        .child(header_row(grid, slot, ink, paint).sticky_top(0.0))
+        .child(header_row(grid, slot, ink, paint, header_h).sticky_top(0.0))
         .child(
             col()
                 .key(rows_key)
@@ -618,15 +629,15 @@ fn footer(state: &crate::AppState, ink: rune::Color, muted: rune::Color) -> El {
     footer
 }
 
-fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, paint: CellPaint) -> El {
+fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, paint: CellPaint, header_h: f32) -> El {
     let gp = palette::grid_palette(paint.dark);
-    let mut line = row().key(slot.key("data-grid-header")).h(ROW_H).fill(gp.header_bg);
+    let mut line = row().key(slot.key("data-grid-header")).h(header_h).fill(gp.header_bg);
     if paint.show_row_numbers {
         line = line.child(
             row()
                 .key(slot.key("head-rownum"))
                 .w(GUTTER_W)
-                .h(ROW_H)
+                .h(header_h)
                 .px(6.0)
                 .center_y()
                 .fill(gp.header_gutter_bg)
@@ -636,13 +647,13 @@ fn header_row(grid: &DataGrid, slot: GridSlot, ink: rune::Color, paint: CellPain
     let mut cursor = 0u32;
     for col_index in grid.built_columns() {
         if col_index > cursor {
-            line = line.child(el().w(grid.span_width(cursor, col_index)).h(ROW_H));
+            line = line.child(el().w(grid.span_width(cursor, col_index)).h(header_h));
         }
-        line = line.child(header_cell(grid, slot, col_index, ink, paint));
+        line = line.child(header_cell(grid, slot, col_index, ink, paint, header_h));
         cursor = col_index + 1;
     }
     if cursor < grid.cols {
-        line = line.child(el().w(grid.span_width(cursor, grid.cols)).h(ROW_H));
+        line = line.child(el().w(grid.span_width(cursor, grid.cols)).h(header_h));
     }
     line
 }
@@ -704,6 +715,7 @@ fn header_cell(
     col_index: u32,
     ink: rune::Color,
     paint: CellPaint,
+    header_h: f32,
 ) -> El {
     let label = grid
         .column_name(col_index)
@@ -714,15 +726,31 @@ fn header_cell(
         Some((col, false)) if col == col_index => format!("{label} ↑"),
         _ => label,
     };
+    let sql_type = if slot == GridSlot::Table { grid.column_type(col_index) } else { None };
+    let content = if let Some(ty) = sql_type {
+        col()
+            .w_full()
+            .min_w(0.0)
+            .child(text(label).font(TextStyle::new(12.0, 500.0).lh(16.0)).color(ink).truncate())
+            .child(
+                text(ty)
+                    .key(slot.key(&format!("head-type-{col_index}")))
+                    .font(TextStyle::new(11.0, 400.0).lh(16.0).mono())
+                    .color(palette::table_header_type_ink(ty, paint.dark))
+                    .truncate(),
+            )
+    } else {
+        text(label).font(label_style()).color(ink)
+    };
     let w = grid.col_w(col_index);
     let mut cell = row()
         .key(slot.key(&format!("head-{col_index}")))
         .role("columnheader")
         .w(w)
-        .h(ROW_H)
+        .h(header_h)
         .px(8.0)
         .center_y()
-        .child(text(label).font(label_style()).color(ink));
+        .child(content);
     if slot == GridSlot::Table {
         cell = cell.on_press(move |state: &mut crate::AppState| state.cycle_sort(col_index));
     }

@@ -352,7 +352,18 @@ class GridDragJourney:
             first = self._settled_rect(tree, f"{prefix}cell-0-0")
             first_gutter = self._settled_rect(tree, f"{prefix}rownum-0")
             second = self._settled_rect(tree, f"{prefix}cell-1-0")
-            self.assertEqual(header[3], 28, "density must not resize the sticky column header")
+            self.assertEqual(header[3], 28 if prefix else 40,
+                             "density must not resize the sticky column header")
+            if prefix:
+                self.assertFalse(visible(tree, key=f"{prefix}head-type-0"))
+            else:
+                for col, declaration in enumerate(("INTEGER", "TEXT")):
+                    self.expect_rendered(tree, key=f"head-type-{col}", text=declaration)
+                    owner = self._settled_rect(tree, f"head-{col}")
+                    typed = self._settled_rect(tree, f"head-type-{col}")
+                    self.assertGreaterEqual(typed[1], owner[1])
+                    self.assertLessEqual(typed[1] + typed[3], owner[1] + owner[3])
+                self.assertAlmostEqual(first[1], header[1] + header[3], delta=.25)
             self.assertEqual(first[3], height)
             self.assertEqual(first_gutter[3], height)
             self.assertEqual(second[1] - first[1], height)
