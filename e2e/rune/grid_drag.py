@@ -61,26 +61,33 @@ class GridDragJourney:
         # the actual wheel, or highlighting rows in the newly visible viewport.
         with sqlite3.connect(self.db) as db:
             db.executemany("INSERT INTO customers VALUES (?, ?, ?)",
-                           [(i, f"scroll-{i}", 100 + i) for i in range(8, 48)])
+                           [(i, f"scroll-{i}", 100 + i) for i in range(8, 97)])
             all_rows = db.execute("SELECT * FROM customers ORDER BY id").fetchall()
-        # The default 25-row page cannot move the dragged origin past the
-        # virtual list's overscan. Load all 47 rows into this real grid page.
+        db_before_scroll = self.db.read_bytes()
+        # The responsive grid's larger viewport may retain 47 rows including
+        # overscan. Use a longer single page and wheel to its actual bottom.
         (self.root / "settings.json").write_text(
-            '{"ui":{"tablePageSize":50}}', encoding="utf-8")
+            '{"ui":{"tablePageSize":100}}', encoding="utf-8")
         scrolled = self.replay([
             *OPEN, tap(5.1, "cell-0-1"), pointer(6.0, "down", "cell-2-0"),
             pointer(6.5, "move", "cell-5-2"),
-            {"t": 6.9, "type": "wheel", "key": "data-grid-scroll", "dy": -1400},
+            {"t": 6.9, "type": "wheel", "key": "data-grid-scroll", "dy": -3600},
             pointer(7.7, "up", "data-grid-scroll"),
         ], until=9.1)
         self.expect_rendered(scrolled, key="data-grid-status",
-                             text="47×3 · window at column 0 · selection r0c1..r0c1 · 0 dirty")
+                             text="96×3 · window at column 0 · selection r0c1..r0c1 · 0 dirty")
         self.expect_rendered(scrolled, text="Page 1 / 1", key="grid-page-label")
-        self.expect_rendered(scrolled, text="47 rows", within="grid-filter")
+        self.expect_rendered(scrolled, text="96 rows", within="grid-filter")
         self.assertFalse(any(node.get("key") == "cell-2-0" for node in scrolled["elements"]),
                          "the original cell never left the mounted virtual rows")
-        self.expect_rendered(scrolled, text=all_rows[-1][1], within="cell-46-1")
+        self.expect_rendered(scrolled, text=all_rows[-1][1], within="cell-95-1")
+        last = self._settled_rect(scrolled, "cell-95-1")
+        viewport = self._settled_rect(scrolled, "data-grid-scroll")
+        header = self._settled_rect(scrolled, "data-grid-header")
+        self.assertGreaterEqual(last[1] + .25, viewport[1] + header[3])
+        self.assertAlmostEqual(last[1] + last[3], viewport[1] + viewport[3], delta=.25)
         self.assertFalse(visible(scrolled, key="grid-editor"))
+        self.assertEqual(self.db.read_bytes(), db_before_scroll)
         with sqlite3.connect(f"{self.db.as_uri()}?mode=ro", uri=True) as db:
             self.assertEqual(db.execute("SELECT * FROM customers ORDER BY id").fetchall(), all_rows)
 
