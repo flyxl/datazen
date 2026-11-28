@@ -218,8 +218,22 @@ fn real_query_library_disclosures_switch_and_collapse_without_disturbing_the_edi
         assert!(rt.find("splitter:query-sidebar-width").is_some());
         let pane = query_rect(&rt, "query-sidebar-pane");
         let opened = query_rect(&rt, "query-toolbar");
+        let separator = query_rect(&rt, "splitter:query-sidebar-width");
         assert_eq!(pane[2], QUERY_SIDEBAR_WIDTH_DEFAULT as f32);
-        assert_eq!(opened[0] - full[0], pane[2] + 1.0);
+        assert_eq!(separator[2], 1.0);
+        assert_eq!([separator[1], separator[3]], [parent[1], parent[3]]);
+        assert_eq!([pane[1], pane[3]], [parent[1], parent[3]]);
+        assert_eq!(opened[2] + separator[2] + pane[2], full[2]);
+        if panel == "query-snippets-panel" {
+            assert_eq!(pane[0], full[0], "working Snippets panel still belongs on the left");
+            assert_eq!(pane[0] + pane[2], separator[0]);
+            assert_eq!(separator[0] + separator[2], opened[0]);
+        } else {
+            assert_eq!(opened[0], full[0], "drawer doesn't indent the actual Query canvas");
+            assert_eq!(opened[0] + opened[2], separator[0]);
+            assert_eq!(separator[0] + separator[2], pane[0]);
+            assert_eq!(pane[0] + pane[2], full[0] + full[2]);
+        }
         for (_, other) in actions.into_iter().filter(|(_, other)| *other != panel) {
             assert!(rt.find(other).is_none(), "only the selected live panel mounts");
         }
@@ -233,6 +247,105 @@ fn real_query_library_disclosures_switch_and_collapse_without_disturbing_the_edi
     assert_eq!(rt.state.sql.doc(), "SELECT 42;");
     assert_eq!(rt.state.tabs.selected().map(|tab| tab.id), Some(query));
     assert_eq!(rt.state.layout_size(QUERY_SIDEBAR_WIDTH_KEY), None, "disclosure is session-only");
+}
+
+#[test]
+fn right_query_drawer_uses_the_existing_layout_key_and_physical_resize_direction() {
+    use rune::{Key, KeyEvent, Mods};
+
+    const HANDLE: &str = "splitter:query-sidebar-width";
+    const PANE: &str = "query-sidebar-pane";
+    const HISTORY: &str = "query-library-history-toggle";
+
+    let mut rt = runtime();
+    rt.set_full_keyboard_access(true);
+    rt.state.workspace.connect("local").unwrap();
+    let query = rt.state.open_query_tab("Existing width").unwrap();
+    rt.state.sql = sql_editor::SqlEditor::from_doc("SELECT 42;");
+    rt.state.sql.set_main_caret(4);
+    rt.state.set_layout_size(QUERY_SIDEBAR_WIDTH_KEY, 288).unwrap();
+    rt.frame(0.0);
+    let full = query_rect(&rt, "query-toolbar");
+    let right = full[0] + full[2];
+
+    let point = |rt: &Runtime<AppState>| {
+        let [x, y, w, h] = query_rect(rt, HANDLE);
+        (x + w / 2.0, y + h / 2.0)
+    };
+    let assert_drawer = |rt: &Runtime<AppState>, width: f32| {
+        let pane = query_rect(rt, PANE);
+        let toolbar = query_rect(rt, "query-toolbar");
+        let separator = query_rect(rt, HANDLE);
+        assert_eq!([toolbar[0], toolbar[0] + toolbar[2]], [full[0], separator[0]]);
+        assert_eq!([separator[2], separator[0] + separator[2]], [1.0, pane[0]]);
+        assert_eq!([pane[2], pane[0] + pane[2]], [width, right]);
+    };
+    let settle = |rt: &mut Runtime<AppState>| {
+        rt.settle_all();
+        rt.frame(1.0 / 60.0);
+    };
+    let press = |rt: &mut Runtime<AppState>, key| {
+        rt.key(KeyEvent { key, mods: Mods::default() });
+        rt.frame(1.0 / 60.0);
+    };
+    let focused = |rt: &Runtime<AppState>, key: &str| {
+        rt.elements().iter().any(|e| !e.exiting && e.key.as_deref() == Some(key) && e.focused)
+    };
+
+    tap_query(&mut rt, HISTORY);
+    assert_drawer(&rt, 288.0);
+    let (x, y) = point(&rt);
+    rt.pointer_down(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(x - 32.0, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.splitter_preview, Some((QUERY_SIDEBAR_WIDTH_KEY.into(), 320)));
+    assert_drawer(&rt, 320.0);
+    assert_eq!(rt.state.layout_size(QUERY_SIDEBAR_WIDTH_KEY), Some(288));
+    rt.pointer_up(x - 32.0, y);
+    rt.frame(1.0 / 60.0);
+    assert_eq!(rt.state.splitter_preview, None);
+    assert_eq!(rt.state.layout_size(QUERY_SIDEBAR_WIDTH_KEY), Some(320));
+    settle(&mut rt);
+    assert_drawer(&rt, 320.0);
+
+    let (x, y) = point(&rt);
+    rt.pointer_down(x, y);
+    rt.frame(1.0 / 60.0);
+    rt.pointer_move(x + 32.0, y);
+    rt.frame(1.0 / 60.0);
+    assert_drawer(&rt, 288.0);
+    press(&mut rt, Key::Escape);
+    rt.pointer_up(x + 32.0, y);
+    rt.frame(1.0 / 60.0);
+    settle(&mut rt);
+    assert_eq!(rt.state.splitter_preview, None);
+    assert_eq!(rt.state.layout_size(QUERY_SIDEBAR_WIDTH_KEY), Some(320));
+    assert_drawer(&rt, 320.0);
+
+    for _ in 0..120 {
+        if focused(&rt, HANDLE) {
+            break;
+        }
+        press(&mut rt, Key::Tab);
+    }
+    assert!(focused(&rt, HANDLE), "right separator is reachable by keyboard");
+    press(&mut rt, Key::Right);
+    settle(&mut rt);
+    assert_eq!(rt.state.layout_size(QUERY_SIDEBAR_WIDTH_KEY), Some(319));
+    assert_drawer(&rt, 319.0);
+
+    tap_query(&mut rt, "query-library-close");
+    assert!(focused(&rt, HISTORY), "closing the drawer returns focus to its real opener");
+    assert!(rt.find(PANE).is_none());
+    assert!(rt.find(HANDLE).is_none());
+    assert_eq!(query_rect(&rt, "query-toolbar"), full);
+    tap_query(&mut rt, "query-library-favorites-toggle");
+    assert_drawer(&rt, 319.0);
+    assert_eq!(rt.state.tabs.selected().map(|tab| tab.id), Some(query));
+    assert_eq!(rt.state.sql.doc(), "SELECT 42;");
+    assert_eq!(rt.state.sql.main_head(), 4);
+    assert!(rt.state.query_result_tabs.is_empty(), "resizing or opening never executes");
 }
 
 #[test]

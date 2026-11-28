@@ -400,20 +400,31 @@ pub fn query_workspace(
         );
     }
 
-    let mut workspace = row().key("query-tab").w_full().h_full().gap(0.0);
-    if state.query_sidebar_open {
-        let width = splitter::splitter_size(
-            state, QUERY_SIDEBAR_WIDTH_KEY, QUERY_SIDEBAR_WIDTH_DEFAULT,
-        );
-        workspace = workspace
-            .child(col().key("query-sidebar-pane").w(width as f32).h_full()
-                .child(query_sidebar(state, theme, dark)))
+    let workspace = row().key("query-tab").w_full().h_full().gap(0.0);
+    if !state.query_sidebar_open {
+        return workspace.child(main);
+    }
+
+    let width = splitter::splitter_size(
+        state, QUERY_SIDEBAR_WIDTH_KEY, QUERY_SIDEBAR_WIDTH_DEFAULT,
+    );
+    let pane = col().key("query-sidebar-pane").w(width as f32).h_full()
+        .child(query_sidebar(state, theme, dark));
+    // History and Favorites are right drawers in the original Query tab.
+    // The live saved Snippets panel stays left until there is a real menu.
+    use crate::types::QuerySidebarPanel::{Favorites, History, Snippets};
+    match state.query_sidebar_panel {
+        Favorites | History => workspace.child(main)
+            .child(splitter::splitter_handle_reversed(
+                state, QUERY_SIDEBAR_WIDTH_KEY, splitter::SplitAxis::Vertical,
+                QUERY_SIDEBAR_WIDTH_MIN, QUERY_SIDEBAR_WIDTH_MAX, QUERY_SIDEBAR_WIDTH_DEFAULT,
+            )).child(pane),
+        Snippets => workspace.child(pane)
             .child(splitter::splitter_handle(
                 state, QUERY_SIDEBAR_WIDTH_KEY, splitter::SplitAxis::Vertical,
                 QUERY_SIDEBAR_WIDTH_MIN, QUERY_SIDEBAR_WIDTH_MAX, QUERY_SIDEBAR_WIDTH_DEFAULT,
-            ));
+            )).child(main),
     }
-    workspace.child(main)
 }
 
 fn toolbar_button(key: &'static str, label: &str, theme: tok::Theme) -> El {
