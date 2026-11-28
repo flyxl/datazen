@@ -250,6 +250,64 @@ fn appearance_trigger_matches_field_size_inset_and_theme_tokens_without_a_fake_p
 }
 
 #[test]
+fn scheme_popup_uses_the_original_surface_alt_without_repainting_other_selects() {
+    use rune::{Key, KeyEvent, Mods};
+
+    const SCHEME: &str = "appearance-color-scheme-select-trigger";
+    const SCHEME_POPUP: &str = "appearance-color-scheme-select-content";
+    const PACK: &str = "appearance-theme-select-trigger";
+    const PACK_POPUP: &str = "appearance-theme-select-content";
+
+    for (dark, mode, option, inset, open_field, popup, page) in [
+        (false, ThemeMode::Light, "option0", "#ffffffff", "#e8eef6ff", "#f1f5f9ff", "#f6f8fbff"),
+        (true, ThemeMode::Dark, "option1", "#0a0d14ff", "#161b28ff", "#0e121bff", "#0b0e14ff"),
+    ] {
+        let mut scene = AuditState::scene();
+        scene.dark = dark;
+        scene.theme.mode = mode;
+        let mut rt = rt(scene);
+        let bounds = |rt: &Runtime<AuditState>, key: &str| {
+            rt.elements().into_iter()
+                .find(|e| !e.exiting && e.key.as_deref() == Some(key))
+                .unwrap_or_else(|| panic!("missing {key}"))
+        };
+        let escape = |rt: &mut Runtime<AuditState>| {
+            rt.key(KeyEvent { key: Key::Escape, mods: Mods::default() });
+            settle(rt);
+        };
+        let closed_rect = bounds(&rt, SCHEME).rect;
+        assert_eq!(bounds(&rt, SCHEME).fill.hex(), inset);
+
+        press(&mut rt, SCHEME);
+        rt.pointer_move(900.0, 620.0);
+        settle(&mut rt);
+        assert_eq!(rt.state.open, Some(0));
+        let frame = bounds(&rt, SCHEME_POPUP);
+        assert_eq!(frame.fill.hex(), popup);
+        assert_eq!(bounds(&rt, SCHEME).rect, closed_rect);
+        assert_eq!(bounds(&rt, SCHEME).fill.hex(), open_field);
+        assert!(bounds(&rt, option).focused);
+        assert!(!has(&rt, PACK_POPUP));
+
+        escape(&mut rt);
+        assert_eq!(rt.state.open, None);
+        assert!(!has(&rt, SCHEME_POPUP));
+        assert!(bounds(&rt, SCHEME).focused);
+        assert_eq!(bounds(&rt, SCHEME).fill.hex(), inset);
+
+        // This test also mounts the genuine Theme Pack chooser with an
+        // adapter; it must retain the existing kit page surface.
+        press(&mut rt, PACK);
+        assert_eq!(rt.state.open, Some(1));
+        assert_eq!(bounds(&rt, PACK_POPUP).fill.hex(), page);
+        escape(&mut rt);
+        assert_eq!(rt.state.theme.mode, mode);
+        assert!(rt.state.mode_writes.is_empty());
+        assert!(rt.state.pack_writes.is_empty());
+    }
+}
+
+#[test]
 fn keyboard_opens_the_appearance_field_commits_one_mode_and_returns_focus() {
     use rune::{Key, KeyEvent, Mods};
 

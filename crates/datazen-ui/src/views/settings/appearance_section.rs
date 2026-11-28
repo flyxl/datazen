@@ -78,7 +78,7 @@ const MORE_HELP_TEXT: TextStyle = TextStyle::new(11.0, 500.0).lh(16.0).family(MO
 /// Appearance trigger skin.
 fn appearance_select(select: Select, kit: &rune_kit::Kit, layer: &mut Vec<El>) -> El {
     select
-        .build(&appearance_field_kit(kit), layer)
+        .build(kit, layer)
         .h(FIELD_HEIGHT)
         .radius(FIELD_RADIUS)
         .border(1.0, kit.c.border_base)
@@ -372,7 +372,13 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
                     }
                 });
         }
-        let scheme_control = appearance_select(scheme_select, k, layer);
+        // The original Scheme listbox uses surface-alt, not the page's
+        // surface. Select reads layer_01 only for the opened listbox
+        // frame; use a local kit so all field, focus and option ink and
+        // the separate Theme Pack select remain unchanged.
+        let mut scheme_kit = appearance_field_kit(k);
+        scheme_kit.c.layer_01 = k.c.layer_02;
+        let scheme_control = appearance_select(scheme_select, &scheme_kit, layer);
         section = section.child(setting_row(
             &k,
             layer,
@@ -426,7 +432,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
                         }
                     });
             }
-            let pack_control = appearance_select(pack_select, k, layer);
+            let pack_control = appearance_select(pack_select, &appearance_field_kit(k), layer);
             section = section.child(setting_row(
                 &k,
                 layer,

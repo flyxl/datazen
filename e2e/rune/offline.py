@@ -133,17 +133,62 @@ class OfflineJourneys:
         blocked = self.root / "settings.json"
         blocked.mkdir()
         sentinel = blocked / "keep"
-        sentinel.write_text("unchanged", encoding="utf-8")
+        sentinel.write_bytes(b"unchanged")
         scheme = "appearance-color-scheme-select-trigger"
-        tree = self.replay([
-            SETTINGS, tap(1.4, "settings-nav-appearance"), tap(2.3, scheme),
-            tap(3.4, "option0"),
-        ], until=4.8)
+        popup = "appearance-color-scheme-select-content"
+        enter_appearance = [SETTINGS, tap(1.4, "settings-nav-appearance")]
+        open_scheme = [*enter_appearance, tap(2.3, scheme)]
+
+        def identity(path):
+            info = path.lstat()
+            return (info.st_dev, info.st_ino, info.st_mode, info.st_size,
+                    info.st_mtime_ns, info.st_ctime_ns)
+
+        blocked_identity, sentinel_identity = identity(blocked), identity(sentinel)
+
+        def expect_file_blocker_intact():
+            self.assertTrue(blocked.is_dir())
+            self.assertEqual(identity(blocked), blocked_identity)
+            self.assertEqual(identity(sentinel), sentinel_identity)
+            self.assertEqual(sentinel.read_bytes(), b"unchanged")
+            self.assertEqual(list(blocked.iterdir()), [sentinel])
+
+        def expect_previous_scheme(tree):
+            expected = [label for label in ("System", "跟随系统")
+                        if visible(tree, text=label, within=scheme)]
+            self.assertEqual(len(expected), 1, "missing settings default to actual System mode")
+            self.assertIs(tree["dark_system"], True, "the native replay runs with dark system appearance")
+            for selector in ("datazen-titlebar", scheme, "appearance-builtin-theme-status"):
+                painted = [node["fill"] for node in tree["elements"]
+                           if node.get("key") == selector and not node.get("exiting")
+                           and node.get("opacity", 0) > .95 and min(node["rect"][2:]) > 0]
+                self.assertEqual(painted, ["#0a0d14ff"], selector)
+            return expected[0]
+
+        before = self.replay(enter_appearance, until=2.2)
+        self.expect_rendered(before, key="settings-section-appearance")
+        before_label = expect_previous_scheme(before)
+        self.assertFalse(visible(before, key="settings-error"))
+        self.assertFalse(visible(before, key=popup))
+        expect_file_blocker_intact()
+
+        options = self.replay(open_scheme, until=3.1)
+        self.expect_rendered(options, key="option0", within=popup)
+        light_label = {"System": "Light", "跟随系统": "浅色"}[before_label]
+        self.expect_rendered(options, text=light_label, within="option0")
+        self.assertFalse(visible(options, key="settings-error"))
+        expect_file_blocker_intact()
+
+        tree = self.replay([*open_scheme, tap(3.4, "option0")], until=4.8)
         self.expect_rendered(tree, key="settings-error")
-        self.assertTrue(any(visible(tree, text=label, within=scheme)
-                            for label in ("Dark", "深色")))
-        self.assertEqual(sentinel.read_text(encoding="utf-8"), "unchanged")
-        self.assertEqual(list(blocked.iterdir()), [sentinel])
+        error_texts = [node["text"] for node in tree["elements"]
+                       if "Is a directory" in (node.get("text") or "")]
+        self.assertTrue(any(visible(tree, text=text, within="settings-error") for text in error_texts),
+                        "the actual filesystem save failure is visible in Settings")
+        self.assertEqual(expect_previous_scheme(tree), before_label)
+        self.assertFalse(visible(tree, text=light_label, within=scheme))
+        self.assertFalse(visible(tree, key=popup))
+        expect_file_blocker_intact()
 
     def test_settings_page_size_and_query_limit_survive_restart(self):
         # These journeys assert the localized trigger caption as well as disk
