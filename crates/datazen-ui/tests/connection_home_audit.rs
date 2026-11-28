@@ -253,3 +253,42 @@ fn check_rects<S>(rt: &Runtime<S>, w: f32, h: f32, label: &str) {
     }
     assert!(outside.is_empty(), "{label}: {} node(s) outside {w}x{h}: {outside:?}", outside.len());
 }
+
+/// Clearing a filter after explicitly collapsing restores six, not all seven.
+#[test]
+fn light_home_filter_preserves_explicit_collapse_and_original_query() {
+    let mut profiles: Vec<_> = (0..7)
+        .map(|i| profile(&format!("p{i}"), &format!("Profile {i}"), "sqlite"))
+        .collect();
+    profiles[3].host = Some("OnlyHost.Example".to_owned());
+    let mut state = AppState::default();
+    state.desktop_connections = Some(profiles);
+    let mut rt = Runtime::new(
+        state,
+        |s: &AppState, _: &mut Cx<AppState>| connections_home(s, tok::theme(false), false),
+        (1440.0, 1200.0),
+        Env { system_dark: false, scale: 1.0 },
+    );
+    rt.frame(0.0);
+    assert!(!has(&rt, "home-conn-card-p6"));
+    click(&mut rt, "connections-show-all");
+    assert!(has(&rt, "home-conn-card-p6"));
+    click(&mut rt, "home-connections-filter");
+    rt.paste(" onlyHOST ");
+    rt.frame(0.0);
+    assert!(has(&rt, "home-conn-card-p3"));
+    assert!(!has(&rt, "home-conn-card-p1"));
+    click(&mut rt, "connections-show-all");
+    assert!(!has(&rt, "connections-show-all"));
+    click(&mut rt, "home-connections-filter-clear");
+    assert!(has(&rt, "home-conn-card-p5"));
+    assert!(!has(&rt, "home-conn-card-p6"));
+    click(&mut rt, "home-connections-filter");
+    rt.paste(" NoSuChHost ");
+    rt.frame(0.0);
+    assert!(has(&rt, "connections-no-match"));
+    let expected = datazen_ui::i18n::t("connWin.home.connections.noMatch")
+        .replace("{query}", "NoSuChHost");
+    assert!(texts(&rt).contains(&expected));
+    assert!(!has(&rt, "connections-show-all"));
+}
