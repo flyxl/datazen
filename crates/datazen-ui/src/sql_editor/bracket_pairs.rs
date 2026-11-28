@@ -1,32 +1,33 @@
-//! Query's directly typed round brackets. The other SQL bracket/quote
-//! families are not connected here; quotes need the live syntax context.
+//! Query's directly typed asymmetric SQL brackets: (), [] and {}.
+//! Quotes are separate and need the live SQL syntax context.
 use super::{model::boundary, Sel, Selection, SqlEditor};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct RoundCloser {
+pub(super) struct BracketCloser {
     id: u64,
     byte: usize,
+    closer: u8,
 }
 
 #[derive(Debug, Default)]
-pub(super) struct RoundClosers {
+pub(super) struct BracketClosers {
     next_id: u64,
-    marks: Vec<RoundCloser>,
+    marks: Vec<BracketCloser>,
 }
 
-impl RoundClosers {
-    fn add(&mut self, byte: usize) {
+impl BracketClosers {
+    fn add(&mut self, byte: usize, closer: u8) {
         self.next_id = self.next_id.wrapping_add(1);
-        self.marks.push(RoundCloser { id: self.next_id, byte });
+        self.marks.push(BracketCloser { id: self.next_id, byte, closer });
     }
 
-    pub(super) fn snapshot(&self) -> Vec<RoundCloser> {
+    pub(super) fn snapshot(&self) -> Vec<BracketCloser> {
         self.marks.clone()
     }
 
     /// History may move surviving marks, never certify newly redone text or
     /// resurrect a mark that a later edit removed.
-    pub(super) fn restore_survivors(&mut self, mut before: Vec<RoundCloser>) {
+    pub(super) fn restore_survivors(&mut self, mut before: Vec<BracketCloser>) {
         before.retain(|old| self.marks.iter().any(|now| now.id == old.id));
         self.marks = before;
     }
@@ -43,12 +44,12 @@ impl RoundClosers {
         });
     }
 
-    fn contains(&self, byte: usize) -> bool {
-        self.marks.iter().any(|mark| mark.byte == byte)
+    fn contains(&self, byte: usize, closer: u8) -> bool {
+        self.marks.iter().any(|mark| mark.byte == byte && mark.closer == closer)
     }
 }
 
-/// Exact CodeMirror SQL parenthesis opener lookahead. The language has no
+/// Exact CodeMirror SQL asymmetric opener lookahead. The language has no
 /// SQL-specific override of the default close-before list; comma is not one.
 fn can_pair_here(doc: &str, at: usize) -> bool {
     doc[at..].chars().next().is_none_or(|ch| {
@@ -63,32 +64,40 @@ impl SqlEditor {
     /// CodeMirror drops old markers away from the main selection's line on
     /// selection changes. Generated markers for a fresh multi-range edit
     /// are registered after this step, so all newly wrapped ranges work.
-    pub(super) fn keep_round_closers_on_main_line(&mut self) {
-        if self.round_closers.marks.is_empty() {
+    pub(super) fn keep_bracket_closers_on_main_line(&mut self) {
+        if self.bracket_closers.marks.is_empty() {
             return;
         }
         let at = boundary(&self.doc, self.selection.main().head);
         let from = self.doc[..at].rfind(['\r', '\n']).map_or(0, |br| br + 1);
         let to = self.doc[at..].find(['\r', '\n']).map_or(self.doc.len(), |br| at + br);
-        self.round_closers.marks.retain(|mark| {
-            (from..to).contains(&mark.byte) && self.doc.as_bytes().get(mark.byte) == Some(&b')')
+        self.bracket_closers.marks.retain(|mark| {
+            (from..to).contains(&mark.byte)
+                && self.doc.as_bytes().get(mark.byte) == Some(&mark.closer)
         });
     }
 
     /// False delegates to the unchanged native text path. This is used only
     /// for a single input key in the focused Query canvas, not paste/IME.
-    pub(crate) fn type_query_round_bracket(&mut self, key: &str) -> bool {
+    pub(crate) fn type_query_bracket(&mut self, key: &str) -> bool {
         if self.composition().is_some() {
             return false;
         }
-        match key {
-            "(" => self.open_round_pair(),
-            ")" => self.step_over_round_closers(),
-            _ => false,
-        }
+        // These are the three asymmetric, one-byte pairs in the React SQL
+        // dialect. Context-sensitive quotes/backticks deliberately fall through.
+        let (open, close, pair) = match key {
+            "(" => ("(", ")", "()"),
+            "[" => ("[", "]", "[]"),
+            "{" => ("{", "}", "{}"),
+            ")" => return self.step_over_bracket_closers(b')'),
+            "]" => return self.step_over_bracket_closers(b']'),
+            "}" => return self.step_over_bracket_closers(b'}'),
+            _ => return false,
+        };
+        self.open_bracket_pair(open, close, pair)
     }
 
-    fn open_round_pair(&mut self) -> bool {
+    fn open_bracket_pair(&mut self, open: &str, close: &str, pair: &str) -> bool {
         let main = self.selection.main_index();
         let mut ranges = self.selection.ranges().iter().copied().enumerate().collect::<Vec<_>>();
         ranges.sort_by_key(|(_, range)| (range.from(), range.to()));
@@ -118,45 +127,45 @@ impl SqlEditor {
         for (_, range) in ranges.into_iter().rev() {
             let (from, to) = (range.from(), range.to());
             if from == to {
-                self.splice_doc(from, to, "()");
+                self.splice_doc(from, to, pair);
             } else {
-                self.splice_doc(to, to, ")");
-                self.splice_doc(from, from, "(");
+                self.splice_doc(to, to, close);
+                self.splice_doc(from, from, open);
             }
         }
         self.selection = selected;
         self.preferred_columns.clear();
         self.completion_close();
-        self.keep_round_closers_on_main_line();
+        self.keep_bracket_closers_on_main_line();
         for byte in fresh_closers {
-            self.round_closers.add(byte);
+            self.bracket_closers.add(byte, close.as_bytes()[0]);
         }
         true
     }
 
-    fn step_over_round_closers(&mut self) -> bool {
+    fn step_over_bracket_closers(&mut self, closer: u8) -> bool {
         let ranges = self.selection.ranges();
         // More conservative than CodeMirror for mixed provenance across
-        // multiple carets: not even another caret may skip a literal ')'.
+        // multiple carets: not even another caret may skip a literal closer.
         if ranges.is_empty() || ranges.iter().any(|range| {
             range.anchor != range.head
-                || self.doc.as_bytes().get(range.head) != Some(&b')')
-                || !self.round_closers.contains(range.head)
+                || self.doc.as_bytes().get(range.head) != Some(&closer)
+                || !self.bracket_closers.contains(range.head, closer)
         }) {
             return false;
         }
         let old = self.selection.clone();
-        self.round_closers.marks.retain(|mark| {
-            !old.ranges.iter().any(|range| range.head == mark.byte)
+        self.bracket_closers.marks.retain(|mark| {
+            mark.closer != closer || !old.ranges.iter().any(|range| range.head == mark.byte)
         });
         self.selection = Selection {
             main: old.main,
             ranges: old.ranges.into_iter().map(|range| Sel::caret(range.head + 1)).collect(),
         };
-        // A caret move only: no new text or undo event for a swallowed ')'.
+        // A caret move only: no new text or undo event for a skipped closer.
         self.preferred_columns.clear();
         self.completion_close();
-        self.keep_round_closers_on_main_line();
+        self.keep_bracket_closers_on_main_line();
         true
     }
 }

@@ -149,9 +149,9 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         }
         if let Key::Text(text) = &ev.key {
             if !ev.mods.cmd && !ev.mods.ctrl && !ev.mods.logo
-                && matches!(text.as_str(), "(" | ")")
+                && matches!(text.as_str(), "(" | ")" | "[" | "]" | "{" | "}")
                 && state.owns_query_document_shortcut(tx)
-                && state.sql.type_query_round_bracket(text)
+                && state.sql.type_query_bracket(text)
             {
                 tx.scroll_into_view_in("sql-editor-scroll", "sql-caret");
                 return true;

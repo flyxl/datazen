@@ -1,7 +1,7 @@
 use datazen_sql::sql_split::{is_comment_only_or_empty, split_sql_statements};
 use rune::{col, row, text, text_input, El, Ime, Key, KeyEvent, Span, TextEdit, TextStyle, Tx};
 
-use super::round_pairs::{RoundCloser, RoundClosers};
+use super::bracket_pairs::{BracketCloser, BracketClosers};
 
 pub(super) const KEYWORDS: &[&str] = &[
     "ALL",
@@ -115,7 +115,7 @@ impl Selection {
 pub struct Snapshot {
     pub doc: String,
     pub selection: Selection,
-    round_closers: Vec<RoundCloser>,
+    bracket_closers: Vec<BracketCloser>,
 }
 
 /// How many insert and delete steps the editor remembers.
@@ -145,7 +145,7 @@ pub struct SqlEditor {
     pub composition: Option<String>,
     pub focused: bool,
     pub(super) preferred_columns: Vec<usize>,
-    pub(super) round_closers: RoundClosers,
+    pub(super) bracket_closers: BracketClosers,
     /// Undo and redo cover character insertion and deletion only.
     pub undo_stack: Vec<Snapshot>,
     pub redo_stack: Vec<Snapshot>,
@@ -179,7 +179,7 @@ impl SqlEditor {
             composition: None,
             focused: false,
             preferred_columns: Vec::new(),
-            round_closers: RoundClosers::default(),
+            bracket_closers: BracketClosers::default(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             find_open: false,
@@ -394,7 +394,7 @@ impl SqlEditor {
         self.completion_close();
         let at = boundary(&self.doc, byte);
         self.selection = Selection::single(at);
-        self.keep_round_closers_on_main_line();
+        self.keep_bracket_closers_on_main_line();
     }
 
     /// Put one range selection (anchor, head) as the only range. Used by the
@@ -409,7 +409,7 @@ impl SqlEditor {
             ranges: vec![Sel { anchor, head }],
             main: 0,
         };
-        self.keep_round_closers_on_main_line();
+        self.keep_bracket_closers_on_main_line();
     }
 
     /// Replace `from..to` with `text` (clamped to char boundaries, remapping
@@ -431,12 +431,12 @@ impl SqlEditor {
             .position(|r| r.anchor == at && r.head == at)
         {
             self.selection.main = i;
-            self.keep_round_closers_on_main_line();
+            self.keep_bracket_closers_on_main_line();
             return;
         }
         self.selection.ranges.push(Sel::caret(at));
         self.selection.main = self.selection.ranges.len() - 1;
-        self.keep_round_closers_on_main_line();
+        self.keep_bracket_closers_on_main_line();
     }
 
     pub fn add_cursor_at_end(&mut self) {
@@ -470,7 +470,7 @@ impl SqlEditor {
                 self.redo_stack.push(Snapshot {
                     doc: std::mem::take(&mut self.doc),
                     selection: self.selection.clone(),
-                    round_closers: self.round_closers.snapshot(),
+                    bracket_closers: self.bracket_closers.snapshot(),
                 });
                 self.restore_snapshot(snapshot);
                 true
@@ -488,7 +488,7 @@ impl SqlEditor {
                 self.undo_stack.push(Snapshot {
                     doc: std::mem::take(&mut self.doc),
                     selection: self.selection.clone(),
-                    round_closers: self.round_closers.snapshot(),
+                    bracket_closers: self.bracket_closers.snapshot(),
                 });
                 self.restore_snapshot(snapshot);
                 true
@@ -500,8 +500,8 @@ impl SqlEditor {
     fn restore_snapshot(&mut self, snapshot: Snapshot) {
         self.doc = snapshot.doc;
         self.selection = snapshot.selection;
-        self.round_closers.restore_survivors(snapshot.round_closers);
-        self.keep_round_closers_on_main_line();
+        self.bracket_closers.restore_survivors(snapshot.bracket_closers);
+        self.keep_bracket_closers_on_main_line();
     }
 
     /// Split the document into statements at semicolons: each non-empty segment's
@@ -617,7 +617,7 @@ impl SqlEditor {
                     }],
                     main: 0,
                 };
-                self.keep_round_closers_on_main_line();
+                self.keep_bracket_closers_on_main_line();
                 true
             }
             None => false,
@@ -642,7 +642,7 @@ impl SqlEditor {
             ranges: vec![Sel { anchor: at, head: at + needle.len() }],
             main: 0,
         };
-        self.keep_round_closers_on_main_line();
+        self.keep_bracket_closers_on_main_line();
         true
     }
 
@@ -728,7 +728,7 @@ impl SqlEditor {
         self.undo_stack.push(Snapshot {
             doc: self.doc.clone(),
             selection: self.selection.clone(),
-            round_closers: self.round_closers.snapshot(),
+            bracket_closers: self.bracket_closers.snapshot(),
         });
         self.redo_stack.clear();
     }
@@ -804,11 +804,11 @@ impl SqlEditor {
         let main = built.iter().position(|(is_main, _)| *is_main).unwrap_or(0);
         self.selection.ranges = built.into_iter().map(|(_, sel)| sel).collect();
         self.selection.main = main;
-        self.keep_round_closers_on_main_line();
+        self.keep_bracket_closers_on_main_line();
     }
 
     pub(super) fn splice_doc(&mut self, from: usize, to: usize, text: &str) {
-        self.round_closers.map_edit(from, to, text.len());
+        self.bracket_closers.map_edit(from, to, text.len());
         self.doc.replace_range(from..to, text);
     }
 

@@ -45,7 +45,7 @@ impl SqlEditor {
             self.splice_doc(edit.from, edit.to, edit.insert);
         }
         self.selection = selection;
-        self.keep_round_closers_on_main_line();
+        self.keep_bracket_closers_on_main_line();
         self.preferred_columns.clear();
         self.completion_close();
         true

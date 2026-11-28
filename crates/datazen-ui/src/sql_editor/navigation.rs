@@ -129,7 +129,7 @@ impl SqlEditor {
         }).collect();
         let (selection, columns) = merge(ranges);
         self.selection = selection;
-        self.keep_round_closers_on_main_line();
+        self.keep_bracket_closers_on_main_line();
         if vertical {
             self.preferred_columns = columns;
         }
