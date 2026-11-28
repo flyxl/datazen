@@ -9,7 +9,7 @@ use super::{Selection, Sel, SqlEditor};
 #[derive(Default)]
 pub(crate) struct Controller { last_id: u64, pending: Option<Pending> }
 struct Pending {
-    id:u64, owner:QueryEditorViewport, op:Operation, lease:Lease, deadline:f64, session:Option<u32>,
+    from_canvas:bool, id:u64, owner:QueryEditorViewport, op:Operation, lease:Lease, deadline:f64, session:Option<u32>,
 }
 struct Lease {
     identity:Rc<()>, revision:u64, doc:String, selection:Selection,
@@ -50,7 +50,7 @@ impl AppState {
             pattern:lease.pattern.clone(),replacement:if op.replacing(){lease.replacement.clone()}else{String::new()},
             case_sensitive:lease.case_sensitive,whole_word:lease.whole_word };
         if let Err(e)=self.desktop.begin_native_query_regex(request){self.sql.regex_error=Some(e);return}
-        self.query_regex.pending=Some(Pending{id,op,lease,owner,deadline:tx.clock()+2.0,session:self.navigator_value_search_session_generation});
+        self.query_regex.pending=Some(Pending{from_canvas:tx.focused()==Some("sql-editor-scroll"),id,op,lease,owner,deadline:tx.clock()+2.0,session:self.navigator_value_search_session_generation});
         tx.wake_after(Duration::from_millis(20));
     }
     pub(crate) fn poll_query_regex(&mut self,now:f64,tx:&mut Tx)->bool {
@@ -62,10 +62,11 @@ impl AppState {
         // updates the exact draft's bound TextEdit on both focus and blur.
         let focused_dock_field = tx.focused() == Some("input")
             && (self.sql.find_input.focused || self.sql.replace_input.focused);
-        let in_dock=focused_dock_field || tx.focused().is_some_and(|k| matches!(k,"sql-editor-scroll"|"sql-find-input"|"sql-find-next"|"sql-find-prev"|
+        let in_dock=focused_dock_field || tx.focused().is_some_and(|k| matches!(k,"sql-find-input"|"sql-find-next"|"sql-find-prev"|
             "sql-find-select-all-matches"|"sql-find-regex"|"sql-find-match-case"|"sql-find-whole-word"|"sql-replace-input"|
             "sql-replace-current"|"sql-replace-all"|"sql-add-cursor"));
-        if !in_dock || !p.owner.owns_current_query(self) || !p.lease.owns(&self.sql)
+        let focus_owned = if p.from_canvas { tx.focused() == Some("sql-editor-scroll") && self.sql.focused() } else { in_dock };
+        if !focus_owned || !p.owner.owns_current_query(self) || !p.lease.owns(&self.sql)
             || p.session!=self.navigator_value_search_session_generation || self.query_snippet_menu_owner().is_some() || self.result_focused {
             self.cancel_query_regex();return false;
         }

@@ -65,6 +65,35 @@ class RegexJourneys:
         self.assertEqual(draft(fixed),sql)
         self.untouched(initial, refused, fixed)
 
+    def test_same_frame_canvas_and_tab_change_retire_replace_all(self):
+        sql = "SELECT 'cat';"
+        initial, route = self.route(sql, "(cat)")
+        pending = [*route, *fill(9.0, "sql-replace-input", "dog"),
+                   {**tap(10.5, "sql-replace-all"), "hold": 0}]
+        # The pinned Rune script runner dispatches every equal-time input in
+        # stable order before rt.frame() polls the real app's worker. An
+        # immediate second click races delivery deterministically, regardless
+        # of whether the process has already put its answer into the mailbox.
+        committed = self.replay(pending, until=11.7)
+        self.assertEqual(draft(committed), "SELECT 'dog';", "this exact press must submit a real edit")
+        clicked = self.replay([*pending, {**tap(10.5, "sql-editor-scroll"), "hold": 0}], until=11.7)
+        self.assertEqual(draft(clicked), sql)
+        self.assertTrue(next(e for e in clicked["elements"] if e.get("key") == "sql-editor-scroll")["focused"])
+        tabs = [e for e in clicked["elements"] if e.get("role") == "tab"
+                and (e.get("key") or "").startswith("tab-") and not e.get("exiting")]
+        self.assertEqual(len(tabs), 1)
+        x, y, w, h = tabs[0]["rect"]
+        returned = self.replay([*pending, {**tap(10.5, "conn-toolbar-new-query"), "hold": 0},
+                                tap(11.45, "sql-editor-scroll"),
+                                {"t": 11.8, "type": "paste", "text": "distinct second draft"},
+                                {"t": 12.65, "type": "tap", "x": x + min(w / 4, 8), "y": y + h / 2}],
+                               until=13.7)
+        new_tabs = [e for e in returned["elements"] if e.get("role") == "tab"
+                    and (e.get("key") or "").startswith("tab-") and not e.get("exiting")]
+        self.assertEqual(len(new_tabs), 2)
+        self.assertEqual(draft(returned), sql)
+        self.untouched(initial, committed, clicked, returned)
+
 
 def main():
     import run as native

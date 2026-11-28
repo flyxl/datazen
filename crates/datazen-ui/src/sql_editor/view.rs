@@ -162,6 +162,9 @@ pub(crate) fn panel_with_completion_scope(
                             if let Some(scroll) = &scroll { scroll.set(at.offset); }
                         })
                         .on_press_tx(|state: &mut crate::AppState, tx| {
+                            // Even a click that leaves the caret unchanged retires
+                            // an unanswered Find/Replace command from the dock.
+                            state.cancel_query_regex();
                             // Take the actual editor focus back from other fields/results.
                             state.result_focused = false;
                             state.sql.goto_lease = None;
