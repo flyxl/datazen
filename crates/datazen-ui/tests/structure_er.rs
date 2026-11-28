@@ -508,14 +508,28 @@ fn snippets_add_update_delete_and_duplicate_names_are_refused() {
         "update changed the sql"
     );
 
-    runtime.frame(1.0);
-    let (x, y) = runtime.find("snippet-delete-0").unwrap();
-    runtime.pointer_down(x, y);
-    runtime.pointer_up(x, y);
+    let tap = |rt: &mut Runtime<AppState>, key| {
+        let (x, y) = rt.find(key).unwrap_or_else(|| panic!("mounted {key}"));
+        rt.pointer_down(x, y);
+        rt.pointer_up(x, y);
+        rt.settle_all();
+        rt.frame(0.0);
+    };
+    runtime.settle_all();
     runtime.frame(0.0);
+    tap(&mut runtime, "snippet-delete-0");
+    assert!(runtime.find("confirm-dialog").is_some());
+    assert_eq!(runtime.state.workspace.snippets()[0].sql, "SELECT 1");
+    tap(&mut runtime, "confirm-dialog-cancel");
+    assert!(runtime.find("confirm-dialog").is_none());
+    assert!(runtime.find("snippet-row-0").is_some());
+    assert_eq!(runtime.state.workspace.snippets()[0].sql, "SELECT 1");
+    tap(&mut runtime, "snippet-delete-0");
+    tap(&mut runtime, "confirm-dialog-ok");
+    assert!(runtime.find("confirm-dialog").is_none());
     assert!(
         runtime.find("snippet-row-0").is_none(),
-        "the snippet is gone"
+        "the snippet is gone after affirmative confirmation"
     );
     assert!(runtime.state.workspace.snippets().is_empty());
 }

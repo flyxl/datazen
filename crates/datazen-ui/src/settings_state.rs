@@ -122,6 +122,9 @@ impl AppState {
         if section != "prompts" || self.active != crate::types::Section::Settings {
             self.retire_native_prompt_confirmation();
         }
+        if section != "editor" || self.active != crate::types::Section::Settings {
+            self.retire_snippet_delete_confirmation();
+        }
         self.settings_content.select_section(section);
     }
 

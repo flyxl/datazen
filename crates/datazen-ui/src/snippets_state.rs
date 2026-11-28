@@ -20,6 +20,28 @@ use rune::{
     FileDialogResult, Ime, Key, KeyEvent, TextEdit, Titlebar, Tx,
 };
 
+use crate::hooks::confirm_dialog::{ConfirmDialogHost, ConfirmDialogState, ConfirmOptionsVm};
+use crate::{i18n::t, ui::confirm_dialog::ConfirmKind};
+
+/// Transient owner, not another snippet store. The exact row the user saw
+/// cannot silently become a different row with the same saved name.
+#[derive(Default)]
+pub(crate) struct NativeSnippetDelete {
+    confirm: ConfirmDialogState,
+    target: Option<datazen_ui_api::Snippet>,
+}
+
+pub(crate) fn mount_snippet_delete_confirmation(state: &AppState, dark: bool, layer: &mut Vec<El>) {
+    let pending = &state.native_snippet_delete;
+    if !state.owns_snippet_delete_confirmation() || pending.target.is_none() || !pending.confirm.is_open() {
+        return;
+    }
+    let id = pending.confirm.pending_id;
+    ConfirmDialogHost::<AppState>::new(&pending.confirm)
+        .on_resolved(move |state, result| state.answer_snippet_delete(id, result))
+        .build(dark, layer);
+}
+
 impl AppState {
     pub fn host_snippets(&self) -> Vec<datazen_ui_api::Snippet> {
         self.desktop
@@ -72,6 +94,44 @@ impl AppState {
             Err(error) => self.snippet_error = Some(error),
         }
     }
+    fn owns_snippet_delete_confirmation(&self) -> bool {
+        self.active == Section::Settings && self.settings_section() == "editor"
+    }
+
+    pub(crate) fn request_snippet_delete(&mut self, target: &datazen_ui_api::Snippet) {
+        if !self.owns_snippet_delete_confirmation()
+            || self.native_snippet_delete.confirm.is_open()
+            || !self.host_snippets().contains(target)
+        {
+            return;
+        }
+        // This is a pointer/key callback, outside the view's locale scope.
+        let options = crate::i18n::with_language(self.builtin_language(), || ConfirmOptionsVm {
+            title: t("query.snippets.deleteConfirmTitle").to_owned(),
+            message: t("query.snippets.deleteConfirmMessage").replace("{prefix}", &target.name),
+            kind: ConfirmKind::Warning,
+            ..ConfirmOptionsVm::default()
+        });
+        self.native_snippet_delete.target = Some(target.clone());
+        self.native_snippet_delete.confirm.open(options);
+    }
+
+    fn answer_snippet_delete(&mut self, id: u64, result: bool) {
+        if !self.owns_snippet_delete_confirmation() {
+            return;
+        }
+        let Some(ok) = self.native_snippet_delete.confirm.answer(id, result) else { return; };
+        let target = self.native_snippet_delete.target.take();
+        if let Some(target) = target.filter(|target| ok && self.host_snippets().contains(target)) {
+            self.delete_snippet(&target.name);
+        }
+    }
+
+    pub(crate) fn retire_snippet_delete_confirmation(&mut self) {
+        let _ = self.native_snippet_delete.confirm.answer_pending(false);
+        self.native_snippet_delete.target = None;
+    }
+
     pub fn delete_snippet(&mut self, name: &str) {
         // T3: the host's file store first, the memory port's fallback.
         let deleted = match self.desktop.delete_snippet(name) {
@@ -162,5 +222,41 @@ impl AppState {
         if let Err(error) = deleted {
             self.favorite_error = Some(error);
         }
+    }
+}
+
+
+#[cfg(test)]
+mod snippet_delete_confirmation_tests {
+    use super::*;
+
+    #[test]
+    fn stale_request_and_changed_live_snippet_cannot_delete() {
+        let mut state = AppState::default();
+        state.workspace.save_snippet("saved", "SELECT 1;").unwrap();
+        let original = state.host_snippets().into_iter().next().unwrap();
+
+        state.request_snippet_delete(&original);
+        assert!(!state.native_snippet_delete.confirm.is_open(), "outside owner");
+        state.open_settings(Some("editor"));
+        state.request_snippet_delete(&original);
+        let first = state.native_snippet_delete.confirm.pending_id;
+        state.set_settings_section("general");
+        assert!(!state.native_snippet_delete.confirm.is_open());
+        state.set_settings_section("editor");
+        state.request_snippet_delete(&original);
+        let second = state.native_snippet_delete.confirm.pending_id;
+        assert_ne!(first, second);
+        state.answer_snippet_delete(first, true);
+        assert!(state.native_snippet_delete.confirm.is_open());
+        assert_eq!(state.host_snippets(), vec![original.clone()]);
+
+        state.workspace.update_snippet("saved", "SELECT 2;").unwrap();
+        state.answer_snippet_delete(second, true);
+        assert!(!state.native_snippet_delete.confirm.is_open());
+        let current = state.host_snippets();
+        assert_eq!(current.len(), 1);
+        assert_eq!(current[0].sql, "SELECT 2;");
+        assert_ne!(current[0], original);
     }
 }

@@ -391,7 +391,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 ),
         );
     for (index, snippet) in state.host_snippets().iter().enumerate() {
-        let name = snippet.name.clone();
+        let target = snippet.clone();
         snippets = snippets.child(
             row()
                 .key(format!("snippet-row-{index}"))
@@ -415,6 +415,9 @@ fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                 .child(
                     row()
                         .key(format!("snippet-delete-{index}"))
+                        .role("button")
+                        .label(t("common.delete"))
+                        .focusable(true)
                         .h(20.0)
                         .px(6.0)
                         .center_y()
@@ -425,7 +428,7 @@ fn snippets_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
                                 .font(type_::LABEL)
                                 .color(theme.text_secondary),
                         )
-                        .on_press(move |state: &mut AppState| state.delete_snippet(&name)),
+                        .on_press(move |state: &mut AppState| state.request_snippet_delete(&target)),
                 ),
         );
     }

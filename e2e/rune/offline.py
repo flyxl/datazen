@@ -654,6 +654,9 @@ class OfflineJourneys:
         self.expect_rendered(query, text="fixture-ada", within="result-workspace")
 
     def test_settings_snippet_survives_restart_then_can_be_deleted(self):
+        settings = self.root / "settings.json"
+        settings.write_text(json.dumps({"ui": {"language": "en"}}), encoding="utf-8")
+        original_settings = (settings.read_bytes(), settings.stat().st_mtime_ns)
         editor = tap(1.4, "settings-nav-editor")
         self.replay([
             SETTINGS, editor, *fill(2.3, "snippet-name-input", "Rune local snippet"),
@@ -663,9 +666,30 @@ class OfflineJourneys:
         self.assertIn("SELECT 42;", target.read_text(encoding="utf-8"))
         tree = self.replay([SETTINGS, editor], until=3)
         self.expect_rendered(tree, text="Rune local snippet", within="settings-snippets")
-        tree = self.replay([SETTINGS, editor, tap(2.5, "snippet-delete-0")], until=3.8)
+        untouched = (target.read_bytes(), target.stat().st_mtime_ns)
+        opened = [SETTINGS, editor, tap(2.5, "snippet-delete-0")]
+        pending = self.replay(opened, until=3.55)
+        self.expect_rendered(pending, key="confirm-dialog")
+        self.expect_rendered(pending, text="Delete Snippet", within="confirm-dialog")
+        self.expect_rendered(pending, text='Are you sure you want to delete snippet "Rune local snippet"?',
+                             within="confirm-dialog")
+        self.expect_rendered(pending, key="confirm-dialog-ok")
+        self.expect_rendered(pending, key="confirm-dialog-cancel")
+        self.assertEqual((target.read_bytes(), target.stat().st_mtime_ns), untouched)
+        for dismiss in (tap(3.8, "confirm-dialog-cancel"), key(3.8, "Escape")):
+            canceled = self.replay([*opened, dismiss], until=4.75)
+            self.assertFalse(visible(canceled, key="confirm-dialog"))
+            self.expect_rendered(canceled, text="Rune local snippet", within="settings-snippets")
+            self.assertEqual((target.read_bytes(), target.stat().st_mtime_ns), untouched)
+        tree = self.replay([*opened, tap(3.8, "confirm-dialog-ok")], until=4.75)
+        self.assertFalse(visible(tree, key="confirm-dialog"))
         self.assertFalse(visible(tree, text="Rune local snippet", within="settings-snippets"))
         self.assertNotIn("SELECT 42;", target.read_text(encoding="utf-8"))
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8")), [])
+        restarted = self.replay([SETTINGS, editor], until=3)
+        self.assertFalse(visible(restarted, text="Rune local snippet", within="settings-snippets"))
+        self.assertFalse(visible(restarted, key="confirm-dialog"))
+        self.assertEqual((settings.read_bytes(), settings.stat().st_mtime_ns), original_settings)
 
     def test_settings_import_validates_missing_source_without_writing(self):
         tree = self.replay([SETTINGS, DATA_SETTINGS, tap(2.6, "import-next")], until=4.1)

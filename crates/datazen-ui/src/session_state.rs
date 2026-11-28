@@ -36,6 +36,9 @@ impl AppState {
         if self.active == Section::Workspace && section != Section::Workspace {
             self.cancel_query_editor_input();
         }
+        if self.active == Section::Settings {
+            self.retire_snippet_delete_confirmation();
+        }
         self.active = section;
         if section == Section::Connections
             || (section == Section::Tools && self.desktop.supports_native_transfer())
