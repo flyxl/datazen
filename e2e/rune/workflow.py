@@ -477,6 +477,17 @@ steps:
         self.expect_rendered(result, key="workflow-tab-wf-1")
         self.expect_rendered(result, key="workflow-tab-wf-1-close")
         self.expect_rendered(result, key="workflow-steps")
+        # The successful-run actions are compact neighbors, not a full-width
+        # Execute followed by a second action band. Both are real controls.
+        band = self._settled_rect(result, "workflow-run-actions")
+        execute = self._settled_rect(result, "workflow-execute-button")
+        dashboard = self._settled_rect(result, "workflow-add-to-dashboard")
+        self.assertAlmostEqual(execute[0], band[0], delta=1)
+        self.assertAlmostEqual(execute[1], dashboard[1], delta=1)
+        self.assertAlmostEqual(execute[3], 32, delta=1)
+        self.assertAlmostEqual(dashboard[3], 32, delta=1)
+        self.assertAlmostEqual(dashboard[0] - execute[0] - execute[2], 8, delta=1)
+        self.assertLess(execute[2], band[2] / 2)
         # Default descending order means the first displayed step (s2) is
         # already selected; the Run control is above the step navigation.
         self.expect_rendered(result, key="workflow-step-detail-id", text="s2")

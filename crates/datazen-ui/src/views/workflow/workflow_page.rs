@@ -1313,28 +1313,36 @@ fn variables_row(state: &AppState, k: &Kit, dark: bool, layer: &mut Vec<El>) -> 
     } else {
         t("workflows.execute").to_owned()
     })
-    .variant(ButtonVariant::Contrast)
-    .control_size(ControlSize::Large)
+    .variant(ButtonVariant::Submit)
+    .control_size(ControlSize::Regular)
     .icon(&ICON_PLAY)
     .disabled(executing)
     .on_press(|state: &mut AppState| state.execute_active_workflow())
     .build(k)
     .key("workflow-execute-button")
     .h(32.0);
-    body = body.child(execute);
+    // Use compact intrinsic-width controls. They sit on the same line when
+    // space permits (React's inline buttons) and wrap on narrow workspaces.
+    let mut actions = row()
+        .key("workflow-run-actions")
+        .w_full()
+        .shrink()
+        .gap(8.0)
+        .items_center()
+        .flex_wrap()
+        .child(execute);
     if success {
-        body = body.child(
+        actions = actions.child(
             Button::new(t("workflows.addToDashboard").to_owned())
                 .variant(ButtonVariant::Ghost)
-                .control_size(ControlSize::Large)
+                .control_size(ControlSize::Regular)
                 .on_press(|state: &mut AppState| state.open_add_to_dashboard())
                 .build(k)
                 .key("workflow-add-to-dashboard")
-                .h(32.0)
-                .ml(8.0),
+                .h(32.0),
         );
     }
-    body
+    body.child(actions)
 }
 
 /// One variable input — the label row (name, the required mark, the
