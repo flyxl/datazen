@@ -1,0 +1,848 @@
+{
+  "schema": 1,
+  "formatter": "15.8.2",
+  "method": "exact locked package + trusted prebuilt browser distribution, synthetic oracle only",
+  "browserBundleSHA256": "e3123498ae2ea8bb2971d8a444c32816af61f4816177b23c3ca45b60c1c473c1",
+  "corpusSourceSHA256": "87602b5f716bd952ca1ecafc07d68860428d602de406efc55f2f637875307d6f",
+  "packageLockIntegrity": "sha512-kTYRg5FIcvsDtYUG2Qn9pYT6xKwiLJN5TTIvc5Mur6hIg4pSfdpHu8Yyu5bqESLHnVM3mXzD446cb2+uEaKZXg==",
+  "rows": [
+    {
+      "id": "sqlite-projection",
+      "input": "select id,name,coalesce(note,'?') as caption from contacts where live=1 order by id desc limit 2;",
+      "trimmed": "select id,name,coalesce(note,'?') as caption from contacts where live=1 order by id desc limit 2;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  id,\n  name,\n  coalesce(note, '?') AS caption\nFROM\n  contacts\nWHERE\n  live = 1\nORDER BY\n  id DESC\nLIMIT\n  2;"
+      }
+    },
+    {
+      "id": "sqlite-bool-before",
+      "input": "select x from t where (a=1 or b=2) and c is not null;",
+      "trimmed": "select x from t where (a=1 or b=2) and c is not null;",
+      "overrides": {
+        "keywordCase": "upper"
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  x\nFROM\n  t\nWHERE\n  (\n    a = 1\n    OR b = 2\n  )\n  AND c IS NOT NULL;"
+      }
+    },
+    {
+      "id": "sqlite-bool-after-tab",
+      "input": "select x from t where a=1 or b=2 and c is not null;",
+      "trimmed": "select x from t where a=1 or b=2 and c is not null;",
+      "overrides": {
+        "keywordCase": "lower",
+        "indentStyle": "tab",
+        "breakBeforeBooleanOperators": false
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "lower",
+        "indentStyle": "standard",
+        "tabWidth": 1,
+        "useTabs": true,
+        "logicalOperatorNewline": "after",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "select\n\tx\nfrom\n\tt\nwhere\n\ta = 1 or\n\tb = 2 and\n\tc is not null;"
+      }
+    },
+    {
+      "id": "sqlite-preserve-case",
+      "input": "sElEcT a, MAX(b) aS x FrOm t GrOuP bY a HaViNg a>2;",
+      "trimmed": "sElEcT a, MAX(b) aS x FrOm t GrOuP bY a HaViNg a>2;",
+      "overrides": {
+        "keywordCase": "preserve",
+        "indentStyle": "4spaces"
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "preserve",
+        "indentStyle": "standard",
+        "tabWidth": 4,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "sElEcT\n    a,\n    MAX(b) aS x\nFrOm\n    t\nGrOuP bY\n    a\nHaViNg\n    a > 2;"
+      }
+    },
+    {
+      "id": "sqlite-blank-lines-zero",
+      "input": "select 1;select 2;select 3;",
+      "trimmed": "select 1;select 2;select 3;",
+      "overrides": {
+        "linesBetweenQueries": 0
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 0
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  1;\nSELECT\n  2;\nSELECT\n  3;"
+      }
+    },
+    {
+      "id": "sqlite-blank-lines-two",
+      "input": "select 1;select 2;",
+      "trimmed": "select 1;select 2;",
+      "overrides": {
+        "linesBetweenQueries": 2
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 2
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  1;\n\n\nSELECT\n  2;"
+      }
+    },
+    {
+      "id": "sqlite-blank-lines-negative-clamp",
+      "input": "select 1;select 2;",
+      "trimmed": "select 1;select 2;",
+      "overrides": {
+        "linesBetweenQueries": -1
+      },
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 0
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  1;\nSELECT\n  2;"
+      }
+    },
+    {
+      "id": "sqlite-insert-values",
+      "input": "insert into fruit(id,label) values(1,'a;''b'),(2,'z');",
+      "trimmed": "insert into fruit(id,label) values(1,'a;''b'),(2,'z');",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "INSERT INTO\n  fruit (id, label)\nVALUES\n  (1, 'a;''b'),\n  (2, 'z');"
+      }
+    },
+    {
+      "id": "sqlite-insert-select",
+      "input": "insert into plum(id,label) select id,label from fruit where id>10;",
+      "trimmed": "insert into plum(id,label) select id,label from fruit where id>10;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "INSERT INTO\n  plum (id, label)\nSELECT\n  id,\n  label\nFROM\n  fruit\nWHERE\n  id > 10;"
+      }
+    },
+    {
+      "id": "sqlite-update-case",
+      "input": "update fruit set label=case when id=1 then 'yes' else label end,rank=rank+1 where id in (1,2);",
+      "trimmed": "update fruit set label=case when id=1 then 'yes' else label end,rank=rank+1 where id in (1,2);",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "UPDATE fruit\nSET\n  label = CASE\n    WHEN id = 1 THEN 'yes'\n    ELSE label\n  END,\n  rank = rank + 1\nWHERE\n  id IN (1, 2);"
+      }
+    },
+    {
+      "id": "sqlite-delete",
+      "input": "delete from fruit where id not in (select id from plum) and label is null;",
+      "trimmed": "delete from fruit where id not in (select id from plum) and label is null;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "DELETE FROM fruit\nWHERE\n  id NOT IN (\n    SELECT\n      id\n    FROM\n      plum\n  )\n  AND label IS NULL;"
+      }
+    },
+    {
+      "id": "sqlite-cte-recursive",
+      "input": "with recursive cnt(x) as (select 1 union all select x+1 from cnt where x<4) select x from cnt;",
+      "trimmed": "with recursive cnt(x) as (select 1 union all select x+1 from cnt where x<4) select x from cnt;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "WITH RECURSIVE\n  cnt (x) AS (\n    SELECT\n      1\n    UNION ALL\n    SELECT\n      x + 1\n    FROM\n      cnt\n    WHERE\n      x < 4\n  )\nSELECT\n  x\nFROM\n  cnt;"
+      }
+    },
+    {
+      "id": "sqlite-join-using",
+      "input": "select f.id,p.label from fruit f left join plum p using(id) inner join stock s on f.id=s.id and s.live=1;",
+      "trimmed": "select f.id,p.label from fruit f left join plum p using(id) inner join stock s on f.id=s.id and s.live=1;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  f.id,\n  p.label\nFROM\n  fruit f\n  LEFT JOIN plum p USING (id)\n  INNER JOIN stock s ON f.id = s.id\n  AND s.live = 1;"
+      }
+    },
+    {
+      "id": "sqlite-operators-literals",
+      "input": "select a||b,(a+b)*2,~bits,id & 3,price>=2,code<>4 from t where a glob 'a*' and b between 1 and 4;",
+      "trimmed": "select a||b,(a+b)*2,~bits,id & 3,price>=2,code<>4 from t where a glob 'a*' and b between 1 and 4;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  a || b,\n  (a + b) * 2,\n  ~ bits,\n  id & 3,\n  price >= 2,\n  code <> 4\nFROM\n  t\nWHERE\n  a glob 'a*'\n  AND b BETWEEN 1 AND 4;"
+      }
+    },
+    {
+      "id": "sqlite-identifier-forms",
+      "input": "select [a b],`select`,\"strange\"\"name\" from [a;b];",
+      "trimmed": "select [a b],`select`,\"strange\"\"name\" from [a;b];",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  [a b],\n  `select`,\n  \"strange\"\"name\"\nFROM\n  [a;b];"
+      }
+    },
+    {
+      "id": "sqlite-pragma-and-comments",
+      "input": "-- upstream;\npragma table_info('fruit'); /* group; */\npragma foreign_keys=ON;",
+      "trimmed": "-- upstream;\npragma table_info('fruit'); /* group; */\npragma foreign_keys=ON;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "-- upstream;\nPRAGMA table_info ('fruit');\n\n/* group; */ PRAGMA foreign_keys = ON;"
+      }
+    },
+    {
+      "id": "sqlite-upsert-returning",
+      "input": "insert into t(id,v) values(1,2) on conflict(id) do update set v=excluded.v returning id,v;",
+      "trimmed": "insert into t(id,v) values(1,2) on conflict(id) do update set v=excluded.v returning id,v;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "INSERT INTO\n  t (id, v)\nVALUES\n  (1, 2)\nON CONFLICT (id) DO UPDATE\nSET\n  v = excluded.v\nRETURNING\n  id,\n  v;"
+      }
+    },
+    {
+      "id": "sqlite-disabled-middle",
+      "input": "select 1; /* sql-formatter-disable */\n  SELECT   a,   b FROM t;   \n/* sql-formatter-enable */ select 2;",
+      "trimmed": "select 1; /* sql-formatter-disable */\n  SELECT   a,   b FROM t;   \n/* sql-formatter-enable */ select 2;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  1;\n\n/* sql-formatter-disable */\n  SELECT   a,   b FROM t;   \n/* sql-formatter-enable */\nSELECT\n  2;"
+      }
+    },
+    {
+      "id": "sqlite-disabled-rest",
+      "input": "select 1;\n/* sql-formatter-disable */\n  select   xyz @#  from t;    ",
+      "trimmed": "select 1;\n/* sql-formatter-disable */\n  select   xyz @#  from t;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  1;\n\n/* sql-formatter-disable */\n  select   xyz @#  from t;"
+      }
+    },
+    {
+      "id": "sqlite-invalid-quote",
+      "input": "select 'unterminated;\nselect 2",
+      "trimmed": "select 'unterminated;\nselect 2",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Rejected"
+      }
+    },
+    {
+      "id": "sqlite-invalid-token",
+      "input": "select @#;",
+      "trimmed": "select @#;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Rejected"
+      }
+    },
+    {
+      "id": "sqlite-incomplete-expression",
+      "input": "select case when x then",
+      "trimmed": "select case when x then",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Rejected"
+      }
+    },
+    {
+      "id": "sqlite-trim-BOM",
+      "input": "﻿  select 1;﻿",
+      "trimmed": "select 1;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  1;"
+      }
+    },
+    {
+      "id": "sqlite-trim-blank",
+      "input": " \r\n\t﻿",
+      "trimmed": "",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "BypassBlank",
+        "output": " \r\n\t﻿"
+      }
+    },
+    {
+      "id": "sqlite-trim-NEL",
+      "input": "select 1;",
+      "trimmed": "select 1;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Rejected"
+      }
+    },
+    {
+      "id": "sqlite-line-endings",
+      "input": "  select '😀;🦀' as c;\r\n-- line;\r\nselect 4;\r\n",
+      "trimmed": "select '😀;🦀' as c;\r\n-- line;\r\nselect 4;",
+      "overrides": {},
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  '😀;🦀' AS c;\n\n-- line;\nSELECT\n  4;"
+      }
+    },
+    {
+      "id": "pg-dollar-cast",
+      "input": "select $$a;b$$, $tag$a; b$tag$, '2'::integer from \"A;B\" where id=$1;",
+      "trimmed": "select $$a;b$$, $tag$a; b$tag$, '2'::integer from \"A;B\" where id=$1;",
+      "overrides": {},
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  $$a;b$$,\n  $tag$a; b$tag$,\n  '2'::integer\nFROM\n  \"A;B\"\nWHERE\n  id = $1;"
+      }
+    },
+    {
+      "id": "pg-json-operators",
+      "input": "select payload->>'name',payload#>>'{a,b}',p @> '{\"a\":1}'::jsonb from t where payload ? 'name';",
+      "trimmed": "select payload->>'name',payload#>>'{a,b}',p @> '{\"a\":1}'::jsonb from t where payload ? 'name';",
+      "overrides": {},
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  payload ->> 'name',\n  payload #>> '{a,b}',\n  p @> '{\"a\":1}'::jsonb\nFROM\n  t\nWHERE\n  payload ? 'name';"
+      }
+    },
+    {
+      "id": "pg-distinct-window",
+      "input": "select distinct on (id) id,row_number() over(partition by kind order by id) as rn from t order by id;",
+      "trimmed": "select distinct on (id) id,row_number() over(partition by kind order by id) as rn from t order by id;",
+      "overrides": {},
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT DISTINCT\n  ON (id) id,\n  row_number() OVER (\n    PARTITION BY\n      kind\n    ORDER BY\n      id\n  ) AS rn\nFROM\n  t\nORDER BY\n  id;"
+      }
+    },
+    {
+      "id": "pg-multi-cte-update",
+      "input": "with picked as (select id from t where active), vals as (select id,2 as n from picked) update t set n=vals.n from vals where t.id=vals.id returning t.id;",
+      "trimmed": "with picked as (select id from t where active), vals as (select id,2 as n from picked) update t set n=vals.n from vals where t.id=vals.id returning t.id;",
+      "overrides": {
+        "indentStyle": "4spaces"
+      },
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 4,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "WITH\n    picked AS (\n        SELECT\n            id\n        FROM\n            t\n        WHERE\n            active\n    ),\n    vals AS (\n        SELECT\n            id,\n            2 AS n\n        FROM\n            picked\n    )\nUPDATE t\nSET\n    n = vals.n\nFROM\n    vals\nWHERE\n    t.id = vals.id\nRETURNING\n    t.id;"
+      }
+    },
+    {
+      "id": "pg-comments-escaped",
+      "input": "select E'a\\nb', 'o''neill', /* inner, ; */ a from t -- keep  ;\nwhere a>1 and a<4;",
+      "trimmed": "select E'a\\nb', 'o''neill', /* inner, ; */ a from t -- keep  ;\nwhere a>1 and a<4;",
+      "overrides": {},
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  E'a\\nb',\n  'o''neill',\n  /* inner, ; */\n  a\nFROM\n  t -- keep  ;\nWHERE\n  a > 1\n  AND a < 4;"
+      }
+    },
+    {
+      "id": "mysql-hash-and-backtick",
+      "input": "select `foo;bar`,`escaped``name` from `t` where a=1 and b=2; # keep;\nselect 7;",
+      "trimmed": "select `foo;bar`,`escaped``name` from `t` where a=1 and b=2; # keep;\nselect 7;",
+      "overrides": {
+        "keywordCase": "lower",
+        "indentStyle": "tab",
+        "breakBeforeBooleanOperators": false,
+        "linesBetweenQueries": 0
+      },
+      "options": {
+        "language": "mysql",
+        "keywordCase": "lower",
+        "indentStyle": "standard",
+        "tabWidth": 1,
+        "useTabs": true,
+        "logicalOperatorNewline": "after",
+        "linesBetweenQueries": 0
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "select\n\t`foo;bar`,\n\t`escaped``name`\nfrom\n\t`t`\nwhere\n\ta = 1 and\n\tb = 2;\n# keep;\nselect\n\t7;"
+      }
+    },
+    {
+      "id": "mysql-join-and-delete",
+      "input": "delete a from `a` a inner join b on a.id=b.id where b.v<=>null;",
+      "trimmed": "delete a from `a` a inner join b on a.id=b.id where b.v<=>null;",
+      "overrides": {},
+      "options": {
+        "language": "mysql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "DELETE a\nFROM\n  `a` a\n  INNER JOIN b ON a.id = b.id\nWHERE\n  b.v <=> NULL;"
+      }
+    },
+    {
+      "id": "mysql-insert-on-duplicate",
+      "input": "insert into t(id,n) values(1,7),(2,9) on duplicate key update n=VALUES(n);",
+      "trimmed": "insert into t(id,n) values(1,7),(2,9) on duplicate key update n=VALUES(n);",
+      "overrides": {},
+      "options": {
+        "language": "mysql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "INSERT INTO\n  t (id, n)\nVALUES\n  (1, 7),\n  (2, 9)\nON DUPLICATE KEY UPDATE\n  n = VALUES(n);"
+      }
+    },
+    {
+      "id": "mariadb-upsert-returning",
+      "input": "insert into t(id,n) values(1,3) on duplicate key update n=n+1 returning id,n;",
+      "trimmed": "insert into t(id,n) values(1,3) on duplicate key update n=n+1 returning id,n;",
+      "overrides": {
+        "indentStyle": "4spaces"
+      },
+      "options": {
+        "language": "mariadb",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 4,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "INSERT INTO\n    t (id, n)\nVALUES\n    (1, 3)\nON DUPLICATE KEY UPDATE\n    n = n + 1\nRETURNING\n    id,\n    n;"
+      }
+    },
+    {
+      "id": "mariadb-hash-or",
+      "input": "select `x;y` from t where a=1 or b=2; # keep;\nselect 9;",
+      "trimmed": "select `x;y` from t where a=1 or b=2; # keep;\nselect 9;",
+      "overrides": {
+        "linesBetweenQueries": 2
+      },
+      "options": {
+        "language": "mariadb",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 2
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  `x;y`\nFROM\n  t\nWHERE\n  a = 1\n  OR b = 2;\n\n\n# keep;\nSELECT\n  9;"
+      }
+    },
+    {
+      "id": "tsql-top-and-brackets",
+      "input": "select top (3) [a;b],[first name],[a]]b] from [two].[dbo].[t] where n>=2 and n<3;",
+      "trimmed": "select top (3) [a;b],[first name],[a]]b] from [two].[dbo].[t] where n>=2 and n<3;",
+      "overrides": {},
+      "options": {
+        "language": "transactsql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  TOP (3) [a;b],\n  [first name],\n  [a]]b]\nFROM\n  [two].[dbo].[t]\nWHERE\n  n >= 2\n  AND n < 3;"
+      }
+    },
+    {
+      "id": "tsql-update-output",
+      "input": "update dbo.t set n=@new_value output inserted.id,deleted.n where id=@id;",
+      "trimmed": "update dbo.t set n=@new_value output inserted.id,deleted.n where id=@id;",
+      "overrides": {},
+      "options": {
+        "language": "transactsql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "UPDATE dbo.t\nSET\n  n = @new_value output inserted.id,\n  deleted.n\nWHERE\n  id = @id;"
+      }
+    },
+    {
+      "id": "tsql-batch",
+      "input": "select N'中文;😊';\ngo\nselect 2;",
+      "trimmed": "select N'中文;😊';\ngo\nselect 2;",
+      "overrides": {},
+      "options": {
+        "language": "transactsql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  N'中文;😊';\n\nGO\nSELECT\n  2;"
+      }
+    },
+    {
+      "id": "generic-ansi-with-union",
+      "input": "with a as (select 1 as id) select id from a union all select 2 order by id;",
+      "trimmed": "with a as (select 1 as id) select id from a union all select 2 order by id;",
+      "overrides": {},
+      "options": {
+        "language": "sql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "WITH\n  a AS (\n    SELECT\n      1 AS id\n  )\nSELECT\n  id\nFROM\n  a\nUNION ALL\nSELECT\n  2\nORDER BY\n  id;"
+      }
+    },
+    {
+      "id": "generic-disabled-invalid-region",
+      "input": "select 1;\n/* sql-formatter-disable */\n@#   ( broken ; ; )\n/* sql-formatter-enable */\nselect 2;",
+      "trimmed": "select 1;\n/* sql-formatter-disable */\n@#   ( broken ; ; )\n/* sql-formatter-enable */\nselect 2;",
+      "overrides": {},
+      "options": {
+        "language": "sql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  1;\n\n/* sql-formatter-disable */\n@#   ( broken ; ; )\n/* sql-formatter-enable */\nSELECT\n  2;"
+      }
+    },
+    {
+      "id": "generic-invalid-token",
+      "input": "select @#\n;select 1",
+      "trimmed": "select @#\n;select 1",
+      "overrides": {},
+      "options": {
+        "language": "sql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Rejected"
+      }
+    },
+    {
+      "id": "generic-comment-only",
+      "input": " -- keep;\n  /* keep */ ",
+      "trimmed": "-- keep;\n  /* keep */",
+      "overrides": {},
+      "options": {
+        "language": "sql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "-- keep;\n/* keep */"
+      }
+    }
+  ]
+}

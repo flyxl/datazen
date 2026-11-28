@@ -1,0 +1,14 @@
+[package]
+name = "datazen-sql-formatter"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "DataZen's bounded native SQL formatter"
+publish = false
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

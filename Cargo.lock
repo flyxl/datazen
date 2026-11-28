@@ -2784,6 +2784,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "datazen-sql-formatter"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "datazen-ui"
 version = "0.1.0"
 dependencies = [

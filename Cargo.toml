@@ -6,6 +6,7 @@ members = [
     "crates/datazen-driver-api",
     "crates/datazen-driver-support",
     "crates/datazen-sql",
+    "crates/datazen-sql-formatter",
     "crates/datazen-infra",
     "crates/datazen",
     "crates/datazen-rune-host",

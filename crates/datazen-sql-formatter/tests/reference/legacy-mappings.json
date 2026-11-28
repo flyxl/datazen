@@ -1,0 +1,527 @@
+{
+  "formatter": "15.8.2",
+  "mountedReferenceSHA256": "908f3ae006ae722a3f188bfd853a0ec6fb0b9aa6f66805d97c9988cfc83bd25b",
+  "engineCases": 11,
+  "wrapperCases": 12,
+  "rows": [
+    {
+      "id": "legacy-01",
+      "name": "SQLite quoted semicolon and comment in earlier statement",
+      "input": "select 'a;b' as glyph; -- ; comment\nselect 2 as n; --keep;",
+      "trimmed": "select 'a;b' as glyph; -- ; comment\nselect 2 as n; --keep;",
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  'a;b' AS glyph;\n\n-- ; comment\nSELECT\n  2 AS n;\n\n--keep;"
+      },
+      "mounted": {
+        "id": "SQLite quoted semicolon and comment in earlier statement",
+        "dialect": "sqlite",
+        "options": {},
+        "changed": true,
+        "before": {
+          "doc": "select 'a;b' as glyph; -- ; comment\nselect 2 as n; --keep;",
+          "anchor": 43,
+          "head": 43
+        },
+        "after": {
+          "doc": "SELECT\n  'a;b' AS glyph;\n\n-- ; comment\nSELECT\n  2 AS n;\n\n--keep;",
+          "anchor": 26,
+          "head": 26
+        },
+        "undo": {
+          "doc": "select 'a;b' as glyph; -- ; comment\nselect 2 as n; --keep;",
+          "anchor": 43,
+          "head": 43
+        },
+        "redo": {
+          "doc": "SELECT\n  'a;b' AS glyph;\n\n-- ; comment\nSELECT\n  2 AS n;\n\n--keep;",
+          "anchor": 64,
+          "head": 64
+        }
+      }
+    },
+    {
+      "id": "legacy-02",
+      "name": "SQLite CRLF, astral prefix and multiline comment",
+      "input": "select '😀;🦀';\n/* multi;\nline */ select 44;",
+      "trimmed": "select '😀;🦀';\n/* multi;\nline */ select 44;",
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  '😀;🦀';\n\n/* multi;\nline */\nSELECT\n  44;"
+      },
+      "mounted": {
+        "id": "SQLite CRLF, astral prefix and multiline comment",
+        "dialect": "sqlite",
+        "options": {},
+        "changed": true,
+        "before": {
+          "doc": "select '😀;🦀';\n/* multi;\nline */ select 44;",
+          "anchor": 41,
+          "head": 41
+        },
+        "after": {
+          "doc": "SELECT\n  '😀;🦀';\n\n/* multi;\nline */\nSELECT\n  44;",
+          "anchor": 19,
+          "head": 19
+        },
+        "undo": {
+          "doc": "select '😀;🦀';\n/* multi;\nline */ select 44;",
+          "anchor": 41,
+          "head": 41
+        },
+        "redo": {
+          "doc": "SELECT\n  '😀;🦀';\n\n/* multi;\nline */\nSELECT\n  44;",
+          "anchor": 49,
+          "head": 49
+        }
+      }
+    },
+    {
+      "id": "legacy-03",
+      "name": "SQLite reversed indented selection leaves outer SQL untouched",
+      "input": "select 'q;z', lower('M') where true and false;",
+      "trimmed": "select 'q;z', lower('M') where true and false;",
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "lower",
+        "indentStyle": "standard",
+        "tabWidth": 4,
+        "useTabs": false,
+        "logicalOperatorNewline": "after",
+        "linesBetweenQueries": 2
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "select\n    'q;z',\n    lower('M')\nwhere\n    true and\n    false;"
+      },
+      "mounted": {
+        "id": "SQLite reversed indented selection leaves outer SQL untouched",
+        "dialect": "sqlite",
+        "options": {
+          "keywordCase": "lower",
+          "indentStyle": "4spaces",
+          "breakBeforeBooleanOperators": false,
+          "linesBetweenQueries": 2
+        },
+        "changed": true,
+        "before": {
+          "doc": "select 1;\n    select 'q;z', lower('M') where true and false;\nselect 3;",
+          "anchor": 60,
+          "head": 14
+        },
+        "after": {
+          "doc": "select 1;\n    select\n        'q;z',\n        lower('M')\n    where\n        true and\n        false;\nselect 3;",
+          "anchor": 14,
+          "head": 96
+        },
+        "undo": {
+          "doc": "select 1;\n    select 'q;z', lower('M') where true and false;\nselect 3;",
+          "anchor": 60,
+          "head": 14
+        },
+        "redo": {
+          "doc": "select 1;\n    select\n        'q;z',\n        lower('M')\n    where\n        true and\n        false;\nselect 3;",
+          "anchor": 96,
+          "head": 14
+        }
+      }
+    },
+    {
+      "id": "legacy-04",
+      "name": "SQLite pure comment at EOF",
+      "input": "select 1;\nselect 2;\n-- default; tail",
+      "trimmed": "select 1;\nselect 2;\n-- default; tail",
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  1;\n\nSELECT\n  2;\n\n-- default; tail"
+      },
+      "mounted": {
+        "id": "SQLite pure comment at EOF",
+        "dialect": "sqlite",
+        "options": {},
+        "changed": true,
+        "before": {
+          "doc": "select 1;\nselect 2;\n-- default; tail",
+          "anchor": 32,
+          "head": 32
+        },
+        "after": {
+          "doc": "SELECT\n  1;\n\nSELECT\n  2;\n\n-- default; tail",
+          "anchor": 32,
+          "head": 32
+        },
+        "undo": {
+          "doc": "select 1;\nselect 2;\n-- default; tail",
+          "anchor": 32,
+          "head": 32
+        },
+        "redo": {
+          "doc": "SELECT\n  1;\n\nSELECT\n  2;\n\n-- default; tail",
+          "anchor": 42,
+          "head": 42
+        }
+      }
+    },
+    {
+      "id": "legacy-05",
+      "name": "SQLite unterminated quote leaves text untouched",
+      "input": "select 'a;not closed",
+      "trimmed": "select 'a;not closed",
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Rejected"
+      },
+      "mounted": {
+        "id": "SQLite unterminated quote leaves text untouched",
+        "dialect": "sqlite",
+        "options": {},
+        "changed": false,
+        "before": {
+          "doc": "select 'a;not closed",
+          "anchor": 10,
+          "head": 10
+        },
+        "after": {
+          "doc": "select 'a;not closed",
+          "anchor": 10,
+          "head": 10
+        },
+        "undo": null,
+        "redo": null
+      }
+    },
+    {
+      "id": "legacy-06",
+      "name": "SQLite blank input leaves selection untouched",
+      "input": "   \n  ",
+      "trimmed": "",
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "BypassBlank",
+        "output": "   \n  "
+      },
+      "mounted": {
+        "id": "SQLite blank input leaves selection untouched",
+        "dialect": "sqlite",
+        "options": {},
+        "changed": false,
+        "before": {
+          "doc": "   \n  ",
+          "anchor": 1,
+          "head": 1
+        },
+        "after": {
+          "doc": "   \n  ",
+          "anchor": 1,
+          "head": 1
+        },
+        "undo": null,
+        "redo": null
+      }
+    },
+    {
+      "id": "legacy-07",
+      "name": "SQLite already formatted input creates no history",
+      "input": "SELECT\n  1;",
+      "trimmed": "SELECT\n  1;",
+      "options": {
+        "language": "sqlite",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  1;"
+      },
+      "mounted": {
+        "id": "SQLite already formatted input creates no history",
+        "dialect": "sqlite",
+        "options": {},
+        "changed": false,
+        "before": {
+          "doc": "SELECT\n  1;",
+          "anchor": 9,
+          "head": 9
+        },
+        "after": {
+          "doc": "SELECT\n  1;",
+          "anchor": 9,
+          "head": 9
+        },
+        "undo": null,
+        "redo": null
+      }
+    },
+    {
+      "id": "legacy-08",
+      "name": "PostgreSQL dollar literal and quoted unicode",
+      "input": "select $$a ; b$$;\nselect '😀', concat('foo''bar;', 'x');\n",
+      "trimmed": "select $$a ; b$$;\nselect '😀', concat('foo''bar;', 'x');",
+      "options": {
+        "language": "postgresql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  $$a ; b$$;\n\nSELECT\n  '😀',\n  concat('foo''bar;', 'x');"
+      },
+      "mounted": {
+        "id": "PostgreSQL dollar literal and quoted unicode",
+        "dialect": "postgresql",
+        "options": {},
+        "changed": true,
+        "before": {
+          "doc": "select $$a ; b$$;\nselect '😀', concat('foo''bar;', 'x');\n",
+          "anchor": 31,
+          "head": 31
+        },
+        "after": {
+          "doc": "SELECT\n  $$a ; b$$;\n\nSELECT\n  '😀',\n  concat('foo''bar;', 'x');",
+          "anchor": 21,
+          "head": 21
+        },
+        "undo": {
+          "doc": "select $$a ; b$$;\nselect '😀', concat('foo''bar;', 'x');\n",
+          "anchor": 31,
+          "head": 31
+        },
+        "redo": {
+          "doc": "SELECT\n  $$a ; b$$;\n\nSELECT\n  '😀',\n  concat('foo''bar;', 'x');",
+          "anchor": 63,
+          "head": 63
+        }
+      }
+    },
+    {
+      "id": "legacy-09",
+      "name": "MySQL backticks, hash comment, lower/tab options",
+      "input": "select `a;b` from `t` where a=1 and b=2; #comment ;\nselect 2;",
+      "trimmed": "select `a;b` from `t` where a=1 and b=2; #comment ;\nselect 2;",
+      "options": {
+        "language": "mysql",
+        "keywordCase": "lower",
+        "indentStyle": "standard",
+        "tabWidth": 1,
+        "useTabs": true,
+        "logicalOperatorNewline": "after",
+        "linesBetweenQueries": 0
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "select\n\t`a;b`\nfrom\n\t`t`\nwhere\n\ta = 1 and\n\tb = 2;\n#comment ;\nselect\n\t2;"
+      },
+      "mounted": {
+        "id": "MySQL backticks, hash comment, lower/tab options",
+        "dialect": "mysql",
+        "options": {
+          "keywordCase": "lower",
+          "indentStyle": "tab",
+          "breakBeforeBooleanOperators": false,
+          "linesBetweenQueries": 0
+        },
+        "changed": true,
+        "before": {
+          "doc": "select `a;b` from `t` where a=1 and b=2; #comment ;\nselect 2;",
+          "anchor": 38,
+          "head": 38
+        },
+        "after": {
+          "doc": "select\n\t`a;b`\nfrom\n\t`t`\nwhere\n\ta = 1 and\n\tb = 2;\n#comment ;\nselect\n\t2;",
+          "anchor": 0,
+          "head": 0
+        },
+        "undo": {
+          "doc": "select `a;b` from `t` where a=1 and b=2; #comment ;\nselect 2;",
+          "anchor": 38,
+          "head": 38
+        },
+        "redo": {
+          "doc": "select\n\t`a;b`\nfrom\n\t`t`\nwhere\n\ta = 1 and\n\tb = 2;\n#comment ;\nselect\n\t2;",
+          "anchor": 70,
+          "head": 70
+        }
+      }
+    },
+    {
+      "id": "legacy-10",
+      "name": "MariaDB mixed settings",
+      "input": "select `a;b` from `t` where a=1 or b=2;\nselect 2;",
+      "trimmed": "select `a;b` from `t` where a=1 or b=2;\nselect 2;",
+      "options": {
+        "language": "mariadb",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 4,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 2
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n    `a;b`\nFROM\n    `t`\nWHERE\n    a = 1\n    OR b = 2;\n\n\nSELECT\n    2;"
+      },
+      "mounted": {
+        "id": "MariaDB mixed settings",
+        "dialect": "mariadb",
+        "options": {
+          "indentStyle": "4spaces",
+          "linesBetweenQueries": 2
+        },
+        "changed": true,
+        "before": {
+          "doc": "select `a;b` from `t` where a=1 or b=2;\nselect 2;",
+          "anchor": 37,
+          "head": 37
+        },
+        "after": {
+          "doc": "SELECT\n    `a;b`\nFROM\n    `t`\nWHERE\n    a = 1\n    OR b = 2;\n\n\nSELECT\n    2;",
+          "anchor": 0,
+          "head": 0
+        },
+        "undo": {
+          "doc": "select `a;b` from `t` where a=1 or b=2;\nselect 2;",
+          "anchor": 37,
+          "head": 37
+        },
+        "redo": {
+          "doc": "SELECT\n    `a;b`\nFROM\n    `t`\nWHERE\n    a = 1\n    OR b = 2;\n\n\nSELECT\n    2;",
+          "anchor": 75,
+          "head": 75
+        }
+      }
+    },
+    {
+      "id": "legacy-11",
+      "name": "SQL Server bracket identifiers",
+      "input": "select [a;b] from [db]; --;\nselect [🙂] from [two];",
+      "trimmed": "select [a;b] from [db]; --;\nselect [🙂] from [two];",
+      "options": {
+        "language": "transactsql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Formatted",
+        "output": "SELECT\n  [a;b]\nFROM\n  [db];\n\n--;\nSELECT\n  [🙂]\nFROM\n  [two];"
+      },
+      "mounted": {
+        "id": "SQL Server bracket identifiers",
+        "dialect": "transactsql",
+        "options": {},
+        "changed": true,
+        "before": {
+          "doc": "select [a;b] from [db]; --;\nselect [🙂] from [two];",
+          "anchor": 35,
+          "head": 35
+        },
+        "after": {
+          "doc": "SELECT\n  [a;b]\nFROM\n  [db];\n\n--;\nSELECT\n  [🙂]\nFROM\n  [two];",
+          "anchor": 29,
+          "head": 29
+        },
+        "undo": {
+          "doc": "select [a;b] from [db]; --;\nselect [🙂] from [two];",
+          "anchor": 35,
+          "head": 35
+        },
+        "redo": {
+          "doc": "SELECT\n  [a;b]\nFROM\n  [db];\n\n--;\nSELECT\n  [🙂]\nFROM\n  [two];",
+          "anchor": 60,
+          "head": 60
+        }
+      }
+    },
+    {
+      "id": "legacy-12",
+      "name": "Unknown driver malformed token",
+      "input": "select @#\n;select 1",
+      "trimmed": "select @#\n;select 1",
+      "options": {
+        "language": "sql",
+        "keywordCase": "upper",
+        "indentStyle": "standard",
+        "tabWidth": 2,
+        "useTabs": false,
+        "logicalOperatorNewline": "before",
+        "linesBetweenQueries": 1
+      },
+      "expect": {
+        "kind": "Rejected"
+      },
+      "mounted": {
+        "id": "Unknown driver malformed token",
+        "dialect": "sql",
+        "options": {},
+        "changed": false,
+        "before": {
+          "doc": "select @#\n;select 1",
+          "anchor": 7,
+          "head": 7
+        },
+        "after": {
+          "doc": "select @#\n;select 1",
+          "anchor": 7,
+          "head": 7
+        },
+        "undo": null,
+        "redo": null
+      }
+    }
+  ]
+}
