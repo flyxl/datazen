@@ -395,6 +395,41 @@ fn right_query_drawer_uses_the_existing_layout_key_and_physical_resize_direction
 }
 
 #[test]
+fn right_query_drawers_use_the_original_surface_without_repainting_left_snippets() {
+    for dark in [false, true] {
+        let env = Env { system_dark: dark, scale: 1.0 };
+        let mut rt = Runtime::new(AppState::default(), view, (1440.0, 900.0), env);
+        rt.state.workspace.connect("local").unwrap();
+        rt.state.open_query_tab("Drawer appearance").unwrap();
+        rt.frame(0.0);
+        assert_eq!(rt.state.dark_theme(), dark);
+        assert!(rt.find("query-sidebar").is_none());
+
+        let colors = &datazen_ui::ui::kit::kit(dark).c;
+        assert_ne!(colors.layer_02, colors.surface_raised);
+        for (toggle, panel, fill) in [
+            ("query-library-history-toggle", "query-history-panel", colors.layer_02),
+            ("query-library-favorites-toggle", "query-favorites-panel", colors.layer_02),
+            ("query-library-snippets-toggle", "query-snippets-panel", colors.surface_raised),
+        ] {
+            tap_query(&mut rt, toggle);
+            assert!(rt.find(panel).is_some());
+            let drawer = rt.elements().into_iter().find(|e| !e.exiting
+                && e.key.as_deref() == Some("query-sidebar")).expect("actual painted Library pane");
+            assert_eq!(drawer.fill, fill, "{panel}, dark={dark}");
+            assert!(rt.find("query-library-close").is_some());
+            assert_eq!(rt.state.layout_size(QUERY_SIDEBAR_WIDTH_KEY), None);
+            if panel == "query-history-panel" {
+                assert!(rt.find("query-history-search").is_some(), "skin keeps the real History search");
+                assert!(rt.find("history-scope-current").is_some(), "skin keeps actual scope controls");
+            }
+        }
+        tap_query(&mut rt, "query-library-close");
+        assert!(rt.find("query-sidebar").is_none());
+    }
+}
+
+#[test]
 fn mounted_editor_font_slider_resizes_sql_glyphs_caret_and_gutter() {
     use datazen_ui::types::Section;
 

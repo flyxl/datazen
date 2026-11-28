@@ -636,10 +636,13 @@ fn query_sidebar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         );
     }
 
-    let content = match state.query_sidebar_panel {
-        crate::types::QuerySidebarPanel::Favorites => query_favorites_panel(state, theme),
-        crate::types::QuerySidebarPanel::History => query_history::panel(state, theme, dark),
-        crate::types::QuerySidebarPanel::Snippets => query_snippets_panel(state, theme),
+    use crate::types::QuerySidebarPanel::{Favorites, History, Snippets};
+    // The original right asides are surface-alt, not a raised control.
+    let drawer_background = crate::ui::kit::kit(dark).c.layer_02;
+    let (content, background) = match state.query_sidebar_panel {
+        Favorites => (query_favorites_panel(state, theme), drawer_background),
+        History => (query_history::panel(state, theme, dark), drawer_background),
+        Snippets => (query_snippets_panel(state, theme), theme.control_off),
     };
 
     col()
@@ -649,7 +652,7 @@ fn query_sidebar(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .gap(6.0)
         .px(8.0)
         .py(8.0)
-        .fill(theme.control_off)
+        .fill(background)
         .child(query_library::header(state, theme))
         .child(tabs)
         .child(content)
