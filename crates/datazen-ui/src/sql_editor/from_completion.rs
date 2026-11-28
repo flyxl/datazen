@@ -6,18 +6,25 @@ use datazen_ui_api::{
 
 use super::model::{COMPLETION_LIMIT, starts_with_ignore_ascii_case, word_start};
 
-pub(super) fn from_prefix(doc: &str, head: usize) -> Option<(usize, &str)> {
+pub(super) fn identifier_continuation(ch: char) -> bool {
+    ch.is_alphanumeric() || matches!(ch, '_' | '.' | '$' | '"' | '`' | '[')
+}
+
+pub(super) fn from_prefix(doc: &str, head: usize, explicit: bool) -> Option<(usize, &str)> {
     let before = doc.get(..head)?;
     let after = doc.get(head..)?;
     if before.len() > 8_192
-        || after.chars().next().is_some_and(|ch|
-            ch.is_alphanumeric() || matches!(ch, '_' | '.' | '$' | '"' | '`' | '['))
+        || after.chars().next().is_some_and(identifier_continuation)
     {
         return None;
     }
     let start = word_start(doc, head);
     let prefix = before.get(start..)?;
-    if !prefix.as_bytes().first().is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_') {
+    if prefix.is_empty() {
+        if !explicit {
+            return None;
+        }
+    } else if !prefix.as_bytes().first().is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_') {
         return None;
     }
     let left = before[..start].trim_start();
@@ -31,6 +38,7 @@ pub(super) fn from_prefix(doc: &str, head: usize) -> Option<(usize, &str)> {
     // quoted text or SQL outside a single simple SELECT.
     if rest.contains([';', '\'', '"', '`', '$', '\\', '[', ']'])
         || rest.contains("--") || rest.contains("/*") || rest.contains("*/")
+        || (explicit && rest.contains('#'))
     {
         return None;
     }

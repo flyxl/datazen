@@ -611,3 +611,122 @@ fn find_whole_word_and_case_are_live_per_query_draft_options() {
     assert_eq!(rt.state.sql.doc(), text);
     assert!(rt.state.sql.undo_stack.is_empty());
 }
+
+#[test]
+fn manual_completion_opens_only_in_a_focused_query_not_dock_or_composition() {
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.state.workspace.connect("local").unwrap();
+    let query = rt.state.open_query_tab("Explicit").unwrap();
+    rt.frame(0.05);
+    tap(&mut rt, "sql-editor-scroll");
+    let plain = Mods::default();
+    let ctrl = Mods { ctrl: true, ..plain };
+    key(&mut rt, Key::Text(" ".into()), Mods { ctrl: true, shift: true, ..plain });
+    assert!(!rt.state.sql.has_completion(), "not a fuzzy chord");
+
+    key(&mut rt, Key::Text(" ".into()), plain);
+    assert_eq!(rt.state.sql.doc(), " ");
+    assert!(!rt.state.sql.has_completion(), "ordinary Space does not start empty-prefix completion");
+    key(&mut rt, Key::Text(" ".into()), ctrl);
+    assert!(rt.find("sql-completion").is_some());
+    assert_eq!(rt.state.sql.doc(), " ", "manual invocation cannot insert a Space");
+    key(&mut rt, Key::Escape, plain);
+    assert!(!rt.state.sql.has_completion());
+
+    assert!(app_ime(&mut rt.state, &Ime::Preedit("输入".into(), None), &mut Tx::default()));
+    key(&mut rt, Key::Text(" ".into()), ctrl);
+    assert!(!rt.state.sql.has_completion());
+    assert_eq!(rt.state.sql.composition(), Some("输入"));
+    rt.state.sql.preedit("");
+
+    key(&mut rt, Key::Command('f'), Mods { cmd: true, ..plain });
+    assert!(rt.find("sql-find-input").is_some());
+    key(&mut rt, Key::Text(" ".into()), ctrl);
+    assert!(!rt.state.sql.has_completion(), "Find cannot start Query completion");
+    assert_eq!(rt.state.sql.doc(), " ");
+    key(&mut rt, Key::Escape, plain);
+    rt.state.result_focused = true;
+    key(&mut rt, Key::Text(" ".into()), ctrl);
+    assert!(rt.state.result_focused, "the chord must not transfer Results focus");
+    assert!(!rt.state.sql.has_completion());
+
+    let other = rt.state.open_query_tab("Other").unwrap();
+    rt.frame(0.05);
+    key(&mut rt, Key::Text(" ".into()), ctrl);
+    assert_eq!(rt.state.tabs.selected().unwrap().id, other);
+    assert!(!rt.state.sql.has_completion(), "a parked draft's focus is not inherited");
+    tap_tab(&mut rt, query);
+    assert_eq!(rt.state.sql.doc(), " ");
+    assert!(rt.state.query_result_tabs.is_empty());
+}
+
+#[test]
+fn manual_completion_from_catalog_requires_current_tab_target_and_session_generation() {
+    struct CatalogAdapter;
+
+    impl DesktopAdapter for CatalogAdapter {
+        fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+            Ok(Vec::new())
+        }
+        fn read_table_page(
+            &mut self, _: &str, _: u32, _: u32, _: Option<&ColumnSort>, _: Option<&ColumnFilter>,
+        ) -> Result<TablePage, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+        fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+        fn native_from_catalog_target(&self) -> Option<NativeQueryDatabase> {
+            Some(NativeQueryDatabase { connection_id: "fixture".into(), database: "main".into() })
+        }
+    }
+
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.state.desktop = Box::new(CatalogAdapter);
+    rt.state.desktop_connection = Some("fixture".into());
+    rt.state.desktop_catalog = Some(Catalog {
+        databases: vec![
+            DatabaseNode { name: "decoy".into(), schemas: vec![SchemaNode {
+                name: "public".into(), tables: vec!["wrong_customer".into()], views: Vec::new(),
+            }] },
+            DatabaseNode { name: "main".into(), schemas: vec![SchemaNode {
+                name: "main".into(), tables: vec!["customers".into()], views: Vec::new(),
+            }] },
+        ],
+    });
+    rt.state.navigator_value_search_session_generation = Some(17);
+    let tab = rt.state.open_query_tab("Explicit catalog").unwrap();
+    let prefix = "SELECT * FROM ";
+    rt.state.sql = sql_editor::SqlEditor::from_doc(prefix);
+    rt.state.sql.set_main_caret(prefix.len());
+    rt.frame(0.05);
+    tap(&mut rt, "sql-editor-scroll");
+    rt.state.sql.set_main_caret(prefix.len());
+    let ctrl = Mods { ctrl: true, ..Mods::default() };
+    key(&mut rt, Key::Text(" ".into()), ctrl);
+    assert_eq!(rt.state.sql.completion_items(), &["\"main\".\"customers\""]);
+    assert_eq!(rt.state.sql.doc(), prefix);
+
+    rt.state.navigator_value_search_session_generation = Some(18);
+    key(&mut rt, Key::Tab, Mods::default());
+    assert_eq!(rt.state.sql.doc(), prefix, "a stale same-target generation cannot accept");
+    tap(&mut rt, "sql-editor-scroll");
+    rt.state.sql.set_main_caret(prefix.len());
+    rt.state.query_database_targets.insert(tab, NativeQueryDatabase {
+        connection_id: "other-profile".into(), database: "main".into(),
+    });
+    key(&mut rt, Key::Text(" ".into()), ctrl);
+    assert!(!rt.state.sql.has_completion(), "a stale override cannot fall back to the default DB");
+
+    rt.state.query_database_targets.remove(&tab);
+    key(&mut rt, Key::Text(" ".into()), ctrl);
+    assert!(rt.state.sql.has_completion());
+    key(&mut rt, Key::Enter, Mods::default());
+    assert_eq!(rt.state.sql.doc(), format!("{prefix}\"main\".\"customers\""));
+    assert!(!rt.state.sql.has_completion());
+    key(&mut rt, Key::Command('z'), Mods::default());
+    assert_eq!(rt.state.sql.doc(), prefix);
+    assert!(rt.state.query_result_tabs.is_empty());
+}

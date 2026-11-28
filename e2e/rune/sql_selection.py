@@ -795,3 +795,52 @@ class SqlSelectionJourneys:
         self.assertEqual(self.sql_customer_rows(), original_rows)
         for suffix in ("-wal", "-shm", "-journal"):
             self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
+
+    def test_native_sql_editor_manual_completion_from_empty_real_sqlite_prefix(self):
+        original = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        before = self.db.read_bytes()
+        # The actual window's named Space is text with Control. Preserve its
+        # explicit physical code in the script; never synthesize text to open.
+        ctrl_space = {"type": "key", "name": " ", "code": "Space", "base": " ", "ctrl": True}
+        prefix = "SELECT customer_name FROM "
+        candidate = '"main"."customers"'
+        route = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": prefix.rstrip()},
+                 {"t": 5.35, "type": "key", "name": " ", "code": "Space"}]
+
+        def draft(tree, expected):
+            row = next(node for node in tree["elements"]
+                       if node.get("key") == "sql-line-0" and not node.get("exiting"))
+            actual = "".join(node.get("text") or "" for node in tree["elements"]
+                             if node["path"].startswith(row["path"] + "/") and not node.get("exiting"))
+            self.assertEqual(actual, expected)
+            self.assertFalse(visible(tree, key="result-workspace"))
+
+        idle = self.replay(route, until=5.9)
+        draft(idle, prefix)
+        self.assertFalse(visible(idle, key="sql-completion"))
+
+        offered = [*route, {"t": 6.05, **ctrl_space}]
+        popup = self.replay(offered, until=6.65)
+        draft(popup, prefix)
+        self.expect_rendered(popup, text=candidate, within="sql-completion-item-0")
+        accepted = [*offered, key(7.0, "Tab")]
+        inserted = self.replay(accepted, until=7.65)
+        draft(inserted, prefix + candidate)
+        self.assertFalse(visible(inserted, key="sql-completion"))
+        restored = self.replay([*accepted, key(7.85, "z", cmd=True)], until=8.45)
+        draft(restored, prefix)
+        self.assertFalse(visible(restored, key="sql-completion"))
+
+        blocked = self.replay([*route, key(6.05, "f", cmd=True),
+                               {"t": 6.65, **ctrl_space}], until=7.4)
+        draft(blocked, prefix)
+        self.expect_rendered(blocked, key="sql-find-input")
+        self.assertFalse(visible(blocked, key="sql-completion"))
+
+        self.assertEqual(self.sql_customer_rows(), original)
+        self.assertEqual(self.db.read_bytes(), before)
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))

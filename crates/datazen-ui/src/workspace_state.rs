@@ -636,7 +636,11 @@ impl AppState {
         } else {
             default
         };
-        Some((tab.id, target))
+        Some(crate::sql_editor::CompletionScope {
+            tab_id: tab.id,
+            session_generation: self.navigator_value_search_session_generation?,
+            target,
+        })
     }
 
     /// A stale scope may not render, accept a key, or consume a new completion.
@@ -651,6 +655,11 @@ impl AppState {
                 self.sql.refresh_from_catalog(scope, catalog);
             }
         }
+    }
+
+    pub(crate) fn request_native_query_completion(&mut self) {
+        let scope = self.native_from_completion_scope();
+        self.sql.request_completion(scope.zip(self.desktop_catalog.as_ref()));
     }
 
     fn query_database_target(&self) -> Option<datazen_ui_api::NativeQueryDatabase> {

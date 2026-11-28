@@ -140,6 +140,18 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         if crate::views::result_workspace::native_result_find::escape_if_focused(state, ev, tx) {
             return true;
         }
+        if sql_editor::is_manual_completion_key(ev, tx) {
+            // Neither the result grid nor a focused Find/modal field may
+            // lend its key to the Query document, even if it was focused
+            // earlier. Let unrelated controls/OS keep their own bindings.
+            if !state.owns_query_document_shortcut(tx) {
+                return false;
+            }
+            if !tx.key_repeat() {
+                state.request_native_query_completion();
+            }
+            return true;
+        }
         let comment = Chord::new(ChordKey::Char('/')).with(ChordMod::Primary);
         if comment.matches_tx(ev, tx) && state.owns_query_document_shortcut(tx) {
             if !tx.key_repeat() {

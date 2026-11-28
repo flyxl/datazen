@@ -125,8 +125,14 @@ pub(super) const HISTORY_LIMIT: usize = 100;
 /// How many keyword completions the canvas list shows at most.
 pub(super) const COMPLETION_LIMIT: usize = 8;
 
-/// Catalog candidates are tied to one query tab and its exact live database.
-pub(crate) type CompletionScope = (u32, datazen_ui_api::NativeQueryDatabase);
+/// Catalog candidates are tied to one query tab, accepted live session,
+/// and exact target database (including an explicit database override).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CompletionScope {
+    pub tab_id: u32,
+    pub session_generation: u32,
+    pub target: datazen_ui_api::NativeQueryDatabase,
+}
 
 /// The in-canvas completion: the exact original range and its candidates.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -354,11 +360,17 @@ impl SqlEditor {
     }
 
     pub(super) fn refresh_completion_sources(&mut self, query: bool) {
+        self.refresh_completion_for_trigger(query, false);
+    }
+
+    fn refresh_completion_for_trigger(&mut self, query: bool, explicit: bool) {
         let caret = self.selection.main();
         let head = caret.head;
         let start = word_start(&self.doc, head);
         let prefix = &self.doc[start..head];
-        if prefix.is_empty() || !prefix.bytes().all(|byte| byte.is_ascii_alphabetic()) {
+        if (prefix.is_empty() && !(explicit && self.doc.trim().is_empty()))
+            || !prefix.bytes().all(|byte| byte.is_ascii_alphabetic())
+        {
             self.completion = None;
             return;
         }
@@ -405,20 +417,37 @@ impl SqlEditor {
         if self.selection.len() != 1 || caret.anchor != caret.head || self.composition.is_some() {
             return;
         }
-        let Some((start, prefix)) = super::from_completion::from_prefix(&self.doc, caret.head) else {
+        let Some((start, prefix)) = super::from_completion::from_prefix(&self.doc, caret.head, false) else {
             return;
         };
-        let items = super::from_completion::relations(catalog, &scope.1.database, prefix);
-        if !items.is_empty() {
-            self.completion = Some(Completion {
-                start,
-                prefix: prefix.to_owned(),
-                items,
-                function_applications: FunctionApplications::new(),
-                selected: 0,
-                scope: Some(scope),
-            });
+        if let Some(completion) = catalog_completion(scope, catalog, start, prefix) {
+            self.completion = Some(completion);
         }
+    }
+
+    /// Start (not accept) a manual completion. A known relation position
+    /// never falls back to guessed tables or to a different database.
+    pub(crate) fn request_completion(&mut self, from: Option<(CompletionScope, &datazen_ui_api::Catalog)>) {
+        let caret = self.selection.main();
+        if self.selection.len() != 1 || caret.anchor != caret.head || self.composition.is_some() {
+            return;
+        }
+        if let Some((start, prefix)) = super::from_completion::from_prefix(&self.doc, caret.head, true) {
+            self.completion = from.and_then(|(scope, catalog)| catalog_completion(scope, catalog, start, prefix));
+            return;
+        }
+        let Some(before) = self.doc.get(..caret.head) else { return };
+        let Some(after) = self.doc.get(caret.head..) else { return };
+        // Keep the independent keyword source conservative: no explicit
+        // guesses inside quoted/comment/qualified input or mid-identifier.
+        if before.contains(['\'', '"', '`', '#', '$', '[', ']', '\\', '.'])
+            || before.contains("--") || before.contains("/*")
+            || after.chars().next().is_some_and(super::from_completion::identifier_continuation)
+        {
+            self.completion_close();
+            return;
+        }
+        self.refresh_completion_for_trigger(true, true);
     }
 
     /// Put one caret at `byte`, replacing every range (a single selection).
@@ -845,6 +874,23 @@ impl SqlEditor {
             sel.head = map(sel.head);
         }
     }
+}
+
+fn catalog_completion(
+    scope: CompletionScope,
+    catalog: &datazen_ui_api::Catalog,
+    start: usize,
+    prefix: &str,
+) -> Option<Completion> {
+    let items = super::from_completion::relations(catalog, &scope.target.database, prefix);
+    (!items.is_empty()).then(|| Completion {
+        start,
+        prefix: prefix.to_owned(),
+        items,
+        function_applications: FunctionApplications::new(),
+        selected: 0,
+        scope: Some(scope),
+    })
 }
 
 pub(super) fn is_keyword(word: &str) -> bool {

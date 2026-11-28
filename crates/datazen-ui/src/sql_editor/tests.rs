@@ -324,11 +324,11 @@ fn native_from_context_is_simple_and_stops_at_the_actual_caret() {
         ("SELECT FROM ca", None),
         ("DELETE FROM ca", None),
     ] {
-        assert_eq!(from_prefix(input, input.len()).map(|(_, prefix)| prefix), expected, "{input}");
+        assert_eq!(from_prefix(input, input.len(), false).map(|(_, prefix)| prefix), expected, "{input}");
     }
     let doc = "SELECT * FROM cafe;";
-    assert_eq!(from_prefix(doc, doc.len()-3), None, "don't replace part of an identifier");
-    assert_eq!(from_prefix(doc, doc.len()-1), Some((14, "cafe")));
+    assert_eq!(from_prefix(doc, doc.len()-3, false), None, "don't replace part of an identifier");
+    assert_eq!(from_prefix(doc, doc.len()-1, false), Some((14, "cafe")));
 }
 
 #[test]
@@ -352,10 +352,14 @@ fn native_from_completion_inserts_exact_quoted_target_as_one_undo_edit() {
             },
         ],
     };
-    let scope = (9, NativeQueryDatabase {
-        connection_id: "db".into(),
-        database: "target".into(),
-    });
+    let scope = super::CompletionScope {
+        tab_id: 9,
+        session_generation: 17,
+        target: NativeQueryDatabase {
+            connection_id: "db".into(),
+            database: "target".into(),
+        },
+    };
     let original = "SELECT * FROM ca";
     let mut editor = SqlEditor::from_doc(original);
     editor.set_main_caret(original.len());
@@ -772,4 +776,69 @@ fn dock_whole_word_replace_all_is_undoable_without_rewriting_neighboring_crlf() 
     assert_eq!(multiline.selected_text(), "a\r\nb");
     assert_eq!(multiline.replace_all_from_bar(), 1);
     assert_eq!(multiline.doc(), "C keep\r\nx");
+}
+
+#[test]
+fn manual_completion_is_explicit_only_for_empty_prefix_and_rejects_unsafe_from() {
+    use super::from_completion::from_prefix;
+    for sql in ["SELECT * FROM ", " SELECT COUNT(1)\nFROM\t"] {
+        assert_eq!(from_prefix(sql, sql.len(), false), None);
+        assert_eq!(from_prefix(sql, sql.len(), true), Some((sql.len(), "")));
+    }
+    for sql in [
+        "SELECT * FROM", "SELECT * # FROM ", "SELECT * -- FROM ", "SELECT * FROM # ",
+        "SELECT * FROM /* note */ ", "SELECT 'FROM ", "SELECT FROM ", "SELECT (SELECT * FROM ",
+        "SELECT * FROM first; SELECT * FROM ", "SELECT * FROM x JOIN ",
+        "SELECT * FROM public.",
+    ] {
+        assert_eq!(from_prefix(sql, sql.len(), true), None, "{sql}");
+    }
+    let whole_identifier = "SELECT * FROM abc";
+    assert_eq!(from_prefix(whole_identifier, whole_identifier.len() - 3, true), None);
+
+    let mut editor = SqlEditor::from_doc("");
+    editor.refresh_completion();
+    assert!(!editor.has_completion());
+    editor.request_completion(None);
+    assert!(editor.has_completion());
+    assert_eq!(editor.doc(), "", "opening completion is not an edit");
+    assert!(!editor.undo());
+    editor.set_main_caret(0);
+    assert!(!editor.has_completion());
+
+    let mut editor = SqlEditor::from_doc("SELECT * FROM ");
+    editor.set_main_caret(editor.doc().len());
+    editor.request_completion(None);
+    assert!(!editor.has_completion(), "no live target; don't invent relations or keywords");
+}
+
+#[test]
+fn manual_completion_preserves_function_label_application_and_context_guard() {
+    let mut editor = SqlEditor::from_doc("SELECT coa");
+    editor.set_main_caret(editor.doc().len());
+    editor.request_completion(None);
+    assert_eq!(editor.completion_items(), &["COALESCE"] as &[&str]);
+    assert_eq!(editor.doc(), "SELECT coa", "opening is not an edit");
+    editor.completion_accept_index(0);
+    assert_eq!(editor.doc(), "SELECT COALESCE(");
+    assert!(editor.undo());
+    assert_eq!(editor.doc(), "SELECT coa");
+
+    // A foreign rewrite could coincidentally retain the same prefix at the
+    // same byte positions. Manual acceptance must recheck the P35 context.
+    editor.request_completion(None);
+    editor.doc = "DELETE coa".to_owned();
+    editor.completion_accept_index(0);
+    assert_eq!(editor.doc(), "DELETE coa");
+    assert!(editor.undo_stack.is_empty());
+
+    for unchanged in ["SELECT ", "SELECT 'coa", "SELECT *.coa", "SELECT coa (1)", "UPDATE x SET y = coa"] {
+        let mut blocked = SqlEditor::from_doc(unchanged);
+        blocked.set_main_caret(unchanged.len());
+        if unchanged == "SELECT coa (1)" {
+            blocked.set_main_caret("SELECT coa".len());
+        }
+        blocked.request_completion(None);
+        assert!(!blocked.completion_items().iter().any(|label| label == "COALESCE"), "{unchanged}");
+    }
 }
