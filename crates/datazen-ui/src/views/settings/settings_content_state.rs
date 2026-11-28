@@ -454,6 +454,8 @@ pub struct SettingsContentState {
     /// `getLogPath`'s answer — the log path input's placeholder.
     pub default_log_path: Option<String>,
     pub(crate) native_log_level_error: Option<String>,
+    pub(super) format_binding_draft: Option<TextEdit>,
+
     /// The local mirror of the store's settings.
     pub mirror: SettingsMirror,
     /// Which select holds its listbox open.
@@ -495,6 +497,7 @@ impl Default for SettingsContentState {
             app_version: None,
             default_log_path: None,
             native_log_level_error: None,
+            format_binding_draft: None,
             mirror: SettingsMirror::default(),
             open_select: None,
             custom_number_error: None,
@@ -520,6 +523,7 @@ impl SettingsContentState {
     /// `parseSettingsSection` + the two `setActiveSection` call sites:
     /// a known id selects it, anything else falls back to `general`.
     pub fn set_initial_section(&mut self, initial: Option<&str>) {
+        self.format_binding_draft = None;
         self.nav_space_target = None;
         self.initial_section = initial.map(str::to_owned);
         self.active_section = parse_settings_section(initial.unwrap_or(""));
@@ -527,6 +531,7 @@ impl SettingsContentState {
 
     /// The nav's own press (no `initialSection` involvement).
     pub fn select_section(&mut self, section: &'static str) {
+        self.format_binding_draft = None;
         self.nav_space_target = None;
         self.active_section = parse_settings_section(section);
     }

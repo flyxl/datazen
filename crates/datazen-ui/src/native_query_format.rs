@@ -204,7 +204,7 @@ impl AppState {
     }
 }
 
-fn parse_format_chord(input: &str) -> Option<Chord> {
+pub(crate) fn parse_format_chord(input: &str) -> Option<Chord> {
     // CodeMirror names modifiers with minus. splitn with a terminal key
     // preserves "Mod--" (minus) instead of turning it into a different key.
     let mut rest = input.trim();

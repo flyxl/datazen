@@ -96,6 +96,14 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
             "无法保存日志级别，已保留原有设置。",
             "Could not save the log level. The previous setting was kept.",
         )),
+        "settings.nativeFormatShortcut.hint" => Some((
+            "输入组合键，按 Enter 保存，Esc 取消。清空后保存可恢复当前预设。",
+            "Type a shortcut and press Enter to save, or Esc to cancel. Save an empty field to use the preset.",
+        )),
+        "settings.nativeFormatShortcut.invalid" => Some((
+            "请输入有效的组合键（最多 64 字节）。原快捷键未更改。",
+            "Enter a valid shortcut (up to 64 bytes). The previous binding was kept.",
+        )),
         "settings.nativeExecuteShortcut.label" => Some(("执行 SQL", "Execute SQL")),
         "settings.nativeExecuteShortcut.hint" => Some((
             "Mod+R 只在当前 SQL 编辑器获得焦点时执行。Mac 上的 Mod 为 Command，其他系统为 Ctrl。",

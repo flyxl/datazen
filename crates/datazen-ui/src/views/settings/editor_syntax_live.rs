@@ -93,7 +93,7 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
 }
 
 /// The real Execute SQL action belongs to Customize Shortcuts. Mount
-/// no preset, other actions, or whole-keymap reset in the live subset.
+/// only actions with a working Settings writer and live keyboard consumer.
 pub(super) fn execute_shortcut_card(state: &AppState, kit: &Kit, overlays: &mut Vec<El>) -> Option<El> {
     let binding = state.desktop.native_execute_shortcut()?;
     let label = t("settings.nativeExecuteShortcut.label");
@@ -133,7 +133,73 @@ pub(super) fn execute_shortcut_card(state: &AppState, kit: &Kit, overlays: &mut 
     let field = editor_preference_trigger(select, &editor_field_kit(kit), overlays);
     let execute = setting_row(kit, overlays, "settings-execute-shortcut-row".to_owned(), label,
                               Some(t("settings.nativeExecuteShortcut.hint")), field);
-    Some(shortcut_card(kit, shortcut_card_heading(kit), shortcut_card_rows().child(execute)))
+    let rows = shortcut_card_rows().child(execute).children(format_shortcut_row(state, kit, overlays));
+    Some(shortcut_card(kit, shortcut_card_heading(kit), rows))
+}
+
+
+/// Keep transient edits local. Incomplete chords must not silently change a
+/// working shortcut on disk or in a different open Query tab.
+fn format_shortcut_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) -> Option<El> {
+    use crate::ui::field::TextField;
+    use crate::views::settings::setting_hint::SettingHint;
+    use datazen_ui_api::format_shortcut_for_display;
+    let binding = state.desktop.native_format_shortcut()?;
+    let display = format_shortcut_for_display(&binding, cfg!(target_os = "macos"));
+    let initial = rune::TextEdit::new(display.clone());
+    let seed = initial.clone();
+    let edit = state.settings_content.format_binding_draft.as_ref().unwrap_or(&initial);
+    let label = t("keymap.action.formatSql");
+    let field = TextField::new("settings-keymap-input-formatSql", edit)
+        .label(label).height(28.0).width(128.0).pad_x(8.0).radius(4.0)
+        .text_style(TextStyle::new(11.0, 400.0).mono())
+        .border(1.0, k.c.border_base).fill(k.c.surface_base)
+        .placeholder("e.g. Mod-Shift-F")
+        .on_edit::<AppState>(move |s| s.settings_content.format_binding_draft.get_or_insert_with(|| seed.clone()))
+        .on_key::<AppState>(|s, ev, _| {
+            if ev.key == rune::Key::Escape {
+                s.settings_content.format_binding_draft = None;
+                s.settings_error = None;
+                true
+            } else { false }
+        })
+        .on_submit::<AppState>(|s, _| {
+            if s.active != crate::types::Section::Settings || s.settings_section() != "editor" { return; }
+            let Some(draft) = s.settings_content.format_binding_draft.as_ref() else { return };
+            let Some(active) = s.desktop.native_format_shortcut() else { return };
+            if !draft.text.is_empty() && draft.text == format_shortcut_for_display(&active, cfg!(target_os = "macos")) {
+                s.settings_content.format_binding_draft = None;
+                s.settings_error = None;
+                return;
+            }
+            match normalize_format_binding(&draft.text) {
+                Ok(binding) => {
+                    s.settings_error = s.desktop.write_native_format_shortcut(binding.as_deref()).err();
+                    if s.settings_error.is_none() { s.settings_content.format_binding_draft = None; }
+                }
+                Err(()) => s.settings_error = Some(t("settings.nativeFormatShortcut.invalid").into()),
+            }
+        })
+        .build(k.dark);
+    let hint = SettingHint::new("settings-format-shortcut-hint", label, t("settings.nativeFormatShortcut.hint")).build(k, overlays);
+    let chip = rune::row().key("settings-keymap-kbd-formatSql").min_w(40.0)
+        .px(7.0).py(3.0).radius(4.0).border(1.0, k.c.border_base).fill(k.c.surface_raised).center()
+        .child(text(display).font(TextStyle::new(10.0, 400.0).mono()).color(k.c.text_faint));
+    Some(rune::row().key("settings-keymap-row-formatSql").w_full().gap(16.0).center_y().justify_between()
+        .child(rune::row().gap(4.0).center_y()
+            .child(text(label).font(TextStyle::new(12.0, 400.0)).color(k.c.text_muted)).child(hint))
+        .child(rune::row().gap(8.0).center_y().child(field).child(chip)))
+}
+
+fn normalize_format_binding(input: &str) -> Result<Option<String>, ()> {
+    if input.trim().is_empty() { return Ok(None); }
+    if input.len() > 64 || input.trim().ends_with(['+', '-']) || input.chars().any(char::is_control) { return Err(()); }
+    let normalized = datazen_ui_api::normalize_shortcut_input(input);
+    let wire = datazen_ui_api::to_code_mirror_key_format(&normalized);
+    if wire.len() > 64 || crate::native_query_format::parse_format_chord(&wire).is_none() {
+        return Err(());
+    }
+    Ok(Some(wire))
 }
 
 /// The original setting uses a 1pt inside edge on a 36pt field, not
@@ -255,6 +321,16 @@ fn preview(
 #[cfg(test)]
 mod visual_tests {
     use super::*;
+
+    #[test]
+    fn format_settings_uses_the_live_formatter_chord_and_empty_inherits() {
+        assert_eq!(normalize_format_binding("Cmd + Option + F8"), Ok(Some("Mod-Alt-F8".into())));
+        assert_eq!(normalize_format_binding("Ctrl+Shift+F"), Ok(Some("Ctrl-Shift-f".into())));
+        assert_eq!(normalize_format_binding(""), Ok(None));
+        for invalid in ["Mod+", "Mod+NotAKey", "Mod+F8\n", &"a".repeat(65)] {
+            assert_eq!(normalize_format_binding(invalid), Err(()), "{invalid:?}");
+        }
+    }
 
     #[test]
     fn picker_sample_preserves_chromium_token_roles_for_all_live_palettes() {

@@ -2806,6 +2806,29 @@ fn effective_native_select_limit(settings: &serde_json::Value) -> datazen_ui_api
 }
 
 impl LiveAdapter {
+    fn save_scoped_shortcut(&mut self, action: &'static str, binding: Option<&str>) -> Result<(), String> {
+        // Read the current file, not the startup snapshot and not the
+        // compatibility reader that treats an existing blank file as empty.
+        // The repository writes via atomic rename; this read/merge/write is
+        // not a cross-process lock against another editor changing the file.
+        let repository = crate::settings::FileSettingsRepository::open(
+            &crate::settings::settings_path(&self.data_dir),
+        );
+        let mut document = repository.document_for_shortcut_edit().map_err(|error| error.to_string())?;
+        let object = document.as_object_mut().ok_or("the settings document is not an object")?;
+        let custom = object.entry("customKeymap").or_insert_with(|| serde_json::json!({}))
+            .as_object_mut().ok_or("customKeymap is not an object")?;
+        if let Some(binding) = binding {
+            custom.insert(action.into(), serde_json::json!(binding));
+        } else {
+            custom.remove(action);
+        }
+        let stored = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|error| error.to_string())?;
+        *self.settings_document.lock().expect("the settings lock") = stored;
+        Ok(())
+    }
+
     fn enqueue_query(
         &mut self, generation: u32, sql: String, script: bool,
         target: Option<datazen_ui_api::NativeQueryDatabase>,
@@ -3588,6 +3611,24 @@ impl DesktopAdapter for LiveAdapter {
         Ok(())
     }
 
+    #[cfg(feature = "native-sql-formatter")]
+    fn native_format_shortcut(&self) -> Option<String> {
+        self.native_sql_formatter.as_ref()?;
+        let settings = self.settings_document.lock().ok()?;
+        Some(live_sql_format::effective_shortcut(&settings).unwrap_or_default())
+    }
+
+    #[cfg(feature = "native-sql-formatter")]
+    fn write_native_format_shortcut(&mut self, binding: Option<&str>) -> Result<(), String> {
+        if self.native_sql_formatter.is_none() {
+            return Err("Local SQL formatter unavailable".into());
+        }
+        if binding.is_some_and(|s| s.is_empty() || s.len() > 64 || s.chars().any(char::is_control)) {
+            return Err("Invalid Format SQL shortcut".into());
+        }
+        self.save_scoped_shortcut("formatSql", binding)
+    }
+
     fn native_execute_shortcut(&self) -> Option<datazen_ui_api::NativeExecuteShortcut> {
         let document = self.settings_document.lock().expect("the settings lock");
         let binding = document.get("customKeymap")
@@ -3601,22 +3642,7 @@ impl DesktopAdapter for LiveAdapter {
     fn write_native_execute_shortcut(
         &mut self, binding: datazen_ui_api::NativeExecuteShortcut,
     ) -> Result<(), String> {
-        // Read the current file, not the startup snapshot and not the
-        // compatibility reader that treats an existing blank file as empty.
-        // The repository writes via atomic rename; this read/merge/write is
-        // not a cross-process lock against another editor changing the file.
-        let repository = crate::settings::FileSettingsRepository::open(
-            &crate::settings::settings_path(&self.data_dir),
-        );
-        let mut document = repository.document_for_shortcut_edit().map_err(|error| error.to_string())?;
-        let object = document.as_object_mut().ok_or("the settings document is not an object")?;
-        let custom = object.entry("customKeymap").or_insert_with(|| serde_json::json!({}))
-            .as_object_mut().ok_or("customKeymap is not an object")?;
-        custom.insert("execute".into(), serde_json::json!(binding.wire()));
-        let stored = futures_executor::block_on(self.settings.save_app_settings(document))
-            .map_err(|error| error.to_string())?;
-        *self.settings_document.lock().expect("the settings lock") = stored;
-        Ok(())
+        self.save_scoped_shortcut("execute", Some(binding.wire()))
     }
 
     fn read_native_default_table_sort(&self) -> Result<datazen_ui_api::DefaultTableSort, String> {
@@ -4761,6 +4787,36 @@ mod tests {
                 assert!(std::time::Instant::now() < deadline, "formatter request did not deliver");
                 std::thread::sleep(Duration::from_millis(5));
             }
+        }
+
+        #[test]
+        fn format_shortcut_writes_one_override_and_the_existing_worker_reads_it() {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("settings.json");
+            let initial = serde_json::json!({
+                "keymapPreset": "dbeaver", "customKeymap": {"execute": "Mod-r", "unknown": 42},
+                "unrelated": {"keep": true}
+            });
+            std::fs::write(&path, serde_json::to_vec(&initial).unwrap()).unwrap();
+            let mut host = opened_sqlite_adapter(root.path(), "format-preference.sqlite", true);
+            let chord = |h: &LiveAdapter| h.native_sql_format_context().unwrap().shortcut.unwrap();
+            assert_eq!(host.native_format_shortcut().as_deref(), Some("Ctrl-Shift-f"));
+            assert_eq!(chord(&host), "Ctrl-Shift-f");
+            host.write_native_format_shortcut(Some("Mod-Alt-F8")).unwrap();
+            assert_eq!(chord(&host), "Mod-Alt-F8");
+            let mut expected = initial.clone();
+            expected["customKeymap"]["formatSql"] = serde_json::json!("Mod-Alt-F8");
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(), expected);
+            std::fs::write(&path, b"{broken").unwrap();
+            assert!(host.write_native_format_shortcut(None).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), b"{broken");
+            assert_eq!(chord(&host), "Mod-Alt-F8", "failed writes do not change the worker snapshot");
+            expected["external"] = serde_json::json!("late edit");
+            std::fs::write(&path, serde_json::to_vec(&expected).unwrap()).unwrap();
+            host.write_native_format_shortcut(None).unwrap();
+            expected["customKeymap"].as_object_mut().unwrap().remove("formatSql");
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&std::fs::read(&path).unwrap()).unwrap(), expected);
+            assert_eq!(chord(&host), "Ctrl-Shift-f");
         }
 
         #[test]

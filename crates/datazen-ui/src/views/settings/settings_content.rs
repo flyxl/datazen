@@ -125,7 +125,7 @@ const NAV_GROUP_TEXT: TextStyle = nav_text(TextStyle::new(11.0, 600.0).lh(16.5).
 /// `text-xs` — the version line, the keymap rows, the back button.
 const TEXT_XS: TextStyle = TextStyle::new(12.0, 400.0);
 /// `text-xs` semibold — the keymap card's header.
-const TEXT_XS_SEMIBOLD: TextStyle = TextStyle::new(12.0, 600.0);
+const TEXT_XS_SEMIBOLD: TextStyle = TextStyle::new(12.0, 600.0).lh(16.0).tracking(0.6);
 /// `text-[11px]` mono — the keymap input.
 const TEXT_11_MONO: TextStyle = TextStyle::new(11.0, 400.0);
 /// `text-[10px]` mono — the keymap kbd chip.
@@ -140,10 +140,10 @@ pub(super) fn shortcut_card(k: &Kit, heading: El, rows: El) -> El {
         .key("settings-keymap-customize")
         .w_full()
         .gap(12.0)
-        .padding(14.0)
-        .radius(8.0)
+        .padding(15.0) // CSS p-3.5 inside a 1px border
+        .radius(if k.dark { 12.0 } else { 11.0 })
         .fill(k.c.surface_weak)
-        .border(1.0, k.c.border_muted)
+        .border(1.0, k.c.border_base)
         .child(heading)
         .child(rows)
 }
@@ -155,9 +155,9 @@ pub(super) fn shortcut_card_heading(k: &Kit) -> El {
         .justify_between()
         .center_y()
         .child(
-            text(t("settings.keymap.customize").to_owned())
+            text(t("settings.keymap.customize").to_uppercase())
                 .font(TEXT_XS_SEMIBOLD)
-                .color(k.c.text_muted),
+                .color(k.c.text_faint),
         )
 }
 

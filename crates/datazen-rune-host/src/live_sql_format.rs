@@ -73,6 +73,18 @@ fn format_settings_shape_supported(document: &serde_json::Value) -> bool {
         && format.get("linesBetweenQueries").is_none_or(serde_json::Value::is_number)
 }
 
+pub(super) fn effective_shortcut(settings: &serde_json::Value) -> Option<String> {
+    const MAX_CHORD_BYTES: usize = 64;
+    let large_custom = settings.get("customKeymap").and_then(|map| map.get("formatSql"))
+        .and_then(serde_json::Value::as_str).is_some_and(|value| value.len() > MAX_CHORD_BYTES);
+    if large_custom {
+        None // The action remains available on the toolbar.
+    } else {
+        let value = shortcut_from_settings(settings);
+        (!value.is_empty() && value.len() <= MAX_CHORD_BYTES).then_some(value)
+    }
+}
+
 impl LiveSqlFormatter {
     pub(super) fn launch() -> Option<Self> {
         Some(Self { worker: FormatterWorker::launch().ok()?, accepted: None })
@@ -117,15 +129,7 @@ impl LiveAdapter {
             return Err(Invalid);
         }
         let options = options_from_settings(&settings).ok_or(Invalid)?;
-        const MAX_CHORD_BYTES: usize = 64;
-        let large_custom = settings.get("customKeymap").and_then(|map| map.get("formatSql"))
-            .and_then(serde_json::Value::as_str).is_some_and(|value| value.len() > MAX_CHORD_BYTES);
-        let shortcut = if large_custom {
-            None // The action remains available on the toolbar.
-        } else {
-            let value = shortcut_from_settings(&settings);
-            (!value.is_empty() && value.len() <= MAX_CHORD_BYTES).then_some(value)
-        };
+        let shortcut = effective_shortcut(&settings);
         Ok(Snapshot {
             context: NativeSqlFormatContext { session_generation, default_target, language, options, shortcut },
             handle_id,

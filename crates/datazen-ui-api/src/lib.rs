@@ -2465,6 +2465,15 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    /// Current Format SQL shortcut, independent of an open connection. Empty
+    /// means there is no usable binding; None means no local formatter.
+    fn native_format_shortcut(&self) -> Option<String> { None }
+
+    /// Change only the Format SQL override. None inherits the current preset.
+    fn write_native_format_shortcut(&mut self, _binding: Option<&str>) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// The actual focused-editor Execute Statement binding. None means this
     /// adapter does not expose the setting, not that it pinned a default.
     fn native_execute_shortcut(&self) -> Option<NativeExecuteShortcut> {
