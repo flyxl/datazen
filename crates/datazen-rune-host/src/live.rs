@@ -425,6 +425,7 @@ pub struct LiveAdapter {
     /// The data directory exports and backups land under (N11).
     data_dir: PathBuf,
     wapp_listing: Mutex<crate::wapp_listing::WappListing>,
+    tunnels: crate::live_tunnels::NativeTunnelFile,
     /// The workflow registry use case over the workflow file (N13).
     workflows: Arc<WorkflowRegistry>,
     workflow_history: Arc<crate::workflow_run_history::FileWorkflowRunHistory>,
@@ -993,6 +994,7 @@ impl LiveAdapter {
             host_jobs: jobs,
             data_dir: adapter_data_dir,
             wapp_listing: Default::default(),
+            tunnels: crate::live_tunnels::NativeTunnelFile::new(data_dir),
             workflows,
             workflow_history,
             snippets,
@@ -2860,6 +2862,39 @@ impl LiveAdapter {
 }
 
 impl DesktopAdapter for LiveAdapter {
+    fn supports_native_saved_tunnels(&self) -> bool {
+        true
+    }
+
+    fn native_saved_tunnel_summaries(
+        &self,
+    ) -> Result<Vec<datazen_ui_api::types::SavedTunnelSummary>, datazen_ui_api::NativeTunnelStoreError> {
+        self.tunnels.summaries()
+    }
+
+    fn native_http_proxy_definition(
+        &self, id: &str,
+    ) -> Result<datazen_ui_api::NativeHttpProxyDefinition, datazen_ui_api::NativeTunnelStoreError> {
+        self.tunnels.proxy(id)
+    }
+
+    fn save_native_http_proxy_definition(
+        &mut self,
+        id: Option<&str>,
+        name: &str,
+        proxy: datazen_ui_api::HttpProxyTunnelConfig,
+        password: datazen_ui_api::NativeTunnelPassword,
+    ) -> Result<(), datazen_ui_api::NativeTunnelStoreError> {
+        self.tunnels.save_proxy(id, name, proxy, password, || {
+            // Only create a master key for a fresh, readable catalog.
+            futures_executor::block_on(self.service.list_plain(&crate::host_connection_scope()))
+                .is_ok_and(|profiles| profiles.iter().all(|profile| {
+                    profile.password.is_none() && profile.ssh_tunnel.is_none()
+                        && profile.http_proxy_tunnel.is_none() && profile.websocket_tunnel.is_none()
+                }))
+        })
+    }
+
     fn wapp_listing_is_read_only(&self) -> bool {
         true
     }

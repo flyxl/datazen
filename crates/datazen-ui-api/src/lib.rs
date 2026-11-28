@@ -3,6 +3,9 @@
 //! Hosts provide the [`DesktopAdapter`] implementation. The demo uses
 //! [`MemoryWorkspace`] for its in-memory data.
 
+mod native_saved_tunnels;
+pub use native_saved_tunnels::{NativeHttpProxyDefinition, NativeTunnelPassword, NativeTunnelStoreError};
+
 mod ai_memory_correction;
 mod app_root_surface;
 mod bootstrap_icon_resolver;
@@ -2231,6 +2234,35 @@ pub enum WappListError {
 /// blocks. The synchronous methods stay the in-memory world's path; adapters
 /// that answer every request quickly simply leave `begin_job` declined.
 pub trait DesktopAdapter {
+    /// Saved definitions only; does not advertise a live tunnel connection.
+    fn supports_native_saved_tunnels(&self) -> bool {
+        false
+    }
+
+    fn native_saved_tunnel_summaries(
+        &self,
+    ) -> Result<Vec<types::SavedTunnelSummary>, NativeTunnelStoreError> {
+        Err(NativeTunnelStoreError::Unavailable)
+    }
+
+    fn native_http_proxy_definition(
+        &self,
+        _id: &str,
+    ) -> Result<NativeHttpProxyDefinition, NativeTunnelStoreError> {
+        Err(NativeTunnelStoreError::Unavailable)
+    }
+
+    fn save_native_http_proxy_definition(
+        &mut self,
+        _id: Option<&str>,
+        _name: &str,
+        _proxy: HttpProxyTunnelConfig,
+        _password: NativeTunnelPassword,
+    ) -> Result<(), NativeTunnelStoreError> {
+        Err(NativeTunnelStoreError::Unavailable)
+    }
+
+
     /// The connection list from the desktop use case.
     fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String>;
     /// One page of a table from the desktop use case.
