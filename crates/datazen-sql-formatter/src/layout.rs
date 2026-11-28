@@ -12,6 +12,11 @@ use crate::{
     Dialect, Error, Indent, KeywordCase, LogicalOperatorNewline, Options,
 };
 
+mod statement;
+
+use crate::dialect_layout::{is_always_dense, is_property_access, is_select_head};
+use statement::Dml;
+
 const MAX_DEPTH: usize = 48;
 const INLINE_WIDTH: usize = 50;
 
@@ -38,7 +43,7 @@ impl Atom<'_> {
     }
 
     fn comment(self) -> bool {
-        matches!(self.kind, Kind::LineComment | Kind::BlockComment)
+        matches!(self.kind, Kind::LineComment | Kind::BlockComment | Kind::DisableComment)
     }
 
     fn case(self, text: &str) -> bool {
@@ -56,6 +61,7 @@ enum Node<'a> {
     Group(Vec<Node<'a>>),
     Call(Atom<'a>, Vec<Node<'a>>, Vec<Node<'a>>),
     Clause(Atom<'a>, Vec<Node<'a>>),
+    InlineClause(Atom<'a>, Vec<Node<'a>>),
     Set(Atom<'a>, Vec<Node<'a>>),
     Limit(Atom<'a>, Vec<Node<'a>>, Vec<Node<'a>>),
     Between(Atom<'a>, Vec<Node<'a>>, Atom<'a>, Vec<Node<'a>>),
@@ -85,6 +91,10 @@ fn normalized_space(text: &str) -> Cow<'_, str> {
     Cow::Owned(text.split(js_space).filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" "))
 }
 
+fn is_physical_newline(whitespace: &str) -> bool {
+    whitespace.contains(['\r', '\n'])
+}
+
 fn clause_name(head: Atom<'_>) -> String {
     normalized_space(head.text).to_ascii_uppercase()
 }
@@ -93,6 +103,7 @@ struct Parser<'t, 'a> {
     tokens: &'t [Token<'a>],
     pos: usize,
     deadline: Instant,
+    dialect: Dialect,
 }
 
 impl<'a> Parser<'_, 'a> {
@@ -125,16 +136,70 @@ impl<'a> Parser<'_, 'a> {
         let mut seen_data = false;
         let mut saw_frame = false;
         let mut query_clause = 0;
+        let mut dml: Option<Dml> = None;
+        let mut cte_pending = false;
+        let mut after_go = false;
+        let after_semicolon = statement && self.pos.checked_sub(1).and_then(|i| self.tokens.get(i))
+            .is_some_and(|token| Atom::from(token).punctuation(";"));
 
         while let Some(head) = self.peek() {
             if head.punctuation(")") || head.punctuation(";") {
                 break;
             }
+            if self.dialect == Dialect::TransactSql && head.kind == Kind::Keyword(Kw::Clause)
+                && head.text.eq_ignore_ascii_case("GO")
+            {
+                // GO is a client batch boundary, not a SQL semicolon.
+                // Admit only a real delimiter on its own physical line with
+                // no repeat count, trailing semicolon, or same-line payload.
+                let complete = (saw_select || dml.is_some_and(Dml::complete)) && !compound_waiting;
+                if !statement || !is_physical_newline(head.before)
+                    || !(complete || (after_semicolon && !root_starter && !after_go))
+                {
+                    return Err(Error::Unsupported);
+                }
+                let go = self.bump()?;
+                if self.peek().is_some_and(|next| next.punctuation(";") || !is_physical_newline(next.before)) {
+                    return Err(Error::Unsupported);
+                }
+                nodes.push(Node::InlineClause(go, Vec::new()));
+                root_starter = false;
+                saw_select = false;
+                seen_data = false;
+                query_clause = 0;
+                dml = None;
+                cte_pending = false;
+                after_go = true;
+                continue;
+            }
+            if statement && !seen_data && !root_starter && statement::is_mysql_family(self.dialect)
+                && head.kind == Kind::Keyword(Kw::Keyword) && head.text.eq_ignore_ascii_case("DELETE")
+            {
+                let head = self.bump()?;
+                let target = self.sequence(level, Atom::zone_boundary)?;
+                dml = Some(Dml::alias_delete(self.dialect, &target)?);
+                nodes.push(Node::InlineClause(head, target));
+                root_starter = true;
+                seen_data = true;
+                continue;
+            }
+            if statement && !seen_data && !root_starter && self.dialect == Dialect::Sqlite
+                && head.kind == Kind::Keyword(Kw::Keyword) && head.text.eq_ignore_ascii_case("PRAGMA")
+            {
+                nodes.push(Node::Atom(self.bump()?));
+                let body = self.sequence(level, Atom::zone_boundary)?;
+                if !statement::is_pragma_body(&body) || self.peek().is_some_and(|a| !a.punctuation(";")) {
+                    return Err(Error::Unsupported);
+                }
+                nodes.extend(body);
+                return Ok(nodes);
+            }
             match head.kind {
                 Kind::Keyword(Kw::Select) => {
+                    if let Some(dml) = &mut dml { dml.begin_select()?; }
                     let head = self.bump()?;
                     let name = clause_name(head);
-                    if !matches!(name.as_str(), "SELECT" | "SELECT ALL" | "SELECT DISTINCT")
+                    if !is_select_head(self.dialect, &name)
                         || (saw_select && !compound_waiting) || saw_frame
                         || (!root_starter && seen_data)
                     {
@@ -144,6 +209,7 @@ impl<'a> Parser<'_, 'a> {
                     require_content(&expressions)?;
                     nodes.push(Node::Clause(head, expressions));
                     root_starter = true;
+                    cte_pending = false;
                     saw_select = true;
                     compound_waiting = false;
                     query_clause = 0;
@@ -152,9 +218,29 @@ impl<'a> Parser<'_, 'a> {
                 Kind::Keyword(Kw::Clause) => {
                     let head = self.bump()?;
                     let name = clause_name(head);
+                    let expressions = self.sequence(level, Atom::zone_boundary)?;
+                    require_content(&expressions)?;
+                    let pg_cte_update = self.dialect == Dialect::PostgreSql && cte_pending && name == "UPDATE";
+                    if statement && ((!seen_data && !root_starter) || pg_cte_update) {
+                        if let Some((started, inline)) = Dml::start(&name, self.dialect, &expressions)? {
+                            dml = Some(started);
+                            cte_pending = false;
+                            root_starter = true;
+                            seen_data = true;
+                            nodes.push(make_clause(head, expressions, inline));
+                            continue;
+                        }
+                    }
+                    if let Some(dml) = &mut dml {
+                        if let Some(inline) = dml.clause(&name, &expressions, self.dialect)? {
+                            nodes.push(make_clause(head, expressions, inline));
+                            continue;
+                        }
+                    }
                     match name.as_str() {
                         "WITH" | "WITH RECURSIVE" if !seen_data => {
                             root_starter = true;
+                            cte_pending = true;
                         }
                         name if saw_select && !compound_waiting => {
                             let order = match name {
@@ -178,8 +264,6 @@ impl<'a> Parser<'_, 'a> {
                         }
                         _ => return Err(Error::Unsupported),
                     }
-                    let expressions = self.sequence(level, Atom::zone_boundary)?;
-                    require_content(&expressions)?;
                     if name.starts_with("WITH") && !expressions.iter().any(|node| {
                         matches!(node, Node::Group(nodes) if contains_select(nodes))
                     }) { return Err(Error::Unsupported); }
@@ -187,7 +271,7 @@ impl<'a> Parser<'_, 'a> {
                     seen_data = true;
                 }
                 Kind::Keyword(Kw::Limit) => {
-                    if !saw_select || compound_waiting || query_clause >= 7 {
+                    if !saw_select || compound_waiting || query_clause >= 7 || !dml.is_none_or(Dml::query_source) {
                         return Err(Error::Unsupported);
                     }
                     query_clause = 7;
@@ -212,7 +296,7 @@ impl<'a> Parser<'_, 'a> {
                     seen_data = true;
                 }
                 Kind::Keyword(Kw::SetOperation) => {
-                    if !saw_select || compound_waiting {
+                    if !saw_select || compound_waiting || !dml.is_none_or(Dml::query_source) {
                         return Err(Error::Unsupported);
                     }
                     let op = self.bump()?;
@@ -240,7 +324,9 @@ impl<'a> Parser<'_, 'a> {
                 }
             }
         }
-        if compound_waiting || (root_starter && !saw_select) {
+        if compound_waiting || dml.is_some_and(|kind| !kind.complete())
+            || (dml.is_none() && root_starter && !saw_select)
+        {
             return Err(Error::Unsupported);
         }
         Ok(nodes)
@@ -307,7 +393,7 @@ impl<'a> Parser<'_, 'a> {
             Kind::Keyword(Kw::Case) if head.case("CASE") => self.case_expression(head, level + 1),
             Kind::Keyword(Kw::Case | Kw::Select | Kw::Clause | Kw::SetOperation | Kw::Limit) => Err(Error::Unsupported),
             Kind::Punctuation if !head.punctuation(",") => Err(Error::Unsupported),
-            Kind::Operator if head.text == "." => {
+            Kind::Operator if is_property_access(self.dialect, head.text) => {
                 // The upstream token passes already demoted adjacent
                 // property keywords. Refuse a missing/non-property RHS.
                 let following = self.tokens[self.pos..].iter().map(Atom::from).find(|a| !a.comment());
@@ -330,34 +416,60 @@ impl<'a> Parser<'_, 'a> {
             if !else_seen && token.case("WHEN") {
                 let when = self.bump()?;
                 let condition = self.sequence(level, stop)?;
-                require_content(&condition)?;
-                let then = self.bump()?;
-                if !then.case("THEN") {
+                require_case_operand(&condition)?;
+                let next = self.peek();
+                if !next.is_some_and(|a| a.case("THEN")) {
+                    if next.is_none_or(|a| a.zone_boundary() || a.case("WHEN")
+                        || a.case("ELSE") || a.case("END"))
+                    {
+                        return Err(Error::Syntax);
+                    }
                     return Err(Error::Unsupported);
                 }
+                let then = self.bump()?;
                 let result = self.sequence(level, stop)?;
-                require_content(&result)?;
+                require_case_operand(&result)?;
                 branches.push(Branch::When(when, condition, then, result));
             } else if !else_seen && !branches.is_empty() && token.case("ELSE") {
                 let other = self.bump()?;
                 let result = self.sequence(level, stop)?;
-                require_content(&result)?;
+                require_case_operand(&result)?;
                 branches.push(Branch::Else(other, result));
                 else_seen = true;
             } else {
                 break;
             }
         }
-        let end = self.bump()?;
-        if branches.is_empty() || !end.case("END") {
+        let next = self.peek();
+        if !next.is_some_and(|a| a.case("END")) {
+            return Err(if next.is_none_or(Atom::zone_boundary) {
+                Error::Syntax
+            } else {
+                // Some alternate branch orders are formatted upstream.
+                // Keep outside this subset instead of calling them malformed.
+                Error::Unsupported
+            });
+        }
+        if branches.is_empty() {
             return Err(Error::Unsupported);
         }
-        Ok(Node::Case(head, subject, branches, end))
+        Ok(Node::Case(head, subject, branches, self.bump()?))
     }
+}
+
+fn make_clause<'a>(head: Atom<'a>, body: Vec<Node<'a>>, inline: bool) -> Node<'a> {
+    if inline { Node::InlineClause(head, body) } else { Node::Clause(head, body) }
 }
 
 fn is_comment(node: &Node<'_>) -> bool {
     matches!(node, Node::Atom(atom) if atom.comment())
+}
+
+fn require_case_operand(nodes: &[Node<'_>]) -> Result<(), Error> {
+    if nodes.iter().all(is_comment) {
+        return Err(Error::Syntax);
+    }
+    require_content(nodes)
 }
 
 fn require_content(nodes: &[Node<'_>]) -> Result<(), Error> {
@@ -552,6 +664,9 @@ impl<'a, 'o> Layout<'a, 'o> {
                 }
             }
             Kind::BlockComment => self.block_comment(atom),
+            // Unlike ordinary comments, the opaque protected span is
+            // neither scanned, reindented, nor split into logical lines.
+            Kind::DisableComment => self.add([Part::text(atom.text), Space]),
             Kind::Punctuation if atom.punctuation(",") => {
                 if self.inline.is_some() {
                     self.add([NoSpace, Part::text(","), Space])
@@ -559,7 +674,7 @@ impl<'a, 'o> Layout<'a, 'o> {
                     self.add([NoSpace, Part::text(","), Newline, Indent])
                 }
             }
-            Kind::Operator if atom.text == "." => self.add([NoSpace, Part::text(atom.text)]),
+            Kind::Operator if is_property_access(self.options.dialect, atom.text) || is_always_dense(self.options.dialect, atom.text) => self.add([NoSpace, Part::text(atom.text)]),
             Kind::Operator if atom.text == ":" => self.add([NoSpace, Part::text(atom.text), Space]),
             Kind::Keyword(Kw::Join) => self.add([Newline, Indent, self.keyword(atom), Space]),
             Kind::Keyword(Kw::LogicalOperator) => match self.options.logical_operator_newline {
@@ -629,6 +744,10 @@ impl<'a, 'o> Layout<'a, 'o> {
                 self.add([Text(normalized_space(name.text))])?;
                 self.nodes(comments)?;
                 self.group(body)
+            }
+            Node::InlineClause(head, body) => {
+                self.add([Newline, Indent, self.keyword(*head), Space])?;
+                self.nodes(body)
             }
             Node::Clause(head, body) => {
                 self.add([Newline, Indent, self.keyword(*head), Newline])?;
@@ -712,16 +831,19 @@ pub(crate) fn format_tokens(
     tokens: &[Token<'_>], options: &Options, output_limit: usize, deadline: Instant,
 ) -> Result<String, Error> {
     check(deadline)?;
-    if !matches!(options.dialect, Dialect::Sql | Dialect::Sqlite) {
-        return Err(Error::Unsupported);
-    }
+    format_admitted_tokens(tokens, options, output_limit, deadline)
+}
+
+fn format_admitted_tokens(
+    tokens: &[Token<'_>], options: &Options, output_limit: usize, deadline: Instant,
+) -> Result<String, Error> {
     let indent = match options.indent {
         Indent::Spaces(2) => "  ",
         Indent::Spaces(4) => "    ",
         Indent::Tabs => "\t",
         _ => return Err(Error::InvalidOptions),
     };
-    let mut parser = Parser { tokens, pos: 0, deadline };
+    let mut parser = Parser { tokens, pos: 0, deadline, dialect: options.dialect };
     let mut output = String::new();
     while parser.pos < tokens.len() {
         check(deadline)?;

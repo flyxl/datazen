@@ -66,7 +66,6 @@ impl From<ReferenceOptions> for Options {
 enum Outcome { Exact, Unsupported, Different, UnexpectedError }
 
 #[test]
-#[ignore = "complete oracle audit: cargo test --test reference_differential -- --ignored --nocapture"]
 fn complete_frozen_original_formatter_matrix() {
     let mut n = [0; 4];
     for (raw, expected_count) in [
@@ -82,7 +81,7 @@ fn complete_frozen_original_formatter_matrix() {
             let result = match (actual, &row.expect) {
                 (Ok(actual), Expect::Formatted { output }) if actual == *output => Outcome::Exact,
                 (Ok(actual), Expect::BypassBlank) if row.trimmed.is_empty() && actual == row.input => Outcome::Exact,
-                (Err(Error::Lexical), Expect::Rejected) => Outcome::Exact,
+                (Err(Error::Lexical | Error::Syntax), Expect::Rejected) => Outcome::Exact,
                 (Err(Error::Unsupported), _) => Outcome::Unsupported,
                 (Ok(_), _) => Outcome::Different,
                 (Err(_), _) => Outcome::UnexpectedError,

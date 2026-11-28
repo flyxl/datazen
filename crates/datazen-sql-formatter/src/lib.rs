@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+mod dialect_layout;
 mod layout;
 mod lexer;
 
@@ -48,13 +49,14 @@ impl Default for Options {
 
 /// No error contains original SQL, offsets with source, or parser internals.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Error { Unsupported, Lexical, Deadline, InputLimit, OutputLimit, InvalidOptions }
+pub enum Error { Unsupported, Lexical, Syntax, Deadline, InputLimit, OutputLimit, InvalidOptions }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Unsupported => "unsupported SQL format syntax or dialect",
             Self::Lexical => "invalid SQL token",
+            Self::Syntax => "invalid SQL syntax",
             Self::Deadline => "SQL formatting timed out",
             Self::InputLimit => "SQL format input limit exceeded",
             Self::OutputLimit => "SQL format output limit exceeded",
@@ -68,7 +70,10 @@ impl std::error::Error for Error {}
 /// Current explicitly implemented dialects. Lexical recognition alone is
 /// not a claim that complete formatting is available.
 pub const fn supports_dialect(dialect: Dialect) -> bool {
-    matches!(dialect, Dialect::Sql | Dialect::Sqlite)
+    match dialect {
+        Dialect::Sql | Dialect::Sqlite | Dialect::PostgreSql | Dialect::MySql
+        | Dialect::MariaDb | Dialect::TransactSql => true,
+    }
 }
 
 pub(crate) struct Limits { deadline: Instant }
@@ -108,9 +113,6 @@ fn format_with_limits(sql: &str, options: &Options, output_limit: usize, deadlin
     let text = trim_like_reference(sql);
     if text.is_empty() {
         return (sql.len() <= output_limit).then(|| sql.to_owned()).ok_or(Error::OutputLimit);
-    }
-    if !supports_dialect(options.dialect) {
-        return Err(Error::Unsupported);
     }
     // The token and layout stages both work from trusted typed options and
     // bounded byte slices. No interpreter or generated runtime assets.

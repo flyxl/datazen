@@ -42,6 +42,8 @@ pub(crate) enum TokenKind {
     Punctuation,
     LineComment,
     BlockComment,
+    /// Raw protected source, including its markers if both were present.
+    DisableComment,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

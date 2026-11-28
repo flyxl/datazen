@@ -3,7 +3,7 @@
 
 use crate::{Dialect, Error, Limits};
 
-use super::{decimal, is_alphabetic, is_ws, keywords, letter_or_mark, operators, skip_ws, TokenKind};
+use super::{decimal, is_alphabetic, keywords, letter_or_mark, operators, skip_ws, TokenKind};
 
 #[derive(Clone, Copy)]
 pub(super) struct Profile {
@@ -17,6 +17,9 @@ impl Profile {
         use TokenKind::*;
         let first = *text.as_bytes().first().ok_or(Error::Lexical)?;
         if text.starts_with("/*") {
+            if let Some(open) = marker_end(text, "sql-formatter-disable") {
+                return disabled_body_end(text, open, limits).map(|len| (len, DisableComment));
+            }
             return block_comment(text, self.nested_comments, limits).map(|len| (len, BlockComment));
         }
         if text.starts_with("--") || (self.mysql_family && first == b'#') {
@@ -235,13 +238,33 @@ fn line_comment(text: &str) -> Result<usize, Error> {
     Ok(text.len())
 }
 
+/// Matching upstream marker spelling: case-sensitive token and ASCII spaces
+/// only on each side. Does not interpret a quote or any syntax in the body.
+fn marker_end(text: &str, marker: &str) -> Option<usize> {
+    let tail = text.strip_prefix("/*")?.trim_start_matches(' ');
+    let tail = tail.strip_prefix(marker)?.trim_start_matches(' ');
+    tail.starts_with("*/").then_some(text.len() - tail.len() + 2)
+}
+
+fn disabled_body_end(text: &str, mut after: usize, limits: &Limits) -> Result<usize, Error> {
+    // Literal search for the first exact enable marker, even if it looks
+    // quoted as SQL. Every nonmatching opener is passed once, so consecutive
+    // fake markers or invalid raw syntax cannot turn this into rescanning.
+    while let Some(relative) = text[after..].find("/*") {
+        limits.check()?;
+        let start = after + relative;
+        if let Some(close) = marker_end(&text[start..], "sql-formatter-enable") {
+            return Ok(start + close);
+        }
+        after = start + 2;
+    }
+    limits.check()?;
+    Ok(text.len())
+}
+
 fn block_comment(text: &str, nested: bool, limits: &Limits) -> Result<usize, Error> {
     let body = &text[2..];
     if let Some(i) = body.find("*/") {
-        if body[..i].trim_matches(' ') == "sql-formatter-disable" {
-            // Do not tokenize or rewrite the region behind this marker.
-            return Err(Error::Unsupported);
-        }
         if !nested {
             return Ok(i + 4);
         }

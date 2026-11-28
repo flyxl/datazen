@@ -1,0 +1,15 @@
+{
+  "formatter": "15.8.2",
+  "corpusSHA256": "ac780b907eded6aad2b87b16a1b7255942b25c66800f9653b605b5d4d2cb752c",
+  "scenarios": [
+    "sqlite-insert-values",
+    "sqlite-update-case",
+    "sqlite-delete",
+    "sqlite-pragma-and-comments",
+    "sqlite-upsert-returning",
+    "sqlite-disabled-middle"
+  ],
+  "optionLanguage": "sqlite",
+  "input": "insert into fruit(id,label) values(1,'a;''b'),(2,'z');\nupdate fruit set label=case when id=1 then 'yes' else label end,rank=rank+1 where id in (1,2);\ndelete from fruit where id not in (select id from plum) and label is null;\n-- upstream;\npragma table_info('fruit'); /* group; */\npragma foreign_keys=ON;\ninsert into t(id,v) values(1,2) on conflict(id) do update set v=excluded.v returning id,v;\nselect 1; /* sql-formatter-disable */\n  SELECT   a,   b FROM t;   \n/* sql-formatter-enable */ select 2;",
+  "expected": "INSERT INTO\n  fruit (id, label)\nVALUES\n  (1, 'a;''b'),\n  (2, 'z');\n\nUPDATE fruit\nSET\n  label = CASE\n    WHEN id = 1 THEN 'yes'\n    ELSE label\n  END,\n  rank = rank + 1\nWHERE\n  id IN (1, 2);\n\nDELETE FROM fruit\nWHERE\n  id NOT IN (\n    SELECT\n      id\n    FROM\n      plum\n  )\n  AND label IS NULL;\n\n-- upstream;\nPRAGMA table_info ('fruit');\n\n/* group; */ PRAGMA foreign_keys = ON;\n\nINSERT INTO\n  t (id, v)\nVALUES\n  (1, 2)\nON CONFLICT (id) DO UPDATE\nSET\n  v = excluded.v\nRETURNING\n  id,\n  v;\n\nSELECT\n  1;\n\n/* sql-formatter-disable */\n  SELECT   a,   b FROM t;   \n/* sql-formatter-enable */\nSELECT\n  2;"
+}

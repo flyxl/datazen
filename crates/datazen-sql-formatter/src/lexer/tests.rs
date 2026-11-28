@@ -305,7 +305,7 @@ fn lexer_matches_pinned_token_streams_and_borrows_the_original_bytes() {
 }
 
 #[test]
-fn lexer_rejects_incomplete_fragments_and_leaves_disabled_bodies_out_of_layout() {
+fn lexer_rejects_incomplete_unprotected_fragments() {
     for (dialect, sql) in [
         (Dialect::Sqlite, "select 'missing"),
         (Dialect::Sqlite, "select [missing"),
@@ -316,10 +316,31 @@ fn lexer_rejects_incomplete_fragments_and_leaves_disabled_bodies_out_of_layout()
     ] {
         assert_eq!(tokenize(sql, dialect, &Limits::default()), Err(Error::Lexical));
     }
-    assert_eq!(
-        tokenize("select 1; /* sql-formatter-disable */ @# ?? /* sql-formatter-enable */", Dialect::Sqlite, &Limits::default()),
-        Err(Error::Unsupported),
-    );
+}
+
+#[test]
+fn lexer_keeps_exact_disabled_marker_raw_region_or_rest_of_document() {
+    let protected = "/*   sql-formatter-disable   */\n@# § /* SQL-formatter-enable */ \n   a  ;   \n/* sql-formatter-enable */";
+    let sql = format!("select 1; {protected} select 2;");
+    let tokens = tokenize(&sql, Dialect::Sqlite, &Limits::default()).unwrap();
+    let raw = tokens.iter().find(|token| token.kind == T::DisableComment).unwrap();
+    assert_eq!(raw.text, protected);
+    assert_eq!(raw.whitespace_before, " ");
+    assert_eq!(tokens.iter().filter(|t| t.kind == T::Punctuation && t.text == ";").count(), 2);
+    assert!(tokens.iter().any(|t| t.kind == T::Number && t.text == "2"));
+
+    let protected_to_eof = "/*sql-formatter-disable*/  not a valid token @# \n  ";
+    let sql = format!("select 1;\n{protected_to_eof}");
+    let tokens = tokenize(&sql, Dialect::Sql, &Limits::default()).unwrap();
+    assert_eq!(tokens.last().map(|t| (t.kind, t.text)), Some((T::DisableComment, protected_to_eof)));
+
+    // Quotes are inert in the raw body; the original first literal enable
+    // marker wins, not the marker after the quoted raw fragment.
+    let raw = "/* sql-formatter-disable */'/* sql-formatter-enable */";
+    let sql = format!("{raw} + 1");
+    let tokens = tokenize(&sql, Dialect::Sqlite, &Limits::default()).unwrap();
+    assert_eq!(tokens.first().map(|t| (t.kind, t.text)), Some((T::DisableComment, raw)));
+    assert_eq!(tokens.last().map(|t| (t.kind, t.text)), Some((T::Number, "1")));
 }
 
 #[test]

@@ -14,6 +14,38 @@ fn check_layout(id: &str, tokens: &[Token<'_>], options: Options, expected: &str
 }
 
 #[test]
+fn known_case_syntax_errors_do_not_become_unsupported_or_false_success() {
+    let option = Options {
+        dialect: Dialect::Sqlite,
+        keyword_case: KeywordCase::Upper,
+        indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before,
+        lines_between_queries: 1,
+    };
+    let select = t(Kind::Keyword(Kw::Select), "select", "", 0);
+    let case = t(Kind::Keyword(Kw::Case), "case", " ", 7);
+    let when = t(Kind::Keyword(Kw::Case), "when", " ", 12);
+    let x = t(Kind::Word, "x", " ", 17);
+    let then = t(Kind::Keyword(Kw::Case), "then", " ", 19);
+    let one = t(Kind::Number, "1", " ", 24);
+    let end = t(Kind::Keyword(Kw::Case), "end", " ", 26);
+    let partial = [select, case, when, x, then]; // exact saved SQLite draft
+    let missing_end = [select, case, when, x, then, one, t(Kind::Punctuation, ";", "", 25)];
+    let missing_then = [select, case, when, x, t(Kind::Keyword(Kw::Case), "end", " ", 19)];
+    let no_result = [select, case, when, x, then, t(Kind::Keyword(Kw::Case), "end", " ", 24)];
+    let format = |tokens: &[Token<'_>]| format_tokens(tokens, &option, 1024, Instant::now() + Duration::from_secs(3));
+    for bad in [&partial[..], &missing_end, &missing_then, &no_result] {
+        assert_eq!(format(bad), Err(Error::Syntax));
+    }
+    let full = [select, case, when, x, then, one, end, t(Kind::Punctuation, ";", "", 29)];
+    assert_eq!(format(&full).as_deref(), Ok("SELECT\n  CASE\n    WHEN x THEN 1\n  END;"));
+    // Upstream can lay out a weird WHEN-less CASE. This subset still does not
+    // implement it, but that does not make it a known upstream syntax error.
+    let unknown = [select, case, t(Kind::Word, "x", " ", 12), t(Kind::Keyword(Kw::Case), "end", " ", 14)];
+    assert_eq!(format(&unknown), Err(Error::Unsupported));
+}
+
+#[test]
 fn pinned_sqlite_and_ansi_layout_from_exact_original_tokens() {
     check_layout("sqlite-projection", &[
         t(Kind::Keyword(Kw::Select), "select", "", 0),
@@ -464,6 +496,267 @@ fn unsupported_fail_closed_and_limits_apply_to_layout_itself() {
         Err(Error::OutputLimit)));
     assert!(matches!(format_tokens(&tokens, &opts, 128, Instant::now()), Err(Error::Deadline)));
     opts.dialect = Dialect::PostgreSql;
-    assert!(matches!(format_tokens(&tokens, &opts, 1024, Instant::now() + Duration::from_secs(3)),
-        Err(Error::Unsupported)));
+    assert_eq!(format_tokens(&tokens, &opts, 1024, Instant::now() + Duration::from_secs(3)).as_deref(),
+        Ok("SELECT\n  1"));
 }
+
+#[test]
+fn pinned_sqlite_ansi_dml_and_protected_spans_from_original_tokens() {
+    check_layout("sqlite-insert-values", &[
+        t(Kind::Keyword(Kw::Clause), "insert into", "", 0),
+        t(Kind::Word, "fruit", " ", 12),
+        t(Kind::Punctuation, "(", "", 17),
+        t(Kind::Word, "id", "", 18),
+        t(Kind::Punctuation, ",", "", 20),
+        t(Kind::Word, "label", "", 21),
+        t(Kind::Punctuation, ")", "", 26),
+        t(Kind::Keyword(Kw::Clause), "values", " ", 28),
+        t(Kind::Punctuation, "(", "", 34),
+        t(Kind::Number, "1", "", 35),
+        t(Kind::Punctuation, ",", "", 36),
+        t(Kind::String, "'a;''b'", "", 37),
+        t(Kind::Punctuation, ")", "", 44),
+        t(Kind::Punctuation, ",", "", 45),
+        t(Kind::Punctuation, "(", "", 46),
+        t(Kind::Number, "2", "", 47),
+        t(Kind::Punctuation, ",", "", 48),
+        t(Kind::String, "'z'", "", 49),
+        t(Kind::Punctuation, ")", "", 52),
+        t(Kind::Punctuation, ";", "", 53),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "INSERT INTO\n  fruit (id, label)\nVALUES\n  (1, 'a;''b'),\n  (2, 'z');");
+    check_layout("sqlite-insert-select", &[
+        t(Kind::Keyword(Kw::Clause), "insert into", "", 0),
+        t(Kind::Word, "plum", " ", 12),
+        t(Kind::Punctuation, "(", "", 16),
+        t(Kind::Word, "id", "", 17),
+        t(Kind::Punctuation, ",", "", 19),
+        t(Kind::Word, "label", "", 20),
+        t(Kind::Punctuation, ")", "", 25),
+        t(Kind::Keyword(Kw::Select), "select", " ", 27),
+        t(Kind::Word, "id", " ", 34),
+        t(Kind::Punctuation, ",", "", 36),
+        t(Kind::Word, "label", "", 37),
+        t(Kind::Keyword(Kw::Clause), "from", " ", 43),
+        t(Kind::Word, "fruit", " ", 48),
+        t(Kind::Keyword(Kw::Clause), "where", " ", 54),
+        t(Kind::Word, "id", " ", 60),
+        t(Kind::Operator, ">", "", 62),
+        t(Kind::Number, "10", "", 63),
+        t(Kind::Punctuation, ";", "", 65),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "INSERT INTO\n  plum (id, label)\nSELECT\n  id,\n  label\nFROM\n  fruit\nWHERE\n  id > 10;");
+    check_layout("sqlite-update-case", &[
+        t(Kind::Keyword(Kw::Clause), "update", "", 0),
+        t(Kind::Word, "fruit", " ", 7),
+        t(Kind::Keyword(Kw::Clause), "set", " ", 13),
+        t(Kind::Word, "label", " ", 17),
+        t(Kind::Operator, "=", "", 22),
+        t(Kind::Keyword(Kw::Case), "case", "", 23),
+        t(Kind::Keyword(Kw::Case), "when", " ", 28),
+        t(Kind::Word, "id", " ", 33),
+        t(Kind::Operator, "=", "", 35),
+        t(Kind::Number, "1", "", 36),
+        t(Kind::Keyword(Kw::Case), "then", " ", 38),
+        t(Kind::String, "'yes'", " ", 43),
+        t(Kind::Keyword(Kw::Case), "else", " ", 49),
+        t(Kind::Word, "label", " ", 54),
+        t(Kind::Keyword(Kw::Case), "end", " ", 60),
+        t(Kind::Punctuation, ",", "", 63),
+        t(Kind::Word, "rank", "", 64),
+        t(Kind::Operator, "=", "", 68),
+        t(Kind::Word, "rank", "", 69),
+        t(Kind::Operator, "+", "", 73),
+        t(Kind::Number, "1", "", 74),
+        t(Kind::Keyword(Kw::Clause), "where", " ", 76),
+        t(Kind::Word, "id", " ", 82),
+        t(Kind::Keyword(Kw::Keyword), "in", " ", 85),
+        t(Kind::Punctuation, "(", " ", 88),
+        t(Kind::Number, "1", "", 89),
+        t(Kind::Punctuation, ",", "", 90),
+        t(Kind::Number, "2", "", 91),
+        t(Kind::Punctuation, ")", "", 92),
+        t(Kind::Punctuation, ";", "", 93),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "UPDATE fruit\nSET\n  label = CASE\n    WHEN id = 1 THEN 'yes'\n    ELSE label\n  END,\n  rank = rank + 1\nWHERE\n  id IN (1, 2);");
+    check_layout("sqlite-delete", &[
+        t(Kind::Keyword(Kw::Clause), "delete from", "", 0),
+        t(Kind::Word, "fruit", " ", 12),
+        t(Kind::Keyword(Kw::Clause), "where", " ", 18),
+        t(Kind::Word, "id", " ", 24),
+        t(Kind::Keyword(Kw::Keyword), "not", " ", 27),
+        t(Kind::Keyword(Kw::Keyword), "in", " ", 31),
+        t(Kind::Punctuation, "(", " ", 34),
+        t(Kind::Keyword(Kw::Select), "select", "", 35),
+        t(Kind::Word, "id", " ", 42),
+        t(Kind::Keyword(Kw::Clause), "from", " ", 45),
+        t(Kind::Word, "plum", " ", 50),
+        t(Kind::Punctuation, ")", "", 54),
+        t(Kind::Keyword(Kw::LogicalOperator), "and", " ", 56),
+        t(Kind::Word, "label", " ", 60),
+        t(Kind::Keyword(Kw::Keyword), "is", " ", 66),
+        t(Kind::Keyword(Kw::Keyword), "null", " ", 69),
+        t(Kind::Punctuation, ";", "", 73),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "DELETE FROM fruit\nWHERE\n  id NOT IN (\n    SELECT\n      id\n    FROM\n      plum\n  )\n  AND label IS NULL;");
+    check_layout("sqlite-pragma-and-comments", &[
+        t(Kind::LineComment, "-- upstream;", "", 0),
+        t(Kind::Keyword(Kw::Keyword), "pragma", "\n", 13),
+        t(Kind::Word, "table_info", " ", 20),
+        t(Kind::Punctuation, "(", "", 30),
+        t(Kind::String, "'fruit'", "", 31),
+        t(Kind::Punctuation, ")", "", 38),
+        t(Kind::Punctuation, ";", "", 39),
+        t(Kind::BlockComment, "/* group; */", " ", 41),
+        t(Kind::Keyword(Kw::Keyword), "pragma", "\n", 54),
+        t(Kind::Word, "foreign_keys", " ", 61),
+        t(Kind::Operator, "=", "", 73),
+        t(Kind::Keyword(Kw::Keyword), "ON", "", 74),
+        t(Kind::Punctuation, ";", "", 76),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "-- upstream;\nPRAGMA table_info ('fruit');\n\n/* group; */ PRAGMA foreign_keys = ON;");
+    check_layout("sqlite-upsert-returning", &[
+        t(Kind::Keyword(Kw::Clause), "insert into", "", 0),
+        t(Kind::Word, "t", " ", 12),
+        t(Kind::Punctuation, "(", "", 13),
+        t(Kind::Word, "id", "", 14),
+        t(Kind::Punctuation, ",", "", 16),
+        t(Kind::Word, "v", "", 17),
+        t(Kind::Punctuation, ")", "", 18),
+        t(Kind::Keyword(Kw::Clause), "values", " ", 20),
+        t(Kind::Punctuation, "(", "", 26),
+        t(Kind::Number, "1", "", 27),
+        t(Kind::Punctuation, ",", "", 28),
+        t(Kind::Number, "2", "", 29),
+        t(Kind::Punctuation, ")", "", 30),
+        t(Kind::Keyword(Kw::Clause), "on conflict", " ", 32),
+        t(Kind::Punctuation, "(", "", 43),
+        t(Kind::Word, "id", "", 44),
+        t(Kind::Punctuation, ")", "", 46),
+        t(Kind::Keyword(Kw::Keyword), "do update", " ", 48),
+        t(Kind::Keyword(Kw::Clause), "set", " ", 58),
+        t(Kind::Word, "v", " ", 62),
+        t(Kind::Operator, "=", "", 63),
+        t(Kind::Word, "excluded", "", 64),
+        t(Kind::Operator, ".", "", 72),
+        t(Kind::Word, "v", "", 73),
+        t(Kind::Keyword(Kw::Clause), "returning", " ", 75),
+        t(Kind::Word, "id", " ", 85),
+        t(Kind::Punctuation, ",", "", 87),
+        t(Kind::Word, "v", "", 88),
+        t(Kind::Punctuation, ";", "", 89),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "INSERT INTO\n  t (id, v)\nVALUES\n  (1, 2)\nON CONFLICT (id) DO UPDATE\nSET\n  v = excluded.v\nRETURNING\n  id,\n  v;");
+    check_layout("sqlite-disabled-middle", &[
+        t(Kind::Keyword(Kw::Select), "select", "", 0),
+        t(Kind::Number, "1", " ", 7),
+        t(Kind::Punctuation, ";", "", 8),
+        t(Kind::DisableComment, "/* sql-formatter-disable */\n  SELECT   a,   b FROM t;   \n/* sql-formatter-enable */", " ", 10),
+        t(Kind::Keyword(Kw::Select), "select", " ", 94),
+        t(Kind::Number, "2", " ", 101),
+        t(Kind::Punctuation, ";", "", 102),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "SELECT\n  1;\n\n/* sql-formatter-disable */\n  SELECT   a,   b FROM t;   \n/* sql-formatter-enable */\nSELECT\n  2;");
+    check_layout("sqlite-disabled-rest", &[
+        t(Kind::Keyword(Kw::Select), "select", "", 0),
+        t(Kind::Number, "1", " ", 7),
+        t(Kind::Punctuation, ";", "", 8),
+        t(Kind::DisableComment, "/* sql-formatter-disable */\n  select   xyz @#  from t;", "\n", 10),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "SELECT\n  1;\n\n/* sql-formatter-disable */\n  select   xyz @#  from t;");
+    check_layout("generic-disabled-invalid-region", &[
+        t(Kind::Keyword(Kw::Select), "select", "", 0),
+        t(Kind::Number, "1", " ", 7),
+        t(Kind::Punctuation, ";", "", 8),
+        t(Kind::DisableComment, "/* sql-formatter-disable */\n@#   ( broken ; ; )\n/* sql-formatter-enable */", "\n", 10),
+        t(Kind::Keyword(Kw::Select), "select", "\n", 85),
+        t(Kind::Number, "2", " ", 92),
+        t(Kind::Punctuation, ";", "", 93),
+    ], Options { dialect: Dialect::Sql, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "SELECT\n  1;\n\n/* sql-formatter-disable */\n@#   ( broken ; ; )\n/* sql-formatter-enable */\nSELECT\n  2;");
+    check_layout("sqlite-replace-and-returning", &[
+        t(Kind::Keyword(Kw::Clause), "replace into", "", 0),
+        t(Kind::Word, "t", " ", 13),
+        t(Kind::Punctuation, "(", "", 14),
+        t(Kind::Word, "name", "", 15),
+        t(Kind::Punctuation, ")", "", 19),
+        t(Kind::Keyword(Kw::Clause), "values", " ", 21),
+        t(Kind::Punctuation, "(", "", 27),
+        t(Kind::String, "'no touching;'", "", 28),
+        t(Kind::Punctuation, ")", "", 42),
+        t(Kind::Punctuation, ",", "", 43),
+        t(Kind::Punctuation, "(", "", 44),
+        t(Kind::String, "'Else'", "", 45),
+        t(Kind::Punctuation, ")", "", 51),
+        t(Kind::Keyword(Kw::Clause), "returning", " ", 53),
+        t(Kind::Word, "t", " ", 63),
+        t(Kind::Operator, ".", "", 64),
+        t(Kind::Operator, "*", "", 65),
+        t(Kind::Punctuation, ";", "", 66),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "REPLACE INTO\n  t (name)\nVALUES\n  ('no touching;'),\n  ('Else')\nRETURNING\n  t.*;");
+    check_layout("sqlite-conflict-nothing", &[
+        t(Kind::Keyword(Kw::Clause), "insert into", "", 0),
+        t(Kind::Word, "t", " ", 12),
+        t(Kind::Punctuation, "(", "", 13),
+        t(Kind::Word, "id", "", 14),
+        t(Kind::Punctuation, ")", "", 16),
+        t(Kind::Keyword(Kw::Clause), "values", " ", 18),
+        t(Kind::Punctuation, "(", "", 24),
+        t(Kind::Number, "1", "", 25),
+        t(Kind::Punctuation, ")", "", 26),
+        t(Kind::Keyword(Kw::Clause), "on conflict", " ", 28),
+        t(Kind::Punctuation, "(", "", 39),
+        t(Kind::Word, "id", "", 40),
+        t(Kind::Punctuation, ")", "", 42),
+        t(Kind::Keyword(Kw::Keyword), "do", " ", 44),
+        t(Kind::Keyword(Kw::Keyword), "nothing", " ", 47),
+        t(Kind::Punctuation, ";", "", 54),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "INSERT INTO\n  t (id)\nVALUES\n  (1)\nON CONFLICT (id) DO NOTHING;");
+    check_layout("sqlite-delete-qualified-pragma", &[
+        t(Kind::Keyword(Kw::Keyword), "pragma", "", 0),
+        t(Kind::Word, "main", " ", 7),
+        t(Kind::Operator, ".", "", 11),
+        t(Kind::Word, "user_version", "", 12),
+        t(Kind::Operator, "=", "", 24),
+        t(Kind::Number, "2", "", 25),
+        t(Kind::Punctuation, ";", "", 26),
+    ], Options { dialect: Dialect::Sqlite, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "PRAGMA main.user_version = 2;");
+    check_layout("ansi-update-assignment", &[
+        t(Kind::Keyword(Kw::Clause), "update", "", 0),
+        t(Kind::Word, "t", " ", 7),
+        t(Kind::Keyword(Kw::Clause), "set", " ", 9),
+        t(Kind::Word, "n", " ", 13),
+        t(Kind::Operator, "=", "", 14),
+        t(Kind::Word, "n", "", 15),
+        t(Kind::Operator, "+", "", 16),
+        t(Kind::Number, "1", "", 17),
+        t(Kind::Keyword(Kw::Clause), "where", " ", 19),
+        t(Kind::Word, "flag", " ", 25),
+        t(Kind::Operator, "=", "", 29),
+        t(Kind::Number, "0", "", 30),
+        t(Kind::Punctuation, ";", "", 31),
+    ], Options { dialect: Dialect::Sql, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "UPDATE t\nSET\n  n = n + 1\nWHERE\n  flag = 0;");
+    check_layout("ansi-insert-select", &[
+        t(Kind::Keyword(Kw::Clause), "insert into", "", 0),
+        t(Kind::Word, "t", " ", 12),
+        t(Kind::Punctuation, "(", "", 13),
+        t(Kind::Word, "id", "", 14),
+        t(Kind::Punctuation, ")", "", 16),
+        t(Kind::Keyword(Kw::Select), "select", " ", 18),
+        t(Kind::Word, "id", " ", 25),
+        t(Kind::Keyword(Kw::Clause), "from", " ", 28),
+        t(Kind::Word, "u", " ", 33),
+        t(Kind::Keyword(Kw::Clause), "where", " ", 35),
+        t(Kind::Word, "id", " ", 41),
+        t(Kind::Operator, ">", "", 43),
+        t(Kind::Number, "1", "", 44),
+        t(Kind::Punctuation, ";", "", 45),
+    ], Options { dialect: Dialect::Sql, keyword_case: KeywordCase::Upper, indent: Indent::Spaces(2),
+        logical_operator_newline: LogicalOperatorNewline::Before, lines_between_queries: 1 }, "INSERT INTO\n  t (id)\nSELECT\n  id\nFROM\n  u\nWHERE\n  id > 1;");
+}
+
+mod dialects;

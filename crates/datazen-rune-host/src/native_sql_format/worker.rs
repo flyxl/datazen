@@ -237,7 +237,7 @@ fn bounded_options(options: SqlFormatRequest) -> Result<SqlFormatRequest, Error>
 fn provider_error(error: super::NativeSqlFormatError) -> Error {
     use super::NativeSqlFormatError::*;
     match error {
-        InvalidOptions | Lexical | Unsupported => Error::Rejected,
+        InvalidOptions | Lexical | Syntax | Unsupported => Error::Rejected,
         InputLimit | OutputLimit => Error::Limit,
         Deadline => Error::Timeout,
     }

@@ -160,12 +160,86 @@ class SqlFormatterJourneys:
         self._no_query_or_settings_write((blocked, formatted), baseline)
 
 
+class SqlFormatterLimitJourney:
+    def test_native_formatter_worker_bound_and_short_selection_recovery(self):
+        baseline = self._formatter_fixture({"keymapPreset": "default"})
+        # Unlike a lone comment, these are two valid SQLite statements.
+        # Keep lines reasonably short for the actual renderer; exact input
+        # sizing is ASCII bytes, after the formatter command's trim/LF step.
+        prefix = "select  1;\n/* sized note\n"
+        suffix = "\n*/\nselect  2;"
+
+        def make(size):
+            filler = size - len(prefix) - len(suffix)
+            rows, tail = divmod(filler - 1, 511)
+            comment = ("x" * 510 + "\n") * rows + "x" * (tail + 1)
+            sql = prefix + comment + suffix
+            self.assertEqual(len(sql.encode("utf-8")), size)
+            return sql, comment
+
+        limit = 256 * 1024
+        below, comment = make(limit)
+        above, _ = make(limit + 1)
+
+        def enter(sql):
+            return [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": sql},
+                    tap(6.3, "sql-format")]
+
+        # The exact long-comment transform was checked against the pinned
+        # React/sql-formatter 15.8.2 command. The local Rust provider must
+        # accept at its published limit; never relax the assertion because
+        # rendering/layout/worker startup is slow on a particular machine.
+        small = self.replay(enter(below), until=9.55, timeout=150)
+        self.assertEqual(draft(small), "SELECT\n  1;\n\n/* sized note\n" + comment
+                         + "\n*/\nSELECT\n  2;")
+        refused = self.replay(enter(above), until=9.55, timeout=150)
+        self.assertEqual(draft(refused), above, "over-limit Format must leave the full draft exact")
+        self.expect_rendered(refused, text="This SQL is too large to format.", within="query-notice")
+        self.assertEqual(selection(refused), [])
+        undone = self.replay([*enter(above), key(9.53, "z", cmd=True)], until=10.23, timeout=150)
+        self.assertEqual(draft(undone), "", "one Undo removes the initial paste, not a phantom Format edit")
+
+        # Retry a small selected statement without changing the rest of the
+        # above-limit draft or reopening this subprocess's own Query tab.
+        # If the first whole request had changed the draft, the other
+        # statement/comment layout would no longer match this exact result.
+        recovered = self.replay([*enter(above), key(9.45, "Home", cmd=True),
+                                 {**key(9.83, "End"), "shift": True},
+                                 formatted_chord(10.27, "f")], until=13.6, timeout=150)
+        expected = "SELECT\n  1;" + above[len("select  1;"):]
+        self.assertEqual(draft(recovered), expected)
+        self.assertEqual(selection(recovered), [(0, "SELECT"), (1, "  1;")])
+        self.assertFalse(visible(recovered, key="query-notice"), "successful recovery clears the limit notice")
+        self._no_query_or_settings_write((small, refused, undone, recovered), baseline)
+
+
+class SqlFormatterDmlJourney:
+    def test_native_formatter_dml_and_protected_text_never_runs_sql(self):
+        baseline = self._formatter_fixture({})
+        case = json.loads(Path(__file__).with_name("sql-formatter-dml-15.8.2.json")
+                          .read_text(encoding="utf-8"))
+        self.assertEqual(case["formatter"], "15.8.2")
+        self.assertEqual(len(case["scenarios"]), 6)
+        route = [*query_steps("")[:4], {"t": 4.8, "type": "paste", "text": case["input"]},
+                 tap(6.3, "sql-format")]
+        formatted = self.replay(route, until=8.25)
+        self.assertEqual(draft(formatted), case["expected"])
+        self.assertIn("  SELECT   a,   b FROM t;   ", draft(formatted))
+        restored = self.replay([*route, key(8.43, "z", cmd=True)], until=9.22)
+        self.assertEqual(draft(restored), case["input"])
+        self._no_query_or_settings_write((formatted, restored), baseline)
+
+
 def main():
     import run as native
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
     parser.add_argument("--artifacts", type=Path)
+    parser.add_argument("--size-bound", action="store_true",
+                        help="run only the separate real 256 KiB pure Rust input and selected recovery check")
+    parser.add_argument("--statements", action="store_true",
+                        help="run only the multi-statement DML/PRAGMA/disabled region gate")
     args = parser.parse_args()
     native.BINARY = args.binary.resolve(strict=True)
     native.ARTIFACTS = args.artifacts
@@ -173,11 +247,15 @@ def main():
         native.ARTIFACTS = native.ARTIFACTS.resolve()
         native.ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
-    class FormatAcceptance(SqlFormatterJourneys, native.NativeJourneys):
+    class FormatAcceptance(SqlFormatterLimitJourney, SqlFormatterDmlJourney, SqlFormatterJourneys, native.NativeJourneys):
         pass
 
+    if args.size_bound and args.statements:
+        parser.error("choose one specialized acceptance group at a time")
+    group = (SqlFormatterLimitJourney if args.size_bound else
+             SqlFormatterDmlJourney if args.statements else SqlFormatterJourneys)
     suite = unittest.TestSuite(FormatAcceptance(name)
-                               for name in unittest.defaultTestLoader.getTestCaseNames(SqlFormatterJourneys))
+                               for name in unittest.defaultTestLoader.getTestCaseNames(group))
     return 0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1
 
 
