@@ -98,6 +98,39 @@ class WorkflowJourney:
         self.assertEqual(sql_history.read_bytes(), decoy)
         self.assertEqual(definitions.read_bytes(), decoy)
 
+    def test_settings_behavior_light_numeric_arrows_only_change_the_confirmed_draft(self):
+        (self.root / "settings.json").write_text(
+            '{"ui":{"language":"en","themeMode":"light"}}', encoding="utf-8")
+        history = self.root / "workflow-run-history.json"
+        query = self.root / "query-history.json"
+        now = datetime.now(timezone.utc)
+        rows = [
+            {"id": f"run-{age}", "workflowId": "numeric-flow", "workflowName": "Numeric fixture",
+             "variables": {}, "result": {"success": True, "finalOutput": "", "steps": [], "totalTimeMs": 1},
+             "createdAt": (now - timedelta(days=age)).isoformat()}
+            for age in (20, 11.5, 1)
+        ]
+        initial = json.dumps(rows, indent=2).encode()
+        sentinel = b" [ ] \n"
+        history.write_bytes(initial)
+        query.write_bytes(sentinel)
+        draft = [tap(.5, "rail-settings"), tap(1.4, "settings-nav-behavior"),
+                 tap(2.3, "data-cleanup-custom-days"), key(2.6, "a", cmd=True),
+                 type_text(2.9, "11"), key(3.35, "Up"), key(3.65, "Up"), key(3.95, "Down")]
+        confirmation = [*draft, tap(4.6, "data-cleanup-workflow-run")]
+        canceled = self.replay([*confirmation, key(5.4, "Escape")], until=6.1)
+        self.expect_rendered(canceled, within="data-cleanup-custom-days", text="12")
+        self.assertFalse(visible(canceled, key="data-cleanup-workflow-confirm"))
+        self.assertEqual(history.read_bytes(), initial)
+        self.assertEqual(query.read_bytes(), sentinel)
+
+        accepted = self.replay(
+            [*confirmation, tap(5.4, "data-cleanup-workflow-accept")], until=6.1)
+        self.expect_rendered(accepted, key="data-cleanup-workflow-success")
+        self.assertEqual([entry["id"] for entry in json.loads(history.read_bytes())],
+                         ["run-11.5", "run-1"])
+        self.assertEqual(query.read_bytes(), sentinel)
+
     def test_workflow_inline_visual_form_fills_pane_and_scrolls_above_fixed_footer(self):
         settings = self.root / "settings.json"
         registry = self.root / "workflows.json"

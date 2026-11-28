@@ -1,6 +1,6 @@
 //! Behavior's confirmed cleanup of local workflow run history.
 use chrono::{Duration, SecondsFormat, Utc};
-use rune::{col, row, text, El, TextEdit, TextStyle};
+use rune::{col, row, text, El, Key, KeyEvent, Mods, TextEdit, TextStyle};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 
 use super::settings_ui::{section_title, setting_row};
@@ -19,7 +19,7 @@ const LABEL: TextStyle = TextStyle::new(14.0, 400.0).lh(20.0);
 const CAPTION: TextStyle = TextStyle::new(12.0, 400.0).lh(16.0);
 
 mod choices;
-use choices::{selection, Invalid, Mode, Selection};
+use choices::{selection, step_custom_days, Invalid, Mode, Selection};
 
 #[derive(Clone, Debug, PartialEq)]
 enum Plan { Before(String), ClearAll }
@@ -130,6 +130,33 @@ fn change_form(state: &mut AppState, update: impl FnOnce(&mut WorkflowRetention)
     }
 }
 
+fn step_custom_on_key(state: &mut AppState, event: &KeyEvent) -> bool {
+    if event.mods != Mods::default() || !is_current(state) {
+        return false;
+    }
+    let increment = match event.key {
+        Key::Up => true,
+        Key::Down => false,
+        _ => return false,
+    };
+    let form = &mut state.settings_content.workflow_retention;
+    if form.pending.is_some() || form.custom_days.is_composing() {
+        return false;
+    }
+    let Some(days) = step_custom_days(&form.custom_days.text, increment) else { return false };
+    let draft = days.to_string();
+    if form.custom_days.text != draft {
+        // Use a normal undoable editor change, not a reset of the focused
+        // TextEdit and its history. Inserting a value never runs cleanup.
+        let len = form.custom_days.text.len();
+        form.custom_days.set_selection(0, len);
+        form.custom_days.insert(&draft);
+    }
+    form.mode = Mode::Custom;
+    form.feedback = None;
+    true
+}
+
 fn control(
     k: &Kit, key: &str, label: &str, variant: ButtonVariant, press: impl Fn(&mut AppState) + 'static,
 ) -> El {
@@ -188,14 +215,19 @@ pub(super) fn view(state: &AppState, dark: bool) -> El {
     let retention = section_title(k, &mut hints, "data-cleanup-retention".into(),
         t("settings.dataCleanup.retention"), None);
     let custom_label = t("settings.dataCleanup.customDays");
-    let custom = TextField::new("data-cleanup-custom-days", &form.custom_days)
+    let mut custom = TextField::new("data-cleanup-custom-days", &form.custom_days)
         .height(36.0).width(96.0).pad_x(12.0).radius(k.radius.md)
         .fill(k.c.surface_base)
         .border(1.0, k.c.border_base)
         .text_style(LABEL).label(custom_label)
         .on_edit(|s: &mut AppState| &mut s.settings_content.workflow_retention.custom_days)
-        .on_change(|s: &mut AppState, _| change_form(s, |f| f.mode = Mode::Custom))
-        .build(dark).focus_within_ring(1.0, -1.0, k.c.border_focus);
+        .on_change(|s: &mut AppState, _| change_form(s, |f| f.mode = Mode::Custom));
+    if !dark {
+        // The original number field steps with unmodified arrows. Dark
+        // adjustments are deferred; do not replace the shared text control.
+        custom = custom.on_key(|s: &mut AppState, event, _| step_custom_on_key(s, event));
+    }
+    let custom = custom.build(dark).focus_within_ring(1.0, -1.0, k.c.border_focus);
     let custom_row = setting_row(k, &mut hints, "data-cleanup-custom-row".into(),
         custom_label, Some(t("settings.nativeRetention.dayRange")), custom);
     let clear = rune_kit::RadioItem::new(t("settings.dataCleanup.clearAll"), form.mode == Mode::ClearAll)
@@ -257,7 +289,7 @@ pub(crate) fn mount(state: &AppState, dark: bool, layer: &mut Vec<El>) {
 mod tests {
     use super::*;
     use datazen_ui_api::{ColumnFilter, ColumnSort, ConnectionProfile, DesktopAdapter, TablePage};
-    use rune::{Env, Key, KeyEvent, Mods, Runtime};
+    use rune::{Env, Runtime};
     use std::{cell::RefCell, rc::Rc};
 
     #[derive(Default)]
