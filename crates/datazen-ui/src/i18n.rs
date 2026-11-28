@@ -78,6 +78,11 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
             "无法保存日志级别，已保留原有设置。",
             "Could not save the log level. The previous setting was kept.",
         )),
+        "settings.nativeExecuteShortcut.label" => Some(("执行 SQL", "Execute SQL")),
+        "settings.nativeExecuteShortcut.hint" => Some((
+            "只在当前 SQL 编辑器获得焦点时执行。Mac 上的 Mod 为 Command，其他系统为 Ctrl。",
+            "Runs only in the focused SQL editor. Mod is Command on macOS and Ctrl elsewhere.",
+        )),
         "settings.nativeEditorFont.bundled" => Some(("内置等宽字体（IBM Plex Mono）", "Bundled monospace (IBM Plex Mono)")),
         "settings.nativeRetention.unavailable" => Some(("此版本暂不支持本机工作流历史清理。", "Local workflow history cleanup is not available here.")),
         "settings.nativeRetention.scope" => Some(("仅清理本机工作流运行记录。", "Local workflow run history only.")),

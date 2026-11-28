@@ -265,6 +265,7 @@ fn editor_section(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         .child(font_size)
         .child(editor_syntax_live::font_family_row(state, &k, &mut overlays))
         .child(editor_syntax_live::row(state, dark, &k, &mut overlays))
+        .children(editor_syntax_live::execute_shortcut_row(state, &k, &mut overlays))
         .children(state.settings_error.as_ref().map(|_| settings_error_row(state, theme)))
         // Add uses the native name/SQL store; keep existing update and delete.
         .child(snippets_section(state, theme, dark))

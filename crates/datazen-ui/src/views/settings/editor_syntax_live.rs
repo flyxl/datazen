@@ -1,5 +1,5 @@
 //! Built-in syntax themes for the actual native SQL workspace.
-use datazen_ui_api::{EditorFontFamily, SqlSyntaxTheme, SQL_SYNTAX_PRESETS};
+use datazen_ui_api::{EditorFontFamily, NativeExecuteShortcut, SqlSyntaxTheme, SQL_SYNTAX_PRESETS};
 use rune::{col, text, Color, El, Span, TextStyle};
 use rune_kit::Kit;
 
@@ -86,6 +86,48 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
             kit,
         )),
     )
+}
+
+/// Mount only the existing Execute SQL action, not inactive keymap rows.
+pub(super) fn execute_shortcut_row(state: &AppState, kit: &Kit, overlays: &mut Vec<El>) -> Option<El> {
+    let binding = state.desktop.native_execute_shortcut()?;
+    let label = t("settings.nativeExecuteShortcut.label");
+    let which = SettingsSelect::ExecuteShortcut;
+    let labels = ["Mod+Enter", "Mod+R"];
+    let values = NativeExecuteShortcut::OPTIONS.map(NativeExecuteShortcut::wire);
+    let selected = match binding {
+        NativeExecuteShortcut::ModEnter => labels[0],
+        NativeExecuteShortcut::ModR => labels[1],
+    };
+    let current_editor = |s: &AppState| {
+        s.active == crate::types::Section::Settings && s.settings_section() == "editor"
+    };
+    let select = Select::new("settings-execute-shortcut", &labels)
+        .values(&values).current(Some(selected)).label(label)
+        .open(state.settings_content.open_select == Some(which))
+        .on_toggle(move |s: &mut AppState| {
+            if current_editor(s) && s.desktop.native_execute_shortcut().is_some() {
+                s.settings_content.toggle_select(which);
+            }
+        })
+        .on_close(move |s: &mut AppState| {
+            if s.settings_content.open_select == Some(which) {
+                s.settings_content.close_select();
+            }
+        })
+        .on_choose(move |s: &mut AppState, value, _tx| {
+            if !current_editor(s) || s.settings_content.open_select != Some(which) {
+                return;
+            }
+            s.settings_content.close_select();
+            if let Some(binding) = NativeExecuteShortcut::from_wire(value) {
+                // The next render reads only the host's last committed value.
+                s.settings_error = s.desktop.write_native_execute_shortcut(binding).err();
+            }
+        });
+    let field = editor_preference_trigger(select, &editor_field_kit(kit), overlays);
+    Some(setting_row(kit, overlays, "settings-execute-shortcut-row".to_owned(), label,
+                   Some(t("settings.nativeExecuteShortcut.hint")), field))
 }
 
 /// The original setting uses a 1pt inside edge on a 36pt field, not

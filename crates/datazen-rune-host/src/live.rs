@@ -3482,6 +3482,33 @@ impl DesktopAdapter for LiveAdapter {
         Ok(())
     }
 
+    fn native_execute_shortcut(&self) -> Option<datazen_ui_api::NativeExecuteShortcut> {
+        let document = self.settings_document.lock().expect("the settings lock");
+        let binding = document.get("customKeymap")
+            .and_then(|map| map.get("execute"))
+            .and_then(serde_json::Value::as_str)
+            .and_then(datazen_ui_api::NativeExecuteShortcut::from_wire)
+            .unwrap_or_default();
+        Some(binding)
+    }
+
+    fn write_native_execute_shortcut(
+        &mut self, binding: datazen_ui_api::NativeExecuteShortcut,
+    ) -> Result<(), String> {
+        // Read again rather than overwriting a settings edit, corrupt file,
+        // or unknown sibling that was not included in the startup snapshot.
+        let mut document = futures_executor::block_on(self.settings.read_app_settings())
+            .map_err(|error| error.to_string())?;
+        let object = document.as_object_mut().ok_or("the settings document is not an object")?;
+        let custom = object.entry("customKeymap").or_insert_with(|| serde_json::json!({}))
+            .as_object_mut().ok_or("customKeymap is not an object")?;
+        custom.insert("execute".into(), serde_json::json!(binding.wire()));
+        let stored = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|error| error.to_string())?;
+        *self.settings_document.lock().expect("the settings lock") = stored;
+        Ok(())
+    }
+
     fn read_native_default_table_sort(&self) -> Result<datazen_ui_api::DefaultTableSort, String> {
         let settings = self.settings_document.lock()
             .map_err(|_| "Could not read the default table sort.".to_owned())?;
@@ -4595,6 +4622,49 @@ mod tests {
         }));
         poll_open(&mut adapter).expect("the session opens");
         adapter
+    }
+
+    #[test]
+    fn native_execute_shortcut_preserves_other_keys_and_only_publishes_atomic_write() {
+        use datazen_ui_api::NativeExecuteShortcut::{ModEnter, ModR};
+        let root = tempfile::tempdir().expect("disposable settings");
+        let path = root.path().join("settings.json");
+        let mut fixture = serde_json::json!({
+            "keymapPreset": "custom-unsupported",
+            "ui": {"language": "en"},
+            "customKeymap": {"execute": "Alt-x", "saveQuery": "Mod-s", "futureBinding": ["keep"]},
+        });
+        let before = fixture.to_string();
+        std::fs::write(&path, &before).unwrap();
+        let repo = Arc::new(FileConnectionRepository::open(&root.path().join("connections.json")).unwrap());
+        let mut live = LiveAdapter::with_data_dir(repo.clone(), root.path());
+        assert_eq!(live.native_execute_shortcut(), Some(ModEnter));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+
+        // The explicit save reads the latest document, not the boot snapshot.
+        fixture["externalKeep"] = serde_json::json!({"added": true});
+        std::fs::write(&path, fixture.to_string()).unwrap();
+        live.write_native_execute_shortcut(ModR).unwrap();
+        fixture["customKeymap"]["execute"] = serde_json::json!("Mod-r");
+        let saved = std::fs::read(&path).unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&saved).unwrap(), fixture);
+        assert_eq!(live.native_execute_shortcut(), Some(ModR));
+
+        let tmp = root.path().join("settings.json.tmp");
+        std::fs::create_dir(&tmp).unwrap();
+        assert!(live.write_native_execute_shortcut(ModEnter).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), saved);
+        assert_eq!(live.native_execute_shortcut(), Some(ModR), "failed write cannot leak into runtime");
+        drop(live);
+        let mut fresh = LiveAdapter::with_data_dir(repo, root.path());
+        assert_eq!(fresh.native_execute_shortcut(), Some(ModR));
+
+        let wrong_shape = br#"{"customKeymap":[],"unrelated":"keep"}"#;
+        std::fs::write(&path, wrong_shape).unwrap();
+        std::fs::remove_dir(&tmp).unwrap();
+        assert!(fresh.write_native_execute_shortcut(ModEnter).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), wrong_shape);
+        assert_eq!(fresh.native_execute_shortcut(), Some(ModR));
     }
 
     #[test]

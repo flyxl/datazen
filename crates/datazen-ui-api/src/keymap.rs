@@ -1,5 +1,29 @@
 use std::collections::BTreeMap;
 
+/// The two Execute Statement bindings actually routed by native SQL pages.
+/// This is one action under React's `customKeymap.execute`, not a preset.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NativeExecuteShortcut {
+    #[default]
+    ModEnter,
+    ModR,
+}
+
+impl NativeExecuteShortcut {
+    pub const OPTIONS: [Self; 2] = [Self::ModEnter, Self::ModR];
+
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::ModEnter => "Mod-Enter",
+            Self::ModR => "Mod-r",
+        }
+    }
+
+    pub fn from_wire(value: &str) -> Option<Self> {
+        Self::OPTIONS.into_iter().find(|binding| binding.wire().eq_ignore_ascii_case(value.trim()))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeymapPreset {
     Default,

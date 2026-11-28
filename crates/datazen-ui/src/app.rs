@@ -38,8 +38,8 @@ use crate::views::query_selected;
 
 #[cfg(not(target_arch = "wasm32"))]
 use datazen_ui_api::DemoAdapter;
-use datazen_ui_api::DesktopAdapter;
-use rune::{App, AppSpec, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
+use datazen_ui_api::{DesktopAdapter, NativeExecuteShortcut};
+use rune::{App, AppSpec, Chord, ChordKey, ChordMod, Cx, El, Ime, Key, KeyEvent, Titlebar, Tx};
 
 /// The app's one view entry is the root router (React `App.tsx`: `App` →
 /// `WindowContent` → `MainPage`). The router's reachable arm composes
@@ -137,9 +137,27 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         if crate::views::result_workspace::native_result_find::escape_if_focused(state, ev, tx) {
             return true;
         }
-        if matches!(ev.key, Key::Enter) && ev.mods.cmd {
-            state.run_query();
-            return true;
+        if ev.mods.cmd {
+            let old_run = matches!(ev.key, Key::Enter);
+            if let Some(binding) = state.desktop.native_execute_shortcut() {
+                let key = match binding {
+                    NativeExecuteShortcut::ModEnter => ChordKey::Enter,
+                    NativeExecuteShortcut::ModR => ChordKey::Char('r'),
+                };
+                let matches = Chord::new(key).with(ChordMod::Primary).matches_tx(ev, tx);
+                if matches || old_run {
+                    if matches && state.owns_query_execution_shortcut(tx) {
+                        state.run_query();
+                    }
+                    // The non-selected Mod+Enter must not reach the ordinary
+                    // editor Enter handler and insert a surprise newline.
+                    return true;
+                }
+            } else if old_run {
+                // Preserve previous behaviour in hosts with no new setting.
+                state.run_query();
+                return true;
+            }
         }
         // T1: after a result cell is pressed the result grid holds the
         // keyboard: arrows walk its selection, Command-C copies TSV. Typing

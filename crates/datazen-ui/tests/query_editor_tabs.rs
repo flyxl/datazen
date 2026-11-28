@@ -299,3 +299,61 @@ fn find_dock_scopes_real_shortcuts_and_returns_focus_without_editing_the_draft()
     assert_eq!((caret.from(), caret.to()), (match_range.from(), match_range.from()),
         "ArrowLeft in the editor collapses the match to its leading edge");
 }
+
+#[test]
+fn native_execute_shortcut_requires_the_focused_tab_and_no_ime_composition() {
+    struct OneBinding;
+    impl DesktopAdapter for OneBinding {
+        fn list_connections(&mut self) -> Result<Vec<ConnectionProfile>, String> {
+            Ok(Vec::new())
+        }
+
+        fn read_table_page(&mut self, _: &str, _: u32, _: u32,
+                           _: Option<&ColumnSort>, _: Option<&ColumnFilter>) -> Result<TablePage, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn commit_cells(&mut self, _: &str, _: &[(u32, String, String)]) -> Result<u32, String> {
+            Err(DESKTOP_NOT_IMPLEMENTED.into())
+        }
+
+        fn native_execute_shortcut(&self) -> Option<NativeExecuteShortcut> {
+            Some(NativeExecuteShortcut::ModR)
+        }
+    }
+    let mut rt = runtime();
+    rt.on_key = Some(app_key);
+    rt.state.desktop = Box::new(OneBinding);
+    rt.state.workspace.connect("local").unwrap();
+    let a = rt.state.open_query_tab("A").unwrap();
+    rt.state.sql = sql_editor::SqlEditor::from_doc("SELECT 1");
+    rt.frame(0.05);
+    tap(&mut rt, "sql-editor-scroll");
+    let primary = Mods { cmd: true, ..Mods::default() };
+    let unchanged_generation = rt.state.query_generation;
+
+    assert!(app_ime(&mut rt.state, &Ime::Preedit("未提交".into(), None), &mut Tx::default()));
+    key(&mut rt, Key::Command('r'), primary);
+    assert_eq!(rt.state.sql.composition(), Some("未提交"));
+    assert_eq!(rt.state.query_generation, unchanged_generation);
+    assert_eq!(rt.state.sql.doc(), "SELECT 1");
+
+    rt.state.sql.preedit("");
+    key(&mut rt, Key::Enter, primary);
+    assert_eq!(rt.state.sql.doc(), "SELECT 1", "the inactive shortcut must not insert a newline");
+    key(&mut rt, Key::Command('r'), Mods { shift: true, ..primary });
+    assert_eq!(rt.state.query_generation, unchanged_generation);
+
+    let b = rt.state.open_query_tab("B").unwrap();
+    rt.frame(0.05);
+    // Parked editor A's focus cannot be borrowed by B.
+    key(&mut rt, Key::Command('r'), primary);
+    assert_eq!(rt.state.query_generation, unchanged_generation);
+    assert_eq!(rt.state.tabs.selected().unwrap().id, b);
+
+    tap_tab(&mut rt, a);
+    tap(&mut rt, "sql-editor-scroll");
+    key(&mut rt, Key::Command('r'), primary);
+    assert_ne!(rt.state.query_generation, unchanged_generation);
+    assert_eq!(rt.state.result_grid.as_ref().unwrap().cell(0, 0), "1");
+}

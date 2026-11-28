@@ -20,6 +20,65 @@ class SqlSelectionJourneys:
         self.assertEqual(original, [(1, "fixture-ada"), (2, "fixture-lin")])
         return original
 
+    def test_native_execute_shortcut_setting_runs_only_from_its_focused_editor_after_relaunch(self):
+        original = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        settings = self.root / "settings.json"
+        prefs = {"ui": {"language": "en"}, "keymapPreset": "default",
+                 "customKeymap": {"saveQuery": "Mod-s", "future": ["preserve"]}, "unrelated": 17}
+        settings.write_text(json.dumps(prefs), encoding="utf-8")
+        initial = settings.read_bytes()
+        db_bytes = self.db.read_bytes()
+        trigger = "settings-execute-shortcut-trigger"
+        route = [tap(.5, "rail-settings"), tap(1.4, "settings-nav-editor")]
+        default = self.replay(route, until=2.5)
+        self.expect_rendered(default, text="Mod+Enter", within=trigger)
+        self.assertFalse(visible(default, key="settings-keymap-preset-trigger"))
+        self.assertEqual(settings.read_bytes(), initial)
+
+        # Fail a real atomic file-stage write; the UI must still show Mod+Enter.
+        obstruction = settings.with_suffix(".json.tmp")
+        obstruction.mkdir()
+        change = [*route, tap(2.65, trigger), tap(3.55, "option1")]
+        failed = self.replay(change, until=4.65)
+        self.expect_rendered(failed, key="settings-error")
+        self.expect_rendered(failed, text="Mod+Enter", within=trigger)
+        self.assertEqual(settings.read_bytes(), initial)
+        obstruction.rmdir()
+        saved = self.replay(change, until=4.65)
+        self.expect_rendered(saved, text="Mod+R", within=trigger)
+        self.assertFalse(visible(saved, key="settings-error"))
+        expected = {**prefs, "customKeymap": {**prefs["customKeymap"], "execute": "Mod-r"}}
+        self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), expected)
+
+        # Each replay is a fresh binary. Confirm the old key, an extra
+        # modifier and the real focused Find field execute nothing.
+        picked = "SELECT 'shortcut-picked' AS value;"
+        query = query_steps(picked + "\nSELECT 'not-selected' AS value;")[:-1]
+        query[-1] = {"t": 4.8, "type": "paste", "text": picked + "\nSELECT 'not-selected' AS value;"}
+        history = self.root / "query-history.json"
+        blocked = self.replay([*query, key(6.1, "Enter", cmd=True),
+                               {**key(6.55, "r", cmd=True), "shift": True},
+                               key(7.0, "f", cmd=True), key(7.6, "r", cmd=True)], until=8.4)
+        self.expect_rendered(blocked, key="sql-find-input")
+        self.assertFalse(visible(blocked, key="sql-line-2"), "old Mod+Enter inserted a line")
+        self.assertFalse(visible(blocked, key="result-workspace"))
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+
+        selected = [*query, key(6.1, "Home"), key(6.45, "Up"), key(6.8, "End"),
+                    {**key(7.15, "Home"), "shift": True}]
+        ran = self.replay([*selected, key(7.8, "r", cmd=True)], until=10.1)
+        self.expect_rendered(ran, key="sql-selected-0-0", text=picked)
+        self.expect_rendered(ran, text="shortcut-picked", within="result-cell-0-0")
+        self.assertFalse(visible(ran, text="not-selected", within="result-workspace"))
+        self.assertEqual([item["sql"].rstrip(";") for item in json.loads(history.read_text(encoding="utf-8"))],
+                         [picked.rstrip(";")])
+        self.assertEqual(self.sql_customer_rows(), original)
+        self.assertEqual(self.db.read_bytes(), db_bytes)
+        self.assertEqual(json.loads(settings.read_text(encoding="utf-8")), expected)
+
     def test_native_query_toolbar_snippets_preserve_literal_saved_sql_and_undo_without_execution(self):
         original = self.sql_fixture_before()
         profile = json.loads(self.store.read_text(encoding="utf-8"))

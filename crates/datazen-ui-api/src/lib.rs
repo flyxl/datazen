@@ -405,7 +405,7 @@ pub use import_mapping::{
 };
 pub use keymap::{
     format_mod_key, format_shortcut_for_display, get_action_shortcut, normalize_shortcut_input,
-    to_code_mirror_key_format, to_shortcut_hook_format, KeymapAction, KeymapPreset, KEYMAP_ACTIONS,
+    to_code_mirror_key_format, to_shortcut_hook_format, KeymapAction, KeymapPreset, NativeExecuteShortcut, KEYMAP_ACTIONS,
     KEYMAP_PRESETS,
 };
 pub use language_pack_runtime::{
@@ -2395,6 +2395,16 @@ pub trait DesktopAdapter {
     /// case (N8). The default answers the fixed error; the UI falls back to
     /// the memory port.
     fn write_ui_setting(&mut self, _setting: Setting) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    /// The actual focused-editor Execute Statement binding. None means this
+    /// adapter does not expose the setting, not that it pinned a default.
+    fn native_execute_shortcut(&self) -> Option<NativeExecuteShortcut> {
+        None
+    }
+
+    fn write_native_execute_shortcut(&mut self, _binding: NativeExecuteShortcut) -> Result<(), String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 

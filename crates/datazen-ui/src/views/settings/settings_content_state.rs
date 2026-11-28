@@ -272,6 +272,8 @@ pub enum SettingsSelect {
     EditorFontFamily,
     /// The editor SQL syntax theme select.
     SyntaxTheme,
+    /// The single live Execute Statement binding select.
+    ExecuteShortcut,
     /// The editor completion quote policy select.
     QuotePolicy,
     /// The editor keymap preset select.
