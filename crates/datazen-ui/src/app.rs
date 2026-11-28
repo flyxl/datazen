@@ -190,6 +190,10 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
                 return true;
             }
         }
+        let select_occurrences = Chord::new(ChordKey::Char('l'))
+            .with(ChordMod::Primary).with(ChordMod::Shift);
+        let owns_select_occurrences = select_occurrences.matches_tx(ev, tx)
+            && state.owns_query_document_shortcut(tx);
         // T1: after a result cell is pressed the result grid holds the
         // keyboard: arrows walk its selection, Command-C copies TSV. Typing
         // or Escape hands the keys back to the editor, and so does any key
@@ -221,6 +225,12 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
             || (matches!(ev.key, Key::Text(_)) && !ev.mods.cmd && !ev.mods.ctrl))
         {
             state.refresh_native_from_completion();
+        }
+        // Lower-priority stock binding: actual shell, Execute/Save and editor
+        // commands above keep first refusal, as in the React Query keymap.
+        // Use the focus at arrival, not one released by handling Results.
+        if !consumed && owns_select_occurrences && state.owns_query_document_shortcut(tx) {
+            return state.sql.select_current_occurrences();
         }
         return consumed;
     }

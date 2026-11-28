@@ -21,6 +21,7 @@ mod manual_completion;
 mod model;
 mod navigation;
 mod plain_find;
+mod select_occurrences;
 mod bracket_pairs;
 mod syntax_theme;
 mod view;

@@ -1113,3 +1113,69 @@ class SqlSelectionJourneys:
         self.assertEqual(self.sql_customer_rows(), rows)
         history = self.root / "query-history.json"
         self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
+
+    def test_editor_select_current_occurrences_uses_physical_mod_shift_l_and_current_selection(self):
+        rows = self.sql_fixture_before()
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        before = self.db.read_bytes()
+        lines = ["SELECT 'cat' AS first_v,", "  'cat' AS chosen,", "  'CAT' AS upper_v, 'xcat' AS embedded_v;"]
+        sql = "\n".join(lines)
+        first = f"sql-selected-0-{lines[0].index('cat')}"
+        chosen = f"sql-selected-1-{lines[1].index('cat')}"
+        embedded = f"sql-selected-2-{lines[2].index('xcat') + 1}"
+        upper = f"sql-selected-2-{lines[2].index('CAT')}"
+        toggle = {"type": "key", "name": "l", "code": "KeyL", "base": "l", "cmd": True, "shift": True}
+        route = [
+            *query_steps("")[:4], {"t": 4.8, "type": "paste", "text": sql},
+            key(5.7, "Home"), key(5.98, "Up"),
+            *(key(6.25 + i * .15, "Right") for i in range(6)),
+            *({**key(7.35 + i * .18, "Left"), "shift": True} for i in range(3)),
+        ]
+
+        def draft(tree):
+            def line_text(i):
+                row = next(n for n in tree["elements"]
+                           if n.get("key") == f"sql-line-{i}" and not n.get("exiting"))
+                return "".join(n.get("text") or "" for n in tree["elements"]
+                               if n["path"].startswith(row["path"] + "/")
+                               and n.get("role") != "mark" and not n.get("exiting"))
+            return "\n".join(line_text(i) for i in range(len(lines)))
+
+        single = self.replay(route, until=8.2)
+        self.expect_rendered(single, key=chosen, text="cat")
+        self.assertFalse(visible(single, key=first))
+        self.assertFalse(visible(single, key=embedded))
+        self.assertEqual(draft(single), sql)
+
+        expanded = [*route, {"t": 8.35, **toggle}]
+        picked = self.replay(expanded, until=9.0)
+        for selected in (first, chosen, embedded):
+            self.expect_rendered(picked, key=selected, text="cat")
+        self.assertFalse(visible(picked, key=upper), "current selection is searched case-sensitively")
+        self.expect_rendered(picked, key="sql-caret", within="sql-line-1")
+        self.assertFalse(visible(picked, key="sql-find-bar"))
+        self.assertEqual(draft(picked), sql)
+
+        typed = [*expanded, {"t": 9.3, "type": "key", "name": "z", "code": "z"}]
+        changed = self.replay(typed, until=9.95)
+        self.assertEqual(draft(changed), sql.replace("cat", "z"))
+        undone = self.replay([*typed, key(10.15, "z", cmd=True)], until=10.8)
+        self.assertEqual(draft(undone), sql)
+        for selected in (first, chosen, embedded):
+            self.expect_rendered(undone, key=selected, text="cat")
+        self.expect_rendered(undone, key="sql-caret", within="sql-line-1")
+
+        find = self.replay([*route, key(8.35, "f", cmd=True), {"t": 8.9, **toggle}], until=9.55)
+        self.expect_rendered(find, key="sql-find-input")
+        self.expect_rendered(find, key=chosen)
+        self.assertFalse(visible(find, key=first))
+        self.assertFalse(visible(find, key=embedded))
+        self.assertEqual(draft(find), sql)
+        for tree in (single, picked, changed, undone, find):
+            self.assertFalse(visible(tree, key="result-workspace"))
+        self.assertEqual(self.db.read_bytes(), before)
+        self.assertEqual(self.sql_customer_rows(), rows)
+        history = self.root / "query-history.json"
+        self.assertFalse(history.exists() and json.loads(history.read_text(encoding="utf-8")))
