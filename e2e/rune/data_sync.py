@@ -3,7 +3,7 @@ from contextlib import closing
 import json
 import sqlite3
 
-from scenarios import tap, visible
+from scenarios import tap, visible, open_tool_steps
 
 
 class DataSyncJourneys:
@@ -17,7 +17,7 @@ class DataSyncJourneys:
 
     def sync_steps(self):
         return [
-            tap(.5, "rail-tools"), tap(1.2, "native-tool-data-sync"),
+            *open_tool_steps(.5, 1.2, "data-sync"),
             tap(2.0, "native-transfer-source-profile-sync-src"),
             tap(2.6, "native-transfer-target-profile-sync-dst"),
         ]

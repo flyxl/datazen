@@ -6,7 +6,7 @@ import sys
 import unittest
 
 import run
-from scenarios import fixture, tap
+from scenarios import IN_WINDOW_TOOLS_MENU, fixture, open_tool_steps, tap
 
 
 class ShellFooterJourneys(run.NativeJourneys):
@@ -25,7 +25,16 @@ class ShellFooterJourneys(run.NativeJourneys):
             present = {n.get("key") for n in tree["elements"] if not n.get("exiting")}
             self.assertFalse(present.intersection(keys), present.intersection(keys))
 
+        def check_rail(tree):
+            if IN_WINDOW_TOOLS_MENU:
+                absent(tree, "rail-tools", "rail-tools-label")
+
         home = self.replay([], until=1.8)
+        check_rail(home)
+        if IN_WINDOW_TOOLS_MENU:
+            expanded = self.replay([tap(.5, "rail-toggle")], until=1.8)
+            self.expect_rendered(expanded, key="rail-connections-label")
+            check_rail(expanded)
         self.expect_rendered(home, key="home-mcp-promo-bar")
         self.expect_rendered(home, key="connections-shortcut-format-label", text="Format SQL")
         self.expect_rendered(home, key="connections-shortcut-format-kbd",
@@ -44,6 +53,7 @@ class ShellFooterJourneys(run.NativeJourneys):
 
         opened = [tap(.5, "conn-open-e2e-sqlite"), tap(3, "tree-table-customers")]
         def panel(tree):
+            check_rail(tree)
             self.expect_rendered(tree, within="cell-0-1", text="fixture-ada")
             self.expect_rendered(tree, key="status-connection-label", text="Connected")
             context = next(n["text"] for n in tree["elements"]
@@ -63,18 +73,36 @@ class ShellFooterJourneys(run.NativeJourneys):
         path = list(opened)
         for i, (route, surface) in enumerate([
             ("rail-workflows", "workflow-workspace"), ("rail-dashboards", "dashboards-page"),
-            ("rail-wapps", "extension-management-page"), ("rail-tools", "native-transfer"),
-            ("rail-settings", "settings-page"),
+            ("rail-wapps", "extension-management-page"),
         ]):
             at = 5.4 + 1.15 * i
             path.append(tap(at, route))
             snap = self.replay(path, until=at + .95)
+            check_rail(snap)
             absent(snap, "content-status-bar", "datazen-navigator", "connections-shortcut-footer")
             sx, sy, sw, sh = self._settled_rect(snap, surface)
             self.assertAlmostEqual(sy + sh, snap["viewport"][1], delta=1)
-            if route == "rail-tools":
-                self.expect_rendered(snap, key="native-tool-data-sync")
-                absent(snap, "content-view", "content-toolbar", "content-view-drawers")
+        tools = open_tool_steps(8.85, 9.45, "data-sync")
+        if IN_WINDOW_TOOLS_MENU:
+            menu = self.replay([*path, tools[0]], until=9.35)
+            self.expect_rendered(menu, key="menu-bar-tools-menu")
+            self.expect_rendered(menu, within=tools[1]["key"], text="Data Sync")
+            check_rail(menu)
+        path.extend(tools)
+        snap = self.replay(path, until=10.4)
+        self.expect_rendered(snap, key="native-sync-compare")
+        check_rail(snap)
+        absent(snap, "content-status-bar", "datazen-navigator", "connections-shortcut-footer",
+               "content-view", "content-toolbar", "content-view-drawers", "menu-bar-tools-menu")
+        sx, sy, sw, sh = self._settled_rect(snap, "native-transfer")
+        self.assertAlmostEqual(sy + sh, snap["viewport"][1], delta=1)
+
+        path.append(tap(10.8, "rail-settings"))
+        settings = self.replay(path, until=11.6)
+        check_rail(settings)
+        absent(settings, "content-status-bar", "datazen-navigator", "connections-shortcut-footer")
+        sx, sy, sw, sh = self._settled_rect(settings, "settings-page")
+        self.assertAlmostEqual(sy + sh, settings["viewport"][1], delta=1)
         back = [*path, tap(11.7, "settings-back"), tap(12.9, "rail-workspace")]
         panel(self.replay(back, until=14.1))
         self.assertEqual(self.db.read_bytes(), original)

@@ -7,7 +7,7 @@ import sys
 
 from contextlib import closing
 
-from scenarios import fixture, query_steps, tap, type_text, visible
+from scenarios import open_tool_steps, fixture, query_steps, tap, type_text, visible
 
 OPEN = (tap(.5, "conn-open-e2e-sqlite"), tap(3, "tree-table-customers"))
 SETTINGS = tap(.5, "rail-settings")
@@ -938,7 +938,7 @@ class OfflineJourneys:
         self.assertEqual(len(expected), 2)
         original = self.db.read_bytes()
         destination = self.root / "customers.sql"
-        entry = [*OPEN, tap(4.4, "rail-tools"),
+        entry = [*OPEN, *open_tool_steps(4.4, 4.8, "data-transfer"),
                  tap(5.2, "native-transfer-source-profile-e2e-sqlite"),
                  tap(6.6, "native-tool-backup")]
         transfer = self.replay([*entry, tap(7.4, "native-tool-transfer")], until=8.6)

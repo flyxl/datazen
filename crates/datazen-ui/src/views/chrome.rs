@@ -85,8 +85,9 @@ pub fn rail_view(state: &AppState, dark: bool) -> El {
     ] {
         items = items.child(rail_item(state, section, expanded, dark));
     }
-    // Keep the separately capability-gated native Tools route callable.
-    if state.desktop.supports_native_transfer() {
+    // Windows/Linux already expose the real Tools menu in the titlebar.
+    // Keep the only existing entry on hosts without a mounted Tools menu.
+    if !super::shell_menu::in_window_menu() && state.desktop.supports_native_transfer() {
         items = items.child(rail_item(state, Section::Tools, expanded, dark));
     }
     let (toggle_icon, toggle_label) = if expanded {

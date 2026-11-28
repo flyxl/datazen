@@ -22,7 +22,7 @@ use rune::{
 
 impl AppState {
     pub(crate) fn supports_tools_backup(&self) -> bool {
-        // The native Tools rail is only reachable with transfer capability.
+        // The native Tools surface is only reachable with transfer capability.
         self.desktop.supports_native_transfer() && self.desktop.supports_native_backup()
     }
 
@@ -30,7 +30,7 @@ impl AppState {
         if self.supports_tools_backup() {
             if self.active != Section::Tools {
                 // Preserve the same unsaved-edit guard as receipt of a
-                // normal Tools rail/menu action.
+                // normal Tools menu action.
                 self.select(Section::Tools);
             }
             if self.active == Section::Tools {

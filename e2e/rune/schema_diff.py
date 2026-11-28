@@ -3,7 +3,7 @@ from contextlib import closing
 import json
 import sqlite3
 
-from scenarios import tap, visible
+from scenarios import tap, visible, open_tool_steps
 
 
 class SchemaDiffJourney:
@@ -66,7 +66,7 @@ class SchemaDiffJourney:
             profile("schema-dst", "Schema Target", target, True),
             profile("schema-alias", "Schema Source Alias", alias, False),
         ]}), encoding="utf-8")
-        setup = [tap(.5, "rail-tools"), tap(1.2, "native-tool-schema-diff"),
+        setup = [*open_tool_steps(.5, 1.2, "schema-diff"),
                  tap(2.0, "native-transfer-source-profile-schema-src")]
         alias_steps = [*setup, tap(2.6, "native-transfer-target-profile-schema-alias"),
                        tap(4.0, "native-schema-compare")]
@@ -120,7 +120,7 @@ class SchemaDiffJourney:
             profile("options-src", "Options Source", self.db),
             profile("options-dst", "Options Target", target),
         ]}), encoding="utf-8")
-        setup = [tap(.5, "rail-tools"), tap(1.2, "native-tool-schema-diff")]
+        setup = [*open_tool_steps(.5, 1.2, "schema-diff")]
         empty = self.replay([*setup, tap(2.0, "native-schema-compare")], until=3)
         self.expect_rendered(empty, key="native-schema-error",
                              text="Select an existing source and target table.")
@@ -279,7 +279,7 @@ class SchemaDiffJourney:
         return [snapshot(path) for path in (self.db, target)]
 
     def schema_comparison_steps(self):
-        return [tap(.5, "rail-tools"), tap(1.2, "native-tool-schema-diff"),
+        return [*open_tool_steps(.5, 1.2, "schema-diff"),
                 tap(2.0, "native-transfer-source-profile-objects-src"),
                 tap(2.6, "native-transfer-target-profile-objects-dst"),
                 tap(4.1, "native-schema-compare")]

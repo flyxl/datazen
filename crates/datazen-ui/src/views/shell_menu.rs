@@ -62,7 +62,7 @@ pub(super) fn titlebar_label(label: impl Into<String>, ink: Color) -> El {
         )
 }
 
-fn in_window_menu() -> bool {
+pub(super) fn in_window_menu() -> bool {
     cfg!(any(target_os = "linux", target_os = "windows"))
 }
 

@@ -2,7 +2,7 @@
 import json
 import sqlite3
 
-from scenarios import tap, visible
+from scenarios import tap, visible, open_tool_steps
 
 
 class TransferJourneys:
@@ -35,7 +35,7 @@ class TransferJourneys:
 
         def setup(target_id):
             return [
-                tap(.5, "rail-tools"),
+                *open_tool_steps(.5, 1.0, "data-transfer"),
                 tap(1.6, "native-transfer-source-profile-transfer-src"),
                 tap(2.1, f"native-transfer-target-profile-{target_id}"),
                 tap(3.7, "native-transfer-map"),
@@ -120,7 +120,7 @@ class TransferJourneys:
         ]}), encoding="utf-8")
 
         wrong = [
-            tap(.5, "rail-tools"),
+            *open_tool_steps(.5, 1.0, "data-transfer"),
             tap(1.6, "native-transfer-source-profile-transfer-src"),
             tap(2.1, "native-transfer-target-profile-transfer-dst"),
             tap(3.6, "native-transfer-source-table"), tap(4.1, "native-transfer-target-table"),
@@ -176,7 +176,7 @@ class TransferJourneys:
         source_original = self.db.read_bytes()
         target_original = target.read_bytes()
         setup = [
-            tap(.5, "rail-tools"),
+            *open_tool_steps(.5, 1.0, "data-transfer"),
             tap(1.6, "native-transfer-source-profile-source"),
             tap(2.1, "native-transfer-target-profile-target"),
             tap(3.4, "native-transfer-toggle-column-editor"),
@@ -237,7 +237,7 @@ class TransferJourneys:
         old_source = self.db.read_bytes()
         old_target = target.read_bytes()
         setup = [
-            tap(.5, "rail-tools"),
+            *open_tool_steps(.5, 1.0, "data-transfer"),
             tap(1.6, "native-transfer-source-profile-source"),
             tap(2.1, "native-transfer-target-profile-target"),
             tap(3.5, "native-transfer-map"),

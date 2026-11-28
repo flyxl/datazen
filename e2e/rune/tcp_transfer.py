@@ -4,7 +4,7 @@ import json
 from time import monotonic, sleep
 import uuid
 
-from scenarios import tap, visible
+from scenarios import tap, visible, open_tool_steps
 from tcp_sql import DisposableSql
 
 
@@ -97,7 +97,7 @@ class TcpTransferJourneys:
               CASE WHEN note IS NULL THEN '<NULL>' WHEN note='' THEN '<EMPTY>' ELSE note END,
               '|',sticky) FROM {table} ORDER BY id;"""
         steps = [
-            tap(.5, "rail-tools"),
+            *open_tool_steps(.5, 1.0, "data-transfer"),
             tap(1.5, "native-transfer-source-profile-xfer-src"),
             tap(2.0, "native-transfer-target-profile-xfer-dst"),
             tap(4.2, f"native-transfer-target-pick-table-{table}"),
@@ -241,7 +241,7 @@ class TcpTransferJourneys:
             self.addCleanup(pg.query, f"DROP TABLE {relation};")
         self.write_transfer_profiles(mysql, pg, target_options={"schema": schema})
         steps = [
-            tap(.5, "rail-tools"),
+            *open_tool_steps(.5, 1.0, "data-transfer"),
             tap(1.5, "native-transfer-source-profile-xfer-src"),
             tap(2.0, "native-transfer-target-profile-xfer-dst"),
             tap(4.2, f"native-transfer-source-pick-table-{table}"),

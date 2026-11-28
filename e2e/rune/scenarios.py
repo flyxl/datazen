@@ -1,6 +1,7 @@
 """Fixtures and Rune replay steps shared by the native journeys."""
 import json
 import sqlite3
+import sys
 
 
 def fixture(store, database):
@@ -17,6 +18,22 @@ def fixture(store, database):
 
 def tap(t, key):
     return {"t": t, "type": "tap", "key": key}
+
+
+IN_WINDOW_TOOLS_MENU = sys.platform.startswith("linux") or sys.platform == "win32"
+
+
+def open_tool_steps(start, select, tool):
+    """Open an actual supported Tools action, including the legacy Mac fallback."""
+    if IN_WINDOW_TOOLS_MENU:
+        # Stock migration entries are enabled, with a separator after each.
+        item = {"schema-diff": 0, "data-sync": 2, "data-transfer": 4}[tool]
+        return [tap(start, "menu-bar-tools-trigger"), tap(select, f"menu-bar-tools-item{item}")]
+    if tool == "data-transfer":
+        native_key = "native-tool-transfer"
+    else:
+        native_key = f"native-tool-{tool}"
+    return [tap(start, "rail-tools"), tap(select, native_key)]
 
 
 def type_text(t, text):
