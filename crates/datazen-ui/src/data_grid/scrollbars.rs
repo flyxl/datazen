@@ -136,7 +136,7 @@ impl Track {
     }
 
     fn view<S: 'static>(self, axis: Axis, key: &str, at: Rc<Cell<ScrollPos>>,
-                       ink: Color, hover: Color) -> El {
+                       ink: Color, hover: Color, auto_hide: bool) -> El {
         let track_key = match axis {
             Axis::X => "horizontal-scrollbar",
             Axis::Y => "vertical-scrollbar",
@@ -144,25 +144,34 @@ impl Track {
         let (drag_key, wheel_key) = (key.to_owned(), key.to_owned());
         let observed = at.clone();
         let jumps = rune::system_scroller_jumps();
-        el().key(track_key)
+        let track = el().key(track_key)
             .absolute(0.0, 0.0)
             .live_rect(&self.bounds)
             .a11y_hidden() // the real viewport exposes scroll actions
             .on_drag_any(move |drag, tx| drag_track(axis, &drag_key, at.get(), jumps, drag, tx))
             .on_wheel(move |_: &mut S, wheel, tx| wheel_over_track(&wheel_key, observed.get(), wheel, tx))
             .child(el().key("thumb").absolute(0.0, 0.0).live_rect(&self.thumb)
-                .radius(INK_WIDTH / 2.0).fill(ink).hover(hover))
+                .radius(INK_WIDTH / 2.0).fill(ink).hover(hover));
+        if auto_hide { track.group_opacity(0.0, 1.0) } else { track }
     }
 }
 
 pub(super) fn attach<S: 'static>(
-    viewport: El, gutters: Gutters, well: Color, ink: Color, hover: Color,
+    viewport: El, gutters: Gutters, well: Color, ink: Color, hover: Color, auto_hide: bool,
 ) -> El {
     let (area, key, outer, viewport) = viewport.wrap_scroll_area((file!(), line!(), column!()));
     let target = format!("{area}/{key}");
     let at = Rc::new(Cell::new(ScrollPos::default()));
     let (horizontal, vertical) = (Track::new(), Track::new());
     let watch = (at.clone(), horizontal.clone(), vertical.clone());
+    // Paint-only reveal: classic gutters stay put while idle. There is
+    // no new Tab stop: existing focus inside the grid (such as an inline
+    // editor) can reveal it without changing Query and Table key routing.
+    let outer = if auto_hide && (gutters.x || gutters.y) {
+        outer.hover_group_focus()
+    } else {
+        outer
+    };
     outer
         .pr(gutters.right()).pb(gutters.bottom()).radius(8.0).fill(well)
         .child(viewport.chain_scroll_offset(move |pos| {
@@ -170,8 +179,8 @@ pub(super) fn attach<S: 'static>(
             watch.1.update(Axis::X, pos, gutters);
             watch.2.update(Axis::Y, pos, gutters);
         }))
-        .child(horizontal.view::<S>(Axis::X, &target, at.clone(), ink, hover))
-        .child(vertical.view::<S>(Axis::Y, &target, at, ink, hover))
+        .child(horizontal.view::<S>(Axis::X, &target, at.clone(), ink, hover, auto_hide))
+        .child(vertical.view::<S>(Axis::Y, &target, at, ink, hover, auto_hide))
 }
 
 fn wheel_over_track(key: &str, at: ScrollPos, wheel: WheelEvent, tx: &mut Tx) -> bool {
@@ -234,7 +243,7 @@ fn drag_track(axis: Axis, key: &str, at: ScrollPos, jumps: bool, drag: &mut Drag
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rune::{col, Cx, Env, Runtime, ScrollBars};
+    use rune::{col, Cx, Env, Key, KeyEvent, Mods, Runtime, ScrollBars};
 
     #[test]
     fn one_classic_strip_can_create_real_overflow_in_the_other_axis() {
@@ -252,7 +261,7 @@ mod tests {
         assert_eq!(Gutters::for_content(None, [300.0, 400.0]), Gutters::default());
     }
 
-    fn fixture(_: &(), _: &mut Cx<()>) -> El {
+    fn fixture(auto_hide: &bool, _: &mut Cx<bool>) -> El {
         let key = "viewport";
         let content = [300.0, 400.0];
         let frame = rune::memo::layout_size(&area_key(key));
@@ -261,20 +270,21 @@ mod tests {
             .w_full().h_full()
             .scroll_xy()
             .child(col().size(content[0], content[1])
-                .child(el().key("marker").absolute(160.0, 280.0).size(10.0, 10.0)));
-        attach::<()>(
+                .child(el().key("marker").absolute(160.0, 280.0).size(10.0, 10.0)
+                    .focusable(*auto_hide)));
+        attach::<bool>(
             viewport, Gutters::for_content(frame, content),
-            Color::WHITE, Color::BLACK, Color::BLACK,
+            Color::WHITE, Color::BLACK, Color::BLACK, *auto_hide,
         )
     }
 
-    fn rect(rt: &Runtime<()>, key: &str) -> [f32; 4] {
+    fn rect(rt: &Runtime<bool>, key: &str) -> [f32; 4] {
         rt.elements().into_iter().find(|node| !node.exiting && node.key.as_deref() == Some(key))
             .unwrap_or_else(|| panic!("missing {key}"))
             .rect
     }
 
-    fn drag(rt: &mut Runtime<()>, x: f32, y: f32, target_x: f32, target_y: f32) {
+    fn drag(rt: &mut Runtime<bool>, x: f32, y: f32, target_x: f32, target_y: f32) {
         rt.pointer_move(x, y);
         rt.pointer_down(x, y);
         rt.frame(1.0 / 60.0);
@@ -286,7 +296,7 @@ mod tests {
 
     #[test]
     fn idle_classic_tracks_reserve_room_and_drive_the_real_two_axis_viewport() {
-        let mut rt = Runtime::new((), fixture, (200.0, 160.0), Env::new(false, 1.0));
+        let mut rt = Runtime::new(false, fixture, (200.0, 160.0), Env::new(false, 1.0));
         rt.set_system_scroll_bars(ScrollBars::WhenScrolling);
         rt.frame(0.0);
         assert_eq!(rect(&rt, "viewport"), [0.0, 0.0, 191.0, 151.0]);
@@ -311,5 +321,43 @@ mod tests {
         for key in ["horizontal-scrollbar", "vertical-scrollbar"] {
             assert_eq!(rect(&rt, key)[2..], [0.0, 0.0], "fitting content has no bar hit area");
         }
+    }
+
+    #[test]
+    fn automatic_reveal_tracks_real_hover_and_keyboard_focus_without_moving_the_viewport() {
+        let mut rt = Runtime::new(true, fixture, (200.0, 160.0), Env::new(false, 1.0));
+        rt.set_full_keyboard_access(true);
+        rt.frame(0.0);
+        let alpha = |rt: &Runtime<bool>| {
+            let thumbs: Vec<_> = rt.elements().into_iter()
+                .filter(|node| node.key.as_deref() == Some("thumb") && !node.exiting)
+                .map(|node| node.opacity).collect();
+            assert_eq!(thumbs.len(), 2, "check both mounted thumb paints");
+            thumbs
+        };
+        let settle = |rt: &mut Runtime<bool>| {
+            // Rune's normal hover exit is a 100ms paint transition.
+            for _ in 0..20 { rt.frame(1.0 / 60.0); }
+        };
+        let viewport = [0.0, 0.0, 191.0, 151.0];
+        assert_eq!(alpha(&rt), [0.0, 0.0], "idle is hidden");
+        assert_eq!(rect(&rt, "viewport"), viewport);
+        rt.pointer_move(50.0, 40.0);
+        rt.frame(1.0 / 60.0);
+        assert_eq!(alpha(&rt), [1.0, 1.0], "hover reveals actual thumb paint");
+        drag(&mut rt, 195.0, 10.0, 195.0, 145.0);
+        assert_eq!(rect(&rt, "marker")[1], 31.0, "revealed thumb scrolls real content");
+        rt.pointer_leave();
+        settle(&mut rt);
+        assert_eq!(alpha(&rt), [0.0, 0.0], "the fade completes after pointer leave");
+        assert_eq!(rect(&rt, "viewport"), viewport);
+        assert_eq!(rect(&rt, "marker")[1], 31.0, "hiding does not reset scroll");
+
+        rt.key(KeyEvent { key: Key::Tab, mods: Mods::default() });
+        settle(&mut rt);
+        assert!(rt.elements().iter().any(|node| node.key.as_deref() == Some("marker")
+            && node.focused && node.focus_visible), "existing keyboard focus inside the grid reveals it");
+        assert_eq!(alpha(&rt), [1.0, 1.0], "keyboard reveals without a pointer");
+        assert_eq!(rect(&rt, "viewport"), viewport);
     }
 }

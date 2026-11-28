@@ -202,6 +202,92 @@ class GridDragJourney:
         for suffix in ("-wal", "-shm", "-journal"):
             self.assertFalse(self.db.with_name(self.db.name + suffix).exists())
 
+    def test_data_grid_scrollbars_use_the_saved_auto_hide_preference(self):
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as seed:
+            seed.executemany("INSERT INTO customers VALUES (?, ?)", [
+                (i, f"autohide-{i:02}") for i in range(3, 96)
+            ])
+        profile = json.loads(self.store.read_text(encoding="utf-8"))
+        profile["connections"][0]["readOnly"] = True
+        self.store.write_text(json.dumps(profile), encoding="utf-8")
+        database_before = self.db.read_bytes()
+        connection_before = self.store.read_bytes()
+        config = self.root / "settings.json"
+        original = {"ui": {"language": "en", "themeMode": "light", "tablePageSize": 100},
+                    "rowCountMode": "exact", "keep": {"sentinel": 37}}
+        config.write_text(json.dumps(original), encoding="utf-8")
+        before = config.read_bytes()
+        switch = "settings-grid-auto-hide-scrollbar"
+        route = [tap(.5, "rail-settings"), tap(1.4, "settings-nav-dataBrowsing")]
+        outside = lambda t: {"t": t, "type": "move", "x": 1, "y": 1}
+
+        def checked(tree, value):
+            self.expect_rendered(tree, key=switch)
+            def walk(node):
+                yield node
+                for child in node.get("children", ()):
+                    yield from walk(child)
+            controls = [n for n in walk(tree["accessibility"]) if n.get("key") == switch]
+            self.assertEqual(len(controls), 1)
+            self.assertEqual(controls[0]["role"], "switch")
+            self.assertEqual("checked" in controls[0].get("states", ()), value)
+
+        checked(self.replay(route, until=2.5), False)
+        self.assertEqual(config.read_bytes(), before)
+        table = ("data-grid-scroll", list(OPEN), "cell-0-1", 5.2)
+        result = ("result-data-grid-scroll",
+                  query_steps("SELECT id, customer_name FROM customers ORDER BY id;"),
+                  "result-cell-0-1", 10.8)
+
+        def focusable(tree, grid):
+            owners = [node for node in tree["elements"]
+                      if node.get("key") == grid and not node.get("exiting")]
+            self.assertEqual(len(owners), 1)
+            return owners[0]["focusable"]
+
+        default = {}
+        for grid, actions, cell, t in [table, result]:
+            tree = self.replay([*actions, outside(t)], until=t + .65)
+            self.expect_rendered(tree, key=cell)
+            self.expect_rendered(tree, key="thumb", within="vertical-scrollbar")
+            default[grid] = (self._settled_rect(tree, grid), focusable(tree, grid))
+        checked(self.replay([*route, tap(2.4, switch)], until=3.5), True)
+        expected = {**original, "gridAutoHideScrollbar": True}
+        self.assertEqual(json.loads(config.read_bytes()), expected)
+        checked(self.replay(route, until=2.5), True)
+
+        for grid, actions, cell, t in [table, result]:
+            idle = [*actions, outside(t)]
+            tree = self.replay(idle, until=t + .65)
+            self.expect_rendered(tree, key=cell)
+            self.assertFalse(visible(tree, key="thumb", within="vertical-scrollbar"))
+            self.assertEqual((self._settled_rect(tree, grid), focusable(tree, grid)), default[grid])
+            hover = [*idle, {"t": t + .8, "type": "move", "key": cell}]
+            tree = self.replay(hover, until=t + 1.4)
+            self.expect_rendered(tree, key="thumb", within="vertical-scrollbar")
+            self.assertEqual(self._settled_rect(tree, grid), default[grid][0])
+            tree = self.replay([*hover, outside(t + 1.5)], until=t + 2.0)
+            self.assertFalse(visible(tree, key="thumb", within="vertical-scrollbar"))
+            self.assertEqual(self._settled_rect(tree, grid), default[grid][0])
+
+        # Block the atomic replacement; keep the effective value and both
+        # data profiles unchanged regardless of the attempted setting.
+        collision = config.with_suffix(".json.tmp")
+        collision.mkdir()
+        try:
+            checked_result = self.replay([*route, tap(2.4, switch)], until=3.5)
+            checked(checked_result, True)
+            self.expect_rendered(checked_result, text="Could not save the grid scrollbar setting.",
+                                 within="settings-error")
+            self.assertEqual(json.loads(config.read_bytes()), expected)
+        finally:
+            collision.rmdir()
+        checked(self.replay([*route, tap(2.4, switch)], until=3.5), False)
+        self.assertEqual(json.loads(config.read_bytes()), {**original, "gridAutoHideScrollbar": False})
+        self.assertEqual(self.db.read_bytes(), database_before)
+        self.assertEqual(self.store.read_bytes(), connection_before)
+
     def test_row_numbers_controls_real_readonly_sqlite_grids_after_restart(self):
         """Row Numbers controls the real Table and Query Result without changing their data."""
         fixture(self.store, self.db)

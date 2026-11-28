@@ -2531,6 +2531,15 @@ pub trait DesktopAdapter {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }
 
+    /// Hide the Table and Query Result scrollbar thumbs while idle.
+    fn read_native_grid_auto_hide_scrollbar(&self) -> Result<bool, String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
+    fn write_native_grid_auto_hide_scrollbar(&mut self, _enabled: bool) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.into())
+    }
+
     /// The effective global row count preference for interactive table reads.
     fn read_native_row_count_mode(&self) -> Result<types::RowCountMode, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())

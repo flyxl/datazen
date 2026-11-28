@@ -57,6 +57,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     let density = state.desktop.read_native_grid_density().ok();
     let striped = state.desktop.read_native_grid_alternating_rows().ok();
     let row_numbers = state.desktop.read_native_grid_row_numbers().ok();
+    let auto_hide_scrollbar = state.desktop.read_native_grid_auto_hide_scrollbar().ok();
     let select_limit = state.desktop.read_native_select_limit().ok();
     section = section
         .child(setting_row(
@@ -104,6 +105,19 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             },
         ));
     }
+    if let Some(auto_hide) = auto_hide_scrollbar {
+        section = section.child(grid_appearance_toggle(
+            "settings-grid-auto-hide-scrollbar",
+            t("settings.gridAutoHideScrollbar"),
+            t("settings.gridAutoHideScrollbar.hint"),
+            auto_hide,
+            &k,
+            |state| {
+                let current = state.desktop.read_native_grid_auto_hide_scrollbar()?;
+                state.desktop.write_native_grid_auto_hide_scrollbar(!current)
+            },
+        ));
+    }
     if let Some(limit) = select_limit {
         section = section.child(select_limit_row(limit.effective_rows.is_some(), &k));
     }
@@ -121,22 +135,24 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
         section = section.child(settings_error_row(state, theme));
     }
 
+    let some_grid_unsupported = density.is_none() || striped.is_none()
+        || row_numbers.is_none() || auto_hide_scrollbar.is_none();
     let unavailable = match state.builtin_language() {
         BuiltinLanguage::English => format!(
-            "Settings not available here: {}{}{}, time display, connection pool, {}and auto-chart.{}",
+            "Settings not available here: {}{}{}time display, connection pool, {}and auto-chart.{}",
             if row_count.is_none() { "row count mode, " } else { "" },
             if default_sort.is_none() { "default sorting, " } else { "" },
-            if density.is_none() && striped.is_none() && row_numbers.is_none() { "grid settings" } else { "other grid settings" },
+            if some_grid_unsupported { "some grid settings, " } else { "" },
             if select_limit.is_none() { "the SELECT-limit toggle, " } else { "" },
             if row_count == Some(RowCountMode::Auto) {
                 " Automatic uses the database's default counting strategy; the estimate threshold is not configurable in Native."
             } else { "" },
         ),
         BuiltinLanguage::SimplifiedChinese => format!(
-            "此处暂不支持{}{}{}、时间显示、连接池、{}自动图表设置。{}",
+            "此处暂不支持{}{}{}时间显示、连接池、{}自动图表设置。{}",
             if row_count.is_none() { "行数统计、" } else { "" },
             if default_sort.is_none() { "默认排序、" } else { "" },
-            if density.is_none() && striped.is_none() && row_numbers.is_none() { "表格设置" } else { "其他表格设置" },
+            if some_grid_unsupported { "部分表格设置、" } else { "" },
             if select_limit.is_none() { "SELECT 限制开关、" } else { "" },
             if row_count == Some(RowCountMode::Auto) {
                 "自动模式使用数据库默认的计数策略；Native 暂不支持设置估算阈值。"

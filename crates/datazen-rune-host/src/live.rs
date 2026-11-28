@@ -3753,6 +3753,26 @@ impl DesktopAdapter for LiveAdapter {
         Ok(())
     }
 
+    fn read_native_grid_auto_hide_scrollbar(&self) -> Result<bool, String> {
+        let cache = self.settings_document.lock()
+            .map_err(|_| "Could not read the grid scrollbar setting.".to_owned())?;
+        Ok(cache.get("gridAutoHideScrollbar").and_then(serde_json::Value::as_bool)
+            .unwrap_or(datazen_ui_api::types::DEFAULT_GRID_AUTO_HIDE_SCROLLBAR))
+    }
+
+    fn write_native_grid_auto_hide_scrollbar(&mut self, enabled: bool) -> Result<(), String> {
+        let error = || "Could not save the grid scrollbar setting.".to_owned();
+        let mut cache = self.settings_document.lock().map_err(|_| error())?;
+        let mut document = futures_executor::block_on(self.settings.read_app_settings())
+            .map_err(|_| error())?;
+        let object = document.as_object_mut().ok_or_else(error)?;
+        object.insert("gridAutoHideScrollbar".into(), serde_json::Value::Bool(enabled));
+        let persisted = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|_| error())?;
+        *cache = persisted;
+        Ok(())
+    }
+
     fn read_native_row_count_mode(&self) -> Result<datazen_ui_api::types::RowCountMode, String> {
         let settings = self.settings_document.lock()
             .map_err(|_| "Could not read the row count mode.".to_owned())?;

@@ -864,7 +864,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             .find(|(code, _)| code == current)
             .map(|(_, label)| label.clone())
             .unwrap_or_else(|| current.to_owned());
-        let mut select = Select::new("settings-language-select", &labels)
+        let mut select = Select::new(LANGUAGE_SELECT, &labels)
             .values(&values)
             .current(Some(current_label.as_str()))
             .label(t("settings.language"))
@@ -1728,8 +1728,25 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         field.elevation.button_neutral.clear();
         field.ty.ui_compact = TextStyle::new(14.0, 400.0).lh(20.0);
         field.c.icon_muted = k.c.text_faint;
-        let select_el = select.build(&field, layer)
+        let mut select_layer = Vec::new();
+        let select_el = select.build(&field, &mut select_layer)
             .h(36.0).radius(9.0).border(1.0, k.c.border_base).pl(3.0).pr(8.0);
+        if self.native_log_level.is_some() && !self.dark
+            && self.state.open_select == Some(SettingsSelect::LogLevel)
+        {
+            const TRIGGER: &str = "settings-log-level-trigger";
+            // Kit puts its listbox after the optional dismissal scrim. Keep
+            // both and preserve their focus/choice handlers, but use the
+            // reference's 4px gap and responsive minimum trigger width.
+            if let Some(popup) = select_layer.pop() {
+                let popup = match rune::memo::layout_with(TRIGGER, |rect| rect[2]) {
+                    Some(width) if width > 0.0 => popup.w(width).min_w(width).max_w(width),
+                    _ => popup,
+                };
+                select_layer.push(popup.anchored_fit(TRIGGER, rune::Side::Bottom, rune::Align::Start, 4.0));
+            }
+        }
+        layer.extend(select_layer);
         body = body.child(setting_row(
             k,
             layer,
@@ -2092,19 +2109,42 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
     }
 }
 
-/// The live General language field uses the browser Select's 1px inside
-/// edge, not the generic kit's outside input elevation. Keep the anchored
-/// listbox and the original bindings, changing only this field's skin.
+const LANGUAGE_SELECT: &str = "settings-language-select";
+const LANGUAGE_TRIGGER: &str = "settings-language-select-trigger";
+
+/// Keep Rune's listbox, selection, dismissal and focus restoration. Only
+/// the two General language surfaces use the original Select's geometry.
 fn language_select(select: Select, kit: &Kit, layer: &mut Vec<El>) -> El {
-    select
-        .build(&language_field_kit(kit), layer)
+    let mut overlays = Vec::new();
+    let trigger = select
+        .build(&language_field_kit(kit), &mut overlays)
         .h(36.0)
         .radius(9.0)
         .border(1.0, kit.c.border_base)
         // CSS px-2.5 plus its inset edge places the text 11px in. The
         // kit already contributes 8pt and a wider chevron frame.
         .pl(3.0)
-        .pr(8.0)
+        .pr(8.0);
+
+    // An opened kit Select mounts its dismissal scrim first and then its
+    // anchored surface. Match the live trigger width, not the kit's 160pt
+    // menu minimum (or a hardcoded desktop width); subscribe only to width.
+    if let Some(surface) = overlays.pop() {
+        let surface = surface
+            .anchored_fit(LANGUAGE_TRIGGER, rune::Side::Bottom, rune::Align::Start, 4.0)
+            .radius(10.0)
+            .fill(kit.c.layer_02)
+            .border(1.0, kit.c.border_base);
+        let width = rune::memo::layout_with(LANGUAGE_TRIGGER, |rect| rect[2]);
+        let surface = if let Some(width) = width.filter(|width| *width > 0.0) {
+            surface.w(width).min_w(width).max_w(width)
+        } else {
+            surface
+        };
+        overlays.push(surface);
+    }
+    layer.extend(overlays);
+    trigger
 }
 
 fn language_field_kit(kit: &Kit) -> Kit {

@@ -93,6 +93,52 @@ fn native_log_level_persists_only_its_field_and_reloads_in_a_fresh_adapter() {
 }
 
 #[test]
+fn light_log_level_popup_tracks_trigger_width_and_escape_does_not_save() {
+    let profile = tempfile::tempdir().unwrap();
+    let path = profile.path().join("settings.json");
+    let initial = br#"{"logLevel":"info","ui":{"language":"en","themeMode":"light"}}"#;
+    fs::write(&path, initial).unwrap();
+    let mut rt = runtime(profile.path());
+    page(&mut rt);
+    press(&mut rt, TRIGGER);
+
+    let check = |rt: &Runtime<AppState>, viewport_width: f32| {
+        let trigger = control(rt);
+        let popup = rt.elements().into_iter()
+            .find(|e| !e.exiting && e.key.as_deref() == Some("settings-log-level-content"))
+            .expect("Log Level listbox");
+        let [x, y, width, height] = trigger.rect;
+        assert!((popup.rect[0] - x).abs() <= 0.5, "left edge follows trigger");
+        assert!((popup.rect[2] - width).abs() <= 0.5, "listbox follows trigger width");
+        assert!((popup.rect[1] - (y + height + 4.0)).abs() <= 0.5, "four point gap under trigger");
+        assert!(popup.rect[0] >= 0.0 && popup.rect[0] + popup.rect[2] <= viewport_width,
+            "listbox stays within a narrowed viewport");
+        let list_prefix = format!("{}/", popup.path);
+        let labels: Vec<_> = rt.elements().into_iter()
+            .filter(|e| !e.exiting && e.role == "option" && e.path.starts_with(&list_prefix))
+            .filter_map(|e| e.label)
+            .collect();
+        assert_eq!(labels, ["Trace", "Debug", "Info", "Warn", "Error"]);
+        width
+    };
+    let wide = check(&rt, 1440.0);
+    assert_eq!(wide, 496.0);
+    rt.set_viewport((780.0, 900.0), 1.0);
+    rt.settle_all();
+    rt.frame(1.0 / 60.0);
+    rt.frame(1.0 / 60.0);
+    assert!(check(&rt, 780.0) < wide, "resize does not leave a stale popup width");
+
+    rt.key(rune::KeyEvent { key: rune::Key::Escape, mods: rune::Mods::default() });
+    rt.settle_all();
+    rt.frame(1.0 / 60.0);
+    assert!(rt.find("settings-log-level-content").is_none());
+    assert!(control(&rt).focused, "Escape returns focus to Log Level");
+    assert_eq!(fs::read(&path).unwrap(), initial);
+    assert_value(&rt, "Info");
+}
+
+#[test]
 fn native_log_level_cannot_replace_a_broken_or_unwritable_saved_snapshot() {
     let profile = tempfile::tempdir().unwrap();
     let path = profile.path().join("settings.json");

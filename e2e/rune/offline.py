@@ -68,6 +68,37 @@ class OfflineJourneys:
         self.expect_rendered(restored, text="外观", within=appearance)
         self.expect_rendered(restored, key="settings-favorites")
 
+    def test_settings_language_menu_tracks_the_trigger_in_light_mode(self):
+        path = self.root / "settings.json"
+        initial = b'{"ui":{"language":"en","themeMode":"light"},"keep":"sentinel"}'
+        path.write_bytes(initial)
+        trigger = "settings-language-select-trigger"
+        menu = "settings-language-select-content"
+        opened = [SETTINGS, tap(1.5, trigger)]
+
+        widths = []
+        for size in ("1440x900", "800x660"):
+            tree = self.replay(opened, until=2.5, size=size)
+            field = self._settled_rect(tree, trigger)
+            popup = self._settled_rect(tree, menu)
+            widths.append(field[2])
+            self.assertAlmostEqual(popup[0], field[0], delta=.5)
+            self.assertAlmostEqual(popup[2], field[2], delta=.5)
+            self.assertAlmostEqual(popup[1] - field[1] - field[3], 4, delta=.5)
+            self.assertEqual([e["fill"] for e in tree["elements"]
+                              if e.get("key") == menu and not e.get("exiting")],
+                             ["#f1f5f9ff"])
+            self.expect_rendered(tree, text="English", within="option0")
+            self.expect_rendered(tree, text="简体中文", within="option1")
+        self.assertLess(widths[1], widths[0], "the narrower viewport really resizes the field")
+        self.assertEqual(path.read_bytes(), initial, "opening the fitted menu is read-only")
+
+        cancelled = self.replay([*opened, key(2.4, "Escape")], until=3.2)
+        self.assertFalse(visible(cancelled, key=menu))
+        self.assertTrue(any(e.get("key") == trigger and e.get("focused")
+                            for e in cancelled["elements"]))
+        self.assertEqual(path.read_bytes(), initial)
+
     def test_settings_unsupported_saved_locale_falls_back_without_rewriting_file(self):
         settings = self.root / "settings.json"
         previous = '{"ui":{"language":"fr","queryMaxRows":23},"keep":"sentinel"}'

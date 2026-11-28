@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use datazen_ui_api::{
     row_height_for_density,
-    types::{DEFAULT_GRID_DENSITY, DEFAULT_GRID_ROW_NUMBERS},
+    types::{DEFAULT_GRID_AUTO_HIDE_SCROLLBAR, DEFAULT_GRID_DENSITY, DEFAULT_GRID_ROW_NUMBERS},
     NativeTableRowCount,
 };
 use rune::{El, GrowthSpec, ScrollPos, TextStyle, col, el, row, text};
@@ -59,6 +59,7 @@ struct CellPaint {
     dark: bool,
     alternating_rows: bool,
     show_row_numbers: bool,
+    auto_hide_scrollbars: bool,
     row_tail_width: f32,
     row_height: f32,
     sqlite_number_ink: Option<rune::Color>,
@@ -98,6 +99,8 @@ impl CellPaint {
             alternating_rows: !shared || state.desktop.read_native_grid_alternating_rows().unwrap_or(true),
             show_row_numbers: !shared || state.desktop.read_native_grid_row_numbers()
                 .unwrap_or(DEFAULT_GRID_ROW_NUMBERS),
+            auto_hide_scrollbars: shared && state.desktop.read_native_grid_auto_hide_scrollbar()
+                .unwrap_or(DEFAULT_GRID_AUTO_HIDE_SCROLLBAR),
             row_tail_width: 0.0,
             row_height,
         }
@@ -292,7 +295,9 @@ fn sheet(
         .child(sheet);
     if classic {
         let k = crate::ui::kit::kit(paint.dark);
-        scrollbars::attach::<crate::AppState>(viewport, gutters, well, k.c.border_strong, k.c.text_faint)
+        scrollbars::attach::<crate::AppState>(
+            viewport, gutters, well, k.c.border_strong, k.c.text_faint, paint.auto_hide_scrollbars,
+        )
     } else {
         viewport
     }
