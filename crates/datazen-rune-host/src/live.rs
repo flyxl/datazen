@@ -412,6 +412,8 @@ pub struct LiveAdapter {
     settings_document: Arc<Mutex<serde_json::Value>>,
     #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
     native_regex: Option<live_regex::Supervisor>,
+    #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
+    regex_marks: Option<live_regex::Supervisor<datazen_ui_api::native_query_regex::MarkRequest>>,
     #[cfg(feature = "native-sql-formatter")]
     native_sql_formatter: Option<live_sql_format::LiveSqlFormatter>,
     /// The query history use case over the history files (N9): every executed
@@ -1008,7 +1010,9 @@ impl LiveAdapter {
             #[cfg(feature = "native-sql-formatter")]
             native_sql_formatter,
             #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
-            native_regex: live_regex::Supervisor::new(),
+            native_regex: live_regex::Supervisor::new("query-find-supervisor"),
+            #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
+            regex_marks: None,
             history,
             schemas,
             sync_runtime,
@@ -3077,9 +3081,22 @@ impl DesktopAdapter for LiveAdapter {
     #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
     fn begin_native_query_regex(&mut self, request: datazen_ui_api::native_query_regex::Request) -> Result<(), datazen_ui_api::native_query_regex::Error> { self.native_regex.as_mut().ok_or(datazen_ui_api::native_query_regex::Error::Unavailable)?.submit(request) }
     #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
-    fn poll_native_query_regex(&mut self) -> Option<datazen_ui_api::native_query_regex::Delivery> { self.native_regex.as_mut()?.poll() }
+    fn poll_native_query_regex(&mut self) -> Option<datazen_ui_api::native_query_regex::Delivery> { self.native_regex.as_mut()?.poll().map(|(id,result)| datazen_ui_api::native_query_regex::Delivery{id,result}) }
     #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
     fn cancel_native_query_regex(&mut self, id: u64) { if let Some(w) = self.native_regex.as_mut() { w.cancel(id); } }
+
+    #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
+    fn begin_native_regex_marks(&mut self, request:datazen_ui_api::native_query_regex::MarkRequest) -> Result<(),datazen_ui_api::native_query_regex::Error> {
+        // Lazy separate lane: passive work never consumes the command slot.
+        if self.regex_marks.is_none() { self.regex_marks = live_regex::Supervisor::new("query-marks-supervisor"); }
+        self.regex_marks.as_mut().ok_or(datazen_ui_api::native_query_regex::Error::Unavailable)?.submit(request)
+    }
+    #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
+    fn poll_native_regex_marks(&mut self) -> Option<datazen_ui_api::native_query_regex::MarkDelivery> {
+        self.regex_marks.as_mut()?.poll().map(|(id,result)| datazen_ui_api::native_query_regex::MarkDelivery{id,result})
+    }
+    #[cfg(all(feature = "native-query-regex", target_os = "linux", target_arch = "x86_64", target_pointer_width = "64"))]
+    fn cancel_native_regex_marks(&mut self,id:u64) { if let Some(w) = self.regex_marks.as_mut() { w.cancel(id); } }
 
     fn supports_native_transfer(&self) -> bool {
         true

@@ -291,6 +291,7 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     dirty |= state.restore_query_editor_scroll(tx);
     dirty |= state.poll_native_query_format(now, tx);
     dirty |= state.poll_query_regex(now, tx);
+    dirty |= state.poll_regex_marks(now, tx);
     // A captured cell might not receive Up once its virtual row or table
     // subtree is gone. Cancel the app's gesture before it can affect a newer grid.
     let table_grid_mounted = state.active == Section::Workspace

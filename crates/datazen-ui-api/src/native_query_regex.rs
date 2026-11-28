@@ -125,3 +125,37 @@ mod tests {
         assert_eq!(edits(1..2,"x".repeat(MAX_OUTPUT+1)).check(Operation::ReplaceAll,"ab",0..0),Err(Error::Limit));
     }
 }
+
+/// Passive decoration for one measured viewport. This channel cannot return an
+/// edit or selection, and it cannot evict an interactive Find command.
+pub struct MarkRequest {
+    pub id: u64,
+    pub document: String,
+    pub viewport: Range<usize>,
+    pub pattern: String,
+    pub case_sensitive: bool,
+    pub whole_word: bool,
+}
+impl MarkRequest {
+    pub fn check(&self) -> Result<(), Error> {
+        if self.document.len() > MAX_DOC || self.pattern.len() > MAX_PATTERN { return Err(Error::Limit); }
+        if self.pattern.is_empty() { return Err(Error::Empty); }
+        if self.id == 0 { return Err(Error::InvalidReply); }
+        if self.document.contains('\r') || self.document.get(self.viewport.clone()).is_none() {
+            return Err(Error::UnsupportedRange);
+        }
+        Ok(())
+    }
+}
+pub struct MarkDelivery { pub id: u64, pub result: Result<Vec<Range<usize>>, Error> }
+
+/// A CM highlight cursor can emit context (including whole-line lookahead)
+/// beyond the viewport. Validate original ranges; clip only for painting.
+pub fn check_marks(doc: &str, marks: &[Range<usize>]) -> Result<(), Error> {
+    if marks.len() > MAX_RANGES { return Err(Error::Limit); }
+    if marks.iter().any(|r| doc.get(r.clone()).is_none()) ||
+        marks.windows(2).any(|pair| pair[0].end > pair[1].start || pair[0].start == pair[1].start) {
+        return Err(Error::InvalidReply);
+    }
+    Ok(())
+}

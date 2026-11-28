@@ -2407,6 +2407,9 @@ pub trait DesktopAdapter {
     fn begin_native_query_regex(&mut self, _request: native_query_regex::Request) -> Result<(), native_query_regex::Error> { Err(native_query_regex::Error::Unavailable) }
     fn poll_native_query_regex(&mut self) -> Option<native_query_regex::Delivery> { None }
     fn cancel_native_query_regex(&mut self, _id: u64) {}
+    fn begin_native_regex_marks(&mut self, _request: native_query_regex::MarkRequest) -> Result<(), native_query_regex::Error> { Err(native_query_regex::Error::Unavailable) }
+    fn poll_native_regex_marks(&mut self) -> Option<native_query_regex::MarkDelivery> { None }
+    fn cancel_native_regex_marks(&mut self, _id: u64) {}
 
     /// Exact live SQL session/configuration only when the local formatter
     /// has been installed. Default adapters do not claim a formatter.

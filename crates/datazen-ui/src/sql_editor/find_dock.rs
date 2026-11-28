@@ -196,6 +196,7 @@ pub(super) fn panel(
             .on_toggle(move |state: &mut AppState| {
                 if owner.owns_current_query(state) && state.sql.find_open {
                     state.cancel_query_regex();
+                    state.cancel_regex_marks();
                     state.sql.find_regex = !state.sql.find_regex;
                     state.sql.find_unsafe_range = false;
                 }

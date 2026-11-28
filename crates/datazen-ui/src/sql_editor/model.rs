@@ -165,6 +165,7 @@ pub struct SqlEditor {
     pub(super) find_open: bool,
     pub(super) find_match_case: bool,
     pub(super) find_regex: bool,
+    pub(super) regex_marks: Option<super::regex_paint::Cached>,
     pub(super) regex_error: Option<datazen_ui_api::native_query_regex::Error>,
     pub(super) find_whole_word: bool,
     pub(super) find_unsafe_range: bool,
@@ -206,6 +207,7 @@ impl SqlEditor {
             find_open: false,
             find_match_case: false,
             find_regex: false,
+            regex_marks: None,
             regex_error: None,
             find_whole_word: false,
             find_unsafe_range: false,
@@ -707,6 +709,7 @@ impl SqlEditor {
 
     pub(crate) fn dismiss_find(&mut self) {
         self.find_open = false;
+        self.regex_marks = None;
         self.regex_error = None;
         self.find_unsafe_range = false;
         self.find_input.focused = false;

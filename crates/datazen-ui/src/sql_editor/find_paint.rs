@@ -24,10 +24,10 @@ struct Hit {
 pub(super) struct FindPaint(Vec<Hit>);
 
 impl FindPaint {
-    pub(super) fn mounted(
+    pub(super) fn window(
         editor: &SqlEditor, viewport: Option<&QueryEditorViewport>, lines: &[(usize, &str)],
-        row_height: f32, padding: f32, popup: Option<(f32, f32)>, dark: bool,
-    ) -> Option<Self> {
+        row_height: f32, padding: f32, popup: Option<(f32, f32)>,
+    ) -> Option<Range<usize>> {
         let viewport = viewport?;
         if !within_budget(editor) {
             return None;
@@ -43,11 +43,11 @@ impl FindPaint {
         let (first, _) = *lines.get(rows.start)?;
         let (last, text) = *lines.get(rows.end.checked_sub(1)?)?;
         let last_byte = last + text.strip_suffix('\r').unwrap_or(text).len();
-        Self::for_window(editor, first..last_byte, dark)
+        Some(first..last_byte)
     }
 
-    fn for_window(editor: &SqlEditor, window: Range<usize>, dark: bool) -> Option<Self> {
-        if !can_paint(editor) {
+    pub(super) fn for_window(editor: &SqlEditor, window: Range<usize>, dark: bool) -> Option<Self> {
+        if editor.find_regex || !can_paint(editor) {
             return None;
         }
         let raw = decode_input(&editor.find_input.text);
@@ -56,6 +56,9 @@ impl FindPaint {
         // standalone CR as a laid-out line break, so only project real CRLF.
         let doc = LiteralDocument::new(editor.doc(), true);
         let visible = query.visible_matches(&doc, window, VISIBLE_MARK_LIMIT)?;
+        Self::from_ranges(editor,visible,dark)
+    }
+    pub(super) fn from_ranges(editor:&SqlEditor,visible:impl IntoIterator<Item=Range<usize>>,dark:bool)->Option<Self> {
         let selected: HashSet<_> = editor.selection().ranges().iter()
             .map(|sel| sel.from()..sel.to()).collect();
         let (ordinary, current) = if dark {
@@ -88,7 +91,7 @@ impl FindPaint {
 fn within_budget(editor: &SqlEditor) -> bool {
     // Go to Line has presentation priority over Find. Do not paint hidden
     // Find state during a transition between the two scoped panels.
-    !editor.find_regex && editor.find_open && editor.goto_lease.is_none() && !editor.find_input.text.is_empty()
+    editor.find_open && editor.goto_lease.is_none() && !editor.find_input.text.is_empty()
         && editor.find_input.text.len() <= QUERY_LIMIT && editor.doc().len() <= DOCUMENT_LIMIT
 }
 

@@ -68,8 +68,13 @@ pub(crate) fn panel_with_completion_scope(
     } else {
         None
     };
-    let find = FindPaint::mounted(editor, viewport.as_ref(), &lines, row_height,
-        SQL_BODY_PADDING, popup_after.map(|after| (after, popup_height)), dark);
+    let window = FindPaint::window(editor, viewport.as_ref(), &lines, row_height,
+        SQL_BODY_PADDING, popup_after.map(|after| (after, popup_height)));
+    let (find, mark_probe) = if editor.find_regex && supports_regex {
+        super::regex_paint::mounted(editor, viewport.as_ref(), window, dark)
+    } else {
+        (window.and_then(|w| FindPaint::for_window(editor, w, dark)), None)
+    };
     let gutter_width =
         13.0 + size * (8.0 / DEFAULT_SIZE) * (lines.len().max(1).ilog10() + 1) as f32;
     let (gutter_bg, gutter_ink, gutter_edge) = palette::sql_editor_gutter(dark);
@@ -174,6 +179,7 @@ pub(crate) fn panel_with_completion_scope(
                         .child(doc),
                 ),
         );
+    let panel = if let Some(probe) = mark_probe { panel.child(probe) } else { panel };
     if editor.goto_lease.is_some() && viewport.is_some() {
         panel.child(super::goto_line::panel(editor, document_ink, dark))
     } else if editor.find_open {

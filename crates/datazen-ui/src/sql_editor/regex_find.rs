@@ -7,7 +7,7 @@ use crate::{AppState, query_editor_tabs::QueryEditorViewport};
 use super::{Selection, Sel, SqlEditor};
 
 #[derive(Default)]
-pub(crate) struct Controller { last_id: u64, pending: Option<Pending> }
+pub(crate) struct Controller { last_id: u64, pending: Option<Pending>, pub(super) paints: super::regex_paint::Controller }
 struct Pending {
     from_canvas:bool, id:u64, owner:QueryEditorViewport, op:Operation, lease:Lease, deadline:f64, session:Option<u32>,
 }
