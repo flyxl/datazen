@@ -38,7 +38,23 @@ impl Thumb {
 
 pub(super) fn attach(viewport: El, k: &Kit) -> El {
     let (area, key, outer, viewport) = viewport.wrap_scroll_area((file!(), line!(), column!()));
-    let target = format!("{area}/{key}");
+    attach_to(outer, viewport, format!("{area}/{key}"), "settings-content-scrollbar", k)
+}
+
+/// Keep an intrinsic-height preview in flow: short text has no blank well,
+/// while longer text retains its own viewport independently of the page.
+pub(in crate::views::settings) fn with_preview_scrollbar(viewport: El, key: &str, k: &Kit) -> El {
+    let area = format!("{key}-scroll-area");
+    attach_to(
+        rune::col().key(area.clone()).w_full(),
+        viewport,
+        format!("{area}/{key}"),
+        &format!("{key}-scrollbar"),
+        k,
+    )
+}
+
+fn attach_to(outer: El, viewport: El, target: String, track_key: &str, k: &Kit) -> El {
     let at = Rc::new(Cell::new(ScrollPos::default()));
     let track = Live::new([0.0; 4]);
     let thumb_rect = Live::new([0.0; 4]);
@@ -67,14 +83,14 @@ pub(super) fn attach(viewport: El, k: &Kit) -> El {
             }
         }))
         .child(
-            el().key("settings-content-scrollbar")
+            el().key(track_key.to_owned())
                 .absolute(0.0, 0.0)
                 .live_rect(&track)
                 // The underlying scroll viewport remains the accessible scroll control.
                 .a11y_hidden()
                 .on_drag_any(move |drag, tx| drag_bar(&target, at.get(), jumps, drag, tx))
                 .child(
-                    el().key("settings-content-scrollbar-thumb")
+                    el().key(format!("{track_key}-thumb"))
                         .absolute(0.0, 0.0)
                         .live_rect(&thumb_rect)
                         .radius(THUMB_WIDTH / 2.0)

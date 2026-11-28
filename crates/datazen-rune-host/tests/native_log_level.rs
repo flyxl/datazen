@@ -70,6 +70,12 @@ fn native_log_level_persists_only_its_field_and_reloads_in_a_fresh_adapter() {
     page(&mut rt);
     assert_eq!(rt.state.desktop.native_log_level(), Some(LogLevel::Info));
     assert_value(&rt, "Info");
+    let field = control(&rt);
+    let content = rt.elements().into_iter()
+        .find(|el| !el.exiting && el.key.as_deref() == Some("settings-log-level-row-content"))
+        .expect("logging control column");
+    assert_eq!(field.rect, content.rect, "use the complete responsive value column");
+    assert_eq!(&field.rect[2..], &[496.0, 36.0], "reference 1440px layout");
     for key in ["settings-log-path-row", "settings-view-logs-button", "data-cleanup-section"] {
         assert!(rt.find(key).is_none(), "{key} is not a native Logging capability");
     }

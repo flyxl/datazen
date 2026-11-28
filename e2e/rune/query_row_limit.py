@@ -2,7 +2,7 @@
 import json
 import sqlite3
 
-from offline import DATA_SETTINGS, SETTINGS, fill
+from offline import DATA_SETTINGS, RESULT_LIMIT, SETTINGS, fill, key, open_custom_result_limit
 from scenarios import fixture, query_steps, tap, visible
 
 
@@ -58,10 +58,10 @@ class QueryRowLimitJourney:
         initial = self.replay(route, until=2.4)
         self._expect_select_limit_switch(initial, False)
         self.assertEqual(config.read_bytes(), initial_bytes)
-        self.expect_rendered(initial, key="settings-max-rows-input")
+        self.assertFalse(visible(initial, key=RESULT_LIMIT))
         enabled = self.replay(change, until=3.7)
         self._expect_select_limit_switch(enabled, True)
-        self.expect_rendered(enabled, text="Query max rows: 2", within="settings-data")
+        self.expect_rendered(enabled, text="2 rows", within=RESULT_LIMIT)
         self.assertFalse(visible(enabled, key="settings-error"))
         self.assertEqual(json.loads(config.read_text(encoding="utf-8")),
                          {**original, "limitSelectResults": True})
@@ -72,7 +72,7 @@ class QueryRowLimitJourney:
 
         disabled = self.replay(change, until=3.7)
         self._expect_select_limit_switch(disabled, False)
-        self.assertFalse(visible(disabled, key="settings-max-rows-input"))
+        self.assertFalse(visible(disabled, key=RESULT_LIMIT))
         self.assertFalse(visible(disabled, key="settings-error"))
         self.assertEqual(json.loads(config.read_text(encoding="utf-8")),
                          {**original, "limitSelectResults": False})
@@ -81,6 +81,33 @@ class QueryRowLimitJourney:
         check_query(sql, full, False)
         check_query(authored, limited, False)
         self.assertEqual(self.db.read_bytes(), before_db)
+
+    def test_select_limit_presets_disclose_validated_custom_without_implicit_writes(self):
+        config = self.root / "settings.json"
+        original = {"ui": {"language": "en"}, "queryResultLimit": 17,
+                    "limitSelectResults": True, "keep": {"a": 1}}
+        config.write_text(json.dumps(original), encoding="utf-8")
+        before = config.read_bytes()
+        route = [SETTINGS, DATA_SETTINGS]
+        options = self.replay([*route, tap(2.2, RESULT_LIMIT)], until=3.2)
+        for i, label in enumerate(("1,000 rows", "2,000 rows", "5,000 rows", "10,000 rows", "Custom…")):
+            self.expect_rendered(options, text=label, within=f"option{i}")
+        self.assertFalse(visible(options, key="option5"))
+        edit = [*route, *open_custom_result_limit(2.2)]
+        typed = [*edit, *fill(3.65, "settings-max-rows-input", "50000")]
+        rejected = self.replay([*typed, tap(4.9, "settings-max-rows-set")], until=6.0)
+        self.expect_rendered(rejected, key="settings-result-limit-custom-error",
+                             text="query max rows must be 1..=10000, got 50000")
+        self.assertEqual(config.read_bytes(), before)
+        cancelled = self.replay([*typed, key(4.9, "Escape")], until=6.0)
+        self.assertFalse(visible(cancelled, key="settings-result-limit-custom"))
+        self.expect_rendered(cancelled, text="17 rows", within=RESULT_LIMIT)
+        self.assertEqual(config.read_bytes(), before)
+        saved = self.replay([*route, tap(2.2, RESULT_LIMIT), tap(3.3, "option1")], until=4.5)
+        self.expect_rendered(saved, text="2,000 rows", within=RESULT_LIMIT)
+        expected = {**original, "ui": {**original["ui"], "queryMaxRows": 2000}}
+        self.assertEqual(json.loads(config.read_text()), expected)
+        self.expect_rendered(self.replay(route, until=2.6), text="2,000 rows", within=RESULT_LIMIT)
 
     def test_select_limit_failed_save_does_not_change_switch_or_replace_file(self):
         blocked = self.root / "settings.json"
@@ -120,15 +147,22 @@ class QueryRowLimitJourney:
         self.assertEqual(exact_expected, expected[:2])
         self.assertEqual(len(expected), 4)
 
+        # An existing legacy scalar enables the cap without synthesizing an
+        # explicit switch setting; retain that migration coverage.
+        (self.root / "settings.json").write_text(json.dumps({
+            "ui": {"language": "en", "queryMaxRows": 23}
+        }), encoding="utf-8")
+
         def set_cap(rows):
             tree = self.replay([
-                SETTINGS, DATA_SETTINGS,
-                *fill(2.2, "settings-max-rows-input", str(rows)), tap(3.4, "settings-max-rows-set"),
-            ], until=4.8)
-            self.expect_rendered(tree, text=f"Query max rows: {rows}", within="settings-data")
+                SETTINGS, DATA_SETTINGS, *open_custom_result_limit(2.2),
+                *fill(3.65, "settings-max-rows-input", str(rows)), tap(4.9, "settings-max-rows-set"),
+            ], until=6.0)
+            self.expect_rendered(tree, text=f"{rows} rows", within=RESULT_LIMIT)
             self.assertFalse(visible(tree, key="settings-error"))
             settings = json.loads((self.root / "settings.json").read_text(encoding="utf-8"))
             self.assertEqual(settings["ui"]["queryMaxRows"], rows)
+            self.assertNotIn("limitSelectResults", settings)
 
         def check_rows(tree, values):
             self.expect_rendered(tree, key="result-grid-status",

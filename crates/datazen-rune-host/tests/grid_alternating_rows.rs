@@ -67,7 +67,7 @@ fn live_grid_striping_switch_uses_exact_key_and_rejects_failed_atomic_write() {
         assert_switch(&rt, true);
         assert_eq!(fs::read(&path).unwrap(), initial, "mount does not seed default");
         let order = ["settings-page-size-preset-trigger", "settings-row-count-mode-trigger",
-            "settings-default-table-sort-trigger", SWITCH, "settings-max-rows-input",
+            "settings-default-table-sort-trigger", SWITCH, "settings-limit-select-results",
             "settings-workflow-step-order-trigger", "settings-data-tools"];
         for near in order.windows(2) {
             assert!(find(&rt, near[0]).rect[1] < find(&rt, near[1]).rect[1]);

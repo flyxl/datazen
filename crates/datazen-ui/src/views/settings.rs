@@ -215,7 +215,13 @@ fn settings_content(state: &AppState, theme: tok::Theme, dark: bool, active: &st
         "mcpClient" => placeholder_section("mcpClient", t("settings.mcpClient.title"), theme),
         "tunnels" if state.desktop.supports_native_saved_tunnels() => tunnels_live::view(state, dark, layer),
         "tunnels" => placeholder_section("tunnels", t("settings.tunnels.title"), theme),
-        "extensions" => placeholder_section("extensions", t("settings.extensions.title"), theme),
+        // The stock host has no driver settings contributors. Installed workspace
+        // apps are a separate registry, not editable driver settings.
+        "extensions" => col().key("settings-section-extensions").w_full().child(
+            driver_settings_section::DriverSettingsSection::<AppState>::new(
+                &[], &serde_json::Value::Null,
+            ).build(dark),
+        ),
         _ => placeholder_section(active, t("settings.title"), theme),
     };
     col()

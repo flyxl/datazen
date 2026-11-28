@@ -395,7 +395,7 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
                 f(s, value.to_owned());
             });
         }
-        let select_el = select.build(&k, layer).h(36.0);
+        let select_el = super::editor_syntax_live::stock_select_trigger(select, &k, layer);
         body = body.child(setting_row(
             &k,
             layer,
@@ -560,25 +560,30 @@ impl<'a, S: 'static> PromptSettingsSection<'a, S> {
             if prompt.system.chars().count() > PROMPT_PREVIEW_CUT {
                 preview.push('…');
             }
-            card = card.child(
-                col()
-                    .key(format!("prompt-card-{scenario}-preview-box"))
+            let key = format!("prompt-card-{scenario}-preview-box");
+            let content = format!("prompt-card-{scenario}-preview-content");
+            let overflow = rune::memo::layout_with(&content, |r| r[3] > 96.0).unwrap_or(false);
+            let viewport = col()
+                    .key(key.clone())
                     .w_full()
                     .max_h(96.0)
-                    .padding(8.0)
                     .radius(k.radius.sm)
                     .fill(k.c.surface_weak)
                     .scroll(ScrollSpec { stick_bottom: false })
                     .child(
-                        text(preview)
+                        // Put the padding inside the scrolling content so the
+                        // final line can be scrolled fully into view.
+                        col().key(content).w_full().padding(8.0)
+                            .pr(if overflow { 17.0 } else { 8.0 })
+                            .child(text(preview)
                             .key(format!("prompt-card-{scenario}-preview"))
                             .w_full()
                             .font(TextStyle { size: 11.0, line_height: 16.5, ..k.ty.mono })
                             .color(k.c.text_faint)
                             .wrap()
-                            .selectable(true),
-                    ),
-            );
+                            .selectable(true)),
+                    );
+            card = card.child(super::settings_content::with_preview_scrollbar(viewport, &key, k));
         }
 
         card

@@ -14,6 +14,7 @@ SETTINGS = tap(.5, "rail-settings")
 DATA_SETTINGS = tap(1.4, "settings-nav-dataBrowsing")
 PAGE_SIZE = "settings-page-size-preset-trigger"
 CUSTOM_PAGE_SIZE = "settings-page-size-custom"
+RESULT_LIMIT = "settings-query-result-limit-trigger"
 
 
 def key(t, name, *, cmd=False):
@@ -22,6 +23,10 @@ def key(t, name, *, cmd=False):
 
 def open_custom_page_size(t):
     return [tap(t, PAGE_SIZE), tap(t + .65, "option5")]
+
+
+def open_custom_result_limit(t):
+    return [tap(t, RESULT_LIMIT), tap(t + .65, "option4")]
 
 
 def fill(t, element, value):
@@ -201,14 +206,15 @@ class OfflineJourneys:
         tree = self.replay([
             SETTINGS, DATA_SETTINGS, *open_custom_page_size(2.1),
             *fill(3.35, "settings-page-size-input", "17"), tap(4.45, "settings-page-size-set"),
-            *fill(5.15, "settings-max-rows-input", "23"), tap(6.25, "settings-max-rows-set"),
-        ], until=7.35)
+            tap(5.15, "settings-limit-select-results"), *open_custom_result_limit(5.9),
+            *fill(7.3, "settings-max-rows-input", "23"), tap(8.45, "settings-max-rows-set"),
+        ], until=9.55)
         self.assertFalse(visible(tree, key="settings-error"))
         ui = json.loads((self.root / "settings.json").read_text())["ui"]
         self.assertEqual((ui["tablePageSize"], ui["queryMaxRows"]), (17, 23))
         tree = self.replay([SETTINGS, DATA_SETTINGS], until=2.5)
         self.expect_rendered(tree, text="17 rows", within=PAGE_SIZE)
-        self.expect_rendered(tree, text="Query max rows: 23", within="settings-data")
+        self.expect_rendered(tree, text="23 rows", within=RESULT_LIMIT)
 
     def test_settings_page_size_preset_persists_without_changing_the_query_limit(self):
         config = self.root / "settings.json"
@@ -226,7 +232,7 @@ class OfflineJourneys:
             SETTINGS, DATA_SETTINGS, tap(2.1, preset), tap(3.3, "option1"),
         ], until=4.3)
         self.expect_rendered(applied, text="50 rows", within=PAGE_SIZE)
-        self.expect_rendered(applied, text="Query max rows: 23", within="settings-data")
+        self.expect_rendered(applied, text="23 rows", within=RESULT_LIMIT)
         ui = json.loads(config.read_text(encoding="utf-8"))["ui"]
         self.assertEqual((ui["tablePageSize"], ui["queryMaxRows"]), (50, 23))
 

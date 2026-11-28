@@ -4,7 +4,7 @@ use datazen_ui_api::{
     types::SavedTunnelSummary, HttpProxyScheme, HttpProxyTunnelConfig, NativeHttpProxyDefinition,
     NativeTunnelPassword, NativeTunnelStoreError, SavedTunnelKind,
 };
-use rune::{col, row, text, El, TextEdit};
+use rune::{col, row, text, El, TextEdit, TextStyle};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 
 use super::{settings_ui::section_title, tunnel_draft::tunnel_kind_label_key};
@@ -257,40 +257,45 @@ fn dialog(state: &AppState, dark: bool, k: &Kit, layer: &mut Vec<El>) {
 pub(super) fn view(state: &AppState, dark: bool, layer: &mut Vec<El>) -> El {
     let k = kit(dark);
     let info = &state.native_tunnels;
-    let mut heading = row().w_full().gap(16.0).justify_between().center_y()
+    let mut heading = row().w_full().gap(16.0).justify_between().items_start()
         .child(section_title(k, layer, "tunnels-title".to_owned(),
                              t("settings.tunnels.title"), Some(t("settings.tunnels.description")))
             .grow(1.0).min_w(0.0));
     if info.loaded && !info.list_error {
         heading = heading.child(Button::new(t("settings.tunnels.create"))
             .variant(ButtonVariant::Outline).control_size(ControlSize::Small)
-            .on_press(|s: &mut AppState| open(s, None)).build(k).key("tunnel-create"));
+            .on_press(|s: &mut AppState| open(s, None)).build(k).key("tunnel-create")
+            .h(28.0).px(9.0).radius(9.0));
     }
-    let mut panel = col().key("settings-tunnels-section").w_full().gap(16.0).child(heading)
-        .child(text(t("settings.nativeTunnels.scope")).key("tunnel-supported-scope").wrap()
-            .font(k.ty.text_xsmall).color(k.c.text_muted));
+    let scope = text(t("settings.nativeTunnels.scope")).key("tunnel-supported-scope").wrap()
+        .font(TextStyle::new(12.0, 400.0).lh(16.0)).color(k.c.text_faint);
+    let mut panel = col().key("settings-tunnels-section").w_full().gap(16.0).child(heading);
     if info.list_error {
         panel = panel.child(row().key("tunnel-load-error").w_full().gap(8.0).center_y()
             .child(text(t("settings.nativeTunnels.loadFailed")).role("status").font(k.ty.text_xsmall)
                 .color(k.c.danger.fg).wrap().grow(1.0))
             .child(Button::new(t("common.retry")).variant(ButtonVariant::Ghost)
                 .control_size(ControlSize::Small).on_press(AppState::refresh_native_tunnels)
-                .build(k).key("tunnel-retry")));
+                .build(k).key("tunnel-retry"))).child(scope);
     } else if info.loaded && info.rows.is_empty() {
-        panel = panel.child(col().key("tunnel-list-empty").w_full().gap(8.0).padding(16.0)
-            .radius(k.radius.sm).border(1.0, k.c.border_muted)
-            .child(text(t("settings.tunnels.empty")).font(k.ty.text_small).color(k.c.text_base)));
+        panel = panel.child(col().key("tunnel-list-empty").w_full().gap(8.0).padding(17.0)
+            .radius(6.0).border(1.0, k.c.border_muted)
+            .child(text(t("settings.tunnels.empty"))
+                .font(TextStyle::new(14.0, 400.0).lh(20.0)).color(k.c.text_base))
+            .child(scope));
     } else if info.loaded {
         let mut list = col().key("tunnel-list").w_full().gap(8.0);
         for summary in &info.rows {
             let id = summary.id.clone();
             let mut item = row().key(format!("tunnel-row-{}", id)).w_full().gap(12.0).center_y()
-                .padding(8.0).radius(k.radius.sm).border(1.0, k.c.border_base).fill(k.c.surface_weak)
-                .child(col().gap(4.0).grow(1.0).min_w(0.0)
+                .px(13.0).py(9.0).radius(6.0).border(1.0, k.c.border_base).fill(k.c.surface_base)
+                .child(col().gap(2.0).grow(1.0).min_w(0.0)
                     .child(text(summary.name.clone()).key(format!("tunnel-row-{}-name", id))
-                        .font(k.ty.text_small).color(k.c.text_base))
-                    .child(text(t(tunnel_kind_label_key(summary.kind))).key(format!("tunnel-row-{}-kind", id))
-                        .font(k.ty.text_xsmall).color(k.c.text_muted)));
+                        .font(TextStyle::new(14.0, 400.0).lh(20.0)).color(k.c.text_base))
+                    .child(row().child(row().px(6.0).py(2.0).radius(4.0)
+                        .fill(k.alpha(k.c.text_accent, 0.2))
+                        .child(text(t(tunnel_kind_label_key(summary.kind))).key(format!("tunnel-row-{}-kind", id))
+                            .font(TextStyle::new(11.0, 400.0).lh(16.5)).color(k.c.text_accent)))));
             if summary.kind == SavedTunnelKind::HttpProxy {
                 let button_key = format!("tunnel-edit-{}", id);
                 item = item.child(Button::new(t("settings.tunnels.edit")).variant(ButtonVariant::Ghost)
@@ -299,7 +304,7 @@ pub(super) fn view(state: &AppState, dark: bool, layer: &mut Vec<El>) -> El {
             }
             list = list.child(item);
         }
-        panel = panel.child(list);
+        panel = panel.child(list).child(scope);
     }
     // Settings content scrolls; the bounded dialog and its dropdowns belong
     // to the shared window overlay, not to this short section panel.

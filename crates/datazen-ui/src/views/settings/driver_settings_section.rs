@@ -38,12 +38,11 @@
 
 use std::rc::Rc;
 
-use rune::{col, row, text, tok, El};
-use rune_kit::Kit;
+use rune::{col, row, text, tok, El, TextStyle};
 
 use crate::i18n::t;
 use crate::ui::kit::kit;
-use crate::views::settings::ai_settings_section::section_title;
+use super::settings_ui::section_title;
 
 /// React's `setTimeout(() => setSaved(false), 2000)` — the saved line's
 /// window, in seconds.
@@ -179,21 +178,17 @@ impl<'a, S: 'static> DriverSettingsSection<'a, S> {
     pub fn build(self, dark: bool) -> El {
         let k = kit(dark);
 
-        // The bare SectionTitle (13/600 muted — this file's own local
-        // SectionTitle, no hint).
-        let mut section = col().key(self.key.to_owned()).w_full().gap(24.0).child(
-            row().key(format!("{}-title", self.key)).child(
-                text(t("settings.extensions.title").to_owned())
-                    .font(tok::type_::TITLE)
-                    .color(k.c.text_muted),
-            ),
+        let mut section = col().key(self.key.to_owned()).w_full().gap(20.0).child(
+            section_title(k, &mut Vec::new(), format!("{}-title", self.key),
+                          t("settings.extensions.title"), None),
         );
 
         if self.entries.is_empty() {
             return section.child(
                 text(t("settings.extensions.empty").to_owned())
-                    .font(tok::type_::LABEL)
-                    .color(k.c.text_muted)
+                    .font(TextStyle::new(12.0, 400.0).lh(16.0))
+                    .color(k.c.text_faint)
+                    .w_full().wrap()
                     .key(format!("{}-empty", self.key)),
             );
         }

@@ -83,6 +83,7 @@ use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 
 mod content_pane;
 mod scrollbar;
+pub(super) use scrollbar::with_preview_scrollbar;
 use content_pane::settings_content_pane;
 
 use super::settings_content_state::{
@@ -1707,7 +1708,6 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             .values(&values)
             .current(Some(current_label.as_str()))
             .label(t("settings.logLevel"))
-            .width(160.0)
             .open(self.state.open_select == Some(SettingsSelect::LogLevel));
         select = wire_select(
             select,
@@ -1721,7 +1721,15 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 f(s, SettingsField::LogLevel(value.to_owned()));
             });
         }
-        let select_el = select.build(k, layer);
+        // React's selector fills the remainder of the 160px-label row;
+        // the popup stays anchored to the same full-width trigger.
+        let mut field = k.clone();
+        field.elevation = field.elevation.with_input(Vec::<rune::Shadow>::new());
+        field.elevation.button_neutral.clear();
+        field.ty.ui_compact = TextStyle::new(14.0, 400.0).lh(20.0);
+        field.c.icon_muted = k.c.text_faint;
+        let select_el = select.build(&field, layer)
+            .h(36.0).radius(9.0).border(1.0, k.c.border_base).pl(3.0).pr(8.0);
         body = body.child(setting_row(
             k,
             layer,

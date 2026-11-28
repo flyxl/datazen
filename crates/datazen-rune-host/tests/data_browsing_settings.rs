@@ -79,7 +79,10 @@ fn default_page_size_edge_keeps_the_real_presets_cancel_and_profile_write() {
         has_value(&rt, "50 rows");
 
         for key in ["settings-page-size-input", "settings-page-size-set",
-                    "settings-max-rows-input", "settings-max-rows-set",
+                    "settings-max-rows-input", "settings-max-rows-set"] {
+            assert!(rt.find(key).is_none(), "numeric editor stays disclosed: {key}");
+        }
+        for key in ["settings-query-result-limit-trigger",
                     "settings-data-tools", "settings-data-unsupported"] {
             let _ = element(&rt, key);
         }
@@ -110,5 +113,33 @@ fn default_page_size_edge_keeps_the_real_presets_cancel_and_profile_write() {
         let mut reopened = runtime(profile.path(), dark);
         page(&mut reopened);
         has_value(&reopened, "100 rows");
+    }
+}
+
+#[test]
+fn browsing_hints_open_at_the_mark_without_opening_or_mutating_the_preference() {
+    for (dark, theme) in [(false, "light"), (true, "dark")] {
+        let profile = tempfile::tempdir().unwrap();
+        let path = profile.path().join("settings.json");
+        let before = serde_json::to_vec(&json!({"ui":{"language":"en","themeMode":theme}, "keep":[1,2]})).unwrap();
+        fs::write(&path, &before).unwrap();
+        let mut rt = runtime(profile.path(), dark);
+        page(&mut rt);
+        for key in ["settings-default-table-sort-row", "settings-grid-density-row",
+                    "settings-grid-alternating-rows", "settings-grid-row-numbers"] {
+            let mark = element(&rt, &format!("{key}-hint-mark"));
+            let help = mark.help.as_deref().expect("original localized help");
+            assert!(!help.is_empty());
+            assert_eq!(mark.rect[2..], [16.0, 16.0]);
+            rt.pointer_move(mark.rect[0] + 8.0, mark.rect[1] + 8.0);
+            for _ in 0..90 { rt.frame(1.0 / 60.0); }
+            let (shown, bounds) = rt.help_tooltip().expect("actual hover tooltip");
+            assert_eq!(shown, help);
+            assert!(bounds[1] + bounds[3] < mark.rect[1]);
+            rt.pointer_move(1180.0, mark.rect[1]);
+            settled(&mut rt);
+            assert!(rt.help_tooltip().is_none());
+        }
+        assert_eq!(fs::read(path).unwrap(), before);
     }
 }

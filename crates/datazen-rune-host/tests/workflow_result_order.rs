@@ -238,7 +238,7 @@ fn workflow_order_has_separate_wrapping_label_hint_and_select_in_the_live_host()
         let help_mark = element(&rt, &format!("{ROW}-hint-mark"));
         let mark = help_mark.rect;
         let target = element(&rt, SELECT).rect;
-        let prior = element(&rt, "settings-max-rows-row").rect;
+        let prior = element(&rt, "settings-limit-select-results-row").rect;
         assert_eq!(slot[2], 160.0);
         assert_eq!([mark[2], mark[3]], [16.0, 16.0]);
         assert!(label[0] + label[2] + 7.9 <= mark[0], "hint overlaps the label: {label:?}, {mark:?}");

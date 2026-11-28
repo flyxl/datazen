@@ -34,6 +34,11 @@ class SavedTunnelJourneys:
         self.expect_rendered(empty, key="tunnel-create")
         section = self._settled_rect(empty, "settings-section-tunnels")
         create_button = self._settled_rect(empty, "tunnel-create")
+        notice = self._settled_rect(empty, "tunnel-list-empty")
+        self.expect_rendered(empty, key="tunnel-supported-scope", within="tunnel-list-empty")
+        self.assertAlmostEqual(create_button[1], section[1], delta=1.0)
+        self.assertAlmostEqual(create_button[3], 28, delta=1.0)
+        self.assertAlmostEqual(notice[1] - (create_button[1] + create_button[3]), 16, delta=1.0)
         self.assertGreaterEqual(create_button[0], section[0])
         self.assertAlmostEqual(create_button[0] + create_button[2],
                                section[0] + section[2], delta=1.0)

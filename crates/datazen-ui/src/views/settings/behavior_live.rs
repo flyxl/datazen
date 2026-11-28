@@ -1,13 +1,14 @@
-//! Behavior's one live action: finite retention of local workflow run history.
+//! Behavior's confirmed cleanup of local workflow run history.
 use chrono::{Duration, SecondsFormat, Utc};
-use rune::{col, row, text, El, TextStyle};
+use rune::{col, row, text, El, TextEdit, TextStyle};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit};
 
-use super::settings_ui::section_title;
+use super::settings_ui::{section_title, setting_row};
+use super::setting_hint::SettingHint;
 use crate::i18n::t;
 use crate::state_def::AppState;
 use crate::types::Section;
-use crate::ui::{dialog::Dialog, kit::kit};
+use crate::ui::{dialog::Dialog, field::TextField, kit::kit, toggle::Checkbox};
 
 const PRESETS: [(u32, &str); 3] = [
     (7, "settings.dataCleanup.preset7"),
@@ -17,17 +18,31 @@ const PRESETS: [(u32, &str); 3] = [
 const LABEL: TextStyle = TextStyle::new(14.0, 400.0).lh(20.0);
 const CAPTION: TextStyle = TextStyle::new(12.0, 400.0).lh(16.0);
 
+mod choices;
+use choices::{selection, Invalid, Mode, Selection};
+
+#[derive(Clone, Debug, PartialEq)]
+enum Plan { Before(String), ClearAll }
+
+#[derive(Clone, Copy, PartialEq)]
+enum Feedback { Removed(usize), Cleared, NoScope, InvalidDays, Error }
+
 #[derive(Clone, PartialEq)]
 pub(crate) struct WorkflowRetention {
-    days: u32,
+    selected: bool,
+    mode: Mode,
+    custom_days: TextEdit,
     epoch: u64,
-    pending: Option<(u64, String)>,
-    feedback: Option<Result<usize, ()>>,
+    pending: Option<(u64, Plan)>,
+    feedback: Option<Feedback>,
 }
 
 impl Default for WorkflowRetention {
     fn default() -> Self {
-        Self { days: 30, epoch: 0, pending: None, feedback: None }
+        Self {
+            selected: true, mode: Mode::Preset(30), custom_days: TextEdit::new("30".to_owned()),
+            epoch: 0, pending: None, feedback: None,
+        }
     }
 }
 
@@ -47,15 +62,21 @@ fn ask(state: &mut AppState) {
         return;
     }
     let form = &mut state.settings_content.workflow_retention;
-    if form.pending.is_some() || !PRESETS.iter().any(|(days, _)| *days == form.days) {
-        return;
-    }
-    // Freeze the actual UTC boundary before user consent. Refreshing the
-    // screen or waiting on the prompt never changes the set being requested.
-    let cutoff = (Utc::now() - Duration::days(i64::from(form.days)))
-        .to_rfc3339_opts(SecondsFormat::Secs, true);
+    if form.pending.is_some() { return; }
+    let plan = match selection(form.selected, form.mode, &form.custom_days.text) {
+        Ok(Selection::Finite(days)) => Plan::Before((Utc::now() - Duration::days(i64::from(days)))
+            .to_rfc3339_opts(SecondsFormat::Secs, true)),
+        Ok(Selection::ClearAll) => Plan::ClearAll,
+        Err(error) => {
+            form.feedback = Some(match error {
+                Invalid::NoScope => Feedback::NoScope,
+                Invalid::Days => Feedback::InvalidDays,
+            });
+            return;
+        }
+    };
     form.epoch = form.epoch.wrapping_add(1);
-    form.pending = Some((form.epoch, cutoff));
+    form.pending = Some((form.epoch, plan));
     form.feedback = None;
 }
 
@@ -67,15 +88,30 @@ fn answer(state: &mut AppState, epoch: u64, accepted: bool) {
     if form.pending.as_ref().map(|(id, _)| *id) != Some(epoch) {
         return;
     }
-    let Some((_, cutoff)) = form.pending.take() else { return };
+    let Some((_, plan)) = form.pending.take() else { return };
     if !accepted {
         return;
     }
-    let result = state.desktop.retain_native_workflow_history_before(&cutoff).map_err(|_| ());
+    let result = match plan {
+        Plan::Before(cutoff) => state.desktop.retain_native_workflow_history_before(&cutoff)
+            .map(Feedback::Removed),
+        // Same atomic, workflow-only host operation as the Workflow history
+        // page. It reports completion but not a count; never invent one.
+        Plan::ClearAll => state.desktop.clear_native_workflow_history().map(|()| Feedback::Cleared),
+    };
     if result.is_ok() {
         state.load_workflow_history();
     }
-    state.settings_content.workflow_retention.feedback = Some(result);
+    state.settings_content.workflow_retention.feedback = Some(result.unwrap_or(Feedback::Error));
+}
+
+fn change_form(state: &mut AppState, update: impl FnOnce(&mut WorkflowRetention)) {
+    if !is_current(state) { return; }
+    let form = &mut state.settings_content.workflow_retention;
+    if form.pending.is_none() {
+        update(form);
+        form.feedback = None;
+    }
 }
 
 fn control(
@@ -105,7 +141,7 @@ pub(super) fn view(state: &AppState, dark: bool) -> El {
     let mut choices = row().w_full().gap(8.0).flex_wrap();
     for (days, key) in PRESETS {
         let label = t(key);
-        let chosen = form.days == days;
+        let chosen = form.mode == Mode::Preset(days);
         let mut choice = row().key(format!("data-cleanup-preset-{days}"))
             .role("radio").label(label).checked(chosen).focusable(true)
             .h(30.0).px(12.0).center().radius(k.radius.md)
@@ -117,10 +153,7 @@ pub(super) fn view(state: &AppState, dark: bool) -> El {
             choice = choice.hover(k.c.surface_hover);
         }
         choices = choices.child(choice.on_press(move |s: &mut AppState| {
-            if is_current(s) && s.settings_content.workflow_retention.pending.is_none() {
-                s.settings_content.workflow_retention.days = days;
-                s.settings_content.workflow_retention.feedback = None;
-            }
+            change_form(s, |f| f.mode = Mode::Preset(days));
         }));
     }
     let run = t("settings.dataCleanup.run");
@@ -129,22 +162,59 @@ pub(super) fn view(state: &AppState, dark: bool) -> El {
         .fill(k.c.bg_accent).hover(k.c.submit_hover)
         .child(text(run).font(LABEL).color(k.c.submit_fg))
         .on_press(ask);
-    let mut card = col().key("data-cleanup-section").w_full().gap(16.0).padding(17.0)
-        .radius(k.radius.md).border(1.0, k.c.border_base).fill(k.c.surface_weak)
-        .child(text(t("settings.dataCleanup.title")).font(TextStyle::new(14.0, 500.0).lh(20.0)).color(k.c.text_base))
-        .child(text(t("settings.nativeRetention.scope")).key("data-cleanup-workflow-scope").font(LABEL).color(k.c.text_muted))
-        .child(text(t("settings.dataCleanup.retention")).font(CAPTION).color(k.c.text_faint))
-        .child(choices)
-        .child(row().child(action));
+    let title = t("settings.dataCleanup.title");
+    let scope = Checkbox::new("data-cleanup-scope-workflow", form.selected)
+        .label(t("settings.dataCleanup.scopeWorkflow"))
+        .on_toggle(|s: &mut AppState| change_form(s, |f| f.selected = !f.selected))
+        .build(k);
+    let scope = setting_row(k, &mut hints, "data-cleanup-workflow-scope".into(),
+        t("settings.dataCleanup.scope"), Some(t("settings.nativeRetention.scope")), scope);
+    let retention = section_title(k, &mut hints, "data-cleanup-retention".into(),
+        t("settings.dataCleanup.retention"), None);
+    let custom_label = t("settings.dataCleanup.customDays");
+    let custom = TextField::new("data-cleanup-custom-days", &form.custom_days)
+        .height(36.0).width(96.0).pad_x(12.0).radius(k.radius.md)
+        .fill(k.c.surface_base)
+        .border(1.0, if form.mode == Mode::Custom { k.c.border_focus } else { k.c.border_base })
+        .text_style(LABEL).label(custom_label)
+        .on_edit(|s: &mut AppState| &mut s.settings_content.workflow_retention.custom_days)
+        .on_change(|s: &mut AppState, _| change_form(s, |f| f.mode = Mode::Custom)).build(dark);
+    // The extra radio also selects the existing custom value without editing
+    // (e.g. after switching to a preset). It is a real keyboard target.
+    let custom_choice = rune_kit::RadioItem::new(custom_label, form.mode == Mode::Custom)
+        .on_select(|s: &mut AppState| change_form(s, |f| f.mode = Mode::Custom))
+        .build(k).key("data-cleanup-custom-mode");
+    let custom_row = row().w_full().gap(16.0).center_y()
+        .child(row().w(160.0).gap(4.0).center_y().child(custom_choice)
+            .child(SettingHint::new("data-cleanup-custom-hint", custom_label,
+                t("settings.nativeRetention.dayRange")).build(k, &mut hints)))
+        .child(custom);
+    let clear = rune_kit::RadioItem::new(t("settings.dataCleanup.clearAll"), form.mode == Mode::ClearAll)
+        .on_select(|s: &mut AppState| change_form(s, |f| f.mode = Mode::ClearAll))
+        .build(k).key("data-cleanup-clear-all");
+    let mut result_row = row().w_full().pt(4.0).gap(12.0).center_y().child(action);
     if let Some(feedback) = form.feedback {
         let (key, message, ink) = match feedback {
-            Ok(count) => ("data-cleanup-workflow-success",
+            Feedback::Removed(count) => ("data-cleanup-workflow-success",
                 t("settings.dataCleanup.success").replace("{count}", &count.to_string()), k.c.success.fg),
-            Err(()) => ("data-cleanup-workflow-error",
-                t("settings.dataCleanup.error").to_owned(), k.c.danger.fg),
+            Feedback::Cleared => ("data-cleanup-workflow-success",
+                t("settings.nativeRetention.cleared").to_owned(), k.c.success.fg),
+            other => ("data-cleanup-workflow-error", t(match other {
+                Feedback::NoScope => "settings.dataCleanup.noScope",
+                Feedback::InvalidDays => "settings.nativeRetention.dayRange",
+                _ => "settings.dataCleanup.error",
+            }).to_owned(), k.c.danger.fg),
         };
-        card = card.child(text(message).key(key).font(CAPTION).color(ink).w_full().wrap());
+        result_row = result_row.child(text(message).key(key).role("status").font(CAPTION)
+            .color(ink).min_w(0.0).shrink().wrap());
     }
+    let card = col().key("data-cleanup-section").w_full().gap(16.0).padding(17.0)
+        .radius(k.radius.md).border(1.0, k.c.border_base).fill(k.c.surface_weak)
+        .child(row().center_y().gap(4.0)
+            .child(text(title).font(TextStyle::new(14.0, 500.0).lh(20.0)).color(k.c.text_base))
+            .child(SettingHint::new("data-cleanup-title-hint", title, t("settings.nativeRetention.scope"))
+                .build(k, &mut hints)))
+        .child(scope).child(retention).child(choices).child(custom_row).child(clear).child(result_row);
     body.child(card).children(hints)
 }
 
@@ -153,10 +223,15 @@ pub(crate) fn mount(state: &AppState, dark: bool, layer: &mut Vec<El>) {
     if !is_current(state) {
         return;
     }
-    let Some((epoch, cutoff)) = &state.settings_content.workflow_retention.pending else { return };
+    let Some((epoch, plan)) = &state.settings_content.workflow_retention.pending else { return };
     let epoch = *epoch;
     let k = kit(dark);
-    let message = t("settings.nativeRetention.confirm").replace("{cutoff}", cutoff);
+    let (message, accept_label) = match plan {
+        Plan::Before(cutoff) => (t("settings.nativeRetention.confirm").replace("{cutoff}", cutoff),
+            t("settings.nativeRetention.delete")),
+        Plan::ClearAll => (t("settings.nativeRetention.confirmAll").to_owned(),
+            t("settings.dataCleanup.clearAll")),
+    };
     Dialog::new("data-cleanup-workflow-confirm", t("settings.dataCleanup.confirmTitle"))
         .open(true).open_epoch(epoch).width(496.0).fit().body_max_height(180.0)
         .on_close(move |s: &mut AppState| answer(s, epoch, false))
@@ -164,7 +239,7 @@ pub(crate) fn mount(state: &AppState, dark: bool, layer: &mut Vec<El>) {
             .font(LABEL).color(k.c.text_muted).w_full().wrap())
         .footer(control(k, "data-cleanup-workflow-cancel", t("common.cancel"), ButtonVariant::Ghost,
             move |s: &mut AppState| answer(s, epoch, false)))
-        .footer(control(k, "data-cleanup-workflow-accept", t("settings.nativeRetention.delete"), ButtonVariant::Danger,
+        .footer(control(k, "data-cleanup-workflow-accept", accept_label, ButtonVariant::Danger,
             move |s: &mut AppState| answer(s, epoch, true)))
         .build(k, layer);
 }
@@ -249,7 +324,8 @@ mod tests {
         answer(&mut rt.state, retired, true);
         assert!(recorded.borrow().is_empty());
         tap(&mut rt, accept);
-        assert_eq!(recorded.borrow().as_slice(), &[current.1]);
+        let Plan::Before(cutoff) = current.1 else { panic!("expected a finite cutoff") };
+        assert_eq!(recorded.borrow().as_slice(), &[cutoff]);
         answer(&mut rt.state, current.0, true);
         assert_eq!(recorded.borrow().len(), 1);
     }

@@ -310,3 +310,45 @@ fn the_edit_flow_renders_and_saves() {
     assert!(!has(&rt, "prompt-card-nl2sql-form"), "the form closed");
     assert!(has(&rt, "prompt-settings-feedback"), "the saved line shows");
 }
+
+#[test]
+fn overflowing_preview_has_its_own_idle_thumb_and_fitting_preview_has_no_gutter() {
+    fn rect(rt: &Runtime<AuditState>, key: &str) -> [f32; 4] {
+        rt.elements().into_iter().find(|e| !e.exiting && e.key.as_deref() == Some(key))
+            .unwrap_or_else(|| panic!("missing {key}")).rect
+    }
+    for dark in [false, true] {
+        let mut scene = AuditState::empty();
+        scene.dark = dark;
+        scene.section.deliver_prompts(vec![
+            info(PromptScenario::Nl2sql, PromptSource::Default, &"a line\n".repeat(18)),
+            info(PromptScenario::Chat, PromptSource::Default, "one line"),
+        ]);
+        let mut rt = rt(scene);
+        rt.set_system_scroll_bars(rune::ScrollBars::WhenScrolling);
+        settle(&mut rt);
+        let outer = rect(&rt, "prompt-card-nl2sql-preview-box");
+        let thumb = rect(&rt, "prompt-card-nl2sql-preview-box-scrollbar-thumb");
+        let start = rect(&rt, "prompt-card-nl2sql-preview");
+        let short_box = rect(&rt, "prompt-card-chat-preview-box");
+        let short = rect(&rt, "prompt-card-chat-preview");
+        assert_eq!(outer[3], 96.0);
+        assert_eq!(start[2], outer[2] - 16.0 - 9.0);
+        assert_eq!(thumb[2], 5.0);
+        assert!(thumb[3] >= 20.0 && thumb[3] < outer[3] - 4.0);
+        assert_eq!(rect(&rt, "prompt-card-chat-preview-box-scrollbar")[2..], [0.0, 0.0]);
+        assert_eq!(short[2], short_box[2] - 16.0);
+        assert!(short_box[3] < 96.0);
+
+        let x = thumb[0] + 2.0;
+        let y = thumb[1] + thumb[3] / 2.0;
+        rt.pointer_move(x, y);
+        rt.pointer_down(x, y);
+        rt.pointer_move(x, outer[1] + outer[3] - 1.0);
+        rt.frame(1.0 / 60.0);
+        rt.pointer_up(x, outer[1] + outer[3] - 1.0);
+        settle(&mut rt);
+        assert!(rect(&rt, "prompt-card-nl2sql-preview")[1] < start[1] - 20.0);
+        assert_eq!(rect(&rt, "prompt-card-chat-preview"), short, "only the touched preview moves");
+    }
+}

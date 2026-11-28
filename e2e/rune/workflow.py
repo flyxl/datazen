@@ -31,7 +31,7 @@ class WorkflowJourney:
         pending = self.replay(ask, until=3.2)
         self.expect_rendered(pending, key="data-cleanup-workflow-scope")
         self.expect_rendered(pending, key="data-cleanup-workflow-confirm")
-        for unavailable in ("data-cleanup-scope-query", "data-cleanup-clear-all", "settings-safe-mode"):
+        for unavailable in ("data-cleanup-scope-query", "settings-safe-mode"):
             self.assertFalse(visible(pending, key=unavailable))
         self.assertTrue(any("UTC" in e.get("text", "") and "Query history and workflow definitions" in e.get("text", "")
                             for e in pending["elements"] if e.get("key") == "data-cleanup-workflow-confirm-message"))
@@ -58,6 +58,45 @@ class WorkflowJourney:
             [tap(.5, "rail-workflows"), tap(2, "workflow-side-tab-history")], until=3.3)
         self.expect_rendered(reopened, key="workflow-history-list-item-run-45")
         self.assertFalse(visible(reopened, key="workflow-history-list-item-run-100"))
+
+        # New modes use the same real adapter but cannot bypass consent,
+        # broaden a malformed finite draft, or touch any other store.
+        for target in ("data-cleanup-scope-workflow", "data-cleanup-custom-days", "data-cleanup-clear-all"):
+            self.expect_rendered(pending, key=target)
+        history.write_bytes(fixture_bytes)
+        no_scope = self.replay([*start, tap(2.3, "data-cleanup-scope-workflow"),
+            tap(3.05, "data-cleanup-workflow-run")], until=4.0)
+        self.expect_rendered(no_scope, key="data-cleanup-workflow-error")
+        self.assertFalse(visible(no_scope, key="data-cleanup-workflow-confirm"))
+        self.assertEqual(history.read_bytes(), fixture_bytes)
+
+        def custom(value):
+            return [*start, tap(2.3, "data-cleanup-custom-days"), key(2.6, "a", cmd=True),
+                    type_text(2.9, value), tap(3.65, "data-cleanup-workflow-run")]
+
+        invalid = self.replay(custom("3"), until=4.5)
+        self.expect_rendered(invalid, key="data-cleanup-workflow-error")
+        self.assertFalse(visible(invalid, key="data-cleanup-workflow-confirm"))
+        self.assertEqual(history.read_bytes(), fixture_bytes)
+        changed = self.replay([*custom("12"), tap(4.45, "data-cleanup-workflow-accept")], until=5.4)
+        self.expect_rendered(changed, key="data-cleanup-workflow-success")
+        self.assertEqual([e["id"] for e in json.loads(history.read_bytes())], ["run-10", "run-1"])
+
+        history.write_bytes(fixture_bytes)
+        clear = [*start, tap(2.3, "data-cleanup-clear-all"), tap(3.05, "data-cleanup-workflow-run")]
+        clear_dialog = self.replay(clear, until=3.8)
+        self.assertTrue(any("all local workflow runs" in e.get("text", "")
+                            for e in clear_dialog["elements"]
+                            if e.get("key") == "data-cleanup-workflow-confirm-message"))
+        self.assertEqual(history.read_bytes(), fixture_bytes)
+        canceled = self.replay([*clear, key(4.0, "Escape")], until=4.9)
+        self.assertFalse(visible(canceled, key="data-cleanup-workflow-confirm"))
+        self.assertEqual(history.read_bytes(), fixture_bytes)
+        cleared = self.replay([*clear, tap(4.0, "data-cleanup-workflow-accept")], until=4.9)
+        self.expect_rendered(cleared, key="data-cleanup-workflow-success")
+        self.assertEqual(json.loads(history.read_bytes()), [])
+        self.assertEqual(sql_history.read_bytes(), decoy)
+        self.assertEqual(definitions.read_bytes(), decoy)
 
     def test_workflow_inline_visual_form_fills_pane_and_scrolls_above_fixed_footer(self):
         settings = self.root / "settings.json"

@@ -112,6 +112,9 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         "settings.nativeEditorFont.bundled" => Some(("内置等宽字体（IBM Plex Mono）", "Bundled monospace (IBM Plex Mono)")),
         "settings.nativeRetention.unavailable" => Some(("此版本暂不支持本机工作流历史清理。", "Local workflow history cleanup is not available here.")),
         "settings.nativeRetention.scope" => Some(("仅清理本机工作流运行记录。", "Local workflow run history only.")),
+        "settings.nativeRetention.dayRange" => Some(("请输入 7 至 365 之间的整数天数。", "Enter a whole number of days from 7 to 365.")),
+        "settings.nativeRetention.confirmAll" => Some(("永久删除确认时的所有本机工作流运行记录，包括最近的记录？此操作无法撤销，查询历史与工作流定义不会更改。", "Permanently delete all local workflow runs present when you confirm, including recent runs? This cannot be undone. Query history and workflow definitions are not changed.")),
+        "settings.nativeRetention.cleared" => Some(("已清除本机工作流运行记录。", "Local workflow run history cleared.")),
         "settings.nativeRetention.confirm" => Some(("永久清理 UTC {cutoff} 之前的本机工作流运行记录？将保留该时刻及之后的记录。查询历史与工作流定义不会更改。", "Permanently delete local workflow runs older than {cutoff} (UTC)? Runs at or after the cutoff stay. Query history and workflow definitions are not changed.")),
         "settings.nativeRetention.delete" => Some(("删除较早的记录", "Delete older runs")),
         "settings.nativeSnippet.name" => Some(("片段名称", "Snippet name")),
@@ -130,8 +133,8 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
             "Installed extensions are read-only. Opening, enabling, disabling, uninstalling, and applying themes are unavailable.",
         )),
         "settings.nativeTunnels.scope" => Some((
-            "可新建和编辑 HTTP 代理。其他类型仅显示名称；此版本尚不支持测试隧道或绑定连接。",
-            "Create and edit HTTP proxy definitions. Other types are listed only; testing and connection binding are not available here.",
+            "可新建和编辑 HTTP 代理。其他类型只读；不支持测试或绑定连接。",
+            "Create or edit HTTP proxies. Other types are read-only. Testing and connection binding are unavailable.",
         )),
         "settings.nativeTunnels.loadFailed" => Some((
             "无法加载本机保存的隧道定义。未更改已保存内容。",

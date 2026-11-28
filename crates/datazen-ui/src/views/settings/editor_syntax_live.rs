@@ -75,7 +75,7 @@ pub(super) fn row(state: &AppState, dark: bool, kit: &Kit, overlays: &mut Vec<El
                 state.save_sql_syntax_theme(theme);
             }
         });
-    let select = editor_preference_trigger(select, &syntax_field_kit(kit), overlays);
+    let select = stock_select_trigger(select, kit, overlays);
     setting_row(
         kit,
         overlays,
@@ -173,6 +173,10 @@ static SYNTAX_CHEVRON_UP: rune::Icon = rune::Icon {
     view: 16.0,
     body: r#"<path d="M11.5 9.75L8 6.25L4.5 9.75" fill="none" stroke="currentColor" stroke-width="1.166667" stroke-linecap="round" stroke-linejoin="round"/>"#,
 };
+
+pub(super) fn stock_select_trigger(select: Select, kit: &Kit, overlays: &mut Vec<El>) -> El {
+    editor_preference_trigger(select, &syntax_field_kit(kit), overlays)
+}
 
 fn syntax_field_kit(kit: &Kit) -> Kit {
     let mut field = editor_field_kit(kit);

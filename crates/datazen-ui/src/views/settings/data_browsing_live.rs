@@ -5,8 +5,7 @@ use datazen_ui_api::{BuiltinLanguage, DefaultTableSort, GridDensity, Setting};
 use rune::{col, row, text, tok, Color, El, Shadow, TextEdit, TextStyle, Tx};
 use rune_kit::{Button, ButtonVariant, ControlSize, Kit, Placement};
 
-use super::setting_hint::SettingHint;
-use super::settings_content_state::SettingsSelect;
+use super::settings_content_state::{SettingsContentState, SettingsSelect, RESULT_LIMIT_OPTIONS};
 use super::settings_ui::{section_title, setting_row};
 use super::{backup_section, export_section, import_section, settings_error_row};
 use crate::constants::TABLE_PAGE_SIZE;
@@ -18,7 +17,7 @@ use crate::ui::{field::TextField, kit::kit, select::Select};
 // validated custom size rather than placing a duplicate editor in the route.
 const PRESETS: [u32; 5] = [25, 50, 100, 200, 500];
 const FIELD_HEIGHT: f32 = 36.0;
-const CUSTOM_VALUE: &str = "__custom_page_size__";
+const CUSTOM_VALUE: &str = "__custom_rows__";
 const PAGE_SIZE_TRIGGER: &str = "settings-page-size-preset-trigger";
 const PAGE_SIZE_INPUT: &str = "settings-page-size-input";
 
@@ -52,7 +51,7 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             None,
         ));
     let presets = page_size_select(state, page_size, &k, &mut overlays);
-    mount_custom_page_size(state, dark, &k, &mut overlays);
+    mount_custom_rows(state, dark, &k, &mut overlays);
     let row_count = state.desktop.read_native_row_count_mode().ok();
     let default_sort = state.desktop.read_native_default_table_sort().ok();
     let density = state.desktop.read_native_grid_density().ok();
@@ -86,7 +85,6 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             t("settings.gridAlternatingRows.hint"),
             striped,
             &k,
-            &mut overlays,
             |state| {
                 let current = state.desktop.read_native_grid_alternating_rows()?;
                 state.desktop.write_native_grid_alternating_rows(!current)
@@ -100,7 +98,6 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
             t("settings.gridRowNumbers.hint"),
             visible,
             &k,
-            &mut overlays,
             |state| {
                 let current = state.desktop.read_native_grid_row_numbers()?;
                 state.desktop.write_native_grid_row_numbers(!current)
@@ -110,43 +107,14 @@ pub(super) fn view(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     if let Some(limit) = select_limit {
         section = section.child(select_limit_row(limit.effective_rows.is_some(), &k));
     }
-    if select_limit.is_none_or(|limit| limit.explicit != Some(false)) {
-        let max_rows_label = match select_limit {
-            None => format!("Query max rows: {legacy_max_rows}"),
-            Some(limit) => match limit.effective_rows {
-                Some(rows) => format!("Query max rows: {rows}"),
-                None => match state.builtin_language() {
-                    BuiltinLanguage::English => "Query max rows: not set".to_owned(),
-                    BuiltinLanguage::SimplifiedChinese => "查询最大行数：未设置".to_owned(),
-                },
-            },
-        };
-        section = section.child(
-            col()
-                .key("settings-data")
-                .w_full()
-                .gap(12.0)
-                .child(setting_row(
-                    &k,
-                    &mut overlays,
-                    "settings-max-rows-row".to_owned(),
-                    &max_rows_label,
-                    None,
-                    number_row(
-                        &k,
-                        dark,
-                        NumberControl {
-                            input_key: "settings-max-rows-input",
-                            draft: &state.max_rows_input,
-                            field_label: t("settings.maxRows"),
-                            edit: |state| &mut state.max_rows_input,
-                            set_key: "settings-max-rows-set",
-                            set_label: "Set query max rows",
-                            save: AppState::set_query_max_rows,
-                        },
-                    ),
-                )),
-        );
+    // No dormant editor when the switch is off. A legacy host without a
+    // switch still supports its original numeric preference.
+    if let Some(rows) = select_limit.map_or(Some(legacy_max_rows), |limit| limit.effective_rows) {
+        let select = result_limit_select(state, rows, &k, &mut overlays);
+        section = section.child(setting_row(
+            &k, &mut overlays, "settings-max-rows-row".to_owned(),
+            t("settings.maxRows"), None, select,
+        ));
     }
     section = section.child(workflow_step_order_row(state, &k, &mut overlays));
     if state.settings_error.is_some() {
@@ -237,7 +205,6 @@ fn grid_appearance_toggle(
     hint: &str,
     checked: bool,
     k: &Kit,
-    overlays: &mut Vec<El>,
     toggle_preference: impl Fn(&mut AppState) -> Result<(), String> + 'static,
 ) -> El {
     // React's white ToggleRow knob uses Tailwind's two-layer `shadow`.
@@ -276,10 +243,9 @@ fn grid_appearance_toggle(
             }
         });
     row().key(format!("{key}-row")).w_full().justify_between().center_y()
-        .child(row().gap(4.0).center_y()
+        .child(row().gap(8.0).center_y()
             .child(text(label).font(TextStyle::new(14.0, 400.0).lh(20.0)).color(k.c.text_muted))
-            .child(SettingHint::new(format!("{key}-hint"), label.to_owned(), hint.to_owned())
-                .build(k, overlays)))
+            .child(data_hint(k, key, label, hint)))
         .child(toggle)
 }
 
@@ -399,14 +365,7 @@ fn default_table_sort_row(
         .border(1.0, k.c.border_base)
         .pl(3.0)
         .pr(8.0);
-    setting_row(
-        k,
-        overlays,
-        "settings-default-table-sort-row".to_owned(),
-        label,
-        Some(t("settings.defaultTableSort.hint")),
-        select,
-    )
+    hinted_setting_row(k, "settings-default-table-sort-row", label, t("settings.defaultTableSort.hint"), select)
 }
 
 fn grid_density_row(state: &AppState, density: GridDensity, k: &Kit, overlays: &mut Vec<El>) -> El {
@@ -443,14 +402,7 @@ fn grid_density_row(state: &AppState, density: GridDensity, k: &Kit, overlays: &
         .border(1.0, k.c.border_base)
         .pl(3.0)
         .pr(8.0);
-    setting_row(
-        k,
-        overlays,
-        "settings-grid-density-row".to_owned(),
-        label,
-        Some(t("settings.gridDensity.hint")),
-        select,
-    )
+    hinted_setting_row(k, "settings-grid-density-row", label, t("settings.gridDensity.hint"), select)
 }
 
 fn workflow_step_order_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) -> El {
@@ -495,48 +447,44 @@ fn workflow_step_order_row(state: &AppState, k: &Kit, overlays: &mut Vec<El>) ->
         .border(1.0, k.c.border_base)
         .pl(3.0)
         .pr(8.0);
-    workflow_order_setting_row(k, label, t("settings.workflowStepResultOrderHint"), select)
+    hinted_setting_row(k, "settings-workflow-step-order-row", label, t("settings.workflowStepResultOrderHint"), select)
 }
 
-/// The original's min-w-0 label wraps within its 160px column, reserving
-/// a non-shrinking 16px hint plus the 4px row gap and 4px hint margin.
-/// Only this long, live label needs the narrower measure.
-fn workflow_order_setting_row(k: &Kit, label: &str, hint: &str, select: El) -> El {
-    const KEY: &str = "settings-workflow-step-order-row";
+/// The stock native help overlay is driven by actual pointer movement.
+fn data_hint(k: &Kit, key: &str, label: &str, hint: &str) -> El {
+    row().key(format!("{key}-hint-tooltip-trigger")).size(16.0, 16.0).child(
+        row().key(format!("{key}-hint-mark"))
+            .size(16.0, 16.0).center().radius(8.0)
+            .border(1.0, k.c.border_base)
+            .help(hint).help_above()
+            .label(label).description(hint)
+            .focusable(true).focus_ring(2.0, 1.0, k.c.border_focus)
+            .child(text("?").font(TextStyle::new(11.0, 400.0).lh(16.5))
+                .color(k.c.text_faint).a11y_hidden()),
+    )
+}
+
+/// React wraps the label within its 160px column, reserving a nonshrinking
+/// hint and the 4px row gap + 4px hint margin.
+fn hinted_setting_row(k: &Kit, key: &str, label: &str, hint: &str, select: El) -> El {
     const LABEL_WIDTH: f32 = 160.0;
     const HINT_WIDTH: f32 = 16.0;
     const HINT_GAP: f32 = 8.0;
-    let mark = row()
-        .key(format!("{KEY}-hint-mark"))
-        .size(HINT_WIDTH, HINT_WIDTH)
-        .center()
-        .radius(HINT_WIDTH * 0.5)
-        .border(1.0, k.c.border_base)
-        .help(hint)
-        .help_above()
-        .label(label)
-        .description(hint)
-        .child(
-            text("?")
-                .font(TextStyle::new(11.0, 400.0).lh(16.5))
-                .color(k.c.text_faint)
-                .a11y_hidden(),
-        );
     row()
-        .key(KEY)
+        .key(key)
         .w_full()
         .gap(16.0)
         .items_start()
         .child(
             row()
-                .key(format!("{KEY}-label"))
+                .key(format!("{key}-label"))
                 .w(LABEL_WIDTH)
                 .min_h(FIELD_HEIGHT)
                 .gap(HINT_GAP)
                 .center_y()
                 .child(
                     text(label.to_owned())
-                        .key(format!("{KEY}-label-text"))
+                        .key(format!("{key}-label-text"))
                         .font(TextStyle::new(14.0, 400.0).lh(20.0))
                         .color(k.c.text_muted)
                         .min_w(0.0)
@@ -544,20 +492,15 @@ fn workflow_order_setting_row(k: &Kit, label: &str, hint: &str, select: El) -> E
                         .shrink()
                         .wrap(),
                 )
-                .child(
-                    row()
-                        .key(format!("{KEY}-hint-tooltip-trigger"))
-                        .size(HINT_WIDTH, HINT_WIDTH)
-                        .child(mark),
-                ),
+                .child(data_hint(k, key, label, hint)),
         )
-        .child(col().key(format!("{KEY}-content")).min_w(0.0).grow(1.0).child(select))
+        .child(col().key(format!("{key}-content")).min_w(0.0).grow(1.0).child(select))
 }
 
 fn page_size_select(state: &AppState, page_size: u32, k: &Kit, overlays: &mut Vec<El>) -> El {
     let mut labels = PRESETS.map(|rows| format!("{rows} {}", t("common.rows"))).to_vec();
     let mut values = PRESETS.map(|rows| rows.to_string()).to_vec();
-    let (custom, _, _, _) = custom_page_size_copy(state.builtin_language());
+    let (custom, _, _, _) = CustomRows::Page.copy(state.builtin_language());
     labels.push(custom.to_owned());
     values.push(CUSTOM_VALUE.to_owned());
     let selected = format!("{page_size} {}", t("common.rows"));
@@ -612,72 +555,107 @@ fn data_browsing_route(state: &AppState) -> bool {
     state.active == crate::types::Section::Settings && state.settings_section() == "dataBrowsing"
 }
 
-fn custom_page_size_is_open(state: &AppState) -> bool {
-    data_browsing_route(state) && state.settings_content.open_select == Some(SettingsSelect::CustomPageSize)
+/// Both native number editors share the same modal behavior. Only the
+/// active one owns focus, its own draft and a transient validation error.
+#[derive(Clone, Copy)]
+enum CustomRows { Page, Result }
+impl CustomRows {
+    fn open(state: &AppState) -> Option<Self> {
+        if !data_browsing_route(state) { return None; }
+        match state.settings_content.open_select? {
+            SettingsSelect::CustomPageSize => Some(Self::Page),
+            SettingsSelect::CustomResultLimit => Some(Self::Result),
+            _ => None,
+        }
+    }
+
+    fn trigger(self) -> &'static str {
+        match self { Self::Page => PAGE_SIZE_TRIGGER, Self::Result => "settings-query-result-limit-trigger" }
+    }
+
+    fn input(self) -> &'static str {
+        match self { Self::Page => PAGE_SIZE_INPUT, Self::Result => "settings-max-rows-input" }
+    }
+
+    fn key(self) -> &'static str {
+        match self { Self::Page => "settings-page-size-custom", Self::Result => "settings-result-limit-custom" }
+    }
+
+    fn draft(self, state: &AppState) -> &TextEdit {
+        match self { Self::Page => &state.page_size_input, Self::Result => &state.max_rows_input }
+    }
+
+    fn copy(self, language: BuiltinLanguage) -> (&'static str, &'static str, &'static str, &'static str) {
+        match (self, language) {
+            (Self::Page, BuiltinLanguage::English) => ("Custom…", "Custom page size", "Rows per page (1–500)", "Set page size"),
+            (Self::Page, BuiltinLanguage::SimplifiedChinese) => ("自定义…", "自定义每页行数", "每页行数（1–500）", "设定每页行数"),
+            (Self::Result, BuiltinLanguage::English) => ("Custom…", "Custom result limit", "Maximum rows (1–10,000)", "Set result limit"),
+            (Self::Result, BuiltinLanguage::SimplifiedChinese) => ("自定义…", "自定义返回行数", "最大返回行数（1–10,000）", "设置返回行数"),
+        }
+    }
 }
 
-fn dismiss_custom_page_size(state: &mut AppState, tx: &mut Tx) {
-    if custom_page_size_is_open(state) {
+fn dismiss_custom_rows(state: &mut AppState, tx: &mut Tx) {
+    if let Some(field) = CustomRows::open(state) {
         state.settings_content.close_select();
-        tx.focus(PAGE_SIZE_TRIGGER, tx.focus_visible());
+        tx.focus(field.trigger(), tx.focus_visible());
     }
 }
 
-fn commit_custom_page_size(state: &mut AppState, tx: &mut Tx) {
-    if !custom_page_size_is_open(state) {
+fn commit_custom_rows(state: &mut AppState, tx: &mut Tx) {
+    let Some(field) = CustomRows::open(state) else { return; };
+    // Reject stale events after disabling a live cap; a legacy host has
+    // no separate switch. Both setters validate before a profile write.
+    if matches!(field, CustomRows::Result) && state.desktop.read_native_select_limit()
+        .is_ok_and(|limit| limit.effective_rows.is_none()) {
+        dismiss_custom_rows(state, tx);
         return;
     }
-    // The established setter owns validation and the actual host write. A
-    // custom draft error belongs to this popover, not the Query Limit row.
     let prior_error = state.settings_error.take();
-    state.set_table_page_size();
-    let custom_error = std::mem::replace(&mut state.settings_error, prior_error);
-    if let Some(error) = custom_error {
-        state.settings_content.custom_page_size_error = Some(error);
-        tx.focus(PAGE_SIZE_INPUT, tx.focus_visible());
+    match field {
+        CustomRows::Page => state.set_table_page_size(),
+        CustomRows::Result => state.set_query_max_rows(),
+    }
+    let error = std::mem::replace(&mut state.settings_error, prior_error);
+    if let Some(error) = error {
+        state.settings_content.custom_number_error = Some(error);
+        tx.focus(field.input(), tx.focus_visible());
     } else {
-        dismiss_custom_page_size(state, tx);
+        dismiss_custom_rows(state, tx);
     }
 }
 
-fn custom_page_size_copy(language: BuiltinLanguage) -> (&'static str, &'static str, &'static str, &'static str) {
-    match language {
-        BuiltinLanguage::English => ("Custom…", "Custom page size", "Rows per page (1–500)", "Set page size"),
-        BuiltinLanguage::SimplifiedChinese => ("自定义…", "自定义每页行数", "每页行数（1–500）", "设定每页行数"),
-    }
-}
-
-fn mount_custom_page_size(state: &AppState, dark: bool, k: &Kit, overlays: &mut Vec<El>) {
-    if !custom_page_size_is_open(state) {
-        return;
-    }
-    let (_, title, hint, save_label) = custom_page_size_copy(state.builtin_language());
+fn mount_custom_rows(state: &AppState, dark: bool, k: &Kit, overlays: &mut Vec<El>) {
+    let Some(field) = CustomRows::open(state) else { return; };
+    let (_, title, hint, save_label) = field.copy(state.builtin_language());
     let mut body = col()
-        .key("settings-page-size-custom")
+        .key(field.key())
         .role("dialog")
         .label(title)
         .description(hint)
         .w(320.0)
         .padding(12.0)
         .gap(8.0)
-        .modal_tx(true, dismiss_custom_page_size)
+        .modal_tx(true, dismiss_custom_rows)
         .child(text(title).font(k.ty.ui_medium).color(k.c.text_base))
         .child(text(hint).font(k.ty.ui_compact).color(k.c.text_muted))
         .child(
-            TextField::new(PAGE_SIZE_INPUT, &state.page_size_input)
+            TextField::new(field.input(), field.draft(state))
                 .height(FIELD_HEIGHT)
                 .fill(k.c.bg_base)
                 .border(1.0, k.c.border_base)
                 .radius(k.radius.md)
-                .label(t("settings.defaultPageSize"))
-                .on_edit(|state: &mut AppState| &mut state.page_size_input)
-                .on_submit(commit_custom_page_size)
+                .label(match field { CustomRows::Page => t("settings.defaultPageSize"), CustomRows::Result => t("settings.maxRows") })
+                .on_edit(move |state: &mut AppState| match field {
+                    CustomRows::Page => &mut state.page_size_input, CustomRows::Result => &mut state.max_rows_input,
+                })
+                .on_submit(commit_custom_rows)
                 .build(dark),
         );
-    if let Some(error) = &state.settings_content.custom_page_size_error {
+    if let Some(error) = &state.settings_content.custom_number_error {
         body = body.child(
             text(error.clone())
-                .key("settings-page-size-custom-error")
+                .key(format!("{}-error", field.key()))
                 .role("alert")
                 .wrap()
                 .color(k.c.danger.fg),
@@ -690,15 +668,15 @@ fn mount_custom_page_size(state: &AppState, dark: bool, k: &Kit, overlays: &mut 
             .gap(8.0)
             .child(Button::new(t("common.cancel")).variant(ButtonVariant::Ghost)
                 .control_size(ControlSize::Regular).build(k)
-                .key("settings-page-size-custom-cancel").focusable(true)
-                .on_press_tx(dismiss_custom_page_size))
+                .key(format!("{}-cancel", field.key())).focusable(true)
+                .on_press_tx(dismiss_custom_rows))
             .child(Button::new(t("common.save")).control_size(ControlSize::Regular).build(k)
-                .key("settings-page-size-set").focusable(true).label(save_label)
-                .on_press_tx(commit_custom_page_size)),
+                .key(match field { CustomRows::Page => "settings-page-size-set", CustomRows::Result => "settings-max-rows-set" }).focusable(true).label(save_label)
+                .on_press_tx(commit_custom_rows)),
     );
     overlays.push(rune_kit::popover::anchored(
         k, rune_kit::popover::raised(k, body, k.radius.md),
-        PAGE_SIZE_TRIGGER, Placement::BottomStart, 4.0,
+        field.trigger(), Placement::BottomStart, 4.0,
     ));
 }
 
@@ -714,46 +692,45 @@ fn preset_field_kit(k: &Kit) -> Kit {
     field
 }
 
-struct NumberControl<'a> {
-    input_key: &'static str,
-    draft: &'a TextEdit,
-    field_label: &'a str,
-    edit: fn(&mut AppState) -> &mut TextEdit,
-    set_key: &'static str,
-    set_label: &'static str,
-    save: fn(&mut AppState),
-}
-
-fn number_row(k: &Kit, dark: bool, control: NumberControl<'_>) -> El {
-    row()
-        .w_full()
-        .gap(8.0)
-        .child(
-            TextField::new(control.input_key, control.draft)
-                .height(FIELD_HEIGHT)
-                .grow()
-                .fill(k.c.bg_base)
-                .border(1.0, k.c.border_base)
-                .radius(k.radius.md)
-                .label(control.field_label)
-                .on_edit(control.edit)
-                .build(dark),
-        )
-        .child(
-            row()
-                .key(control.set_key)
-                .h(FIELD_HEIGHT)
-                .px(12.0)
-                .center_y()
-                .radius(k.radius.md)
-                .fill(k.c.bg_base)
-                .border(1.0, k.c.border_base)
-                .label(control.set_label)
-                .child(
-                    text("Set")
-                        .font(TextStyle::new(14.0, 400.0).lh(20.0))
-                        .color(k.c.text_base),
-                )
-                .on_press(control.save),
-        )
+fn result_limit_select(state: &AppState, rows: u32, k: &Kit, overlays: &mut Vec<El>) -> El {
+    // The React reference also offers 50,000. The native result publisher
+    // only admits 1..=10,000, including the lookahead row contract.
+    let presets: Vec<_> = RESULT_LIMIT_OPTIONS.iter().copied()
+        .filter(|rows| (Setting::QueryMaxRows { rows: *rows }).validate().is_ok())
+        .collect();
+    let caption = |n| format!("{} {}", SettingsContentState::formatted_rows(n), t("common.rows"));
+    let mut labels: Vec<String> = presets.iter().copied().map(caption).collect();
+    let mut values: Vec<String> = presets.iter().map(u32::to_string).collect();
+    labels.push(CustomRows::Result.copy(state.builtin_language()).0.to_owned());
+    values.push(CUSTOM_VALUE.to_owned());
+    Select::new("settings-query-result-limit", &labels)
+        .values(&values)
+        .current(Some(&caption(rows)))
+        .label(t("settings.maxRows"))
+        .open(state.settings_content.open_select == Some(SettingsSelect::ResultLimit))
+        .on_toggle(|state: &mut AppState| {
+            if data_browsing_route(state) { state.settings_content.toggle_select(SettingsSelect::ResultLimit); }
+        })
+        .on_close(|state: &mut AppState| {
+            if state.settings_content.open_select == Some(SettingsSelect::ResultLimit) { state.settings_content.close_select(); }
+        })
+        .on_choose(move |state: &mut AppState, value, tx| {
+            if !data_browsing_route(state) || state.settings_content.open_select != Some(SettingsSelect::ResultLimit) { return; }
+            state.settings_content.close_select();
+            let current = match state.desktop.read_native_select_limit() {
+                Ok(limit) => match limit.effective_rows { Some(rows) => rows, None => return },
+                Err(_) => rows, // legacy host: no native toggle
+            };
+            if value == CUSTOM_VALUE {
+                state.max_rows_input = TextEdit::new(current.to_string());
+                state.settings_content.open_select = Some(SettingsSelect::CustomResultLimit);
+                tx.focus(CustomRows::Result.input(), tx.focus_visible());
+            } else if let Ok(rows) = value.parse::<u32>() {
+                if presets.contains(&rows) {
+                    state.settings_error = state.write_ui_setting(Setting::QueryMaxRows { rows }).err();
+                }
+            }
+        })
+        .build(&preset_field_kit(k), overlays)
+        .h(FIELD_HEIGHT).radius(9.0).border(1.0, k.c.border_base).pl(3.0).pr(8.0)
 }
