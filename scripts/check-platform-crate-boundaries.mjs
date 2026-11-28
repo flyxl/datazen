@@ -266,6 +266,16 @@ export const RULES = Object.freeze([
     specCrates: ['tauri*', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
     note: 'each shared SQL crate has no other workspace dependency',
   },
+  {
+    id: 'F-17',
+    subjects: ['regex-worker'],
+    subjectsFromSpec: true,
+    allowedLayers: [],
+    forbiddenCrates: 'spec',
+    specTokens: ['crates/datazen-regex-worker'],
+    specCrates: ['tauri*', 'axum', 'react', 'rquickjs*', 'libquickjs-sys', 'quick-js', 'boa_engine', 'v8', 'deno_core'],
+    note: 'isolated Native regex helper cannot import the application, web framework or a JS engine',
+  },
 ]);
 
 /**
@@ -292,6 +302,7 @@ export const DEFAULT_REQUIRED_LAYERS = [
   'ui-api',
   'ui-runtime',
   'sql',
+  'regex-worker',
 ];
 
 function specLayerId(pathToken) {

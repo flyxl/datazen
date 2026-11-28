@@ -102,6 +102,7 @@ const CORE = [
   { name: 'datazen-rune-host', dir: 'crates/datazen-rune-host' },
   { name: 'datazen-sql', dir: 'crates/datazen-sql' },
   { name: 'datazen-sql-formatter', dir: 'crates/datazen-sql-formatter' },
+  { name: 'datazen-regex-worker', dir: 'crates/datazen-regex-worker' },
   { name: 'rune', dir: 'vendor/rune/crates/rune' },
   { name: 'opencode', dir: 'vendor/rune/themes/opencode' },
   { name: 'datazen-driver-redis', dir: 'crates/drivers/redis' },
@@ -394,6 +395,17 @@ describe('checkPlatformCrateBoundaries', () => {
     expect(result.violations).toEqual([
       expect.stringContaining(`F-16  ${from} (crates/${from}/Cargo.toml) → ${to}`),
     ]);
+  });
+
+  it('F-17 forbids transitive JS engines and F-15 keeps the worker out of shared UI', () => {
+    const result = run(fixture(CORE, {
+      ...clean,
+      'datazen-ui': ['datazen-regex-worker'],
+      'datazen-regex-worker': ['accidental-wrapper'],
+      'accidental-wrapper': ['rquickjs-core'],
+    }, [{ name: 'accidental-wrapper' }, { name: 'rquickjs-core' }]));
+    expect(result.violations.join('\n')).toMatch(/F-17.*datazen-regex-worker.*rquickjs-core/);
+    expect(result.violations.join('\n')).toMatch(/F-15.*datazen-ui.*datazen-regex-worker/);
   });
 
   it('allows both UI and drivers to use the shared SQL contract', () => {

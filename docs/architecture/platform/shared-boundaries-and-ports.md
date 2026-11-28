@@ -184,6 +184,7 @@ flowchart TD
 | F-14 | `modules` 的 normal + build 依赖闭包不含桌面宿主 crates/datazen-desktop（crate 名 datazen-desktop；本行原列的旧 `datazen` 运行时 crate 已随 D8 单 crate 化消解——现内核 crate 即 `datazen`，不存在自含），也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`；`reqwest` 自 D1.5 起豁免——AI Provider 适配（出站 HTTP 客户端）随 ai feature 住在 `datazen::ai::providers`，这是 2026-10-26 的用户决策，不是传输框架渗入 | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
 | F-15 | `crates/datazen-ui`、`crates/datazen-ui-api` 和 Rune 运行时（`vendor/rune/crates/*`、`vendor/rune/themes/*`）的 normal + build 工作区依赖闭包仅允许这三层和共享 SQL 契约。禁止引入宿主、服务端、内核、基础设施、驱动及驱动契约，也禁止 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`、`react` | Native 与 Web 必须能独立组装同一套 UI |
 | F-16 | `crates/datazen-sql`（SQL 文本工具与结构变更契约）和 `crates/datazen-sql-formatter`（纯 Rust SQL 格式化器）同属 SQL 层，且各自为叶节点。两者的 normal + build 依赖闭包均不含其他工作区成员（包括同层的另一个 crate），也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`、`react` | SQL 工具一旦依赖上层或相互依赖，调用者会一并引入其传递依赖 |
+| F-17 | `crates/datazen-regex-worker` 是 Native 宿主可选的隔离匹配进程；normal + build 依赖闭包不得含其他工作区成员或 `tauri*`、`axum`、`react`、`rquickjs*`、`libquickjs-sys`、`quick-js`、`boa_engine`、`v8`、`deno_core` | 不允许在 UI 线程运行无界匹配，也不允许为搜索嵌入 JS 引擎 |
 
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
@@ -232,6 +233,7 @@ members = [
     "crates/datazen-ui-api",
     "crates/datazen-sql",
     "crates/datazen-sql-formatter",
+    "crates/datazen-regex-worker",
     "crates/datazen-driver-api",
     "crates/datazen-driver-support",
     "crates/datazen-infra",
