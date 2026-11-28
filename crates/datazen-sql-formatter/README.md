@@ -17,3 +17,7 @@ and comment handling across six dialects, not every statement accepted by
 each database or client. Client-side delimiter changes and external or
 streamed COPY targets are deliberately unsupported; never apply formatting
 that rewrites a client command into a different command.
+
+The Native host's normal Cargo build enables this formatter by default.
+A constrained host build can use `--no-default-features` to omit it; the
+Format command should then report that the host has no local formatter.
