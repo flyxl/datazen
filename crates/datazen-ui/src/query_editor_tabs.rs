@@ -187,6 +187,20 @@ impl AppState {
             && self.query_editor_matches_connection()
     }
 
+    pub(crate) fn owns_query_document_shortcut(&self, tx: &Tx) -> bool {
+        self.active == Section::Workspace
+            && self.native_kv.is_none()
+            && tx.focused() == Some("sql-editor-scroll")
+            && self.sql.focused()
+            && self.sql.composition().is_none()
+            && !self.result_focused
+            && self.connect_loading.is_none()
+            && self.tabs.selected().is_some_and(|tab| {
+                tab.kind == TabKind::Query && self.query_editor_tabs.active == Some(tab.id)
+            })
+            && self.query_editor_matches_connection()
+    }
+
     pub(crate) fn bind_query_editor_for_execution(&mut self) -> bool {
         if !self.query_editor_matches_connection() {
             self.query_action_notice("This query tab belongs to a different connection. Reopen that connection or start a new query.");

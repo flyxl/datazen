@@ -140,6 +140,13 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         if crate::views::result_workspace::native_result_find::escape_if_focused(state, ev, tx) {
             return true;
         }
+        let comment = Chord::new(ChordKey::Char('/')).with(ChordMod::Primary);
+        if comment.matches_tx(ev, tx) && state.owns_query_document_shortcut(tx) {
+            if !tx.key_repeat() {
+                state.sql.toggle_query_line_comments();
+            }
+            return true;
+        }
         if ev.mods.cmd {
             let old_run = matches!(ev.key, Key::Enter);
             if state.uses_alternate_execute_shortcut() {
