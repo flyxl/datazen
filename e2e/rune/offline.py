@@ -131,6 +131,36 @@ class OfflineJourneys:
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "unchanged")
         self.assertEqual(list(blocked.iterdir()), [sentinel])
 
+    def test_settings_color_scheme_menu_fits_its_light_trigger_and_escape_does_not_save(self):
+        path = self.root / "settings.json"
+        initial = b'{"ui":{"language":"en","themeMode":"light"},"keep":"sentinel"}'
+        path.write_bytes(initial)
+        scheme = "appearance-color-scheme-select-trigger"
+        popup = "appearance-color-scheme-select-content"
+        opened = [SETTINGS, tap(1.4, "settings-nav-appearance"), tap(2.3, scheme)]
+
+        widths = []
+        for size in ("1440x900", "800x660"):
+            tree = self.replay(opened, until=3.1, size=size)
+            field = self._settled_rect(tree, scheme)
+            menu = self._settled_rect(tree, popup)
+            widths.append(field[2])
+            self.assertAlmostEqual(menu[0], field[0], delta=.5)
+            self.assertAlmostEqual(menu[2], field[2], delta=.5)
+            self.assertAlmostEqual(menu[1] - (field[1] + field[3]), 4, delta=.5)
+            for index, label in enumerate(("Light", "Dark", "System")):
+                self.expect_rendered(tree, text=label, within=f"option{index}")
+            self.assertTrue(any(e.get("key") == "option0" and e.get("focused")
+                                for e in tree["elements"]))
+        self.assertLess(widths[1], widths[0], "the narrower viewport resizes the real field")
+        self.assertEqual(path.read_bytes(), initial, "opening the menu does not save")
+
+        cancelled = self.replay([*opened, key(3.1, "Escape")], until=4)
+        self.assertFalse(visible(cancelled, key=popup))
+        self.assertTrue(any(e.get("key") == scheme and e.get("focused")
+                            for e in cancelled["elements"]))
+        self.assertEqual(path.read_bytes(), initial, "Escape leaves the profile untouched")
+
     def test_settings_theme_persists_after_relaunch(self):
         path = self.root / "settings.json"
         path.write_text(json.dumps({"ui": {"language": "en", "themeMode": "light"}}),

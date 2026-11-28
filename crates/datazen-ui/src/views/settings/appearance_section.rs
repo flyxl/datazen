@@ -89,6 +89,33 @@ fn appearance_select(select: Select, kit: &rune_kit::Kit, layer: &mut Vec<El>) -
         .pr(8.0)
 }
 
+const SCHEME_SELECT: &str = "appearance-color-scheme-select";
+const SCHEME_TRIGGER: &str = "appearance-color-scheme-select-trigger";
+
+/// Fit only the live Color scheme menu to its field. The separate Theme
+/// Pack chooser keeps its own styling and all actions stay on Rune's
+/// existing modal listbox (including focus return and outside dismissal).
+fn appearance_scheme_select(select: Select, kit: &rune_kit::Kit, layer: &mut Vec<El>) -> El {
+    let previous_layer_len = layer.len();
+    let trigger = appearance_select(select, kit, layer);
+    if layer.len() > previous_layer_len {
+        // The pinned kit appends the dismissal scrim before its menu.
+        if let Some(surface) = layer.pop() {
+            let surface = surface
+                .anchored_fit(SCHEME_TRIGGER, rune::Side::Bottom, rune::Align::Start, 4.0)
+                .radius(10.0)
+                .border(1.0, kit.c.border_base);
+            let width = rune::memo::layout_with(SCHEME_TRIGGER, |rect| rect[2]);
+            layer.push(if let Some(width) = width.filter(|width| *width > 0.0) {
+                surface.w(width).min_w(width).max_w(width)
+            } else {
+                surface
+            });
+        }
+    }
+    trigger
+}
+
 fn appearance_field_kit(kit: &rune_kit::Kit) -> rune_kit::Kit {
     let mut field_kit = (*kit).clone();
     // In Rune, an empty input elevation *inherits* the neutral button's
@@ -348,7 +375,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
         let scheme_values: Vec<String> =
             self.modes.iter().map(|mode| mode.as_str().to_owned()).collect();
         let mode_label = t(self.theme.mode.label_key()).to_owned();
-        let mut scheme_select = Select::new("appearance-color-scheme-select", &scheme_labels)
+        let mut scheme_select = Select::new(SCHEME_SELECT, &scheme_labels)
             .values(&scheme_values)
             .current(Some(&mode_label))
             .label(t("settings.colorScheme"))
@@ -384,7 +411,7 @@ impl<'a, S: 'static> AppearanceSection<'a, S> {
         // the separate Theme Pack select remain unchanged.
         let mut scheme_kit = appearance_field_kit(k);
         scheme_kit.c.layer_01 = k.c.layer_02;
-        let scheme_control = appearance_select(scheme_select, &scheme_kit, layer);
+        let scheme_control = appearance_scheme_select(scheme_select, &scheme_kit, layer);
         section = section.child(setting_row(
             &k,
             layer,
