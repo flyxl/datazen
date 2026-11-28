@@ -91,13 +91,18 @@ pub fn table_header_type_ink(sql_type: &str, dark: bool) -> Color {
     let (light, night) = match family {
         DataTypeFamily::Null => ("#8498af", "#5f6879"),
         DataTypeFamily::Bool => ("#3478ee", "#4fc3f7"),
-        DataTypeFamily::Number => ("#b86d12", "#fbbf24"),
+        DataTypeFamily::Number => return sqlite_table_number_ink(dark),
         DataTypeFamily::Datetime => ("#147e9c", "#5eead4"),
         DataTypeFamily::Json => ("#2b70a8", "#67e8f9"),
         DataTypeFamily::Text => ("#26364d", "#8b94a7"),
         DataTypeFamily::Binary => ("#e05252", "#ff7b72"),
     };
     rune::color::hex(if dark { night } else { light }).expect("literal table type color")
+}
+
+/// Stock Chromium `--dt-number` in the two built-in themes.
+pub(crate) fn sqlite_table_number_ink(dark: bool) -> Color {
+    rune::color::hex(if dark { "#fbbf24" } else { "#b86d12" }).expect("literal numeric cell color")
 }
 
 /// Data-grid chrome and cell background colors.

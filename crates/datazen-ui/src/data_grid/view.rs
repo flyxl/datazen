@@ -55,6 +55,7 @@ struct CellPaint {
     show_row_numbers: bool,
     row_tail_width: f32,
     row_height: f32,
+    sqlite_number_ink: Option<rune::Color>,
 }
 
 impl CellPaint {
@@ -70,8 +71,16 @@ impl CellPaint {
                 row_height_for_density(base, density) as f32
             }
         };
+        // The host's currently opened profile, not a name from a row or
+        // the fallback demo connection. Other drivers have their own type hints.
+        let sqlite_table = slot == GridSlot::Table
+            && state.desktop_connection.as_ref().zip(state.desktop_connections.as_ref())
+                .is_some_and(|(id, profiles)| {
+                    profiles.iter().any(|profile| &profile.id == id && profile.engine == "sqlite")
+                });
         Self {
             dark,
+            sqlite_number_ink: sqlite_table.then(|| palette::sqlite_table_number_ink(dark)),
             alternating_rows: !shared || state.desktop.read_native_grid_alternating_rows().unwrap_or(true),
             show_row_numbers: !shared || state.desktop.read_native_grid_row_numbers()
                 .unwrap_or(DEFAULT_GRID_ROW_NUMBERS),
@@ -897,7 +906,17 @@ fn cell(
                 .build(dark),
         )
     } else {
-        box_el.child(text(grid.cell(row_index, col_index)).font(label_style()).color(ink))
+        let raw = grid.cell(row_index, col_index);
+        // The legacy body stores text for both SQL NULL and undecodable values.
+        // Do not guess what an empty string originally meant. Only paint an
+        // existing, nonempty string with its known declared numeric family.
+        let number_ink = paint.sqlite_number_ink
+            .filter(|_| !raw.is_empty() && grid.is_declared_numeric(col_index));
+        let mut label = text(raw).font(label_style()).color(number_ink.unwrap_or(ink));
+        if number_ink.is_some() {
+            label = label.key("table-cell-number-value");
+        }
+        box_el.child(label)
     }
 }
 

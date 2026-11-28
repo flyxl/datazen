@@ -316,11 +316,14 @@ fn native_table_column_types_cannot_outlive_their_page() {
     };
     grid.load_native_table_page(&read);
     assert_eq!((grid.column_type(0), grid.column_type(1)), (Some("INTEGER"), None));
+    assert!(grid.is_declared_numeric(0));
+    assert!(!grid.is_declared_numeric(1));
 
     read.page.table = "second".into();
     read.column_types = vec!["TEXT".into(), "   ".into()];
     grid.load_native_table_page(&read);
     assert_eq!((grid.column_type(0), grid.column_type(1)), (Some("TEXT"), None));
+    assert!(!grid.is_declared_numeric(0));
 
     read.column_types.pop();
     grid.load_native_table_page(&read);

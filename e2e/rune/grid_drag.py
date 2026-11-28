@@ -7,6 +7,37 @@ from scenarios import fixture, query_steps, tap, visible
 
 
 class GridDragJourney:
+    def test_table_body_tints_only_nonempty_sqlite_cells_with_declared_numeric_type(self):
+        fixture(self.store, self.db)
+        with sqlite3.connect(self.db) as seed:
+            seed.executescript("""
+                ALTER TABLE customers ADD COLUMN label TEXT;
+                ALTER TABLE customers ADD COLUMN amount INTEGER;
+                UPDATE customers SET label='123', amount=123 WHERE id=1;
+                UPDATE customers SET label='', amount=NULL WHERE id=2;
+                INSERT INTO customers VALUES (3,'literal','NULL',0);
+            """)
+        (self.root / "settings.json").write_text(json.dumps({
+            "ui": {"language": "en"},
+            "rowCountMode": "exact", "defaultTableSort": "primaryKeyAsc",
+        }), encoding="utf-8")
+        table = self.replay(OPEN, until=5.1)
+        marker = "table-cell-number-value"
+        self.expect_rendered(table, key=marker, text="123", within="cell-0-3")
+        self.expect_rendered(table, key=marker, text="0", within="cell-2-3")
+        self.expect_rendered(table, text="123", within="cell-0-2")
+        self.expect_rendered(table, text="NULL", within="cell-2-2")
+        for cell in ("cell-0-2", "cell-1-2", "cell-1-3", "cell-2-2"):
+            self.assertFalse(visible(table, key=marker, within=cell))
+        self.assertFalse(visible(table, text="NULL", within="cell-1-3"))
+
+        query = self.replay(query_steps("SELECT label, amount FROM customers ORDER BY id;"), until=10.5)
+        self.expect_rendered(query, text="123", within="result-cell-0-1")
+        self.assertFalse(visible(query, key=marker, within="result-data-grid-scroll"))
+        with sqlite3.connect(self.db) as oracle:
+            self.assertEqual(oracle.execute("SELECT label, amount FROM customers ORDER BY id").fetchall(),
+                             [("123", 123), ("", None), ("NULL", 0)])
+
     def test_legacy_table_drag_selects_exact_rectangle_and_escape_cancels_gesture(self):
         """Port TC-SEL-002 using native pointer input and real SQLite cell values."""
         fixture(self.store, self.db)

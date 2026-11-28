@@ -33,6 +33,7 @@ pub struct DataGrid {
     source: Option<Vec<Vec<String>>>,
     columns: Vec<String>,
     column_types: Vec<String>,
+    numeric_columns: Vec<bool>,
     /// Per-column widths in points (A4), persisted per table.
     col_widths: Vec<u32>,
     pub anchor: (u32, u32),
@@ -98,6 +99,7 @@ impl DataGrid {
             source: None,
             columns: Vec::new(),
             column_types: Vec::new(),
+            numeric_columns: Vec::new(),
             col_widths: Vec::new(),
             anchor: (0, 0),
             focus: (0, 0),
@@ -307,6 +309,10 @@ impl DataGrid {
         self.column_types.get(col as usize).map(String::as_str).filter(|ty| !ty.trim().is_empty())
     }
 
+    pub(crate) fn is_declared_numeric(&self, col: u32) -> bool {
+        self.numeric_columns.get(col as usize).copied().unwrap_or(false)
+    }
+
     /// The column's index on the loaded page, by name.
     fn column_index(&self, name: &str) -> Option<u32> {
         self.columns
@@ -335,7 +341,11 @@ impl DataGrid {
     pub fn load_native_table_page(&mut self, read: &NativeTablePage) {
         self.load_page_with_count(&read.page, read.row_count, read.bounded_offset);
         if read.column_types.len() == self.columns.len() {
+            use crate::support::cell_types::{resolve_cell_type, CellType};
             self.column_types.clone_from(&read.column_types);
+            self.numeric_columns = self.column_types.iter()
+                .map(|ty| resolve_cell_type(Some(ty), None) == CellType::Number)
+                .collect();
         }
     }
 
@@ -352,6 +362,7 @@ impl DataGrid {
         self.source = Some(page.rows.clone());
         self.columns = page.columns.clone();
         self.column_types.clear();
+        self.numeric_columns.clear();
         self.rows = page.rows.len() as u32;
         self.cols = page.columns.len() as u32;
         self.page = page.page;
