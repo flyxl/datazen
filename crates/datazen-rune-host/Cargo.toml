@@ -47,6 +47,8 @@ datazen-driver-redis = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sha2 = { workspace = true }
 tempfile = "3"
 # `touch_last_connected_at` writes an RFC 3339 timestamp; the job worker owns

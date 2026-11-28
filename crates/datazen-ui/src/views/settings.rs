@@ -154,6 +154,28 @@ pub fn settings_page(state: &AppState, theme: tok::Theme, dark: bool) -> El {
     )
     .nav_space_target(|state: &mut AppState| &mut state.settings_content.nav_space_target)
     .on_select_section(|state: &mut AppState, section| state.set_settings_section(section));
+    if active == "logging" {
+        if let Some(level) = state.desktop.native_log_level() {
+            let error = state.settings_content.native_log_level_error.as_ref().map(|_| {
+                text(t("settings.nativeLogLevelSaveFailed").to_owned()).key("settings-log-level-error").role("status").wrap()
+                    .font(type_::LABEL).color(theme.text_secondary)
+            });
+            return shell
+                .native_log_level(level, error)
+                .on_select_toggle(|state, which| state.settings_content.toggle_select(which))
+                .on_select_close(|state| state.settings_content.close_select())
+                .on_update_field(|state, field| {
+                    if let SettingsField::LogLevel(value) = field {
+                        state.settings_content.close_select();
+                        if let Some(level) = datazen_ui_api::types::LogLevel::from_wire(&value) {
+                            state.settings_content.native_log_level_error =
+                                state.desktop.set_native_log_level(level).err();
+                        }
+                    }
+                })
+                .build();
+        }
+    }
     if active == "general" {
         shell
             .builtin_language(state.builtin_language())

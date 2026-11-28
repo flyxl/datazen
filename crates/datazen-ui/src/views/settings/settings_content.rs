@@ -229,6 +229,8 @@ pub struct SettingsContent<'a, S: 'static> {
     on_select_close: Option<Rc<dyn Fn(&mut S)>>,
     on_contribution_toggle: Option<Rc<dyn Fn(&mut S, String)>>,
     on_contribution_close: Option<Rc<dyn Fn(&mut S)>>,
+    /// Native console logging exposes just the capability it implements.
+    native_log_level: Option<(datazen_ui_api::types::LogLevel, Option<El>)>,
     on_open_log_dir: Option<Rc<dyn Fn(&mut S)>>,
     on_browse_log_path: Option<Rc<dyn Fn(&mut S)>>,
     // the text input lenses (over the host's state)
@@ -279,6 +281,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             on_select_close: None,
             on_contribution_toggle: None,
             on_contribution_close: None,
+            native_log_level: None,
             on_open_log_dir: None,
             on_browse_log_path: None,
             pool_size_edit: None,
@@ -1639,6 +1642,15 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         body
     }
 
+    pub(crate) fn native_log_level(
+        mut self,
+        level: datazen_ui_api::types::LogLevel,
+        write_error: Option<El>,
+    ) -> Self {
+        self.native_log_level = Some((level, write_error));
+        self
+    }
+
     /// The logging section.
     fn logging_section(&self, k: &Kit, layer: &mut Vec<El>) -> El {
         let mirror = &self.state.mirror;
@@ -1651,7 +1663,11 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
                 layer,
                 "settings-logging-title".to_owned(),
                 t("settings.logging"),
-                Some(t("settings.logRestartNote")),
+                Some(t(if self.native_log_level.is_some() {
+                    "settings.nativeLogRestartNote"
+                } else {
+                    "settings.logRestartNote"
+                })),
             ));
 
         // The log level select (the labels are the capitalized
@@ -1667,7 +1683,10 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             })
             .collect();
         let values: Vec<String> = LOG_LEVEL_OPTIONS.iter().map(|v| v.to_string()).collect();
-        let current = mirror.log_level.clone();
+        let current = self.native_log_level.as_ref()
+            .map(|(level, _)| level.as_str())
+            .unwrap_or(mirror.log_level.as_str())
+            .to_owned();
         let current_label = labels
             .iter()
             .zip(LOG_LEVEL_OPTIONS.iter())
@@ -1677,6 +1696,7 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
         let mut select = Select::new("settings-log-level", &labels)
             .values(&values)
             .current(Some(current_label.as_str()))
+            .label(t("settings.logLevel"))
             .width(160.0)
             .open(self.state.open_select == Some(SettingsSelect::LogLevel));
         select = wire_select(
@@ -1700,6 +1720,15 @@ impl<'a, S: 'static> SettingsContent<'a, S> {
             None,
             select_el,
         ));
+
+        if let Some((_, error)) = &self.native_log_level {
+            // Native diagnostics are console-only. Do not present a path
+            // picker or a log directory action without an actual file sink.
+            return match error {
+                Some(error) => body.child(error.clone()),
+                None => body,
+            };
+        }
 
         // The log path input: the placeholder is the default path
         // (the `getLogPath` read) with the translated fallback.

@@ -2372,6 +2372,17 @@ pub trait DesktopAdapter {
     /// The host's persisted UI settings (N8). The default answers the fixed
     /// error, and the UI falls back to the memory port's settings — the
     /// demo path.
+    /// Native console diagnosis level planned for the next launch. None
+    /// means that this host has no logging consumer, not that it uses Info.
+    fn native_log_level(&self) -> Option<types::LogLevel> {
+        None
+    }
+
+    /// Persist a native console diagnosis level without changing this launch.
+    fn set_native_log_level(&mut self, _level: types::LogLevel) -> Result<(), String> {
+        Err(DESKTOP_NOT_IMPLEMENTED.to_owned())
+    }
+
     fn read_ui_settings(&self) -> Result<Vec<Setting>, String> {
         Err(DESKTOP_NOT_IMPLEMENTED.into())
     }

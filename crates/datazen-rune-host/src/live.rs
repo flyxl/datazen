@@ -508,7 +508,7 @@ impl LiveAdapter {
         // N8: the settings use case over the settings file, with the
         // document cached for memory-speed reads.
         let settings_repository = Arc::new(crate::settings::FileSettingsRepository::open(
-            &data_dir.join("settings.json"),
+            &crate::settings::settings_path(data_dir),
         ));
         let settings = datazen::settings::application::SettingsService::new(settings_repository);
         let settings_document = Arc::new(Mutex::new(
@@ -3347,6 +3347,26 @@ impl DesktopAdapter for LiveAdapter {
             }
         }
         deliveries
+    }
+
+    fn native_log_level(&self) -> Option<datazen_ui_api::types::LogLevel> {
+        let document = self.settings_document.lock().ok()?;
+        Some(crate::settings::log_level(&document))
+    }
+
+    fn set_native_log_level(&mut self, level: datazen_ui_api::types::LogLevel) -> Result<(), String> {
+        const FAILURE: &str = "Could not save the native log level; the previous setting was kept.";
+        let mut cache = self.settings_document.lock().map_err(|_| FAILURE.to_owned())?;
+        // Startup may use a safe default if settings are broken. Never use
+        // that empty fallback document to overwrite an unreadable profile.
+        let mut document = crate::settings::read_log_document(&self.data_dir)
+            .map_err(|_| FAILURE.to_owned())?;
+        let object = document.as_object_mut().ok_or_else(|| FAILURE.to_owned())?;
+        object.insert("logLevel".to_owned(), serde_json::json!(level.as_str()));
+        let stored = futures_executor::block_on(self.settings.save_app_settings(document))
+            .map_err(|_| FAILURE.to_owned())?;
+        *cache = stored;
+        Ok(())
     }
 
     fn read_ui_settings(&self) -> Result<Vec<datazen_ui_api::Setting>, String> {

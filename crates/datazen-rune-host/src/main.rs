@@ -52,6 +52,11 @@ fn main() {
     }
 
     let path = datazen_rune_host::default_connections_path();
+    let data_dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    if !datazen_rune_host::logging::init(data_dir) {
+        eprintln!("Could not initialize native console diagnostics.");
+    }
+    datazen_rune_host::logging::opening_profile();
     let repository = match datazen_rune_host::FileConnectionRepository::open(&path) {
         Ok(repository) => std::sync::Arc::new(repository),
         Err(error) => {
@@ -63,7 +68,9 @@ fn main() {
     // handle between the two. A busless desktop logs the absence and the
     // window interface continues.
     let app =
-        datazen_ui::app_with_adapter(Box::new(datazen_rune_host::LiveAdapter::new(repository)));
-    datazen_rune_host::tray::install(app.handle());
+        datazen_ui::app_with_adapter(Box::new(datazen_rune_host::LiveAdapter::with_data_dir(
+            repository, data_dir,
+        )));
+    datazen_rune_host::logging::start_gui(datazen_rune_host::tray::install(app.handle()));
     app.run();
 }

@@ -446,6 +446,7 @@ pub struct SettingsContentState {
     pub app_version: Option<String>,
     /// `getLogPath`'s answer — the log path input's placeholder.
     pub default_log_path: Option<String>,
+    pub(crate) native_log_level_error: Option<String>,
     /// The local mirror of the store's settings.
     pub mirror: SettingsMirror,
     /// Which select holds its listbox open.
@@ -485,6 +486,7 @@ impl Default for SettingsContentState {
             initial_section: None,
             app_version: None,
             default_log_path: None,
+            native_log_level_error: None,
             mirror: SettingsMirror::default(),
             open_select: None,
             custom_page_size_error: None,

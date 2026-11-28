@@ -62,6 +62,17 @@ pub enum LogLevel {
 }
 
 impl LogLevel {
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "trace" => Some(Self::Trace),
+            "debug" => Some(Self::Debug),
+            "info" => Some(Self::Info),
+            "warn" => Some(Self::Warn),
+            "error" => Some(Self::Error),
+            _ => None,
+        }
+    }
+
     /// The wire spelling.
     pub fn as_str(self) -> &'static str {
         match self {

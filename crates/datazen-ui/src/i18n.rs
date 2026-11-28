@@ -70,6 +70,14 @@ fn lookup(locale: BuiltinLanguage, key: &str) -> Option<&'static str> {
         "query.nativeFind.previous" => Some(("上一处", "Find previous")),
         "query.nativeFind.replaceAll" => Some(("全部替换", "Replace all")),
         "query.nativeFind.addCursor" => Some(("添加光标", "Add cursor")),
+        "settings.nativeLogRestartNote" => Some((
+            "原生启动诊断输出到控制台。级别变更在重启后生效；有效的 RUST_LOG 会覆盖此设置。",
+            "Native startup diagnostics go to the console. Restart to apply changes. A valid RUST_LOG overrides this setting.",
+        )),
+        "settings.nativeLogLevelSaveFailed" => Some((
+            "无法保存日志级别，已保留原有设置。",
+            "Could not save the log level. The previous setting was kept.",
+        )),
         "settings.nativeEditorFont.bundled" => Some(("内置等宽字体（IBM Plex Mono）", "Bundled monospace (IBM Plex Mono)")),
         "settings.nativeSnippet.name" => Some(("片段名称", "Snippet name")),
         "settings.nativeSnippet.update" => Some(("更新片段", "Update snippet")),

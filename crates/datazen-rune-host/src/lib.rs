@@ -11,6 +11,7 @@ pub mod history;
 mod workflow_run_history;
 pub mod jobs;
 pub mod live;
+pub mod logging;
 pub mod secrets;
 pub mod settings;
 pub mod snippets;

@@ -11,7 +11,32 @@ use async_trait::async_trait;
 use datazen::settings::domain::{
     SettingsRepository, SettingsRepositoryError, SharedSettings,
 };
+use datazen_ui_api::types::LogLevel;
 use std::path::{Path, PathBuf};
+
+pub(crate) fn settings_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("settings.json")
+}
+
+/// A missing file is fresh; a present file must be a valid JSON object.
+/// In particular, whitespace in a real file is not permission to overwrite it.
+pub(crate) fn read_log_document(data_dir: &Path) -> Result<serde_json::Value, ()> {
+    let bytes = match std::fs::read(settings_path(data_dir)) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(serde_json::json!({}));
+        }
+        Err(_) => return Err(()),
+    };
+    let document: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| ())?;
+    if document.is_object() { Ok(document) } else { Err(()) }
+}
+
+/// Same spelling/default for the startup subscriber and the editable selector.
+pub(crate) fn log_level(document: &serde_json::Value) -> LogLevel {
+    document.get("logLevel").and_then(|v| v.as_str())
+        .and_then(LogLevel::from_wire).unwrap_or(LogLevel::Info)
+}
 
 pub struct FileSettingsRepository {
     path: PathBuf,
