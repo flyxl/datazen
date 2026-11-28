@@ -4,6 +4,7 @@
 //! [`MemoryWorkspace`] for its in-memory data.
 
 mod native_saved_tunnels;
+pub mod native_sql_format;
 pub use native_saved_tunnels::{NativeHttpProxyDefinition, NativeTunnelPassword, NativeTunnelStoreError};
 
 mod ai_memory_correction;
@@ -2399,6 +2400,27 @@ pub trait DesktopAdapter {
     ) -> Option<Result<Vec<std::ops::Range<usize>>, String>> {
         None
     }
+
+    /// Exact live SQL session/configuration only when the local formatter
+    /// has been installed. Default adapters do not claim a formatter.
+    fn native_sql_format_context(&self) -> Option<native_sql_format::NativeSqlFormatContext> {
+        None
+    }
+
+    /// Enqueue bounded local-only work off the UI thread. False means no
+    /// job was accepted and no answer for that generation will follow.
+    fn begin_native_sql_format(&mut self, _request: native_sql_format::NativeSqlFormatRequest) -> bool {
+        false
+    }
+
+    /// Nonblocking, with no raw engine diagnostics or SQL in errors.
+    fn poll_native_sql_format(&mut self) -> Option<native_sql_format::NativeSqlFormatDelivery> {
+        None
+    }
+
+    /// Stop/invalidate a superseded job. A racing completion may still
+    /// reach poll, and the UI independently rejects its generation.
+    fn cancel_native_sql_format(&mut self, _generation: u64) {}
 
     /// The live native host exposes its restricted data-only transfer tool.
     fn supports_native_transfer(&self) -> bool {

@@ -97,7 +97,8 @@ pub fn sql_format_indentation(style: &str) -> SqlIndent {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SqlFormatRequest {
     pub language: String,
     pub keyword_case: String,
