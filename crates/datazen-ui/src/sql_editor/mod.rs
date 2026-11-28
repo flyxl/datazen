@@ -16,6 +16,7 @@ mod line_comment;
 mod model;
 mod navigation;
 mod plain_find;
+mod round_pairs;
 mod syntax_theme;
 mod view;
 

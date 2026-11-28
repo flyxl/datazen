@@ -25,6 +25,7 @@ from scenarios import fixture, query_steps, tap, type_text, visible
 from schema_diff import SchemaDiffJourney
 from sql_selection import SqlSelectionJourneys
 from sql_comments import SqlLineCommentJourney
+from sql_parentheses import SqlRoundPairJourney
 from tcp_metadata import TcpMetadataJourneys, with_metadata_journeys
 from tcp_sql import TcpSqlJourneys, with_tcp_journeys
 from tcp_transfer import TcpTransferJourneys, with_sql_transfer_journeys
@@ -32,7 +33,7 @@ from transfer import TransferJourneys
 from workflow import WorkflowJourney
 
 
-class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourney, OfflineJourneys, GridDragJourney, TableFieldFilterJourney, QueryHistoryJourney, QueryResultsLayoutJourney, QueryRowLimitJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, SqlLineCommentJourney, unittest.TestCase):
+class NativeJourneys(ConnectionLandingJourney, DashboardJourney, FavoritesJourney, OfflineJourneys, GridDragJourney, TableFieldFilterJourney, QueryHistoryJourney, QueryResultsLayoutJourney, QueryRowLimitJourney, WorkflowJourney, TcpSqlJourneys, TcpMetadataJourneys, TcpTransferJourneys, TransferJourneys, SchemaDiffJourney, DataSyncJourneys, CsvImportJourneys, SqlSelectionJourneys, SqlLineCommentJourney, SqlRoundPairJourney, unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix="datazen-native-e2e-")
         self.addCleanup(tmp.cleanup)

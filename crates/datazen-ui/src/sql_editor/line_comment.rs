@@ -42,9 +42,10 @@ impl SqlEditor {
         self.push_history();
         // One undo record and one original coordinate system for the batch.
         for edit in edits.iter().rev() {
-            self.doc.replace_range(edit.from..edit.to, edit.insert);
+            self.splice_doc(edit.from, edit.to, edit.insert);
         }
         self.selection = selection;
+        self.keep_round_closers_on_main_line();
         self.preferred_columns.clear();
         self.completion_close();
         true
