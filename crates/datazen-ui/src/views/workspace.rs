@@ -521,7 +521,7 @@ fn query_toolbar(state: &AppState, theme: tok::Theme, dark: bool, database_picke
     }
     bar = bar.children(database_picker).child(
             toolbar_button("sql-format", t("query.format"), theme)
-                .on_press(|s: &mut AppState| s.format_query()),
+                .on_press_tx(|s: &mut AppState, tx| s.format_query(tx)),
         )
         // React's query error panel has a separate AI action,
         // t("query.explainError"); the toolbar's Explain is explain.title.

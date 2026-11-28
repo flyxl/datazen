@@ -29,6 +29,10 @@
 //!   anchor projection follows the React statement scanner/ranges; it
 //!   is not the Native driver's query-execution splitter.
 
+use std::borrow::Cow;
+
+use datazen_ui_api::native_sql_format::trim_like_react;
+
 mod statement_anchors;
 use self::statement_anchors::map_cursor_by_statement;
 
@@ -129,110 +133,79 @@ pub fn format_editor_document(
     options: PartialSqlFormatOptions,
     format_sql: FormatSql<'_>,
 ) -> Option<FormatEdit> {
+    let original = if sel_from == sel_to { doc } else { doc.get(sel_from..sel_to)? };
+    if trim_like_react(original).is_empty() {
+        return None;
+    }
     let resolved = SqlFormatOptionsVm::resolve(options);
-    if sel_from == sel_to {
-        format_whole_document(doc, cursor, database_type, &resolved, format_sql)
+    let formatted = format_sql(original, database_type, &resolved).ok()?;
+    format_editor_output(doc, sel_from, sel_to, cursor, formatted, usize::MAX)
+}
+
+pub(crate) fn project_lf(text: &str) -> Cow<'_, str> {
+    if text.contains('\r') {
+        Cow::Owned(text.replace("\r\n", "\n").replace('\r', "\n"))
     } else {
-        format_selection(doc, sel_from, sel_to, database_type, &resolved, format_sql)
+        Cow::Borrowed(text)
     }
 }
 
-/// `formatSelection`.
-fn format_selection(
-    doc: &str,
-    from: usize,
-    to: usize,
-    database_type: Option<&str>,
-    options: &SqlFormatOptionsVm,
-    format_sql: FormatSql<'_>,
+/// Same edit calculation for a synchronous caller and a completed
+/// asynchronous job. The worker does not get caret, indent, or editor state.
+pub(crate) fn format_editor_output(
+    doc: &str, from: usize, to: usize, cursor: usize, formatted: String, limit: usize,
 ) -> Option<FormatEdit> {
-    let original = doc.get(from..to)?;
-    if original.trim().is_empty() {
+    if formatted.len() > limit {
         return None;
     }
-
-    let formatted = safe_format(original, database_type, options, format_sql)?;
-    if formatted == original {
-        return None;
+    if from == to {
+        let original = project_lf(doc);
+        if formatted == original.as_ref() { return None; }
+        let cursor = doc.floor_char_boundary(cursor.min(doc.len()));
+        let cursor = project_lf(&doc[..cursor]).len();
+        let anchor = map_cursor_by_statement(&original, &formatted, cursor);
+        return Some(FormatEdit { from: 0, to: doc.len(), insert: formatted, anchor, head: anchor });
     }
 
-    // Re-apply the selection's own leading indentation so a formatted
-    // block keeps sitting at the depth the user selected it at.
+    let original = project_lf(doc.get(from..to)?);
+    if formatted == original.as_ref() { return None; }
     let indent = leading_indent_of(doc, from);
-    let reindented = if indent.is_empty() { formatted } else { reindent(&formatted, &indent) };
-
-    Some(FormatEdit {
-        from,
-        to,
-        // Keep the block highlighted — the user's next action is usually
-        // to re-run it.
-        anchor: from,
-        head: from + reindented.len(),
-        insert: reindented,
-    })
-}
-
-/// `formatWholeDocument`.
-fn format_whole_document(
-    doc: &str,
-    cursor: usize,
-    database_type: Option<&str>,
-    options: &SqlFormatOptionsVm,
-    format_sql: FormatSql<'_>,
-) -> Option<FormatEdit> {
-    if doc.trim().is_empty() {
-        return None;
-    }
-
-    let formatted = safe_format(doc, database_type, options, format_sql)?;
-    if formatted == original_eq(doc) {
-        return None;
-    }
-
-    let anchor = map_cursor_by_statement(doc, &formatted, cursor);
-
-    Some(FormatEdit {
-        from: 0,
-        to: doc.len(),
-        insert: formatted.clone(),
-        anchor,
-        head: anchor,
-    })
-}
-
-fn original_eq(doc: &str) -> &str {
-    doc
-}
-
-/// `safeFormat`: a rejection reads as `None` (the buffer stays
-/// untouched).
-fn safe_format(
-    sql: &str,
-    database_type: Option<&str>,
-    options: &SqlFormatOptionsVm,
-    format_sql: FormatSql<'_>,
-) -> Option<String> {
-    format_sql(sql, database_type, options).ok()
+    let insert = if indent.is_empty() {
+        formatted
+    } else {
+        reindent_checked(&formatted, indent, limit)?
+    };
+    if insert == original.as_ref() { return None; }
+    Some(FormatEdit { from, to, anchor: from, head: from.checked_add(insert.len())?, insert })
 }
 
 /// `leadingIndentOf`: the line's start-to-selection prefix, but only
 /// when it is all whitespace — a mid-line selection owns no indent.
-fn leading_indent_of(doc: &str, from: usize) -> String {
-    let line_start = doc[..from.min(doc.len())].rfind('\n').map_or(0, |i| i + 1);
+fn leading_indent_of(doc: &str, from: usize) -> &str {
+    let line_start = doc[..from.min(doc.len())].rfind(['\r', '\n']).map_or(0, |i| i + 1);
     let prefix = &doc[line_start..from.min(doc.len())];
     if !prefix.is_empty() && prefix.chars().all(|c| c == ' ' || c == '\t') {
-        prefix.to_owned()
+        prefix
     } else {
-        String::new()
+        ""
     }
 }
 
 /// `reindent`: the first line and empty lines keep their depth; every
 /// other line gains the indent.
-fn reindent(text: &str, indent: &str) -> String {
-    text.split('\n')
-        .enumerate()
-        .map(|(i, line)| if i == 0 || line.is_empty() { line.to_owned() } else { format!("{indent}{line}") })
-        .collect::<Vec<_>>()
-        .join("\n")
+fn reindent_checked(text: &str, indent: &str, limit: usize) -> Option<String> {
+    // Raw job output alone is not the upper bound: restoring an imported
+    // document's long indentation could amplify a multiline result.
+    let nested = text.split('\n').skip(1).filter(|line| !line.is_empty()).count();
+    let bytes = nested.checked_mul(indent.len())?.checked_add(text.len())?;
+    if bytes > limit { return None; }
+    let mut output = String::with_capacity(bytes);
+    for (index, line) in text.split('\n').enumerate() {
+        if index > 0 {
+            output.push('\n');
+            if !line.is_empty() { output.push_str(indent); }
+        }
+        output.push_str(line);
+    }
+    Some(output)
 }

@@ -12,7 +12,7 @@ pub(crate) mod find_dock;
 mod find_paint;
 pub(crate) mod builtin_snippets;
 mod from_completion;
-mod format_draft;
+pub(crate) mod format_draft;
 pub(crate) mod goto_line;
 mod highlight;
 mod input;

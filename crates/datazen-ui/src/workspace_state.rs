@@ -437,12 +437,6 @@ impl AppState {
         self.query_notice = Some(notice.into());
     }
 
-    pub fn format_query(&mut self) {
-        // No formatter capability in the current Rune/editor contract; keep the
-        // document unchanged and report honestly.
-        self.query_action_notice("Format is not available in this host");
-    }
-
     pub fn explain_query(&mut self) {
         if !self.desktop.supports_native_explain() {
             self.query_action_notice("Explain is not available in this host");

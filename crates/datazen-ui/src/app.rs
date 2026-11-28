@@ -197,6 +197,7 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         let select_next_occurrence = Chord::new(ChordKey::Char('d')).with(ChordMod::Primary);
         let owns_next_occurrence = select_next_occurrence.matches_tx(ev, tx)
             && state.owns_query_document_shortcut(tx);
+        let owns_format_shortcut = state.owns_query_document_shortcut(tx);
         // T1: after a result cell is pressed the result grid holds the
         // keyboard: arrows walk its selection, Command-C copies TSV. Typing
         // or Escape hands the keys back to the editor, and so does any key
@@ -223,6 +224,14 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
         if !state.catalog_completion_current() {
             state.sql.clear_catalog_completion();
         }
+        // A Tauri user can explicitly assign a printable key. Honor that
+        // assignment before its literal insertion, but after the existing
+        // shell, modal, editor-special and execution routes above. Stock
+        // typing and no-provider hosts keep the same input behavior.
+        let format_before_edit = matches!(ev.key, Key::Text(_)) && !ev.mods.cmd && !ev.mods.ctrl;
+        if owns_format_shortcut && format_before_edit && state.format_query_shortcut(ev, tx) {
+            return true;
+        }
         let consumed = sql_editor::on_query_key(&mut state.sql, ev, tx);
         if consumed && (matches!(ev.key, Key::Backspace)
             || (matches!(ev.key, Key::Text(_)) && !ev.mods.cmd && !ev.mods.ctrl))
@@ -245,7 +254,7 @@ pub fn app_key(state: &mut AppState, ev: &KeyEvent, tx: &mut Tx) -> bool {
             // were already picked; only the focused Query owns that policy.
             return true;
         }
-        return consumed;
+        return consumed || (owns_format_shortcut && !format_before_edit && state.format_query_shortcut(ev, tx));
     }
     if state.grid.has_page() {
         return crate::data_grid::on_table_key(state, ev, tx);
@@ -280,6 +289,7 @@ pub fn app_poll(state: &mut AppState, now: f64, tx: &mut Tx) -> bool {
     dirty |= crate::data_grid::freeze::retire_stale_menu(state);
     dirty |= crate::data_grid::field_filter::retire_stale_popup(state);
     dirty |= state.restore_query_editor_scroll(tx);
+    dirty |= state.poll_native_query_format(now, tx);
     // A captured cell might not receive Up once its virtual row or table
     // subtree is gone. Cancel the app's gesture before it can affect a newer grid.
     let table_grid_mounted = state.active == Section::Workspace
@@ -308,10 +318,14 @@ pub fn app_ime(state: &mut AppState, ev: &Ime, _: &mut Tx) -> bool {
     if state.active == Section::Workflows && state.workflow_yaml_focused() {
         return crate::sql_editor::on_ime(&mut state.workflow_yaml, ev);
     }
-    state.active == Section::Workspace
+    let handled = state.active == Section::Workspace
         && query_selected(state)
         && state.query_snippet_menu_owner().is_none()
-        && crate::sql_editor::on_ime(&mut state.sql, ev)
+        && crate::sql_editor::on_ime(&mut state.sql, ev);
+    if handled && matches!(ev, Ime::Preedit(text, _) if !text.is_empty()) {
+        state.cancel_native_query_format();
+    }
+    handled
 }
 
 /// WebAssembly entrypoint consumed by wasm-bindgen.
