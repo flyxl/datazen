@@ -57,7 +57,12 @@ impl AppState {
         let Some(p)=&self.query_regex.pending else{return false};
         // A click must not deliver to a covered editor or re-focus a user
         // who has since moved to the grid, navigator or another window.
-        let in_dock=tx.focused().is_some_and(|k| matches!(k,"sql-editor-scroll"|"sql-find-input"|"sql-find-next"|"sql-find-prev"|
+        // Kit keys its bound inner TextInput "input" on pointer focus. Never
+        // accept that generic key alone: unrelated fields use it too. Rune
+        // updates the exact draft's bound TextEdit on both focus and blur.
+        let focused_dock_field = tx.focused() == Some("input")
+            && (self.sql.find_input.focused || self.sql.replace_input.focused);
+        let in_dock=focused_dock_field || tx.focused().is_some_and(|k| matches!(k,"sql-editor-scroll"|"sql-find-input"|"sql-find-next"|"sql-find-prev"|
             "sql-find-select-all-matches"|"sql-find-regex"|"sql-find-match-case"|"sql-find-whole-word"|"sql-replace-input"|
             "sql-replace-current"|"sql-replace-all"|"sql-add-cursor"));
         if !in_dock || !p.owner.owns_current_query(self) || !p.lease.owns(&self.sql)
